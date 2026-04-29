@@ -39,9 +39,23 @@ pub enum ScriptCommand {
 
     // === ECS ===
     SpawnEntity { name: String },
-    SpawnPrimitive { name: String, primitive_type: String, position: Option<Vec3>, scale: Option<Vec3> },
+    SpawnPrimitive {
+        name: String,
+        primitive_type: String,
+        position: Option<Vec3>,
+        scale: Option<Vec3>,
+        /// Optional `MeshColor` so callers can vary the per-voxel tint
+        /// without dropping a separate `set` reflection call afterward.
+        /// `None` falls back to the shape's registered default color.
+        color: Option<[f32; 4]>,
+    },
     DespawnEntity { entity_id: u64 },
     DespawnSelf,
+    /// Despawn every entity whose `Name` starts with `prefix`. Used by
+    /// streaming/chunk-style scripts that name spawned entities like
+    /// `chunk_<x>_<z>_<...>` and need to evict an entire chunk in one
+    /// call. Cheap because it's a single world-walk.
+    DespawnByPrefix { prefix: String },
     SetEntityName { entity_id: u64, name: String },
     AddTag { entity_id: Option<u64>, tag: String },
     RemoveTag { entity_id: Option<u64>, tag: String },

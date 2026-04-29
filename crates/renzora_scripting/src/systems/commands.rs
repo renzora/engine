@@ -18,7 +18,7 @@ pub fn apply_script_commands(
     mut commands: Commands,
     mut timers: ResMut<ScriptTimers>,
     mut visibility_query: Query<&mut Visibility>,
-    _name_query: Query<(Entity, &Name)>,
+    name_query: Query<(Entity, &Name)>,
     mut log_buffer: ResMut<ScriptLogBuffer>,
     mut pending_env: ResMut<ScriptEnvironmentCommands>,
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
@@ -91,7 +91,7 @@ pub fn apply_script_commands(
                     Visibility::default(),
                 ));
             }
-            ScriptCommand::SpawnPrimitive { name, primitive_type: _, position, scale } => {
+            ScriptCommand::SpawnPrimitive { name, primitive_type, position, scale, color } => {
                 let mut t = Transform::default();
                 if let Some(pos) = position {
                     t.translation = pos;
@@ -99,11 +99,25 @@ pub fn apply_script_commands(
                 if let Some(s) = scale {
                     t.scale = s;
                 }
-                commands.spawn((
+                // `MeshPrimitive` + (optional) `MeshColor` is the same
+                // pair the editor's shape spawner writes — the
+                // `rehydrate_meshes` system runs every frame and turns
+                // these into the actual `Mesh3d` + `MeshMaterial3d`
+                // components by looking up `primitive_type` in the
+                // shared `ShapeRegistry`. Means scripts get visible
+                // primitives "for free" using the same registry the
+                // shape library UI uses.
+                let mut entity = commands.spawn((
                     Name::new(name),
                     t,
                     Visibility::default(),
+                    renzora::core::MeshPrimitive(primitive_type),
                 ));
+                if let Some([r, g, b, a]) = color {
+                    entity.insert(renzora::core::MeshColor(
+                        bevy::color::Color::srgba(r, g, b, a),
+                    ));
+                }
             }
             ScriptCommand::DespawnEntity { entity_id } => {
                 let e = Entity::from_bits(entity_id);
@@ -111,6 +125,19 @@ pub fn apply_script_commands(
             }
             ScriptCommand::DespawnSelf => {
                 commands.entity(source_entity).despawn();
+            }
+            ScriptCommand::DespawnByPrefix { prefix } => {
+                // Streaming/chunk evict — single world-walk over all
+                // named entities, despawn everything whose Name starts
+                // with the prefix. For a 16x16x4 chunk with ~1k cubes
+                // this is faster than emitting 1k individual
+                // DespawnEntity commands across the script→world
+                // boundary.
+                for (entity, name) in name_query.iter() {
+                    if name.as_str().starts_with(&prefix) {
+                        commands.entity(entity).despawn();
+                    }
+                }
             }
 
             // === Visibility ===
