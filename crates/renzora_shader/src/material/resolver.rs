@@ -202,22 +202,42 @@ fn resolve_material_refs(
             path.clone()
         };
 
-        // Determine file type and resolve
-        if path.ends_with(".material") {
-            match resolve_material_file(
-                &fs_path,
-                &mut standard_materials,
-                &mut graph_materials,
-                &mut shaders,
-                &mut shader_state,
-                &fallback_texture,
-                &asset_server,
-                reader,
-            ) {
+        // Determine file type and resolve. `.material` is the unified
+        // extension for both masters and derived (instance) files —
+        // content distinguishes (presence of a non-empty `master`
+        // field). `.material_instance` is kept as a deprecated suffix
+        // so projects with old files keep loading; new instances are
+        // always written as `.material`.
+        if path.ends_with(".material") || path.ends_with(".material_instance") {
+            let is_derived = is_derived_material_file(&fs_path, reader);
+            let result = if is_derived {
+                resolve_material_instance_file(
+                    &fs_path,
+                    project.as_deref(),
+                    &mut *cache,
+                    &mut standard_materials,
+                    &mut graph_materials,
+                    &mut shaders,
+                    &mut shader_state,
+                    &fallback_texture,
+                    &asset_server,
+                    reader,
+                )
+            } else {
+                resolve_material_file(
+                    &fs_path,
+                    &mut standard_materials,
+                    &mut graph_materials,
+                    &mut shaders,
+                    &mut shader_state,
+                    &fallback_texture,
+                    &asset_server,
+                    reader,
+                )
+            };
+            match result {
                 Some(CompiledMaterial::Standard(handle)) => {
                     cache.standard_materials.insert(path.clone(), handle.clone());
-                    // Strip a stale GraphMaterial component if present (e.g.
-                    // hot-reload that crossed the trivial/procedural boundary).
                     commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
@@ -226,11 +246,14 @@ fn resolve_material_refs(
                 }
                 Some(CompiledMaterial::Graph { handle, parameters }) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
-                    cache
-                        .master_meta
-                        .insert(path.clone(), MasterMeta { parameters });
-                    // Strip the GLB-decoded StandardMaterial so it doesn't
-                    // render alongside the GraphMaterial.
+                    // Master-meta only applies to non-derived files —
+                    // derived files inherit their master's parameter
+                    // list, which we don't re-cache here.
+                    if !is_derived {
+                        cache
+                            .master_meta
+                            .insert(path.clone(), MasterMeta { parameters });
+                    }
                     commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
@@ -238,51 +261,10 @@ fn resolve_material_refs(
                     ));
                 }
                 None => {
-                    // File missing or malformed. Mark resolved anyway so we
-                    // don't reopen it every frame — for a model with N mesh
-                    // entities all referencing the same broken file, that
-                    // would be N file-open syscalls per frame. The mesh
-                    // keeps its existing StandardMaterial as a fallback.
-                    warn!("Failed to resolve .material: {}", path);
-                    commands.entity(entity).try_insert(
-                        MaterialResolved { source_path: path.clone() },
+                    warn!(
+                        "Failed to resolve material file: {} (derived={})",
+                        path, is_derived
                     );
-                }
-            }
-        } else if path.ends_with(".material_instance") {
-            // Top-of-loop cache lookups already covered any `.material_instance`
-            // result that previously compiled to either Standard or Graph. We
-            // only get here on a cache miss for this instance path.
-            match resolve_material_instance_file(
-                &fs_path,
-                project.as_deref(),
-                &mut *cache,
-                &mut standard_materials,
-                &mut graph_materials,
-                &mut shaders,
-                &mut shader_state,
-                &fallback_texture,
-                &asset_server,
-                reader,
-            ) {
-                Some(CompiledMaterial::Standard(handle)) => {
-                    cache.standard_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
-                    commands.entity(entity).try_insert((
-                        MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
-                    ));
-                }
-                Some(CompiledMaterial::Graph { handle, .. }) => {
-                    cache.graph_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
-                    commands.entity(entity).try_insert((
-                        MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
-                    ));
-                }
-                None => {
-                    warn!("Failed to resolve .material_instance: {}", path);
                     commands.entity(entity).try_insert(
                         MaterialResolved { source_path: path.clone() },
                     );
@@ -435,6 +417,33 @@ fn resolve_raw_shader(
 ///
 /// The classifier in `standard_build::try_build_standard_material` walks the
 /// graph; if every reachable node maps onto a StandardMaterial field, we
+/// Detect whether a `.material` file is a *derived* (instance) material
+/// — i.e. it has a non-empty `master` field pointing at another file —
+/// or a *master* (graph) material. Used by the resolver to dispatch
+/// without relying on file-extension hints. Reads the file once via
+/// the same VFS reader the resolvers use.
+///
+/// A master `.material` deserializes as [`MaterialGraph`] (`nodes`,
+/// `domain`, etc.), which has no `master` field; `MaterialInstance`
+/// deserialization fails on it because `master` is required.
+/// A derived `.material` has the inverse shape.
+///
+/// Returns `false` on read errors / parse failures so missing or
+/// malformed files fall through to the master-resolver path, which
+/// already handles those cases gracefully.
+fn is_derived_material_file(
+    path: &str,
+    reader: &renzora::VirtualFileReader,
+) -> bool {
+    use super::instance::MaterialInstance;
+    let Some(content) = reader.read_string(path) else {
+        return false;
+    };
+    serde_json::from_str::<MaterialInstance>(&content)
+        .map(|inst| !inst.master.is_empty())
+        .unwrap_or(false)
+}
+
 /// produce a plain `Handle<StandardMaterial>` — same Material asset every
 /// other PBR mesh in the scene uses, so we share the stock PBR pipeline and
 /// pay zero per-material shader compile.

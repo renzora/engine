@@ -1,4 +1,4 @@
-//! Material Instance file format (`.material_instance`).
+//! Material Instance file format — derived `.material` files.
 //!
 //! A material instance references a master `.material` file and supplies
 //! per-instance overrides for the master's named parameter nodes
@@ -6,7 +6,21 @@
 //! many *visually distinct* materials that share a single compiled master
 //! shader — same idea as Unreal's Material Instances.
 //!
-//! ## File shape
+//! ## Single extension, content-based dispatch
+//!
+//! Both masters and derived files use the same `.material` extension.
+//! Their JSON shapes differ:
+//!
+//! - **Master** — graph definition (`{ nodes: [...], domain: "Surface", ... }`).
+//! - **Derived** — has a non-empty `master` field plus an `overrides` map.
+//!
+//! The resolver inspects the file content (parsing as `MaterialInstance`
+//! and checking `master.is_empty()`) to dispatch the right path. Old
+//! projects that still have `.material_instance` files keep loading via
+//! a deprecated suffix branch — the resolver always content-detects, so
+//! the suffix is just a hint.
+//!
+//! ## File shape (derived)
 //!
 //! ```json
 //! {
@@ -47,7 +61,9 @@ use super::graph::{MaterialGraph, PinValue};
 use super::material_ref::ParamValue;
 use super::surface_ext::SURFACE_GRAPH_PARAM_SLOTS;
 
-/// On-disk representation of a `.material_instance` file.
+/// On-disk representation of a derived `.material` file (one with a
+/// `master` field). Master `.material` files do *not* round-trip
+/// through this struct — they parse as [`MaterialGraph`] instead.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MaterialInstance {
     /// Asset-relative path to the master `.material` graph this instance

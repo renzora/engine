@@ -479,6 +479,28 @@ impl EditorPanel for AssetBrowserPanel {
             render_context_menu(ui, &mut state, &theme, pos);
         }
 
+        // --- Process pending "Create Instance" ---
+        // Triggered by the context menu setting `pending_create_instance`
+        // to the master `.material` path. Needs `World` access (for
+        // `CurrentProject::make_asset_relative`), which the menu
+        // closure doesn't have, so the work happens here.
+        if let Some(master_path) = state.pending_create_instance.take() {
+            let master_rel = world
+                .get_resource::<renzora::core::CurrentProject>()
+                .map(|p| p.make_asset_relative(&master_path))
+                .unwrap_or_default();
+            let stem = master_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Material");
+            let default_name = format!("{}_Instance.material", stem);
+            let content = format!(
+                "{{\n  \"master\": \"{}\",\n  \"overrides\": {{}}\n}}\n",
+                master_rel.replace('\\', "/")
+            );
+            state.create_inline_sibling(&master_path, &default_name, &content);
+        }
+
         // --- Process pending rename ---
         if let Some((old_path, new_name)) = state.pending_rename.take() {
             if let Some(parent) = old_path.parent() {
@@ -817,10 +839,7 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
 fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> {
     use renzora_editor::DocTabKind;
     let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
-    if name.ends_with(".material_bp")
-        || name.ends_with(".material_instance")
-        || name.ends_with(".material")
-    {
+    if name.ends_with(".material_bp") || name.ends_with(".material") {
         return Some(DocTabKind::Material);
     }
     if name.ends_with(".particle") {
@@ -1035,6 +1054,44 @@ fn render_context_menu(
                                     state.rename_focus_set = false;
                                 }
                                 state.context_menu_pos = None;
+                            }
+
+                            // "Create Instance" — single .material → sibling
+                            // .material file with a `master` field referencing
+                            // the original. Both kinds share the .material
+                            // extension; the resolver detects derived files by
+                            // content (non-empty `master` field). Mirrors
+                            // Unreal's right-click → "Create Material Instance".
+                            //
+                            // Defers via `pending_create_instance` so the
+                            // actual file write happens in the main panel
+                            // update where `World` is in scope (we need
+                            // `CurrentProject` to compute the asset-relative
+                            // master path). The context menu only sees
+                            // `&mut state`.
+                            let selected = state
+                                .selected_assets
+                                .iter()
+                                .next()
+                                .cloned();
+                            if let Some(path) = selected {
+                                let is_master = path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|e| e.eq_ignore_ascii_case("material"))
+                                    .unwrap_or(false);
+                                if is_master {
+                                    if menu_item(
+                                        ui,
+                                        regular::COPY,
+                                        "Create Instance",
+                                        "",
+                                        material_color,
+                                    ) {
+                                        state.pending_create_instance = Some(path);
+                                        state.context_menu_pos = None;
+                                    }
+                                }
                             }
                         } else if state.selected_assets.len() > 1 {
                             if menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary) {

@@ -120,6 +120,12 @@ pub struct AssetBrowserState {
     pub pending_batch_rename: Option<(String, u32, Vec<PathBuf>)>,
     /// Pending delete operation.
     pub pending_delete: Vec<PathBuf>,
+    /// Master `.material` path that the user clicked "Create Instance"
+    /// on. Processed in the main panel update where the `World` is in
+    /// scope so we can read `CurrentProject` for the asset-relative
+    /// path that goes into the new derived `.material`'s `master`
+    /// field. Cleared once processed.
+    pub pending_create_instance: Option<PathBuf>,
     /// Last error message.
     pub last_error: Option<String>,
     /// Error auto-clear timer.
@@ -200,6 +206,7 @@ impl Default for AssetBrowserState {
             pending_rename: None,
             pending_batch_rename: None,
             pending_delete: Vec::new(),
+            pending_create_instance: None,
             last_error: None,
             error_timeout: 0.0,
             batch_rename_active: false,
@@ -385,6 +392,36 @@ impl AssetBrowserState {
         }
     }
 
+    /// Create a new asset file *next to* `anchor` (same parent directory)
+    /// with the given name + content, then enter inline rename so the
+    /// user can refine the name. Returns the final path on success.
+    /// Used by "Create Instance" so the new derived `.material` lands
+    /// alongside its master.
+    pub fn create_inline_sibling(
+        &mut self,
+        anchor: &Path,
+        default_name: &str,
+        content: &str,
+    ) -> Option<PathBuf> {
+        let parent = anchor.parent()?;
+        let path = parent.join(default_name);
+        let path = find_unique_path(&path);
+        if std::fs::write(&path, content).is_err() {
+            return None;
+        }
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(default_name);
+        self.renaming_asset = Some(path.clone());
+        self.rename_buffer = name.to_string();
+        self.rename_focus_set = false;
+        self.selected_assets.clear();
+        self.selected_assets.insert(path.clone());
+        self.selected_path = Some(path.clone());
+        Some(path)
+    }
+
     /// Go to the project root.
     pub fn go_home(&mut self) {
         let root = self.root();
@@ -497,8 +534,20 @@ pub fn file_icon(path: &Path) -> (&'static str, Color32) {
     if lower.ends_with(".blueprint") || lower.ends_with(".bp") {
         return (regular::BLUEPRINT, Color32::from_rgb(100, 180, 255));
     }
+    // Both master and derived materials share the `.material`
+    // extension — content distinguishes (presence of a `master` field
+    // in the JSON marks a derived/instance material). The icon picker
+    // doesn't read file content, so both render with the same icon.
+    // Inspector + asset preview tools surface the master/derived
+    // distinction visually elsewhere.
     if lower.ends_with(".material_bp") || lower.ends_with(".material") {
         return (regular::ATOM, Color32::from_rgb(255, 120, 200));
+    }
+    // Legacy `.material_instance` files from before the unification —
+    // resolver still loads them, asset browser renders them with the
+    // same icon as a hint that they're materials.
+    if lower.ends_with(".material_instance") {
+        return (regular::ATOM, Color32::from_rgb(255, 170, 220));
     }
     if lower.ends_with(".ron") {
         return (regular::FILM_SCRIPT, Color32::from_rgb(115, 200, 255));
