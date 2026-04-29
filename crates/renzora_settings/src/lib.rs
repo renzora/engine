@@ -850,6 +850,13 @@ fn render_viewport_tab(
         });
     });
 
+    // Performance Section
+    render_category(ui, GAUGE, "Performance", CategoryStyle::interface(), "settings_viewport_performance", true, theme, |ui| {
+        settings_row(ui, 0, "VSync", theme, |ui| {
+            ui.checkbox(&mut viewport.vsync, "Cap framerate at monitor refresh rate (off = uncapped, may tear)")
+        });
+    });
+
     // Camera Section
     render_category(ui, VIDEO_CAMERA, "Camera", CategoryStyle::camera(), "settings_camera", true, theme, |ui| {
         settings_row(ui, 0, "Move Speed", theme, |ui| {

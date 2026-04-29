@@ -297,6 +297,10 @@ pub struct ViewportSettings {
     pub snap: SnapSettings,
     /// Pending view angle command (consumed by camera system).
     pub pending_view_angle: Option<ViewAngleCommand>,
+    /// Cap the framerate at the monitor refresh rate. Off lets the FPS
+    /// counter reflect actual render capacity at the cost of possible
+    /// screen tearing.
+    pub vsync: bool,
 }
 
 impl Default for ViewportSettings {
@@ -314,6 +318,7 @@ impl Default for ViewportSettings {
             camera: CameraSettingsState::default(),
             snap: SnapSettings::default(),
             pending_view_angle: None,
+            vsync: true,
         }
     }
 }
@@ -360,6 +365,8 @@ pub struct PersistedViewportSettings {
     pub object_snap_distance: f32,
     pub floor_snap_enabled: bool,
     pub floor_y: f32,
+    #[serde(default = "default_true")]
+    pub vsync: bool,
 }
 
 impl PersistedViewportSettings {
@@ -399,6 +406,7 @@ impl PersistedViewportSettings {
             object_snap_distance: sn.object_snap_distance,
             floor_snap_enabled: sn.floor_snap_enabled,
             floor_y: sn.floor_y,
+            vsync: s.vsync,
         }
     }
 
@@ -455,6 +463,7 @@ impl PersistedViewportSettings {
             floor_snap_enabled: self.floor_snap_enabled,
             floor_y: self.floor_y,
         };
+        s.vsync = self.vsync;
     }
 }
 

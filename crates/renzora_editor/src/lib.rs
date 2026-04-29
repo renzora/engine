@@ -434,7 +434,28 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
+            .add_systems(Update, apply_vsync_setting)
             ;
+    }
+}
+
+/// Apply the `ViewportSettings.vsync` toggle to the primary window's
+/// `present_mode`. Lives on `ViewportSettings` (not `EditorSettings`) so
+/// it persists alongside the rest of the per-project viewport prefs in
+/// `project.toml`. Runs every frame but only writes when the mode
+/// differs, so it's effectively free.
+fn apply_vsync_setting(
+    viewport: Res<renzora::core::viewport_types::ViewportSettings>,
+    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    let Ok(mut window) = windows.single_mut() else { return };
+    let desired = if viewport.vsync {
+        bevy::window::PresentMode::AutoVsync
+    } else {
+        bevy::window::PresentMode::AutoNoVsync
+    };
+    if window.present_mode != desired {
+        window.present_mode = desired;
     }
 }
 
