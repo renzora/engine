@@ -64,6 +64,10 @@ impl EditorPanel for ConsolePanel {
         Some(egui_phosphor::regular::TERMINAL)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         // Read current ConsoleState from world into local copy.
         if let Some(console) = world.get_resource::<ConsoleState>() {

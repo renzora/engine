@@ -170,6 +170,10 @@ impl EditorPanel for HubStorePanel {
         Some(egui_phosphor::regular::STOREFRONT)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn closable(&self) -> bool {
         true
     }

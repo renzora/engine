@@ -479,51 +479,246 @@ fn render_leaf(
             ui.memory_mut(|mem| mem.toggle_popup(plus_id.with("popup")));
         }
 
-        // Panel picker popup
+        // Panel picker popup — Blender-style grid: search box on top, then
+        // category columns laid out side-by-side, wrapping to a new row
+        // every `COLS_PER_ROW` categories.
+        const COLS_PER_ROW: usize = 4;
+        const COL_WIDTH: f32 = 180.0;
+        const COL_GAP: f32 = 12.0;
+
+        let popup_id = plus_id.with("popup");
         #[allow(deprecated)]
         egui::popup_below_widget(
             ui,
-            plus_id.with("popup"),
+            popup_id,
             &plus_resp,
             egui::PopupCloseBehavior::CloseOnClickOutside,
             |ui| {
-                ui.set_min_width(180.0);
-                ui.set_max_height(400.0);
-                ui.style_mut().spacing.item_spacing.y = 1.0;
+                ui.style_mut().spacing.item_spacing.y = 2.0;
 
                 let already_here: std::collections::HashSet<&str> =
                     tabs.iter().map(|s| s.as_str()).collect();
 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for panel in registry.iter() {
-                        let pid = panel.id();
-                        let is_here = already_here.contains(pid);
-                        let label = if let Some(icon) = panel.icon() {
-                            format!("{} {}", icon, panel.title())
-                        } else {
-                            panel.title().to_string()
-                        };
+                // Search box at the top — state lives in egui memory keyed
+                // off the popup id so each leaf's picker keeps its own filter.
+                let search_id = popup_id.with("search");
+                let mut search: String = ui.memory(|m| {
+                    m.data
+                        .get_temp::<String>(search_id)
+                        .unwrap_or_default()
+                });
 
-                        let btn = ui.add_enabled(
-                            !is_here,
-                            egui::Button::new(&label)
-                                .fill(Color32::TRANSPARENT)
-                                .corner_radius(egui::CornerRadius::same(2))
-                                .min_size(Vec2::new(ui.available_width(), 0.0)),
-                        );
-                        if btn.hovered() && !is_here {
-                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                        }
-                        if btn.clicked() {
-                            if let Some(sibling) = tabs.first() {
-                                result.panel_to_add = Some((sibling.clone(), pid.to_string()));
-                            }
-                            ui.close();
-                        }
+                let query = search.trim().to_lowercase();
+                let matches = |panel: &dyn crate::EditorPanel| -> bool {
+                    if query.is_empty() {
+                        return true;
                     }
+                    panel.title().to_lowercase().contains(&query)
+                        || panel.id().to_lowercase().contains(&query)
+                        || panel.category().to_lowercase().contains(&query)
+                };
+
+                // Group panels by category. BTreeMap → categories sorted
+                // alphabetically without an explicit priority list.
+                let mut groups: std::collections::BTreeMap<&str, Vec<&dyn crate::EditorPanel>> =
+                    std::collections::BTreeMap::new();
+                for panel in registry.iter() {
+                    if matches(panel) {
+                        groups.entry(panel.category()).or_default().push(panel);
+                    }
+                }
+
+                // Size the popup to fit up to COLS_PER_ROW columns of categories.
+                let cols_to_show = groups.len().min(COLS_PER_ROW).max(1);
+                let content_width = (cols_to_show as f32) * COL_WIDTH
+                    + (cols_to_show.saturating_sub(1) as f32) * COL_GAP;
+                ui.set_min_width(content_width.max(260.0));
+                ui.set_max_height(520.0);
+
+                let search_resp = ui.add(
+                    egui::TextEdit::singleline(&mut search)
+                        .hint_text(format!(
+                            "{} Search panels",
+                            egui_phosphor::regular::MAGNIFYING_GLASS
+                        ))
+                        .desired_width(f32::INFINITY),
+                );
+                let was_open = ui.memory(|m| {
+                    m.data
+                        .get_temp::<bool>(popup_id.with("opened"))
+                        .unwrap_or(false)
+                });
+                if !was_open {
+                    search_resp.request_focus();
+                    ui.memory_mut(|m| m.data.insert_temp(popup_id.with("opened"), true));
+                }
+                if search_resp.changed() {
+                    ui.memory_mut(|m| m.data.insert_temp(search_id, search.clone()));
+                }
+
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(4.0);
+
+                egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+                    if groups.is_empty() {
+                        ui.add_space(8.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                egui::RichText::new("No panels match")
+                                    .color(theme.text.muted.to_color32()),
+                            );
+                        });
+                        return;
+                    }
+
+                    // Bin-pack categories into columns: place biggest first
+                    // and always into the currently-shortest column. This
+                    // avoids the row-wrap "gap" pattern where one tall
+                    // column forces dead space under shorter neighbours.
+                    let num_columns = COLS_PER_ROW.min(groups.len()).max(1);
+                    let mut columns: Vec<Vec<(&str, Vec<&dyn crate::EditorPanel>)>> =
+                        vec![Vec::new(); num_columns];
+                    let mut column_heights: Vec<usize> = vec![0; num_columns];
+
+                    let mut by_size: Vec<(&str, Vec<&dyn crate::EditorPanel>)> =
+                        groups.into_iter().collect();
+                    by_size.sort_by_key(|(_, panels)| std::cmp::Reverse(panels.len()));
+
+                    for (cat_name, panels) in by_size {
+                        let (idx, _) = column_heights
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|(_, h)| **h)
+                            .unwrap();
+                        // +2 accounts for the category header + spacing.
+                        column_heights[idx] += panels.len() + 2;
+                        columns[idx].push((cat_name, panels));
+                    }
+
+                    // Stable alphabetical order within each column.
+                    for col in &mut columns {
+                        col.sort_by_key(|(name, _)| *name);
+                    }
+
+                    let hover_bg = theme.widgets.hovered_bg.to_color32();
+                    let primary = theme.text.primary.to_color32();
+                    let disabled = theme.text.disabled.to_color32();
+                    let heading = theme.text.heading.to_color32();
+                    const ITEM_HEIGHT: f32 = 22.0;
+                    const ITEM_INDENT: f32 = 10.0;
+                    const ITEM_FONT: f32 = 12.0;
+                    const HEADER_FONT: f32 = 13.5;
+
+                    ui.horizontal_top(|ui| {
+                        for (col_idx, col_cats) in columns.iter().enumerate() {
+                            if col_idx > 0 {
+                                ui.add_space(COL_GAP);
+                            }
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(COL_WIDTH, 0.0),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.set_width(COL_WIDTH);
+                                    for (cat_idx, (category, panels)) in
+                                        col_cats.iter().enumerate()
+                                    {
+                                        if cat_idx > 0 {
+                                            ui.add_space(10.0);
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(ITEM_INDENT);
+                                            ui.label(
+                                                egui::RichText::new(*category)
+                                                    .size(HEADER_FONT)
+                                                    .strong()
+                                                    .color(heading),
+                                            );
+                                        });
+                                        ui.add_space(2.0);
+
+                                        let mut sorted: Vec<&dyn crate::EditorPanel> =
+                                            panels.clone();
+                                        sorted.sort_by_key(|p| p.title());
+                                        for panel in sorted {
+                                            let pid = panel.id();
+                                            let is_here = already_here.contains(pid);
+                                            let label = if let Some(icon) = panel.icon() {
+                                                format!("{}  {}", icon, panel.title())
+                                            } else {
+                                                panel.title().to_string()
+                                            };
+
+                                            let (rect, resp) = ui.allocate_exact_size(
+                                                Vec2::new(ui.available_width(), ITEM_HEIGHT),
+                                                if is_here {
+                                                    Sense::hover()
+                                                } else {
+                                                    Sense::click()
+                                                },
+                                            );
+
+                                            if resp.hovered() && !is_here {
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    egui::CornerRadius::same(3),
+                                                    hover_bg,
+                                                );
+                                                ui.ctx().set_cursor_icon(
+                                                    CursorIcon::PointingHand,
+                                                );
+                                            }
+
+                                            let text_color = if is_here {
+                                                disabled
+                                            } else {
+                                                primary
+                                            };
+                                            ui.painter().text(
+                                                Pos2::new(
+                                                    rect.left() + ITEM_INDENT,
+                                                    rect.center().y,
+                                                ),
+                                                egui::Align2::LEFT_CENTER,
+                                                &label,
+                                                egui::FontId::proportional(ITEM_FONT),
+                                                text_color,
+                                            );
+
+                                            if resp.clicked() {
+                                                if let Some(sibling) = tabs.first() {
+                                                    result.panel_to_add = Some((
+                                                        sibling.clone(),
+                                                        pid.to_string(),
+                                                    ));
+                                                }
+                                                ui.memory_mut(|m| {
+                                                    m.data.remove::<String>(search_id);
+                                                    m.data.remove::<bool>(
+                                                        popup_id.with("opened"),
+                                                    );
+                                                });
+                                                ui.close();
+                                            }
+                                        }
+                                    }
+                                },
+                            );
+                        }
+                    });
                 });
             },
         );
+
+        // Reset the "opened" flag the frame after the popup closes so the
+        // next open re-focuses the search box.
+        #[allow(deprecated)]
+        let popup_open = ui.memory(|m| m.is_popup_open(popup_id));
+        if !popup_open {
+            ui.memory_mut(|m| {
+                m.data.remove::<bool>(popup_id.with("opened"));
+            });
+        }
     }
 
     // Tab bar empty area → secondary resize handle for the parent split.

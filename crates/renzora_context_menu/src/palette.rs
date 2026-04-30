@@ -53,6 +53,7 @@ impl EditorPanel for PalettePanel {
     fn id(&self) -> &str { "palette" }
     fn title(&self) -> &str { "Palette" }
     fn icon(&self) -> Option<&str> { Some(regular::SQUARES_FOUR) }
+    fn category(&self) -> &str { "Scene" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Left }
     fn min_size(&self) -> [f32; 2] { [200.0, 200.0] }
 

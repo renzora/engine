@@ -159,6 +159,9 @@ impl EditorPanel for OutlinePanel {
     fn icon(&self) -> Option<&str> {
         Some(LIST_BULLETS)
     }
+    fn category(&self) -> &str {
+        "Code"
+    }
     fn closable(&self) -> bool {
         true
     }

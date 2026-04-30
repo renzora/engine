@@ -53,6 +53,10 @@ impl EditorPanel for TimelinePanel {
         Some(egui_phosphor::regular::TIMER)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = world.get_resource::<ThemeManager>();
         let (text_color, muted_color, accent_color, surface_color, border_color, _bg_color,

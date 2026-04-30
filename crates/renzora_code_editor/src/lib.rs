@@ -72,6 +72,10 @@ impl EditorPanel for CodeEditorPanel {
         Some(egui_phosphor::regular::CODE)
     }
 
+    fn category(&self) -> &str {
+        "Code"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         // Sync from world
         if let Some(editor_state) = world.get_resource::<CodeEditorState>() {

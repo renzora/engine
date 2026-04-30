@@ -156,6 +156,10 @@ impl EditorPanel for RecordPanel {
         Some(regular::RECORD)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn min_size(&self) -> [f32; 2] {
         [220.0, 200.0]
     }

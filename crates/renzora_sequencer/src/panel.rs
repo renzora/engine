@@ -49,6 +49,10 @@ impl EditorPanel for SequencerPanel {
         Some(regular::FILM_REEL)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn min_size(&self) -> [f32; 2] {
         [480.0, 180.0]
     }

@@ -43,6 +43,10 @@ impl EditorPanel for GamepadPanel {
         Some(regular::GAME_CONTROLLER)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),

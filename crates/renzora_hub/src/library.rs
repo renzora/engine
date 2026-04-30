@@ -168,6 +168,10 @@ impl EditorPanel for HubLibraryPanel {
         Some(egui_phosphor::regular::BOOKS)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn closable(&self) -> bool {
         true
     }

@@ -25,6 +25,10 @@ impl EditorPanel for ParticlePreviewPanel {
         Some(EYE)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let preview = world.get_resource::<ParticlePreviewImage>();
         let user_textures = world.get_resource::<EguiUserTextures>();

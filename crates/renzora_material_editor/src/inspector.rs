@@ -29,6 +29,10 @@ impl EditorPanel for MaterialInspectorPanel {
         Some(egui_phosphor::regular::SLIDERS_HORIZONTAL)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),

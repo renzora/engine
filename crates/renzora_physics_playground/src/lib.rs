@@ -81,6 +81,7 @@ impl EditorPanel for PhysicsDebugPanel {
     fn id(&self) -> &str { "physics_debug" }
     fn title(&self) -> &str { "Physics Debug" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::ATOM) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [280.0, 350.0] }
 
@@ -134,6 +135,7 @@ impl EditorPanel for PhysicsPlaygroundPanel {
     fn id(&self) -> &str { "physics_playground" }
     fn title(&self) -> &str { "Physics Playground" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CUBE) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -166,6 +168,7 @@ impl EditorPanel for PhysicsPropertiesPanel {
     fn id(&self) -> &str { "physics_properties" }
     fn title(&self) -> &str { "Physics Properties" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SLIDERS) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 280.0] }
 
@@ -205,6 +208,7 @@ impl EditorPanel for PhysicsForcesPanel {
     fn id(&self) -> &str { "physics_forces" }
     fn title(&self) -> &str { "Physics Forces" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::LIGHTNING) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -249,6 +253,7 @@ impl EditorPanel for PhysicsMetricsPanel {
     fn id(&self) -> &str { "physics_metrics" }
     fn title(&self) -> &str { "Physics Metrics" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CHART_LINE) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 280.0] }
 
@@ -301,6 +306,7 @@ impl EditorPanel for PhysicsScenariosPanel {
     fn id(&self) -> &str { "physics_scenarios" }
     fn title(&self) -> &str { "Physics Scenarios" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::ROCKET_LAUNCH) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 
@@ -342,6 +348,7 @@ impl EditorPanel for ArenaPresetsPanel {
     fn id(&self) -> &str { "arena_presets" }
     fn title(&self) -> &str { "Arena Presets" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CUBE) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 

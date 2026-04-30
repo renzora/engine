@@ -360,6 +360,10 @@ impl EditorPanel for ViewportPanel {
         Some(regular::MONITOR)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         // Header bar with toggles and dropdowns
         header::viewport_header(ui, world);
@@ -501,6 +505,10 @@ impl EditorPanel for CameraPreviewPanel {
 
     fn icon(&self) -> Option<&str> {
         Some(regular::APERTURE)
+    }
+
+    fn category(&self) -> &str {
+        "Scene"
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

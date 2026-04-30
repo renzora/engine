@@ -47,6 +47,10 @@ impl EditorPanel for AssetBrowserPanel {
         Some(regular::FOLDER_OPEN)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn closable(&self) -> bool {
         true
     }

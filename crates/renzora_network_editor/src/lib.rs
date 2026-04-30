@@ -21,6 +21,7 @@ impl EditorPanel for NetworkMonitorPanel {
     fn id(&self) -> &str { "network_monitor" }
     fn title(&self) -> &str { "Network Monitor" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::WIFI_HIGH) }
+    fn category(&self) -> &str { "Network" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -180,6 +181,7 @@ impl EditorPanel for NetworkEntitiesPanel {
     fn id(&self) -> &str { "network_entities" }
     fn title(&self) -> &str { "Network Entities" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SHARE_NETWORK) }
+    fn category(&self) -> &str { "Network" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Left }
     fn min_size(&self) -> [f32; 2] { [180.0, 100.0] }
 
@@ -285,6 +287,7 @@ impl EditorPanel for NetworkSettingsPanel {
     fn id(&self) -> &str { "network_settings" }
     fn title(&self) -> &str { "Network Settings" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::GEAR_SIX) }
+    fn category(&self) -> &str { "Network" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 

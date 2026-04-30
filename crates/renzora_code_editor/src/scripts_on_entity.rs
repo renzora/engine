@@ -90,6 +90,9 @@ impl EditorPanel for ScriptsOnEntityPanel {
     fn icon(&self) -> Option<&str> {
         Some(CODE)
     }
+    fn category(&self) -> &str {
+        "Code"
+    }
     fn closable(&self) -> bool {
         true
     }

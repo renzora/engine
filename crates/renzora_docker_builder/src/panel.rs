@@ -72,6 +72,10 @@ impl EditorPanel for DockerBuilderPanel {
         Some(HAMMER)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Bottom
     }

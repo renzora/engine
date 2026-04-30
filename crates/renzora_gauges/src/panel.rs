@@ -48,6 +48,10 @@ impl EditorPanel for GaugesPanel {
         Some(regular::GAUGE)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Bottom
     }

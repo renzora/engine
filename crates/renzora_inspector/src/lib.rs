@@ -43,6 +43,10 @@ impl EditorPanel for InspectorPanel {
         Some(regular::SLIDERS)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),

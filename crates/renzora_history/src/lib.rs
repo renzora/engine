@@ -35,6 +35,10 @@ impl EditorPanel for HistoryPanel {
         Some(regular::CLOCK_COUNTER_CLOCKWISE)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),

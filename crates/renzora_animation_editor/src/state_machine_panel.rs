@@ -128,6 +128,10 @@ impl EditorPanel for StateMachinePanel {
         Some(egui_phosphor::regular::GRAPH)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Center
     }

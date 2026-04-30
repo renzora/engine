@@ -126,6 +126,7 @@ impl EditorPanel for MixerPanel {
     fn id(&self) -> &str { "mixer" }
     fn title(&self) -> &str { "Mixer" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SLIDERS_HORIZONTAL) }
+    fn category(&self) -> &str { "Audio" }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(mixer) = world.get_resource::<MixerState>() {

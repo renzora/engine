@@ -29,6 +29,13 @@ pub trait EditorPanel: Send + Sync + 'static {
         None
     }
 
+    /// Section the panel is grouped under in the "+" picker. Free-form string;
+    /// suggested values: "Scene", "Code", "Visual", "World", "Audio",
+    /// "Network", "Debug", "Tools". Defaults to "General".
+    fn category(&self) -> &str {
+        "General"
+    }
+
     /// Render the panel content into the given `egui::Ui`.
     fn ui(&self, ui: &mut egui::Ui, world: &World);
 

@@ -26,6 +26,10 @@ impl EditorPanel for StudioPreviewPanel {
         Some(regular::VIDEO_CAMERA)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Center
     }

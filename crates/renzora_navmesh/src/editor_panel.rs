@@ -84,6 +84,7 @@ impl EditorPanel for NavMeshPanel {
     fn id(&self) -> &str { "navmesh" }
     fn title(&self) -> &str { "NavMesh" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::POLYGON) }
+    fn category(&self) -> &str { "World" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [220.0, 150.0] }
 

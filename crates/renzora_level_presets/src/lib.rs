@@ -69,6 +69,7 @@ impl EditorPanel for LevelPresetsPanel {
     fn id(&self) -> &str { "level_presets" }
     fn title(&self) -> &str { "Level Presets" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MAP_TRIFOLD) }
+    fn category(&self) -> &str { "Tools" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [250.0, 300.0] }
 

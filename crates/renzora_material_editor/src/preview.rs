@@ -489,6 +489,10 @@ impl EditorPanel for MaterialPreviewPanel {
         Some(egui_phosphor::regular::CUBE)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => &tm.active_theme,

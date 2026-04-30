@@ -58,6 +58,10 @@ impl EditorPanel for FoliagePanel {
         Some(TREE)
     }
 
+    fn category(&self) -> &str {
+        "World"
+    }
+
     fn default_location(&self) -> renzora_editor::PanelLocation {
         renzora_editor::PanelLocation::Left
     }

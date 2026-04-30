@@ -60,6 +60,10 @@ impl EditorPanel for AnimatorParamsPanel {
         Some(egui_phosphor::regular::SLIDERS)
     }
 
+    fn category(&self) -> &str {
+        "Visual"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Right
     }

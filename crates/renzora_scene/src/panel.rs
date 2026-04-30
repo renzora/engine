@@ -37,6 +37,10 @@ impl EditorPanel for ScenesPanel {
         Some(regular::FILM_STRIP)
     }
 
+    fn category(&self) -> &str {
+        "Scene"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let Some(theme) = world.get_resource::<ThemeManager>().map(|t| t.active_theme.clone())
         else {

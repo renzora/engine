@@ -108,6 +108,7 @@ impl EditorPanel for DawPanel {
     fn id(&self) -> &str { "daw" }
     fn title(&self) -> &str { "Audio" }
     fn icon(&self) -> Option<&str> { Some(ph::WAVEFORM) }
+    fn category(&self) -> &str { "Audio" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Center }
     fn min_size(&self) -> [f32; 2] { [520.0, 240.0] }
 

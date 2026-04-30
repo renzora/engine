@@ -175,6 +175,10 @@ impl EditorPanel for ControlsGallery {
         Some(regular::FADERS)
     }
 
+    fn category(&self) -> &str {
+        "Dev"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
@@ -971,6 +975,10 @@ impl EditorPanel for PropertiesGallery {
         Some(regular::SLIDERS)
     }
 
+    fn category(&self) -> &str {
+        "Dev"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
@@ -1165,6 +1173,10 @@ impl EditorPanel for CategoriesGallery {
         Some(regular::SQUARES_FOUR)
     }
 
+    fn category(&self) -> &str {
+        "Dev"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = match world.get_resource::<ThemeManager>() {
             Some(tm) => tm.active_theme.clone(),
@@ -1300,6 +1312,10 @@ impl EditorPanel for TileGridGallery {
 
     fn icon(&self) -> Option<&str> {
         Some(regular::GRID_FOUR)
+    }
+
+    fn category(&self) -> &str {
+        "Dev"
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -1487,6 +1503,10 @@ impl EditorPanel for TreeGallery {
 
     fn icon(&self) -> Option<&str> {
         Some(regular::TREE_STRUCTURE)
+    }
+
+    fn category(&self) -> &str {
+        "Dev"
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -1681,6 +1701,10 @@ impl EditorPanel for MixerGallery {
 
     fn icon(&self) -> Option<&str> {
         Some(regular::SPEAKER_HIGH)
+    }
+
+    fn category(&self) -> &str {
+        "Dev"
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
@@ -2059,6 +2083,10 @@ impl EditorPanel for NodeGraphGallery {
 
     fn icon(&self) -> Option<&str> {
         Some(regular::GRAPH)
+    }
+
+    fn category(&self) -> &str {
+        "Dev"
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {

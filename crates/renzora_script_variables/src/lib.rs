@@ -51,6 +51,10 @@ impl EditorPanel for ScriptVariablesPanel {
         Some(egui_phosphor::regular::LIST_DASHES)
     }
 
+    fn category(&self) -> &str {
+        "Code"
+    }
+
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = if let Some(tm) = world.get_resource::<ThemeManager>() {
             tm.active_theme.clone()

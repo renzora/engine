@@ -40,6 +40,10 @@ impl EditorPanel for ShapeLibraryPanel {
         Some(regular::CUBE)
     }
 
+    fn category(&self) -> &str {
+        "Tools"
+    }
+
     fn default_location(&self) -> PanelLocation {
         PanelLocation::Left
     }

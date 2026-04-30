@@ -48,6 +48,7 @@ impl EditorPanel for SystemProfilerPanel {
     fn id(&self) -> &str { "system_profiler" }
     fn title(&self) -> &str { "System Profiler" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CHART_LINE_UP) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -70,6 +71,7 @@ impl EditorPanel for MemoryProfilerPanel {
     fn id(&self) -> &str { "memory_profiler" }
     fn title(&self) -> &str { "Memory Profiler" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MEMORY) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -99,6 +101,7 @@ impl EditorPanel for CameraDebugPanel {
     fn id(&self) -> &str { "camera_debug" }
     fn title(&self) -> &str { "Camera Debug" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::VIDEO_CAMERA) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -157,6 +160,7 @@ impl EditorPanel for CullingDebugPanel {
     fn id(&self) -> &str { "culling_debug" }
     fn title(&self) -> &str { "Culling Debug" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::EYE_SLASH) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Right }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -209,6 +213,7 @@ impl EditorPanel for PerformancePanel {
     fn id(&self) -> &str { "performance" }
     fn title(&self) -> &str { "Performance" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SPEEDOMETER) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -229,6 +234,7 @@ impl EditorPanel for RenderStatsPanel {
     fn id(&self) -> &str { "render_stats" }
     fn title(&self) -> &str { "Render Stats" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MONITOR) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 
@@ -257,6 +263,7 @@ impl EditorPanel for RenderPipelinePanel {
     fn id(&self) -> &str { "render_pipeline" }
     fn title(&self) -> &str { "Render Pipeline" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::FLOW_ARROW) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [400.0, 300.0] }
 
@@ -304,6 +311,7 @@ impl EditorPanel for EcsStatsPanel {
     fn id(&self) -> &str { "ecs_stats" }
     fn title(&self) -> &str { "ECS Stats" }
     fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::DATABASE) }
+    fn category(&self) -> &str { "Debug" }
     fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
     fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
 

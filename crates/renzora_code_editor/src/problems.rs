@@ -21,6 +21,9 @@ impl EditorPanel for ProblemsPanel {
     fn icon(&self) -> Option<&str> {
         Some(WARNING)
     }
+    fn category(&self) -> &str {
+        "Code"
+    }
     fn closable(&self) -> bool {
         true
     }
