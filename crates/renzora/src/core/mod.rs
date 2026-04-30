@@ -824,6 +824,24 @@ pub struct OpenCodeEditorFile {
     pub path: std::path::PathBuf,
 }
 
+/// One-shot: request a viewport camera operation from the View menu.
+///
+/// Consumed by the camera controller in `renzora_camera`.
+#[derive(Resource, Clone, Copy, Debug)]
+pub enum CameraViewRequest {
+    ZoomIn,
+    ZoomOut,
+    ResetZoom,
+    FrameAll,
+}
+
+/// Toggle: when active, only the selected entity (and its ancestors/descendants)
+/// remain visible in the viewport. Toggled from the View menu.
+#[derive(Resource, Default)]
+pub struct IsolationMode {
+    pub active: bool,
+}
+
 /// Tracks whether a UI text input has keyboard focus.
 ///
 /// When `true`, keyboard shortcuts should not fire so typing is not interrupted.

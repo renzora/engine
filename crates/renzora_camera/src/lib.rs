@@ -172,6 +172,7 @@ impl Plugin for CameraPlugin {
                 handle_view_angle_keys,
                 focus_selected,
                 frame_all,
+                handle_camera_view_request,
                 camera_to_cursor,
                 camera_controller,
                 apply_nav_overlay,
@@ -372,6 +373,56 @@ fn frame_all(
     orbit.focus = centroid;
     orbit.distance = (max_dist * 2.5).max(3.0);
     pivot_lock.0 = true;
+}
+
+/// Consume one-shot `CameraViewRequest`s from the View menu (Zoom In/Out,
+/// Reset Zoom, Fit All) and apply them to the orbit camera.
+fn handle_camera_view_request(
+    mut commands: Commands,
+    request: Option<Res<renzora::core::CameraViewRequest>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut pivot_lock: ResMut<PivotLock>,
+    meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
+) {
+    let Some(request) = request else { return };
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        commands.remove_resource::<renzora::core::CameraViewRequest>();
+        return;
+    }
+    match *request {
+        renzora::core::CameraViewRequest::ZoomIn => {
+            let delta = orbit.distance * 0.2;
+            orbit.zoom(delta);
+        }
+        renzora::core::CameraViewRequest::ZoomOut => {
+            let delta = -orbit.distance * 0.2;
+            orbit.zoom(delta);
+        }
+        renzora::core::CameraViewRequest::ResetZoom => {
+            orbit.distance = OrbitCameraState::default().distance;
+        }
+        renzora::core::CameraViewRequest::FrameAll => {
+            let mut count = 0u32;
+            let mut centroid = Vec3::ZERO;
+            for gt in &meshes {
+                centroid += gt.translation();
+                count += 1;
+            }
+            if count > 0 {
+                centroid /= count as f32;
+                let mut max_dist = 1.0f32;
+                for gt in &meshes {
+                    let d = gt.translation().distance(centroid);
+                    if d > max_dist { max_dist = d; }
+                }
+                orbit.focus = centroid;
+                orbit.distance = (max_dist * 2.5).max(3.0);
+                pivot_lock.0 = true;
+            }
+        }
+    }
+    commands.remove_resource::<renzora::core::CameraViewRequest>();
 }
 
 /// Move the camera's orbit pivot to the point under the mouse cursor (ground

@@ -381,7 +381,8 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ShortcutRegistry>()
             .init_resource::<EditorActionHooks>()
             .init_resource::<MaterialThumbnailRegistry>()
-            .init_resource::<ModelThumbnailRegistry>();
+            .init_resource::<ModelThumbnailRegistry>()
+            .init_resource::<renzora::core::IsolationMode>();
 
         register_builtin_tools(
             &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
@@ -435,6 +436,10 @@ impl Plugin for RenzoraEditorPlugin {
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
             .add_systems(Update, apply_vsync_setting)
+            .add_systems(
+                Update,
+                apply_isolation_mode.run_if(in_state(SplashState::Editor)),
+            )
             ;
     }
 }
@@ -456,6 +461,73 @@ fn apply_vsync_setting(
     };
     if window.present_mode != desired {
         window.present_mode = desired;
+    }
+}
+
+/// View menu Isolation Mode: when active, hide all mesh entities that aren't
+/// the current selection (or its ancestors/descendants). On deactivate,
+/// restore the entities we hid back to `Visibility::Inherited`.
+fn apply_isolation_mode(
+    iso: Res<renzora::core::IsolationMode>,
+    selection: Res<EditorSelection>,
+    children_q: Query<&Children>,
+    parent_q: Query<&ChildOf>,
+    mut visibility_q: Query<
+        (Entity, &mut Visibility),
+        (
+            With<Mesh3d>,
+            Without<renzora::core::EditorCamera>,
+            Without<renzora::core::HideInHierarchy>,
+        ),
+    >,
+    mut hidden_entities: Local<Vec<Entity>>,
+    mut last_active: Local<bool>,
+) {
+    if iso.active == *last_active {
+        return;
+    }
+    *last_active = iso.active;
+
+    if iso.active {
+        let mut keep: std::collections::HashSet<Entity> = std::collections::HashSet::new();
+        for sel in selection.get_all() {
+            keep.insert(sel);
+            let mut cur = sel;
+            while let Ok(child_of) = parent_q.get(cur) {
+                let parent = child_of.parent();
+                keep.insert(parent);
+                cur = parent;
+            }
+            collect_descendants(sel, &children_q, &mut keep);
+        }
+        hidden_entities.clear();
+        for (entity, mut vis) in &mut visibility_q {
+            if !keep.contains(&entity) && *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+                hidden_entities.push(entity);
+            }
+        }
+    } else {
+        let drained: Vec<Entity> = hidden_entities.drain(..).collect();
+        for entity in drained {
+            if let Ok((_, mut vis)) = visibility_q.get_mut(entity) {
+                *vis = Visibility::Inherited;
+            }
+        }
+    }
+}
+
+fn collect_descendants(
+    entity: Entity,
+    children_q: &Query<&Children>,
+    out: &mut std::collections::HashSet<Entity>,
+) {
+    if let Ok(children) = children_q.get(entity) {
+        for child in children.iter() {
+            if out.insert(child) {
+                collect_descendants(child, children_q, out);
+            }
+        }
     }
 }
 
@@ -841,6 +913,10 @@ pub fn editor_ui_system(world: &mut World) {
             )
         })
         .unwrap_or((false, false));
+    let isolation_active = world
+        .get_resource::<renzora::core::IsolationMode>()
+        .map(|m| m.active)
+        .unwrap_or(false);
     let title_action = renzora_ui::title_bar::render_title_bar(
         &ctx,
         &theme,
@@ -852,6 +928,7 @@ pub fn editor_ui_system(world: &mut World) {
         &mut window_queue,
         can_undo,
         can_redo,
+        isolation_active,
     );
 
     // 6. Document tabs (below title bar)
@@ -1166,6 +1243,25 @@ pub fn editor_ui_system(world: &mut World) {
             }
         }
         TitleBarAction::ResetLayout => reset_layout(world),
+        TitleBarAction::ZoomIn => {
+            world.insert_resource(renzora::core::CameraViewRequest::ZoomIn);
+        }
+        TitleBarAction::ZoomOut => {
+            world.insert_resource(renzora::core::CameraViewRequest::ZoomOut);
+        }
+        TitleBarAction::ResetZoom => {
+            world.insert_resource(renzora::core::CameraViewRequest::ResetZoom);
+        }
+        TitleBarAction::FrameAll => {
+            world.insert_resource(renzora::core::CameraViewRequest::FrameAll);
+        }
+        TitleBarAction::ToggleIsolation => {
+            let mut iso = world
+                .remove_resource::<renzora::core::IsolationMode>()
+                .unwrap_or_default();
+            iso.active = !iso.active;
+            world.insert_resource(iso);
+        }
         TitleBarAction::None => {}
     }
 

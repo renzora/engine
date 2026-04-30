@@ -33,6 +33,11 @@ pub enum TitleBarAction {
     Undo,
     Redo,
     ResetLayout,
+    ZoomIn,
+    ZoomOut,
+    ResetZoom,
+    FrameAll,
+    ToggleIsolation,
 }
 
 const TITLE_BAR_HEIGHT: f32 = 32.0;
@@ -71,6 +76,7 @@ pub fn render_title_bar(
     window_queue: &mut WindowActionQueue,
     can_undo: bool,
     can_redo: bool,
+    isolation_active: bool,
 ) -> TitleBarAction {
     let mut action = TitleBarAction::None;
     let mut any_widget_hovered = false;
@@ -125,39 +131,39 @@ pub fn render_title_bar(
                 }
 
                 let file_menu = ui.menu_button("File", |ui| {
-                    if ui.button("New Project").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FOLDER_PLUS, "New Project") {
                         action = TitleBarAction::NewProject;
                         ui.close();
                     }
-                    if ui.button("Open Project...").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FOLDER_OPEN, "Open Project...") {
                         action = TitleBarAction::OpenProject;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("New Scene").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FILE_PLUS, "New Scene") {
                         action = TitleBarAction::NewScene;
                         ui.close();
                     }
-                    if ui.button("Open Scene...").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FILE, "Open Scene...") {
                         action = TitleBarAction::OpenScene;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Save").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FLOPPY_DISK, "Save") {
                         action = TitleBarAction::Save;
                         ui.close();
                     }
-                    if ui.button("Save As...").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::FLOPPY_DISK_BACK, "Save As...") {
                         action = TitleBarAction::SaveAs;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Export Project...").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::PACKAGE, "Export Project...") {
                         action = TitleBarAction::Export;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Settings").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::GEAR, "Settings") {
                         action = TitleBarAction::ToggleSettings;
                         ui.close();
                     }
@@ -169,16 +175,26 @@ pub fn render_title_bar(
                 switch_top_menu_on_hover(ui.ctx(), &file_menu.response);
 
                 let edit_menu = ui.menu_button("Edit", |ui| {
-                    if ui.add_enabled(can_undo, egui::Button::new("Undo")).clicked() {
+                    if menu_item_enabled(
+                        ui,
+                        egui_phosphor::regular::ARROW_U_UP_LEFT,
+                        "Undo",
+                        can_undo,
+                    ) {
                         action = TitleBarAction::Undo;
                         ui.close();
                     }
-                    if ui.add_enabled(can_redo, egui::Button::new("Redo")).clicked() {
+                    if menu_item_enabled(
+                        ui,
+                        egui_phosphor::regular::ARROW_U_UP_RIGHT,
+                        "Redo",
+                        can_redo,
+                    ) {
                         action = TitleBarAction::Redo;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Reset Layout").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::LAYOUT, "Reset Layout") {
                         action = TitleBarAction::ResetLayout;
                         ui.close();
                     }
@@ -189,13 +205,109 @@ pub fn render_title_bar(
                 }
                 switch_top_menu_on_hover(ui.ctx(), &edit_menu.response);
 
+                let view_menu = ui.menu_button("View", |ui| {
+                    ui.menu_button(
+                        format!("{}  Zoom", egui_phosphor::regular::MAGNIFYING_GLASS),
+                        |ui| {
+                            if menu_item(
+                                ui,
+                                egui_phosphor::regular::MAGNIFYING_GLASS_PLUS,
+                                "Zoom In",
+                            ) {
+                                action = TitleBarAction::ZoomIn;
+                                ui.close();
+                            }
+                            if menu_item(
+                                ui,
+                                egui_phosphor::regular::MAGNIFYING_GLASS_MINUS,
+                                "Zoom Out",
+                            ) {
+                                action = TitleBarAction::ZoomOut;
+                                ui.close();
+                            }
+                            ui.separator();
+                            if menu_item(
+                                ui,
+                                egui_phosphor::regular::MAGNIFYING_GLASS,
+                                "Reset Zoom",
+                            ) {
+                                action = TitleBarAction::ResetZoom;
+                                ui.close();
+                            }
+                        },
+                    );
+                    if menu_item(ui, egui_phosphor::regular::CORNERS_OUT, "Fit All") {
+                        action = TitleBarAction::FrameAll;
+                        ui.close();
+                    }
+                    let iso_icon = if isolation_active {
+                        egui_phosphor::regular::CHECK
+                    } else {
+                        egui_phosphor::regular::EYE
+                    };
+                    if menu_item(ui, iso_icon, "Isolation Mode") {
+                        action = TitleBarAction::ToggleIsolation;
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.menu_button(
+                        format!("{}  Layouts", egui_phosphor::regular::SQUARES_FOUR),
+                        |ui| {
+                            for (i, layout) in layout_manager.visible_layouts() {
+                                let is_active = i == layout_manager.active_index
+                                    || (layout_manager
+                                        .layouts
+                                        .get(layout_manager.active_index)
+                                        .map(|l| l.hidden)
+                                        .unwrap_or(false)
+                                        && i == layout_manager.last_scene_index);
+                                let icon = if is_active {
+                                    egui_phosphor::regular::CHECK
+                                } else {
+                                    " "
+                                };
+                                if menu_item(ui, icon, &layout.name) {
+                                    action = TitleBarAction::SwitchLayout(i);
+                                    ui.close();
+                                }
+                            }
+                        },
+                    );
+                });
+                if view_menu.response.hovered() {
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    any_widget_hovered = true;
+                }
+                switch_top_menu_on_hover(ui.ctx(), &view_menu.response);
+
                 let help_menu = ui.menu_button("Help", |ui| {
-                    if ui.button("Getting Started Tutorial").clicked() {
+                    if menu_item(
+                        ui,
+                        egui_phosphor::regular::GRADUATION_CAP,
+                        "Getting Started Tutorial",
+                    ) {
                         action = TitleBarAction::StartTutorial;
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("About Renzora").clicked() {
+                    if menu_item(ui, egui_phosphor::regular::BOOK_OPEN, "Documentation") {
+                        open_url("https://renzora.com/docs");
+                        ui.close();
+                    }
+                    if menu_item(ui, egui_phosphor::regular::YOUTUBE_LOGO, "YouTube") {
+                        open_url("https://youtube.com/@renzoragame");
+                        ui.close();
+                    }
+                    if menu_item(ui, egui_phosphor::regular::DISCORD_LOGO, "Discord") {
+                        open_url("https://discord.gg/9UHUGUyDJv");
+                        ui.close();
+                    }
+                    if menu_item(ui, egui_phosphor::regular::GITHUB_LOGO, "GitHub") {
+                        open_url("https://github.com/renzora/engine");
+                        ui.close();
+                    }
+                    ui.separator();
+                    if menu_item(ui, egui_phosphor::regular::INFO, "About Renzora") {
                         ui.close();
                     }
                 });
@@ -528,34 +640,16 @@ pub fn render_title_bar(
                         .size(11.0),
                         |ui| {
                             ui.set_min_width(140.0);
-                            if ui
-                                .button(format!(
-                                    "{} My Library",
-                                    egui_phosphor::regular::BOOKS
-                                ))
-                                .clicked()
-                            {
+                            if menu_item(ui, egui_phosphor::regular::BOOKS, "My Library") {
                                 action = TitleBarAction::OpenUserLibrary;
                                 ui.close();
                             }
-                            if ui
-                                .button(format!(
-                                    "{} Settings",
-                                    egui_phosphor::regular::GEAR
-                                ))
-                                .clicked()
-                            {
+                            if menu_item(ui, egui_phosphor::regular::GEAR, "Settings") {
                                 action = TitleBarAction::OpenUserSettings;
                                 ui.close();
                             }
                             ui.separator();
-                            if ui
-                                .button(format!(
-                                    "{} Sign Out",
-                                    egui_phosphor::regular::SIGN_OUT
-                                ))
-                                .clicked()
-                            {
+                            if menu_item(ui, egui_phosphor::regular::SIGN_OUT, "Sign Out") {
                                 action = TitleBarAction::SignOut;
                                 ui.close();
                             }
@@ -646,6 +740,30 @@ fn switch_top_menu_on_hover(ctx: &egui::Context, response: &egui::Response) {
     let popup_id = egui::Popup::default_response_id(response);
     if egui::Popup::is_any_open(ctx) && !egui::Popup::is_id_open(ctx, popup_id) {
         egui::Popup::open_id(ctx, popup_id);
+    }
+}
+
+/// Render a menu item with a leading phosphor icon. Returns `true` on click.
+fn menu_item(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
+    ui.button(format!("{}  {}", icon, label)).clicked()
+}
+
+/// Like `menu_item` but takes an `enabled` flag — disabled items are dimmed
+/// and unclickable.
+fn menu_item_enabled(ui: &mut egui::Ui, icon: &str, label: &str, enabled: bool) -> bool {
+    ui.add_enabled(enabled, egui::Button::new(format!("{}  {}", icon, label))).clicked()
+}
+
+/// Open a URL in the user's default browser. No-op on wasm32.
+fn open_url(url: &str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("open").arg(url).spawn();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }
 
