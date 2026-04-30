@@ -73,7 +73,7 @@
 - ✅ Add Edit menu (Undo, Redo, Cut, Copy, Paste, Select All, Deselect) — [`cc028c8`](https://github.com/renzora/engine/commit/cc028c8)
 - ✅ Add Help menu (docs, version, shortcuts reference) — [`ada1ff0`](https://github.com/renzora/engine/commit/ada1ff0)
 - ✅ Add command palette / quick search (Ctrl+P) — [`c811e2d`](https://github.com/renzora/engine/commit/c811e2d)
-- Add View menu (zoom, fit all, isolation mode, viewport layouts)
+- ✅ Add View menu (zoom, fit all, isolation mode, viewport layouts) — [`b54f8b9`](https://github.com/renzora/engine/commit/b54f8b9)
 - Add Entity menu (Create, Clone, Parent/Unparent)
 - Add Tools menu (preferences, keybindings)
 - Add Window/Workspace menu (manage panels, save/load layouts)
@@ -457,7 +457,7 @@
 ## CI/CD Pipeline
 - ✅ Add iOS export target to CI — [`765f0f4`](https://github.com/renzora/engine/commit/765f0f4)
 - ✅ Add tvOS export target to CI — [`765f0f4`](https://github.com/renzora/engine/commit/765f0f4)
-- ✅ Add cargo test step to CI pipeline — [`9139162`](https://github.com/renzora/engine/commit/9139162)
+- ✅ Add cargo test step to CI pipeline — [`3ccb689`](https://github.com/renzora/engine/commit/3ccb689)
 - Add nightly/preview builds to CI
 
 ## WASM Support
@@ -619,7 +619,7 @@
 - Add integration tests for game UI spawning (spawn canvas with widgets, verify entity hierarchy)
 
 ## Test Infrastructure & CI
-- ✅ Add cargo test step to CI pipeline — [`9139162`](https://github.com/renzora/engine/commit/9139162)
+- ✅ Add cargo test step to CI pipeline — [`3ccb689`](https://github.com/renzora/engine/commit/3ccb689)
 - Add test coverage reporting (tarpaulin or llvm-cov)
 - Add regression test harness for editor panels (smoke test each panel loads)
 
