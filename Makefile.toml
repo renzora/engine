@@ -45,6 +45,11 @@ if [ -d "target/${CLEAN_TARGET}/dist" ]; then
 fi
 '''
 
+# makers build — alias for build-editor (same as `makers run` without launching)
+[tasks.build]
+description = "Build editor and sync to dist/ (alias for build-editor)"
+alias = "build-editor"
+
 # makers build-editor — compile editor + plugins
 [tasks.build-editor]
 description = "Build editor and sync to dist/"
