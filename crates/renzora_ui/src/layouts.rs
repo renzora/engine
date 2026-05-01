@@ -305,7 +305,7 @@ pub fn scene_layout() -> DockTree {
             },
             0.78,
         ),
-        0.2,
+        0.15,
     )
 }
 
