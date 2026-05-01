@@ -121,6 +121,130 @@ impl LayoutManager {
             .filter(|(_, l)| !l.hidden)
     }
 
+    /// Add a new user-created visible layout and switch to it. The new
+    /// layout starts with an empty dock tree so the user can choose which
+    /// panels to populate it with from a clean slate. Returns the new
+    /// layout's index.
+    pub fn add_layout(&mut self, name: String, docking: &mut DockingState) -> usize {
+        // Snapshot current dock so the active slot stays in sync (mirrors `switch`).
+        if let Some(current) = self.layouts.get_mut(self.active_index) {
+            current.tree = docking.tree.clone();
+        }
+        let layout = WorkspaceLayout {
+            name,
+            tree: DockTree::Empty,
+            hidden: false,
+        };
+        self.layouts.push(layout);
+        let new_idx = self.layouts.len() - 1;
+        self.active_index = new_idx;
+        self.last_scene_index = new_idx;
+        docking.tree = DockTree::Empty;
+        new_idx
+    }
+
+    /// Rename the layout at `index`. Returns `true` if the rename happened.
+    /// No-op when the index is out of range or when another layout already
+    /// uses the requested name (case-insensitive). Trims surrounding
+    /// whitespace before storing.
+    pub fn rename_layout(&mut self, index: usize, new_name: String) -> bool {
+        let trimmed = new_name.trim().to_string();
+        if trimmed.is_empty() || index >= self.layouts.len() {
+            return false;
+        }
+        let conflict = self
+            .layouts
+            .iter()
+            .enumerate()
+            .any(|(i, l)| i != index && l.name.eq_ignore_ascii_case(&trimmed));
+        if conflict {
+            return false;
+        }
+        if let Some(slot) = self.layouts.get_mut(index) {
+            slot.name = trimmed;
+            return true;
+        }
+        false
+    }
+
+    /// Delete the layout at `index`. Refuses to delete the last visible
+    /// layout (so the title bar always has at least one tab to switch to).
+    /// If the deleted layout was active, switches to the previous visible
+    /// neighbour. Returns `true` if the layout was deleted.
+    pub fn delete_layout(&mut self, index: usize, docking: &mut DockingState) -> bool {
+        if index >= self.layouts.len() {
+            return false;
+        }
+        if self.layouts[index].hidden {
+            return false;
+        }
+        let visible_count = self.layouts.iter().filter(|l| !l.hidden).count();
+        if visible_count <= 1 {
+            return false;
+        }
+        // Snapshot current dock so the active slot stays in sync before we
+        // potentially delete a different slot.
+        if let Some(current) = self.layouts.get_mut(self.active_index) {
+            current.tree = docking.tree.clone();
+        }
+
+        self.layouts.remove(index);
+
+        // Re-target indices that pointed at or past the removed slot.
+        let remap = |idx: usize| -> usize {
+            if idx > index { idx - 1 } else { idx }
+        };
+        if self.active_index == index {
+            // Pick the nearest remaining visible layout.
+            let new_idx = self
+                .layouts
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| !l.hidden)
+                .map(|(i, _)| i)
+                .min_by_key(|i| (*i as isize - index as isize).abs())
+                .unwrap_or(0);
+            self.active_index = new_idx;
+            if let Some(layout) = self.layouts.get(new_idx) {
+                docking.tree = layout.tree.clone();
+            }
+        } else {
+            self.active_index = remap(self.active_index);
+        }
+        if self.last_scene_index == index {
+            self.last_scene_index = self.active_index;
+        } else {
+            self.last_scene_index = remap(self.last_scene_index);
+        }
+        true
+    }
+
+    /// Move the layout at `from` to position `to`, shifting layouts in
+    /// between. Updates `active_index` and `last_scene_index` so the user's
+    /// active layout follows the move. No-op when indices are equal or
+    /// out of range.
+    pub fn move_layout(&mut self, from: usize, to: usize) {
+        if from == to || from >= self.layouts.len() || to >= self.layouts.len() {
+            return;
+        }
+        let item = self.layouts.remove(from);
+        self.layouts.insert(to, item);
+
+        let remap = |idx: usize| -> usize {
+            if idx == from {
+                to
+            } else if from < to && idx > from && idx <= to {
+                idx - 1
+            } else if to < from && idx >= to && idx < from {
+                idx + 1
+            } else {
+                idx
+            }
+        };
+        self.active_index = remap(self.active_index);
+        self.last_scene_index = remap(self.last_scene_index);
+    }
+
     /// Reset the active layout's tree to its hardcoded factory default.
     /// Other layouts are untouched.
     pub fn reset_active(&mut self, docking: &mut DockingState) {

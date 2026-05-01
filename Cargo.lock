@@ -9715,6 +9715,7 @@ dependencies = [
  "bevy_egui",
  "dirs 5.0.1",
  "egui-phosphor",
+ "image",
  "renzora_theme",
  "serde",
  "toml 0.8.23",

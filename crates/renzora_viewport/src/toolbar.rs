@@ -8,6 +8,9 @@ use egui_phosphor::regular::*;
 
 use std::sync::atomic::Ordering;
 
+use renzora::core::viewport_types::ViewportSettings;
+use renzora_editor::EditorCommands;
+
 use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
 
 /// No-op stub — the viewport panel still calls this each frame, but tool
@@ -22,9 +25,11 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
 
     let btn_size = Vec2::new(36.0, 36.0);
     let btn_gap = 1.0_f32;
+    let group_gap = 6.0_f32;
     let padding = 3.0_f32;
     let panel_w = btn_size.x + padding * 2.0;
-    let panel_h = btn_size.y * 2.0 + btn_gap + padding * 2.0;
+    // Two groups of buttons: pan/zoom (drag) and grid/icons (toggle).
+    let panel_h = btn_size.y * 4.0 + btn_gap * 2.0 + group_gap + padding * 2.0;
 
     // Position: right edge, below the axis gizmo
     let gizmo_bottom_y = content_rect.min.y + AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN;
@@ -46,6 +51,26 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
         Pos2::new(x_pos, panel_pos.y + padding + btn_size.y + btn_gap),
         btn_size,
     );
+    let grid_btn_rect = Rect::from_min_size(
+        Pos2::new(
+            x_pos,
+            panel_pos.y + padding + btn_size.y * 2.0 + btn_gap + group_gap,
+        ),
+        btn_size,
+    );
+    let icons_btn_rect = Rect::from_min_size(
+        Pos2::new(
+            x_pos,
+            panel_pos.y + padding + btn_size.y * 3.0 + btn_gap * 2.0 + group_gap,
+        ),
+        btn_size,
+    );
+
+    // Read current toggle states for the active-color rendering.
+    let (show_grid, show_scene_icons) = world
+        .get_resource::<ViewportSettings>()
+        .map(|s| (s.show_grid, s.show_scene_icons))
+        .unwrap_or((true, true));
 
     egui::Area::new(egui::Id::new("viewport_nav_overlay"))
         .fixed_pos(panel_pos)
@@ -121,6 +146,75 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             if zoom_resp.dragged() {
                 let d = zoom_resp.drag_delta();
                 nav.zoom_delta_y.fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
+            }
+
+            // ── Toggle group: grid + scene icons ──────────────────────────
+            let cmds = world.get_resource::<EditorCommands>();
+
+            // Grid toggle
+            let grid_resp =
+                ui.interact(grid_btn_rect, egui::Id::new("nav_grid_btn"), Sense::click());
+            if grid_resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            let grid_bg = if show_grid {
+                active_color
+            } else if grid_resp.hovered() {
+                hovered_color
+            } else {
+                resting_color
+            };
+            ui.painter().rect_filled(grid_btn_rect, CornerRadius::same(half_btn), grid_bg);
+            ui.painter().text(
+                grid_btn_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                GRID_FOUR,
+                FontId::proportional(16.0),
+                Color32::WHITE,
+            );
+            grid_resp.clone().on_hover_text(if show_grid { "Hide Grid" } else { "Show Grid" });
+            if grid_resp.clicked() {
+                if let Some(cmds) = cmds {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.show_grid = !s.show_grid;
+                        }
+                    });
+                }
+            }
+
+            // Scene icons toggle
+            let icons_resp =
+                ui.interact(icons_btn_rect, egui::Id::new("nav_icons_btn"), Sense::click());
+            if icons_resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
+            let icons_bg = if show_scene_icons {
+                active_color
+            } else if icons_resp.hovered() {
+                hovered_color
+            } else {
+                resting_color
+            };
+            ui.painter().rect_filled(icons_btn_rect, CornerRadius::same(half_btn), icons_bg);
+            ui.painter().text(
+                icons_btn_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                if show_scene_icons { EYE } else { EYE_SLASH },
+                FontId::proportional(16.0),
+                Color32::WHITE,
+            );
+            icons_resp
+                .clone()
+                .on_hover_text(if show_scene_icons { "Hide Scene Icons" } else { "Show Scene Icons" });
+            if icons_resp.clicked() {
+                if let Some(cmds) = cmds {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.show_scene_icons = !s.show_scene_icons;
+                        }
+                    });
+                }
             }
         });
 }

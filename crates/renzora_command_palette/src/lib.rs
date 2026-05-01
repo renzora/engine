@@ -53,7 +53,23 @@ impl Plugin for CommandPalettePlugin {
             .add_systems(
                 EguiPrimaryContextPass,
                 render_palette.run_if(in_state(SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                consume_toggle_request.run_if(in_state(SplashState::Editor)),
             );
+    }
+}
+
+/// Watches for `ToggleCommandPaletteRequested` and toggles the palette.
+/// Lets external surfaces (e.g. the title-bar search button) open the
+/// palette without depending on this crate.
+fn consume_toggle_request(world: &mut World) {
+    if world
+        .remove_resource::<renzora::core::ToggleCommandPaletteRequested>()
+        .is_some()
+    {
+        toggle_palette(world);
     }
 }
 
@@ -135,7 +151,155 @@ fn collect_items(
         });
     }
 
+    // Layouts — every visible workspace layout becomes a "Switch to X" entry.
+    if let Some(manager) = world.get_resource::<renzora_editor::LayoutManager>() {
+        let layouts: Vec<(usize, String)> = manager
+            .visible_layouts()
+            .map(|(i, l)| (i, l.name.clone()))
+            .collect();
+        for (idx, name) in layouts {
+            let label = format!("Switch to {}", name);
+            out.push(PaletteItem {
+                kind: "Layout",
+                label,
+                detail: None,
+                handler: Arc::new(move |w: &mut World| {
+                    w.resource_scope::<renzora_editor::LayoutManager, _>(|w, mut mgr| {
+                        if let Some(mut docking) =
+                            w.get_resource_mut::<renzora_editor::DockingState>()
+                        {
+                            mgr.switch(idx, &mut docking);
+                        }
+                    });
+                }),
+            });
+        }
+    }
+
+    // Panels — every registered panel can be opened via "Open <Panel>".
+    // Focuses the panel if already in the dock; otherwise adds it to the
+    // first leaf in traversal order.
+    if let Some(registry) = world.get_resource::<renzora_editor::PanelRegistry>() {
+        let panels: Vec<(String, String)> = registry
+            .iter()
+            .map(|p| (p.id().to_string(), p.title().to_string()))
+            .collect();
+        for (id, title) in panels {
+            let label = format!("Open {}", title);
+            out.push(PaletteItem {
+                kind: "Panel",
+                label,
+                detail: None,
+                handler: Arc::new(move |w: &mut World| {
+                    if let Some(mut docking) =
+                        w.get_resource_mut::<renzora_editor::DockingState>()
+                    {
+                        docking.tree.focus_or_add_panel(&id);
+                    }
+                }),
+            });
+        }
+    }
+
+    // Settings tabs — open the settings overlay on a specific tab.
+    use renzora_editor::SettingsTab;
+    let settings_tabs: &[(SettingsTab, &str)] = &[
+        (SettingsTab::Project, "Project"),
+        (SettingsTab::Interface, "Interface"),
+        (SettingsTab::Editor, "Editor"),
+        (SettingsTab::Viewport, "Viewport"),
+        (SettingsTab::Scripting, "Scripting"),
+        (SettingsTab::Assets, "Assets"),
+        (SettingsTab::Input, "Input"),
+        (SettingsTab::Shortcuts, "Shortcuts"),
+        (SettingsTab::Theme, "Theme"),
+        (SettingsTab::Plugins, "Plugins"),
+    ];
+    for (tab, name) in settings_tabs {
+        let tab = *tab;
+        let label = format!("Settings: {}", name);
+        out.push(PaletteItem {
+            kind: "Settings",
+            label,
+            detail: None,
+            handler: Arc::new(move |w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
+                    s.show_settings = true;
+                    s.settings_tab = tab;
+                }
+            }),
+        });
+    }
+
+    // File-menu commands — mirror the title bar's File menu so users can
+    // dispatch them from the palette without picking from the menu.
+    // (New Project / Open Project route through editor-private file dialogs
+    //  and aren't exposed as marker resources, so we omit them here.)
+    let menu_items: &[(&str, fn(&mut World))] = &[
+        ("File: New Scene", |w| {
+            w.insert_resource(renzora::core::NewSceneRequested);
+        }),
+        ("File: Open Scene...", |w| {
+            w.insert_resource(renzora::core::OpenSceneRequested);
+        }),
+        ("File: Save", |w| {
+            w.insert_resource(renzora::core::SaveSceneRequested);
+        }),
+        ("File: Save As...", |w| {
+            w.insert_resource(renzora::core::SaveAsSceneRequested);
+        }),
+        ("File: Export Project...", |w| {
+            w.insert_resource(renzora::core::ExportRequested);
+        }),
+        ("File: Import...", |w| {
+            w.insert_resource(renzora::core::ImportRequested);
+        }),
+        ("Help: Getting Started Tutorial", |w| {
+            w.insert_resource(renzora::core::TutorialRequested);
+        }),
+    ];
+    for (label, handler) in menu_items {
+        let h = *handler;
+        out.push(PaletteItem {
+            kind: "Menu",
+            label: label.to_string(),
+            detail: None,
+            handler: Arc::new(move |w: &mut World| h(w)),
+        });
+    }
+
+    // Docs — open external documentation URLs in the user's browser.
+    let docs: &[(&str, &str)] = &[
+        ("Documentation: Home", "https://renzora.com/docs"),
+        ("Documentation: YouTube Channel", "https://youtube.com/@renzoragame"),
+        ("Documentation: Discord", "https://discord.gg/9UHUGUyDJv"),
+        ("Documentation: GitHub", "https://github.com/renzora/engine"),
+    ];
+    for (label, url) in docs {
+        let url = url.to_string();
+        out.push(PaletteItem {
+            kind: "Docs",
+            label: label.to_string(),
+            detail: Some("Opens browser".to_string()),
+            handler: Arc::new(move |_w: &mut World| {
+                open_url(&url);
+            }),
+        });
+    }
+
     out
+}
+
+fn open_url(url: &str) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("open").arg(url).spawn();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
 }
 
 /// Actions that fire continuously while a key is held (camera WASD) aren't

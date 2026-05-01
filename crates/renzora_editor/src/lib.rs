@@ -1162,6 +1162,14 @@ pub fn editor_ui_system(world: &mut World) {
         }
     }
 
+    // I.5) Handle "Add Panel" picked from an empty workspace — seed the
+    // tree with a single leaf containing that panel.
+    if let Some(ref new_panel) = render_result.panel_to_seed_empty {
+        if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+            docking.tree = renzora_ui::DockTree::leaf(new_panel.clone());
+        }
+    }
+
     // K) Handle title bar actions
     match title_action {
         TitleBarAction::SwitchLayout(i) => {
@@ -1261,6 +1269,33 @@ pub fn editor_ui_system(world: &mut World) {
                 .unwrap_or_default();
             iso.active = !iso.active;
             world.insert_resource(iso);
+        }
+        TitleBarAction::CreateLayout(name) => {
+            world.resource_scope::<LayoutManager, _>(|world, mut manager| {
+                if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                    manager.add_layout(name, &mut docking);
+                }
+            });
+        }
+        TitleBarAction::ReorderLayout { from, to } => {
+            if let Some(mut manager) = world.get_resource_mut::<LayoutManager>() {
+                manager.move_layout(from, to);
+            }
+        }
+        TitleBarAction::RenameLayout { index, new_name } => {
+            if let Some(mut manager) = world.get_resource_mut::<LayoutManager>() {
+                manager.rename_layout(index, new_name);
+            }
+        }
+        TitleBarAction::DeleteLayout(index) => {
+            world.resource_scope::<LayoutManager, _>(|world, mut manager| {
+                if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                    manager.delete_layout(index, &mut docking);
+                }
+            });
+        }
+        TitleBarAction::ToggleCommandPalette => {
+            world.insert_resource(renzora::core::ToggleCommandPaletteRequested);
         }
         TitleBarAction::None => {}
     }

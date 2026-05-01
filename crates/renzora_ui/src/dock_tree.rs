@@ -97,6 +97,11 @@ impl DockTree {
                     if *active_tab >= tabs.len() && !tabs.is_empty() {
                         *active_tab = tabs.len() - 1;
                     }
+                    if tabs.is_empty() {
+                        // Root leaf with no tabs left → collapse to Empty so
+                        // the empty-workspace prompt renders.
+                        *self = DockTree::Empty;
+                    }
                     true
                 } else {
                     false
@@ -184,6 +189,28 @@ impl DockTree {
             }
             DockTree::Empty => {}
         }
+    }
+
+    /// Focus an already-open panel, or add it to the first leaf in
+    /// tree-traversal order if it isn't open. Returns true if the tree
+    /// changed (panel added) or if the active tab was switched.
+    pub fn focus_or_add_panel(&mut self, panel: &str) -> bool {
+        if self.find_leaf_mut(panel).is_some() {
+            self.set_active_tab(panel);
+            return true;
+        }
+        fn add_to_first_leaf(tree: &mut DockTree, panel: String) -> bool {
+            match tree {
+                DockTree::Leaf { tabs, active_tab } => {
+                    tabs.push(panel);
+                    *active_tab = tabs.len() - 1;
+                    true
+                }
+                DockTree::Split { first, .. } => add_to_first_leaf(first, panel),
+                DockTree::Empty => false,
+            }
+        }
+        add_to_first_leaf(self, panel.to_string())
     }
 
     /// Add a tab to the leaf containing `sibling`, at the end.

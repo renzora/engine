@@ -568,7 +568,6 @@
 - Add unit tests for renzora_shader (backend registry, shader file parsing, param extraction)
 - Add unit tests for renzora_postprocess (effect registration, pipeline ordering)
 - ✅ Add unit tests for renzora_lighting (azimuth/elevation to direction math) — [`5370748`](https://github.com/renzora/engine/commit/5370748)
-- Add unit tests for renzora_rt (quality presets, settings)
 - Add unit tests for renzora_hanabi (particle data, effect builder)
 - ✅ Add unit tests for renzora_theme (TOML loading, color serialization) — [`5370748`](https://github.com/renzora/engine/commit/5370748)
 

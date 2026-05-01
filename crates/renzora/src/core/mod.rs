@@ -824,6 +824,12 @@ pub struct OpenCodeEditorFile {
     pub path: std::path::PathBuf,
 }
 
+/// One-shot: request the command palette to toggle open/closed.
+///
+/// Inserted by the title-bar search button; consumed by `renzora_command_palette`.
+#[derive(Resource)]
+pub struct ToggleCommandPaletteRequested;
+
 /// One-shot: request a viewport camera operation from the View menu.
 ///
 /// Consumed by the camera controller in `renzora_camera`.
