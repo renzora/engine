@@ -2,13 +2,13 @@
 
 use std::sync::RwLock;
 
-use bevy::prelude::*;
-use nvml_wrapper::Nvml;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
+use nvml_wrapper::Nvml;
 
-use renzora_editor::{AppEditorExt, StatusBarItem, StatusBarAlignment, SplashState};
+use renzora_editor::{AppEditorExt, SplashState, StatusBarAlignment, StatusBarItem};
 use renzora_theme::ThemeManager;
 
 // ============================================================================
@@ -86,12 +86,11 @@ fn update_memory_info(mut state: ResMut<SystemMonitorState>) {
     state.used_ram_gb = sys.used_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
 }
 
-fn update_gpu_stats(
-    nvml: Res<NvmlHandle>,
-    mut state: ResMut<SystemMonitorState>,
-) {
+fn update_gpu_stats(nvml: Res<NvmlHandle>, mut state: ResMut<SystemMonitorState>) {
     let Some(nvml) = nvml.0.as_ref() else { return };
-    let Ok(device) = nvml.device_by_index(0) else { return };
+    let Ok(device) = nvml.device_by_index(0) else {
+        return;
+    };
 
     if let Ok(util) = device.utilization_rates() {
         state.gpu_usage_pct = util.gpu as f64;
@@ -195,8 +194,8 @@ impl StatusBarItem for SystemMonitorStatusItem {
                     state.gpu_vram_used_gb,
                     state.gpu_vram_total_gb,
                 ))
-                    .size(11.0)
-                    .color(text_color),
+                .size(11.0)
+                .color(text_color),
             );
         }
 
@@ -208,8 +207,8 @@ impl StatusBarItem for SystemMonitorStatusItem {
                 state.used_ram_gb,
                 state.total_ram_gb,
             ))
-                .size(11.0)
-                .color(text_color),
+            .size(11.0)
+            .color(text_color),
         );
 
         // FPS + frame time
@@ -220,8 +219,8 @@ impl StatusBarItem for SystemMonitorStatusItem {
                 state.fps,
                 state.frame_time_ms,
             ))
-                .size(11.0)
-                .color(fps_color),
+            .size(11.0)
+            .color(fps_color),
         );
     }
 }
@@ -245,14 +244,19 @@ impl Plugin for SystemMonitorPlugin {
         app.init_resource::<NvmlHandle>();
 
         app.add_systems(Startup, init_hardware_info);
-        app.add_systems(Update, (
-            update_system_monitor,
-            update_memory_info,
-            update_gpu_stats,
-            extract_gpu_name,
-        ).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (
+                update_system_monitor,
+                update_memory_info,
+                update_gpu_stats,
+                extract_gpu_name,
+            )
+                .run_if(in_state(SplashState::Editor)),
+        );
 
         app.register_status_item(SystemMonitorStatusItem::default());
     }
 }
 
+renzora::add!(SystemMonitorPlugin, Editor);

@@ -227,7 +227,13 @@ where
     if project_toml_path.is_file() {
         if let Ok(text) = std::fs::read_to_string(&project_toml_path) {
             if let Some(scene) = extract_toml_value(&text, "main_scene") {
-                try_pack(&scene, &mut packer, &mut visited, &mut queue, &mut on_packed);
+                try_pack(
+                    &scene,
+                    &mut packer,
+                    &mut visited,
+                    &mut queue,
+                    &mut on_packed,
+                );
             }
             if let Some(icon) = extract_toml_value(&text, "icon") {
                 try_pack(&icon, &mut packer, &mut visited, &mut queue, &mut on_packed);
@@ -237,19 +243,26 @@ where
 
     // BFS: for each queued file, scan for asset path references and pack them
     while let Some(file_key) = queue.pop_front() {
-        let Some(data) = packer.get(&file_key) else { continue };
-        let Ok(text) = std::str::from_utf8(data) else { continue };
+        let Some(data) = packer.get(&file_key) else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(data) else {
+            continue;
+        };
         let refs = extract_quoted_asset_paths(text);
 
         for reference in refs {
             let norm = reference.replace('\\', "/");
             let stripped = norm.trim_start_matches("./").to_string();
-            for candidate in [
-                norm.clone(),
-                stripped.clone(),
-            ] {
+            for candidate in [norm.clone(), stripped.clone()] {
                 if !visited.contains(&candidate) {
-                    try_pack(&candidate, &mut packer, &mut visited, &mut queue, &mut on_packed);
+                    try_pack(
+                        &candidate,
+                        &mut packer,
+                        &mut visited,
+                        &mut queue,
+                        &mut on_packed,
+                    );
                 }
             }
         }
@@ -269,12 +282,12 @@ pub fn pack_project_filtered(
 
 /// Extensions to include when packing a server rpak (no rendering assets).
 pub const SERVER_EXTENSIONS: &[&str] = &[
-    "ron",        // scenes
-    "lua",        // scripts
-    "rhai",       // scripts
-    "blueprint",  // visual scripting
-    "toml",       // project config
-    "json",       // data files
+    "ron",       // scenes
+    "lua",       // scripts
+    "rhai",      // scripts
+    "blueprint", // visual scripting
+    "toml",      // project config
+    "json",      // data files
 ];
 
 // ============================================================================
@@ -295,11 +308,8 @@ impl RpakPacker {
 
     /// Like [`optimize_meshes`] but calls `on_progress(current, total, filename)`
     /// before processing each `.glb` entry.
-    pub fn optimize_meshes_with_progress<F, P>(
-        &mut self,
-        optimize_fn: F,
-        mut on_progress: P,
-    ) where
+    pub fn optimize_meshes_with_progress<F, P>(&mut self, optimize_fn: F, mut on_progress: P)
+    where
         F: Fn(&[u8]) -> Result<Vec<u8>, String>,
         P: FnMut(usize, usize, &str),
     {
@@ -429,9 +439,11 @@ impl RpakPacker {
     /// Call this after packing and before writing for **client runtime** exports.
     pub fn strip_for_runtime(&mut self) {
         // Remove camera sidecar files
-        self.entries.retain(|path, _| !path.ends_with(".camera.ron"));
+        self.entries
+            .retain(|path, _| !path.ends_with(".camera.ron"));
 
-        let ron_keys: Vec<String> = self.entries
+        let ron_keys: Vec<String> = self
+            .entries
             .keys()
             .filter(|k| k.ends_with(".ron"))
             .cloned()
@@ -453,10 +465,12 @@ impl RpakPacker {
     /// Call this after packing and before writing for server exports.
     pub fn strip_for_server(&mut self) {
         // Remove camera sidecar files
-        self.entries.retain(|path, _| !path.ends_with(".camera.ron"));
+        self.entries
+            .retain(|path, _| !path.ends_with(".camera.ron"));
 
         // Strip visual components from scene .ron files
-        let ron_keys: Vec<String> = self.entries
+        let ron_keys: Vec<String> = self
+            .entries
             .keys()
             .filter(|k| k.ends_with(".ron"))
             .cloned()
@@ -495,11 +509,18 @@ fn strip_visual_components(input: &str) -> String {
         let quote_start = i;
         i += 1;
         while i < len {
-            if bytes[i] == b'\\' { i += 2; continue; }
-            if bytes[i] == b'"' { break; }
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                break;
+            }
             i += 1;
         }
-        if i >= len { break; }
+        if i >= len {
+            break;
+        }
         let key = &input[quote_start + 1..i];
         i += 1; // past closing quote
 
@@ -508,7 +529,9 @@ fn strip_visual_components(input: &str) -> String {
             continue;
         }
         let mut j = i;
-        while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') { j += 1; }
+        while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
         if j >= len || bytes[j] != b':' {
             continue;
         }
@@ -522,7 +545,8 @@ fn strip_visual_components(input: &str) -> String {
 
         // Strip: find the start of this entry line (back up past indentation)
         let mut entry_start = quote_start;
-        while entry_start > 0 && (bytes[entry_start - 1] == b' ' || bytes[entry_start - 1] == b'\t') {
+        while entry_start > 0 && (bytes[entry_start - 1] == b' ' || bytes[entry_start - 1] == b'\t')
+        {
             entry_start -= 1;
         }
         if entry_start > 0 && bytes[entry_start - 1] == b'\n' {
@@ -537,14 +561,20 @@ fn strip_visual_components(input: &str) -> String {
 
         // Skip past ':' and whitespace to the value
         i = j + 1;
-        while i < len && bytes[i].is_ascii_whitespace() { i += 1; }
+        while i < len && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
 
         // Skip the value
         i = skip_ron_value(bytes, i);
 
         // Skip trailing comma
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-        if i < len && bytes[i] == b',' { i += 1; }
+        while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i < len && bytes[i] == b',' {
+            i += 1;
+        }
 
         copy_from = i;
     }
@@ -572,11 +602,18 @@ fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
         let quote_start = i;
         i += 1;
         while i < len {
-            if bytes[i] == b'\\' { i += 2; continue; }
-            if bytes[i] == b'"' { break; }
+            if bytes[i] == b'\\' {
+                i += 2;
+                continue;
+            }
+            if bytes[i] == b'"' {
+                break;
+            }
             i += 1;
         }
-        if i >= len { break; }
+        if i >= len {
+            break;
+        }
         let key = &input[quote_start + 1..i];
         i += 1;
 
@@ -584,7 +621,9 @@ fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
             continue;
         }
         let mut j = i;
-        while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') { j += 1; }
+        while j < len && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
         if j >= len || bytes[j] != b':' {
             continue;
         }
@@ -596,7 +635,8 @@ fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
 
         // Strip this entry
         let mut entry_start = quote_start;
-        while entry_start > 0 && (bytes[entry_start - 1] == b' ' || bytes[entry_start - 1] == b'\t') {
+        while entry_start > 0 && (bytes[entry_start - 1] == b' ' || bytes[entry_start - 1] == b'\t')
+        {
             entry_start -= 1;
         }
         if entry_start > 0 && bytes[entry_start - 1] == b'\n' {
@@ -609,10 +649,16 @@ fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
         out.push_str(&input[copy_from..entry_start]);
 
         i = j + 1;
-        while i < len && bytes[i].is_ascii_whitespace() { i += 1; }
+        while i < len && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
         i = skip_ron_value(bytes, i);
-        while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-        if i < len && bytes[i] == b',' { i += 1; }
+        while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i < len && bytes[i] == b',' {
+            i += 1;
+        }
 
         copy_from = i;
     }
@@ -625,7 +671,9 @@ fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
 fn skip_ron_value(bytes: &[u8], start: usize) -> usize {
     let len = bytes.len();
     let mut i = start;
-    if i >= len { return i; }
+    if i >= len {
+        return i;
+    }
 
     match bytes[i] {
         // Delimited: balanced skip over (), {}, []
@@ -634,7 +682,10 @@ fn skip_ron_value(bytes: &[u8], start: usize) -> usize {
             i += 1;
             while i < len && depth > 0 {
                 match bytes[i] {
-                    b'"' => { i = skip_ron_string(bytes, i); continue; }
+                    b'"' => {
+                        i = skip_ron_string(bytes, i);
+                        continue;
+                    }
                     b'(' | b'{' | b'[' => depth += 1,
                     b')' | b'}' | b']' => depth -= 1,
                     _ => {}
@@ -647,9 +698,12 @@ fn skip_ron_value(bytes: &[u8], start: usize) -> usize {
         b'"' => skip_ron_string(bytes, i),
         // Atom: identifier, number, bool, enum variant (may be followed by "(..)")
         _ => {
-            while i < len && (bytes[i].is_ascii_alphanumeric()
-                || bytes[i] == b'_' || bytes[i] == b'.'
-                || bytes[i] == b'-' || bytes[i] == b'+')
+            while i < len
+                && (bytes[i].is_ascii_alphanumeric()
+                    || bytes[i] == b'_'
+                    || bytes[i] == b'.'
+                    || bytes[i] == b'-'
+                    || bytes[i] == b'+')
             {
                 i += 1;
             }
@@ -667,8 +721,13 @@ fn skip_ron_string(bytes: &[u8], start: usize) -> usize {
     let len = bytes.len();
     let mut i = start + 1; // past opening quote
     while i < len {
-        if bytes[i] == b'\\' { i += 2; continue; }
-        if bytes[i] == b'"' { return i + 1; }
+        if bytes[i] == b'\\' {
+            i += 2;
+            continue;
+        }
+        if bytes[i] == b'"' {
+            return i + 1;
+        }
         i += 1;
     }
     i
@@ -681,21 +740,37 @@ fn skip_ron_string(bytes: &[u8], start: usize) -> usize {
 /// Known asset file extensions for reference scanning.
 const ASSET_EXTENSIONS: &[&str] = &[
     // Images
-    ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".exr",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".bmp",
+    ".tga",
+    ".hdr",
+    ".exr",
     // 3D models
-    ".glb", ".gltf", ".bin",
+    ".glb",
+    ".gltf",
+    ".bin",
     // Audio
-    ".ogg", ".wav", ".mp3", ".flac",
+    ".ogg",
+    ".wav",
+    ".mp3",
+    ".flac",
     // Scenes
     ".ron",
     // Materials / shaders
-    ".material", ".shader", ".wgsl",
+    ".material",
+    ".shader",
+    ".wgsl",
     // Scripts
-    ".lua", ".rhai",
+    ".lua",
+    ".rhai",
     // Data
-    ".blueprint", ".json",
+    ".blueprint",
+    ".json",
     // Fonts
-    ".ttf", ".otf",
+    ".ttf",
+    ".otf",
 ];
 
 /// Extract a simple `key = "value"` from TOML text.
@@ -729,8 +804,13 @@ fn extract_quoted_asset_paths(text: &str) -> Vec<String> {
             let start = i + 1;
             i += 1;
             while i < len {
-                if bytes[i] == b'\\' { i += 2; continue; }
-                if bytes[i] == b'"' { break; }
+                if bytes[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == b'"' {
+                    break;
+                }
                 i += 1;
             }
             if i < len {
@@ -829,7 +909,10 @@ mod tests {
         assert_eq!(archive.len(), 3);
         assert_eq!(archive.get("scenes/main.ron"), Some(scene.as_slice()));
         assert_eq!(archive.get("models/car.glb"), Some(model.as_slice()));
-        assert_eq!(archive.get("textures/wall.png"), Some(&[0xff, 0xee, 0xdd][..]));
+        assert_eq!(
+            archive.get("textures/wall.png"),
+            Some(&[0xff, 0xee, 0xdd][..])
+        );
     }
 
     #[test]

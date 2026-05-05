@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use renzora::{AnimClip, BoneTrack, write_anim_file};
+use renzora::{write_anim_file, AnimClip, BoneTrack};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ImportError, ImportResult};
@@ -21,7 +21,10 @@ use crate::settings::ImportSettings;
 /// Convert an FBX file to a GLB, preserving skeleton + skin weights when
 /// present. Any FBX version (3.0 – 7.7), binary or ASCII, is accepted.
 pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
-    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
     let scene = load_scene(path, settings)?;
     let scene_ref: &ufbx::Scene = &scene;
 
@@ -150,9 +153,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                             .map(|&ji| (ji as u16, w.weight as f32))
                     })
                     .collect();
-                infl.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-                });
+                infl.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                 let top = &infl[..infl.len().min(4)];
                 let mut js = [0u16; 4];
                 let mut ws = [0.0f32; 4];
@@ -192,25 +193,24 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // Textures/materials honor the extract toggles: dropping either before
     // the GLB builder ensures the output doesn't reference files that won't
     // exist on disk. The builder falls back to a plain unmaterialized mesh.
-    let (material_bundle, extracted_textures) = if settings.extract_textures
-        || settings.extract_materials
-    {
-        let (mut bundle, mut textures) = collect_textures_and_materials(scene_ref);
-        if !settings.extract_textures {
-            textures.clear();
-            bundle.textures.clear();
-            for m in bundle.materials.iter_mut() {
-                m.base_color_texture = None;
-                m.normal_texture = None;
+    let (material_bundle, extracted_textures) =
+        if settings.extract_textures || settings.extract_materials {
+            let (mut bundle, mut textures) = collect_textures_and_materials(scene_ref);
+            if !settings.extract_textures {
+                textures.clear();
+                bundle.textures.clear();
+                for m in bundle.materials.iter_mut() {
+                    m.base_color_texture = None;
+                    m.normal_texture = None;
+                }
             }
-        }
-        if !settings.extract_materials {
-            bundle.materials.clear();
-        }
-        (bundle, textures)
-    } else {
-        (crate::obj::MaterialBundle::default(), Vec::new())
-    };
+            if !settings.extract_materials {
+                bundle.materials.clear();
+            }
+            (bundle, textures)
+        } else {
+            (crate::obj::MaterialBundle::default(), Vec::new())
+        };
 
     let glb_bytes = if has_skin {
         log::info!(
@@ -264,37 +264,36 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // `.material` files. Texture URIs here are RELATIVE to the model's own
     // folder (e.g. `textures/diffuse.png`) so they can be resolved from the
     // `.material` file's location.
-    let extracted_materials: Vec<crate::convert::ExtractedPbrMaterial> = if settings
-        .extract_materials
-    {
-        material_bundle
-            .materials
-            .iter()
-            .map(|m| {
-                let lookup = |idx: Option<usize>| -> Option<String> {
-                    idx.and_then(|i| material_bundle.textures.get(i).map(|t| t.uri.clone()))
-                };
-                crate::convert::ExtractedPbrMaterial {
-                    name: m.name.clone(),
-                    base_color: m.base_color,
-                    metallic: m.metallic,
-                    roughness: m.roughness,
-                    emissive: [0.0, 0.0, 0.0],
-                    base_color_texture: lookup(m.base_color_texture),
-                    normal_texture: lookup(m.normal_texture),
-                    metallic_roughness_texture: None,
-                    emissive_texture: None,
-                    occlusion_texture: None,
-                    specular_glossiness_texture: None,
-                    alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
-                    alpha_cutoff: 0.5,
-                    double_sided: false,
-                }
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let extracted_materials: Vec<crate::convert::ExtractedPbrMaterial> =
+        if settings.extract_materials {
+            material_bundle
+                .materials
+                .iter()
+                .map(|m| {
+                    let lookup = |idx: Option<usize>| -> Option<String> {
+                        idx.and_then(|i| material_bundle.textures.get(i).map(|t| t.uri.clone()))
+                    };
+                    crate::convert::ExtractedPbrMaterial {
+                        name: m.name.clone(),
+                        base_color: m.base_color,
+                        metallic: m.metallic,
+                        roughness: m.roughness,
+                        emissive: [0.0, 0.0, 0.0],
+                        base_color_texture: lookup(m.base_color_texture),
+                        normal_texture: lookup(m.normal_texture),
+                        metallic_roughness_texture: None,
+                        emissive_texture: None,
+                        occlusion_texture: None,
+                        specular_glossiness_texture: None,
+                        alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                        alpha_cutoff: 0.5,
+                        double_sided: false,
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
     Ok(ImportResult {
         glb_bytes,
@@ -305,10 +304,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 }
 
 /// Extract every animation stack in an FBX file to a directory of `.anim` files.
-pub fn extract_animations(
-    path: &Path,
-    output_dir: &Path,
-) -> Result<AnimExtractResult, String> {
+pub fn extract_animations(path: &Path, output_dir: &Path) -> Result<AnimExtractResult, String> {
     let settings = ImportSettings::default();
     let scene = load_scene(path, &settings).map_err(|e| format!("{}", e))?;
     let scene_ref: &ufbx::Scene = &scene;
@@ -391,11 +387,20 @@ pub fn extract_animations(
                 let rel_t = t - stack_ref.time_begin;
                 track.translations.push((
                     rel_t as f32,
-                    [tr.translation.x as f32, tr.translation.y as f32, tr.translation.z as f32],
+                    [
+                        tr.translation.x as f32,
+                        tr.translation.y as f32,
+                        tr.translation.z as f32,
+                    ],
                 ));
                 track.rotations.push((
                     rel_t as f32,
-                    [tr.rotation.x as f32, tr.rotation.y as f32, tr.rotation.z as f32, tr.rotation.w as f32],
+                    [
+                        tr.rotation.x as f32,
+                        tr.rotation.y as f32,
+                        tr.rotation.z as f32,
+                        tr.rotation.w as f32,
+                    ],
                 ));
                 track.scales.push((
                     rel_t as f32,
@@ -407,10 +412,9 @@ pub fn extract_animations(
         }
 
         if tracks.is_empty() {
-            result.warnings.push(format!(
-                "{}: animation stack has no bone tracks",
-                clip_name
-            ));
+            result
+                .warnings
+                .push(format!("{}: animation stack has no bone tracks", clip_name));
             continue;
         }
 
@@ -478,8 +482,7 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
     // identifier into `scene.elements`, while the nodes list just happens to
     // hold references. Using element_id keeps cluster-target lookups and
     // parent-walk lookups in the same key space.
-    let mut eid_is_joint: std::collections::HashSet<u32> =
-        std::collections::HashSet::new();
+    let mut eid_is_joint: std::collections::HashSet<u32> = std::collections::HashSet::new();
     for node in &scene.nodes {
         if node.bone.is_some() {
             eid_is_joint.insert(node.element.element_id);
@@ -534,8 +537,7 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
             Some(n) => *n,
             None => continue,
         };
-        let mut walker: Option<&ufbx::Node> =
-            node.parent.as_ref().map(|p| -> &ufbx::Node { p });
+        let mut walker: Option<&ufbx::Node> = node.parent.as_ref().map(|p| -> &ufbx::Node { p });
         while let Some(parent) = walker {
             let pid = parent.element.element_id;
             if let Some(&pji) = eid_to_joint_idx.get(&pid) {
@@ -563,10 +565,22 @@ fn matrix_to_gltf(m: &ufbx::Matrix) -> [f32; 16] {
     // GLTF column-major. ufbx stores mXY where X=row, Y=column, and
     // m03/m13/m23 are the translation column.
     [
-        m.m00 as f32, m.m10 as f32, m.m20 as f32, 0.0,
-        m.m01 as f32, m.m11 as f32, m.m21 as f32, 0.0,
-        m.m02 as f32, m.m12 as f32, m.m22 as f32, 0.0,
-        m.m03 as f32, m.m13 as f32, m.m23 as f32, 1.0,
+        m.m00 as f32,
+        m.m10 as f32,
+        m.m20 as f32,
+        0.0,
+        m.m01 as f32,
+        m.m11 as f32,
+        m.m21 as f32,
+        0.0,
+        m.m02 as f32,
+        m.m12 as f32,
+        m.m22 as f32,
+        0.0,
+        m.m03 as f32,
+        m.m13 as f32,
+        m.m23 as f32,
+        1.0,
     ]
 }
 
@@ -583,9 +597,8 @@ fn load_scene(path: &Path, settings: &ImportSettings) -> Result<ufbx::SceneRoot,
     let path_str = path
         .to_str()
         .ok_or_else(|| ImportError::ParseError("non-utf8 FBX path".into()))?;
-    ufbx::load_file(path_str, opts).map_err(|e| {
-        ImportError::ParseError(format!("ufbx load failed: {}", &*e.description))
-    })
+    ufbx::load_file(path_str, opts)
+        .map_err(|e| ImportError::ParseError(format!("ufbx load failed: {}", &*e.description)))
 }
 
 // ─── Texture + material extraction ─────────────────────────────────────────
@@ -606,7 +619,10 @@ fn sniff_image_extension(data: &[u8]) -> &'static str {
         "bmp"
     } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
         "webp"
-    } else if data.len() > 18 && (data[1] == 0 || data[1] == 1) && (data[2] == 1 || data[2] == 2 || data[2] == 3 || data[2] == 9 || data[2] == 10) {
+    } else if data.len() > 18
+        && (data[1] == 0 || data[1] == 1)
+        && (data[2] == 1 || data[2] == 2 || data[2] == 3 || data[2] == 9 || data[2] == 10)
+    {
         // Heuristic for TGA — there's no magic, so sniff the header layout.
         "tga"
     } else {
@@ -636,7 +652,10 @@ fn sanitize_name(input: &str) -> String {
 /// for the GLB builder and a list of files to drop into `<model_dir>/textures/`.
 fn collect_textures_and_materials(
     scene: &ufbx::Scene,
-) -> (crate::obj::MaterialBundle, Vec<crate::convert::ExtractedTexture>) {
+) -> (
+    crate::obj::MaterialBundle,
+    Vec<crate::convert::ExtractedTexture>,
+) {
     use crate::convert::ExtractedTexture;
     use crate::obj::{MaterialBundle, PbrMaterialDef, TextureRef};
     use std::collections::HashMap;

@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::data::{BrushFalloffType, BrushShape, compute_brush_falloff};
+use crate::data::{compute_brush_falloff, BrushFalloffType, BrushShape};
 use crate::splatmap_material::LayerAnimationType;
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -383,7 +383,10 @@ pub fn derive_splatmap_weights(surface: &mut PaintableSurfaceData) {
 /// the mesh doesn't need rebuilding and we save the per-frame mesh regen
 /// cost while painting. Runs before height composition + GPU upload.
 pub fn derive_splatmap_weights_system(
-    mut surfaces: Query<(&mut PaintableSurfaceData, Option<&mut crate::data::TerrainChunkData>)>,
+    mut surfaces: Query<(
+        &mut PaintableSurfaceData,
+        Option<&mut crate::data::TerrainChunkData>,
+    )>,
 ) {
     for (mut surface, chunk) in surfaces.iter_mut() {
         if !surface.dirty {

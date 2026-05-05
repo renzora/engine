@@ -75,23 +75,21 @@ fn resolve_target_rect(
     match target {
         TutorialTarget::Panel(id) => panel_rects.get(*id).copied(),
         TutorialTarget::PanelTopRight(id) => panel_rects.get(*id).map(|r| {
-            Rect::from_min_size(
-                Pos2::new(r.max.x - 48.0, r.min.y),
-                Vec2::new(48.0, 32.0),
-            )
+            Rect::from_min_size(Pos2::new(r.max.x - 48.0, r.min.y), Vec2::new(48.0, 32.0))
         }),
-        TutorialTarget::PanelTop(id) => panel_rects.get(*id).map(|r| {
-            Rect::from_min_size(r.min, Vec2::new(r.width(), 32.0))
-        }),
+        TutorialTarget::PanelTop(id) => panel_rects
+            .get(*id)
+            .map(|r| Rect::from_min_size(r.min, Vec2::new(r.width(), 32.0))),
         TutorialTarget::PanelBottom(id) => panel_rects.get(*id).map(|r| {
             Rect::from_min_size(
                 Pos2::new(r.min.x, r.max.y - 36.0),
                 Vec2::new(r.width(), 36.0),
             )
         }),
-        TutorialTarget::TitleBar => {
-            Some(Rect::from_min_size(screen.min, Vec2::new(screen.width(), 56.0)))
-        }
+        TutorialTarget::TitleBar => Some(Rect::from_min_size(
+            screen.min,
+            Vec2::new(screen.width(), 56.0),
+        )),
         TutorialTarget::Center => None,
     }
 }
@@ -210,26 +208,34 @@ fn compute_card_position(screen: Rect, target: Option<Rect>, arrow: &ArrowDirect
         match arrow {
             ArrowDirection::Left => {
                 // Card to the right of target
-                let x = (rect.max.x + ARROW_GAP + ARROW_SIZE + 8.0).min(screen.max.x - CARD_WIDTH - 16.0);
-                let y = (rect.center().y - card_h_estimate / 2.0).clamp(screen.min.y + 8.0, screen.max.y - card_h_estimate - 8.0);
+                let x = (rect.max.x + ARROW_GAP + ARROW_SIZE + 8.0)
+                    .min(screen.max.x - CARD_WIDTH - 16.0);
+                let y = (rect.center().y - card_h_estimate / 2.0)
+                    .clamp(screen.min.y + 8.0, screen.max.y - card_h_estimate - 8.0);
                 Pos2::new(x, y)
             }
             ArrowDirection::Right => {
                 // Card to the left of target
-                let x = (rect.min.x - ARROW_GAP - ARROW_SIZE - CARD_WIDTH - 8.0).max(screen.min.x + 16.0);
-                let y = (rect.center().y - card_h_estimate / 2.0).clamp(screen.min.y + 8.0, screen.max.y - card_h_estimate - 8.0);
+                let x = (rect.min.x - ARROW_GAP - ARROW_SIZE - CARD_WIDTH - 8.0)
+                    .max(screen.min.x + 16.0);
+                let y = (rect.center().y - card_h_estimate / 2.0)
+                    .clamp(screen.min.y + 8.0, screen.max.y - card_h_estimate - 8.0);
                 Pos2::new(x, y)
             }
             ArrowDirection::Up => {
                 // Card below target
-                let x = (rect.center().x - CARD_WIDTH / 2.0).clamp(screen.min.x + 16.0, screen.max.x - CARD_WIDTH - 16.0);
-                let y = (rect.max.y + ARROW_GAP + ARROW_SIZE + 8.0).min(screen.max.y - card_h_estimate - 8.0);
+                let x = (rect.center().x - CARD_WIDTH / 2.0)
+                    .clamp(screen.min.x + 16.0, screen.max.x - CARD_WIDTH - 16.0);
+                let y = (rect.max.y + ARROW_GAP + ARROW_SIZE + 8.0)
+                    .min(screen.max.y - card_h_estimate - 8.0);
                 Pos2::new(x, y)
             }
             ArrowDirection::Down => {
                 // Card above target
-                let x = (rect.center().x - CARD_WIDTH / 2.0).clamp(screen.min.x + 16.0, screen.max.x - CARD_WIDTH - 16.0);
-                let y = (rect.min.y - ARROW_GAP - ARROW_SIZE - card_h_estimate - 8.0).max(screen.min.y + 8.0);
+                let x = (rect.center().x - CARD_WIDTH / 2.0)
+                    .clamp(screen.min.x + 16.0, screen.max.x - CARD_WIDTH - 16.0);
+                let y = (rect.min.y - ARROW_GAP - ARROW_SIZE - card_h_estimate - 8.0)
+                    .max(screen.min.y + 8.0);
                 Pos2::new(x, y)
             }
             ArrowDirection::None => center_card(screen, card_h_estimate),
@@ -450,9 +456,12 @@ fn draw_card(
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        egui::RichText::new(format!("{}  {}", next_label, next_icon))
-                                            .font(FontId::proportional(13.0))
-                                            .color(Color32::WHITE),
+                                        egui::RichText::new(format!(
+                                            "{}  {}",
+                                            next_label, next_icon
+                                        ))
+                                        .font(FontId::proportional(13.0))
+                                        .color(Color32::WHITE),
                                     )
                                     .fill(accent)
                                     .corner_radius(egui::CornerRadius::same(6))

@@ -60,7 +60,13 @@ impl NoiseMode {
     }
 
     pub fn all() -> &'static [NoiseMode] {
-        &[Self::Fbm, Self::Ridge, Self::Billow, Self::Warped, Self::Hybrid]
+        &[
+            Self::Fbm,
+            Self::Ridge,
+            Self::Billow,
+            Self::Warped,
+            Self::Hybrid,
+        ]
     }
 }
 
@@ -160,7 +166,13 @@ impl StampBlendMode {
     }
 
     pub fn all() -> &'static [StampBlendMode] {
-        &[Self::Add, Self::Subtract, Self::Replace, Self::Max, Self::Min]
+        &[
+            Self::Add,
+            Self::Subtract,
+            Self::Replace,
+            Self::Max,
+            Self::Min,
+        ]
     }
 }
 
@@ -394,7 +406,10 @@ impl StampBrushData {
         let tx = x.fract();
         let ty = y.fract();
         let get = |xi: u32, yi: u32| -> f32 {
-            self.pixels.get((yi * self.width + xi) as usize).copied().unwrap_or(0.0)
+            self.pixels
+                .get((yi * self.width + xi) as usize)
+                .copied()
+                .unwrap_or(0.0)
         };
         let h0 = get(x0, y0) * (1.0 - tx) + get(x1, y0) * tx;
         let h1 = get(x0, y1) * (1.0 - tx) + get(x1, y1) * tx;
@@ -424,18 +439,22 @@ impl StampBrushData {
 
                 let val = match kind {
                     StampPreset::Dome => {
-                        if dist < 1.0 { (1.0 - dist * dist).sqrt() } else { 0.0 }
+                        if dist < 1.0 {
+                            (1.0 - dist * dist).sqrt()
+                        } else {
+                            0.0
+                        }
                     }
-                    StampPreset::Cone => {
-                        (1.0 - dist).max(0.0)
-                    }
-                    StampPreset::Bell => {
-                        (-dist * dist * 3.0).exp()
-                    }
+                    StampPreset::Cone => (1.0 - dist).max(0.0),
+                    StampPreset::Bell => (-dist * dist * 3.0).exp(),
                     StampPreset::Mesa => {
-                        if dist < 0.6 { 1.0 }
-                        else if dist < 1.0 { ((1.0 - dist) / 0.4).clamp(0.0, 1.0) }
-                        else { 0.0 }
+                        if dist < 0.6 {
+                            1.0
+                        } else if dist < 1.0 {
+                            ((1.0 - dist) / 0.4).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        }
                     }
                     StampPreset::Ridge => {
                         let ridge = (1.0 - (dz.abs() * 3.0).min(1.0)).max(0.0);
@@ -443,20 +462,30 @@ impl StampBrushData {
                         ridge * fade
                     }
                     StampPreset::Crater => {
-                        if dist < 0.4 { dist / 0.4 * 0.3 }
-                        else if dist < 0.7 { 0.3 + (dist - 0.4) / 0.3 * 0.7 }
-                        else if dist < 1.0 { ((1.0 - dist) / 0.3).max(0.0) }
-                        else { 0.0 }
+                        if dist < 0.4 {
+                            dist / 0.4 * 0.3
+                        } else if dist < 0.7 {
+                            0.3 + (dist - 0.4) / 0.3 * 0.7
+                        } else if dist < 1.0 {
+                            ((1.0 - dist) / 0.3).max(0.0)
+                        } else {
+                            0.0
+                        }
                     }
                     StampPreset::Noise => {
                         if dist < 1.0 {
                             let n = crate::sculpt::fbm(
                                 x as f32 * 0.15,
                                 z as f32 * 0.15,
-                                4, 2.0, 0.5, 42,
+                                4,
+                                2.0,
+                                0.5,
+                                42,
                             );
                             n * (1.0 - dist)
-                        } else { 0.0 }
+                        } else {
+                            0.0
+                        }
                     }
                 };
 
@@ -499,7 +528,15 @@ impl StampPreset {
     }
 
     pub fn all() -> &'static [StampPreset] {
-        &[Self::Dome, Self::Cone, Self::Bell, Self::Mesa, Self::Ridge, Self::Crater, Self::Noise]
+        &[
+            Self::Dome,
+            Self::Cone,
+            Self::Bell,
+            Self::Mesa,
+            Self::Ridge,
+            Self::Crater,
+            Self::Noise,
+        ]
     }
 }
 
@@ -525,15 +562,9 @@ pub fn compute_brush_falloff(t: f32, falloff: f32, falloff_type: BrushFalloffTyp
     }
     let edge_t = (t - inner_t) / falloff.max(0.001);
     match falloff_type {
-        BrushFalloffType::Smooth => {
-            (1.0 + (edge_t * std::f32::consts::PI).cos()) * 0.5
-        }
-        BrushFalloffType::Linear => {
-            1.0 - edge_t
-        }
-        BrushFalloffType::Spherical => {
-            (1.0 - edge_t * edge_t).max(0.0).sqrt()
-        }
+        BrushFalloffType::Smooth => (1.0 + (edge_t * std::f32::consts::PI).cos()) * 0.5,
+        BrushFalloffType::Linear => 1.0 - edge_t,
+        BrushFalloffType::Spherical => (1.0 - edge_t * edge_t).max(0.0).sqrt(),
         BrushFalloffType::Tip => {
             let inv = 1.0 - edge_t;
             inv * inv * inv

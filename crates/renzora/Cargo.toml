@@ -4,8 +4,16 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora — types, events, and contracts shared across the engine."
 
+# `renzora` ships as a desktop dylib so the host binary AND every dlopen'd
+# distribution plugin link the same compiled copy of these contracts.
+# That gives the `inventory` plugin registry one single global instance
+# (shared across the dylib boundary), and matching `TypeId`s for
+# cross-plugin types like `PluginScope`. Mobile builds (`renzora-ios`
+# staticlib, `renzora-android` cdylib) consume the rlib variant — no
+# dylib gets produced for those targets because cargo defaults to rlib
+# when `prefer-dynamic` isn't set on the target.
 [lib]
-crate-type = ["dylib"]
+crate-type = ["dylib", "rlib"]
 
 [features]
 default = []
@@ -13,6 +21,14 @@ default = []
 # resource — landing here in a follow-up). Runtime / server builds leave
 # this off so the shipped binary carries no editor surface area.
 editor = []
+# Note on the `dlopen` mechanism: distribution plugins (cdylib + dlopen)
+# need the FFI exports `plugin_create`, `plugin_scope`, `plugin_bevy_hash`
+# from `renzora::add!`. The macro gates those exports behind
+# `cfg(feature = "dlopen")`. Crucially, `cfg(feature = ...)` in a macro
+# body resolves against the *calling* crate's features at expansion site,
+# not against this crate's. So each distribution plugin must declare its
+# own `dlopen = []` feature (and turn it on by default) — adding `features
+# = ["dlopen"]` to the renzora dep does nothing on its own.
 
 [dependencies]
 # `renzora` is the king of the engine — every other crate depends on it,
@@ -24,3 +40,14 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 ron = "0.8"
+# `inventory` collects plugin registrations across crates at runtime via
+# init constructors (`#[ctor]`). Workspace plugins are statically linked
+# into the host binary (rlib by default), so their submissions register
+# at process start. Distribution plugins built as `cdylib` and dropped
+# into `plugins/` register when the dynamic_plugin_loader dlopens them.
+# Both paths feed into the same runtime registry — works uniformly on
+# desktop, mobile staticlib/cdylib, and wasm32 (via __wasm_call_ctors).
+inventory = "0.3"
+
+[lints]
+workspace = true

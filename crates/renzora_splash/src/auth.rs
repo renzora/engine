@@ -142,9 +142,7 @@ fn login_blocking(email: &str, password: &str) -> LoginOutcome {
     let resp: AuthResponse = match serde_json::from_str(&text) {
         Ok(r) => r,
         Err(_) => {
-            return LoginOutcome::Error(
-                "Invalid email or password".into(),
-            );
+            return LoginOutcome::Error("Invalid email or password".into());
         }
     };
 

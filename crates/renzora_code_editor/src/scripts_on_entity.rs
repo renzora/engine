@@ -160,9 +160,11 @@ impl EditorPanel for ScriptsOnEntityPanel {
                 );
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new("Click 'New Script' above or drag a .lua/.rhai file onto the entity.")
-                        .size(10.5)
-                        .color(disabled),
+                    RichText::new(
+                        "Click 'New Script' above or drag a .lua/.rhai file onto the entity.",
+                    )
+                    .size(10.5)
+                    .color(disabled),
                 );
             });
             return;
@@ -172,24 +174,13 @@ impl EditorPanel for ScriptsOnEntityPanel {
         let entries: Vec<(u32, String, Option<std::path::PathBuf>, bool)> = sc
             .scripts
             .iter()
-            .map(|e| {
-                (
-                    e.id,
-                    e.script_id.clone(),
-                    e.script_path.clone(),
-                    e.enabled,
-                )
-            })
+            .map(|e| (e.id, e.script_id.clone(), e.script_path.clone(), e.enabled))
             .collect();
 
         if entries.is_empty() {
             ui.add_space(12.0);
             ui.vertical_centered(|ui| {
-                ui.label(
-                    RichText::new("No scripts attached")
-                        .size(11.0)
-                        .color(muted),
-                );
+                ui.label(RichText::new("No scripts attached").size(11.0).color(muted));
             });
             return;
         }
@@ -206,11 +197,8 @@ impl EditorPanel for ScriptsOnEntityPanel {
                     );
 
                     if resp.hovered() {
-                        ui.painter().rect_filled(
-                            rect,
-                            2.0,
-                            theme.widgets.hovered_bg.to_color32(),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 2.0, theme.widgets.hovered_bg.to_color32());
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
 
@@ -227,7 +215,9 @@ impl EditorPanel for ScriptsOnEntityPanel {
                     let display = script_path
                         .as_ref()
                         .and_then(|p| {
-                            p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+                            p.file_name()
+                                .and_then(|n| n.to_str())
+                                .map(|s| s.to_string())
                         })
                         .unwrap_or_else(|| {
                             if script_id.is_empty() {
@@ -341,9 +331,7 @@ impl EditorPanel for ScriptsOnEntityPanel {
                                 continue;
                             }
                             c.push(move |world: &mut World| {
-                                if let Some(mut s) =
-                                    world.get_resource_mut::<CodeEditorState>()
-                                {
+                                if let Some(mut s) = world.get_resource_mut::<CodeEditorState>() {
                                     s.open_file(resolved);
                                 }
                             });
@@ -353,11 +341,8 @@ impl EditorPanel for ScriptsOnEntityPanel {
                     if toggle_resp.clicked() {
                         if let Some(c) = cmds {
                             c.push(move |world: &mut World| {
-                                if let Some(mut sc) =
-                                    world.get_mut::<ScriptComponent>(entity)
-                                {
-                                    if let Some(entry) =
-                                        sc.scripts.iter_mut().find(|e| e.id == id)
+                                if let Some(mut sc) = world.get_mut::<ScriptComponent>(entity) {
+                                    if let Some(entry) = sc.scripts.iter_mut().find(|e| e.id == id)
                                     {
                                         entry.enabled = !entry.enabled;
                                     }
@@ -369,9 +354,7 @@ impl EditorPanel for ScriptsOnEntityPanel {
                     if detach_resp.clicked() {
                         if let Some(c) = cmds {
                             c.push(move |world: &mut World| {
-                                if let Some(mut sc) =
-                                    world.get_mut::<ScriptComponent>(entity)
-                                {
+                                if let Some(mut sc) = world.get_mut::<ScriptComponent>(entity) {
                                     sc.scripts.retain(|e| e.id != id);
                                 }
                             });

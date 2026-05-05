@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::post_process::motion_blur::MotionBlur;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -69,29 +69,66 @@ fn inspector_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<MotionBlurSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(MotionBlurSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(MotionBlurSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(MotionBlurSettings, MotionBlur)>();
+            world
+                .entity_mut(entity)
+                .remove::<(MotionBlurSettings, MotionBlur)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<MotionBlurSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<MotionBlurSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![
             FieldDef {
                 name: "Shutter Angle",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<MotionBlurSettings>(entity).map(|s| FieldValue::Float(s.shutter_angle)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) { s.shutter_angle = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<MotionBlurSettings>(entity)
+                        .map(|s| FieldValue::Float(s.shutter_angle))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) {
+                            s.shutter_angle = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Samples",
-                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 16.0 },
-                get_fn: |world, entity| world.get::<MotionBlurSettings>(entity).map(|s| FieldValue::Float(s.samples)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) { s.samples = v; } } },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 0.0,
+                    max: 16.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<MotionBlurSettings>(entity)
+                        .map(|s| FieldValue::Float(s.samples))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<MotionBlurSettings>(entity) {
+                            s.samples = v;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,
@@ -112,6 +149,7 @@ fn cleanup_motion_blur(
     }
 }
 
+#[derive(Default)]
 pub struct MotionBlurPlugin;
 
 impl Plugin for MotionBlurPlugin {
@@ -123,3 +161,5 @@ impl Plugin for MotionBlurPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(MotionBlurPlugin);

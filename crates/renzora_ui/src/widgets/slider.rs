@@ -20,13 +20,22 @@ pub struct SliderConfig {
 
 impl Default for SliderConfig {
     fn default() -> Self {
-        Self { min: 0.0, max: 1.0, show_endpoints: true, decimals: 2 }
+        Self {
+            min: 0.0,
+            max: 1.0,
+            show_endpoints: true,
+            decimals: 2,
+        }
     }
 }
 
 impl SliderConfig {
     pub fn new(min: f32, max: f32) -> Self {
-        Self { min, max, ..Self::default() }
+        Self {
+            min,
+            max,
+            ..Self::default()
+        }
     }
     pub fn decimals(mut self, d: usize) -> Self {
         self.decimals = d;
@@ -57,9 +66,8 @@ pub fn labeled_slider(
             );
         }
 
-        let slider_w = (ui.available_width()
-            - if cfg.show_endpoints { 44.0 } else { 0.0 })
-            .max(40.0);
+        let slider_w =
+            (ui.available_width() - if cfg.show_endpoints { 44.0 } else { 0.0 }).max(40.0);
         let r = ui.add_sized(
             [slider_w, 16.0],
             egui::Slider::new(value, cfg.min..=cfg.max)

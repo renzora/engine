@@ -11,9 +11,10 @@ use renzora_editor::{
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_theme::Theme;
 
-
 /// Image extensions accepted for auto-material creation.
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp",
+];
 
 /// How deep we recurse when scanning the project for `.material` files. Six
 /// levels covers `models/<asset>/materials/` plus a couple of hand-organized
@@ -29,13 +30,17 @@ pub fn material_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| {
             world.get::<MaterialRef>(entity).is_some()
-                || world.get::<bevy::pbr::MeshMaterial3d<bevy::pbr::StandardMaterial>>(entity).is_some()
+                || world
+                    .get::<bevy::pbr::MeshMaterial3d<bevy::pbr::StandardMaterial>>(entity)
+                    .is_some()
                 || world.get::<Mesh3d>(entity).is_some()
         },
         add_fn: None,
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<MaterialRef>();
-            world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+            world
+                .entity_mut(entity)
+                .remove::<renzora_shader::material::resolver::MaterialResolved>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -92,10 +97,8 @@ fn material_custom_ui(
 
     ui.add_space(2.0);
     let avail = ui.available_width();
-    let (row_rect, _row_resp) = ui.allocate_exact_size(
-        egui::vec2(avail, ROW_HEIGHT),
-        egui::Sense::hover(),
-    );
+    let (row_rect, _row_resp) =
+        ui.allocate_exact_size(egui::vec2(avail, ROW_HEIGHT), egui::Sense::hover());
 
     // Drop detection across the whole row.
     let compatible_drag = payload
@@ -126,10 +129,8 @@ fn material_custom_ui(
     }
 
     // Thumbnail.
-    let thumb_rect = egui::Rect::from_min_size(
-        row_rect.left_top(),
-        egui::vec2(THUMB_SIZE, THUMB_SIZE),
-    );
+    let thumb_rect =
+        egui::Rect::from_min_size(row_rect.left_top(), egui::vec2(THUMB_SIZE, THUMB_SIZE));
     ui.painter().rect_filled(
         thumb_rect,
         egui::CornerRadius::same(3),
@@ -149,7 +150,8 @@ fn material_custom_ui(
         let registry = world.get_resource::<MaterialThumbnailRegistry>();
         if let Some(tid) = registry.and_then(|r| r.get(&abs_path)) {
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-            ui.painter().image(tid, thumb_rect, uv, egui::Color32::WHITE);
+            ui.painter()
+                .image(tid, thumb_rect, uv, egui::Color32::WHITE);
         } else {
             ui.painter().text(
                 thumb_rect.center(),
@@ -202,7 +204,10 @@ fn material_custom_ui(
     let dropdown_btn = dropdown_btn.on_hover_text(if current_path.is_empty() {
         "Browse all .material files in the project".to_string()
     } else {
-        format!("Current: {}\nClick to browse all .material files", current_path)
+        format!(
+            "Current: {}\nClick to browse all .material files",
+            current_path
+        )
     });
     if dropdown_btn.clicked() {
         ui.memory_mut(|m| m.toggle_popup(browse_id));
@@ -373,10 +378,7 @@ fn material_custom_ui(
                             ui.painter().rect_stroke(
                                 row_rect.shrink(0.5),
                                 egui::CornerRadius::same(3),
-                                egui::Stroke::new(
-                                    1.0,
-                                    theme.semantic.accent.to_color32(),
-                                ),
+                                egui::Stroke::new(1.0, theme.semantic.accent.to_color32()),
                                 egui::StrokeKind::Inside,
                             );
                         }
@@ -398,12 +400,8 @@ fn material_custom_ui(
                                 egui::pos2(0.0, 0.0),
                                 egui::pos2(1.0, 1.0),
                             );
-                            ui.painter().image(
-                                tid,
-                                thumb_rect,
-                                uv,
-                                egui::Color32::WHITE,
-                            );
+                            ui.painter()
+                                .image(tid, thumb_rect, uv, egui::Color32::WHITE);
                         } else {
                             thumb_requests.borrow_mut().push(abs_pb);
                         }
@@ -477,7 +475,9 @@ fn material_custom_ui(
 
     if let Some(rel_path) = chosen_material {
         cmds.push(move |world: &mut World| {
-            world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+            world
+                .entity_mut(entity)
+                .remove::<renzora_shader::material::resolver::MaterialResolved>();
             if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
                 mr.0 = rel_path;
             } else {
@@ -500,9 +500,15 @@ fn material_custom_ui(
     if clear_clicked {
         cmds.push(move |world: &mut World| {
             world.entity_mut(entity).remove::<MaterialRef>();
-            world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
-            world.entity_mut(entity).remove::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>();
-            let default_mat = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
+            world
+                .entity_mut(entity)
+                .remove::<renzora_shader::material::resolver::MaterialResolved>();
+            world
+                .entity_mut(entity)
+                .remove::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>();
+            let default_mat = world
+                .resource_mut::<Assets<StandardMaterial>>()
+                .add(StandardMaterial::default());
             world.entity_mut(entity).insert(MeshMaterial3d(default_mat));
         });
     }
@@ -516,12 +522,15 @@ fn material_custom_ui(
 
         if ext == "material" {
             cmds.push(move |world: &mut World| {
-                let mat_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
-                    project.make_asset_relative(&dropped)
-                } else {
-                    dropped.to_string_lossy().to_string()
-                };
-                world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+                let mat_path =
+                    if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+                        project.make_asset_relative(&dropped)
+                    } else {
+                        dropped.to_string_lossy().to_string()
+                    };
+                world
+                    .entity_mut(entity)
+                    .remove::<renzora_shader::material::resolver::MaterialResolved>();
                 if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
                     mr.0 = mat_path;
                 } else {
@@ -578,7 +587,9 @@ fn material_custom_ui(
                     }
                 };
 
-                world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+                world
+                    .entity_mut(entity)
+                    .remove::<renzora_shader::material::resolver::MaterialResolved>();
                 if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
                     mr.0 = mat_asset_path;
                 } else {
@@ -774,8 +785,8 @@ fn render_overrides_section(
             // show up in the resolver's "needs work" query next frame.
             // Without the cache invalidation, the resolver would
             // re-bind the same stale handle.
-            if let Some(mut cache) = world
-                .get_resource_mut::<renzora_shader::material::resolver::MaterialCache>()
+            if let Some(mut cache) =
+                world.get_resource_mut::<renzora_shader::material::resolver::MaterialCache>()
             {
                 cache.invalidate(&asset_path);
             }
@@ -791,11 +802,15 @@ fn render_overrides_section(
                 }
             }
             for e in to_invalidate {
-                world.entity_mut(e).remove::<renzora_shader::material::resolver::MaterialResolved>();
+                world
+                    .entity_mut(e)
+                    .remove::<renzora_shader::material::resolver::MaterialResolved>();
             }
             // Defensively also clear on the entity that triggered
             // the change in case its MaterialRef was stale.
-            world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+            world
+                .entity_mut(entity)
+                .remove::<renzora_shader::material::resolver::MaterialResolved>();
         });
     }
 }
@@ -813,10 +828,7 @@ fn render_param_widget(
     match (kind, current) {
         (ParamKind::Float, ParamValue::Float(f)) => {
             let mut v = *f;
-            if ui
-                .add(egui::DragValue::new(&mut v).speed(0.01))
-                .changed()
-            {
+            if ui.add(egui::DragValue::new(&mut v).speed(0.01)).changed() {
                 Some(ParamValue::Float(v))
             } else {
                 None
@@ -842,49 +854,88 @@ fn render_param_widget(
             let mut a = *xy;
             let mut changed = false;
             ui.horizontal(|ui| {
-                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:"))
+                    .changed()
+                {
                     changed = true;
                 }
             });
-            if changed { Some(ParamValue::Vec2(a)) } else { None }
+            if changed {
+                Some(ParamValue::Vec2(a))
+            } else {
+                None
+            }
         }
         (ParamKind::Vec3, ParamValue::Vec3(xyz)) => {
             let mut a = *xyz;
             let mut changed = false;
             ui.horizontal(|ui| {
-                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:"))
+                    .changed()
+                {
                     changed = true;
                 }
             });
-            if changed { Some(ParamValue::Vec3(a)) } else { None }
+            if changed {
+                Some(ParamValue::Vec3(a))
+            } else {
+                None
+            }
         }
         (ParamKind::Vec4, ParamValue::Vec4(xyzw)) => {
             let mut a = *xyzw;
             let mut changed = false;
             ui.horizontal(|ui| {
-                if ui.add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[0]).speed(0.01).prefix("x:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[1]).speed(0.01).prefix("y:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[2]).speed(0.01).prefix("z:"))
+                    .changed()
+                {
                     changed = true;
                 }
-                if ui.add(egui::DragValue::new(&mut a[3]).speed(0.01).prefix("w:")).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut a[3]).speed(0.01).prefix("w:"))
+                    .changed()
+                {
                     changed = true;
                 }
             });
-            if changed { Some(ParamValue::Vec4(a)) } else { None }
+            if changed {
+                Some(ParamValue::Vec4(a))
+            } else {
+                None
+            }
         }
         // Mismatched (e.g. master is Float but stored override is Color
         // — happens after a master parameter renames + the instance
@@ -978,7 +1029,9 @@ fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> 
     let mut out = Vec::new();
     let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(project_root.to_path_buf(), 0)];
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             // Skip dotfiles / hidden dirs (.git, .vscode) and target dirs —
@@ -994,10 +1047,7 @@ fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> 
                     stack.push((path, depth + 1));
                 }
             } else if ft.is_file()
-                && matches!(
-                    path.extension().and_then(|e| e.to_str()),
-                    Some("material")
-                )
+                && matches!(path.extension().and_then(|e| e.to_str()), Some("material"))
             {
                 if let Ok(rel) = path.strip_prefix(project_root) {
                     let rel_str = rel.to_string_lossy().replace('\\', "/");

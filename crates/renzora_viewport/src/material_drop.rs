@@ -24,11 +24,7 @@ const MATERIAL_EXTENSIONS: &[&str] = &["material"];
 /// Called from the viewport panel's `ui()` method. On release of a
 /// `.material` drag payload over the viewport, queue a deferred command
 /// that raycasts for the mesh under the pointer and applies the material.
-pub fn check_viewport_material_drop(
-    ui: &mut egui::Ui,
-    world: &World,
-    viewport_rect: egui::Rect,
-) {
+pub fn check_viewport_material_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
     let Some(payload) = world.get_resource::<AssetDragPayload>() else {
         return;
     };
@@ -103,7 +99,10 @@ fn pick_mesh_under_pointer(
 /// and picks up the new material on the next frame.
 fn apply_material_to_entity(world: &mut World, entity: Entity, abs_path: PathBuf) {
     if world.get_entity(entity).is_err() {
-        warn!("[material_drop] Target entity {:?} no longer exists", entity);
+        warn!(
+            "[material_drop] Target entity {:?} no longer exists",
+            entity
+        );
         return;
     }
 
@@ -117,7 +116,9 @@ fn apply_material_to_entity(world: &mut World, entity: Entity, abs_path: PathBuf
     if let Some(mut mr) = world.get_mut::<MaterialRef>(entity) {
         mr.0 = asset_path.clone();
     } else {
-        world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
+        world
+            .entity_mut(entity)
+            .insert(MaterialRef(asset_path.clone()));
     }
 
     info!(

@@ -40,7 +40,11 @@ pub fn render_script_variables_content(
     if props.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("No variables defined").size(12.0).color(muted));
+            ui.label(
+                RichText::new("No variables defined")
+                    .size(12.0)
+                    .color(muted),
+            );
             ui.add_space(10.0);
             ui.label(
                 RichText::new("Add a props() function to define variables:")
@@ -62,12 +66,7 @@ pub fn render_script_variables_content(
                 .corner_radius(4.0)
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new(example)
-                            .size(10.0)
-                            .color(muted)
-                            .monospace(),
-                    );
+                    ui.label(RichText::new(example).size(10.0).color(muted).monospace());
                 });
         });
         return;
@@ -91,12 +90,7 @@ pub fn render_script_variables_content(
     });
 }
 
-fn render_prop_row(
-    ui: &mut egui::Ui,
-    idx: usize,
-    prop: &ScriptVariableDefinition,
-    theme: &Theme,
-) {
+fn render_prop_row(ui: &mut egui::Ui, idx: usize, prop: &ScriptVariableDefinition, theme: &Theme) {
     let bg = if idx % 2 == 0 {
         theme.panels.inspector_row_even.to_color32()
     } else {

@@ -13,3 +13,6 @@ bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
+
+[lints]
+workspace = true

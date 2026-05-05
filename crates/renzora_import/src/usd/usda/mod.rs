@@ -3,8 +3,8 @@
 //! Implements a proper recursive descent parser for USDA text,
 //! supporting nested prims, properties, metadata, and relationships.
 
-mod tokenizer;
 mod parser;
+mod tokenizer;
 
 use super::scene::*;
 use super::UsdResult;

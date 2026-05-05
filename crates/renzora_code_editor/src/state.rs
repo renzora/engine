@@ -152,7 +152,12 @@ impl Default for CodeEditorState {
 impl CodeEditorState {
     /// Find the next match of `find_text` in the active file's content starting from `from`.
     /// Returns the byte index of the match start.
-    pub fn find_next_in(content: &str, needle: &str, from: usize, case_sensitive: bool) -> Option<usize> {
+    pub fn find_next_in(
+        content: &str,
+        needle: &str,
+        from: usize,
+        case_sensitive: bool,
+    ) -> Option<usize> {
         let matches = find_all_matches(content, needle, case_sensitive, false);
         if matches.is_empty() {
             return None;
@@ -168,7 +173,9 @@ impl CodeEditorState {
     /// Replace all occurrences in active file. Returns count replaced.
     pub fn replace_all_active(&mut self) -> usize {
         let Some(idx) = self.active_tab else { return 0 };
-        let Some(file) = self.open_files.get_mut(idx) else { return 0 };
+        let Some(file) = self.open_files.get_mut(idx) else {
+            return 0;
+        };
         if self.find_text.is_empty() {
             return 0;
         }
@@ -228,11 +235,7 @@ pub fn find_all_matches(
     out
 }
 
-fn find_all_case_insensitive(
-    content: &str,
-    needle: &str,
-    whole_word: bool,
-) -> Vec<(usize, usize)> {
+fn find_all_case_insensitive(content: &str, needle: &str, whole_word: bool) -> Vec<(usize, usize)> {
     let hay_lower = content.to_lowercase();
     let needle_lower = needle.to_lowercase();
     let bytes = content.as_bytes();
@@ -260,10 +263,10 @@ fn find_all_case_insensitive(
 }
 
 fn word_boundary_ok(bytes: &[u8], start: usize, end: usize) -> bool {
-    let before_ok = start == 0
-        || !(bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_');
-    let after_ok = end >= bytes.len()
-        || !(bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_');
+    let before_ok =
+        start == 0 || !(bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_');
+    let after_ok =
+        end >= bytes.len() || !(bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_');
     before_ok && after_ok
 }
 
@@ -415,7 +418,9 @@ end
     /// so the disk copy always has the full content.
     pub fn save_file(&mut self, idx: usize) {
         let trim = self.trim_trailing_whitespace_on_save;
-        let Some(file) = self.open_files.get_mut(idx) else { return };
+        let Some(file) = self.open_files.get_mut(idx) else {
+            return;
+        };
         restore_all_folds(file);
         if trim {
             let cleaned = trim_trailing_whitespace(&file.content);

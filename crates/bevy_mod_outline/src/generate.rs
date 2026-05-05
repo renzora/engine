@@ -1,9 +1,9 @@
 use bevy::{
     ecs::message::MessageReader,
     math::FloatOrd,
+    mesh::{Indices, VertexAttributeValues},
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    mesh::{Indices, VertexAttributeValues},
     render::render_resource::{PrimitiveTopology, VertexFormat},
 };
 

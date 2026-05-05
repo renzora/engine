@@ -120,16 +120,12 @@ impl EditorPanel for SequencerPanel {
                         ui.set_height(RULER_HEIGHT);
                         ui.horizontal_centered(|ui| {
                             ui.add_space(6.0);
-                            ui.label(
-                                egui::RichText::new("Tracks").size(10.0).color(muted_color),
-                            );
+                            ui.label(egui::RichText::new("Tracks").size(10.0).color(muted_color));
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     if ui
-                                        .small_button(
-                                            egui::RichText::new(regular::PLUS).size(11.0),
-                                        )
+                                        .small_button(egui::RichText::new(regular::PLUS).size(11.0))
                                         .on_hover_text("Add track")
                                         .clicked()
                                     {
@@ -286,9 +282,7 @@ impl EditorPanel for SequencerPanel {
                         let t = (local_x / state.timeline_zoom) + state.timeline_scroll;
                         push_action(
                             &self.bridge,
-                            SequencerAction::SetPlayhead(
-                                t.clamp(0.0, state.sequence.duration),
-                            ),
+                            SequencerAction::SetPlayhead(t.clamp(0.0, state.sequence.duration)),
                         );
                     }
                 }
@@ -298,7 +292,11 @@ impl EditorPanel for SequencerPanel {
                     .id_salt("seq_track_lanes")
                     .show(ui, |ui| {
                         for (track_idx, track) in state.sequence.tracks.iter().enumerate() {
-                            let row_bg = if track_idx % 2 == 0 { row_even } else { row_odd };
+                            let row_bg = if track_idx % 2 == 0 {
+                                row_even
+                            } else {
+                                row_odd
+                            };
                             let (rect, lane_resp) = ui.allocate_exact_size(
                                 egui::vec2(timeline_width, state.track_height),
                                 egui::Sense::click_and_drag(),
@@ -357,14 +355,8 @@ impl EditorPanel for SequencerPanel {
                     painter.add(egui::Shape::convex_polygon(
                         vec![
                             egui::pos2(playhead_x, timeline_top + RULER_HEIGHT - 2.0),
-                            egui::pos2(
-                                playhead_x - tri,
-                                timeline_top + RULER_HEIGHT - tri - 2.0,
-                            ),
-                            egui::pos2(
-                                playhead_x + tri,
-                                timeline_top + RULER_HEIGHT - tri - 2.0,
-                            ),
+                            egui::pos2(playhead_x - tri, timeline_top + RULER_HEIGHT - tri - 2.0),
+                            egui::pos2(playhead_x + tri, timeline_top + RULER_HEIGHT - tri - 2.0),
                         ],
                         PLAYHEAD_COLOR,
                         egui::Stroke::NONE,
@@ -445,7 +437,11 @@ impl SequencerPanel {
                     } else {
                         regular::PLAY
                     };
-                    let icon_color = if state.playing { accent_color } else { text_color };
+                    let icon_color = if state.playing {
+                        accent_color
+                    } else {
+                        text_color
+                    };
                     if ui
                         .button(egui::RichText::new(icon).size(14.0).color(icon_color))
                         .clicked()
@@ -478,7 +474,11 @@ impl SequencerPanel {
 
                     ui.separator();
 
-                    let loop_color = if state.looping { accent_color } else { muted_color };
+                    let loop_color = if state.looping {
+                        accent_color
+                    } else {
+                        muted_color
+                    };
                     if ui
                         .button(
                             egui::RichText::new(regular::REPEAT)
@@ -488,10 +488,7 @@ impl SequencerPanel {
                         .on_hover_text("Loop")
                         .clicked()
                     {
-                        push_action(
-                            &self.bridge,
-                            SequencerAction::SetLooping(!state.looping),
-                        );
+                        push_action(&self.bridge, SequencerAction::SetLooping(!state.looping));
                     }
 
                     ui.separator();
@@ -503,7 +500,9 @@ impl SequencerPanel {
                                 .size(11.0)
                                 .color(text_color),
                         )
-                        .on_hover_text("Add a camera keyframe at the playhead from the live editor camera")
+                        .on_hover_text(
+                            "Add a camera keyframe at the playhead from the live editor camera",
+                        )
                         .clicked()
                     {
                         push_action(&self.bridge, SequencerAction::AddCameraKeyAtPlayhead);
@@ -536,7 +535,9 @@ impl SequencerPanel {
                                 .size(11.0)
                                 .color(COLOR_MEDIA),
                         )
-                        .on_hover_text("Bake the full sequence to a media clip (stub — wire to recorder)")
+                        .on_hover_text(
+                            "Bake the full sequence to a media clip (stub — wire to recorder)",
+                        )
                         .clicked()
                     {
                         push_action(
@@ -585,61 +586,58 @@ impl SequencerPanel {
                     }
 
                     // Right side
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            let secs = state.playhead;
-                            let mins = (secs / 60.0) as u32;
-                            let frame = (secs * state.sequence.fps as f32) as u32;
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{:02}:{:05.2}  f{}",
-                                    mins,
-                                    secs % 60.0,
-                                    frame
-                                ))
-                                .color(text_color)
-                                .monospace()
-                                .size(11.0),
-                            );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let secs = state.playhead;
+                        let mins = (secs / 60.0) as u32;
+                        let frame = (secs * state.sequence.fps as f32) as u32;
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{:02}:{:05.2}  f{}",
+                                mins,
+                                secs % 60.0,
+                                frame
+                            ))
+                            .color(text_color)
+                            .monospace()
+                            .size(11.0),
+                        );
 
-                            ui.separator();
+                        ui.separator();
 
-                            if ui
-                                .button(
-                                    egui::RichText::new(regular::MAGNIFYING_GLASS_PLUS)
-                                        .size(12.0)
-                                        .color(muted_color),
-                                )
-                                .on_hover_text("Zoom in")
-                                .clicked()
-                            {
-                                push_action(
-                                    &self.bridge,
-                                    SequencerAction::SetZoom(state.timeline_zoom * 1.25),
-                                );
-                            }
-                            ui.label(
-                                egui::RichText::new(format!("{:.0}px/s", state.timeline_zoom))
-                                    .size(10.0)
+                        if ui
+                            .button(
+                                egui::RichText::new(regular::MAGNIFYING_GLASS_PLUS)
+                                    .size(12.0)
                                     .color(muted_color),
+                            )
+                            .on_hover_text("Zoom in")
+                            .clicked()
+                        {
+                            push_action(
+                                &self.bridge,
+                                SequencerAction::SetZoom(state.timeline_zoom * 1.25),
                             );
-                            if ui
-                                .button(
-                                    egui::RichText::new(regular::MAGNIFYING_GLASS_MINUS)
-                                        .size(12.0)
-                                        .color(muted_color),
-                                )
-                                .on_hover_text("Zoom out")
-                                .clicked()
-                            {
-                                push_action(
-                                    &self.bridge,
-                                    SequencerAction::SetZoom(state.timeline_zoom * 0.8),
-                                );
-                            }
-                        },
-                    );
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("{:.0}px/s", state.timeline_zoom))
+                                .size(10.0)
+                                .color(muted_color),
+                        );
+                        if ui
+                            .button(
+                                egui::RichText::new(regular::MAGNIFYING_GLASS_MINUS)
+                                    .size(12.0)
+                                    .color(muted_color),
+                            )
+                            .on_hover_text("Zoom out")
+                            .clicked()
+                        {
+                            push_action(
+                                &self.bridge,
+                                SequencerAction::SetZoom(state.timeline_zoom * 0.8),
+                            );
+                        }
+                    });
                 });
             });
     }
@@ -941,8 +939,14 @@ fn paint_ruler(
     let end_x = rect.left() + (duration - scroll) * zoom;
     if end_x >= rect.left() && end_x <= rect.right() {
         painter.line_segment(
-            [egui::pos2(end_x, rect.top()), egui::pos2(end_x, rect.bottom())],
-            egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 255, 255, 50)),
+            [
+                egui::pos2(end_x, rect.top()),
+                egui::pos2(end_x, rect.bottom()),
+            ],
+            egui::Stroke::new(
+                1.0,
+                egui::Color32::from_rgba_premultiplied(255, 255, 255, 50),
+            ),
         );
     }
 }

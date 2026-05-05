@@ -49,7 +49,9 @@ pub fn update_scene_icon_cache(
 
     cache.light_icons.clear();
     for gt in &suns {
-        cache.light_icons.push((gt.translation(), icons::SUN_HORIZON));
+        cache
+            .light_icons
+            .push((gt.translation(), icons::SUN_HORIZON));
     }
     for gt in &dir_lights {
         cache.light_icons.push((gt.translation(), icons::SUN));
@@ -58,7 +60,9 @@ pub fn update_scene_icon_cache(
         cache.light_icons.push((gt.translation(), icons::LIGHTBULB));
     }
     for gt in &spot_lights {
-        cache.light_icons.push((gt.translation(), icons::FLASHLIGHT));
+        cache
+            .light_icons
+            .push((gt.translation(), icons::FLASHLIGHT));
     }
 
     cache.camera_icons.clear();
@@ -74,7 +78,8 @@ const SUN_COLOR: Color = Color::srgb(1.0, 0.92, 0.55);
 /// Icon glyph point size — sized to read like Unreal's scene icons (large
 /// and easy to click) rather than tiny annotations.
 pub(crate) const ICON_FONT_SIZE: f32 = 44.0;
-pub(crate) const ICON_COLOR: egui::Color32 = egui::Color32::from_rgba_premultiplied(255, 220, 130, 235);
+pub(crate) const ICON_COLOR: egui::Color32 =
+    egui::Color32::from_rgba_premultiplied(255, 220, 130, 235);
 pub(crate) const ICON_SHADOW: egui::Color32 = egui::Color32::from_rgba_premultiplied(0, 0, 0, 200);
 
 // ── Selection-only 3D wireframe extras ──────────────────────────────────────
@@ -86,7 +91,9 @@ pub fn draw_light_gizmos(
     spot_lights: Query<(Entity, &GlobalTransform, &SpotLight)>,
     dir_lights: Query<(Entity, &GlobalTransform, &DirectionalLight)>,
 ) {
-    let Some(selected) = selection.get() else { return };
+    let Some(selected) = selection.get() else {
+        return;
+    };
 
     if let Ok((_, gt, light)) = point_lights.get(selected) {
         let pos = gt.translation();
@@ -111,9 +118,23 @@ pub fn draw_light_gizmos(
         let range = light.range.max(0.01);
         let outer = light.outer_angle.clamp(0.0, std::f32::consts::FRAC_PI_2);
         let inner = light.inner_angle.clamp(0.0, outer);
-        draw_spot_cone(&mut gizmos, pos, rot, range, outer, with_alpha(SPOT_COLOR, 0.65));
+        draw_spot_cone(
+            &mut gizmos,
+            pos,
+            rot,
+            range,
+            outer,
+            with_alpha(SPOT_COLOR, 0.65),
+        );
         if inner > 0.001 && (outer - inner).abs() > 0.01 {
-            draw_spot_cone(&mut gizmos, pos, rot, range, inner, with_alpha(SPOT_COLOR, 0.4));
+            draw_spot_cone(
+                &mut gizmos,
+                pos,
+                rot,
+                range,
+                inner,
+                with_alpha(SPOT_COLOR, 0.4),
+            );
         }
     }
 
@@ -188,10 +209,18 @@ pub fn draw_light_icon_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rec
     if !icons_enabled(world) {
         return;
     }
-    let Some(cache) = world.get_resource::<SceneIconCache>() else { return };
-    let Some(cam_entity) = cache.editor_camera else { return };
-    let Some(camera) = world.get::<Camera>(cam_entity) else { return };
-    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else { return };
+    let Some(cache) = world.get_resource::<SceneIconCache>() else {
+        return;
+    };
+    let Some(cam_entity) = cache.editor_camera else {
+        return;
+    };
+    let Some(camera) = world.get::<Camera>(cam_entity) else {
+        return;
+    };
+    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else {
+        return;
+    };
     let painter = ui.painter_at(rect);
     let font = egui::FontId::proportional(ICON_FONT_SIZE);
 

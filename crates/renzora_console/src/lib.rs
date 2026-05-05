@@ -214,8 +214,14 @@ impl Plugin for ConsolePlugin {
 
         app.insert_resource(bridge);
         use renzora_editor::SplashState;
-        app.add_systems(Update, (drain_log_buffer, drain_script_logs, sync_console_bridge).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (drain_log_buffer, drain_script_logs, sync_console_bridge)
+                .run_if(in_state(SplashState::Editor)),
+        );
 
         app.register_panel(ConsolePanel::new(arc));
     }
 }
+
+renzora::add!(ConsolePlugin, Editor);

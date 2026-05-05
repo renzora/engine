@@ -19,3 +19,6 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 ureq = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
+
+[lints]
+workspace = true

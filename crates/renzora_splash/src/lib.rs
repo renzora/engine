@@ -11,16 +11,15 @@ pub use auth::SplashAuth;
 pub use config::{AppConfig, UpdateConfig};
 pub use github::GithubStats;
 pub use loading::{
-    paint_loading_overlay, EditorLoadingOverlayActive, LoadingTask, LoadingTaskHandle,
-    LoadingTasks,
+    paint_loading_overlay, EditorLoadingOverlayActive, LoadingTask, LoadingTaskHandle, LoadingTasks,
 };
-pub use project::{CurrentProject, ProjectConfig, WindowConfig, open_project};
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;
+pub use project::{open_project, CurrentProject, ProjectConfig, WindowConfig};
 
-use bevy::prelude::*;
 use bevy::app::AppExit;
 use bevy::ecs::system::SystemState;
+use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, Window};
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
@@ -29,7 +28,10 @@ pub use ui::WindowAction;
 #[derive(Resource)]
 struct SplashSystemStates {
     egui: SystemState<EguiContexts<'static, 'static>>,
-    commands: SystemState<(Commands<'static, 'static>, ResMut<'static, NextState<SplashState>>)>,
+    commands: SystemState<(
+        Commands<'static, 'static>,
+        ResMut<'static, NextState<SplashState>>,
+    )>,
 }
 
 /// Flag so we only register the phosphor font once.
@@ -49,6 +51,7 @@ pub struct SplashWindowState {
 // back-compat so existing `renzora_splash::SplashState` paths keep working.
 pub use renzora::SplashState;
 
+#[derive(Default)]
 pub struct SplashPlugin;
 
 impl Plugin for SplashPlugin {
@@ -82,8 +85,7 @@ impl Plugin for SplashPlugin {
             // based on outstanding `PendingMeshInstanceRehydrate` work.
             .add_systems(
                 EguiPrimaryContextPass,
-                loading::editor_loading_overlay_ui_system
-                    .run_if(in_state(SplashState::Editor)),
+                loading::editor_loading_overlay_ui_system.run_if(in_state(SplashState::Editor)),
             )
             .add_systems(
                 Update,
@@ -213,7 +215,9 @@ fn splash_ui_system(world: &mut World) {
     let mut app_config = world.remove_resource::<AppConfig>().unwrap_or_default();
     let mut splash_auth = world.remove_resource::<SplashAuth>().unwrap_or_default();
     let mut github_stats = world.remove_resource::<GithubStats>().unwrap_or_default();
-    let mut win_state = world.remove_resource::<SplashWindowState>().unwrap_or_default();
+    let mut win_state = world
+        .remove_resource::<SplashWindowState>()
+        .unwrap_or_default();
 
     let (mut commands, mut next_state) = states.commands.get_mut(world);
 
@@ -274,3 +278,5 @@ fn with_primary_window(world: &mut World, f: impl FnOnce(&mut Window)) {
         f(&mut *w);
     }
 }
+
+renzora::add!(SplashPlugin, Editor);

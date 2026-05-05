@@ -53,7 +53,9 @@ impl UndoCommand for EditMeshSnapshotCmd {
         self.label
     }
     fn execute(&mut self, world: &mut World) {
-        let Ok(mut ent) = world.get_entity_mut(self.entity) else { return };
+        let Ok(mut ent) = world.get_entity_mut(self.entity) else {
+            return;
+        };
         if let Some(mut edit) = ent.get_mut::<EditMesh>() {
             *edit = self.after.clone();
             edit.dirty = true;
@@ -63,7 +65,9 @@ impl UndoCommand for EditMeshSnapshotCmd {
         }
     }
     fn undo(&mut self, world: &mut World) {
-        let Ok(mut ent) = world.get_entity_mut(self.entity) else { return };
+        let Ok(mut ent) = world.get_entity_mut(self.entity) else {
+            return;
+        };
         if let Some(mut edit) = ent.get_mut::<EditMesh>() {
             *edit = self.before.clone();
             edit.dirty = true;
@@ -88,8 +92,12 @@ impl UndoCommand for VertexMoveCmd {
     }
 
     fn execute(&mut self, world: &mut World) {
-        let Ok(mut ent) = world.get_entity_mut(self.entity) else { return };
-        let Some(mut edit) = ent.get_mut::<EditMesh>() else { return };
+        let Ok(mut ent) = world.get_entity_mut(self.entity) else {
+            return;
+        };
+        let Some(mut edit) = ent.get_mut::<EditMesh>() else {
+            return;
+        };
         for (i, _, new) in &self.deltas {
             if let Some(v) = edit.vertices.get_mut(*i as usize) {
                 v.position = *new;
@@ -99,8 +107,12 @@ impl UndoCommand for VertexMoveCmd {
     }
 
     fn undo(&mut self, world: &mut World) {
-        let Ok(mut ent) = world.get_entity_mut(self.entity) else { return };
-        let Some(mut edit) = ent.get_mut::<EditMesh>() else { return };
+        let Ok(mut ent) = world.get_entity_mut(self.entity) else {
+            return;
+        };
+        let Some(mut edit) = ent.get_mut::<EditMesh>() else {
+            return;
+        };
         for (i, old, _) in &self.deltas {
             if let Some(v) = edit.vertices.get_mut(*i as usize) {
                 v.position = *old;

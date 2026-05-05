@@ -14,6 +14,7 @@ use std::ffi::CString;
 use std::path::Path;
 
 use bevy::prelude::*;
+use clack_extensions::gui::HostGui;
 use clack_extensions::gui::{
     GuiApiType, GuiConfiguration, GuiError, GuiSize, HostGuiImpl, PluginGui,
 };
@@ -21,9 +22,8 @@ use clack_extensions::log::{HostLog, HostLogImpl, LogSeverity};
 use clack_extensions::params::{
     HostParams, HostParamsImplMainThread, HostParamsImplShared, ParamClearFlags, ParamRescanFlags,
 };
-use clack_extensions::gui::HostGui;
 use clack_host::prelude::*;
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 /// Messages that any plugin thread can send back to the main thread.
 #[derive(Debug)]
@@ -66,7 +66,11 @@ pub struct RenzoraHostShared {
 
 impl RenzoraHostShared {
     fn new(sender: Sender<MainThreadMessage>, bus: String, local_id: u64) -> Self {
-        Self { sender, bus, local_id }
+        Self {
+            sender,
+            bus,
+            local_id,
+        }
     }
 }
 
@@ -89,7 +93,10 @@ impl HostLogImpl for RenzoraHostShared {
         if severity <= LogSeverity::Debug {
             return;
         }
-        info!("[plugin {}/{}] {}: {}", self.bus, self.local_id, severity, message);
+        info!(
+            "[plugin {}/{}] {}: {}",
+            self.bus, self.local_id, severity, message
+        );
     }
 }
 
@@ -133,7 +140,10 @@ pub struct RenzoraHostMainThread<'a> {
 
 impl<'a> RenzoraHostMainThread<'a> {
     fn new(shared: &'a RenzoraHostShared) -> Self {
-        Self { _shared: shared, gui: None }
+        Self {
+            _shared: shared,
+            gui: None,
+        }
     }
 }
 
@@ -239,7 +249,10 @@ impl Gui {
     /// if the plugin doesn't support floating GUIs on this platform.
     pub fn new(plugin_gui: PluginGui, plugin: &mut PluginMainThreadHandle) -> Option<Self> {
         let api_type = GuiApiType::default_for_current_platform()?;
-        let config = GuiConfiguration { api_type, is_floating: true };
+        let config = GuiConfiguration {
+            api_type,
+            is_floating: true,
+        };
         if !plugin_gui.is_api_supported(plugin, config) {
             return None;
         }
@@ -250,10 +263,7 @@ impl Gui {
         })
     }
 
-    pub fn open_floating(
-        &mut self,
-        plugin: &mut PluginMainThreadHandle,
-    ) -> Result<(), GuiError> {
+    pub fn open_floating(&mut self, plugin: &mut PluginMainThreadHandle) -> Result<(), GuiError> {
         self.plugin_gui.create(plugin, self.configuration)?;
         self.plugin_gui.suggest_title(plugin, c"Renzora plugin");
         self.plugin_gui.show(plugin)?;
@@ -277,7 +287,9 @@ fn add_dll_directory(bundle_path: &Path) {
 
     // CLAP "bundles" on Windows are usually a single .clap file; the
     // sidecar DLL search path should be the directory containing it.
-    let Some(dir) = bundle_path.parent() else { return };
+    let Some(dir) = bundle_path.parent() else {
+        return;
+    };
     let mut wide: Vec<u16> = dir.as_os_str().encode_wide().collect();
     wide.push(0);
     // SAFETY: wide is a valid null-terminated UTF-16 string for the

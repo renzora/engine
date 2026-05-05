@@ -156,9 +156,7 @@ pub fn smart_home_target(content: &str, byte_idx: usize) -> usize {
     let line_start = line_to_byte(content, line);
     let bytes = content.as_bytes();
     let mut indent_end = line_start;
-    while indent_end < bytes.len()
-        && (bytes[indent_end] == b' ' || bytes[indent_end] == b'\t')
-    {
+    while indent_end < bytes.len() && (bytes[indent_end] == b' ' || bytes[indent_end] == b'\t') {
         indent_end += 1;
     }
     if byte_idx <= indent_end {
@@ -189,10 +187,7 @@ pub fn indent_selection(
         if dedent {
             let bytes = content.as_bytes();
             let mut removed = 0;
-            while removed < TAB_SIZE
-                && ls + removed < bytes.len()
-                && bytes[ls + removed] == b' '
-            {
+            while removed < TAB_SIZE && ls + removed < bytes.len() && bytes[ls + removed] == b' ' {
                 removed += 1;
             }
             if removed == 0 && ls < bytes.len() && bytes[ls] == b'\t' {
@@ -253,11 +248,7 @@ pub fn delete_lines(content: &mut String, a: usize, b: usize) -> usize {
 }
 
 /// Move the selected lines up one. Returns new selection or None if at top.
-pub fn move_lines_up(
-    content: &mut String,
-    a: usize,
-    b: usize,
-) -> Option<(usize, usize)> {
+pub fn move_lines_up(content: &mut String, a: usize, b: usize) -> Option<(usize, usize)> {
     let (first, last) = line_span_of_selection(content, a, b);
     if first == 0 {
         return None;
@@ -275,11 +266,7 @@ pub fn move_lines_up(
 }
 
 /// Move the selected lines down one. Returns new selection or None if at bottom.
-pub fn move_lines_down(
-    content: &mut String,
-    a: usize,
-    b: usize,
-) -> Option<(usize, usize)> {
+pub fn move_lines_down(content: &mut String, a: usize, b: usize) -> Option<(usize, usize)> {
     let (first, last) = line_span_of_selection(content, a, b);
     let lines: Vec<String> = content.split('\n').map(|s| s.to_string()).collect();
     if last + 1 >= lines.len() {
@@ -348,7 +335,6 @@ pub fn select_next_occurrence(
     }
     Some((pos, pos + needle.len()))
 }
-
 
 /// Toggle a `/* */` block comment around the selection. If the selection is
 /// already wrapped in `/* */` (ignoring leading/trailing whitespace), unwrap
@@ -617,7 +603,9 @@ pub fn fold_end_line(content: &str, start_line: usize, lang: Language) -> usize 
                 start_byte = Some(i);
             }
         }
-        let Some(sb) = start_byte else { return start_line };
+        let Some(sb) = start_byte else {
+            return start_line;
+        };
         let mut depth: i32 = 0;
         let mut i = sb;
         while i < bytes.len() {
@@ -663,7 +651,9 @@ fn indent_width(line: &str) -> usize {
 }
 
 fn strip_trailing_comment(line: &str, lang: Language) -> &str {
-    let Some(prefix) = lang.line_comment() else { return line };
+    let Some(prefix) = lang.line_comment() else {
+        return line;
+    };
     if let Some(idx) = line.find(prefix) {
         // Naive: don't strip inside a string. Acceptable for fold detection.
         &line[..idx]

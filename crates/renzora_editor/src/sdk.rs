@@ -16,19 +16,23 @@
 //! ```
 
 pub mod conditions {
+    use crate::{ActiveTool, EditorSelection};
     use bevy::prelude::*;
     use renzora::viewport_types::{ViewportMode, ViewportSettings, ViewportState};
-    use crate::{ActiveTool, EditorSelection};
 
     /// Run only when the viewport is in the given [`ViewportMode`]
     /// (Scene / Edit / Sculpt / Paint / Animate).
-    pub fn in_mode(mode: ViewportMode) -> impl FnMut(Option<Res<ViewportSettings>>) -> bool + Clone {
+    pub fn in_mode(
+        mode: ViewportMode,
+    ) -> impl FnMut(Option<Res<ViewportSettings>>) -> bool + Clone {
         move |s: Option<Res<ViewportSettings>>| s.map(|s| s.viewport_mode == mode).unwrap_or(false)
     }
 
     /// Run only when the viewport is NOT in the given mode. Useful for
     /// systems that should pause during Edit / Sculpt / etc.
-    pub fn not_in_mode(mode: ViewportMode) -> impl FnMut(Option<Res<ViewportSettings>>) -> bool + Clone {
+    pub fn not_in_mode(
+        mode: ViewportMode,
+    ) -> impl FnMut(Option<Res<ViewportSettings>>) -> bool + Clone {
         move |s: Option<Res<ViewportSettings>>| s.map(|s| s.viewport_mode != mode).unwrap_or(true)
     }
 
@@ -52,6 +56,7 @@ pub mod conditions {
 
     /// Run only when at least one entity is selected in the editor.
     pub fn has_selection(sel: Option<Res<EditorSelection>>) -> bool {
-        sel.map(|s: Res<EditorSelection>| s.get().is_some()).unwrap_or(false)
+        sel.map(|s: Res<EditorSelection>| s.get().is_some())
+            .unwrap_or(false)
     }
 }

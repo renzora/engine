@@ -177,8 +177,7 @@ impl EditorPanel for StateMachinePanel {
             return;
         };
 
-        let clip_names: Vec<String> =
-            animator.clips.iter().map(|c| c.name.clone()).collect();
+        let clip_names: Vec<String> = animator.clips.iter().map(|c| c.name.clone()).collect();
 
         // ── Header: .animsm path + Load/Save ──
         let sm_path = animator.state_machine.clone();
@@ -200,9 +199,7 @@ impl EditorPanel for StateMachinePanel {
                     );
                     match (&sm_path, &project_root) {
                         (Some(rel), Some(_)) => {
-                            ui.label(
-                                egui::RichText::new(rel).size(11.0).color(text),
-                            );
+                            ui.label(egui::RichText::new(rel).size(11.0).color(text));
                         }
                         _ => {
                             ui.label(
@@ -242,7 +239,11 @@ impl EditorPanel for StateMachinePanel {
             self.ensure_loaded(root, rel);
         } else {
             // No path on animator: show empty prompt.
-            self.empty(ui, muted, "Assign a state_machine path on the AnimatorComponent to edit.");
+            self.empty(
+                ui,
+                muted,
+                "Assign a state_machine path on the AnimatorComponent to edit.",
+            );
             return;
         }
 
@@ -251,7 +252,19 @@ impl EditorPanel for StateMachinePanel {
         // Split: states (left) | transitions (right)
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
-            self.states_column(ui, text, muted, accent, surface, border, row_even, row_odd, &clip_names, entity, world);
+            self.states_column(
+                ui,
+                text,
+                muted,
+                accent,
+                surface,
+                border,
+                row_even,
+                row_odd,
+                &clip_names,
+                entity,
+                world,
+            );
 
             let ui = &mut cols[1];
             self.transitions_column(ui, text, muted, accent, surface, border, row_even, row_odd);
@@ -306,9 +319,7 @@ impl StateMachinePanel {
                 let name = unique_name("NewState", |n| buf.sm.states.iter().any(|s| s.name == *n));
                 buf.sm.states.push(AnimState {
                     name,
-                    motion: StateMotion::Clip(
-                        clip_names.first().cloned().unwrap_or_default(),
-                    ),
+                    motion: StateMotion::Clip(clip_names.first().cloned().unwrap_or_default()),
                     speed: 1.0,
                     looping: true,
                 });
@@ -317,113 +328,117 @@ impl StateMachinePanel {
         });
         ui.add_space(2.0);
 
-        egui::ScrollArea::vertical().id_salt("sm_states").show(ui, |ui| {
-            let mut buf = self.buffer.lock().unwrap();
-            let default_state = buf.sm.default_state.clone();
-            let mut remove_idx: Option<usize> = None;
-            let mut make_default: Option<String> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("sm_states")
+            .show(ui, |ui| {
+                let mut buf = self.buffer.lock().unwrap();
+                let default_state = buf.sm.default_state.clone();
+                let mut remove_idx: Option<usize> = None;
+                let mut make_default: Option<String> = None;
 
-            for (i, state) in buf.sm.states.iter_mut().enumerate() {
-                let bg = if i % 2 == 0 { row_even } else { row_odd };
-                egui::Frame::new()
-                    .fill(bg)
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .corner_radius(2.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let is_default = default_state == state.name;
-                            let star_color = if is_default { accent } else { muted };
-                            if ui
-                                .button(
-                                    egui::RichText::new(egui_phosphor::regular::STAR)
-                                        .size(11.0)
-                                        .color(star_color),
-                                )
-                                .on_hover_text("Set as entry state")
-                                .clicked()
-                            {
-                                make_default = Some(state.name.clone());
-                            }
-                            // Name
-                            if ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut state.name)
-                                        .desired_width(100.0),
-                                )
-                                .changed()
-                            {
-                                // noop — mutation flags dirty below
-                            }
-                            // Clip picker
-                            let mut clip_name = match &state.motion {
-                                StateMotion::Clip(n) => n.clone(),
-                                StateMotion::BlendTree(n) => n.clone(),
-                            };
-                            let before = clip_name.clone();
-                            egui::ComboBox::from_id_salt(egui::Id::new(("sm_clip", i)))
-                                .selected_text(
-                                    egui::RichText::new(&clip_name).size(10.0).color(text),
-                                )
-                                .width(110.0)
-                                .show_ui(ui, |ui| {
-                                    for name in clip_names {
-                                        ui.selectable_value(
-                                            &mut clip_name,
-                                            name.clone(),
-                                            name,
-                                        );
-                                    }
-                                });
-                            if clip_name != before {
-                                state.motion = StateMotion::Clip(clip_name);
-                            }
+                for (i, state) in buf.sm.states.iter_mut().enumerate() {
+                    let bg = if i % 2 == 0 { row_even } else { row_odd };
+                    egui::Frame::new()
+                        .fill(bg)
+                        .inner_margin(egui::Margin::symmetric(6, 4))
+                        .corner_radius(2.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let is_default = default_state == state.name;
+                                let star_color = if is_default { accent } else { muted };
+                                if ui
+                                    .button(
+                                        egui::RichText::new(egui_phosphor::regular::STAR)
+                                            .size(11.0)
+                                            .color(star_color),
+                                    )
+                                    .on_hover_text("Set as entry state")
+                                    .clicked()
+                                {
+                                    make_default = Some(state.name.clone());
+                                }
+                                // Name
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut state.name)
+                                            .desired_width(100.0),
+                                    )
+                                    .changed()
+                                {
+                                    // noop — mutation flags dirty below
+                                }
+                                // Clip picker
+                                let mut clip_name = match &state.motion {
+                                    StateMotion::Clip(n) => n.clone(),
+                                    StateMotion::BlendTree(n) => n.clone(),
+                                };
+                                let before = clip_name.clone();
+                                egui::ComboBox::from_id_salt(egui::Id::new(("sm_clip", i)))
+                                    .selected_text(
+                                        egui::RichText::new(&clip_name).size(10.0).color(text),
+                                    )
+                                    .width(110.0)
+                                    .show_ui(ui, |ui| {
+                                        for name in clip_names {
+                                            ui.selectable_value(&mut clip_name, name.clone(), name);
+                                        }
+                                    });
+                                if clip_name != before {
+                                    state.motion = StateMotion::Clip(clip_name);
+                                }
 
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .button(
-                                            egui::RichText::new(egui_phosphor::regular::TRASH)
-                                                .size(10.0)
-                                                .color(muted),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove_idx = Some(i);
-                                    }
-                                },
-                            );
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui
+                                            .button(
+                                                egui::RichText::new(egui_phosphor::regular::TRASH)
+                                                    .size(10.0)
+                                                    .color(muted),
+                                            )
+                                            .clicked()
+                                        {
+                                            remove_idx = Some(i);
+                                        }
+                                    },
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("speed").size(10.0).color(muted));
+                                ui.add(
+                                    egui::DragValue::new(&mut state.speed)
+                                        .speed(0.05)
+                                        .range(0.05..=5.0)
+                                        .fixed_decimals(2),
+                                );
+                                ui.checkbox(&mut state.looping, "loop");
+                            });
                         });
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("speed").size(10.0).color(muted));
-                            ui.add(
-                                egui::DragValue::new(&mut state.speed)
-                                    .speed(0.05)
-                                    .range(0.05..=5.0)
-                                    .fixed_decimals(2),
-                            );
-                            ui.checkbox(&mut state.looping, "loop");
-                        });
-                    });
-            }
-
-            if let Some(i) = remove_idx {
-                let removed_name = buf.sm.states[i].name.clone();
-                buf.sm.states.remove(i);
-                buf.sm.transitions.retain(|t| t.from != removed_name && t.to != removed_name);
-                if buf.sm.default_state == removed_name {
-                    buf.sm.default_state =
-                        buf.sm.states.first().map(|s| s.name.clone()).unwrap_or_default();
                 }
+
+                if let Some(i) = remove_idx {
+                    let removed_name = buf.sm.states[i].name.clone();
+                    buf.sm.states.remove(i);
+                    buf.sm
+                        .transitions
+                        .retain(|t| t.from != removed_name && t.to != removed_name);
+                    if buf.sm.default_state == removed_name {
+                        buf.sm.default_state = buf
+                            .sm
+                            .states
+                            .first()
+                            .map(|s| s.name.clone())
+                            .unwrap_or_default();
+                    }
+                    buf.dirty = true;
+                }
+                if let Some(name) = make_default {
+                    buf.sm.default_state = name;
+                    buf.dirty = true;
+                }
+                // Any mutation above counts as dirty.
                 buf.dirty = true;
-            }
-            if let Some(name) = make_default {
-                buf.sm.default_state = name;
-                buf.dirty = true;
-            }
-            // Any mutation above counts as dirty.
-            buf.dirty = true;
-        });
+            });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -476,94 +491,92 @@ impl StateMachinePanel {
         });
         ui.add_space(2.0);
 
-        egui::ScrollArea::vertical().id_salt("sm_transitions").show(ui, |ui| {
-            let mut buf = self.buffer.lock().unwrap();
-            let mut remove_idx: Option<usize> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("sm_transitions")
+            .show(ui, |ui| {
+                let mut buf = self.buffer.lock().unwrap();
+                let mut remove_idx: Option<usize> = None;
 
-            for (i, tr) in buf.sm.transitions.iter_mut().enumerate() {
-                let bg = if i % 2 == 0 { row_even } else { row_odd };
-                egui::Frame::new()
-                    .fill(bg)
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .corner_radius(2.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            egui::ComboBox::from_id_salt(egui::Id::new(("sm_from", i)))
-                                .selected_text(
-                                    egui::RichText::new(&tr.from).size(10.0).color(text),
-                                )
-                                .width(90.0)
-                                .show_ui(ui, |ui| {
-                                    for n in &state_names {
-                                        ui.selectable_value(&mut tr.from, n.clone(), n);
-                                    }
-                                });
-                            ui.label(
-                                egui::RichText::new(egui_phosphor::regular::ARROW_RIGHT)
-                                    .size(11.0)
-                                    .color(muted),
-                            );
-                            egui::ComboBox::from_id_salt(egui::Id::new(("sm_to", i)))
-                                .selected_text(
-                                    egui::RichText::new(&tr.to).size(10.0).color(text),
-                                )
-                                .width(90.0)
-                                .show_ui(ui, |ui| {
-                                    for n in &state_names {
-                                        ui.selectable_value(&mut tr.to, n.clone(), n);
-                                    }
-                                });
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .button(
-                                            egui::RichText::new(egui_phosphor::regular::TRASH)
-                                                .size(10.0)
-                                                .color(muted),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove_idx = Some(i);
-                                    }
-                                },
-                            );
+                for (i, tr) in buf.sm.transitions.iter_mut().enumerate() {
+                    let bg = if i % 2 == 0 { row_even } else { row_odd };
+                    egui::Frame::new()
+                        .fill(bg)
+                        .inner_margin(egui::Margin::symmetric(6, 4))
+                        .corner_radius(2.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_id_salt(egui::Id::new(("sm_from", i)))
+                                    .selected_text(
+                                        egui::RichText::new(&tr.from).size(10.0).color(text),
+                                    )
+                                    .width(90.0)
+                                    .show_ui(ui, |ui| {
+                                        for n in &state_names {
+                                            ui.selectable_value(&mut tr.from, n.clone(), n);
+                                        }
+                                    });
+                                ui.label(
+                                    egui::RichText::new(egui_phosphor::regular::ARROW_RIGHT)
+                                        .size(11.0)
+                                        .color(muted),
+                                );
+                                egui::ComboBox::from_id_salt(egui::Id::new(("sm_to", i)))
+                                    .selected_text(
+                                        egui::RichText::new(&tr.to).size(10.0).color(text),
+                                    )
+                                    .width(90.0)
+                                    .show_ui(ui, |ui| {
+                                        for n in &state_names {
+                                            ui.selectable_value(&mut tr.to, n.clone(), n);
+                                        }
+                                    });
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui
+                                            .button(
+                                                egui::RichText::new(egui_phosphor::regular::TRASH)
+                                                    .size(10.0)
+                                                    .color(muted),
+                                            )
+                                            .clicked()
+                                        {
+                                            remove_idx = Some(i);
+                                        }
+                                    },
+                                );
+                            });
+
+                            // Blend duration
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("blend").size(10.0).color(muted));
+                                ui.add(
+                                    egui::DragValue::new(&mut tr.blend_duration)
+                                        .speed(0.02)
+                                        .range(0.0..=2.0)
+                                        .fixed_decimals(2)
+                                        .suffix("s"),
+                                );
+                            });
+
+                            // Condition editor
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("when").size(10.0).color(muted));
+                                render_condition_editor(ui, &mut tr.condition, text);
+                            });
                         });
+                }
 
-                        // Blend duration
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("blend").size(10.0).color(muted));
-                            ui.add(
-                                egui::DragValue::new(&mut tr.blend_duration)
-                                    .speed(0.02)
-                                    .range(0.0..=2.0)
-                                    .fixed_decimals(2)
-                                    .suffix("s"),
-                            );
-                        });
-
-                        // Condition editor
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("when").size(10.0).color(muted));
-                            render_condition_editor(ui, &mut tr.condition, text);
-                        });
-                    });
-            }
-
-            if let Some(i) = remove_idx {
-                buf.sm.transitions.remove(i);
+                if let Some(i) = remove_idx {
+                    buf.sm.transitions.remove(i);
+                    buf.dirty = true;
+                }
                 buf.dirty = true;
-            }
-            buf.dirty = true;
-        });
+            });
     }
 }
 
-fn render_condition_editor(
-    ui: &mut egui::Ui,
-    condition: &mut AnimCondition,
-    text: egui::Color32,
-) {
+fn render_condition_editor(ui: &mut egui::Ui, condition: &mut AnimCondition, text: egui::Color32) {
     let current_kind = match condition {
         AnimCondition::FloatGreater(_, _) => "Float >",
         AnimCondition::FloatLess(_, _) => "Float <",

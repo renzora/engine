@@ -1,9 +1,9 @@
-use bevy::prelude::*;
 use bevy::pbr::{Material, MaterialPlugin as BevyMaterialPlugin};
+use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
-use crate::component::{WaterSurface, GerstnerWave};
+use crate::component::{GerstnerWave, WaterSurface};
 
 /// GPU-side uniform buffer for water parameters.
 /// Layout must match `water.wgsl` exactly.
@@ -40,7 +40,7 @@ pub struct WaterUniforms {
     pub shallow_color: Vec4,
     pub foam_color: Vec4,
     pub sun_direction: Vec4,
-    pub absorption_rgb: Vec4,   // (r, g, b, foam_depth)
+    pub absorption_rgb: Vec4, // (r, g, b, foam_depth)
 
     // -- Material params --
     pub foam_threshold: f32,
@@ -158,15 +158,31 @@ pub fn sync_uniforms(surface: &WaterSurface, uniforms: &mut WaterUniforms) {
 
     let empty = (Vec4::ZERO, Vec4::ZERO);
     let w = |i: usize| -> (Vec4, Vec4) {
-        if i < count { pack_wave(&surface.waves[i]) } else { empty }
+        if i < count {
+            pack_wave(&surface.waves[i])
+        } else {
+            empty
+        }
     };
 
-    let (p, a) = w(0); uniforms.wave_0 = p; uniforms.wave_0_amp = a;
-    let (p, a) = w(1); uniforms.wave_1 = p; uniforms.wave_1_amp = a;
-    let (p, a) = w(2); uniforms.wave_2 = p; uniforms.wave_2_amp = a;
-    let (p, a) = w(3); uniforms.wave_3 = p; uniforms.wave_3_amp = a;
-    let (p, a) = w(4); uniforms.wave_4 = p; uniforms.wave_4_amp = a;
-    let (p, a) = w(5); uniforms.wave_5 = p; uniforms.wave_5_amp = a;
+    let (p, a) = w(0);
+    uniforms.wave_0 = p;
+    uniforms.wave_0_amp = a;
+    let (p, a) = w(1);
+    uniforms.wave_1 = p;
+    uniforms.wave_1_amp = a;
+    let (p, a) = w(2);
+    uniforms.wave_2 = p;
+    uniforms.wave_2_amp = a;
+    let (p, a) = w(3);
+    uniforms.wave_3 = p;
+    uniforms.wave_3_amp = a;
+    let (p, a) = w(4);
+    uniforms.wave_4 = p;
+    uniforms.wave_4_amp = a;
+    let (p, a) = w(5);
+    uniforms.wave_5 = p;
+    uniforms.wave_5_amp = a;
 
     let dc = surface.deep_color;
     uniforms.deep_color = Vec4::new(dc[0], dc[1], dc[2], 1.0);

@@ -136,7 +136,11 @@ impl Vfs {
             if path.exists() {
                 match RpakArchive::from_file(path) {
                     Ok(archive) => {
-                        info!("Loaded Android rpak from {} ({} files)", path_str, archive.len());
+                        info!(
+                            "Loaded Android rpak from {} ({} files)",
+                            path_str,
+                            archive.len()
+                        );
                         return Some(Self {
                             archive: Some(Arc::new(archive)),
                             project_root: None,
@@ -196,7 +200,7 @@ impl Vfs {
     /// On iOS/tvOS, load game.rpak from the app bundle's resource directory.
     #[cfg(any(target_os = "ios", target_os = "tvos"))]
     fn detect_ios() -> Option<Self> {
-        use std::ffi::{CStr, c_char};
+        use std::ffi::{c_char, CStr};
 
         extern "C" {
             fn CFBundleGetMainBundle() -> *const std::ffi::c_void;
@@ -257,7 +261,8 @@ impl Vfs {
             }
 
             let mut buf = [0u8; 1024];
-            let ok = CFURLGetFileSystemRepresentation(url, true, buf.as_mut_ptr(), buf.len() as isize);
+            let ok =
+                CFURLGetFileSystemRepresentation(url, true, buf.as_mut_ptr(), buf.len() as isize);
             CFRelease(url);
 
             if !ok {
@@ -303,7 +308,8 @@ impl Vfs {
 
     /// Read a file as UTF-8 string.
     pub fn read_string(&self, path: &str) -> Option<String> {
-        self.read(path).and_then(|bytes| String::from_utf8(bytes).ok())
+        self.read(path)
+            .and_then(|bytes| String::from_utf8(bytes).ok())
     }
 
     /// Check if a file exists (in archive or on disk).
@@ -328,8 +334,8 @@ impl Vfs {
 
     /// Load a VFS from raw rpak bytes (used by wasm fetch).
     pub fn from_rpak_bytes(bytes: &[u8]) -> Result<Self, String> {
-        let archive = RpakArchive::from_bytes(bytes)
-            .map_err(|e| format!("Failed to load rpak: {}", e))?;
+        let archive =
+            RpakArchive::from_bytes(bytes).map_err(|e| format!("Failed to load rpak: {}", e))?;
         info!("Loaded rpak from bytes ({} files)", archive.len());
         Ok(Self {
             archive: Some(Arc::new(archive)),

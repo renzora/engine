@@ -9,8 +9,8 @@ use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use renzora::viewport_types::ViewportState;
 use renzora_terrain::data::{TerrainChunkOf, TerrainData};
-use renzora_terrain::painter::{PaintLayer, Painter};
 use renzora_terrain::paint::{PaintBrushType, SurfacePaintSettings, SurfacePaintState};
+use renzora_terrain::painter::{PaintLayer, Painter};
 
 pub fn brush_layer_paint_system(
     paint_state: Res<SurfacePaintState>,
@@ -90,13 +90,9 @@ fn stamp_into_mask(
         return;
     }
     let min_gx = (grid_x - grid_radius).floor().max(0.0) as i32;
-    let max_gx = (grid_x + grid_radius)
-        .ceil()
-        .min((grid_size - 1) as f32) as i32;
+    let max_gx = (grid_x + grid_radius).ceil().min((grid_size - 1) as f32) as i32;
     let min_gz = (grid_z - grid_radius).floor().max(0.0) as i32;
-    let max_gz = (grid_z + grid_radius)
-        .ceil()
-        .min((grid_size - 1) as f32) as i32;
+    let max_gz = (grid_z + grid_radius).ceil().min((grid_size - 1) as f32) as i32;
 
     for gz in min_gz..=max_gz {
         for gx in min_gx..=max_gx {

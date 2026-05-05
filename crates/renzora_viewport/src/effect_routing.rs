@@ -37,17 +37,13 @@ pub fn update_effect_routing(
     let mut routes: Vec<(Entity, Vec<Entity>)> = Vec::new();
     let global_sources = collect_global_sources(&non_camera_entities);
 
-    let is_play_mode = play_mode
-        .as_ref()
-        .is_some_and(|pm| pm.is_in_play_mode());
+    let is_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
 
     if is_play_mode {
         // Play mode: route to the PlayModeCamera
         if let Ok(play_cam) = play_mode_cameras.single() {
             // Find the source scene camera (stored in PlayModeState)
-            let source_cam = play_mode
-                .as_ref()
-                .and_then(|pm| pm.active_game_camera);
+            let source_cam = play_mode.as_ref().and_then(|pm| pm.active_game_camera);
 
             let mut sources = Vec::new();
             if let Some(src) = source_cam {

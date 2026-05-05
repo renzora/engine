@@ -232,12 +232,10 @@ fn intake_model_requests(
         // Disk cache hit: load the cached PNG via asset_server and
         // complete the registry entry once the texture is ready.
         if cached_thumb_is_fresh(&thumb_path, &model_path) {
-            if let Some(handle) = try_load_cached_thumb(&thumb_path, &asset_server, &project)
-            {
-                disk_loads.entries.push(PendingDiskLoad {
-                    model_path,
-                    handle,
-                });
+            if let Some(handle) = try_load_cached_thumb(&thumb_path, &asset_server, &project) {
+                disk_loads
+                    .entries
+                    .push(PendingDiskLoad { model_path, handle });
                 continue;
             }
         }
@@ -312,7 +310,9 @@ fn tick_capture_lifecycle(
     mesh_q: Query<(), With<Mesh3d>>,
     has_aabb_q: Query<(), With<Aabb>>,
 ) {
-    let Some(gltf_assets) = gltf_assets else { return };
+    let Some(gltf_assets) = gltf_assets else {
+        return;
+    };
 
     // Walk in reverse so we can swap_remove dead entries cheaply.
     for i in (0..pending.jobs.len()).rev() {
@@ -340,7 +340,10 @@ fn tick_capture_lifecycle(
                 .clone()
                 .or_else(|| gltf.scenes.first().cloned())
             else {
-                warn!("[model_thumbnails] {} has no scenes", job.model_path.display());
+                warn!(
+                    "[model_thumbnails] {} has no scenes",
+                    job.model_path.display()
+                );
                 cells.free(job.cell_idx);
                 registry.cancel(&job.model_path);
                 pending.jobs.swap_remove(i);
@@ -526,9 +529,7 @@ fn place_capture_camera(
             Camera3d::default(),
             Msaa::Sample4,
             Camera {
-                clear_color: ClearColorConfig::Custom(Color::srgba(
-                    0.08, 0.08, 0.1, 1.0,
-                )),
+                clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),
                 order: -2000 - (job.cell_idx as isize),
                 is_active: true,
                 ..default()
@@ -770,7 +771,11 @@ fn world_aabb(
             stack.extend(kids.iter());
         }
     }
-    if found_any { Some((min, max)) } else { None }
+    if found_any {
+        Some((min, max))
+    } else {
+        None
+    }
 }
 
 /// Resolve disk-cached PNG loads — when each handle reaches `Loaded`,
@@ -810,18 +815,14 @@ fn resolve_model_disk_loads(
 /// is newer than the source's mtime. Identical pattern to the
 /// texture cache's freshness check; duplicated to keep the model
 /// renderer self-contained (no dep on `thumbnails::cached_thumb_is_fresh`).
-fn cached_thumb_is_fresh(
-    cache_path: &std::path::Path,
-    source_path: &std::path::Path,
-) -> bool {
+fn cached_thumb_is_fresh(cache_path: &std::path::Path, source_path: &std::path::Path) -> bool {
     let Ok(cache_meta) = std::fs::metadata(cache_path) else {
         return false;
     };
     let Ok(source_meta) = std::fs::metadata(source_path) else {
         return true;
     };
-    let (Ok(cache_mtime), Ok(source_mtime)) =
-        (cache_meta.modified(), source_meta.modified())
+    let (Ok(cache_mtime), Ok(source_mtime)) = (cache_meta.modified(), source_meta.modified())
     else {
         return false;
     };
@@ -847,10 +848,7 @@ fn try_load_cached_thumb(
 /// has armed the warmup — observers run between systems, and we need
 /// the warmup_remaining = Some(N) state to be visible by the time
 /// this runs the same frame.
-pub fn tick_warmup_and_dispatch(
-    mut commands: Commands,
-    mut pending: ResMut<PendingCaptures>,
-) {
+pub fn tick_warmup_and_dispatch(mut commands: Commands, mut pending: ResMut<PendingCaptures>) {
     // Two passes: countdown, then dispatch ready ones. Avoids the
     // borrow-checker complaint about iterating + mutating + spawning
     // in one pass.
@@ -874,8 +872,7 @@ pub fn tick_warmup_and_dispatch(
 
     for &i in to_dispatch.iter() {
         let job = &mut pending.jobs[i];
-        let (Some(parent), Some(render_image)) = (job.parent, job.render_image.clone())
-        else {
+        let (Some(parent), Some(render_image)) = (job.parent, job.render_image.clone()) else {
             continue;
         };
         let model_path = job.model_path.clone();
@@ -916,10 +913,7 @@ pub fn tick_warmup_and_dispatch(
                                 );
                             }
                         }
-                        Err(e) => warn!(
-                            "[model_thumbnails] capture format unsupported: {}",
-                            e
-                        ),
+                        Err(e) => warn!("[model_thumbnails] capture format unsupported: {}", e),
                     }
 
                     let captured_handle = imgs.add(captured);
@@ -929,8 +923,7 @@ pub fn tick_warmup_and_dispatch(
                         None => reg.cancel(&model_path),
                     }
 
-                    if let Some(idx) = pend.jobs.iter().position(|j| j.model_path == model_path)
-                    {
+                    if let Some(idx) = pend.jobs.iter().position(|j| j.model_path == model_path) {
                         pend.jobs.swap_remove(idx);
                     }
                 },

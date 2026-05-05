@@ -18,7 +18,12 @@ pub struct XyPadConfig {
 
 impl Default for XyPadConfig {
     fn default() -> Self {
-        Self { size: 120.0, x_range: (-1.0, 1.0), y_range: (-1.0, 1.0), show_center: true }
+        Self {
+            size: 120.0,
+            x_range: (-1.0, 1.0),
+            y_range: (-1.0, 1.0),
+            show_center: true,
+        }
     }
 }
 

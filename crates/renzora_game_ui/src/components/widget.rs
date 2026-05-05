@@ -179,13 +179,40 @@ impl UiWidgetType {
         match self {
             Self::Container | Self::Panel | Self::ScrollView => "Layout",
             Self::Text | Self::Image | Self::Button => "Basic",
-            Self::Slider | Self::Checkbox | Self::Toggle | Self::RadioButton | Self::Dropdown | Self::TextInput => "Input",
+            Self::Slider
+            | Self::Checkbox
+            | Self::Toggle
+            | Self::RadioButton
+            | Self::Dropdown
+            | Self::TextInput => "Input",
             Self::ProgressBar | Self::HealthBar | Self::Spinner | Self::TabBar => "Display",
             Self::Tooltip | Self::Modal | Self::DraggableWindow => "Overlay",
-            Self::Crosshair | Self::AmmoCounter | Self::Compass | Self::StatusEffectBar | Self::NotificationFeed | Self::RadialMenu | Self::Minimap => "HUD",
-            Self::InventoryGrid | Self::DialogBox | Self::ObjectiveTracker | Self::LoadingScreen | Self::KeybindRow | Self::SettingsRow => "Menu",
-            Self::Separator | Self::NumberInput | Self::VerticalSlider | Self::Scrollbar | Self::List => "Extra",
-            Self::Circle | Self::Arc | Self::RadialProgress | Self::Line | Self::Triangle | Self::Polygon | Self::Rectangle | Self::Wedge => "Shapes",
+            Self::Crosshair
+            | Self::AmmoCounter
+            | Self::Compass
+            | Self::StatusEffectBar
+            | Self::NotificationFeed
+            | Self::RadialMenu
+            | Self::Minimap => "HUD",
+            Self::InventoryGrid
+            | Self::DialogBox
+            | Self::ObjectiveTracker
+            | Self::LoadingScreen
+            | Self::KeybindRow
+            | Self::SettingsRow => "Menu",
+            Self::Separator
+            | Self::NumberInput
+            | Self::VerticalSlider
+            | Self::Scrollbar
+            | Self::List => "Extra",
+            Self::Circle
+            | Self::Arc
+            | Self::RadialProgress
+            | Self::Line
+            | Self::Triangle
+            | Self::Polygon
+            | Self::Rectangle
+            | Self::Wedge => "Shapes",
         }
     }
 }

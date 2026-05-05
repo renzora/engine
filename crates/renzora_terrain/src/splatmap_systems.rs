@@ -1,10 +1,10 @@
 //! Splatmap GPU systems — upload dirty splatmaps to textures,
 //! switch chunk materials from checkerboard to splatmap when painting begins.
 
-use bevy::prelude::*;
-use bevy::image::{Image, ImageSampler};
-use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::asset::RenderAssetUsages;
+use bevy::image::{Image, ImageSampler};
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
 use crate::paint::{splatmap_to_rgba8_a, splatmap_to_rgba8_b, PaintableSurfaceData};
 use crate::splatmap_material::{
@@ -74,8 +74,7 @@ fn create_fallback_array(pixel: [u8; 4], format: TextureFormat) -> Image {
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     image.sampler = ImageSampler::linear();
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
     image
 }
 
@@ -126,8 +125,7 @@ fn build_texture_array(
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     image.sampler = ImageSampler::linear();
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
     image
 }
 
@@ -157,7 +155,12 @@ pub fn terrain_layer_texture_system(
     }
 
     // Check that all assigned textures are loaded
-    for slot in layer_tex.layer_albedo.iter().chain(layer_tex.layer_normal.iter()).chain(layer_tex.layer_arm.iter()) {
+    for slot in layer_tex
+        .layer_albedo
+        .iter()
+        .chain(layer_tex.layer_normal.iter())
+        .chain(layer_tex.layer_arm.iter())
+    {
         if let Some(handle) = slot {
             if images.get(handle).is_none() {
                 return; // Not loaded yet, wait
@@ -167,16 +170,22 @@ pub fn terrain_layer_texture_system(
 
     // Build arrays
     let albedo = build_texture_array(
-        &layer_tex.layer_albedo, &images,
-        [255, 255, 255, 255], TextureFormat::Rgba8UnormSrgb,
+        &layer_tex.layer_albedo,
+        &images,
+        [255, 255, 255, 255],
+        TextureFormat::Rgba8UnormSrgb,
     );
     let normal = build_texture_array(
-        &layer_tex.layer_normal, &images,
-        [128, 128, 255, 255], TextureFormat::Rgba8Unorm,
+        &layer_tex.layer_normal,
+        &images,
+        [128, 128, 255, 255],
+        TextureFormat::Rgba8Unorm,
     );
     let arm = build_texture_array(
-        &layer_tex.layer_arm, &images,
-        [255, 128, 0, 255], TextureFormat::Rgba8Unorm,
+        &layer_tex.layer_arm,
+        &images,
+        [255, 128, 0, 255],
+        TextureFormat::Rgba8Unorm,
     );
 
     // Compute flags
@@ -261,8 +270,7 @@ fn create_splatmap_from_pixels(pixels: Vec<u8>, resolution: u32) -> Image {
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     image.sampler = ImageSampler::linear();
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
     image
 }
 
@@ -311,14 +319,38 @@ pub fn build_splatmap_material(
         let color_vec = pack_layer_color(layer);
         let prop_vec = pack_layer_props(layer);
         match i {
-            0 => { colors_a.v0 = color_vec; props_a.v0 = prop_vec; }
-            1 => { colors_a.v1 = color_vec; props_a.v1 = prop_vec; }
-            2 => { colors_a.v2 = color_vec; props_a.v2 = prop_vec; }
-            3 => { colors_a.v3 = color_vec; props_a.v3 = prop_vec; }
-            4 => { colors_b.v0 = color_vec; props_b.v0 = prop_vec; }
-            5 => { colors_b.v1 = color_vec; props_b.v1 = prop_vec; }
-            6 => { colors_b.v2 = color_vec; props_b.v2 = prop_vec; }
-            7 => { colors_b.v3 = color_vec; props_b.v3 = prop_vec; }
+            0 => {
+                colors_a.v0 = color_vec;
+                props_a.v0 = prop_vec;
+            }
+            1 => {
+                colors_a.v1 = color_vec;
+                props_a.v1 = prop_vec;
+            }
+            2 => {
+                colors_a.v2 = color_vec;
+                props_a.v2 = prop_vec;
+            }
+            3 => {
+                colors_a.v3 = color_vec;
+                props_a.v3 = prop_vec;
+            }
+            4 => {
+                colors_b.v0 = color_vec;
+                props_b.v0 = prop_vec;
+            }
+            5 => {
+                colors_b.v1 = color_vec;
+                props_b.v1 = prop_vec;
+            }
+            6 => {
+                colors_b.v2 = color_vec;
+                props_b.v2 = prop_vec;
+            }
+            7 => {
+                colors_b.v3 = color_vec;
+                props_b.v3 = prop_vec;
+            }
             _ => {}
         }
     }
@@ -360,13 +392,15 @@ pub fn splatmap_upload_system(
 
         if let Some(active) = splatmap_active {
             // Update splatmap A (layers 0-3)
-            let pixels_a = splatmap_to_rgba8_a(&surface.splatmap_weights, surface.splatmap_resolution);
+            let pixels_a =
+                splatmap_to_rgba8_a(&surface.splatmap_weights, surface.splatmap_resolution);
             if let Some(image) = images.get_mut(&active.splatmap_a_handle) {
                 image.data = Some(pixels_a);
             }
 
             // Update splatmap B (layers 4-7)
-            let pixels_b = splatmap_to_rgba8_b(&surface.splatmap_weights, surface.splatmap_resolution);
+            let pixels_b =
+                splatmap_to_rgba8_b(&surface.splatmap_weights, surface.splatmap_resolution);
             if let Some(image) = images.get_mut(&active.splatmap_b_handle) {
                 image.data = Some(pixels_b);
             }
@@ -408,7 +442,12 @@ pub fn activate_splatmap_on_chunk(
     let image_b = create_splatmap_image_b(&surface.splatmap_weights, surface.splatmap_resolution);
     let splatmap_a_handle = images.add(image_a);
     let splatmap_b_handle = images.add(image_b);
-    let material = build_splatmap_material(surface, splatmap_a_handle.clone(), splatmap_b_handle.clone(), layer_tex);
+    let material = build_splatmap_material(
+        surface,
+        splatmap_a_handle.clone(),
+        splatmap_b_handle.clone(),
+        layer_tex,
+    );
     let material_handle = splatmap_materials.add(material);
 
     commands.entity(entity).try_insert((

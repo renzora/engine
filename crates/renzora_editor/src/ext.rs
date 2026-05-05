@@ -1,10 +1,10 @@
 //! Extension trait for `App` to simplify editor registrations.
 
-use bevy::prelude::*;
 use crate::inspector_registry::{InspectorEntry, InspectorRegistry};
-use crate::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
 use crate::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
+use crate::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
 use crate::toolbar_registry::{ToolEntry, ToolbarRegistry};
+use bevy::prelude::*;
 use renzora_ui::{PanelRegistry, StatusBarRegistry};
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
@@ -20,14 +20,17 @@ pub trait AppEditorExt {
     fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self;
 
     /// Register a status bar item with the `StatusBarRegistry`.
-    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static) -> &mut Self;
+    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static)
+        -> &mut Self;
 
     /// Register an `InspectorEntry` directly.
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self;
 
     /// Register a component that implements `InspectableComponent` (from derive macro).
     /// Also registers the type for Bevy reflection so scripts can access it.
-    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(&mut self) -> &mut Self;
+    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(
+        &mut self,
+    ) -> &mut Self;
 
     /// Register an `EntityPreset` with the `SpawnRegistry`.
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self;
@@ -65,36 +68,51 @@ pub trait AppEditorExt {
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
     where
-        T: renzora_postprocess::PostProcessEffect + InspectableComponent + bevy::reflect::GetTypeRegistration;
+        T: renzora_postprocess::PostProcessEffect
+            + InspectableComponent
+            + bevy::reflect::GetTypeRegistration;
 }
 
 impl AppEditorExt for App {
     fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self {
         self.init_resource::<PanelRegistry>();
-        self.world_mut().resource_mut::<PanelRegistry>().register(panel);
+        self.world_mut()
+            .resource_mut::<PanelRegistry>()
+            .register(panel);
         self
     }
 
-    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static) -> &mut Self {
+    fn register_status_item(
+        &mut self,
+        item: impl renzora_ui::StatusBarItem + 'static,
+    ) -> &mut Self {
         self.init_resource::<StatusBarRegistry>();
-        self.world_mut().resource_mut::<StatusBarRegistry>().register(item);
+        self.world_mut()
+            .resource_mut::<StatusBarRegistry>()
+            .register(item);
         self
     }
 
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self {
         self.init_resource::<InspectorRegistry>();
-        self.world_mut().resource_mut::<InspectorRegistry>().register(entry);
+        self.world_mut()
+            .resource_mut::<InspectorRegistry>()
+            .register(entry);
         self
     }
 
-    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(&mut self) -> &mut Self {
+    fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(
+        &mut self,
+    ) -> &mut Self {
         self.register_type::<T>();
         self.register_inspector(T::inspector_entry())
     }
 
     fn register_entity_preset(&mut self, preset: EntityPreset) -> &mut Self {
         self.init_resource::<SpawnRegistry>();
-        self.world_mut().resource_mut::<SpawnRegistry>().register(preset);
+        self.world_mut()
+            .resource_mut::<SpawnRegistry>()
+            .register(preset);
         self
     }
 
@@ -108,13 +126,17 @@ impl AppEditorExt for App {
 
     fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self {
         self.init_resource::<crate::ComponentIconRegistry>();
-        self.world_mut().resource_mut::<crate::ComponentIconRegistry>().register(entry);
+        self.world_mut()
+            .resource_mut::<crate::ComponentIconRegistry>()
+            .register(entry);
         self
     }
 
     fn register_tool(&mut self, entry: ToolEntry) -> &mut Self {
         self.init_resource::<ToolbarRegistry>();
-        self.world_mut().resource_mut::<ToolbarRegistry>().register(entry);
+        self.world_mut()
+            .resource_mut::<ToolbarRegistry>()
+            .register(entry);
         self
     }
 
@@ -150,13 +172,17 @@ impl AppEditorExt for App {
         self.world_mut()
             .resource_mut::<renzora::keybindings::KeyBindings>()
             .set_plugin_default(entry.id, entry.default_binding);
-        self.world_mut().resource_mut::<ShortcutRegistry>().register(entry);
+        self.world_mut()
+            .resource_mut::<ShortcutRegistry>()
+            .register(entry);
         self
     }
 
     fn add_post_process<T>(&mut self) -> &mut Self
     where
-        T: renzora_postprocess::PostProcessEffect + InspectableComponent + bevy::reflect::GetTypeRegistration,
+        T: renzora_postprocess::PostProcessEffect
+            + InspectableComponent
+            + bevy::reflect::GetTypeRegistration,
     {
         self.register_type::<T>();
         self.add_plugins(renzora_postprocess::PostProcessPlugin::<T>::default());

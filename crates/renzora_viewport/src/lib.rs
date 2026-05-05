@@ -11,35 +11,38 @@ pub mod header;
 pub mod material_drop;
 pub mod model_drop;
 pub mod model_flatten;
-pub mod play_mode;
-pub mod scene_drop;
-pub mod shape_drop;
-pub mod render_systems;
-pub mod settings;
 pub mod persistence;
+pub mod play_mode;
+pub mod render_systems;
+pub mod scene_drop;
+pub mod settings;
+pub mod shape_drop;
 pub mod toolbar;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use bevy::prelude::*;
 use bevy::asset::embedded_asset;
-use bevy::pbr::{MaterialPlugin, wireframe::{WireframeConfig, WireframePlugin}};
+use bevy::pbr::{
+    wireframe::{WireframeConfig, WireframePlugin},
+    MaterialPlugin,
+};
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui;
 use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
-use renzora::core::EditorCamera;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora::core::EditorCamera;
 use renzora::core::ViewportRenderTarget;
+use renzora_editor::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 pub use camera_preview::CameraPreviewState;
 // Re-export all viewport types from core (they now live in renzora::viewport_types)
 pub use renzora::core::viewport_types::{
     CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, NavOverlayState,
-    ProjectionMode, RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings,
-    ViewportState, VisualizationMode,
+    ProjectionMode, RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings, ViewportState,
+    VisualizationMode,
 };
 
 const DEFAULT_WIDTH: u32 = 1280;
@@ -147,10 +150,14 @@ impl Plugin for ViewportPlugin {
         // Always-on panel-visibility gates — toggle is_active on the offscreen
         // cameras when their panels are / are not in the current dock tree so
         // layouts that don't show a given panel don't pay for its render pass.
-        app.add_systems(Update, (
-            sync_viewport_camera_activation,
-            camera_preview::sync_camera_preview_activation,
-        ).run_if(in_state(renzora_editor::SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (
+                sync_viewport_camera_activation,
+                camera_preview::sync_camera_preview_activation,
+            )
+                .run_if(in_state(renzora_editor::SplashState::Editor)),
+        );
 
         // Camera-preview spawn/update logic only when its panel is mounted.
         app.add_systems(
@@ -160,7 +167,7 @@ impl Plugin for ViewportPlugin {
                 .run_if(camera_preview::camera_preview_panel_mounted),
         );
 
-// Register the crosshair overlay so the cursor goes to Crosshair
+        // Register the crosshair overlay so the cursor goes to Crosshair
         // whenever the pointer is over the viewport rect.
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
@@ -223,7 +230,9 @@ fn hide_cursor_for_brushes(
     mut ours: ResMut<BrushCursorHiddenByUs>,
 ) {
     use renzora_editor::ActiveTool;
-    let Ok(mut cursor) = cursor_options.single_mut() else { return };
+    let Ok(mut cursor) = cursor_options.single_mut() else {
+        return;
+    };
     let brush_active = matches!(
         active_tool.as_deref(),
         Some(ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint)
@@ -382,8 +391,7 @@ impl EditorPanel for ViewportPanel {
             // being dragged (panel resize handle, tab undock, hierarchy
             // drag, etc.) so the gizmo's box-select gesture doesn't arm
             // and viewport-only systems sleep until the drag releases.
-            let egui_dragging = ui.ctx().dragged_id().is_some()
-                || ui.ctx().is_using_pointer();
+            let egui_dragging = ui.ctx().dragged_id().is_some() || ui.ctx().is_using_pointer();
             let is_hovered = ui.rect_contains_pointer(rect) && !egui_dragging;
             req.hovered.store(is_hovered, Ordering::Relaxed);
         }
@@ -533,9 +541,9 @@ impl EditorPanel for CameraPreviewPanel {
 
         // Camera name overlay
         let previewing_entity = preview.as_ref().and_then(|p| p.previewing);
-        let camera_name = previewing_entity.and_then(|e| {
-            world.get::<Name>(e).map(|n| n.as_str().to_string())
-        }).unwrap_or_else(|| "Camera".to_string());
+        let camera_name = previewing_entity
+            .and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()))
+            .unwrap_or_else(|| "Camera".to_string());
 
         let is_default = previewing_entity.map_or(false, |e| {
             world.get::<renzora::core::DefaultCamera>(e).is_some()
@@ -549,9 +557,17 @@ impl EditorPanel for CameraPreviewPanel {
             .unwrap_or(egui::Color32::from_white_alpha(80));
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(&camera_name).size(11.0).color(muted_color));
+            ui.label(
+                egui::RichText::new(&camera_name)
+                    .size(11.0)
+                    .color(muted_color),
+            );
             if is_default {
-                ui.label(egui::RichText::new(regular::STAR).size(10.0).color(egui::Color32::from_rgb(255, 200, 80)));
+                ui.label(
+                    egui::RichText::new(regular::STAR)
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(255, 200, 80)),
+                );
             }
         });
 
@@ -559,9 +575,8 @@ impl EditorPanel for CameraPreviewPanel {
         let preview_height = available_width * (9.0 / 16.0);
 
         let texture_id = preview.and_then(|p| {
-            p.texture_id.or_else(|| {
-                user_textures.and_then(|ut| ut.image_id(p.image_handle.id()))
-            })
+            p.texture_id
+                .or_else(|| user_textures.and_then(|ut| ut.image_id(p.image_handle.id())))
         });
 
         if let Some(texture_id) = texture_id {
@@ -608,13 +623,18 @@ fn update_input_focus(
 // ── Modal transform HUD overlay ──────────────────────────────────────────────
 
 fn render_modal_transform_hud(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
-    let Some(hud) = world.get_resource::<renzora::core::ModalTransformHud>() else { return };
+    let Some(hud) = world.get_resource::<renzora::core::ModalTransformHud>() else {
+        return;
+    };
     if !hud.active {
         return;
     }
 
     let axis_color = egui::Color32::from_rgba_unmultiplied(
-        hud.axis_color[0], hud.axis_color[1], hud.axis_color[2], hud.axis_color[3],
+        hud.axis_color[0],
+        hud.axis_color[1],
+        hud.axis_color[2],
+        hud.axis_color[3],
     );
 
     // Scale mode: draw circle at pivot + line to cursor + dots
@@ -719,10 +739,18 @@ fn handle_view_shortcuts(
     mut settings: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::ToggleWireframe, &keyboard) {
         settings.render_toggles.wireframe = !settings.render_toggles.wireframe;
@@ -770,8 +798,12 @@ fn handle_play_shortcuts(
         return;
     }
 
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::PlayStop, &keyboard) {
         if play_mode.is_in_play_mode() || play_mode.is_scripts_only() {
@@ -818,10 +850,7 @@ fn render_model_load_progress(ui: &mut egui::Ui, world: &World, viewport_rect: e
         .show(ui.ctx(), |ui| {
             let frame = egui::Frame::NONE
                 .fill(theme.surfaces.panel.to_color32())
-                .stroke(egui::Stroke::new(
-                    1.0,
-                    theme.widgets.border.to_color32(),
-                ))
+                .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
                 .inner_margin(egui::Margin::symmetric(8, 8))
                 .corner_radius(egui::CornerRadius::same(4));
             frame.show(ui, |ui| {
@@ -836,12 +865,7 @@ fn render_model_load_progress(ui: &mut egui::Ui, world: &World, viewport_rect: e
                                     .font(egui::FontId::proportional(10.0))
                                     .color(theme.text.primary.to_color32()),
                             );
-                            renzora_ui::widgets::progress_bar(
-                                ui,
-                                frac.unwrap_or(0.4),
-                                4.0,
-                                &theme,
-                            );
+                            renzora_ui::widgets::progress_bar(ui, frac.unwrap_or(0.4), 4.0, &theme);
                         });
                     });
                 }
@@ -860,14 +884,23 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
     use renzora_console::state::ConsoleState;
 
     // Only show during play mode
-    let Some(play_mode) = world.get_resource::<renzora::core::PlayModeState>() else { return };
-    if !play_mode.is_in_play_mode() && !play_mode.is_scripts_only() { return; }
+    let Some(play_mode) = world.get_resource::<renzora::core::PlayModeState>() else {
+        return;
+    };
+    if !play_mode.is_in_play_mode() && !play_mode.is_scripts_only() {
+        return;
+    }
 
-    let Some(console) = world.get_resource::<ConsoleState>() else { return };
+    let Some(console) = world.get_resource::<ConsoleState>() else {
+        return;
+    };
     let current_time = world.resource::<Time>().elapsed_secs_f64();
 
     // Collect recent entries (within display duration)
-    let recent: Vec<_> = console.entries.iter().rev()
+    let recent: Vec<_> = console
+        .entries
+        .iter()
+        .rev()
         .filter(|e| {
             let age = current_time - e.timestamp;
             age < LOG_DISPLAY_DURATION && e.timestamp > 0.0
@@ -878,7 +911,9 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
         .rev()
         .collect();
 
-    if recent.is_empty() { return; }
+    if recent.is_empty() {
+        return;
+    }
 
     let painter = ui.painter();
     let mut y = viewport_rect.min.y + 10.0;
@@ -892,9 +927,12 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
             ((LOG_DISPLAY_DURATION - age) / LOG_FADE_DURATION) as f32
         } else {
             1.0
-        }.clamp(0.0, 1.0);
+        }
+        .clamp(0.0, 1.0);
 
-        if alpha <= 0.0 { continue; }
+        if alpha <= 0.0 {
+            continue;
+        }
 
         let [r, g, b] = entry.level.color();
         let color = egui::Color32::from_rgba_unmultiplied(r, g, b, (alpha * 255.0) as u8);
@@ -933,14 +971,16 @@ fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::R
 pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
 pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
 
-fn render_axis_gizmo(
-    ctx: &egui::Context,
-    world: &World,
-    viewport_rect: egui::Rect,
-) {
-    let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() else { return };
-    let Some(nav) = world.get_resource::<NavOverlayState>() else { return };
-    let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() else { return };
+fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
+    let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() else {
+        return;
+    };
+    let Some(nav) = world.get_resource::<NavOverlayState>() else {
+        return;
+    };
+    let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() else {
+        return;
+    };
     let center = egui::Pos2::new(
         viewport_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
         viewport_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,
@@ -953,12 +993,54 @@ fn render_axis_gizmo(
 
     // Axes: (world dir, color, label, target_yaw, target_pitch, is_positive)
     let axes: [(Vec3, egui::Color32, &str, f32, f32, bool); 6] = [
-        (Vec3::X,  egui::Color32::from_rgb(237, 76, 92),   "X",  std::f32::consts::FRAC_PI_2, 0.0, true),
-        (Vec3::Y,  egui::Color32::from_rgb(139, 201, 63),  "Y",  0.0, std::f32::consts::FRAC_PI_2, true),
-        (Vec3::Z,  egui::Color32::from_rgb(68, 138, 255),  "Z",  0.0, 0.0, true),
-        (-Vec3::X, egui::Color32::from_rgb(150, 50, 60),   "-X", -std::f32::consts::FRAC_PI_2, 0.0, false),
-        (-Vec3::Y, egui::Color32::from_rgb(80, 120, 40),   "-Y", 0.0, -std::f32::consts::FRAC_PI_2, false),
-        (-Vec3::Z, egui::Color32::from_rgb(40, 80, 150),   "-Z", std::f32::consts::PI, 0.0, false),
+        (
+            Vec3::X,
+            egui::Color32::from_rgb(237, 76, 92),
+            "X",
+            std::f32::consts::FRAC_PI_2,
+            0.0,
+            true,
+        ),
+        (
+            Vec3::Y,
+            egui::Color32::from_rgb(139, 201, 63),
+            "Y",
+            0.0,
+            std::f32::consts::FRAC_PI_2,
+            true,
+        ),
+        (
+            Vec3::Z,
+            egui::Color32::from_rgb(68, 138, 255),
+            "Z",
+            0.0,
+            0.0,
+            true,
+        ),
+        (
+            -Vec3::X,
+            egui::Color32::from_rgb(150, 50, 60),
+            "-X",
+            -std::f32::consts::FRAC_PI_2,
+            0.0,
+            false,
+        ),
+        (
+            -Vec3::Y,
+            egui::Color32::from_rgb(80, 120, 40),
+            "-Y",
+            0.0,
+            -std::f32::consts::FRAC_PI_2,
+            false,
+        ),
+        (
+            -Vec3::Z,
+            egui::Color32::from_rgb(40, 80, 150),
+            "-Z",
+            std::f32::consts::PI,
+            0.0,
+            false,
+        ),
     ];
 
     let axis_length = AXIS_GIZMO_SIZE / 2.0 - 12.0;
@@ -987,7 +1069,8 @@ fn render_axis_gizmo(
     // Sort back-to-front
     projected.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    let gizmo_rect = egui::Rect::from_center_size(center, egui::vec2(AXIS_GIZMO_SIZE, AXIS_GIZMO_SIZE));
+    let gizmo_rect =
+        egui::Rect::from_center_size(center, egui::vec2(AXIS_GIZMO_SIZE, AXIS_GIZMO_SIZE));
 
     egui::Area::new(egui::Id::new("viewport_axis_gizmo"))
         .fixed_pos(gizmo_rect.min)
@@ -1008,14 +1091,16 @@ fn render_axis_gizmo(
 
             if resp.dragged() {
                 let d = resp.drag_delta();
-                nav.orbit_delta_x.fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
-                nav.orbit_delta_y.fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
+                nav.orbit_delta_x
+                    .fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
+                nav.orbit_delta_y
+                    .fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
             }
 
             if resp.clicked() {
                 if let Some(pos) = resp.interact_pointer_pos() {
                     let local_pos = pos - center;
-                    
+
                     // Find closest axis endpoint
                     let mut closest_axis = None;
                     let mut min_dist = 15.0; // Click radius
@@ -1049,20 +1134,27 @@ fn render_axis_gizmo(
             if resp.hovered() || is_active {
                 let theme_mgr = world.get_resource::<renzora_theme::ThemeManager>();
                 let theme = theme_mgr.map(|tm| &tm.active_theme);
-                
+
                 let bg_color = if is_active {
-                    theme.map(|t| t.semantic.accent.to_color32().gamma_multiply(0.2))
+                    theme
+                        .map(|t| t.semantic.accent.to_color32().gamma_multiply(0.2))
                         .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 40))
                 } else {
-                    theme.map(|t| t.widgets.hovered_bg.to_color32().gamma_multiply(0.3))
+                    theme
+                        .map(|t| t.widgets.hovered_bg.to_color32().gamma_multiply(0.3))
                         .unwrap_or(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20))
                 };
                 painter.circle_filled(center, AXIS_GIZMO_SIZE / 2.0, bg_color);
 
                 if is_active {
-                    let stroke_color = theme.map(|t| t.semantic.accent.to_color32())
+                    let stroke_color = theme
+                        .map(|t| t.semantic.accent.to_color32())
                         .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 180));
-                    painter.circle_stroke(center, AXIS_GIZMO_SIZE / 2.0, egui::Stroke::new(1.0, stroke_color));
+                    painter.circle_stroke(
+                        center,
+                        AXIS_GIZMO_SIZE / 2.0,
+                        egui::Stroke::new(1.0, stroke_color),
+                    );
                 }
             }
 
@@ -1071,12 +1163,21 @@ fn render_axis_gizmo(
 
                 // Fade axes pointing away
                 let alpha = if _depth < -0.1 { 100 } else { 255 };
-                let c = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+                let c =
+                    egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
 
                 let line_width = if is_positive {
-                    if _depth < -0.1 { 2.0 } else { 3.0 }
+                    if _depth < -0.1 {
+                        2.0
+                    } else {
+                        3.0
+                    }
                 } else {
-                    if _depth < -0.1 { 1.0 } else { 1.5 }
+                    if _depth < -0.1 {
+                        1.0
+                    } else {
+                        1.5
+                    }
                 };
 
                 if is_positive {
@@ -1097,7 +1198,7 @@ fn render_axis_gizmo(
                     painter.circle_stroke(end, cap_size, egui::Stroke::new(line_width, c));
                 }
             }
-            
+
             // Center dot
             painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
         });
@@ -1121,3 +1222,5 @@ fn sync_viewport_camera_activation(
         }
     }
 }
+
+renzora::add!(ViewportPlugin, Editor);

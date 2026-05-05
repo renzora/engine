@@ -63,23 +63,27 @@ fn sync_environment_map(
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
         // Find a source on the routing list that has the settings.
-        let source_settings = source_list
-            .iter()
-            .find_map(|&src| sources.get(src).ok());
+        let source_settings = source_list.iter().find_map(|&src| sources.get(src).ok());
 
         match source_settings {
             Some(settings) => {
                 if !routing_changed && !settings.is_changed() {
                     continue;
                 }
-                let intensity = if settings.enabled { settings.intensity } else { 0.0 };
+                let intensity = if settings.enabled {
+                    settings.intensity
+                } else {
+                    0.0
+                };
                 // Replace the existing component in place — the camera
                 // spawn site attached it up front so the bind group
                 // layout stays stable across enables/disables.
-                commands.entity(*target).insert(AtmosphereEnvironmentMapLight {
-                    intensity,
-                    ..default()
-                });
+                commands
+                    .entity(*target)
+                    .insert(AtmosphereEnvironmentMapLight {
+                        intensity,
+                        ..default()
+                    });
             }
             None => {
                 // No source for this target — only push the "off" value
@@ -87,10 +91,12 @@ fn sync_environment_map(
                 // WorldEnvironment was just removed from the source list).
                 // Otherwise we'd thrash the camera every frame.
                 if routing_changed {
-                    commands.entity(*target).insert(AtmosphereEnvironmentMapLight {
-                        intensity: 0.0,
-                        ..default()
-                    });
+                    commands
+                        .entity(*target)
+                        .insert(AtmosphereEnvironmentMapLight {
+                            intensity: 0.0,
+                            ..default()
+                        });
                 }
             }
         }
@@ -108,14 +114,17 @@ fn cleanup_environment_map(
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
-            commands.entity(*target).insert(AtmosphereEnvironmentMapLight {
-                intensity: 0.0,
-                ..default()
-            });
+            commands
+                .entity(*target)
+                .insert(AtmosphereEnvironmentMapLight {
+                    intensity: 0.0,
+                    ..default()
+                });
         }
     }
 }
 
+#[derive(Default)]
 pub struct EnvironmentMapPlugin;
 
 impl Plugin for EnvironmentMapPlugin {
@@ -135,7 +144,11 @@ fn inspector_entry() -> InspectorEntry {
         display_name: "Environment Map",
         icon: regular::SUN_HORIZON,
         category: "rendering",
-        has_fn: |world, entity| world.get::<EnvironmentMapComponentSettings>(entity).is_some(),
+        has_fn: |world, entity| {
+            world
+                .get::<EnvironmentMapComponentSettings>(entity)
+                .is_some()
+        },
         add_fn: Some(|world, entity| {
             world
                 .entity_mut(entity)
@@ -153,9 +166,7 @@ fn inspector_entry() -> InspectorEntry {
                 .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) =
-                world.get_mut::<EnvironmentMapComponentSettings>(entity)
-            {
+            if let Some(mut s) = world.get_mut::<EnvironmentMapComponentSettings>(entity) {
                 s.enabled = val;
             }
         }),
@@ -186,12 +197,12 @@ fn environment_map_custom_ui(
         );
         if intensity != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) =
-                    world.get_mut::<EnvironmentMapComponentSettings>(entity)
-                {
+                if let Some(mut s) = world.get_mut::<EnvironmentMapComponentSettings>(entity) {
                     s.intensity = intensity;
                 }
             });
         }
     });
 }
+
+renzora::add!(EnvironmentMapPlugin);

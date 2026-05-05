@@ -47,7 +47,8 @@ pub fn detect_drop_target(
         return None;
     }
 
-    let tab_bar_rect = Rect::from_min_size(leaf_rect.min, Vec2::new(leaf_rect.width(), TAB_BAR_HEIGHT));
+    let tab_bar_rect =
+        Rect::from_min_size(leaf_rect.min, Vec2::new(leaf_rect.width(), TAB_BAR_HEIGHT));
 
     // Check tab bar area for tab insertion
     if tab_bar_rect.contains(pointer) {
@@ -105,10 +106,7 @@ pub fn detect_drop_target(
         return Some(DropTarget {
             panel_id: target_id,
             zone: DropZone::Left,
-            visual_rect: Rect::from_min_size(
-                content_rect.min,
-                Vec2::new(w * 0.5, h),
-            ),
+            visual_rect: Rect::from_min_size(content_rect.min, Vec2::new(w * 0.5, h)),
         });
     }
     if rel_x > w * (1.0 - EDGE_FRACTION) {
@@ -125,10 +123,7 @@ pub fn detect_drop_target(
         return Some(DropTarget {
             panel_id: target_id,
             zone: DropZone::Top,
-            visual_rect: Rect::from_min_size(
-                content_rect.min,
-                Vec2::new(w, h * 0.5),
-            ),
+            visual_rect: Rect::from_min_size(content_rect.min, Vec2::new(w, h * 0.5)),
         });
     }
     if rel_y > h * (1.0 - EDGE_FRACTION) {
@@ -184,10 +179,12 @@ pub fn draw_tab_insert_marker(ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
 
     // Glow layer (6px, 24% opacity)
     let glow = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 60);
-    ui.painter().line_segment([top, bottom], Stroke::new(6.0, glow));
+    ui.painter()
+        .line_segment([top, bottom], Stroke::new(6.0, glow));
 
     // Main line (3px solid)
-    ui.painter().line_segment([top, bottom], Stroke::new(3.0, accent));
+    ui.painter()
+        .line_segment([top, bottom], Stroke::new(3.0, accent));
 
     // Top triangle
     let tri = 5.0;
@@ -218,7 +215,12 @@ pub fn draw_zone_overlay(ui: &mut egui::Ui, rect: Rect, theme: &Theme) {
     let accent = theme.semantic.accent.to_color32();
     let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 50);
     ui.painter().rect_filled(rect, 0.0, fill);
-    ui.painter().rect_stroke(rect, 0.0, Stroke::new(2.0, accent), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(2.0, accent),
+        egui::StrokeKind::Inside,
+    );
 }
 
 /// Get the first panel ID in tabs that isn't the dragged one (for tree lookups).

@@ -13,7 +13,9 @@ use bevy::app::AppExit;
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, Window};
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Sense, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{
+    self, Color32, CornerRadius, CursorIcon, Pos2, Sense, Stroke, StrokeKind, Vec2,
+};
 use egui_phosphor::regular as icons;
 
 /// Queue of window actions emitted during UI rendering.
@@ -63,7 +65,9 @@ fn apply_window_actions(
         return;
     }
     let actions: Vec<_> = queue.actions.drain(..).collect();
-    let Ok(mut window) = windows.single_mut() else { return };
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
     for action in actions {
         match action {
             WindowAction::None => {}
@@ -129,20 +133,18 @@ pub fn render_window_controls(
 ) -> egui::Rect {
     let btn_w = 40.0_f32;
     let btn_size = Vec2::new(btn_w, rect.height());
-    let close_rect = egui::Rect::from_min_size(
-        Pos2::new(rect.right() - btn_w, rect.top()),
-        btn_size,
-    );
-    let max_rect = egui::Rect::from_min_size(
-        Pos2::new(rect.right() - btn_w * 2.0, rect.top()),
-        btn_size,
-    );
-    let min_rect = egui::Rect::from_min_size(
-        Pos2::new(rect.right() - btn_w * 3.0, rect.top()),
-        btn_size,
-    );
+    let close_rect =
+        egui::Rect::from_min_size(Pos2::new(rect.right() - btn_w, rect.top()), btn_size);
+    let max_rect =
+        egui::Rect::from_min_size(Pos2::new(rect.right() - btn_w * 2.0, rect.top()), btn_size);
+    let min_rect =
+        egui::Rect::from_min_size(Pos2::new(rect.right() - btn_w * 3.0, rect.top()), btn_size);
 
-    let max_icon = if is_maximized { icons::ARROWS_IN_SIMPLE } else { icons::SQUARE };
+    let max_icon = if is_maximized {
+        icons::ARROWS_IN_SIMPLE
+    } else {
+        icons::SQUARE
+    };
     if window_button(ui, min_rect, "renzora_win_min", icons::MINUS, false) {
         queue.push(WindowAction::Minimize);
     }
@@ -159,7 +161,13 @@ pub fn render_window_controls(
     )
 }
 
-fn window_button(ui: &mut egui::Ui, rect: egui::Rect, id_src: &str, icon: &str, is_close: bool) -> bool {
+fn window_button(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    id_src: &str,
+    icon: &str,
+    is_close: bool,
+) -> bool {
     // Use `interact` (no cursor advance) so we can overlay on top of a
     // flow-layout parent (like the MenuBar in the editor's title bar).
     let id = ui.id().with(id_src);
@@ -235,14 +243,38 @@ pub fn render_resize_zones(
         Vec2::splat(c),
     );
 
-    if resize_zone(ui, nw, "resize_nw", CursorIcon::ResizeNorthWest) { queue.push(WindowAction::StartResize(CompassOctant::NorthWest)); return; }
-    if resize_zone(ui, ne, "resize_ne", CursorIcon::ResizeNorthEast) { queue.push(WindowAction::StartResize(CompassOctant::NorthEast)); return; }
-    if resize_zone(ui, sw, "resize_sw", CursorIcon::ResizeSouthWest) { queue.push(WindowAction::StartResize(CompassOctant::SouthWest)); return; }
-    if resize_zone(ui, se, "resize_se", CursorIcon::ResizeSouthEast) { queue.push(WindowAction::StartResize(CompassOctant::SouthEast)); return; }
-    if resize_zone(ui, top, "resize_n", CursorIcon::ResizeNorth) { queue.push(WindowAction::StartResize(CompassOctant::North)); return; }
-    if resize_zone(ui, bottom, "resize_s", CursorIcon::ResizeSouth) { queue.push(WindowAction::StartResize(CompassOctant::South)); return; }
-    if resize_zone(ui, left, "resize_w", CursorIcon::ResizeWest) { queue.push(WindowAction::StartResize(CompassOctant::West)); return; }
-    if resize_zone(ui, right, "resize_e", CursorIcon::ResizeEast) { queue.push(WindowAction::StartResize(CompassOctant::East)); return; }
+    if resize_zone(ui, nw, "resize_nw", CursorIcon::ResizeNorthWest) {
+        queue.push(WindowAction::StartResize(CompassOctant::NorthWest));
+        return;
+    }
+    if resize_zone(ui, ne, "resize_ne", CursorIcon::ResizeNorthEast) {
+        queue.push(WindowAction::StartResize(CompassOctant::NorthEast));
+        return;
+    }
+    if resize_zone(ui, sw, "resize_sw", CursorIcon::ResizeSouthWest) {
+        queue.push(WindowAction::StartResize(CompassOctant::SouthWest));
+        return;
+    }
+    if resize_zone(ui, se, "resize_se", CursorIcon::ResizeSouthEast) {
+        queue.push(WindowAction::StartResize(CompassOctant::SouthEast));
+        return;
+    }
+    if resize_zone(ui, top, "resize_n", CursorIcon::ResizeNorth) {
+        queue.push(WindowAction::StartResize(CompassOctant::North));
+        return;
+    }
+    if resize_zone(ui, bottom, "resize_s", CursorIcon::ResizeSouth) {
+        queue.push(WindowAction::StartResize(CompassOctant::South));
+        return;
+    }
+    if resize_zone(ui, left, "resize_w", CursorIcon::ResizeWest) {
+        queue.push(WindowAction::StartResize(CompassOctant::West));
+        return;
+    }
+    if resize_zone(ui, right, "resize_e", CursorIcon::ResizeEast) {
+        queue.push(WindowAction::StartResize(CompassOctant::East));
+        return;
+    }
 }
 
 fn resize_zone(ui: &mut egui::Ui, rect: egui::Rect, id_src: &str, cursor: CursorIcon) -> bool {

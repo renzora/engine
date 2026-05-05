@@ -9,7 +9,10 @@ use crate::data::*;
 use renzora::CurrentProject;
 
 /// Resolve an effect definition from its source.
-fn resolve_effect_definition(source: &EffectSource, project: Option<&CurrentProject>) -> HanabiEffectDefinition {
+fn resolve_effect_definition(
+    source: &EffectSource,
+    project: Option<&CurrentProject>,
+) -> HanabiEffectDefinition {
     match source {
         EffectSource::Asset { path } => {
             if let Some(proj) = project {
@@ -55,11 +58,9 @@ pub fn sync_hanabi_effects(
     }
 
     for (entity, _synced) in removed_query.iter() {
-        commands.entity(entity).remove::<(
-            ParticleEffect,
-            CompiledParticleEffect,
-            HanabiEffectSynced,
-        )>();
+        commands
+            .entity(entity)
+            .remove::<(ParticleEffect, CompiledParticleEffect, HanabiEffectSynced)>();
     }
 }
 
@@ -101,11 +102,30 @@ pub enum ParticleCommand {
     Pause(Entity),
     Stop(Entity),
     Reset(Entity),
-    Burst { entity: Entity, count: u32 },
-    SetRate { entity: Entity, multiplier: f32 },
-    SetScale { entity: Entity, multiplier: f32 },
-    SetTint { entity: Entity, r: f32, g: f32, b: f32, a: f32 },
-    SetVariable { entity: Entity, name: String, value: EffectVariable },
+    Burst {
+        entity: Entity,
+        count: u32,
+    },
+    SetRate {
+        entity: Entity,
+        multiplier: f32,
+    },
+    SetScale {
+        entity: Entity,
+        multiplier: f32,
+    },
+    SetTint {
+        entity: Entity,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    },
+    SetVariable {
+        entity: Entity,
+        name: String,
+        value: EffectVariable,
+    },
 }
 
 /// Process particle commands from scripts.
@@ -118,29 +138,40 @@ pub fn process_particle_commands(
             ParticleCommand::Play(entity) => {
                 if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
                     data.playing = true;
-                    if let Some(mut s) = spawner { s.active = true; }
+                    if let Some(mut s) = spawner {
+                        s.active = true;
+                    }
                 }
             }
             ParticleCommand::Pause(entity) => {
                 if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
                     data.playing = false;
-                    if let Some(mut s) = spawner { s.active = false; }
+                    if let Some(mut s) = spawner {
+                        s.active = false;
+                    }
                 }
             }
             ParticleCommand::Stop(entity) => {
                 if let Ok((mut data, spawner)) = effect_query.get_mut(entity) {
                     data.playing = false;
-                    if let Some(mut s) = spawner { s.active = false; s.reset(); }
+                    if let Some(mut s) = spawner {
+                        s.active = false;
+                        s.reset();
+                    }
                 }
             }
             ParticleCommand::Reset(entity) => {
                 if let Ok((_, spawner)) = effect_query.get_mut(entity) {
-                    if let Some(mut s) = spawner { s.reset(); }
+                    if let Some(mut s) = spawner {
+                        s.reset();
+                    }
                 }
             }
             ParticleCommand::Burst { entity, count: _ } => {
                 if let Ok((_, spawner)) = effect_query.get_mut(entity) {
-                    if let Some(mut s) = spawner { s.reset(); }
+                    if let Some(mut s) = spawner {
+                        s.reset();
+                    }
                 }
             }
             ParticleCommand::SetRate { entity, multiplier } => {
@@ -158,7 +189,11 @@ pub fn process_particle_commands(
                     data.color_tint = [r, g, b, a];
                 }
             }
-            ParticleCommand::SetVariable { entity, name, value } => {
+            ParticleCommand::SetVariable {
+                entity,
+                name,
+                value,
+            } => {
                 if let Ok((mut data, _)) = effect_query.get_mut(entity) {
                     data.variable_overrides.insert(name, value);
                 }

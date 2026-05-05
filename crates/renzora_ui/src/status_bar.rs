@@ -94,9 +94,7 @@ pub fn render_status_bar(ctx: &egui::Context, theme: &Theme, world: &World) {
                 ui.spacing_mut().item_spacing.x = 16.0;
 
                 // Left side: "Ready" label + left-aligned items
-                ui.label(
-                    egui::RichText::new("Ready").size(11.0).color(text_color),
-                );
+                ui.label(egui::RichText::new("Ready").size(11.0).color(text_color));
 
                 for item in registry.left_items() {
                     ui.separator();

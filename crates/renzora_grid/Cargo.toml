@@ -8,3 +8,6 @@ edition = "2021"
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+
+[lints]
+workspace = true

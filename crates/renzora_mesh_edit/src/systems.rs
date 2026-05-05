@@ -4,8 +4,8 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::core::EditorCamera;
 use renzora::core::viewport_types::ViewportState;
+use renzora::core::EditorCamera;
 use renzora_editor::{ActiveTool, EditorSelection};
 
 use crate::edit_mesh::{EditMesh, VertexId};
@@ -114,7 +114,11 @@ pub fn switch_select_mode(keys: Res<ButtonInput<KeyCode>>, mut sel: ResMut<MeshS
     }
 }
 
-pub fn select_all_toggle(keys: Res<ButtonInput<KeyCode>>, mut sel: ResMut<MeshSelection>, edit_q: Query<&EditMesh>) {
+pub fn select_all_toggle(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut sel: ResMut<MeshSelection>,
+    edit_q: Query<&EditMesh>,
+) {
     if !keys.just_pressed(KeyCode::KeyA) {
         return;
     }
@@ -125,9 +129,19 @@ pub fn select_all_toggle(keys: Res<ButtonInput<KeyCode>>, mut sel: ResMut<MeshSe
         sel.clear();
     } else {
         match sel.mode {
-            SelectMode::Vertex => sel.verts = (0..edit.vertices.len() as u32).map(VertexId).collect(),
-            SelectMode::Edge => sel.edges = (0..edit.edges.len() as u32).map(crate::edit_mesh::EdgeId).collect(),
-            SelectMode::Face => sel.faces = (0..edit.faces.len() as u32).map(crate::edit_mesh::FaceId).collect(),
+            SelectMode::Vertex => {
+                sel.verts = (0..edit.vertices.len() as u32).map(VertexId).collect()
+            }
+            SelectMode::Edge => {
+                sel.edges = (0..edit.edges.len() as u32)
+                    .map(crate::edit_mesh::EdgeId)
+                    .collect()
+            }
+            SelectMode::Face => {
+                sel.faces = (0..edit.faces.len() as u32)
+                    .map(crate::edit_mesh::FaceId)
+                    .collect()
+            }
         }
     }
 }
@@ -153,14 +167,19 @@ pub fn pick_element(
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
-    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
-    let Some(target) = sel.target else { return };
-    let Ok((edit, gt)) = edit_q.get(target) else { return };
-
-    let project = |p: Vec3| -> Option<Vec2> {
-        camera.world_to_viewport(cam_gt, gt.transform_point(p)).ok()
+    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else {
+        return;
     };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
+    let Some(target) = sel.target else { return };
+    let Ok((edit, gt)) = edit_q.get(target) else {
+        return;
+    };
+
+    let project =
+        |p: Vec3| -> Option<Vec2> { camera.world_to_viewport(cam_gt, gt.transform_point(p)).ok() };
 
     let additive = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let mut hit_any = false;
@@ -182,8 +201,20 @@ pub fn pick_element(
         SelectMode::Edge => {
             let mut best: Option<(f32, crate::edit_mesh::EdgeId)> = None;
             for (i, e) in edit.edges.iter().enumerate() {
-                let Some(a) = edit.vertices.get(e.verts[0].0 as usize).and_then(|v| project(v.position)) else { continue };
-                let Some(b) = edit.vertices.get(e.verts[1].0 as usize).and_then(|v| project(v.position)) else { continue };
+                let Some(a) = edit
+                    .vertices
+                    .get(e.verts[0].0 as usize)
+                    .and_then(|v| project(v.position))
+                else {
+                    continue;
+                };
+                let Some(b) = edit
+                    .vertices
+                    .get(e.verts[1].0 as usize)
+                    .and_then(|v| project(v.position))
+                else {
+                    continue;
+                };
                 let d = point_to_segment(cursor_vp, a, b);
                 if d <= PICK_RADIUS_PX && best.map_or(true, |(bd, _)| d < bd) {
                     best = Some((d, crate::edit_mesh::EdgeId(i as u32)));
@@ -194,13 +225,18 @@ pub fn pick_element(
         }
         SelectMode::Face => {
             // World-space ray vs triangle. Closest hit wins.
-            let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else { return };
+            let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport)
+            else {
+                return;
+            };
             let inv = gt.to_matrix().inverse();
             let local_origin = inv.transform_point3(ray_origin);
             let local_dir = inv.transform_vector3(ray_dir).normalize_or_zero();
             let mut best: Option<(f32, crate::edit_mesh::FaceId)> = None;
             for (i, f) in edit.faces.iter().enumerate() {
-                if f.verts.len() < 3 { continue; }
+                if f.verts.len() < 3 {
+                    continue;
+                }
                 let p0 = edit.vertices[f.verts[0].0 as usize].position;
                 for w in f.verts.windows(2).skip(1) {
                     let p1 = edit.vertices[w[0].0 as usize].position;
@@ -265,15 +301,23 @@ pub fn extrude_system(
     mut grab: ResMut<GrabState>,
     mut commands: Commands,
 ) {
-    if !keys.just_pressed(KeyCode::KeyE) { return; }
-    if !matches!(*grab, GrabState::Idle) { return; }
+    if !keys.just_pressed(KeyCode::KeyE) {
+        return;
+    }
+    if !matches!(*grab, GrabState::Idle) {
+        return;
+    }
     let Some(target) = sel.target else { return };
-    let Ok((mut edit, gt)) = edit_q.get_mut(target) else { return };
+    let Ok((mut edit, gt)) = edit_q.get_mut(target) else {
+        return;
+    };
 
     let before = edit.clone();
     let before_sel = SelectionSnapshot::from_selection(&sel);
 
-    let Some(result) = operators::extrude(&mut edit, &sel) else { return };
+    let Some(result) = operators::extrude(&mut edit, &sel) else {
+        return;
+    };
 
     // Adopt the post-op selection.
     sel.verts = result.post_verts.clone();
@@ -293,26 +337,30 @@ pub fn extrude_system(
         after_sel,
     };
     commands.queue(move |world: &mut World| {
-        renzora_undo::record(
-            world,
-            renzora_undo::UndoContext::Scene,
-            Box::new(cmd),
-        );
+        renzora_undo::record(world, renzora_undo::UndoContext::Scene, Box::new(cmd));
     });
 
     // Seed a grab so the user can immediately drag the new geometry.
     // Use face normal as the locked axis when available; otherwise
     // fall back to view-plane translation.
-    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
-    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else { return };
+    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
+    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else {
+        return;
+    };
 
     let starts: Vec<(u32, Vec3)> = result
         .new_verts
         .iter()
         .map(|&id| (id, edit.vertices[id as usize].position))
         .collect();
-    if starts.is_empty() { return; }
+    if starts.is_empty() {
+        return;
+    }
 
     // Use the selection centroid in world space as the plane/axis anchor.
     let centroid_local: Vec3 = starts.iter().map(|(_, p)| *p).sum::<Vec3>() / starts.len() as f32;
@@ -327,7 +375,8 @@ pub fn extrude_system(
         (Some(axis_world), anchor, -cam_gt.forward().as_vec3())
     } else {
         let normal = -cam_gt.forward().as_vec3();
-        let anchor = ray_plane(ray_origin, ray_dir, centroid_world, normal).unwrap_or(centroid_world);
+        let anchor =
+            ray_plane(ray_origin, ray_dir, centroid_world, normal).unwrap_or(centroid_world);
         (None, anchor, normal)
     };
 
@@ -376,16 +425,30 @@ pub fn grab_start(
     sel: Res<MeshSelection>,
     mut grab: ResMut<GrabState>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyG) { return; }
-    if !matches!(*grab, GrabState::Idle) { return; }
+    if !keys.just_pressed(KeyCode::KeyG) {
+        return;
+    }
+    if !matches!(*grab, GrabState::Idle) {
+        return;
+    }
     let Some(target) = sel.target else { return };
-    let Ok((edit, gt)) = edit_q.get(target) else { return };
+    let Ok((edit, gt)) = edit_q.get(target) else {
+        return;
+    };
     let vert_ids = selected_vert_ids(edit, &sel);
-    if vert_ids.is_empty() { return; }
+    if vert_ids.is_empty() {
+        return;
+    }
 
-    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
-    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else { return };
+    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
+    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else {
+        return;
+    };
 
     // Plane through the selection centroid, facing the camera.
     let centroid_local: Vec3 = vert_ids
@@ -395,7 +458,9 @@ pub fn grab_start(
         / vert_ids.len() as f32;
     let centroid_world = gt.transform_point(centroid_local);
     let normal = -cam_gt.forward().as_vec3();
-    let Some(hit) = ray_plane(ray_origin, ray_dir, centroid_world, normal) else { return };
+    let Some(hit) = ray_plane(ray_origin, ray_dir, centroid_world, normal) else {
+        return;
+    };
 
     let starts: Vec<(u32, Vec3)> = vert_ids
         .iter()
@@ -423,14 +488,33 @@ pub fn grab_update(
     mut grab: ResMut<GrabState>,
     mut commands: Commands,
 ) {
-    let (mut anchor_world, plane_normal, plane_point, mut axis, starts, seeded_by_op) = match &*grab {
-        GrabState::Active { anchor_world, plane_normal, plane_point, axis, starts, seeded_by_op } => {
-            (*anchor_world, *plane_normal, *plane_point, *axis, starts.clone(), *seeded_by_op)
-        }
+    let (mut anchor_world, plane_normal, plane_point, mut axis, starts, seeded_by_op) = match &*grab
+    {
+        GrabState::Active {
+            anchor_world,
+            plane_normal,
+            plane_point,
+            axis,
+            starts,
+            seeded_by_op,
+        } => (
+            *anchor_world,
+            *plane_normal,
+            *plane_point,
+            *axis,
+            starts.clone(),
+            *seeded_by_op,
+        ),
         GrabState::Idle => return,
     };
-    let Some(target) = sel.target else { *grab = GrabState::Idle; return };
-    let Ok((mut edit, gt)) = edit_q.get_mut(target) else { *grab = GrabState::Idle; return };
+    let Some(target) = sel.target else {
+        *grab = GrabState::Idle;
+        return;
+    };
+    let Ok((mut edit, gt)) = edit_q.get_mut(target) else {
+        *grab = GrabState::Idle;
+        return;
+    };
 
     // Cancel (RMB or Esc): restore and exit. If the grab was seeded by a
     // topology op (extrude, inset, …) we also need to roll that op back,
@@ -465,13 +549,12 @@ pub fn grab_update(
             })
             .collect();
         if !deltas.is_empty() {
-            let cmd = crate::undo::VertexMoveCmd { entity: target, deltas };
+            let cmd = crate::undo::VertexMoveCmd {
+                entity: target,
+                deltas,
+            };
             commands.queue(move |world: &mut World| {
-                renzora_undo::record(
-                    world,
-                    renzora_undo::UndoContext::Scene,
-                    Box::new(cmd),
-                );
+                renzora_undo::record(world, renzora_undo::UndoContext::Scene, Box::new(cmd));
             });
         }
         edit.dirty = true;
@@ -480,15 +563,26 @@ pub fn grab_update(
     }
 
     // Drag.
-    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
-    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else { return };
+    let Some(cursor_vp) = viewport_cursor(&viewport, &window_q) else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
+    let Some((ray_origin, ray_dir)) = build_world_ray(camera, cam_gt, cursor_vp, &viewport) else {
+        return;
+    };
 
     // Axis-constraint keys (tap to lock, tap same key again to release).
-    let axis_toggle = if keys.just_pressed(KeyCode::KeyX) { Some(Vec3::X) }
-        else if keys.just_pressed(KeyCode::KeyY) { Some(Vec3::Y) }
-        else if keys.just_pressed(KeyCode::KeyZ) { Some(Vec3::Z) }
-        else { None };
+    let axis_toggle = if keys.just_pressed(KeyCode::KeyX) {
+        Some(Vec3::X)
+    } else if keys.just_pressed(KeyCode::KeyY) {
+        Some(Vec3::Y)
+    } else if keys.just_pressed(KeyCode::KeyZ) {
+        Some(Vec3::Z)
+    } else {
+        None
+    };
     if let Some(new_axis) = axis_toggle {
         // Toggle off when pressing the already-locked axis.
         let target_axis = if axis.map(|a| a.abs_diff_eq(new_axis, 1e-5)).unwrap_or(false) {
@@ -504,7 +598,12 @@ pub fn grab_update(
         };
         axis = target_axis;
         *grab = GrabState::Active {
-            anchor_world, plane_normal, plane_point, axis, starts: starts.clone(), seeded_by_op,
+            anchor_world,
+            plane_normal,
+            plane_point,
+            axis,
+            starts: starts.clone(),
+            seeded_by_op,
         };
         // Snap verts back to their start — subsequent frames will move
         // along the new constraint from zero.
@@ -516,10 +615,14 @@ pub fn grab_update(
     }
 
     let delta_world = if let Some(a) = axis {
-        let Some(hit) = closest_point_on_line(plane_point, a, ray_origin, ray_dir) else { return };
+        let Some(hit) = closest_point_on_line(plane_point, a, ray_origin, ray_dir) else {
+            return;
+        };
         hit - anchor_world
     } else {
-        let Some(hit) = ray_plane(ray_origin, ray_dir, plane_point, plane_normal) else { return };
+        let Some(hit) = ray_plane(ray_origin, ray_dir, plane_point, plane_normal) else {
+            return;
+        };
         hit - anchor_world
     };
 
@@ -539,7 +642,9 @@ pub fn bake_if_dirty(
     mut edit_q: Query<(&mut EditMesh, &Mesh3d)>,
 ) {
     for (mut edit, mesh3d) in &mut edit_q {
-        if !edit.dirty { continue; }
+        if !edit.dirty {
+            continue;
+        }
         if let Some(mesh) = meshes.get_mut(&mesh3d.0) {
             edit.bake_to_mesh(mesh);
         }
@@ -554,17 +659,29 @@ pub fn draw_overlay(
     edit_q: Query<(&EditMesh, &GlobalTransform)>,
     mut gizmos: Gizmos,
 ) {
-    let Some(target) = mesh_selection.target else { return };
-    let Ok((edit, gt)) = edit_q.get(target) else { return };
+    let Some(target) = mesh_selection.target else {
+        return;
+    };
+    let Ok((edit, gt)) = edit_q.get(target) else {
+        return;
+    };
     let to_world = |v: Vec3| gt.transform_point(v);
 
     // Edges: faint white unless selected.
     for (i, edge) in edit.edges.iter().enumerate() {
-        let a = edit.vertices.get(edge.verts[0].0 as usize).map(|v| v.position);
-        let b = edit.vertices.get(edge.verts[1].0 as usize).map(|v| v.position);
+        let a = edit
+            .vertices
+            .get(edge.verts[0].0 as usize)
+            .map(|v| v.position);
+        let b = edit
+            .vertices
+            .get(edge.verts[1].0 as usize)
+            .map(|v| v.position);
         let (Some(a), Some(b)) = (a, b) else { continue };
-        let selected =
-            mesh_selection.mode == SelectMode::Edge && mesh_selection.edges.contains(&crate::edit_mesh::EdgeId(i as u32));
+        let selected = mesh_selection.mode == SelectMode::Edge
+            && mesh_selection
+                .edges
+                .contains(&crate::edit_mesh::EdgeId(i as u32));
         let color = if selected {
             Color::srgb(1.0, 0.55, 0.1)
         } else {
@@ -589,7 +706,9 @@ pub fn draw_overlay(
     // Face highlights: draw the triangles' outline tinted when selected.
     if mesh_selection.mode == SelectMode::Face {
         for (i, face) in edit.faces.iter().enumerate() {
-            let selected = mesh_selection.faces.contains(&crate::edit_mesh::FaceId(i as u32));
+            let selected = mesh_selection
+                .faces
+                .contains(&crate::edit_mesh::FaceId(i as u32));
             let color = if selected {
                 Color::srgba(1.0, 0.55, 0.1, 0.9)
             } else {
@@ -712,16 +831,24 @@ fn ray_triangle(origin: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> Option
     let e2 = v2 - v0;
     let h = dir.cross(e2);
     let a = e1.dot(h);
-    if a.abs() < 1e-6 { return None; }
+    if a.abs() < 1e-6 {
+        return None;
+    }
     let f = 1.0 / a;
     let s = origin - v0;
     let u = f * s.dot(h);
-    if !(0.0..=1.0).contains(&u) { return None; }
+    if !(0.0..=1.0).contains(&u) {
+        return None;
+    }
     let q = s.cross(e1);
     let v = f * dir.dot(q);
-    if v < 0.0 || u + v > 1.0 { return None; }
+    if v < 0.0 || u + v > 1.0 {
+        return None;
+    }
     let t = f * e2.dot(q);
-    if t < 0.0 { return None; }
+    if t < 0.0 {
+        return None;
+    }
     Some(t)
 }
 

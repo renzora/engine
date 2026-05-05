@@ -23,14 +23,11 @@ pub fn add_default_rendering(app: &mut App) {
 
     #[cfg(all(feature = "server", not(feature = "editor")))]
     {
-        app.add_plugins(
-            DefaultPlugins
-                .set(bevy::window::WindowPlugin {
-                    primary_window: None,
-                    exit_condition: bevy::window::ExitCondition::DontExit,
-                    ..default()
-                })
-        );
+        app.add_plugins(DefaultPlugins.set(bevy::window::WindowPlugin {
+            primary_window: None,
+            exit_condition: bevy::window::ExitCondition::DontExit,
+            ..default()
+        }));
     }
 }
 
@@ -137,7 +134,9 @@ fn main() {
             "[server] Starting dedicated server on {}:{}",
             net_config.server_addr, net_config.port
         );
-        app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(net_config));
+        app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(
+            net_config,
+        ));
         load_global_plugins(&mut app, false);
         app.run();
     }
@@ -155,8 +154,8 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
 
 #[cfg(feature = "server")]
 fn load_server_config() -> renzora_runtime::renzora_network::NetworkConfig {
-    use renzora_runtime::renzora_network;
     use renzora_runtime::renzora;
+    use renzora_runtime::renzora_network;
 
     let mut config = renzora_network::NetworkConfig::default();
     let args: Vec<String> = std::env::args().collect();

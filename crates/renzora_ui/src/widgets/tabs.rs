@@ -29,7 +29,18 @@ pub fn tab_bar(
                 t.label.to_string()
             };
             let (rect, resp) = ui.allocate_exact_size(
-                Vec2::new(ui.fonts_mut(|f| f.layout_no_wrap(label.clone(), egui::FontId::proportional(12.0), theme.text.primary.to_color32()).rect.width()) + 20.0, 26.0),
+                Vec2::new(
+                    ui.fonts_mut(|f| {
+                        f.layout_no_wrap(
+                            label.clone(),
+                            egui::FontId::proportional(12.0),
+                            theme.text.primary.to_color32(),
+                        )
+                        .rect
+                        .width()
+                    }) + 20.0,
+                    26.0,
+                ),
                 Sense::click(),
             );
             let bg = if is_active {

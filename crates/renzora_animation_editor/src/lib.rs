@@ -6,11 +6,11 @@
 
 mod animation_panel;
 mod params_panel;
-mod state_machine_panel;
-mod timeline_panel;
 mod preview;
+mod state_machine_panel;
 pub mod studio_preview;
 mod studio_preview_panel;
+mod timeline_panel;
 
 use bevy::prelude::*;
 use renzora_editor::AppEditorExt;
@@ -148,31 +148,43 @@ fn sync_anim_editor_bridge(
                 editor_state.auto_fit_clip = Some(clip_name);
             }
             AnimEditorAction::SetParam { name, value } => {
-                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut()) {
-                    q.commands.push(renzora_animation::AnimationCommand::SetParam {
-                        entity, name, value,
-                    });
+                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut())
+                {
+                    q.commands
+                        .push(renzora_animation::AnimationCommand::SetParam {
+                            entity,
+                            name,
+                            value,
+                        });
                 }
             }
             AnimEditorAction::SetBoolParam { name, value } => {
-                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut()) {
-                    q.commands.push(renzora_animation::AnimationCommand::SetBoolParam {
-                        entity, name, value,
-                    });
+                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut())
+                {
+                    q.commands
+                        .push(renzora_animation::AnimationCommand::SetBoolParam {
+                            entity,
+                            name,
+                            value,
+                        });
                 }
             }
             AnimEditorAction::FireTrigger { name } => {
-                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut()) {
-                    q.commands.push(renzora_animation::AnimationCommand::Trigger {
-                        entity, name,
-                    });
+                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut())
+                {
+                    q.commands
+                        .push(renzora_animation::AnimationCommand::Trigger { entity, name });
                 }
             }
             AnimEditorAction::SetLayerWeight { layer, weight } => {
-                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut()) {
-                    q.commands.push(renzora_animation::AnimationCommand::SetLayerWeight {
-                        entity, layer_name: layer, weight,
-                    });
+                if let (Some(entity), Some(q)) = (editor_state.selected_entity, anim_queue.as_mut())
+                {
+                    q.commands
+                        .push(renzora_animation::AnimationCommand::SetLayerWeight {
+                            entity,
+                            layer_name: layer,
+                            weight,
+                        });
                 }
             }
         }
@@ -236,13 +248,11 @@ fn sync_selection(
         // Auto-select the animator's default clip (or first clip) when
         // the selected entity has an AnimatorComponent, so the timeline
         // doesn't reset to "Select clip…" on every selection change.
-        editor_state.selected_clip = selected
-            .and_then(|e| animators.get(e).ok())
-            .and_then(|a| {
-                a.default_clip
-                    .clone()
-                    .or_else(|| a.clips.first().map(|c| c.name.clone()))
-            });
+        editor_state.selected_clip = selected.and_then(|e| animators.get(e).ok()).and_then(|a| {
+            a.default_clip
+                .clone()
+                .or_else(|| a.clips.first().map(|c| c.name.clone()))
+        });
     }
 }
 
@@ -266,10 +276,7 @@ impl Plugin for AnimationEditorPlugin {
         studio_preview::register_preview_gizmos(app);
         app.add_observer(studio_preview::hide_new_preview_descendants);
 
-        app.add_systems(
-            PostStartup,
-            studio_preview::setup_studio_preview,
-        );
+        app.add_systems(PostStartup, studio_preview::setup_studio_preview);
 
         app.add_systems(
             Update,
@@ -312,3 +319,4 @@ impl Plugin for AnimationEditorPlugin {
     }
 }
 
+renzora::add!(AnimationEditorPlugin, Editor);

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 cfg-if = "1"
 
@@ -16,3 +17,6 @@ mint = "0.5"
 # `Sound` backed by a cpal input stream piped through an rtrb SPSC ringbuffer.
 cpal = "0.17"
 rtrb = "0.3"
+
+[lints]
+workspace = true

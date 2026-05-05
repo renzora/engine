@@ -3,21 +3,21 @@ use bevy_egui::egui::{
     self, text::CCursor, text::CCursorRange, Align2, Color32, CursorIcon, FontFamily, FontId, Id,
     Key, Modifiers, Pos2, Rect, RichText, Sense, Stroke, Vec2,
 };
-use renzora::core::keybindings::{EditorAction, KeyBindings};
 use egui_phosphor::regular::{
     ARROW_RIGHT, BRACKETS_CURLY, CODE, COLUMNS_PLUS_RIGHT, FILE_PLUS, FLOPPY_DISK,
-    FLOPPY_DISK_BACK, GIT_DIFF, LIST_NUMBERS, MAGNIFYING_GLASS, PARAGRAPH,
-    SQUARES_FOUR, WARNING, X,
+    FLOPPY_DISK_BACK, GIT_DIFF, LIST_NUMBERS, MAGNIFYING_GLASS, PARAGRAPH, SQUARES_FOUR, WARNING,
+    X,
 };
+use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora_theme::Theme;
 use std::path::PathBuf;
 
 use crate::actions::{
     byte_to_char, byte_to_line, char_to_byte, compute_foldable_lines, delete_lines,
-    duplicate_lines, find_all_occurrences, find_matching_bracket,
-    indent_selection, leading_whitespace_of_line, line_byte_range, line_to_byte,
-    move_lines_down, move_lines_up, select_next_occurrence, smart_home_target,
-    toggle_block_comment, toggle_line_comment, word_range_at_byte, TAB_SIZE,
+    duplicate_lines, find_all_occurrences, find_matching_bracket, indent_selection,
+    leading_whitespace_of_line, line_byte_range, line_to_byte, move_lines_down, move_lines_up,
+    select_next_occurrence, smart_home_target, toggle_block_comment, toggle_line_comment,
+    word_range_at_byte, TAB_SIZE,
 };
 use crate::autocomplete::{self, CompletionItem};
 use crate::highlight::{highlight, Language, TokenStyle};
@@ -74,8 +74,12 @@ impl EditorShortcuts {
         };
         #[allow(unused_mut)]
         let mut take = |action: EditorAction| -> bool {
-            let Some(binding) = kb.bindings.get(&action) else { return false };
-            let Some(key) = keycode_to_egui_key(binding.key) else { return false };
+            let Some(binding) = kb.bindings.get(&action) else {
+                return false;
+            };
+            let Some(key) = keycode_to_egui_key(binding.key) else {
+                return false;
+            };
             let modifiers = Modifiers {
                 ctrl: binding.ctrl,
                 shift: binding.shift,
@@ -121,30 +125,80 @@ fn keycode_to_egui_key(kc: bevy::input::keyboard::KeyCode) -> Option<Key> {
     use bevy::input::keyboard::KeyCode as KC;
     use Key as K;
     Some(match kc {
-        KC::KeyA => K::A,  KC::KeyB => K::B,  KC::KeyC => K::C,  KC::KeyD => K::D,
-        KC::KeyE => K::E,  KC::KeyF => K::F,  KC::KeyG => K::G,  KC::KeyH => K::H,
-        KC::KeyI => K::I,  KC::KeyJ => K::J,  KC::KeyK => K::K,  KC::KeyL => K::L,
-        KC::KeyM => K::M,  KC::KeyN => K::N,  KC::KeyO => K::O,  KC::KeyP => K::P,
-        KC::KeyQ => K::Q,  KC::KeyR => K::R,  KC::KeyS => K::S,  KC::KeyT => K::T,
-        KC::KeyU => K::U,  KC::KeyV => K::V,  KC::KeyW => K::W,  KC::KeyX => K::X,
-        KC::KeyY => K::Y,  KC::KeyZ => K::Z,
-        KC::Digit0 => K::Num0, KC::Digit1 => K::Num1, KC::Digit2 => K::Num2,
-        KC::Digit3 => K::Num3, KC::Digit4 => K::Num4, KC::Digit5 => K::Num5,
-        KC::Digit6 => K::Num6, KC::Digit7 => K::Num7, KC::Digit8 => K::Num8,
+        KC::KeyA => K::A,
+        KC::KeyB => K::B,
+        KC::KeyC => K::C,
+        KC::KeyD => K::D,
+        KC::KeyE => K::E,
+        KC::KeyF => K::F,
+        KC::KeyG => K::G,
+        KC::KeyH => K::H,
+        KC::KeyI => K::I,
+        KC::KeyJ => K::J,
+        KC::KeyK => K::K,
+        KC::KeyL => K::L,
+        KC::KeyM => K::M,
+        KC::KeyN => K::N,
+        KC::KeyO => K::O,
+        KC::KeyP => K::P,
+        KC::KeyQ => K::Q,
+        KC::KeyR => K::R,
+        KC::KeyS => K::S,
+        KC::KeyT => K::T,
+        KC::KeyU => K::U,
+        KC::KeyV => K::V,
+        KC::KeyW => K::W,
+        KC::KeyX => K::X,
+        KC::KeyY => K::Y,
+        KC::KeyZ => K::Z,
+        KC::Digit0 => K::Num0,
+        KC::Digit1 => K::Num1,
+        KC::Digit2 => K::Num2,
+        KC::Digit3 => K::Num3,
+        KC::Digit4 => K::Num4,
+        KC::Digit5 => K::Num5,
+        KC::Digit6 => K::Num6,
+        KC::Digit7 => K::Num7,
+        KC::Digit8 => K::Num8,
         KC::Digit9 => K::Num9,
-        KC::Slash => K::Slash, KC::Comma => K::Comma, KC::Period => K::Period,
-        KC::Semicolon => K::Semicolon, KC::Quote => K::Quote, KC::Backslash => K::Backslash,
-        KC::BracketLeft => K::OpenBracket, KC::BracketRight => K::CloseBracket,
-        KC::Equal => K::Equals, KC::Minus => K::Minus, KC::Backquote => K::Backtick,
-        KC::Space => K::Space, KC::Tab => K::Tab, KC::Enter => K::Enter,
-        KC::Escape => K::Escape, KC::Backspace => K::Backspace, KC::Delete => K::Delete,
-        KC::Home => K::Home, KC::End => K::End, KC::PageUp => K::PageUp, KC::PageDown => K::PageDown,
+        KC::Slash => K::Slash,
+        KC::Comma => K::Comma,
+        KC::Period => K::Period,
+        KC::Semicolon => K::Semicolon,
+        KC::Quote => K::Quote,
+        KC::Backslash => K::Backslash,
+        KC::BracketLeft => K::OpenBracket,
+        KC::BracketRight => K::CloseBracket,
+        KC::Equal => K::Equals,
+        KC::Minus => K::Minus,
+        KC::Backquote => K::Backtick,
+        KC::Space => K::Space,
+        KC::Tab => K::Tab,
+        KC::Enter => K::Enter,
+        KC::Escape => K::Escape,
+        KC::Backspace => K::Backspace,
+        KC::Delete => K::Delete,
+        KC::Home => K::Home,
+        KC::End => K::End,
+        KC::PageUp => K::PageUp,
+        KC::PageDown => K::PageDown,
         KC::Insert => K::Insert,
-        KC::ArrowUp => K::ArrowUp, KC::ArrowDown => K::ArrowDown,
-        KC::ArrowLeft => K::ArrowLeft, KC::ArrowRight => K::ArrowRight,
-        KC::F1 => K::F1, KC::F2 => K::F2, KC::F3 => K::F3, KC::F4 => K::F4,
-        KC::F5 => K::F5, KC::F6 => K::F6, KC::F7 => K::F7, KC::F8 => K::F8,
-        KC::F9 => K::F9, KC::F10 => K::F10, KC::F11 => K::F11, KC::F12 => K::F12,
+        KC::ArrowUp => K::ArrowUp,
+        KC::ArrowDown => K::ArrowDown,
+        KC::ArrowLeft => K::ArrowLeft,
+        KC::ArrowRight => K::ArrowRight,
+        KC::F1 => K::F1,
+        KC::F2 => K::F2,
+        KC::F3 => K::F3,
+        KC::F4 => K::F4,
+        KC::F5 => K::F5,
+        KC::F6 => K::F6,
+        KC::F7 => K::F7,
+        KC::F8 => K::F8,
+        KC::F9 => K::F9,
+        KC::F10 => K::F10,
+        KC::F11 => K::F11,
+        KC::F12 => K::F12,
         _ => return None,
     })
 }
@@ -198,7 +252,9 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
     let surface_panel = theme.surfaces.panel.to_color32();
     let surface_faint = theme.surfaces.faint.to_color32();
 
-    let Some(active_idx) = state.split_active_tab else { return };
+    let Some(active_idx) = state.split_active_tab else {
+        return;
+    };
     if active_idx >= state.open_files.len() {
         return;
     }
@@ -209,7 +265,11 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
     ui.horizontal(|ui| {
         for (i, file) in state.open_files.iter().enumerate() {
             let is_active = i == active_idx;
-            let bg = if is_active { surface_panel } else { surface_faint };
+            let bg = if is_active {
+                surface_panel
+            } else {
+                surface_faint
+            };
             egui::Frame::new()
                 .fill(bg)
                 .inner_margin(egui::Margin::symmetric(6, 3))
@@ -220,8 +280,7 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
                         file.name.clone()
                     };
                     let resp = ui.add(
-                        egui::Label::new(RichText::new(label).size(11.0))
-                            .sense(Sense::click()),
+                        egui::Label::new(RichText::new(label).size(11.0)).sense(Sense::click()),
                     );
                     if resp.clicked() {
                         new_idx = Some(i);
@@ -266,11 +325,7 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
         .max_height(avail.height() - 4.0)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let line_count = state.open_files[active_idx]
-                .content
-                .lines()
-                .count()
-                .max(1);
+            let line_count = state.open_files[active_idx].content.lines().count().max(1);
             let gw = gutter_width(line_count, font_size);
 
             let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
@@ -371,7 +426,9 @@ pub fn render_code_editor_content(
     render_tab_bar(ui, state, theme);
     ui.separator();
 
-    let Some(active_idx) = state.active_tab else { return; };
+    let Some(active_idx) = state.active_tab else {
+        return;
+    };
     if active_idx >= state.open_files.len() {
         return;
     }
@@ -439,8 +496,8 @@ pub fn render_code_editor_content(
     let row_height = ui.fonts_mut(|f| f.row_height(&FontId::monospace(font_size)));
     let mono_advance = ui.fonts_mut(|f| f.glyph_width(&FontId::monospace(font_size), 'M'));
     let status_bar_height = 22.0;
-    let available_height = (available_rect.height() - error_panel_height - status_bar_height)
-        .max(row_height);
+    let available_height =
+        (available_rect.height() - error_panel_height - status_bar_height).max(row_height);
 
     let editor_id = Id::new(("code_editor_textedit", active_idx));
 
@@ -626,316 +683,331 @@ pub fn render_code_editor_content(
         scroll_builder = scroll_builder.vertical_scroll_offset(y);
     }
     let scroll_output = scroll_builder.show(&mut scroll_ui, |ui| {
-            let line_count = state.open_files[active_idx]
-                .content
-                .lines()
-                .count()
-                .max(1);
-            let gw = gutter_width(line_count, font_size);
+        let line_count = state.open_files[active_idx].content.lines().count().max(1);
+        let gw = gutter_width(line_count, font_size);
 
-            // Read the pre-TextEdit cursor range from stored state so the
-            // layouter can bake the selection in as a per-section background.
-            // We keep the *raw* range (not filtered to "has selection") so we
-            // can compare it against the post-show range later and request a
-            // repaint if anything moved — fixes the "selection sticks until I
-            // bump the font size" galley-cache staleness bug.
-            let pre_cursor_range: Option<(usize, usize)> =
-                egui::TextEdit::load_state(ui.ctx(), editor_id)
-                    .and_then(|s| s.cursor.char_range())
-                    .map(|r| (r.primary.index, r.secondary.index));
-            let sel_range_chars: Option<(usize, usize)> =
-                pre_cursor_range.and_then(|(a, b)| {
-                    if a == b {
-                        None
-                    } else {
-                        Some((a.min(b), a.max(b)))
-                    }
-                });
+        // Read the pre-TextEdit cursor range from stored state so the
+        // layouter can bake the selection in as a per-section background.
+        // We keep the *raw* range (not filtered to "has selection") so we
+        // can compare it against the post-show range later and request a
+        // repaint if anything moved — fixes the "selection sticks until I
+        // bump the font size" galley-cache staleness bug.
+        let pre_cursor_range: Option<(usize, usize)> =
+            egui::TextEdit::load_state(ui.ctx(), editor_id)
+                .and_then(|s| s.cursor.char_range())
+                .map(|r| (r.primary.index, r.secondary.index));
+        let sel_range_chars: Option<(usize, usize)> = pre_cursor_range.and_then(|(a, b)| {
+            if a == b {
+                None
+            } else {
+                Some((a.min(b), a.max(b)))
+            }
+        });
 
-            // Prepare layouter borrowing the theme style.
-            let mut layouter =
-                |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
-                    let mut job = highlight(text.as_str(), lang, &style);
-                    job.wrap.max_width = wrap_width;
-                    if let Some((sa, sb)) = sel_range_chars {
-                        let text_str = text.as_str();
-                        let byte_start = char_to_byte(text_str, sa);
-                        let byte_end = char_to_byte(text_str, sb);
-                        apply_selection_background(&mut job, byte_start, byte_end, selection_bg);
-                    }
-                    ui.painter().layout_job(job)
-                };
+        // Prepare layouter borrowing the theme style.
+        let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
+            let mut job = highlight(text.as_str(), lang, &style);
+            job.wrap.max_width = wrap_width;
+            if let Some((sa, sb)) = sel_range_chars {
+                let text_str = text.as_str();
+                let byte_start = char_to_byte(text_str, sa);
+                let byte_end = char_to_byte(text_str, sb);
+                apply_selection_background(&mut job, byte_start, byte_end, selection_bg);
+            }
+            ui.painter().layout_job(job)
+        };
 
-            // Lay out: [gutter space | padding | TextEdit]
-            let start_x = ui.cursor().min.x;
-            let text_pad_left = 10.0;
-            ui.horizontal_top(|ui| {
-                // Reserve gutter space — painted after TextEdit.
-                ui.add_space(gw + text_pad_left);
+        // Lay out: [gutter space | padding | TextEdit]
+        let start_x = ui.cursor().min.x;
+        let text_pad_left = 10.0;
+        ui.horizontal_top(|ui| {
+            // Reserve gutter space — painted after TextEdit.
+            ui.add_space(gw + text_pad_left);
 
-                // Capture scalar flags before the mut-borrow of open_files so
-                // we can read them while `file` is live.
-                let show_whitespace = state.show_whitespace;
-                let state_find_open = state.find_open;
-                let state_find_text = state.find_text.clone();
-                let state_find_case = state.find_case_sensitive;
-                let state_find_word = state.find_whole_word;
-                let state_extra_cursors = state.extra_cursors.clone();
-                let file = &mut state.open_files[active_idx];
-                let avail = ui.available_width().max(100.0);
+            // Capture scalar flags before the mut-borrow of open_files so
+            // we can read them while `file` is live.
+            let show_whitespace = state.show_whitespace;
+            let state_find_open = state.find_open;
+            let state_find_text = state.find_text.clone();
+            let state_find_case = state.find_case_sensitive;
+            let state_find_word = state.find_whole_word;
+            let state_extra_cursors = state.extra_cursors.clone();
+            let file = &mut state.open_files[active_idx];
+            let avail = ui.available_width().max(100.0);
 
-                // Snapshot the primary cursor before TextEdit so an Alt+click
-                // can spawn an extra cursor without losing the original one.
-                let pre_primary_char = egui::TextEdit::load_state(ui.ctx(), editor_id)
-                    .and_then(|s| s.cursor.char_range())
-                    .map(|r| r.primary.index);
-                let alt_held_before = ui.ctx().input(|i| i.modifiers.alt);
+            // Snapshot the primary cursor before TextEdit so an Alt+click
+            // can spawn an extra cursor without losing the original one.
+            let pre_primary_char = egui::TextEdit::load_state(ui.ctx(), editor_id)
+                .and_then(|s| s.cursor.char_range())
+                .map(|r| r.primary.index);
+            let alt_held_before = ui.ctx().input(|i| i.modifiers.alt);
 
-                let output = egui::TextEdit::multiline(&mut file.content)
-                    .id(editor_id)
-                    .font(FontId::monospace(font_size))
-                    .code_editor()
-                    .lock_focus(true)
-                    .frame(false)
-                    .layouter(&mut layouter)
-                    .desired_width(avail)
-                    .desired_rows(1)
-                    .show(ui);
+            let output = egui::TextEdit::multiline(&mut file.content)
+                .id(editor_id)
+                .font(FontId::monospace(font_size))
+                .code_editor()
+                .lock_focus(true)
+                .frame(false)
+                .layouter(&mut layouter)
+                .desired_width(avail)
+                .desired_rows(1)
+                .show(ui);
 
-                if output.response.changed() {
-                    file.is_modified = true;
-                    pending_blink_reset = true;
-                }
+            if output.response.changed() {
+                file.is_modified = true;
+                pending_blink_reset = true;
+            }
 
-                // Gather state we need outside the closure.
-                let editor_rect = output.response.rect;
-                let cur_char_idx = output
-                    .cursor_range
-                    .map(|c| c.primary.index);
+            // Gather state we need outside the closure.
+            let editor_rect = output.response.rect;
+            let cur_char_idx = output.cursor_range.map(|c| c.primary.index);
 
-                // Selection sync: the layouter baked the selection background
-                // using the cursor range as of the PREVIOUS frame (what
-                // `load_state` saw before `TextEdit::show` ran). If this
-                // frame's cursor_range moved, the current galley has a stale
-                // selection highlight baked in — request one more paint so
-                // the layouter reruns with the fresh range. Without this,
-                // egui's reactive repainting leaves the last stale galley
-                // on screen until something else (font size change, click
-                // elsewhere) forces a relayout.
-                let cur_range_now = output
-                    .cursor_range
-                    .map(|c| (c.primary.index, c.secondary.index));
-                if cur_range_now != pre_cursor_range {
-                    ui.ctx().request_repaint();
-                }
+            // Selection sync: the layouter baked the selection background
+            // using the cursor range as of the PREVIOUS frame (what
+            // `load_state` saw before `TextEdit::show` ran). If this
+            // frame's cursor_range moved, the current galley has a stale
+            // selection highlight baked in — request one more paint so
+            // the layouter reruns with the fresh range. Without this,
+            // egui's reactive repainting leaves the last stale galley
+            // on screen until something else (font size change, click
+            // elsewhere) forces a relayout.
+            let cur_range_now = output
+                .cursor_range
+                .map(|c| (c.primary.index, c.secondary.index));
+            if cur_range_now != pre_cursor_range {
+                ui.ctx().request_repaint();
+            }
 
-                // Alt+click → add an extra cursor at the clicked position
-                // and restore the original primary cursor. Cheap "column
-                // selection by clicks" workflow without a custom hit-test.
-                if alt_held_before && output.response.clicked() {
-                    if let (Some(pre), Some(now)) = (pre_primary_char, cur_char_idx) {
-                        if pre != now {
-                            let now_byte = char_to_byte(&file.content, now);
-                            if !state_extra_cursors.iter().any(|&c| c == now_byte) {
-                                // Capture for the post-textedit merge below.
-                                pending_alt_extra = Some(now_byte);
-                            }
-                            // Restore primary cursor.
-                            if let Some(mut s) = egui::TextEdit::load_state(ui.ctx(), editor_id) {
-                                s.cursor.set_char_range(Some(CCursorRange::one(CCursor::new(pre))));
-                                s.store(ui.ctx(), editor_id);
-                            }
+            // Alt+click → add an extra cursor at the clicked position
+            // and restore the original primary cursor. Cheap "column
+            // selection by clicks" workflow without a custom hit-test.
+            if alt_held_before && output.response.clicked() {
+                if let (Some(pre), Some(now)) = (pre_primary_char, cur_char_idx) {
+                    if pre != now {
+                        let now_byte = char_to_byte(&file.content, now);
+                        if !state_extra_cursors.iter().any(|&c| c == now_byte) {
+                            // Capture for the post-textedit merge below.
+                            pending_alt_extra = Some(now_byte);
+                        }
+                        // Restore primary cursor.
+                        if let Some(mut s) = egui::TextEdit::load_state(ui.ctx(), editor_id) {
+                            s.cursor
+                                .set_char_range(Some(CCursorRange::one(CCursor::new(pre))));
+                            s.store(ui.ctx(), editor_id);
                         }
                     }
                 }
+            }
 
-                // Paint gutter in reserved strip ----------------------------
-                let gutter_rect = Rect::from_min_max(
-                    Pos2::new(start_x, editor_rect.min.y),
-                    Pos2::new(start_x + gw, editor_rect.max.y),
-                );
-                let foldable = compute_foldable_lines(&file.content, lang);
-                let folded_set: std::collections::HashSet<usize> =
-                    file.folds.keys().copied().collect();
-                let gutter_click = paint_gutter(
+            // Paint gutter in reserved strip ----------------------------
+            let gutter_rect = Rect::from_min_max(
+                Pos2::new(start_x, editor_rect.min.y),
+                Pos2::new(start_x + gw, editor_rect.max.y),
+            );
+            let foldable = compute_foldable_lines(&file.content, lang);
+            let folded_set: std::collections::HashSet<usize> = file.folds.keys().copied().collect();
+            let gutter_click = paint_gutter(
+                ui,
+                gutter_rect,
+                font_size,
+                row_height,
+                line_count,
+                cur_char_idx,
+                &file.content,
+                &file.breakpoints,
+                &folded_set,
+                &foldable,
+                theme,
+            );
+            if let Some(line) = gutter_click.toggle_breakpoint {
+                if !file.breakpoints.insert(line) {
+                    file.breakpoints.remove(&line);
+                }
+            }
+            if let Some(line) = gutter_click.toggle_fold {
+                pending_fold_toggle = Some(line);
+            }
+
+            // Current line highlight (subtle accent tint) ---------------
+            if let Some(cidx) = cur_char_idx {
+                let byte_idx = char_to_byte(&file.content, cidx);
+                paint_current_line_highlight(
                     ui,
-                    gutter_rect,
-                    font_size,
-                    row_height,
-                    line_count,
-                    cur_char_idx,
                     &file.content,
-                    &file.breakpoints,
-                    &folded_set,
-                    &foldable,
+                    editor_rect,
+                    row_height,
+                    byte_idx,
                     theme,
                 );
-                if let Some(line) = gutter_click.toggle_breakpoint {
-                    if !file.breakpoints.insert(line) {
-                        file.breakpoints.remove(&line);
-                    }
-                }
-                if let Some(line) = gutter_click.toggle_fold {
-                    pending_fold_toggle = Some(line);
-                }
+            }
 
-                // Current line highlight (subtle accent tint) ---------------
-                if let Some(cidx) = cur_char_idx {
-                    let byte_idx = char_to_byte(&file.content, cidx);
-                    paint_current_line_highlight(
+            // Bracket match highlight -----------------------------------
+            if let Some(cidx) = cur_char_idx {
+                let byte_idx = char_to_byte(&file.content, cidx);
+                if let Some((a, b)) = find_matching_bracket(&file.content, byte_idx) {
+                    paint_bracket_highlight(
                         ui,
                         &file.content,
                         editor_rect,
                         row_height,
-                        byte_idx,
+                        mono_advance,
+                        a,
+                        theme,
+                    );
+                    paint_bracket_highlight(
+                        ui,
+                        &file.content,
+                        editor_rect,
+                        row_height,
+                        mono_advance,
+                        b,
                         theme,
                     );
                 }
+            }
 
-                // Bracket match highlight -----------------------------------
-                if let Some(cidx) = cur_char_idx {
-                    let byte_idx = char_to_byte(&file.content, cidx);
-                    if let Some((a, b)) = find_matching_bracket(&file.content, byte_idx) {
-                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, mono_advance, a, theme);
-                        paint_bracket_highlight(ui, &file.content, editor_rect, row_height, mono_advance, b, theme);
-                    }
-                }
-
-                // Occurrence highlight --------------------------------------
-                if let Some(cidx) = cur_char_idx {
-                    let byte = char_to_byte(&file.content, cidx);
-                    if let Some((ws, we)) = word_range_at_byte(&file.content, byte) {
-                        let word = &file.content[ws..we];
-                        if word.len() >= 2 {
-                            let matches = find_all_occurrences(&file.content, word);
-                            if matches.len() > 1 {
-                                for (mstart, mend) in matches {
-                                    if mstart == ws {
-                                        continue;
-                                    }
-                                    paint_range_overlay(
-                                        ui,
-                                        &file.content,
-                                        editor_rect,
-                                        row_height,
-                                        mono_advance,
-                                        mstart,
-                                        mend,
-                                        theme,
-                                    );
+            // Occurrence highlight --------------------------------------
+            if let Some(cidx) = cur_char_idx {
+                let byte = char_to_byte(&file.content, cidx);
+                if let Some((ws, we)) = word_range_at_byte(&file.content, byte) {
+                    let word = &file.content[ws..we];
+                    if word.len() >= 2 {
+                        let matches = find_all_occurrences(&file.content, word);
+                        if matches.len() > 1 {
+                            for (mstart, mend) in matches {
+                                if mstart == ws {
+                                    continue;
                                 }
+                                paint_range_overlay(
+                                    ui,
+                                    &file.content,
+                                    editor_rect,
+                                    row_height,
+                                    mono_advance,
+                                    mstart,
+                                    mend,
+                                    theme,
+                                );
                             }
                         }
                     }
                 }
+            }
 
-                // Inline error squiggle -------------------------------------
-                if let Some(err) = file.error.as_ref() {
-                    if let Some(line_1) = err.line {
-                        let line = line_1.saturating_sub(1);
-                        paint_error_squiggle(ui, editor_rect, row_height, line);
-                    }
+            // Inline error squiggle -------------------------------------
+            if let Some(err) = file.error.as_ref() {
+                if let Some(line_1) = err.line {
+                    let line = line_1.saturating_sub(1);
+                    paint_error_squiggle(ui, editor_rect, row_height, line);
                 }
+            }
 
-                // Find-all match highlights ---------------------------------
-                if state_find_open && !state_find_text.is_empty() {
-                    let matches = find_all_matches(
-                        &file.content,
-                        &state_find_text,
-                        state_find_case,
-                        state_find_word,
-                    );
-                    for (s, e) in matches {
-                        paint_find_match(
-                            ui,
-                            &file.content,
-                            editor_rect,
-                            row_height,
-                            mono_advance,
-                            s,
-                            e,
-                            theme,
-                        );
-                    }
-                }
-
-                // Extra cursors (multi-cursor) ------------------------------
-                for &extra_byte in &state_extra_cursors {
-                    paint_extra_cursor(
+            // Find-all match highlights ---------------------------------
+            if state_find_open && !state_find_text.is_empty() {
+                let matches = find_all_matches(
+                    &file.content,
+                    &state_find_text,
+                    state_find_case,
+                    state_find_word,
+                );
+                for (s, e) in matches {
+                    paint_find_match(
                         ui,
                         &file.content,
                         editor_rect,
                         row_height,
                         mono_advance,
-                        extra_byte,
+                        s,
+                        e,
                         theme,
                     );
                 }
+            }
 
-                // Breakpoint indicators on the editor side: thin tint on the
-                // line so the user sees them even with the gutter scrolled
-                // out of view.
-                for &bp_line in &file.breakpoints {
-                    if bp_line < line_count {
-                        paint_breakpoint_line_tint(ui, editor_rect, row_height, bp_line);
-                    }
-                }
-
-                // Fold-start lines: stamp a "··· N lines folded" badge at
-                // the end of the row so the user knows content is hidden.
-                for (fold_start, folded_text) in &file.folds {
-                    let hidden = folded_text.lines().count();
-                    paint_fold_badge(ui, editor_rect, row_height, *fold_start, hidden, theme);
-                }
-
-                // Whitespace overlay ---------------------------------------
-                if show_whitespace {
-                    paint_whitespace_overlay(
-                        ui,
-                        &file.content,
-                        editor_rect,
-                        row_height,
-                        font_size,
-                        mono_advance,
-                        theme,
-                    );
-                }
-
-                // Indent guides --------------------------------------------
-                paint_indent_guides(
+            // Extra cursors (multi-cursor) ------------------------------
+            for &extra_byte in &state_extra_cursors {
+                paint_extra_cursor(
                     ui,
                     &file.content,
                     editor_rect,
                     row_height,
                     mono_advance,
+                    extra_byte,
                     theme,
                 );
+            }
 
-                // Scroll to cursor only when the cursor actually moved ------
-                let mut should_scroll = false;
-                if let Some(cidx) = cur_char_idx {
-                    if file.last_cursor_index != Some(cidx) {
-                        // Compute cursor rect
-                        let byte_idx = char_to_byte(&file.content, cidx);
-                        let line = byte_to_line(&file.content, byte_idx);
-                        let y = editor_rect.min.y + line as f32 * row_height;
-                        let cursor_rect = Rect::from_min_size(
-                            Pos2::new(editor_rect.min.x, y),
-                            Vec2::new(2.0, row_height),
-                        );
-                        let clip = ui.clip_rect();
-                        // Only scroll if cursor is actually out of view
-                        if !(clip.min.y <= cursor_rect.min.y && cursor_rect.max.y <= clip.max.y) {
-                            should_scroll = true;
-                            ui.scroll_to_rect(cursor_rect.expand2(Vec2::new(0.0, row_height)), None);
-                        }
-                        file.last_cursor_index = Some(cidx);
-                    }
+            // Breakpoint indicators on the editor side: thin tint on the
+            // line so the user sees them even with the gutter scrolled
+            // out of view.
+            for &bp_line in &file.breakpoints {
+                if bp_line < line_count {
+                    paint_breakpoint_line_tint(ui, editor_rect, row_height, bp_line);
                 }
+            }
 
-                (editor_rect, cur_char_idx, line_count, editor_rect.min.x, should_scroll)
-            }).inner
-        });
+            // Fold-start lines: stamp a "··· N lines folded" badge at
+            // the end of the row so the user knows content is hidden.
+            for (fold_start, folded_text) in &file.folds {
+                let hidden = folded_text.lines().count();
+                paint_fold_badge(ui, editor_rect, row_height, *fold_start, hidden, theme);
+            }
+
+            // Whitespace overlay ---------------------------------------
+            if show_whitespace {
+                paint_whitespace_overlay(
+                    ui,
+                    &file.content,
+                    editor_rect,
+                    row_height,
+                    font_size,
+                    mono_advance,
+                    theme,
+                );
+            }
+
+            // Indent guides --------------------------------------------
+            paint_indent_guides(
+                ui,
+                &file.content,
+                editor_rect,
+                row_height,
+                mono_advance,
+                theme,
+            );
+
+            // Scroll to cursor only when the cursor actually moved ------
+            let mut should_scroll = false;
+            if let Some(cidx) = cur_char_idx {
+                if file.last_cursor_index != Some(cidx) {
+                    // Compute cursor rect
+                    let byte_idx = char_to_byte(&file.content, cidx);
+                    let line = byte_to_line(&file.content, byte_idx);
+                    let y = editor_rect.min.y + line as f32 * row_height;
+                    let cursor_rect = Rect::from_min_size(
+                        Pos2::new(editor_rect.min.x, y),
+                        Vec2::new(2.0, row_height),
+                    );
+                    let clip = ui.clip_rect();
+                    // Only scroll if cursor is actually out of view
+                    if !(clip.min.y <= cursor_rect.min.y && cursor_rect.max.y <= clip.max.y) {
+                        should_scroll = true;
+                        ui.scroll_to_rect(cursor_rect.expand2(Vec2::new(0.0, row_height)), None);
+                    }
+                    file.last_cursor_index = Some(cidx);
+                }
+            }
+
+            (
+                editor_rect,
+                cur_char_idx,
+                line_count,
+                editor_rect.min.x,
+                should_scroll,
+            )
+        })
+        .inner
+    });
 
     let (editor_rect_after_v, cur_after_v, line_count_v, text_start_x_v, should_scroll_v) =
         scroll_output.inner;
@@ -1002,8 +1074,8 @@ pub fn render_code_editor_content(
         if let Some(cidx) = cursor_char_idx_after {
             let file = &state.open_files[active_idx];
             let byte_idx = char_to_byte(&file.content, cidx);
-            let (prefix_start_byte, prefix) = autocomplete::extract_prefix(&file.content, byte_idx)
-                .unwrap_or((byte_idx, ""));
+            let (prefix_start_byte, prefix) =
+                autocomplete::extract_prefix(&file.content, byte_idx).unwrap_or((byte_idx, ""));
             state.autocomplete_filter = prefix.to_string();
             state.autocomplete_prefix_start = prefix_start_byte;
             state.autocomplete_selected = 0;
@@ -1012,10 +1084,7 @@ pub fn render_code_editor_content(
             // Anchor below the cursor position on screen.
             let line = byte_to_line(&file.content, byte_idx);
             let y = editor_rect_after.min.y + (line as f32 + 1.0) * row_height;
-            state.autocomplete_anchor = Some(Pos2::new(
-                editor_rect_after.min.x + 40.0,
-                y,
-            ));
+            state.autocomplete_anchor = Some(Pos2::new(editor_rect_after.min.x + 40.0, y));
         }
     }
 
@@ -1038,7 +1107,10 @@ pub fn render_code_editor_content(
                 let start = state.autocomplete_prefix_start.min(file.content.len());
                 let slice = &file.content[start..byte_idx];
                 // If user typed a non-identifier char, close.
-                if slice.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '_')) {
+                if slice
+                    .chars()
+                    .any(|c| !(c.is_ascii_alphanumeric() || c == '_'))
+                {
                     state.autocomplete_open = false;
                 } else {
                     state.autocomplete_filter = slice.to_string();
@@ -1047,8 +1119,7 @@ pub fn render_code_editor_content(
         }
     }
 
-    let wants_insert =
-        popup_enter_insert || popup_tab_insert || state.autocomplete_click_commit;
+    let wants_insert = popup_enter_insert || popup_tab_insert || state.autocomplete_click_commit;
     state.autocomplete_click_commit = false;
     if state.autocomplete_open {
         let matches = autocomplete::matching_completions(lang, &state.autocomplete_filter);
@@ -1082,14 +1153,20 @@ pub fn render_code_editor_content(
                 available_rect.min.x,
                 available_rect.max.y - error_panel_height - status_bar_height,
             ),
-            Pos2::new(available_rect.max.x, available_rect.max.y - status_bar_height),
+            Pos2::new(
+                available_rect.max.x,
+                available_rect.max.y - status_bar_height,
+            ),
         );
         render_error_panel(ui, state, active_idx, error_rect, secondary, error_color);
     }
 
     // Status bar -----------------------------------------------------------
     let status_rect = Rect::from_min_max(
-        Pos2::new(available_rect.min.x, available_rect.max.y - status_bar_height),
+        Pos2::new(
+            available_rect.min.x,
+            available_rect.max.y - status_bar_height,
+        ),
         available_rect.max,
     );
     render_status_bar(
@@ -1278,9 +1355,7 @@ fn reveal_in_file_explorer(path: &std::path::Path) {
     {
         // No standard "reveal and select" on Linux — open the parent folder.
         if let Some(parent) = path.parent() {
-            let _ = std::process::Command::new("xdg-open")
-                .arg(parent)
-                .spawn();
+            let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
         }
     }
 }
@@ -1319,7 +1394,13 @@ fn render_toolbar(
                 if icon_btn(ui, FLOPPY_DISK, muted, theme, "Save  (Ctrl+S)") {
                     state.save_active();
                 }
-                if icon_btn(ui, FLOPPY_DISK_BACK, muted, theme, "Save All  (Ctrl+Shift+S)") {
+                if icon_btn(
+                    ui,
+                    FLOPPY_DISK_BACK,
+                    muted,
+                    theme,
+                    "Save All  (Ctrl+Shift+S)",
+                ) {
                     state.save_all();
                 }
                 if let Some(dir) = scripts_dir.clone() {
@@ -1331,7 +1412,13 @@ fn render_toolbar(
                 toolbar_sep(ui, border);
 
                 // --- Navigation group -----------------------------------
-                if icon_btn(ui, MAGNIFYING_GLASS, muted, theme, "Find / Replace  (Ctrl+F)") {
+                if icon_btn(
+                    ui,
+                    MAGNIFYING_GLASS,
+                    muted,
+                    theme,
+                    "Find / Replace  (Ctrl+F)",
+                ) {
                     state.find_open = !state.find_open;
                     state.find_focus_requested = state.find_open;
                 }
@@ -1344,7 +1431,13 @@ fn render_toolbar(
                 toolbar_sep(ui, border);
 
                 // --- Edit helpers ---------------------------------------
-                if icon_btn(ui, BRACKETS_CURLY, muted, theme, "Format Document  (Ctrl+Shift+F)") {
+                if icon_btn(
+                    ui,
+                    BRACKETS_CURLY,
+                    muted,
+                    theme,
+                    "Format Document  (Ctrl+Shift+F)",
+                ) {
                     let lang = state
                         .open_files
                         .get(active_idx)
@@ -1375,10 +1468,24 @@ fn render_toolbar(
                         state.split_active_tab = Some(active_idx);
                     }
                 }
-                if icon_toggle(ui, PARAGRAPH, state.show_whitespace, muted, theme, "Show whitespace") {
+                if icon_toggle(
+                    ui,
+                    PARAGRAPH,
+                    state.show_whitespace,
+                    muted,
+                    theme,
+                    "Show whitespace",
+                ) {
                     state.show_whitespace = !state.show_whitespace;
                 }
-                if icon_toggle(ui, SQUARES_FOUR, state.show_minimap, muted, theme, "Toggle minimap") {
+                if icon_toggle(
+                    ui,
+                    SQUARES_FOUR,
+                    state.show_minimap,
+                    muted,
+                    theme,
+                    "Toggle minimap",
+                ) {
                     state.show_minimap = !state.show_minimap;
                 }
 
@@ -1396,10 +1503,7 @@ fn render_toolbar(
                     let size_text = format!("{}px", state.font_size as i32);
                     let size_resp = ui.add(
                         egui::Label::new(
-                            RichText::new(size_text)
-                                .size(11.0)
-                                .color(muted)
-                                .monospace(),
+                            RichText::new(size_text).size(11.0).color(muted).monospace(),
                         )
                         .sense(Sense::click()),
                     );
@@ -1638,7 +1742,9 @@ fn apply_goto_definition(
     ctx: &egui::Context,
     editor_id: Id,
 ) {
-    let Some(file) = state.open_files.get(active_idx) else { return };
+    let Some(file) = state.open_files.get(active_idx) else {
+        return;
+    };
 
     // Identify the word under the cursor.
     let cursor_char = egui::TextEdit::load_state(ctx, editor_id)
@@ -1646,7 +1752,9 @@ fn apply_goto_definition(
         .map(|r| r.primary.index)
         .unwrap_or(0);
     let cursor_byte = char_to_byte(&file.content, cursor_char);
-    let Some((ws, we)) = word_range_at_byte(&file.content, cursor_byte) else { return };
+    let Some((ws, we)) = word_range_at_byte(&file.content, cursor_byte) else {
+        return;
+    };
     let word = &file.content[ws..we];
 
     // Search the active file's outline first.
@@ -1680,7 +1788,9 @@ fn apply_goto_definition(
 /// Re-indent the active file. Handles brace-based languages and Lua/Python by
 /// matching block-opening / block-closing keywords. Anything else is left as-is.
 fn apply_format(state: &mut CodeEditorState, active_idx: usize, lang: Language) {
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
     let formatted = crate::format::format_source(&file.content, lang);
     if formatted != file.content {
         file.content = formatted;
@@ -1702,13 +1812,17 @@ fn toggle_fold_at_cursor(
         .map(|r| r.primary.index)
         .unwrap_or(0);
     let cursor_line = {
-        let Some(file) = state.open_files.get(active_idx) else { return };
+        let Some(file) = state.open_files.get(active_idx) else {
+            return;
+        };
         let cursor_byte = char_to_byte(&file.content, cursor_char);
         byte_to_line(&file.content, cursor_byte)
     };
 
     let target = {
-        let Some(file) = state.open_files.get(active_idx) else { return };
+        let Some(file) = state.open_files.get(active_idx) else {
+            return;
+        };
         // If the caret is already on a fold-start line, toggle that fold
         // directly (including unfolding it).
         if file.folds.contains_key(&cursor_line) {
@@ -1739,7 +1853,9 @@ fn apply_fold_toggle(
     start_line: usize,
     lang: Language,
 ) {
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     if file.folds.contains_key(&start_line) {
         // Unfold: pop the stored text back into the buffer right after the
@@ -1794,13 +1910,14 @@ fn add_cursor_relative(
     editor_id: Id,
     delta: i32,
 ) {
-    let cursor_char = match egui::TextEdit::load_state(ctx, editor_id)
-        .and_then(|s| s.cursor.char_range())
-    {
-        Some(r) => r.primary.index,
-        None => return,
+    let cursor_char =
+        match egui::TextEdit::load_state(ctx, editor_id).and_then(|s| s.cursor.char_range()) {
+            Some(r) => r.primary.index,
+            None => return,
+        };
+    let Some(file) = state.open_files.get(active_idx) else {
+        return;
     };
-    let Some(file) = state.open_files.get(active_idx) else { return };
     let cursor_byte = char_to_byte(&file.content, cursor_char);
     let line = byte_to_line(&file.content, cursor_byte);
     let line_start = line_to_byte(&file.content, line);
@@ -1820,7 +1937,12 @@ fn add_cursor_relative(
     let target_text = &file.content[ts..te];
     let target_chars = target_text.chars().count();
     let final_col = col.min(target_chars);
-    let target_byte = ts + target_text.chars().take(final_col).map(|c| c.len_utf8()).sum::<usize>();
+    let target_byte = ts
+        + target_text
+            .chars()
+            .take(final_col)
+            .map(|c| c.len_utf8())
+            .sum::<usize>();
 
     if !state.extra_cursors.contains(&target_byte) {
         state.extra_cursors.push(target_byte);
@@ -1839,8 +1961,8 @@ fn try_smart_backspace(
 ) {
     // Only intercept if there's no selection. Reading cursor state from
     // TextEdit's memory up front so we can consume the event if we decide to.
-    let cursor_range = egui::TextEdit::load_state(ui.ctx(), editor_id)
-        .and_then(|s| s.cursor.char_range());
+    let cursor_range =
+        egui::TextEdit::load_state(ui.ctx(), editor_id).and_then(|s| s.cursor.char_range());
     let Some(range) = cursor_range else { return };
     if range.primary.index != range.secondary.index {
         return;
@@ -1848,7 +1970,9 @@ fn try_smart_backspace(
     let cursor_char = range.primary.index;
 
     let (should_dedent, delete_len_bytes) = {
-        let Some(file) = state.open_files.get(active_idx) else { return };
+        let Some(file) = state.open_files.get(active_idx) else {
+            return;
+        };
         let cursor_byte = char_to_byte(&file.content, cursor_char);
         if cursor_byte == 0 {
             return;
@@ -1894,7 +2018,9 @@ fn try_smart_backspace(
     }
 
     let now = ui.ctx().input(|i| i.time);
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
     let cursor_byte = char_to_byte(&file.content, cursor_char);
     let from = cursor_byte.saturating_sub(delete_len_bytes);
     file.content.replace_range(from..cursor_byte, "");
@@ -1919,12 +2045,11 @@ fn apply_multi_cursor_input(
     ui: &mut egui::Ui,
     editor_id: Id,
 ) {
-    let primary_char = match egui::TextEdit::load_state(ui.ctx(), editor_id)
-        .and_then(|s| s.cursor.char_range())
-    {
-        Some(r) => r.primary.index,
-        None => return,
-    };
+    let primary_char =
+        match egui::TextEdit::load_state(ui.ctx(), editor_id).and_then(|s| s.cursor.char_range()) {
+            Some(r) => r.primary.index,
+            None => return,
+        };
     let primary_byte = {
         let file = &state.open_files[active_idx];
         char_to_byte(&file.content, primary_char)
@@ -1970,7 +2095,9 @@ fn multi_insert(
     editor_id: Id,
 ) {
     let inserted_len = text.len();
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     // Sorted list of all cursor positions including the primary.
     let mut positions: Vec<usize> = state.extra_cursors.clone();
@@ -1996,7 +2123,10 @@ fn multi_insert(
         .map(|(k, p)| p + inserted_len * (k + 1))
         .collect();
 
-    let primary_index = positions.iter().position(|&p| p == primary_byte).unwrap_or(0);
+    let primary_index = positions
+        .iter()
+        .position(|&p| p == primary_byte)
+        .unwrap_or(0);
     let new_primary_byte = new_positions[primary_index];
     let new_extras: Vec<usize> = new_positions
         .iter()
@@ -2021,7 +2151,9 @@ fn multi_backspace(
     ctx: &egui::Context,
     editor_id: Id,
 ) {
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     let mut positions: Vec<usize> = state.extra_cursors.clone();
     positions.push(primary_byte);
@@ -2141,11 +2273,13 @@ fn render_find_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme
                     state.find_focus_requested = false;
                 }
                 let next_clicked = ui.small_button("Next").clicked()
-                    || (find_resp.lost_focus()
-                        && ui.ctx().input(|i| i.key_pressed(Key::Enter)));
+                    || (find_resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(Key::Enter)));
 
-                ui.checkbox(&mut state.find_case_sensitive, RichText::new("Aa").size(11.0))
-                    .on_hover_text("Case sensitive");
+                ui.checkbox(
+                    &mut state.find_case_sensitive,
+                    RichText::new("Aa").size(11.0),
+                )
+                .on_hover_text("Case sensitive");
                 ui.checkbox(&mut state.find_whole_word, RichText::new("ab").size(11.0))
                     .on_hover_text("Whole word");
 
@@ -2153,7 +2287,11 @@ fn render_find_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme
                     let label = if match_count == 0 {
                         "No results".to_string()
                     } else {
-                        format!("{} match{}", match_count, if match_count == 1 { "" } else { "es" })
+                        format!(
+                            "{} match{}",
+                            match_count,
+                            if match_count == 1 { "" } else { "es" }
+                        )
                     };
                     ui.label(RichText::new(label).size(11.0).color(muted));
                 }
@@ -2197,7 +2335,9 @@ fn render_find_bar(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme
 /// the match so the user can see it. Wraps around on EOF.
 fn find_and_select_next(state: &mut CodeEditorState, ctx: &egui::Context) {
     let Some(idx) = state.active_tab else { return };
-    let Some(file) = state.open_files.get(idx) else { return };
+    let Some(file) = state.open_files.get(idx) else {
+        return;
+    };
     if state.find_text.is_empty() {
         return;
     }
@@ -2231,7 +2371,9 @@ fn find_and_select_next(state: &mut CodeEditorState, ctx: &egui::Context) {
 
 fn replace_current(state: &mut CodeEditorState) {
     let Some(idx) = state.active_tab else { return };
-    let Some(file) = state.open_files.get_mut(idx) else { return };
+    let Some(file) = state.open_files.get_mut(idx) else {
+        return;
+    };
     if state.find_text.is_empty() {
         return;
     }
@@ -2268,7 +2410,11 @@ fn render_goto_line_bar(
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{} Go to line", ARROW_RIGHT)).size(11.0).color(muted));
+                ui.label(
+                    RichText::new(format!("{} Go to line", ARROW_RIGHT))
+                        .size(11.0)
+                        .color(muted),
+                );
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut state.goto_line_buffer)
                         .desired_width(80.0)
@@ -2306,7 +2452,9 @@ fn apply_goto_line(
     editor_id: Id,
     _row_height: f32,
 ) {
-    let Some(file) = state.open_files.get(active_idx) else { return };
+    let Some(file) = state.open_files.get(active_idx) else {
+        return;
+    };
     let line = line_1based.saturating_sub(1);
     let byte_idx = line_to_byte(&file.content, line);
     let char_idx = byte_to_char(&file.content, byte_idx);
@@ -2331,7 +2479,9 @@ fn apply_comment_toggle(
     ctx: &egui::Context,
 ) {
     let editor_id = Id::new(("code_editor_textedit", active_idx));
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     // Selection in char range — map to bytes.
     let (sel_start_byte, sel_end_byte) = egui::TextEdit::load_state(ctx, editor_id)
@@ -2374,7 +2524,9 @@ fn apply_block_comment_toggle(
     }
 
     let editor_id = Id::new(("code_editor_textedit", active_idx));
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     let (sel_start_byte, sel_end_byte) = egui::TextEdit::load_state(ctx, editor_id)
         .and_then(|s| s.cursor.char_range())
@@ -2430,12 +2582,14 @@ fn render_autocomplete_popup(
         .order(egui::Order::Foreground)
         .interactable(true)
         .show(ui.ctx(), |ui| {
-            let rect = Rect::from_min_size(
-                anchor,
-                Vec2::new(popup_width, popup_height),
-            );
+            let rect = Rect::from_min_size(anchor, Vec2::new(popup_width, popup_height));
             ui.painter().rect_filled(rect, 4.0, bg);
-            ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(
+                rect,
+                4.0,
+                Stroke::new(1.0, border),
+                egui::StrokeKind::Inside,
+            );
 
             // Ensure selected is within the visible window (scroll view).
             let first_visible = if state.autocomplete_selected >= max_items {
@@ -2491,7 +2645,11 @@ fn render_autocomplete_popup(
                     Align2::LEFT_CENTER,
                     sym.label(),
                     FontId::new(12.0, FontFamily::Monospace),
-                    if is_selected { Color32::WHITE } else { text_primary },
+                    if is_selected {
+                        Color32::WHITE
+                    } else {
+                        text_primary
+                    },
                 );
                 // Category badge
                 ui.painter().text(
@@ -2510,7 +2668,12 @@ fn render_autocomplete_popup(
                     Vec2::new(popup_width, 36.0),
                 );
                 ui.painter().rect_filled(footer_rect, 4.0, bg);
-                ui.painter().rect_stroke(footer_rect, 4.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(
+                    footer_rect,
+                    4.0,
+                    Stroke::new(1.0, border),
+                    egui::StrokeKind::Inside,
+                );
                 ui.painter().text(
                     Pos2::new(footer_rect.min.x + 8.0, footer_rect.min.y + 12.0),
                     Align2::LEFT_TOP,
@@ -2605,7 +2768,10 @@ fn paint_gutter(
         let painter = ui.painter();
         painter.rect_filled(rect, 0.0, bg);
         painter.line_segment(
-            [Pos2::new(rect.max.x, rect.min.y), Pos2::new(rect.max.x, rect.max.y)],
+            [
+                Pos2::new(rect.max.x, rect.min.y),
+                Pos2::new(rect.max.x, rect.max.y),
+            ],
             Stroke::new(1.0, line_color),
         );
     }
@@ -2619,10 +2785,7 @@ fn paint_gutter(
     // to the number column for fold chevrons.
     let bp_strip_w = 14.0;
     let chevron_strip_w = 12.0;
-    let bp_strip = Rect::from_min_max(
-        rect.min,
-        Pos2::new(rect.min.x + bp_strip_w, rect.max.y),
-    );
+    let bp_strip = Rect::from_min_max(rect.min, Pos2::new(rect.min.x + bp_strip_w, rect.max.y));
     let chevron_strip = Rect::from_min_max(
         Pos2::new(rect.max.x - chevron_strip_w, rect.min.y),
         rect.max,
@@ -2689,8 +2852,7 @@ fn paint_gutter(
     if chev_resp.clicked() {
         if let Some(pos) = chev_resp.interact_pointer_pos() {
             let line = ((pos.y - rect.min.y) / row_height).floor() as usize;
-            if line < line_count
-                && (foldable_lines.contains(&line) || folded_lines.contains(&line))
+            if line < line_count && (foldable_lines.contains(&line) || folded_lines.contains(&line))
             {
                 click.toggle_fold = Some(line);
             }
@@ -2736,14 +2898,15 @@ fn render_minimap(
 
     // Content height = exactly what the file occupies, capped at the rect.
     let content_height = (line_count as f32 * mini_row).min(rect.height());
-    let content_rect = Rect::from_min_max(
-        rect.min,
-        Pos2::new(rect.max.x, rect.min.y + content_height),
-    );
+    let content_rect =
+        Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + content_height));
 
     ui.painter().rect_filled(content_rect, 0.0, bg);
     ui.painter().line_segment(
-        [content_rect.min, Pos2::new(content_rect.min.x, content_rect.max.y)],
+        [
+            content_rect.min,
+            Pos2::new(content_rect.min.x, content_rect.max.y),
+        ],
         Stroke::new(1.0, border),
     );
 
@@ -2769,7 +2932,8 @@ fn render_minimap(
         let x0 = rect.min.x + mini_padding_x + trimmed_start as f32 * mini_advance;
         let strip_width = (content_len as f32 * mini_advance).min(rect.width() - mini_padding_x);
         let strip = Rect::from_min_size(Pos2::new(x0, y), Vec2::new(strip_width, mini_row));
-        ui.painter().rect_filled(strip, 0.0, fg.linear_multiply(0.45));
+        ui.painter()
+            .rect_filled(strip, 0.0, fg.linear_multiply(0.45));
     }
 
     // Viewport indicator: translucent band over the visible line range.
@@ -2785,7 +2949,10 @@ fn render_minimap(
         ui.painter().rect_stroke(
             vp_rect,
             0.0,
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 120)),
+            Stroke::new(
+                1.0,
+                Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 120),
+            ),
             egui::StrokeKind::Inside,
         );
     }
@@ -2827,10 +2994,12 @@ fn paint_indent_guides(
     // Skip lines outside the visible clip rect — minor optimisation that
     // matters on large files.
     let clip = ui.clip_rect();
-    let first_line =
-        (((clip.min.y - editor_rect.min.y) / row_height).floor().max(0.0)) as usize;
-    let last_line =
-        (((clip.max.y - editor_rect.min.y) / row_height).ceil().max(0.0)) as usize;
+    let first_line = (((clip.min.y - editor_rect.min.y) / row_height)
+        .floor()
+        .max(0.0)) as usize;
+    let last_line = (((clip.max.y - editor_rect.min.y) / row_height)
+        .ceil()
+        .max(0.0)) as usize;
 
     for (line_idx, line) in content.lines().enumerate() {
         if line_idx < first_line {
@@ -2881,10 +3050,12 @@ fn paint_whitespace_overlay(
     // Only paint lines that are within the clip rect; everything outside will
     // be culled anyway, but skipping avoids tons of painter calls on big files.
     let clip = ui.clip_rect();
-    let first_line =
-        (((clip.min.y - editor_rect.min.y) / row_height).floor().max(0.0)) as usize;
-    let last_line =
-        (((clip.max.y - editor_rect.min.y) / row_height).ceil().max(0.0)) as usize;
+    let first_line = (((clip.min.y - editor_rect.min.y) / row_height)
+        .floor()
+        .max(0.0)) as usize;
+    let last_line = (((clip.max.y - editor_rect.min.y) / row_height)
+        .ceil()
+        .max(0.0)) as usize;
 
     for (line_idx, line) in content.lines().enumerate() {
         if line_idx < first_line {
@@ -2935,7 +3106,9 @@ fn paint_range_overlay(
     let (ls, _) = line_byte_range(content, line);
     let col_bytes = byte_start.saturating_sub(ls);
     let col_chars = content[ls..ls + col_bytes].chars().count();
-    let width_chars = content[byte_start..byte_end.min(content.len())].chars().count();
+    let width_chars = content[byte_start..byte_end.min(content.len())]
+        .chars()
+        .count();
 
     let x = editor_rect.min.x + col_chars as f32 * advance;
     let y = editor_rect.min.y + line as f32 * row_height;
@@ -2963,7 +3136,9 @@ fn paint_find_match(
     let line = byte_to_line(content, byte_start);
     let (ls, _) = line_byte_range(content, line);
     let col_chars = content[ls..byte_start.min(content.len())].chars().count();
-    let width_chars = content[byte_start..byte_end.min(content.len())].chars().count();
+    let width_chars = content[byte_start..byte_end.min(content.len())]
+        .chars()
+        .count();
     let x = editor_rect.min.x + col_chars as f32 * advance;
     let y = editor_rect.min.y + line as f32 * row_height;
     let r = Rect::from_min_size(
@@ -3135,8 +3310,7 @@ fn paint_bracket_highlight(
     let r = Rect::from_min_size(Pos2::new(x, y), Vec2::new(advance, row_height));
 
     let accent = theme.semantic.accent.to_color32();
-    let fill =
-        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 70);
+    let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 70);
     ui.painter().rect_filled(r, 2.0, fill);
 }
 
@@ -3220,12 +3394,18 @@ fn apply_editor_shortcut(
         .map(|r| (r.primary.index, r.secondary.index))
         .unwrap_or((0, 0));
 
-    let Some(file) = state.open_files.get_mut(active_idx) else { return };
+    let Some(file) = state.open_files.get_mut(active_idx) else {
+        return;
+    };
 
     // Translate to bytes.
     let sel_a = char_to_byte(&file.content, sel_a_char);
     let sel_b = char_to_byte(&file.content, sel_b_char);
-    let (lo, hi) = if sel_a <= sel_b { (sel_a, sel_b) } else { (sel_b, sel_a) };
+    let (lo, hi) = if sel_a <= sel_b {
+        (sel_a, sel_b)
+    } else {
+        (sel_b, sel_a)
+    };
     let has_selection = lo != hi;
 
     let mut new_selection_bytes: Option<(usize, usize)> = None;
@@ -3234,12 +3414,14 @@ fn apply_editor_shortcut(
     match sc {
         EditorShortcut::Tab => {
             if has_selection {
-                new_selection_bytes = Some(indent_selection(&mut file.content, sel_a, sel_b, false));
+                new_selection_bytes =
+                    Some(indent_selection(&mut file.content, sel_a, sel_b, false));
                 mutated = true;
             } else {
                 // Insert 4 spaces at cursor
                 let indent = " ".repeat(TAB_SIZE);
-                file.content.insert_str(sel_a.min(file.content.len()), &indent);
+                file.content
+                    .insert_str(sel_a.min(file.content.len()), &indent);
                 let new = sel_a + TAB_SIZE;
                 new_selection_bytes = Some((new, new));
                 mutated = true;
@@ -3247,7 +3429,11 @@ fn apply_editor_shortcut(
         }
         EditorShortcut::ShiftTab => {
             // Always dedent by line, whether or not there's a selection.
-            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let (a, b) = if has_selection {
+                (sel_a, sel_b)
+            } else {
+                (sel_a, sel_a)
+            };
             new_selection_bytes = Some(indent_selection(&mut file.content, a, b, true));
             mutated = true;
         }
@@ -3257,7 +3443,8 @@ fn apply_editor_shortcut(
             let insertion = format!("\n{}", indent);
             let clamped_lo = lo.min(file.content.len());
             let clamped_hi = hi.min(file.content.len());
-            file.content.replace_range(clamped_lo..clamped_hi, &insertion);
+            file.content
+                .replace_range(clamped_lo..clamped_hi, &insertion);
             let new = clamped_lo + insertion.len();
             new_selection_bytes = Some((new, new));
             mutated = true;
@@ -3271,25 +3458,41 @@ fn apply_editor_shortcut(
             // No content change.
         }
         EditorShortcut::DuplicateLine => {
-            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let (a, b) = if has_selection {
+                (sel_a, sel_b)
+            } else {
+                (sel_a, sel_a)
+            };
             new_selection_bytes = Some(duplicate_lines(&mut file.content, a, b));
             mutated = true;
         }
         EditorShortcut::DeleteLine => {
-            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let (a, b) = if has_selection {
+                (sel_a, sel_b)
+            } else {
+                (sel_a, sel_a)
+            };
             let new_cursor = delete_lines(&mut file.content, a, b);
             new_selection_bytes = Some((new_cursor, new_cursor));
             mutated = true;
         }
         EditorShortcut::MoveLineUp => {
-            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let (a, b) = if has_selection {
+                (sel_a, sel_b)
+            } else {
+                (sel_a, sel_a)
+            };
             if let Some(new) = move_lines_up(&mut file.content, a, b) {
                 new_selection_bytes = Some(new);
                 mutated = true;
             }
         }
         EditorShortcut::MoveLineDown => {
-            let (a, b) = if has_selection { (sel_a, sel_b) } else { (sel_a, sel_a) };
+            let (a, b) = if has_selection {
+                (sel_a, sel_b)
+            } else {
+                (sel_a, sel_a)
+            };
             if let Some(new) = move_lines_down(&mut file.content, a, b) {
                 new_selection_bytes = Some(new);
                 mutated = true;
@@ -3331,8 +3534,12 @@ fn render_error_panel(
     secondary: Color32,
     error_color: Color32,
 ) {
-    let Some(file) = state.open_files.get(active_idx) else { return };
-    let Some(error) = file.error.as_ref() else { return };
+    let Some(file) = state.open_files.get(active_idx) else {
+        return;
+    };
+    let Some(error) = file.error.as_ref() else {
+        return;
+    };
 
     ui.painter()
         .rect_filled(error_rect, 0.0, Color32::from_rgb(60, 30, 30));
@@ -3429,7 +3636,9 @@ fn apply_autoclose(
 ) {
     match action {
         AutocloseAction::InsertPair(open, close) => {
-            let Some(file) = state.open_files.get_mut(active_idx) else { return };
+            let Some(file) = state.open_files.get_mut(active_idx) else {
+                return;
+            };
             let mut buf = String::with_capacity(2);
             buf.push(open);
             buf.push(close);
@@ -3479,7 +3688,9 @@ fn render_status_bar(
         Stroke::new(1.0, theme.widgets.border.to_color32()),
     );
 
-    let Some(file) = state.open_files.get(active_idx) else { return };
+    let Some(file) = state.open_files.get(active_idx) else {
+        return;
+    };
 
     let font = FontId::proportional(11.0);
     let center_y = rect.center().y;
@@ -3681,22 +3892,14 @@ fn render_diff_modal(
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut state.diff_other_tab, None, "saved on disk");
                         for (i, name) in &other_tabs {
-                            ui.selectable_value(
-                                &mut state.diff_other_tab,
-                                Some(*i),
-                                name.as_str(),
-                            );
+                            ui.selectable_value(&mut state.diff_other_tab, Some(*i), name.as_str());
                         }
                     });
             });
 
             ui.add_space(4.0);
             if identical {
-                ui.label(
-                    RichText::new("Files are identical")
-                        .color(muted)
-                        .italics(),
-                );
+                ui.label(RichText::new("Files are identical").color(muted).italics());
             }
 
             egui::ScrollArea::vertical()
@@ -3713,9 +3916,12 @@ fn render_diff_modal(
                         );
 
                         let bg_left = match row.op {
-                            crate::diff::DiffOp::Removed => {
-                                Color32::from_rgba_unmultiplied(removed.r(), removed.g(), removed.b(), 40)
-                            }
+                            crate::diff::DiffOp::Removed => Color32::from_rgba_unmultiplied(
+                                removed.r(),
+                                removed.g(),
+                                removed.b(),
+                                40,
+                            ),
                             _ => panel_bg,
                         };
                         let bg_right = match row.op {
@@ -3725,10 +3931,7 @@ fn render_diff_modal(
                             _ => panel_bg,
                         };
 
-                        let left_rect = Rect::from_min_size(
-                            rect.min,
-                            Vec2::new(half_w, row_h),
-                        );
+                        let left_rect = Rect::from_min_size(rect.min, Vec2::new(half_w, row_h));
                         let right_rect = Rect::from_min_size(
                             Pos2::new(rect.min.x + half_w + 8.0, rect.min.y),
                             Vec2::new(half_w, row_h),

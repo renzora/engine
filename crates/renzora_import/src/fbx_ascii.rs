@@ -27,7 +27,10 @@ struct AsciiParser<'a> {
 
 impl<'a> AsciiParser<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Self { chars: data, pos: 0 }
+        Self {
+            chars: data,
+            pos: 0,
+        }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -314,11 +317,18 @@ fn convert_axis(_x: &mut f32, y: &mut f32, z: &mut f32, up_axis: UpAxis) {
 }
 
 fn decode_fbx_index(raw: i32) -> u32 {
-    if raw < 0 { (-raw - 1) as u32 } else { raw as u32 }
+    if raw < 0 {
+        (-raw - 1) as u32
+    } else {
+        raw as u32
+    }
 }
 
 pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
-    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
     log::info!("[import] {}: parsing FBX ASCII format", file_name);
 
     let data = std::fs::read(path)?;
@@ -328,11 +338,20 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     let nodes = parser.parse_document();
 
     if nodes.is_empty() {
-        log::error!("[import] {}: failed to parse FBX ASCII — no nodes found", file_name);
-        return Err(ImportError::ParseError("failed to parse FBX ASCII file".into()));
+        log::error!(
+            "[import] {}: failed to parse FBX ASCII — no nodes found",
+            file_name
+        );
+        return Err(ImportError::ParseError(
+            "failed to parse FBX ASCII file".into(),
+        ));
     }
 
-    log::info!("[import] {}: parsed {} top-level nodes", file_name, nodes.len());
+    log::info!(
+        "[import] {}: parsed {} top-level nodes",
+        file_name,
+        nodes.len()
+    );
 
     let mut all_positions = Vec::new();
     let mut all_normals = Vec::new();
@@ -352,7 +371,10 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     // In FBX 6.x, geometry is directly inside Model nodes (no separate Geometry object)
     if geometry_nodes.is_empty() {
-        log::info!("[import] {}: no Geometry nodes found, scanning Model nodes (FBX 6.x style)", file_name);
+        log::info!(
+            "[import] {}: no Geometry nodes found, scanning Model nodes (FBX 6.x style)",
+            file_name
+        );
         let mut model_nodes = Vec::new();
         find_all_recursive(&nodes, "Model", &mut model_nodes);
         for model in model_nodes {
@@ -363,7 +385,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         }
     }
 
-    log::info!("[import] {}: found {} geometry objects", file_name, geometry_nodes.len());
+    log::info!(
+        "[import] {}: found {} geometry objects",
+        file_name,
+        geometry_nodes.len()
+    );
 
     for geo_node in &geometry_nodes {
         let raw_vertices = match find_node(&geo_node.children, "Vertices") {
@@ -519,7 +545,10 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     }
 
     if all_positions.is_empty() {
-        log::error!("[import] {}: no geometry found in FBX ASCII file", file_name);
+        log::error!(
+            "[import] {}: no geometry found in FBX ASCII file",
+            file_name
+        );
         return Err(ImportError::ParseError(
             "no geometry found in FBX ASCII file".into(),
         ));
@@ -529,19 +558,34 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     let tri_count = all_indices.len() / 3;
     log::info!(
         "[import] {}: {} vertices, {} triangles, {} warnings",
-        file_name, vertex_count, tri_count, warnings.len()
+        file_name,
+        vertex_count,
+        tri_count,
+        warnings.len()
     );
     for w in &warnings {
         log::warn!("[import] {}: {}", file_name, w);
     }
 
-    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = build_glb(
+        &all_positions,
+        &all_normals,
+        &all_texcoords,
+        &all_indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
-    log::info!("[import] {}: GLB output {} bytes", file_name, glb_bytes.len());
+    log::info!(
+        "[import] {}: GLB output {} bytes",
+        file_name,
+        glb_bytes.len()
+    );
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 

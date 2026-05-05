@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use vleue_navigator::{
-    NavMesh,
     prelude::{ManagedNavMesh, NavMeshStatus, NavMeshUpdateMode},
+    NavMesh,
 };
 
 use crate::NavMeshVolume;
@@ -35,9 +35,7 @@ pub fn save_navmesh_to_disk(
 
 /// Deserialize a navmesh from a RON file on disk. Returns `None` if the
 /// file doesn't exist, `Err` if it exists but can't be parsed.
-pub fn load_navmesh_from_disk(
-    path: &Path,
-) -> Result<Option<NavMesh>, Box<dyn std::error::Error>> {
+pub fn load_navmesh_from_disk(path: &Path) -> Result<Option<NavMesh>, Box<dyn std::error::Error>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -49,9 +47,7 @@ pub fn load_navmesh_from_disk(
 /// Try to load a baked navmesh when a volume is first added. If a
 /// `.navmesh` sidecar exists next to the current scene file, inject it
 /// into the asset store and skip the runtime build.
-pub fn try_load_baked_navmesh(
-    world: &mut World,
-) {
+pub fn try_load_baked_navmesh(world: &mut World) {
     let scene_path = get_active_scene_absolute_path(world);
     let Some(scene_path) = scene_path else { return };
     let navmesh_path = navmesh_path_for_scene(&scene_path);
@@ -68,12 +64,12 @@ pub fn try_load_baked_navmesh(
 
     // Find the volume entity → its ManagedNavMesh handle
     let mut q = world.query::<(Entity, &ManagedNavMesh, &NavMeshVolume)>();
-    let handles: Vec<(Entity, bevy::asset::AssetId<NavMesh>)> = q
-        .iter(world)
-        .map(|(e, m, _)| (e, m.id()))
-        .collect();
+    let handles: Vec<(Entity, bevy::asset::AssetId<NavMesh>)> =
+        q.iter(world).map(|(e, m, _)| (e, m.id())).collect();
 
-    if handles.is_empty() { return; }
+    if handles.is_empty() {
+        return;
+    }
 
     // Insert the loaded navmesh as the asset for each volume's handle
     let mut assets = world.resource_mut::<Assets<NavMesh>>();
@@ -121,11 +117,7 @@ pub fn bake_navmesh_to_disk(world: &mut World) {
     match save_navmesh_to_disk(navmesh, &navmesh_path) {
         Ok(()) => {
             info!("[nav] Baked navmesh to {}", navmesh_path.display());
-            renzora::clog_success!(
-                "NavMesh",
-                "Baked navmesh to {}",
-                navmesh_path.display()
-            );
+            renzora::clog_success!("NavMesh", "Baked navmesh to {}", navmesh_path.display());
         }
         Err(e) => {
             warn!("[nav] Failed to bake navmesh: {e}");
@@ -135,9 +127,17 @@ pub fn bake_navmesh_to_disk(world: &mut World) {
 }
 
 fn get_active_scene_absolute_path(world: &World) -> Option<PathBuf> {
-    let project = world.get_resource::<renzora::core::CurrentProject>()?;
-    let tabs = world.get_resource::<renzora_ui::DocumentTabState>()?;
-    let tab = tabs.tabs.get(tabs.active_tab)?;
-    let scene_rel = tab.scene_path.as_ref()?;
-    Some(project.resolve_path(scene_rel))
+    #[cfg(feature = "editor")]
+    {
+        let project = world.get_resource::<renzora::core::CurrentProject>()?;
+        let tabs = world.get_resource::<renzora_ui::DocumentTabState>()?;
+        let tab = tabs.tabs.get(tabs.active_tab)?;
+        let scene_rel = tab.scene_path.as_ref()?;
+        return Some(project.resolve_path(scene_rel));
+    }
+    #[cfg(not(feature = "editor"))]
+    {
+        let _ = world;
+        None
+    }
 }

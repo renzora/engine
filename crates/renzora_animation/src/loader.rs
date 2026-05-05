@@ -2,9 +2,9 @@
 
 use std::fmt;
 
-use bevy::animation::AnimationTargetId;
 use bevy::animation::animation_curves::AnimatableCurve;
-use bevy::asset::{AssetLoader, LoadContext, io::Reader};
+use bevy::animation::AnimationTargetId;
+use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::math::curve::UnevenSampleAutoCurve;
 use bevy::prelude::*;
 

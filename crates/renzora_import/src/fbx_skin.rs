@@ -21,8 +21,8 @@
 use std::collections::HashMap;
 
 use crate::fbx_legacy::{
-    extract_f64_array, extract_i32_array, find_child, get_i64_prop,
-    get_string_prop, FbxNode, FbxProp,
+    extract_f64_array, extract_i32_array, find_child, get_i64_prop, get_string_prop, FbxNode,
+    FbxProp,
 };
 
 // ─── Public types ──────────────────────────────────────────────────────────
@@ -245,37 +245,69 @@ fn mat4_inverse(m: [f64; 16]) -> [f32; 16] {
     let mut inv = [0.0f64; 16];
 
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15]
-        + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+        + m[9] * m[7] * m[14]
+        + m[13] * m[6] * m[11]
+        - m[13] * m[7] * m[10];
     inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15]
-        - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+        - m[8] * m[7] * m[14]
+        - m[12] * m[6] * m[11]
+        + m[12] * m[7] * m[10];
     inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15]
-        + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+        + m[8] * m[7] * m[13]
+        + m[12] * m[5] * m[11]
+        - m[12] * m[7] * m[9];
     inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14]
-        - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+        - m[8] * m[6] * m[13]
+        - m[12] * m[5] * m[10]
+        + m[12] * m[6] * m[9];
     inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15]
-        - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+        - m[9] * m[3] * m[14]
+        - m[13] * m[2] * m[11]
+        + m[13] * m[3] * m[10];
     inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15]
-        + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+        + m[8] * m[3] * m[14]
+        + m[12] * m[2] * m[11]
+        - m[12] * m[3] * m[10];
     inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15]
-        - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+        - m[8] * m[3] * m[13]
+        - m[12] * m[1] * m[11]
+        + m[12] * m[3] * m[9];
     inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14]
-        + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+        + m[8] * m[2] * m[13]
+        + m[12] * m[1] * m[10]
+        - m[12] * m[2] * m[9];
     inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15]
-        + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+        + m[5] * m[3] * m[14]
+        + m[13] * m[2] * m[7]
+        - m[13] * m[3] * m[6];
     inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15]
-        - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+        - m[4] * m[3] * m[14]
+        - m[12] * m[2] * m[7]
+        + m[12] * m[3] * m[6];
     inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15]
-        + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+        + m[4] * m[3] * m[13]
+        + m[12] * m[1] * m[7]
+        - m[12] * m[3] * m[5];
     inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14]
-        - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+        - m[4] * m[2] * m[13]
+        - m[12] * m[1] * m[6]
+        + m[12] * m[2] * m[5];
     inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11]
-        - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+        - m[5] * m[3] * m[10]
+        - m[9] * m[2] * m[7]
+        + m[9] * m[3] * m[6];
     inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11]
-        + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+        + m[4] * m[3] * m[10]
+        + m[8] * m[2] * m[7]
+        - m[8] * m[3] * m[6];
     inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11]
-        - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+        - m[4] * m[3] * m[9]
+        - m[8] * m[1] * m[7]
+        + m[8] * m[3] * m[5];
     inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10]
-        + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+        + m[4] * m[2] * m[9]
+        + m[8] * m[1] * m[6]
+        - m[8] * m[2] * m[5];
 
     let det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
     if det.abs() < 1e-12 {
@@ -345,9 +377,9 @@ pub fn extract(nodes: &[FbxNode], scale: f32) -> Result<SkinData, String> {
     // Build joints with local transforms + parent link.
     let mut joints: Vec<Joint> = Vec::with_capacity(joint_ids.len());
     for &jid in &joint_ids {
-        let (_, name, _, node) = index.get(jid).ok_or_else(|| {
-            format!("joint id {} missing from object index", jid)
-        })?;
+        let (_, name, _, node) = index
+            .get(jid)
+            .ok_or_else(|| format!("joint id {} missing from object index", jid))?;
         let name = name.clone();
 
         // Local transform from Properties70 — fall back to zero/identity.
@@ -451,17 +483,15 @@ pub fn extract(nodes: &[FbxNode], scale: f32) -> Result<SkinData, String> {
                 };
 
                 // The bone is the child (src) of the cluster.
-                let bone_id = parent_to_children
-                    .get(&cluster_id)
-                    .and_then(|kids| {
-                        kids.iter().find_map(|(cid, _)| {
-                            if joint_id_to_idx.contains_key(cid) {
-                                Some(*cid)
-                            } else {
-                                None
-                            }
-                        })
-                    });
+                let bone_id = parent_to_children.get(&cluster_id).and_then(|kids| {
+                    kids.iter().find_map(|(cid, _)| {
+                        if joint_id_to_idx.contains_key(cid) {
+                            Some(*cid)
+                        } else {
+                            None
+                        }
+                    })
+                });
                 let Some(bone_id) = bone_id else { continue };
                 let jidx = joint_id_to_idx[&bone_id];
 
@@ -541,13 +571,9 @@ pub fn extract(nodes: &[FbxNode], scale: f32) -> Result<SkinData, String> {
 
 // ─── Public top-level entry ────────────────────────────────────────────────
 
-pub fn extract_from_file(
-    path: &std::path::Path,
-    scale: f32,
-) -> Result<SkinData, String> {
-    let data =
-        std::fs::read(path).map_err(|e| format!("failed to read FBX file: {}", e))?;
-    let (_version, nodes) = crate::fbx_legacy::parse_document(&data)
-        .map_err(|e| format!("FBX parse error: {}", e))?;
+pub fn extract_from_file(path: &std::path::Path, scale: f32) -> Result<SkinData, String> {
+    let data = std::fs::read(path).map_err(|e| format!("failed to read FBX file: {}", e))?;
+    let (_version, nodes) =
+        crate::fbx_legacy::parse_document(&data).map_err(|e| format!("FBX parse error: {}", e))?;
     extract(&nodes, scale)
 }

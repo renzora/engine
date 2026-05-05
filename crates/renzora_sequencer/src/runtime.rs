@@ -18,9 +18,7 @@ use bevy::math::{Quat, Vec3};
 use bevy::prelude::*;
 use renzora::core::{EditorCamera, EntityTag};
 
-use crate::model::{
-    CameraClip, CameraKey, MediaClip, Sequence, Track, TrackKind, TransformClip,
-};
+use crate::model::{CameraClip, CameraKey, MediaClip, Sequence, Track, TrackKind, TransformClip};
 
 // ─── Resource ───────────────────────────────────────────────────────────────
 
@@ -83,18 +81,36 @@ pub enum SequencerAction {
     SelectClip(Option<(usize, usize)>),
     AddTrack(TrackKind),
     RemoveTrack(usize),
-    SetTrackMuted { track: usize, muted: bool },
-    SetTrackLocked { track: usize, locked: bool },
+    SetTrackMuted {
+        track: usize,
+        muted: bool,
+    },
+    SetTrackLocked {
+        track: usize,
+        locked: bool,
+    },
     /// Move a clip's start (drag the body).
-    MoveClip { track: usize, clip: usize, new_start: f32 },
+    MoveClip {
+        track: usize,
+        clip: usize,
+        new_start: f32,
+    },
     /// Resize a clip (drag an edge).
-    ResizeClip { track: usize, clip: usize, new_start: f32, new_duration: f32 },
+    ResizeClip {
+        track: usize,
+        clip: usize,
+        new_start: f32,
+        new_duration: f32,
+    },
     /// Drop a marker at the playhead.
     AddMarkerAtPlayhead(String),
     /// Add a CameraKey at the current playhead, sampled from the live editor camera.
     AddCameraKeyAtPlayhead,
     /// Stub bake-to-video — adds a placeholder MediaClip to the first Media track.
-    StubBakeRange { from: f32, to: f32 },
+    StubBakeRange {
+        from: f32,
+        to: f32,
+    },
     SetSequenceDuration(f32),
 }
 
@@ -168,10 +184,19 @@ pub fn apply_bridge_actions(
                     t.locked = locked;
                 }
             }
-            SequencerAction::MoveClip { track, clip, new_start } => {
+            SequencerAction::MoveClip {
+                track,
+                clip,
+                new_start,
+            } => {
                 move_clip(&mut state.sequence, track, clip, new_start);
             }
-            SequencerAction::ResizeClip { track, clip, new_start, new_duration } => {
+            SequencerAction::ResizeClip {
+                track,
+                clip,
+                new_start,
+                new_duration,
+            } => {
                 resize_clip(&mut state.sequence, track, clip, new_start, new_duration);
             }
             SequencerAction::AddMarkerAtPlayhead(label) => {
@@ -236,22 +261,54 @@ pub fn apply_bridge_actions(
 }
 
 fn move_clip(seq: &mut Sequence, track: usize, clip: usize, new_start: f32) {
-    let Some(t) = seq.tracks.get_mut(track) else { return };
+    let Some(t) = seq.tracks.get_mut(track) else {
+        return;
+    };
     if t.locked {
         return;
     }
     let limit = seq.duration;
     let new_start = new_start.max(0.0);
     match &mut t.kind {
-        TrackKind::Camera { clips } => set_clip_start(clips, clip, new_start, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Transform { clips, .. } => set_clip_start(clips, clip, new_start, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Media { clips } => set_clip_start(clips, clip, new_start, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Marker { clips } => set_clip_start(clips, clip, new_start, limit, |c| &mut c.start, |c| &mut c.duration),
+        TrackKind::Camera { clips } => set_clip_start(
+            clips,
+            clip,
+            new_start,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Transform { clips, .. } => set_clip_start(
+            clips,
+            clip,
+            new_start,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Media { clips } => set_clip_start(
+            clips,
+            clip,
+            new_start,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Marker { clips } => set_clip_start(
+            clips,
+            clip,
+            new_start,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
     }
 }
 
 fn resize_clip(seq: &mut Sequence, track: usize, clip: usize, new_start: f32, new_duration: f32) {
-    let Some(t) = seq.tracks.get_mut(track) else { return };
+    let Some(t) = seq.tracks.get_mut(track) else {
+        return;
+    };
     if t.locked {
         return;
     }
@@ -259,10 +316,42 @@ fn resize_clip(seq: &mut Sequence, track: usize, clip: usize, new_start: f32, ne
     let new_start = new_start.max(0.0);
     let new_duration = new_duration.max(0.05);
     match &mut t.kind {
-        TrackKind::Camera { clips } => set_clip_extent(clips, clip, new_start, new_duration, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Transform { clips, .. } => set_clip_extent(clips, clip, new_start, new_duration, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Media { clips } => set_clip_extent(clips, clip, new_start, new_duration, limit, |c| &mut c.start, |c| &mut c.duration),
-        TrackKind::Marker { clips } => set_clip_extent(clips, clip, new_start, new_duration, limit, |c| &mut c.start, |c| &mut c.duration),
+        TrackKind::Camera { clips } => set_clip_extent(
+            clips,
+            clip,
+            new_start,
+            new_duration,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Transform { clips, .. } => set_clip_extent(
+            clips,
+            clip,
+            new_start,
+            new_duration,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Media { clips } => set_clip_extent(
+            clips,
+            clip,
+            new_start,
+            new_duration,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
+        TrackKind::Marker { clips } => set_clip_extent(
+            clips,
+            clip,
+            new_start,
+            new_duration,
+            limit,
+            |c| &mut c.start,
+            |c| &mut c.duration,
+        ),
     }
 }
 
@@ -353,15 +442,12 @@ fn add_camera_key_at(seq: &mut Sequence, time: f32, xf: Transform, fov_deg: Opti
         fov_deg,
     };
     // Replace existing key at the same time, or insert in order.
-    if let Some(existing) = clip
-        .keys
-        .iter_mut()
-        .find(|k| (k.t - local_t).abs() < 1e-3)
-    {
+    if let Some(existing) = clip.keys.iter_mut().find(|k| (k.t - local_t).abs() < 1e-3) {
         *existing = key;
     } else {
         clip.keys.push(key);
-        clip.keys.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
+        clip.keys
+            .sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(std::cmp::Ordering::Equal));
     }
 }
 
@@ -461,7 +547,11 @@ fn sample_camera_clip(clip: &CameraClip, local_t: f32) -> CameraPose {
         };
     }
     // Find the surrounding pair.
-    let (a, b) = match clip.keys.windows(2).find(|w| local_t >= w[0].t && local_t <= w[1].t) {
+    let (a, b) = match clip
+        .keys
+        .windows(2)
+        .find(|w| local_t >= w[0].t && local_t <= w[1].t)
+    {
         Some(w) => (&w[0], &w[1]),
         None => {
             // Extrapolate: clamp to first or last.
@@ -504,7 +594,10 @@ fn smoothstep(u: f32) -> f32 {
 // ─── Apply: Transform tracks ────────────────────────────────────────────────
 
 /// Drive named entities' Transforms from any active TransformClip.
-pub fn apply_transform_tracks(state: Res<SequencerState>, mut q: Query<(&EntityTag, &mut Transform)>) {
+pub fn apply_transform_tracks(
+    state: Res<SequencerState>,
+    mut q: Query<(&EntityTag, &mut Transform)>,
+) {
     let playhead = state.playhead;
     for track in &state.sequence.tracks {
         if track.muted {
@@ -552,7 +645,11 @@ fn sample_transform_clip(clip: &TransformClip, local_t: f32) -> TransformPose {
             scale: k.scale,
         };
     }
-    let (a, b) = match clip.keys.windows(2).find(|w| local_t >= w[0].t && local_t <= w[1].t) {
+    let (a, b) = match clip
+        .keys
+        .windows(2)
+        .find(|w| local_t >= w[0].t && local_t <= w[1].t)
+    {
         Some(w) => (&w[0], &w[1]),
         None => {
             return if local_t <= clip.keys[0].t {

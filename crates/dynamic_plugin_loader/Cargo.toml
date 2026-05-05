@@ -8,3 +8,6 @@ description = "Loads Bevy plugins from DLLs at startup. Full &mut App access."
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 libloading = "0.8"
+
+[lints]
+workspace = true

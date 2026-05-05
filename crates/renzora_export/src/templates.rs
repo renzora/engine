@@ -1,7 +1,7 @@
 //! Runtime template management — download/locate pre-built runtime binaries.
 
-use serde::{Deserialize, Serialize};
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Supported export platforms.
@@ -55,7 +55,9 @@ impl Platform {
             Platform::WindowsX64 => format!("{}.exe", project_name),
             Platform::LinuxX64 => project_name.to_string(),
             Platform::MacOSX64 | Platform::MacOSArm64 => project_name.to_string(),
-            Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64 => format!("{}.apk", project_name),
+            Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64 => {
+                format!("{}.apk", project_name)
+            }
             Platform::IOSArm64 | Platform::TvOSArm64 => format!("{}.ipa", project_name),
             Platform::WebWasm32 => format!("{}.wasm", project_name),
         }
@@ -136,13 +138,21 @@ impl Platform {
     /// Detect the current host platform.
     pub fn current() -> Option<Platform> {
         #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-        { return Some(Platform::WindowsX64); }
+        {
+            return Some(Platform::WindowsX64);
+        }
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        { return Some(Platform::LinuxX64); }
+        {
+            return Some(Platform::LinuxX64);
+        }
         #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-        { return Some(Platform::MacOSX64); }
+        {
+            return Some(Platform::MacOSX64);
+        }
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        { return Some(Platform::MacOSArm64); }
+        {
+            return Some(Platform::MacOSArm64);
+        }
         #[allow(unreachable_code)]
         None
     }
@@ -173,8 +183,8 @@ impl Default for TemplateManager {
         // Editor runs from dist/{platform}/editor/ — go up one level to dist/{platform}/
         let dist_dir = std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))  // editor/
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))  // {platform}/
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // editor/
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // {platform}/
             .unwrap_or_else(|| PathBuf::from("."));
         let mut mgr = Self {
             dist_dir,
@@ -237,12 +247,16 @@ impl TemplateManager {
 
     /// Check if a template is available for the given platform.
     pub fn get(&self, platform: Platform) -> Option<&ExportTemplate> {
-        self.templates.iter().find(|t| t.platform == platform && !t.is_server)
+        self.templates
+            .iter()
+            .find(|t| t.platform == platform && !t.is_server)
     }
 
     /// Check if a server template is available for the given platform.
     pub fn get_server(&self, platform: Platform) -> Option<&ExportTemplate> {
-        self.templates.iter().find(|t| t.platform == platform && t.is_server)
+        self.templates
+            .iter()
+            .find(|t| t.platform == platform && t.is_server)
     }
 
     /// Check if a template is installed for the given platform.
@@ -254,5 +268,4 @@ impl TemplateManager {
     pub fn is_server_installed(&self, platform: Platform) -> bool {
         self.get_server(platform).is_some()
     }
-
 }

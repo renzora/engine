@@ -17,3 +17,6 @@ ron = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+
+[lints]
+workspace = true

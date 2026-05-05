@@ -3,7 +3,16 @@ name = "renzora_postprocess"
 version = "0.1.0"
 edition = "2021"
 
+# Ships as a desktop dylib so the ~50 post-process effect distribution
+# plugins link to one shared compiled copy instead of each embedding
+# the framework (PostProcessPlugin<T>, render-graph wiring, etc.).
+[lib]
+crate-type = ["dylib", "rlib"]
+
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

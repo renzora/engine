@@ -18,12 +18,20 @@ pub struct ScriptEngine {
 
 impl ScriptEngine {
     pub fn new() -> Self {
-        Self { backends: Vec::new(), scripts_folder: None, file_reader: None }
+        Self {
+            backends: Vec::new(),
+            scripts_folder: None,
+            file_reader: None,
+        }
     }
 
     /// Register a language backend
     pub fn add_backend(&mut self, backend: Box<dyn ScriptBackend>) {
-        log::info!("[Scripting] Registered {} backend (extensions: {:?})", backend.name(), backend.extensions());
+        log::info!(
+            "[Scripting] Registered {} backend (extensions: {:?})",
+            backend.name(),
+            backend.extensions()
+        );
         self.backends.push(backend);
     }
 
@@ -67,7 +75,8 @@ impl ScriptEngine {
     /// Find the backend for a given file path
     fn backend_for(&self, path: &Path) -> Option<&dyn ScriptBackend> {
         let ext = path.extension()?.to_str()?;
-        self.backends.iter()
+        self.backends
+            .iter()
             .find(|b| b.extensions().contains(&ext))
             .map(|b| b.as_ref())
     }
@@ -87,7 +96,8 @@ impl ScriptEngine {
         vars: &mut ScriptVariables,
     ) -> Result<(), String> {
         let resolved = self.resolve_path(path);
-        let backend = self.backend_for(path)
+        let backend = self
+            .backend_for(path)
             .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
         let commands = backend.call_on_ready(&resolved, ctx, vars)?;
         for cmd in commands {
@@ -103,7 +113,8 @@ impl ScriptEngine {
         vars: &mut ScriptVariables,
     ) -> Result<(), String> {
         let resolved = self.resolve_path(path);
-        let backend = self.backend_for(path)
+        let backend = self
+            .backend_for(path)
             .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
         let commands = backend.call_on_update(&resolved, ctx, vars)?;
         for cmd in commands {
@@ -128,7 +139,8 @@ impl ScriptEngine {
 
     pub fn eval_expression(&self, expr: &str) -> Result<String, String> {
         // Try first backend (primary language)
-        self.backends.first()
+        self.backends
+            .first()
             .ok_or_else(|| "No backends registered".to_string())?
             .eval_expression(expr)
     }

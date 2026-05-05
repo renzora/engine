@@ -61,10 +61,9 @@ impl AssetKind {
             return AssetKind::Other;
         };
         match ext.as_str() {
-            "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc"
-            | "usdz" | "abc" | "dae" | "blend" => AssetKind::Model,
-            "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr"
-            | "exr" => AssetKind::Texture,
+            "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
+            | "blend" => AssetKind::Model,
+            "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "exr" => AssetKind::Texture,
             "material" | "material_bp" => AssetKind::Material,
             "scene" => AssetKind::Scene,
             "wav" | "ogg" | "mp3" | "flac" | "opus" => AssetKind::Audio,
@@ -117,13 +116,8 @@ impl AssetRegistry {
     }
 
     /// Iterate every entry whose `kind` matches.
-    pub fn iter_kind(
-        &self,
-        kind: AssetKind,
-    ) -> impl Iterator<Item = (&String, &AssetEntry)> {
-        self.entries
-            .iter()
-            .filter(move |(_, e)| e.kind == kind)
+    pub fn iter_kind(&self, kind: AssetKind) -> impl Iterator<Item = (&String, &AssetEntry)> {
+        self.entries.iter().filter(move |(_, e)| e.kind == kind)
     }
 }
 
@@ -132,11 +126,10 @@ pub struct AssetRegistryPlugin;
 
 impl Plugin for AssetRegistryPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<AssetRegistry>()
-            .add_systems(
-                OnEnter(SplashState::Loading),
-                build_asset_registry_on_loading,
-            );
+        app.init_resource::<AssetRegistry>().add_systems(
+            OnEnter(SplashState::Loading),
+            build_asset_registry_on_loading,
+        );
     }
 }
 
@@ -185,14 +178,8 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
         // Skip dotfiles/dotdirs and well-known noise directories. These
         // would otherwise drag in node_modules-sized trees on projects
         // that happen to have build outputs sitting in the root.
-        let name_lc = entry
-            .file_name()
-            .to_string_lossy()
-            .to_ascii_lowercase();
-        if name_lc.starts_with('.')
-            || name_lc == "target"
-            || name_lc == "node_modules"
-        {
+        let name_lc = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name_lc.starts_with('.') || name_lc == "target" || name_lc == "node_modules" {
             continue;
         }
 
@@ -232,3 +219,4 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
         );
     }
 }
+

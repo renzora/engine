@@ -167,14 +167,20 @@ fn intake_thumbnail_requests(
     project: Option<Res<CurrentProject>>,
     job: Option<Res<MaterialThumbnailLoadingJob>>,
 ) {
-    let advance_skip = |tasks: &mut LoadingTasks, job: &Option<Res<MaterialThumbnailLoadingJob>>, name: &str| {
-        if let Some(j) = job.as_ref() {
-            tasks.advance(j.handle, 1);
-            if let Some(t) = tasks.tasks().iter().find(|(h, _)| *h == j.handle).map(|(_, t)| t) {
-                emit_thumbnail_progress(t.completed, t.total, name);
+    let advance_skip =
+        |tasks: &mut LoadingTasks, job: &Option<Res<MaterialThumbnailLoadingJob>>, name: &str| {
+            if let Some(j) = job.as_ref() {
+                tasks.advance(j.handle, 1);
+                if let Some(t) = tasks
+                    .tasks()
+                    .iter()
+                    .find(|(h, _)| *h == j.handle)
+                    .map(|(_, t)| t)
+                {
+                    emit_thumbnail_progress(t.completed, t.total, name);
+                }
             }
-        }
-    };
+        };
 
     for _ in 0..MAX_INTAKE_PER_FRAME {
         let Some(material_path) = registry.incoming_requests.pop_front() else {
@@ -272,7 +278,11 @@ fn intake_thumbnail_requests(
         info!(
             "[material_thumbnails] Queued '{}' ({})",
             material_path.display(),
-            if compile_opt.is_some() { "compiled" } else { "fallback" }
+            if compile_opt.is_some() {
+                "compiled"
+            } else {
+                "fallback"
+            }
         );
 
         pending.jobs.push(CaptureJob {
@@ -464,7 +474,10 @@ fn arm_one_capture(
             RenderLayers::layer(MATERIAL_THUMBNAIL_LAYER),
             HideInHierarchy,
             EditorLocked,
-            Name::new(format!("Material Thumbnail Sphere ({})", job.material_path.display())),
+            Name::new(format!(
+                "Material Thumbnail Sphere ({})",
+                job.material_path.display()
+            )),
         ))
         .id();
 
@@ -513,10 +526,7 @@ fn arm_one_capture(
     });
 }
 
-fn fire_armed_captures(
-    mut commands: Commands,
-    mut armed: ResMut<ArmedCaptures>,
-) {
+fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>) {
     // Countdown, then pop-and-fire.
     for entry in armed.list.iter_mut() {
         if entry.frames_remaining > 0 {
@@ -565,45 +575,50 @@ fn fire_armed_captures(
                         cmds.entity(*e).despawn();
                     }
 
-                let captured = trigger.image.clone();
+                    let captured = trigger.image.clone();
 
-                if let Some(parent) = thumb_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                match captured.clone().try_into_dynamic() {
-                    Ok(dyn_img) => {
-                        let rgba = dyn_img.to_rgba8();
-                        if let Err(e) = rgba.save(&thumb_path) {
+                    if let Some(parent) = thumb_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    match captured.clone().try_into_dynamic() {
+                        Ok(dyn_img) => {
+                            let rgba = dyn_img.to_rgba8();
+                            if let Err(e) = rgba.save(&thumb_path) {
+                                warn!(
+                                    "[material_thumbnails] Failed to write {}: {}",
+                                    thumb_path.display(),
+                                    e
+                                );
+                            }
+                        }
+                        Err(e) => {
                             warn!(
-                                "[material_thumbnails] Failed to write {}: {}",
-                                thumb_path.display(),
+                                "[material_thumbnails] Captured image has unsupported format: {}",
                                 e
                             );
                         }
                     }
-                    Err(e) => {
-                        warn!(
-                            "[material_thumbnails] Captured image has unsupported format: {}",
-                            e
-                        );
+
+                    let captured_handle = images.add(captured);
+                    user_textures.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
+                    match user_textures.image_id(captured_handle.id()) {
+                        Some(tid) => registry.complete(material_path.clone(), tid),
+                        None => registry.cancel(&material_path),
                     }
-                }
 
-                let captured_handle = images.add(captured);
-                user_textures.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
-                match user_textures.image_id(captured_handle.id()) {
-                    Some(tid) => registry.complete(material_path.clone(), tid),
-                    None => registry.cancel(&material_path),
-                }
-
-                if let Some(job) = job.as_ref() {
-                    tasks.advance(job.handle, 1);
-                    let name = material_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                        if let Some(t) = tasks.tasks().iter().find(|(h, _)| *h == job.handle).map(|(_, t)| t) {
+                    if let Some(job) = job.as_ref() {
+                        tasks.advance(job.handle, 1);
+                        let name = material_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if let Some(t) = tasks
+                            .tasks()
+                            .iter()
+                            .find(|(h, _)| *h == job.handle)
+                            .map(|(_, t)| t)
+                        {
                             emit_thumbnail_progress(t.completed, t.total, &name);
                         }
                     }
@@ -719,7 +734,12 @@ fn resolve_disk_loads(
                 }
                 if let Some(job) = job.as_ref() {
                     tasks.advance(job.handle, 1);
-                    if let Some(t) = tasks.tasks().iter().find(|(h, _)| *h == job.handle).map(|(_, t)| t) {
+                    if let Some(t) = tasks
+                        .tasks()
+                        .iter()
+                        .find(|(h, _)| *h == job.handle)
+                        .map(|(_, t)| t)
+                    {
                         emit_thumbnail_progress(t.completed, t.total, &name);
                     }
                 }
@@ -735,7 +755,12 @@ fn resolve_disk_loads(
                 registry.cancel(&entry.material_path);
                 if let Some(job) = job.as_ref() {
                     tasks.advance(job.handle, 1);
-                    if let Some(t) = tasks.tasks().iter().find(|(h, _)| *h == job.handle).map(|(_, t)| t) {
+                    if let Some(t) = tasks
+                        .tasks()
+                        .iter()
+                        .find(|(h, _)| *h == job.handle)
+                        .map(|(_, t)| t)
+                    {
                         emit_thumbnail_progress(t.completed, t.total, &name);
                     }
                 }

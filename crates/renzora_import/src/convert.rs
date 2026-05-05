@@ -64,7 +64,9 @@ pub enum ExtractedAlphaMode {
 }
 
 impl Default for ExtractedAlphaMode {
-    fn default() -> Self { Self::Opaque }
+    fn default() -> Self {
+        Self::Opaque
+    }
 }
 
 /// Result of a successful import.
@@ -113,9 +115,7 @@ pub fn convert_to_glb(
     settings: &ImportSettings,
 ) -> Result<ImportResult, ImportError> {
     if !source_path.exists() {
-        return Err(ImportError::FileNotFound(
-            source_path.display().to_string(),
-        ));
+        return Err(ImportError::FileNotFound(source_path.display().to_string()));
     }
 
     let format = detect_format(source_path).ok_or_else(|| {

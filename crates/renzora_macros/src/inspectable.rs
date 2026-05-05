@@ -48,7 +48,9 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
     }
 
     let type_id = type_id.unwrap_or_else(|| {
-        struct_name.to_string().chars()
+        struct_name
+            .to_string()
+            .chars()
             .enumerate()
             .fold(String::new(), |mut acc, (i, c)| {
                 if c.is_uppercase() && i > 0 {
@@ -62,9 +64,19 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let fields = match &input.data {
         Data::Struct(ds) => match &ds.fields {
             Fields::Named(f) => &f.named,
-            _ => return Err(syn::Error::new_spanned(&input.ident, "Inspectable only supports named fields")),
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    &input.ident,
+                    "Inspectable only supports named fields",
+                ))
+            }
         },
-        _ => return Err(syn::Error::new_spanned(&input.ident, "Inspectable only supports structs")),
+        _ => {
+            return Err(syn::Error::new_spanned(
+                &input.ident,
+                "Inspectable only supports structs",
+            ))
+        }
     };
 
     // Generate field definitions
@@ -83,7 +95,9 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
             continue;
         }
 
-        let display = field_attrs.name.unwrap_or_else(|| title_case(&field_name_str));
+        let display = field_attrs
+            .name
+            .unwrap_or_else(|| title_case(&field_name_str));
 
         if field_attrs.readonly {
             field_defs.push(quote! {

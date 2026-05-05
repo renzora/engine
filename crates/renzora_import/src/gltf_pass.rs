@@ -4,7 +4,9 @@ use std::path::Path;
 
 use renzora_rmip::RmipFormat;
 
-use crate::convert::{ExtractedAlphaMode, ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult};
+use crate::convert::{
+    ExtractedAlphaMode, ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult,
+};
 use crate::settings::ImportSettings;
 
 /// Walk the GLB JSON's materials and assign each image to either sRGB
@@ -16,12 +18,18 @@ use crate::settings::ImportSettings;
 /// Returns a vec indexed by glTF image index. If parsing fails the vec is
 /// empty and the extractor falls back to the sRGB default per image.
 fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
-    let Ok(glb) = gltf::Glb::from_slice(glb_bytes) else { return Vec::new() };
+    let Ok(glb) = gltf::Glb::from_slice(glb_bytes) else {
+        return Vec::new();
+    };
     let Ok(root) = serde_json::from_slice::<serde_json::Value>(&glb.json) else {
         return Vec::new();
     };
 
-    let images = root.get("images").and_then(|v| v.as_array()).map(|v| v.len()).unwrap_or(0);
+    let images = root
+        .get("images")
+        .and_then(|v| v.as_array())
+        .map(|v| v.len())
+        .unwrap_or(0);
     let textures = root
         .get("textures")
         .and_then(|v| v.as_array())
@@ -70,7 +78,9 @@ fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
         let sg = mat
             .get("extensions")
             .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
-        mark_linear(texture_info_image(sg.and_then(|s| s.get("specularGlossinessTexture"))));
+        mark_linear(texture_info_image(
+            sg.and_then(|s| s.get("specularGlossinessTexture")),
+        ));
     }
 
     formats
@@ -113,9 +123,13 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
     // correct to the eye on color textures but break shading on data ones.
     let format_by_image = scan_image_formats(&bytes);
 
-    let (rewritten, extracted_textures, warnings) =
-        extract_glb_textures(&bytes, &format_by_image).unwrap_or_else(|e| {
-            (bytes.clone(), Vec::new(), vec![format!("texture extraction: {}", e)])
+    let (rewritten, extracted_textures, warnings) = extract_glb_textures(&bytes, &format_by_image)
+        .unwrap_or_else(|e| {
+            (
+                bytes.clone(),
+                Vec::new(),
+                vec![format!("texture extraction: {}", e)],
+            )
         });
 
     let extracted_materials = if settings.extract_materials {
@@ -267,8 +281,8 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
         // the roughness pin. Without this, every spec-gloss material gets
         // one uniform roughness and reflective surfaces (wet stone, glass)
         // render as flat matte.
-        let specular_glossiness_texture = spec_gloss
-            .and_then(|sg| texture_info_uri(sg.get("specularGlossinessTexture")));
+        let specular_glossiness_texture =
+            spec_gloss.and_then(|sg| texture_info_uri(sg.get("specularGlossinessTexture")));
         if let Some(sg) = spec_gloss {
             if base_color_texture.is_none() {
                 base_color_texture = texture_info_uri(sg.get("diffuseTexture"));
@@ -277,10 +291,26 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             // declare its own (default white).
             if base_color == [1.0, 1.0, 1.0, 1.0] {
                 if let Some(arr) = sg.get("diffuseFactor").and_then(|v| v.as_array()) {
-                    let r = arr.first().and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
-                    let g = arr.get(1).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
-                    let b = arr.get(2).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
-                    let a = arr.get(3).and_then(|v| v.as_f64()).map(|x| x as f32).unwrap_or(1.0);
+                    let r = arr
+                        .first()
+                        .and_then(|v| v.as_f64())
+                        .map(|x| x as f32)
+                        .unwrap_or(1.0);
+                    let g = arr
+                        .get(1)
+                        .and_then(|v| v.as_f64())
+                        .map(|x| x as f32)
+                        .unwrap_or(1.0);
+                    let b = arr
+                        .get(2)
+                        .and_then(|v| v.as_f64())
+                        .map(|x| x as f32)
+                        .unwrap_or(1.0);
+                    let a = arr
+                        .get(3)
+                        .and_then(|v| v.as_f64())
+                        .map(|x| x as f32)
+                        .unwrap_or(1.0);
                     base_color = [r, g, b, a];
                 }
             }
@@ -351,14 +381,13 @@ fn extract_glb_textures(
     glb_bytes: &[u8],
     format_by_image: &[RmipFormat],
 ) -> Result<(Vec<u8>, Vec<ExtractedTexture>, Vec<String>), String> {
-    let glb = gltf::Glb::from_slice(glb_bytes)
-        .map_err(|e| format!("parse GLB: {}", e))?;
+    let glb = gltf::Glb::from_slice(glb_bytes).map_err(|e| format!("parse GLB: {}", e))?;
 
     let json_slice = glb.json.as_ref();
     let bin_slice: Option<&[u8]> = glb.bin.as_deref();
 
-    let mut root: gltf_json::Root = serde_json::from_slice(json_slice)
-        .map_err(|e| format!("parse GLB JSON: {}", e))?;
+    let mut root: gltf_json::Root =
+        serde_json::from_slice(json_slice).map_err(|e| format!("parse GLB JSON: {}", e))?;
 
     if root.images.is_empty() {
         return Ok((glb_bytes.to_vec(), Vec::new(), Vec::new()));
@@ -396,10 +425,7 @@ fn extract_glb_textures(
                 continue;
             }
         };
-        let byte_offset = view
-            .byte_offset
-            .map(|o| o.0 as usize)
-            .unwrap_or(0);
+        let byte_offset = view.byte_offset.map(|o| o.0 as usize).unwrap_or(0);
         let byte_length = view.byte_length.0 as usize;
         let end = byte_offset + byte_length;
         if end > bin.len() {
@@ -490,13 +516,21 @@ fn extract_glb_textures(
 /// MIME type. Mirrors the FBX-side helper so both extractors agree on
 /// which extension to write.
 fn sniff_image_extension(data: &[u8]) -> &'static str {
-    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
-    else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }
-    else if data.starts_with(b"DDS ") { "dds" }
-    else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { "gif" }
-    else if data.starts_with(b"BM") { "bmp" }
-    else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") { "webp" }
-    else { "bin" }
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "png"
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "jpg"
+    } else if data.starts_with(b"DDS ") {
+        "dds"
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        "gif"
+    } else if data.starts_with(b"BM") {
+        "bmp"
+    } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else {
+        "bin"
+    }
 }
 
 /// GLTF files: read the JSON and all referenced buffers/images, pack into GLB.
@@ -544,14 +578,24 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
     }
 
     // Build GLB from JSON + binary chunk
-    let json_bytes = root.to_vec()
-        .map_err(|e| ImportError::ConversionError(format!("failed to serialize GLTF JSON: {}", e)))?;
+    let json_bytes = root.to_vec().map_err(|e| {
+        ImportError::ConversionError(format!("failed to serialize GLTF JSON: {}", e))
+    })?;
 
-    let glb_bytes = pack_glb(&json_bytes, if bin_data.is_empty() { None } else { Some(&bin_data) });
+    let glb_bytes = pack_glb(
+        &json_bytes,
+        if bin_data.is_empty() {
+            None
+        } else {
+            Some(&bin_data)
+        },
+    );
 
     Ok(ImportResult {
         glb_bytes: crate::glb_compat::strip_unsupported_extensions(&glb_bytes),
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 
@@ -568,7 +612,10 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         }
     }
 
-    let input: Vec<u8> = input.bytes().filter(|&b| b != b'\n' && b != b'\r' && b != b' ').collect();
+    let input: Vec<u8> = input
+        .bytes()
+        .filter(|&b| b != b'\n' && b != b'\r' && b != b' ')
+        .collect();
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
 
     for chunk in input.chunks(4) {

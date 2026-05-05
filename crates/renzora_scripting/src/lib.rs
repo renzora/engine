@@ -6,9 +6,9 @@ mod engine;
 pub mod extension;
 pub mod get_handler;
 mod input;
-mod plugin;
 #[cfg(feature = "editor")]
 pub mod inspector;
+mod plugin;
 
 pub mod api;
 pub mod backends;
@@ -24,3 +24,4 @@ pub use engine::*;
 pub use extension::*;
 pub use input::*;
 pub use plugin::*;
+

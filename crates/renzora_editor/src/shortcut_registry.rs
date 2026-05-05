@@ -97,8 +97,12 @@ pub fn shortcut_dispatch_system(world: &mut World) {
     // Collect matching handlers (snapshot before invoking — each handler
     // gets `&mut World` so we can't hold registry / keybindings borrows).
     let fired: Vec<ShortcutHandler> = {
-        let Some(registry) = world.get_resource::<ShortcutRegistry>() else { return };
-        let Some(bindings) = world.get_resource::<KeyBindings>() else { return };
+        let Some(registry) = world.get_resource::<ShortcutRegistry>() else {
+            return;
+        };
+        let Some(bindings) = world.get_resource::<KeyBindings>() else {
+            return;
+        };
         let keys = world.resource::<ButtonInput<KeyCode>>();
 
         registry
@@ -110,12 +114,17 @@ pub fn shortcut_dispatch_system(world: &mut World) {
                 if bindings.is_plugin_dispatched(e.id) {
                     return Some(e.handler.clone());
                 }
-                let b = bindings.plugin_bindings.get(e.id).unwrap_or(&e.default_binding);
-                let matches = keys.just_pressed(b.key)
-                    && b.ctrl == ctrl
-                    && b.shift == shift
-                    && b.alt == alt;
-                if matches { Some(e.handler.clone()) } else { None }
+                let b = bindings
+                    .plugin_bindings
+                    .get(e.id)
+                    .unwrap_or(&e.default_binding);
+                let matches =
+                    keys.just_pressed(b.key) && b.ctrl == ctrl && b.shift == shift && b.alt == alt;
+                if matches {
+                    Some(e.handler.clone())
+                } else {
+                    None
+                }
             })
             .collect()
     };

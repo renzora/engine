@@ -3,8 +3,8 @@
 //! Each layer can override or additively blend on top of the base layer.
 //! Bone masks restrict which bones a layer affects.
 
-use serde::{Deserialize, Serialize};
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// How a layer combines with layers below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Reflect)]

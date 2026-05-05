@@ -23,7 +23,8 @@ impl ExtensionData {
 
     /// Get a reference to typed data.
     pub fn get<T: 'static>(&self) -> Option<&T> {
-        self.data.get(&TypeId::of::<T>())
+        self.data
+            .get(&TypeId::of::<T>())
             .and_then(|b| b.downcast_ref())
     }
 }
@@ -51,12 +52,7 @@ pub trait ScriptExtension: Send + Sync + 'static {
 
     /// Populate custom data into `ExtensionData` before script execution.
     /// Called per-entity each frame. Has read-only world access.
-    fn populate_context(
-        &self,
-        world: &World,
-        entity: Entity,
-        data: &mut ExtensionData,
-    );
+    fn populate_context(&self, world: &World, entity: Entity, data: &mut ExtensionData);
 
     /// Register custom Lua functions. Called once per Lua state creation.
     /// Use `push_command(ScriptCommand::Extension(...))` for custom commands.
@@ -92,12 +88,7 @@ impl ScriptExtensions {
     }
 
     /// Populate extension data for a given entity.
-    pub fn populate_context(
-        &self,
-        world: &World,
-        entity: Entity,
-        data: &mut ExtensionData,
-    ) {
+    pub fn populate_context(&self, world: &World, entity: Entity, data: &mut ExtensionData) {
         for ext in &self.extensions {
             ext.populate_context(world, entity, data);
         }

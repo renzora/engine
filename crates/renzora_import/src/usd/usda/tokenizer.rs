@@ -75,16 +75,56 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
         // Single-char tokens
         match c {
-            '(' => { tokens.push(Token::OpenParen); i += 1; continue; }
-            ')' => { tokens.push(Token::CloseParen); i += 1; continue; }
-            '[' => { tokens.push(Token::OpenBracket); i += 1; continue; }
-            ']' => { tokens.push(Token::CloseBracket); i += 1; continue; }
-            '{' => { tokens.push(Token::OpenBrace); i += 1; continue; }
-            '}' => { tokens.push(Token::CloseBrace); i += 1; continue; }
-            '=' => { tokens.push(Token::Equals); i += 1; continue; }
-            ',' => { tokens.push(Token::Comma); i += 1; continue; }
-            ';' => { tokens.push(Token::Semicolon); i += 1; continue; }
-            ':' => { tokens.push(Token::Colon); i += 1; continue; }
+            '(' => {
+                tokens.push(Token::OpenParen);
+                i += 1;
+                continue;
+            }
+            ')' => {
+                tokens.push(Token::CloseParen);
+                i += 1;
+                continue;
+            }
+            '[' => {
+                tokens.push(Token::OpenBracket);
+                i += 1;
+                continue;
+            }
+            ']' => {
+                tokens.push(Token::CloseBracket);
+                i += 1;
+                continue;
+            }
+            '{' => {
+                tokens.push(Token::OpenBrace);
+                i += 1;
+                continue;
+            }
+            '}' => {
+                tokens.push(Token::CloseBrace);
+                i += 1;
+                continue;
+            }
+            '=' => {
+                tokens.push(Token::Equals);
+                i += 1;
+                continue;
+            }
+            ',' => {
+                tokens.push(Token::Comma);
+                i += 1;
+                continue;
+            }
+            ';' => {
+                tokens.push(Token::Semicolon);
+                i += 1;
+                continue;
+            }
+            ':' => {
+                tokens.push(Token::Colon);
+                i += 1;
+                continue;
+            }
             '.' => {
                 // Could be start of a number like .5
                 if i + 1 < len && chars[i + 1].is_ascii_digit() {
@@ -133,7 +173,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         }
 
         // Number (including negative)
-        if c.is_ascii_digit() || (c == '-' && i + 1 < len && (chars[i + 1].is_ascii_digit() || chars[i + 1] == '.')) {
+        if c.is_ascii_digit()
+            || (c == '-' && i + 1 < len && (chars[i + 1].is_ascii_digit() || chars[i + 1] == '.'))
+        {
             let (num, end) = read_number(&chars, i);
             tokens.push(Token::Number(num));
             i = end;
@@ -153,10 +195,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             let word: String = chars[start..i].iter().collect();
 
             match word.as_str() {
-                "def" | "over" | "class" | "None" | "true" | "false"
-                | "prepend" | "append" | "delete" | "add" | "reorder"
-                | "variantSet" | "variant" | "payload" | "references"
-                | "inherits" | "specializes" | "custom" | "uniform" => {
+                "def" | "over" | "class" | "None" | "true" | "false" | "prepend" | "append"
+                | "delete" | "add" | "reorder" | "variantSet" | "variant" | "payload"
+                | "references" | "inherits" | "specializes" | "custom" | "uniform" => {
                     tokens.push(Token::Keyword(word));
                 }
                 _ => {
@@ -183,7 +224,10 @@ fn read_quoted_string(chars: &[char], start: usize) -> (String, usize) {
                 't' => s.push('\t'),
                 '"' => s.push('"'),
                 '\\' => s.push('\\'),
-                other => { s.push('\\'); s.push(other); }
+                other => {
+                    s.push('\\');
+                    s.push(other);
+                }
             }
             i += 2;
         } else if chars[i] == '"' {

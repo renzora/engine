@@ -22,7 +22,10 @@ pub struct GradientEditorConfig {
 
 impl Default for GradientEditorConfig {
     fn default() -> Self {
-        Self { height: 28.0, with_alpha: true }
+        Self {
+            height: 28.0,
+            with_alpha: true,
+        }
     }
 }
 
@@ -39,10 +42,7 @@ pub fn gradient_editor(
     let (rect, response) = ui.allocate_exact_size(Vec2::new(w, full_h), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
 
-    let gradient_rect = egui::Rect::from_min_size(
-        rect.min,
-        Vec2::new(rect.width(), cfg.height),
-    );
+    let gradient_rect = egui::Rect::from_min_size(rect.min, Vec2::new(rect.width(), cfg.height));
     let handle_rect = egui::Rect::from_min_size(
         Pos2::new(rect.min.x, rect.min.y + cfg.height + 2.0),
         Vec2::new(rect.width(), 12.0),
@@ -56,13 +56,23 @@ pub fn gradient_editor(
         let c = sample_gradient(stops, t);
         let x = gradient_rect.min.x + i as f32;
         painter.line_segment(
-            [Pos2::new(x, gradient_rect.min.y), Pos2::new(x, gradient_rect.max.y)],
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                if cfg.with_alpha { (c[3] * 255.0) as u8 } else { 255 },
-            )),
+            [
+                Pos2::new(x, gradient_rect.min.y),
+                Pos2::new(x, gradient_rect.max.y),
+            ],
+            Stroke::new(
+                1.0,
+                Color32::from_rgba_unmultiplied(
+                    (c[0] * 255.0) as u8,
+                    (c[1] * 255.0) as u8,
+                    (c[2] * 255.0) as u8,
+                    if cfg.with_alpha {
+                        (c[3] * 255.0) as u8
+                    } else {
+                        255
+                    },
+                ),
+            ),
         );
     }
     painter.rect_stroke(
@@ -131,7 +141,10 @@ pub fn gradient_editor(
             }
         }
     }
-    ui.memory_mut(|m| m.data.insert_temp::<Option<usize>>(response.id, new_selected));
+    ui.memory_mut(|m| {
+        m.data
+            .insert_temp::<Option<usize>>(response.id, new_selected)
+    });
 
     (response, new_selected)
 }

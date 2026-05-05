@@ -40,19 +40,19 @@ mod updater;
 
 /// Prelude for imports
 pub mod prelude {
+    #[cfg(feature = "avoidance")]
+    pub use crate::avoidance::{AvoidanceConfig, AvoidancePlugin, NavigationAgent};
     pub use crate::obstacles::{
         ObstacleSource, cached::CachedObstacle, primitive::PrimitiveObstacle,
     };
     pub use crate::updater::{
         CachableObstacle, ManagedNavMesh, NAVMESH_BUILD_DURATION, NavMeshAgentExclusion,
-        NavMeshBuilt, NavMeshSettings, NavMeshStatus, NavMeshUpdateMode,
-        NavMeshUpdateModeBlocking, NavmeshUpdaterPlugin,
+        NavMeshBuilt, NavMeshSettings, NavMeshStatus, NavMeshUpdateMode, NavMeshUpdateModeBlocking,
+        NavmeshUpdaterPlugin,
     };
     pub use crate::{NavMesh, Triangulation, VleueNavigatorPlugin};
     #[cfg(feature = "debug-with-gizmos")]
     pub use crate::{NavMeshDebug, NavMeshesDebug};
-    #[cfg(feature = "avoidance")]
-    pub use crate::avoidance::{AvoidanceConfig, AvoidancePlugin, NavigationAgent};
 }
 
 /// Bevy plugin to add support for the [`NavMesh`] asset type.
@@ -293,10 +293,7 @@ impl NavMesh {
             .into_iter()
             .map(|coords| transform.transform_point(coords.extend(0.0)))
             .collect();
-        let length = path_3d
-            .windows(2)
-            .map(|w| w[0].distance(w[1]))
-            .sum();
+        let length = path_3d.windows(2).map(|w| w[0].distance(w[1])).sum();
         TransformedPath {
             length,
             path: path_3d,

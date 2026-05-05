@@ -3,11 +3,17 @@ name = "renzora_edge_glow"
 version = "0.1.0"
 edition = "2021"
 
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/`
+# directory at startup. cdylib keeps the export surface to the
+# unmangled `extern "C"` symbols emitted by `renzora::add!` under
+# the `dlopen` feature.
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
 
 [features]
-default = ["editor"]
+default = ["editor", "dlopen"]
+dlopen = []
 editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [dependencies]
@@ -18,3 +24,6 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

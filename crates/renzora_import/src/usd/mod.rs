@@ -12,19 +12,19 @@
 //! The output is a [`UsdStage`] containing the full scene graph with meshes,
 //! materials, textures, skeletons, animations, lights, and cameras.
 
+pub mod animation;
+pub mod camera;
 pub mod crate_format;
+mod glb;
+pub mod lights;
+pub mod material;
+pub mod mesh;
+pub mod scene;
+pub mod skeleton;
+pub mod texture;
 pub mod usda;
 mod usdz;
-pub mod scene;
-pub mod mesh;
-pub mod material;
-pub mod skeleton;
-pub mod animation;
-pub mod lights;
-pub mod camera;
 pub mod xform;
-pub mod texture;
-mod glb;
 
 use std::path::Path;
 
@@ -288,13 +288,21 @@ fn sanitize_name(input: &str) -> String {
 }
 
 fn sniff_image_ext(data: &[u8]) -> &'static str {
-    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
-    else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }
-    else if data.starts_with(b"DDS ") { "dds" }
-    else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { "gif" }
-    else if data.starts_with(b"BM") { "bmp" }
-    else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") { "webp" }
-    else { "bin" }
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "png"
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "jpg"
+    } else if data.starts_with(b"DDS ") {
+        "dds"
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        "gif"
+    } else if data.starts_with(b"BM") {
+        "bmp"
+    } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else {
+        "bin"
+    }
 }
 
 /// Extract animations directly from a USD file (for animation-only files
@@ -303,8 +311,7 @@ pub fn extract_animations_from_usd(
     path: &Path,
     output_dir: &Path,
 ) -> Result<AnimExtractResult, String> {
-    let stage = parse(path)
-        .map_err(|e| format!("USD parse error: {}", e))?;
+    let stage = parse(path).map_err(|e| format!("USD parse error: {}", e))?;
 
     if stage.animations.is_empty() {
         return Ok(AnimExtractResult {
@@ -348,6 +355,12 @@ pub fn extract_animations_from_usd(
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }

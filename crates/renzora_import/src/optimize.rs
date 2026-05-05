@@ -69,21 +69,20 @@ pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<
     let glb_bytes = cleaned.as_slice();
 
     // Parse GLB for raw chunk access
-    let glb = gltf::Glb::from_slice(glb_bytes)
-        .map_err(|e| format!("GLB parse error: {e}"))?;
+    let glb = gltf::Glb::from_slice(glb_bytes).map_err(|e| format!("GLB parse error: {e}"))?;
     let Some(bin_cow) = &glb.bin else {
         return Ok(glb_bytes.to_vec());
     };
     let mut bin = bin_cow.to_vec();
 
     // Parse document for high-level mesh/accessor info
-    let gltf_doc = gltf::Gltf::from_slice(glb_bytes)
-        .map_err(|e| format!("GLTF parse error: {e}"))?;
+    let gltf_doc =
+        gltf::Gltf::from_slice(glb_bytes).map_err(|e| format!("GLTF parse error: {e}"))?;
     let doc = &gltf_doc.document;
 
     // Parse JSON for potential modification (simplify changes accessor count)
-    let mut json: serde_json::Value = serde_json::from_slice(&glb.json)
-        .map_err(|e| format!("JSON parse error: {e}"))?;
+    let mut json: serde_json::Value =
+        serde_json::from_slice(&glb.json).map_err(|e| format!("JSON parse error: {e}"))?;
     let mut json_modified = false;
 
     // Snapshot of buffer for reading (writes go into `bin`)
@@ -180,7 +179,14 @@ fn optimize_primitive(
     if settings.simplify {
         let target = ((indices.len() as f32 * settings.simplify_ratio) as usize / 3) * 3;
         let target = target.max(3);
-        indices = meshopt::simplify(&indices, &adapter, target, 0.01, meshopt::SimplifyOptions::None, None);
+        indices = meshopt::simplify(
+            &indices,
+            &adapter,
+            target,
+            0.01,
+            meshopt::SimplifyOptions::None,
+            None,
+        );
 
         let acc_idx = idx_accessor.index();
         json["accessors"][acc_idx]["count"] = serde_json::json!(indices.len());
@@ -198,10 +204,7 @@ fn optimize_primitive(
 // ---------------------------------------------------------------------------
 
 /// Read indices from binary buffer as `u32`.
-fn read_indices_from_buf(
-    accessor: &gltf::Accessor<'_>,
-    buf: &[u8],
-) -> Result<Vec<u32>, String> {
+fn read_indices_from_buf(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Vec<u32>, String> {
     let view = accessor.view().ok_or("No buffer view for indices")?;
     let base = view.offset() + accessor.offset();
     let count = accessor.count();
@@ -236,10 +239,7 @@ fn read_indices_from_buf(
 }
 
 /// Read vertex positions as tightly-packed f32 bytes (12 bytes per vertex).
-fn read_position_bytes(
-    accessor: &gltf::Accessor<'_>,
-    buf: &[u8],
-) -> Result<Vec<u8>, String> {
+fn read_position_bytes(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Vec<u8>, String> {
     let view = accessor.view().ok_or("No buffer view for positions")?;
     let base = view.offset() + accessor.offset();
     let count = accessor.count();

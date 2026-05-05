@@ -81,7 +81,8 @@ impl PluginRegistry {
     /// Replace the registry contents in one shot.
     pub fn set_all(&mut self, plugins: Vec<PluginDescriptor>, roots: Vec<PathBuf>) {
         self.plugins = plugins;
-        self.plugins.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        self.plugins
+            .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         self.last_scan_roots = roots;
     }
 }

@@ -22,13 +22,21 @@ pub struct VecEditConfig {
 
 impl Default for VecEditConfig {
     fn default() -> Self {
-        Self { speed: 0.1, min: None, max: None }
+        Self {
+            speed: 0.1,
+            min: None,
+            max: None,
+        }
     }
 }
 
 impl VecEditConfig {
     pub fn new(speed: f32) -> Self {
-        Self { speed, min: None, max: None }
+        Self {
+            speed,
+            min: None,
+            max: None,
+        }
     }
     pub fn with_range(mut self, min: f32, max: f32) -> Self {
         self.min = Some(min);

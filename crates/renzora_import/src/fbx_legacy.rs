@@ -117,9 +117,9 @@ fn read_array_data(r: &mut Cursor<&[u8]>, elem_size: usize) -> Result<Vec<u8>, I
         use flate2::read::ZlibDecoder;
         let mut decoder = ZlibDecoder::new(&raw[..]);
         let mut decompressed = vec![0u8; count * elem_size];
-        decoder.read_exact(&mut decompressed).map_err(|e| {
-            ImportError::ParseError(format!("zlib decompression failed: {}", e))
-        })?;
+        decoder
+            .read_exact(&mut decompressed)
+            .map_err(|e| ImportError::ParseError(format!("zlib decompression failed: {}", e)))?;
         decompressed
     } else {
         raw
@@ -144,7 +144,9 @@ fn parse_property(r: &mut Cursor<&[u8]>) -> Result<FbxProp, ImportError> {
         b'S' => {
             let len = read_u32_le(r)? as usize;
             let bytes = read_bytes(r, len)?;
-            Ok(FbxProp::String(String::from_utf8_lossy(&bytes).into_owned()))
+            Ok(FbxProp::String(
+                String::from_utf8_lossy(&bytes).into_owned(),
+            ))
         }
         b'R' => {
             let len = read_u32_le(r)? as usize;
@@ -189,8 +191,7 @@ fn parse_property(r: &mut Cursor<&[u8]>) -> Result<FbxProp, ImportError> {
         }
         _ => Err(ImportError::ParseError(format!(
             "unknown FBX property type: 0x{:02X} ('{}')",
-            type_code,
-            type_code as char,
+            type_code, type_code as char,
         ))),
     }
 }
@@ -279,7 +280,9 @@ fn parse_node(
 
 pub(crate) fn parse_document(data: &[u8]) -> Result<(u32, Vec<FbxNode>), ImportError> {
     if data.len() < HEADER_LEN as usize {
-        return Err(ImportError::ParseError("file too short for FBX header".into()));
+        return Err(ImportError::ParseError(
+            "file too short for FBX header".into(),
+        ));
     }
 
     let version = u32::from_le_bytes([data[23], data[24], data[25], data[26]]);
@@ -437,8 +440,8 @@ pub(crate) fn get_string_prop(node: &FbxNode, index: usize) -> Option<&str> {
 
 fn detect_up_axis(nodes: &[FbxNode]) -> Option<UpAxis> {
     let settings = find_node_recursive(nodes, "GlobalSettings")?;
-    let props = find_child(settings, "Properties60")
-        .or_else(|| find_child(settings, "Properties70"))?;
+    let props =
+        find_child(settings, "Properties60").or_else(|| find_child(settings, "Properties70"))?;
 
     for child in &props.children {
         if child.name == "P" || child.name == "Property" {
@@ -478,11 +481,18 @@ fn convert_axis(_x: &mut f32, y: &mut f32, z: &mut f32, up_axis: UpAxis) {
 }
 
 fn decode_fbx_index(raw: i32) -> u32 {
-    if raw < 0 { (-raw - 1) as u32 } else { raw as u32 }
+    if raw < 0 {
+        (-raw - 1) as u32
+    } else {
+        raw as u32
+    }
 }
 
 pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
-    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
 
     let data = std::fs::read(path)?;
     let (version, nodes) = parse_document(&data)?;
@@ -707,7 +717,13 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         log::warn!("[import] {}: {}", file_name, w);
     }
 
-    let glb_bytes = build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = build_glb(
+        &all_positions,
+        &all_normals,
+        &all_texcoords,
+        &all_indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
     log::info!(
         "[import] {}: GLB output {} bytes",
@@ -717,7 +733,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 

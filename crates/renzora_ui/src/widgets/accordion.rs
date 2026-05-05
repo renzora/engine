@@ -22,8 +22,7 @@ pub fn accordion(
     theme: &Theme,
     mut body: impl FnMut(&mut egui::Ui, usize),
 ) -> Option<usize> {
-    let mut open = ui
-        .memory(|m| m.data.get_temp::<Option<usize>>(group_id).flatten());
+    let mut open = ui.memory(|m| m.data.get_temp::<Option<usize>>(group_id).flatten());
 
     for (i, s) in sections.iter().enumerate() {
         let is_open = Some(i) == open;

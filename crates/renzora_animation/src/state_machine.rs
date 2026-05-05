@@ -111,12 +111,8 @@ impl AnimCondition {
     /// Evaluate this condition against the current parameters and elapsed time.
     pub fn evaluate(&self, params: &AnimParams, state_time: f32) -> bool {
         match self {
-            AnimCondition::FloatGreater(name, threshold) => {
-                params.get_float(name) > *threshold
-            }
-            AnimCondition::FloatLess(name, threshold) => {
-                params.get_float(name) < *threshold
-            }
+            AnimCondition::FloatGreater(name, threshold) => params.get_float(name) > *threshold,
+            AnimCondition::FloatLess(name, threshold) => params.get_float(name) < *threshold,
             AnimCondition::BoolTrue(name) => params.get_bool(name),
             AnimCondition::BoolFalse(name) => !params.get_bool(name),
             AnimCondition::Trigger(name) => {
@@ -142,8 +138,8 @@ impl AnimationStateMachine {
         params: &AnimParams,
         state_time: f32,
     ) -> Option<&AnimTransition> {
-        self.transitions.iter().find(|t| {
-            t.from == current_state && t.condition.evaluate(params, state_time)
-        })
+        self.transitions
+            .iter()
+            .find(|t| t.from == current_state && t.condition.evaluate(params, state_time))
     }
 }

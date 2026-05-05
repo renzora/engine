@@ -15,3 +15,6 @@ png = "0.17"
 renzora = { path = "../renzora", default-features = false }
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_physics = { path = "../renzora_physics" }
+
+[lints]
+workspace = true

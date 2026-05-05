@@ -87,7 +87,8 @@ impl Toasts {
         }
 
         // Remove expired
-        self.entries.retain(|t| current_time - t.created < t.duration);
+        self.entries
+            .retain(|t| current_time - t.created < t.duration);
 
         if self.entries.is_empty() {
             return;
@@ -121,15 +122,21 @@ impl Toasts {
                 .interactable(false)
                 .show(ctx, |ui| {
                     let color = toast.level.color();
-                    let bg = egui::Color32::from_rgba_unmultiplied(30, 30, 35, (alpha * 240.0) as u8);
+                    let bg =
+                        egui::Color32::from_rgba_unmultiplied(30, 30, 35, (alpha * 240.0) as u8);
                     let border = egui::Color32::from_rgba_unmultiplied(
-                        color.r(), color.g(), color.b(), (alpha * 180.0) as u8,
+                        color.r(),
+                        color.g(),
+                        color.b(),
+                        (alpha * 180.0) as u8,
                     );
-                    let text_color = egui::Color32::from_rgba_unmultiplied(
-                        230, 230, 230, (alpha * 255.0) as u8,
-                    );
+                    let text_color =
+                        egui::Color32::from_rgba_unmultiplied(230, 230, 230, (alpha * 255.0) as u8);
                     let icon_color = egui::Color32::from_rgba_unmultiplied(
-                        color.r(), color.g(), color.b(), (alpha * 255.0) as u8,
+                        color.r(),
+                        color.g(),
+                        color.b(),
+                        (alpha * 255.0) as u8,
                     );
 
                     egui::Frame::NONE

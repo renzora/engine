@@ -13,8 +13,6 @@ use material::{PoolWaterMaterial, PoolWaterUniforms};
 use simulation::WaterSim;
 
 #[cfg(feature = "editor")]
-use renzora::editor as renzora_editor;
-#[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
 
 // ── Components ────────────────────────────────────────────────────────────────

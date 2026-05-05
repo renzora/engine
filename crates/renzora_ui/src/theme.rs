@@ -18,17 +18,13 @@ pub fn init_fonts(ctx: &egui::Context, ui_font_key: &str, mono_font_key: &str) {
     );
     fonts.font_data.insert(
         "open-sans".into(),
-        egui::FontData::from_static(include_bytes!(
-            "../../../assets/fonts/OpenSans-Regular.ttf"
-        ))
-        .into(),
+        egui::FontData::from_static(include_bytes!("../../../assets/fonts/OpenSans-Regular.ttf"))
+            .into(),
     );
     fonts.font_data.insert(
         "noto-sans".into(),
-        egui::FontData::from_static(include_bytes!(
-            "../../../assets/fonts/NotoSans-Regular.ttf"
-        ))
-        .into(),
+        egui::FontData::from_static(include_bytes!("../../../assets/fonts/NotoSans-Regular.ttf"))
+            .into(),
     );
 
     // -- Monospace fonts --
@@ -41,10 +37,8 @@ pub fn init_fonts(ctx: &egui::Context, ui_font_key: &str, mono_font_key: &str) {
     );
     fonts.font_data.insert(
         "fira-code".into(),
-        egui::FontData::from_static(include_bytes!(
-            "../../../assets/fonts/FiraCode-Regular.ttf"
-        ))
-        .into(),
+        egui::FontData::from_static(include_bytes!("../../../assets/fonts/FiraCode-Regular.ttf"))
+            .into(),
     );
     fonts.font_data.insert(
         "source-code-pro".into(),
@@ -72,16 +66,11 @@ pub fn init_fonts(ctx: &egui::Context, ui_font_key: &str, mono_font_key: &str) {
     // Default families
     fonts.families.insert(
         egui::FontFamily::Proportional,
-        vec![
-            ui_font_key.into(),
-            "noto-sans-jp".into(),
-            "phosphor".into(),
-        ],
+        vec![ui_font_key.into(), "noto-sans-jp".into(), "phosphor".into()],
     );
-    fonts.families.insert(
-        egui::FontFamily::Monospace,
-        vec![mono_font_key.into()],
-    );
+    fonts
+        .families
+        .insert(egui::FontFamily::Monospace, vec![mono_font_key.into()]);
 
     ctx.set_fonts(fonts);
 }
@@ -91,11 +80,7 @@ pub fn set_ui_font(ctx: &egui::Context, font_key: &str) {
     let mut fonts = ctx.fonts(|f| f.definitions().clone());
     fonts.families.insert(
         egui::FontFamily::Proportional,
-        vec![
-            font_key.into(),
-            "noto-sans-jp".into(),
-            "phosphor".into(),
-        ],
+        vec![font_key.into(), "noto-sans-jp".into(), "phosphor".into()],
     );
     ctx.set_fonts(fonts);
 }
@@ -103,10 +88,9 @@ pub fn set_ui_font(ctx: &egui::Context, font_key: &str) {
 /// Switch the active monospace (code) font family at runtime.
 pub fn set_mono_font(ctx: &egui::Context, font_key: &str) {
     let mut fonts = ctx.fonts(|f| f.definitions().clone());
-    fonts.families.insert(
-        egui::FontFamily::Monospace,
-        vec![font_key.into()],
-    );
+    fonts
+        .families
+        .insert(egui::FontFamily::Monospace, vec![font_key.into()]);
     ctx.set_fonts(fonts);
 }
 
@@ -136,8 +120,7 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme, font_size: f32) {
     // Widget styling
     visuals.widgets.noninteractive.bg_fill = theme.widgets.noninteractive_bg.to_color32();
     visuals.widgets.noninteractive.weak_bg_fill = theme.widgets.noninteractive_bg.to_color32();
-    visuals.widgets.noninteractive.fg_stroke =
-        Stroke::new(1.0, theme.text.primary.to_color32());
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, theme.text.primary.to_color32());
     visuals.widgets.noninteractive.corner_radius = CornerRadius::same(4);
 
     visuals.widgets.inactive.bg_fill = theme.widgets.inactive_bg.to_color32();
@@ -162,8 +145,7 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme, font_size: f32) {
 
     // Selection
     visuals.selection.bg_fill = theme.semantic.selection.to_color32();
-    visuals.selection.stroke =
-        Stroke::new(1.0, theme.semantic.selection_stroke.to_color32());
+    visuals.selection.stroke = Stroke::new(1.0, theme.semantic.selection_stroke.to_color32());
 
     // Hyperlink
     visuals.hyperlink_color = theme.text.hyperlink.to_color32();
@@ -187,8 +169,7 @@ pub fn apply_theme(ctx: &egui::Context, theme: &Theme, font_size: f32) {
     };
 
     // Separator / border
-    visuals.widgets.noninteractive.bg_stroke =
-        Stroke::new(1.0, theme.widgets.border.to_color32());
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, theme.widgets.border.to_color32());
 
     ctx.set_visuals(visuals);
 

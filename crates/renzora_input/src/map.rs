@@ -62,7 +62,9 @@ mod tests {
 
     #[test]
     fn get_returns_matching_action() {
-        let mut map = InputMap { actions: Vec::new() };
+        let mut map = InputMap {
+            actions: Vec::new(),
+        };
         map.actions.push(jump_action());
         let found = map.get("jump").expect("jump should exist");
         assert_eq!(found.name, "jump");
@@ -71,13 +73,17 @@ mod tests {
 
     #[test]
     fn get_missing_returns_none() {
-        let map = InputMap { actions: Vec::new() };
+        let map = InputMap {
+            actions: Vec::new(),
+        };
         assert!(map.get("nope").is_none());
     }
 
     #[test]
     fn add_succeeds_on_unique_name() {
-        let mut map = InputMap { actions: Vec::new() };
+        let mut map = InputMap {
+            actions: Vec::new(),
+        };
         assert!(map.add(jump_action()));
         assert_eq!(map.actions.len(), 1);
     }
@@ -86,7 +92,9 @@ mod tests {
     fn add_rejects_duplicate_name() {
         // The map relies on unique action names — a second `add` for the
         // same name must report failure rather than silently double up.
-        let mut map = InputMap { actions: Vec::new() };
+        let mut map = InputMap {
+            actions: Vec::new(),
+        };
         assert!(map.add(jump_action()));
         assert!(!map.add(jump_action()));
         assert_eq!(map.actions.len(), 1);
@@ -94,14 +102,18 @@ mod tests {
 
     #[test]
     fn remove_returns_true_when_present() {
-        let mut map = InputMap { actions: vec![jump_action()] };
+        let mut map = InputMap {
+            actions: vec![jump_action()],
+        };
         assert!(map.remove("jump"));
         assert!(map.actions.is_empty());
     }
 
     #[test]
     fn remove_returns_false_when_missing() {
-        let mut map = InputMap { actions: Vec::new() };
+        let mut map = InputMap {
+            actions: Vec::new(),
+        };
         assert!(!map.remove("never_added"));
     }
 
@@ -115,8 +127,10 @@ mod tests {
                 InputAction::axis_2d(
                     "move",
                     vec![InputBinding::composite_2d(
-                        KeyCode::KeyW, KeyCode::KeyS,
-                        KeyCode::KeyA, KeyCode::KeyD,
+                        KeyCode::KeyW,
+                        KeyCode::KeyS,
+                        KeyCode::KeyA,
+                        KeyCode::KeyD,
                     )],
                     0.1,
                 ),

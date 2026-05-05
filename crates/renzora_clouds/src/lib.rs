@@ -1,15 +1,13 @@
 //! Renzora Clouds — procedural cloud dome rendered with FBM noise shader.
 
-use bevy::prelude::*;
 use bevy::pbr::Material;
+use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::CLOUD_SUN;
 #[cfg(feature = "editor")]
-use renzora_editor::{
-    AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
-};
+use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -166,7 +164,8 @@ fn sync_clouds(
         return;
     };
 
-    let Some((camera_transform, _)) = camera_query.iter()
+    let Some((camera_transform, _)) = camera_query
+        .iter()
         .find(|(_, cam)| cam.is_active)
         .or_else(|| camera_query.iter().next())
     else {
@@ -185,7 +184,9 @@ fn sync_clouds(
         clouds_data.speed,
     );
     // Sun elevation in radians for day/night fading (positive = above horizon)
-    let sun_elevation = sun_data_query.iter().next()
+    let sun_elevation = sun_data_query
+        .iter()
+        .next()
         .map(|s| s.elevation.to_radians())
         .unwrap_or(1.0); // default to daytime if no Sun component
 
@@ -204,7 +205,9 @@ fn sync_clouds(
     );
 
     // Auto-detect sun direction from directional light, fallback to default
-    let sun_dir = sun_query.iter().next()
+    let sun_dir = sun_query
+        .iter()
+        .next()
         .map(|t| -t.forward().as_vec3())
         .unwrap_or(Vec3::new(0.5, 0.7, 0.5).normalize());
 
@@ -235,8 +238,7 @@ fn sync_clouds(
                     mat.horizon_color = horizon_col;
                 }
             }
-            let transform =
-                Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
+            let transform = Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
             commands.entity(dome_entity).insert(transform);
         } else {
             clouds_state.entity = None;
@@ -257,8 +259,7 @@ fn sync_clouds(
             horizon_color: horizon_col,
         });
 
-        let transform =
-            Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
+        let transform = Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
 
         let dome_entity = commands
             .spawn((
@@ -447,15 +448,9 @@ fn inspector_entry() -> InspectorEntry {
                 name: "Shadow Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world
-                        .get::<CloudsData>(entity)
-                        .map(|d| {
-                            FieldValue::Color([
-                                d.shadow_color.0,
-                                d.shadow_color.1,
-                                d.shadow_color.2,
-                            ])
-                        })
+                    world.get::<CloudsData>(entity).map(|d| {
+                        FieldValue::Color([d.shadow_color.0, d.shadow_color.1, d.shadow_color.2])
+                    })
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color([r, g, b]) = val {
@@ -569,9 +564,9 @@ fn inspector_entry() -> InspectorEntry {
                 name: "Horizon Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world
-                        .get::<CloudsData>(entity)
-                        .map(|d| FieldValue::Color([d.horizon_color.0, d.horizon_color.1, d.horizon_color.2]))
+                    world.get::<CloudsData>(entity).map(|d| {
+                        FieldValue::Color([d.horizon_color.0, d.horizon_color.1, d.horizon_color.2])
+                    })
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color([r, g, b]) = val {
@@ -610,6 +605,7 @@ fn inspector_entry() -> InspectorEntry {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct CloudsPlugin;
 
 impl Plugin for CloudsPlugin {
@@ -625,3 +621,5 @@ impl Plugin for CloudsPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(CloudsPlugin);

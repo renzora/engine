@@ -5,7 +5,10 @@ use bevy::prelude::*;
 use crate::components::RadioButtonData;
 
 pub fn radio_button_system(
-    mut buttons: Query<(Entity, &mut RadioButtonData, &Interaction, &Children), Changed<Interaction>>,
+    mut buttons: Query<
+        (Entity, &mut RadioButtonData, &Interaction, &Children),
+        Changed<Interaction>,
+    >,
     mut all_radios: Query<(Entity, &mut RadioButtonData), Without<Interaction>>,
 ) {
     // Collect clicked entities and their groups

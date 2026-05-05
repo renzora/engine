@@ -34,8 +34,14 @@ impl FieldValue {
 /// Metadata about a field's type, used to select the correct widget.
 #[derive(Debug, Clone)]
 pub enum FieldType {
-    Float { speed: f32, min: f32, max: f32 },
-    Vec3 { speed: f32 },
+    Float {
+        speed: f32,
+        min: f32,
+        max: f32,
+    },
+    Vec3 {
+        speed: f32,
+    },
     Bool,
     Color,
     String,
@@ -43,7 +49,9 @@ pub enum FieldType {
     /// Asset path field — accepts drag-drop from asset browser.
     /// `extensions` filters which file types are accepted (e.g. `&["png", "jpg"]`).
     /// Empty slice = accept all.
-    Asset { extensions: Vec<std::string::String> },
+    Asset {
+        extensions: Vec<std::string::String>,
+    },
 }
 
 /// A single inspectable field on a component.
@@ -75,7 +83,9 @@ pub struct InspectorEntry {
     pub fields: Vec<FieldDef>,
     /// Optional custom UI function. When set, the inspector calls this instead
     /// of rendering the declarative `fields` list.
-    pub custom_ui_fn: Option<fn(&mut bevy_egui::egui::Ui, &World, Entity, &crate::EditorCommands, &renzora_theme::Theme)>,
+    pub custom_ui_fn: Option<
+        fn(&mut bevy_egui::egui::Ui, &World, Entity, &crate::EditorCommands, &renzora_theme::Theme),
+    >,
 }
 
 /// Registry holding all inspector entries, keyed by component type_id.

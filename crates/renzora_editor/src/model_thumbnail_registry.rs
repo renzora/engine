@@ -85,14 +85,12 @@ impl ModelThumbnailRegistry {
 /// `<project>/.cache/thumbnails/models/models/audi.png`. If the model
 /// path isn't under the project, falls back to a flattened name.
 pub fn model_thumb_path(model_abs: &Path, project: &CurrentProject) -> PathBuf {
-    let rel = project
-        .make_relative(model_abs)
-        .unwrap_or_else(|| {
-            model_abs
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default()
-        });
+    let rel = project.make_relative(model_abs).unwrap_or_else(|| {
+        model_abs
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    });
     let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
     let mut out = crate::thumbnail_cache_dir(project, "models").join(rel);
     out.set_extension("png");

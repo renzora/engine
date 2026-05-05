@@ -1,6 +1,6 @@
 //! Heightmap import — load PNG (8/16-bit grayscale) or RAW16 files into terrain chunks.
 
-use crate::data::{TerrainData, TerrainChunkData};
+use crate::data::{TerrainChunkData, TerrainData};
 use std::path::Path;
 
 /// Supported heightmap file formats.
@@ -51,9 +51,11 @@ pub fn import_heightmap(
 
     let (src_width, src_height, normalized) = match &settings.format {
         HeightmapFormat::Png => load_png(&data)?,
-        HeightmapFormat::Raw16 { width, height, big_endian } => {
-            load_raw16(&data, *width, *height, *big_endian)?
-        }
+        HeightmapFormat::Raw16 {
+            width,
+            height,
+            big_endian,
+        } => load_raw16(&data, *width, *height, *big_endian)?,
     };
 
     // Resample into per-chunk heightmaps
@@ -73,8 +75,10 @@ pub fn import_heightmap(
                     let global_vz = cz * (res - 1) + vz;
 
                     // Map to source image coordinates
-                    let src_x = global_vx as f32 / (total_verts_x - 1) as f32 * (src_width - 1) as f32;
-                    let src_z = global_vz as f32 / (total_verts_z - 1) as f32 * (src_height - 1) as f32;
+                    let src_x =
+                        global_vx as f32 / (total_verts_x - 1) as f32 * (src_width - 1) as f32;
+                    let src_z =
+                        global_vz as f32 / (total_verts_z - 1) as f32 * (src_height - 1) as f32;
 
                     let h = bilinear_sample(&normalized, src_width, src_height, src_x, src_z);
                     let h = if settings.invert { 1.0 - h } else { h };
@@ -96,7 +100,10 @@ pub fn apply_imported_heights(
     imported: &[(u32, u32, Vec<f32>)],
 ) {
     for (cx, cz, heights) in imported {
-        if let Some(chunk) = chunks.iter_mut().find(|c| c.chunk_x == *cx && c.chunk_z == *cz) {
+        if let Some(chunk) = chunks
+            .iter_mut()
+            .find(|c| c.chunk_x == *cx && c.chunk_z == *cz)
+        {
             chunk.base_heights = heights.clone();
             chunk.dirty = true;
         }
@@ -132,9 +139,13 @@ pub fn export_heightmap_png16(
         let mut encoder = png::Encoder::new(&mut buf, total_w, total_h);
         encoder.set_color(png::ColorType::Grayscale);
         encoder.set_depth(png::BitDepth::Sixteen);
-        let mut writer = encoder.write_header().map_err(|e| format!("PNG encode error: {e}"))?;
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| format!("PNG encode error: {e}"))?;
         let bytes: Vec<u8> = pixels.iter().flat_map(|p| p.to_be_bytes()).collect();
-        writer.write_image_data(&bytes).map_err(|e| format!("PNG write error: {e}"))?;
+        writer
+            .write_image_data(&bytes)
+            .map_err(|e| format!("PNG write error: {e}"))?;
     }
 
     Ok(buf)
@@ -149,24 +160,29 @@ pub fn load_png_public(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
 
 fn load_png(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
     let decoder = png::Decoder::new(std::io::Cursor::new(data));
-    let mut reader = decoder.read_info().map_err(|e| format!("PNG decode error: {e}"))?;
+    let mut reader = decoder
+        .read_info()
+        .map_err(|e| format!("PNG decode error: {e}"))?;
     let info = reader.info().clone();
     let mut buf = vec![0u8; reader.output_buffer_size()];
-    reader.next_frame(&mut buf).map_err(|e| format!("PNG frame error: {e}"))?;
+    reader
+        .next_frame(&mut buf)
+        .map_err(|e| format!("PNG frame error: {e}"))?;
 
     let w = info.width;
     let h = info.height;
 
     let normalized: Vec<f32> = match (info.color_type, info.bit_depth) {
-        (png::ColorType::Grayscale, png::BitDepth::Eight) => {
-            buf.iter().take((w * h) as usize).map(|&b| b as f32 / 255.0).collect()
-        }
-        (png::ColorType::Grayscale, png::BitDepth::Sixteen) => {
-            buf.chunks_exact(2)
-                .take((w * h) as usize)
-                .map(|c| u16::from_be_bytes([c[0], c[1]]) as f32 / 65535.0)
-                .collect()
-        }
+        (png::ColorType::Grayscale, png::BitDepth::Eight) => buf
+            .iter()
+            .take((w * h) as usize)
+            .map(|&b| b as f32 / 255.0)
+            .collect(),
+        (png::ColorType::Grayscale, png::BitDepth::Sixteen) => buf
+            .chunks_exact(2)
+            .take((w * h) as usize)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]) as f32 / 65535.0)
+            .collect(),
         (png::ColorType::Rgba, png::BitDepth::Eight) => {
             // Use red channel
             buf.chunks_exact(4)
@@ -192,12 +208,20 @@ fn load_png(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
     Ok((w, h, normalized))
 }
 
-fn load_raw16(data: &[u8], width: u32, height: u32, big_endian: bool) -> Result<(u32, u32, Vec<f32>), String> {
+fn load_raw16(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    big_endian: bool,
+) -> Result<(u32, u32, Vec<f32>), String> {
     let expected = (width * height * 2) as usize;
     if data.len() < expected {
         return Err(format!(
             "RAW16 file too small: expected {} bytes for {}x{}, got {}",
-            expected, width, height, data.len()
+            expected,
+            width,
+            height,
+            data.len()
         ));
     }
 
@@ -225,9 +249,8 @@ fn bilinear_sample(data: &[f32], width: u32, height: u32, x: f32, z: f32) -> f32
     let tx = x.fract();
     let tz = z.fract();
 
-    let get = |xi: u32, zi: u32| -> f32 {
-        data.get((zi * width + xi) as usize).copied().unwrap_or(0.0)
-    };
+    let get =
+        |xi: u32, zi: u32| -> f32 { data.get((zi * width + xi) as usize).copied().unwrap_or(0.0) };
 
     let h00 = get(x0, z0);
     let h10 = get(x1, z0);

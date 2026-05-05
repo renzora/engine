@@ -1,12 +1,17 @@
 use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
 use renzora_hanabi::node_graph::*;
 use renzora_ui::widgets::node_graph::{
-    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
-    PinDef, PinDirection, PinShape,
+    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState, PinDef, PinDirection,
+    PinShape,
 };
 
 /// Convert screen-space position to canvas-space (mirrors render::screen_to_canvas).
-pub fn screen_to_canvas_pub(screen: Pos2, offset: [f32; 2], zoom: f32, rect: egui::Rect) -> [f32; 2] {
+pub fn screen_to_canvas_pub(
+    screen: Pos2,
+    offset: [f32; 2],
+    zoom: f32,
+    rect: egui::Rect,
+) -> [f32; 2] {
     screen_to_canvas(screen, offset, zoom, rect)
 }
 
@@ -279,7 +284,9 @@ pub fn render_graph_editor(
     if let Some(ref canvas_resp) = graph_response.canvas_response {
         if canvas_resp.secondary_clicked() && !graph_response.right_click_handled {
             state.context_menu_open = true;
-            state.context_menu_pos = canvas_resp.interact_pointer_pos().unwrap_or(egui::Pos2::ZERO);
+            state.context_menu_pos = canvas_resp
+                .interact_pointer_pos()
+                .unwrap_or(egui::Pos2::ZERO);
             state.context_menu_age = 0;
         }
     }
@@ -327,7 +334,8 @@ pub fn render_graph_editor(
 
                         if row_resp.hovered() || is_open {
                             painter.rect_filled(
-                                row_rect, 0.0,
+                                row_rect,
+                                0.0,
                                 Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                             );
                         }
@@ -340,18 +348,24 @@ pub fn render_graph_editor(
 
                         // Icon + category label
                         painter.text(
-                            Pos2::new(base_x, cy), Align2::LEFT_CENTER,
-                            icon, egui::FontId::proportional(14.0), accent,
+                            Pos2::new(base_x, cy),
+                            Align2::LEFT_CENTER,
+                            icon,
+                            egui::FontId::proportional(14.0),
+                            accent,
                         );
                         painter.text(
-                            Pos2::new(base_x + 20.0, cy), Align2::LEFT_CENTER,
-                            category, egui::FontId::proportional(13.0),
+                            Pos2::new(base_x + 20.0, cy),
+                            Align2::LEFT_CENTER,
+                            category,
+                            egui::FontId::proportional(13.0),
                             theme.text.primary.to_color32(),
                         );
 
                         // Right arrow indicator
                         painter.text(
-                            Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
+                            Pos2::new(row_rect.max.x - 14.0, cy),
+                            Align2::CENTER_CENTER,
                             egui_phosphor::regular::CARET_RIGHT,
                             egui::FontId::proportional(12.0),
                             Color32::from_rgb(120, 120, 130),
@@ -406,7 +420,8 @@ pub fn render_graph_editor(
 
                                 if row_resp.hovered() {
                                     painter.rect_filled(
-                                        row_rect, 0.0,
+                                        row_rect,
+                                        0.0,
                                         Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                                     );
                                     ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -416,11 +431,15 @@ pub fn render_graph_editor(
                                 let cy = row_rect.center().y;
 
                                 painter.text(
-                                    Pos2::new(item_x, cy), Align2::LEFT_CENTER,
-                                    icon, egui::FontId::proportional(13.0), accent,
+                                    Pos2::new(item_x, cy),
+                                    Align2::LEFT_CENTER,
+                                    icon,
+                                    egui::FontId::proportional(13.0),
+                                    accent,
                                 );
                                 painter.text(
-                                    Pos2::new(item_x + 20.0, cy), Align2::LEFT_CENTER,
+                                    Pos2::new(item_x + 20.0, cy),
+                                    Align2::LEFT_CENTER,
                                     node_type.display_name(),
                                     egui::FontId::proportional(12.0),
                                     theme.text.primary.to_color32(),
@@ -428,7 +447,12 @@ pub fn render_graph_editor(
 
                                 if row_resp.clicked() {
                                     let canvas_pos = if let Some(cr) = state.canvas_rect {
-                                        screen_to_canvas(spawn_pos, state.widget_state.offset, state.widget_state.zoom, cr)
+                                        screen_to_canvas(
+                                            spawn_pos,
+                                            state.widget_state.offset,
+                                            state.widget_state.zoom,
+                                            cr,
+                                        )
                                     } else {
                                         [0.0, 0.0]
                                     };
@@ -441,7 +465,11 @@ pub fn render_graph_editor(
                                         _ => None,
                                     };
                                     if let Some(pin) = emitter_pin {
-                                        if let Some(emitter) = graph.nodes.iter().find(|n| n.node_type == ParticleNodeType::Emitter) {
+                                        if let Some(emitter) = graph
+                                            .nodes
+                                            .iter()
+                                            .find(|n| n.node_type == ParticleNodeType::Emitter)
+                                        {
                                             let eid = emitter.id;
                                             graph.connect(new_id, "module", eid, pin);
                                         }

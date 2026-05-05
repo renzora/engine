@@ -11,3 +11,6 @@ renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 egui-phosphor = { version = "0.11", features = ["regular"] }
+
+[lints]
+workspace = true

@@ -21,7 +21,10 @@ pub fn compass_system(
             if !part.role.starts_with("marker_") {
                 continue;
             }
-            let idx: usize = match part.role.strip_prefix("marker_").and_then(|s| s.parse().ok())
+            let idx: usize = match part
+                .role
+                .strip_prefix("marker_")
+                .and_then(|s| s.parse().ok())
             {
                 Some(i) if i < data.markers.len() => i,
                 _ => continue,

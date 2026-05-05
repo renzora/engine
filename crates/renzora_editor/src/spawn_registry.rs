@@ -91,7 +91,9 @@ pub struct ComponentIconEntry {
     pub priority: i32,
     /// Optional: for UI widgets that have per-type icons, a function that
     /// returns a dynamic icon based on the entity's state.
-    pub dynamic_icon_fn: Option<fn(&bevy::ecs::world::World, bevy::ecs::entity::Entity) -> Option<(&'static str, [u8; 3])>>,
+    pub dynamic_icon_fn: Option<
+        fn(&bevy::ecs::world::World, bevy::ecs::entity::Entity) -> Option<(&'static str, [u8; 3])>,
+    >,
 }
 
 /// Registry of component → icon mappings. Plugins register their own icons
@@ -111,7 +113,11 @@ impl ComponentIconRegistry {
 
     /// Look up the icon for an entity by checking its archetype against
     /// all registered component types. Returns the first (highest priority) match.
-    pub fn entity_icon(&self, world: &bevy::ecs::world::World, entity: bevy::ecs::entity::Entity) -> Option<(&'static str, [u8; 3])> {
+    pub fn entity_icon(
+        &self,
+        world: &bevy::ecs::world::World,
+        entity: bevy::ecs::entity::Entity,
+    ) -> Option<(&'static str, [u8; 3])> {
         // Check dynamic icons first (for things like per-widget-type icons)
         for entry in &self.entries {
             if let Some(dynamic_fn) = entry.dynamic_icon_fn {
@@ -138,7 +144,11 @@ impl ComponentIconRegistry {
     /// Return the registered type label for an entity, picked by priority.
     /// `None` means the entity didn't match any registered icon entry — the
     /// hierarchy filter treats those as "Other".
-    pub fn entity_type_name(&self, world: &bevy::ecs::world::World, entity: bevy::ecs::entity::Entity) -> Option<&'static str> {
+    pub fn entity_type_name(
+        &self,
+        world: &bevy::ecs::world::World,
+        entity: bevy::ecs::entity::Entity,
+    ) -> Option<&'static str> {
         for entry in &self.entries {
             if let Some(component_id) = world.components().get_id(entry.type_id) {
                 let er = world.entity(entity);

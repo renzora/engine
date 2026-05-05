@@ -11,7 +11,9 @@ use bevy_egui::egui;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::MOON_STARS;
 #[cfg(feature = "editor")]
-use renzora_editor::{get_theme_colors, inline_property, AppEditorExt, EditorCommands, InspectorEntry};
+use renzora_editor::{
+    get_theme_colors, inline_property, AppEditorExt, EditorCommands, InspectorEntry,
+};
 #[cfg(feature = "editor")]
 use renzora_theme::Theme;
 
@@ -112,10 +114,7 @@ fn sync_night_stars(
     mut commands: Commands,
     mut state: ResMut<NightStarsState>,
     stars_query: Query<&NightStarsData>,
-    camera_query: Query<
-        &Transform,
-        (With<Camera3d>, Without<renzora::IsolatedCamera>),
-    >,
+    camera_query: Query<&Transform, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
     sun_query: Query<&renzora_lighting::Sun>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut star_materials: ResMut<Assets<NightStarsMaterial>>,
@@ -143,11 +142,18 @@ fn sync_night_stars(
     let camera_pos = camera_transform.translation;
 
     // Sun elevation in radians for day/night fading (positive = above horizon)
-    let sun_elevation = sun_query.iter().next()
+    let sun_elevation = sun_query
+        .iter()
+        .next()
         .map(|s| s.elevation.to_radians())
         .unwrap_or(1.0); // default to daytime if no Sun component
 
-    let params_a = Vec4::new(data.density, data.brightness, data.star_size, data.twinkle_speed);
+    let params_a = Vec4::new(
+        data.density,
+        data.brightness,
+        data.star_size,
+        data.twinkle_speed,
+    );
     let params_b = Vec4::new(data.twinkle_amount, data.horizon_fade, sun_elevation, 0.0);
     let star_color = LinearRgba::new(data.color.0, data.color.1, data.color.2, 1.0);
 
@@ -201,11 +207,7 @@ fn sync_night_stars(
 
 #[cfg(feature = "editor")]
 fn rgb_to_color32(r: f32, g: f32, b: f32) -> egui::Color32 {
-    egui::Color32::from_rgb(
-        (r * 255.0) as u8,
-        (g * 255.0) as u8,
-        (b * 255.0) as u8,
-    )
+    egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
 #[cfg(feature = "editor")]
@@ -236,32 +238,62 @@ fn night_stars_custom_ui(
     let mut row = 0;
 
     changed |= inline_property(ui, row, "Density", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.density).speed(0.01).range(0.0..=1.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.density)
+                .speed(0.01)
+                .range(0.0..=1.0),
+        )
+        .changed()
     });
     row += 1;
 
     changed |= inline_property(ui, row, "Brightness", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.brightness).speed(0.05).range(0.0..=10.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.brightness)
+                .speed(0.05)
+                .range(0.0..=10.0),
+        )
+        .changed()
     });
     row += 1;
 
     changed |= inline_property(ui, row, "Star Size", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.star_size).speed(0.05).range(0.2..=5.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.star_size)
+                .speed(0.05)
+                .range(0.2..=5.0),
+        )
+        .changed()
     });
     row += 1;
 
     changed |= inline_property(ui, row, "Twinkle Speed", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.twinkle_speed).speed(0.05).range(0.0..=10.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.twinkle_speed)
+                .speed(0.05)
+                .range(0.0..=10.0),
+        )
+        .changed()
     });
     row += 1;
 
     changed |= inline_property(ui, row, "Twinkle Amount", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.twinkle_amount).speed(0.01).range(0.0..=1.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.twinkle_amount)
+                .speed(0.01)
+                .range(0.0..=1.0),
+        )
+        .changed()
     });
     row += 1;
 
     changed |= inline_property(ui, row, "Horizon Fade", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut data.horizon_fade).speed(0.01).range(0.0..=1.0)).changed()
+        ui.add(
+            egui::DragValue::new(&mut data.horizon_fade)
+                .speed(0.01)
+                .range(0.0..=1.0),
+        )
+        .changed()
     });
     row += 1;
 
@@ -313,6 +345,7 @@ fn inspector_entry() -> InspectorEntry {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct NightStarsPlugin;
 
 impl Plugin for NightStarsPlugin {
@@ -329,3 +362,5 @@ impl Plugin for NightStarsPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(NightStarsPlugin);

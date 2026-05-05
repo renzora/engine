@@ -6,16 +6,16 @@
 pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
-pub mod sdk;
 pub mod ext;
 pub mod inspector_registry;
 pub mod material_thumbnail_registry;
+pub mod mode_options_registry;
 pub mod model_thumbnail_registry;
+pub mod sdk;
 pub mod selection;
 pub mod settings;
 pub mod shortcut_registry;
 pub mod spawn_registry;
-pub mod mode_options_registry;
 pub mod tool_options_registry;
 pub mod toolbar_registry;
 pub mod viewport_overlay;
@@ -23,17 +23,21 @@ pub mod viewport_overlay;
 // Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
 pub use renzora_ui::*;
 
+// Re-export egui_phosphor so the `#[post_process]` macro can reach icon
+// constants as `renzora_editor::egui_phosphor::regular::<NAME>` without
+// distribution plugin crates having to add `egui-phosphor` to their own
+// `Cargo.toml`.
+pub use egui_phosphor;
+
 pub use commands::EditorCommands;
-pub use inspector_registry::{
-    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
-};
+pub use ext::{AppEditorExt, InspectableComponent};
+pub use inspector_registry::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 pub use material_thumbnail_registry::{
     material_thumb_path, migrate_legacy_thumbnail_cache, thumbnail_cache_dir,
     MaterialThumbnailRegistry,
 };
 pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
-pub use ext::{AppEditorExt, InspectableComponent};
-pub use renzora_macros::{Inspectable, post_process};
+pub use renzora_macros::{post_process, Inspectable};
 pub use selection::EditorSelection;
 pub use shortcut_registry::{ShortcutEntry, ShortcutRegistry};
 pub use toolbar_registry::{ToolEntry, ToolSection, ToolbarRegistry};
@@ -124,13 +128,15 @@ pub struct OpenAddComponentMenuRequest {
     pub screen_pos: bevy::prelude::Vec2,
 }
 pub use mode_options_registry::{ModeOptionsDrawer, ViewportModeOptionsRegistry};
+pub use settings::{
+    CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont,
+};
 pub use tool_options_registry::{ToolOptionsDrawer, ToolOptionsRegistry};
 pub use viewport_overlay::{ViewportOverlayDrawer, ViewportOverlayRegistry};
-pub use settings::{CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont};
 
 // Re-export core marker components so downstream crates can use `renzora_editor::HideInHierarchy` etc.
-pub use renzora::{HideInHierarchy, EditorLocked, EditorCamera};
 pub use renzora::SplashState;
+pub use renzora::{EditorCamera, EditorLocked, HideInHierarchy};
 
 /// Optional label color for an entity row in the hierarchy.
 #[derive(Component)]
@@ -245,17 +251,20 @@ impl ActiveTool {
     }
 
     pub fn is_terrain_or_foliage(&self) -> bool {
-        matches!(self, Self::TerrainSculpt | Self::TerrainPaint | Self::FoliagePaint)
+        matches!(
+            self,
+            Self::TerrainSculpt | Self::TerrainPaint | Self::FoliagePaint
+        )
     }
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
+use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::{EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass};
 use bevy_egui::egui;
+use bevy_egui::{EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass};
 use renzora_theme::ThemeManager;
 
 // Module and type names come through `pub use renzora_ui::*` above.
@@ -292,6 +301,7 @@ pub enum EditorState {
 }
 
 /// Plugin that adds the Renzora editor overlay to any Bevy app.
+#[derive(Default)]
 pub struct RenzoraEditorPlugin;
 
 impl Plugin for RenzoraEditorPlugin {
@@ -326,7 +336,9 @@ impl Plugin for RenzoraEditorPlugin {
                     .layouts
                     .get(manager.active_index)
                     .map(|l| l.name.clone());
-                manager.layouts.retain(|l| default_names.contains(l.name.as_str()));
+                manager
+                    .layouts
+                    .retain(|l| default_names.contains(l.name.as_str()));
                 for def in &defaults.layouts {
                     if !manager.layouts.iter().any(|l| l.name == def.name) {
                         manager.layouts.push(def.clone());
@@ -384,23 +396,18 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<ModelThumbnailRegistry>()
             .init_resource::<renzora::core::IsolationMode>();
 
-        register_builtin_tools(
-            &mut app.world_mut().resource_mut::<ToolbarRegistry>(),
-        );
+        register_builtin_tools(&mut app.world_mut().resource_mut::<ToolbarRegistry>());
 
         app.add_systems(
             Update,
-            shortcut_registry::shortcut_dispatch_system
-                .run_if(in_state(SplashState::Editor)),
+            shortcut_registry::shortcut_dispatch_system.run_if(in_state(SplashState::Editor)),
         );
 
         // Auto-save the dock layout whenever it changes.
-        app.init_resource::<PendingLayoutSave>()
-            .add_systems(
-                Update,
-                (mark_layout_dirty, flush_layout_save)
-                    .run_if(in_state(SplashState::Editor)),
-            );
+        app.init_resource::<PendingLayoutSave>().add_systems(
+            Update,
+            (mark_layout_dirty, flush_layout_save).run_if(in_state(SplashState::Editor)),
+        );
 
         // Register inspector entries and icons for core Bevy components
         bevy_inspectors::register_bevy_inspectors(
@@ -413,8 +420,7 @@ impl Plugin for RenzoraEditorPlugin {
             &mut app.world_mut().resource_mut::<SpawnRegistry>(),
         );
 
-        app
-            .init_resource::<EditorSettings>()
+        app.init_resource::<EditorSettings>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
@@ -439,8 +445,7 @@ impl Plugin for RenzoraEditorPlugin {
             .add_systems(
                 Update,
                 apply_isolation_mode.run_if(in_state(SplashState::Editor)),
-            )
-            ;
+            );
     }
 }
 
@@ -453,7 +458,9 @@ fn apply_vsync_setting(
     viewport: Res<renzora::core::viewport_types::ViewportSettings>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    let Ok(mut window) = windows.single_mut() else { return };
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
     let desired = if viewport.vsync {
         bevy::window::PresentMode::AutoVsync
     } else {
@@ -539,8 +546,12 @@ fn show_script_reload_toasts(
     let event = trigger.event();
     match event.names.len() {
         0 => {}
-        1 => { toasts.success(format!("Reloaded {}", event.names[0])); }
-        n => { toasts.success(format!("Reloaded {} scripts", n)); }
+        1 => {
+            toasts.success(format!("Reloaded {}", event.names[0]));
+        }
+        n => {
+            toasts.success(format!("Reloaded {} scripts", n));
+        }
     }
 }
 
@@ -548,11 +559,17 @@ fn show_script_reload_toasts(
 /// Used by terrain toolbar entries and the terrain tool panel to show
 /// context-sensitive UI only when a terrain is active.
 pub fn is_terrain_selected(world: &World) -> bool {
-    let Some(sel) = world.get_resource::<EditorSelection>() else { return false };
-    let Some(entity) = sel.get() else { return false };
+    let Some(sel) = world.get_resource::<EditorSelection>() else {
+        return false;
+    };
+    let Some(entity) = sel.get() else {
+        return false;
+    };
 
     fn has_terrain_component(world: &World, entity: Entity) -> bool {
-        let Ok(er) = world.get_entity(entity) else { return false };
+        let Ok(er) = world.get_entity(entity) else {
+            return false;
+        };
         let archetype = er.archetype();
         for &component_id in archetype.components() {
             if let Some(info) = world.components().get_info(component_id) {
@@ -583,44 +600,72 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
 
     // Transform section — always visible
     registry.register(
-        ToolEntry::new("builtin.select", CURSOR, "Select (Q)", ToolSection::Transform)
-            .order(0)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::Select)
-            })
-            .on_activate(|w| { w.insert_resource(ActiveTool::Select); }),
+        ToolEntry::new(
+            "builtin.select",
+            CURSOR,
+            "Select (Q)",
+            ToolSection::Transform,
+        )
+        .order(0)
+        .active_if(|w| {
+            w.get_resource::<ActiveTool>()
+                .copied()
+                .map_or(false, |t| t == ActiveTool::Select)
+        })
+        .on_activate(|w| {
+            w.insert_resource(ActiveTool::Select);
+        }),
     );
     registry.register(
-        ToolEntry::new("builtin.translate", ARROWS_OUT_CARDINAL, "Move (W)", ToolSection::Transform)
-            .order(1)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::Translate)
-            })
-            .on_activate(|w| { w.insert_resource(ActiveTool::Translate); }),
+        ToolEntry::new(
+            "builtin.translate",
+            ARROWS_OUT_CARDINAL,
+            "Move (W)",
+            ToolSection::Transform,
+        )
+        .order(1)
+        .active_if(|w| {
+            w.get_resource::<ActiveTool>()
+                .copied()
+                .map_or(false, |t| t == ActiveTool::Translate)
+        })
+        .on_activate(|w| {
+            w.insert_resource(ActiveTool::Translate);
+        }),
     );
     registry.register(
-        ToolEntry::new("builtin.rotate", ARROWS_COUNTER_CLOCKWISE, "Rotate (E)", ToolSection::Transform)
-            .order(2)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::Rotate)
-            })
-            .on_activate(|w| { w.insert_resource(ActiveTool::Rotate); }),
+        ToolEntry::new(
+            "builtin.rotate",
+            ARROWS_COUNTER_CLOCKWISE,
+            "Rotate (E)",
+            ToolSection::Transform,
+        )
+        .order(2)
+        .active_if(|w| {
+            w.get_resource::<ActiveTool>()
+                .copied()
+                .map_or(false, |t| t == ActiveTool::Rotate)
+        })
+        .on_activate(|w| {
+            w.insert_resource(ActiveTool::Rotate);
+        }),
     );
     registry.register(
-        ToolEntry::new("builtin.scale", ARROWS_OUT_SIMPLE, "Scale (R)", ToolSection::Transform)
-            .order(3)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::Scale)
-            })
-            .on_activate(|w| { w.insert_resource(ActiveTool::Scale); }),
+        ToolEntry::new(
+            "builtin.scale",
+            ARROWS_OUT_SIMPLE,
+            "Scale (R)",
+            ToolSection::Transform,
+        )
+        .order(3)
+        .active_if(|w| {
+            w.get_resource::<ActiveTool>()
+                .copied()
+                .map_or(false, |t| t == ActiveTool::Scale)
+        })
+        .on_activate(|w| {
+            w.insert_resource(ActiveTool::Scale);
+        }),
     );
 
     // Terrain tools (builtin.terrain_sculpt / terrain_paint / foliage_paint) are
@@ -634,7 +679,9 @@ fn sync_active_tool_to_gizmo_mode(
     active_tool: Res<ActiveTool>,
     gizmo_mode: Option<ResMut<GizmoMode>>,
 ) {
-    let Some(mut gizmo_mode) = gizmo_mode else { return };
+    let Some(mut gizmo_mode) = gizmo_mode else {
+        return;
+    };
     if !active_tool.is_changed() {
         return;
     }
@@ -830,9 +877,7 @@ pub fn editor_ui_system(world: &mut World) {
     renzora_ui::theme::apply_theme(&ctx, &theme, settings.font_size);
 
     // 3. Temporarily remove PanelRegistry so we can pass &World to panels
-    let registry = world
-        .remove_resource::<PanelRegistry>()
-        .unwrap_or_default();
+    let registry = world.remove_resource::<PanelRegistry>().unwrap_or_default();
 
     // 4. Get layout manager for title bar
     let layout_manager = world
@@ -846,7 +891,10 @@ pub fn editor_ui_system(world: &mut World) {
         .map(|pm| pm.state)
         .unwrap_or(renzora::PlayState::Editing);
 
-    if matches!(play_state, renzora::PlayState::Playing | renzora::PlayState::Paused) {
+    if matches!(
+        play_state,
+        renzora::PlayState::Playing | renzora::PlayState::Paused
+    ) {
         world.insert_resource(registry);
 
         // Game camera renders directly to window, UI camera is disabled.
@@ -878,7 +926,9 @@ pub fn editor_ui_system(world: &mut World) {
                     break;
                 }
             }
-            if found { break; }
+            if found {
+                break;
+            }
         }
         found
     };
@@ -936,7 +986,8 @@ pub fn editor_ui_system(world: &mut World) {
         .get_resource::<DocumentTabState>()
         .cloned()
         .unwrap_or_default();
-    let doc_tab_action = renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
+    let doc_tab_action =
+        renzora_ui::document_tabs::render_document_tabs(&ctx, &doc_tab_state, &theme);
 
     // 7. Status bar (bottom)
     renzora_ui::status_bar::render_status_bar(&ctx, &theme, world);
@@ -1033,13 +1084,20 @@ pub fn editor_ui_system(world: &mut World) {
                     docking.tree.remove_panel(&drag.panel_id);
                     match target.zone {
                         renzora_ui::DropZone::Tab(idx) => {
-                            docking.tree.add_tab_at(&target.panel_id, drag.panel_id, idx);
+                            docking
+                                .tree
+                                .add_tab_at(&target.panel_id, drag.panel_id, idx);
                         }
                         renzora_ui::DropZone::Center => {
                             docking.tree.add_tab(&target.panel_id, drag.panel_id);
                         }
-                        renzora_ui::DropZone::Left | renzora_ui::DropZone::Right | renzora_ui::DropZone::Top | renzora_ui::DropZone::Bottom => {
-                            docking.tree.split_at(&target.panel_id, drag.panel_id, target.zone);
+                        renzora_ui::DropZone::Left
+                        | renzora_ui::DropZone::Right
+                        | renzora_ui::DropZone::Top
+                        | renzora_ui::DropZone::Bottom => {
+                            docking
+                                .tree
+                                .split_at(&target.panel_id, drag.panel_id, target.zone);
                         }
                     }
                 }
@@ -1241,12 +1299,18 @@ pub fn editor_ui_system(world: &mut World) {
             world.insert_resource(renzora::TutorialRequested);
         }
         TitleBarAction::Undo => {
-            if let Some(hook) = world.get_resource::<EditorActionHooks>().and_then(|h| h.undo) {
+            if let Some(hook) = world
+                .get_resource::<EditorActionHooks>()
+                .and_then(|h| h.undo)
+            {
                 hook(world);
             }
         }
         TitleBarAction::Redo => {
-            if let Some(hook) = world.get_resource::<EditorActionHooks>().and_then(|h| h.redo) {
+            if let Some(hook) = world
+                .get_resource::<EditorActionHooks>()
+                .and_then(|h| h.redo)
+            {
                 hook(world);
             }
         }
@@ -1313,13 +1377,19 @@ pub fn editor_ui_system(world: &mut World) {
                 .get_resource_mut::<DocumentTabState>()
                 .and_then(|mut ts| ts.activate_tab(idx));
             if let Some((old_id, new_id)) = ids {
-                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest {
+                    old_tab_id: old_id,
+                    new_tab_id: new_id,
+                });
             }
             // Sync EditorContext + route layout based on what was just activated.
             sync_context_and_layout_for_active_tab(world);
             // Code-editor-backed kinds: also push the file into OpenCodeEditorFile.
             if let Some(kind) = target_kind {
-                if matches!(kind, renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader) {
+                if matches!(
+                    kind,
+                    renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader
+                ) {
                     if let Some(rel) = target_path {
                         let abs = world
                             .get_resource::<renzora::core::CurrentProject>()
@@ -1335,7 +1405,11 @@ pub fn editor_ui_system(world: &mut World) {
             let switch_and_close = {
                 if let Some(ts) = world.get_resource::<DocumentTabState>() {
                     if idx == ts.active_tab && ts.tabs.len() > 1 {
-                        let new_active = if idx + 1 < ts.tabs.len() { idx + 1 } else { idx.saturating_sub(1) };
+                        let new_active = if idx + 1 < ts.tabs.len() {
+                            idx + 1
+                        } else {
+                            idx.saturating_sub(1)
+                        };
                         let old_id = ts.tabs[idx].id;
                         let new_id = ts.tabs[new_active].id;
                         Some((old_id, new_id, new_active))
@@ -1353,7 +1427,10 @@ pub fn editor_ui_system(world: &mut World) {
                     ts.active_tab = new_active;
                     ts.touch_scene_mru(new_active);
                 }
-                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest {
+                    old_tab_id: old_id,
+                    new_tab_id: new_id,
+                });
             }
 
             // Close the tab and clean up buffer. May be denied (last tab, last
@@ -1394,7 +1471,10 @@ pub fn editor_ui_system(world: &mut World) {
                 }
             };
             if old_id != 0 {
-                world.insert_resource(renzora::TabSwitchRequest { old_tab_id: old_id, new_tab_id: new_id });
+                world.insert_resource(renzora::TabSwitchRequest {
+                    old_tab_id: old_id,
+                    new_tab_id: new_id,
+                });
             }
             // New tab is always a Scene → restore last scene-mode layout.
             sync_context_and_layout_for_active_tab(world);
@@ -1402,10 +1482,12 @@ pub fn editor_ui_system(world: &mut World) {
         DocTabAction::None => {}
     }
 
-
     // Auth window rendering is handled by AuthPlugin (renzora_auth).
     // React to successful sign-in by switching to the Hub layout.
-    if world.remove_resource::<renzora::AuthJustSignedIn>().is_some() {
+    if world
+        .remove_resource::<renzora::AuthJustSignedIn>()
+        .is_some()
+    {
         switch_layout_by_name(world, "Hub");
     }
 
@@ -1418,7 +1500,10 @@ pub fn editor_ui_system(world: &mut World) {
     }
 
     // J2) Handle one-shot shortcut resources
-    if world.remove_resource::<renzora::ToggleSettingsRequested>().is_some() {
+    if world
+        .remove_resource::<renzora::ToggleSettingsRequested>()
+        .is_some()
+    {
         if let Some(mut settings) = world.get_resource_mut::<EditorSettings>() {
             settings.show_settings = !settings.show_settings;
         }
@@ -1708,7 +1793,11 @@ fn process_play_mode_requests(world: &mut World) {
     // Playing/Paused/Stop are handled by renzora_viewport::play_mode::handle_play_mode_transitions
     // which also does the camera switching.
     // Track what physics action to take after releasing the borrow
-    enum PhysicsAction { None, Unpause, Pause }
+    enum PhysicsAction {
+        None,
+        Unpause,
+        Pause,
+    }
 
     let (needs_reset, physics_action) = {
         let Some(mut pm) = world.get_resource_mut::<renzora::PlayModeState>() else {
@@ -1762,8 +1851,12 @@ fn process_play_mode_requests(world: &mut World) {
 
     // Trigger physics events (decoupled — renzora_physics observes these)
     match physics_action {
-        PhysicsAction::Unpause => { world.trigger(renzora::UnpausePhysics); }
-        PhysicsAction::Pause => { world.trigger(renzora::PausePhysics); }
+        PhysicsAction::Unpause => {
+            world.trigger(renzora::UnpausePhysics);
+        }
+        PhysicsAction::Pause => {
+            world.trigger(renzora::PausePhysics);
+        }
         PhysicsAction::None => {}
     }
 
@@ -1771,3 +1864,4 @@ fn process_play_mode_requests(world: &mut World) {
         world.trigger(renzora::ResetScriptStates);
     }
 }
+

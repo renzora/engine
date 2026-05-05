@@ -54,7 +54,12 @@ fn gauges_custom_ui(
         .iter()
         .map(|(id, val)| {
             // Try to get a human-readable name; fall back to debug id
-            (bevy_gauge::attribute_id::Interner::global().resolve(id).to_string(), val)
+            (
+                bevy_gauge::attribute_id::Interner::global()
+                    .resolve(id)
+                    .to_string(),
+                val,
+            )
         })
         .collect();
 
@@ -106,18 +111,13 @@ fn gauges_custom_ui(
                     // Gauge bar
                     let available = ui.available_width() - 50.0;
                     let bar_width = available.max(40.0);
-                    let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(bar_width, 14.0),
-                        egui::Sense::hover(),
-                    );
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(bar_width, 14.0), egui::Sense::hover());
 
                     // Background track
                     let rounding = egui::CornerRadius::same(3);
-                    ui.painter().rect_filled(
-                        rect,
-                        rounding,
-                        theme.surfaces.faint.to_color32(),
-                    );
+                    ui.painter()
+                        .rect_filled(rect, rounding, theme.surfaces.faint.to_color32());
 
                     // Determine fill ratio (clamp 0..1 assuming 0..100 range,
                     // but show raw value — scripts define actual ranges)

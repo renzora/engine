@@ -59,7 +59,11 @@ impl EditorPanel for ProblemsPanel {
             ui.vertical_centered(|ui| {
                 ui.label(RichText::new(CHECK_CIRCLE).size(20.0).color(success_color));
                 ui.add_space(4.0);
-                ui.label(RichText::new("No problems detected").size(11.0).color(muted));
+                ui.label(
+                    RichText::new("No problems detected")
+                        .size(11.0)
+                        .color(muted),
+                );
             });
             return;
         }
@@ -78,11 +82,8 @@ impl EditorPanel for ProblemsPanel {
                     );
 
                     if resp.hovered() {
-                        ui.painter().rect_filled(
-                            rect,
-                            0.0,
-                            theme.widgets.hovered_bg.to_color32(),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 0.0, theme.widgets.hovered_bg.to_color32());
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
 
@@ -129,9 +130,7 @@ impl EditorPanel for ProblemsPanel {
                         let line_1based = err.line.unwrap_or(1).max(1);
                         if let Some(c) = cmds {
                             c.push(move |world: &mut World| {
-                                if let Some(mut s) =
-                                    world.get_resource_mut::<CodeEditorState>()
-                                {
+                                if let Some(mut s) = world.get_resource_mut::<CodeEditorState>() {
                                     s.active_tab = Some(file_idx);
                                     s.pending_goto_line = Some(line_1based);
                                 }

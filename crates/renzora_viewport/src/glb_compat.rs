@@ -123,9 +123,12 @@ fn split_glb(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), String> {
     }
 
     let bin = if json_end + 8 <= bytes.len() {
-        let bin_len =
-            u32::from_le_bytes([bytes[json_end], bytes[json_end + 1], bytes[json_end + 2], bytes[json_end + 3]])
-                as usize;
+        let bin_len = u32::from_le_bytes([
+            bytes[json_end],
+            bytes[json_end + 1],
+            bytes[json_end + 2],
+            bytes[json_end + 3],
+        ]) as usize;
         let bin_kind = u32::from_le_bytes([
             bytes[json_end + 4],
             bytes[json_end + 5],
@@ -160,10 +163,7 @@ fn repack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
         })
         .unwrap_or(0);
 
-    let total_len = 12
-        + 8
-        + json_chunk_len
-        + if bin.is_some() { 8 + bin_chunk_len } else { 0 };
+    let total_len = 12 + 8 + json_chunk_len + if bin.is_some() { 8 + bin_chunk_len } else { 0 };
 
     let mut out = Vec::with_capacity(total_len);
     out.extend_from_slice(&0x46546C67u32.to_le_bytes());

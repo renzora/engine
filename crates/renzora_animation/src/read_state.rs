@@ -36,7 +36,9 @@ pub fn auto_init_animator_read_state(
     q: Query<Entity, (With<AnimatorComponent>, Without<AnimatorReadState>)>,
 ) {
     for entity in &q {
-        commands.entity(entity).try_insert(AnimatorReadState::default());
+        commands
+            .entity(entity)
+            .try_insert(AnimatorReadState::default());
     }
 }
 

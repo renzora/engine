@@ -37,16 +37,26 @@ impl EditorPanel for ShaderCompilerLogPanel {
         let error_color = theme.semantic.error.to_color32();
         let success_color = theme.semantic.success.to_color32();
 
-        let Some(state) = world.get_resource::<ShaderEditorState>() else { return };
+        let Some(state) = world.get_resource::<ShaderEditorState>() else {
+            return;
+        };
 
         if state.compile_errors.is_empty() {
             if state.compiled_wgsl.is_some() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(CHECK_CIRCLE).size(12.0).color(success_color));
-                    ui.label(RichText::new("Compiled successfully").size(11.0).color(success_color));
+                    ui.label(
+                        RichText::new("Compiled successfully")
+                            .size(11.0)
+                            .color(success_color),
+                    );
                 });
             } else {
-                ui.label(RichText::new("No compilation output").size(11.0).color(muted));
+                ui.label(
+                    RichText::new("No compilation output")
+                        .size(11.0)
+                        .color(muted),
+                );
             }
             return;
         }

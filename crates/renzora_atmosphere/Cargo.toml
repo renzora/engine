@@ -15,3 +15,6 @@ egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 bevy_egui = { version = "0.39", optional = true }
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
+
+[lints]
+workspace = true

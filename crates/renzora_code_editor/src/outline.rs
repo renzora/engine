@@ -193,7 +193,9 @@ impl EditorPanel for OutlinePanel {
             });
             return;
         };
-        let Some(file) = state.open_files.get(active_idx) else { return };
+        let Some(file) = state.open_files.get(active_idx) else {
+            return;
+        };
 
         let lang = file
             .path
@@ -229,11 +231,8 @@ impl EditorPanel for OutlinePanel {
                         Sense::click(),
                     );
                     if resp.hovered() {
-                        ui.painter().rect_filled(
-                            rect,
-                            0.0,
-                            theme.widgets.hovered_bg.to_color32(),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 0.0, theme.widgets.hovered_bg.to_color32());
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
                     let icon = match sym.kind {
@@ -270,9 +269,7 @@ impl EditorPanel for OutlinePanel {
                         let line_1based = sym.line + 1;
                         if let Some(c) = cmds {
                             c.push(move |world: &mut World| {
-                                if let Some(mut s) =
-                                    world.get_resource_mut::<CodeEditorState>()
-                                {
+                                if let Some(mut s) = world.get_resource_mut::<CodeEditorState>() {
                                     s.pending_goto_line = Some(line_1based);
                                     s.goto_line_open = false;
                                 }

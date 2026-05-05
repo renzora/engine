@@ -2,19 +2,19 @@
 
 //! Terrain sculpting & painting systems — hover detection, brush application, gizmo rendering.
 
-use bevy::prelude::*;
 use bevy::input::mouse::MouseWheel;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
+use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_terrain::data::*;
-use renzora_terrain::sculpt;
 use renzora_terrain::paint::{self, PaintableSurfaceData, SurfacePaintSettings, SurfacePaintState};
+use renzora_terrain::sculpt;
 use renzora_terrain::splatmap_material::TerrainSplatmapMaterial;
 use renzora_terrain::splatmap_systems::{self, SplatmapActive};
-use renzora_terrain::undo::{TerrainUndoStack, TerrainUndoEntry};
-use renzora::core::viewport_types::ViewportState;
+use renzora_terrain::undo::{TerrainUndoEntry, TerrainUndoStack};
 
 // ── Height sampling ──────────────────────────────────────────────────────────
 
@@ -118,7 +118,9 @@ fn sample_brush_height(
         let h1 = h01 * (1.0 - tx) + h11 * tx;
         let height_normalized = h0 * (1.0 - tz) + h1 * tz;
 
-        return Some(terrain.min_height + height_normalized * terrain.height_range() + terrain_pos.y);
+        return Some(
+            terrain.min_height + height_normalized * terrain.height_range() + terrain_pos.y,
+        );
     }
 
     None
@@ -146,7 +148,9 @@ pub fn terrain_sculpt_hover_system(
         return;
     }
 
-    let Ok(window) = window_query.single() else { return };
+    let Ok(window) = window_query.single() else {
+        return;
+    };
     let Some(cursor_pos) = window.cursor_position() else {
         sculpt_state.hover_position = None;
         return;
@@ -184,7 +188,8 @@ pub fn terrain_sculpt_hover_system(
 
     for (hit_entity, hit) in hits.iter() {
         // Check if this entity is a terrain chunk
-        if let Some((_, _, chunk_of, _)) = chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity) {
+        if let Some((_, _, chunk_of, _)) = chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity)
+        {
             let terrain_entity = chunk_of.0;
             let dist = hit.distance;
             if closest_hit.is_none() || dist < closest_hit.as_ref().unwrap().2 {
@@ -279,9 +284,15 @@ pub fn terrain_sculpt_system(
     if !should_apply {
         return;
     }
-    let Some(hover_pos) = sculpt_state.hover_position else { return };
-    let Some(terrain_entity) = sculpt_state.active_terrain else { return };
-    let Ok((terrain_data, terrain_transform)) = terrain_query.get(terrain_entity) else { return };
+    let Some(hover_pos) = sculpt_state.hover_position else {
+        return;
+    };
+    let Some(terrain_entity) = sculpt_state.active_terrain else {
+        return;
+    };
+    let Ok((terrain_data, terrain_transform)) = terrain_query.get(terrain_entity) else {
+        return;
+    };
 
     let terrain_pos = terrain_transform.translation();
     let half_w = terrain_data.total_width() / 2.0;
@@ -355,8 +366,16 @@ fn draw_brush_gizmo(
 
     // Outer ring
     let _outer = sample_ring(
-        gizmos, hover_pos, radius, segments, settings, terrain, terrain_pos,
-        chunk_query, terrain_entity, color,
+        gizmos,
+        hover_pos,
+        radius,
+        segments,
+        settings,
+        terrain,
+        terrain_pos,
+        chunk_query,
+        terrain_entity,
+        color,
     );
 
     // Inner falloff ring
@@ -364,8 +383,16 @@ fn draw_brush_gizmo(
         let inner_radius = radius * (1.0 - settings.falloff);
         let inner_color = color.with_alpha(0.4);
         sample_ring(
-            gizmos, hover_pos, inner_radius, segments, settings, terrain, terrain_pos,
-            chunk_query, terrain_entity, inner_color,
+            gizmos,
+            hover_pos,
+            inner_radius,
+            segments,
+            settings,
+            terrain,
+            terrain_pos,
+            chunk_query,
+            terrain_entity,
+            inner_color,
         );
     }
 }
@@ -386,7 +413,8 @@ fn draw_stamp_gizmo(
     let radius = settings.brush_radius;
     let cos_r = settings.stamp_rotation.cos();
     let sin_r = settings.stamp_rotation.sin();
-    let height_scale = settings.stamp_height_scale * settings.brush_strength * terrain.height_range();
+    let height_scale =
+        settings.stamp_height_scale * settings.brush_strength * terrain.height_range();
 
     // Match terrain vertex spacing so preview = actual result
     let spacing = terrain.vertex_spacing();
@@ -406,8 +434,9 @@ fn draw_stamp_gizmo(
 
         let stamp_h = stamp.sample(u, v) * height_scale;
 
-        let terrain_y = sample_brush_height(wx, wz, terrain, terrain_pos, chunk_query, terrain_entity)
-            .unwrap_or(hover_pos.y);
+        let terrain_y =
+            sample_brush_height(wx, wz, terrain, terrain_pos, chunk_query, terrain_entity)
+                .unwrap_or(hover_pos.y);
 
         Vec3::new(wx, terrain_y + stamp_h + 0.1, wz)
     };
@@ -433,8 +462,16 @@ fn draw_stamp_gizmo(
     let boundary_color = color.with_alpha(0.5);
     let segments = 48;
     sample_ring(
-        gizmos, hover_pos, radius, segments, settings, terrain, terrain_pos,
-        chunk_query, terrain_entity, boundary_color,
+        gizmos,
+        hover_pos,
+        radius,
+        segments,
+        settings,
+        terrain,
+        terrain_pos,
+        chunk_query,
+        terrain_entity,
+        boundary_color,
     );
 }
 
@@ -502,23 +539,23 @@ fn sample_ring(
 
 fn brush_color(brush_type: TerrainBrushType) -> Color {
     match brush_type {
-        TerrainBrushType::Raise     => Color::srgba(0.2, 0.8, 0.2, 0.9),
-        TerrainBrushType::Lower     => Color::srgba(0.8, 0.4, 0.2, 0.9),
-        TerrainBrushType::Sculpt    => Color::srgba(0.3, 0.7, 0.3, 0.9),
-        TerrainBrushType::Erase     => Color::srgba(0.8, 0.2, 0.2, 0.9),
-        TerrainBrushType::Smooth    => Color::srgba(0.2, 0.5, 0.9, 0.9),
-        TerrainBrushType::Flatten   => Color::srgba(0.9, 0.9, 0.2, 0.9),
+        TerrainBrushType::Raise => Color::srgba(0.2, 0.8, 0.2, 0.9),
+        TerrainBrushType::Lower => Color::srgba(0.8, 0.4, 0.2, 0.9),
+        TerrainBrushType::Sculpt => Color::srgba(0.3, 0.7, 0.3, 0.9),
+        TerrainBrushType::Erase => Color::srgba(0.8, 0.2, 0.2, 0.9),
+        TerrainBrushType::Smooth => Color::srgba(0.2, 0.5, 0.9, 0.9),
+        TerrainBrushType::Flatten => Color::srgba(0.9, 0.9, 0.2, 0.9),
         TerrainBrushType::SetHeight => Color::srgba(0.9, 0.7, 0.1, 0.9),
-        TerrainBrushType::Ramp      => Color::srgba(0.9, 0.6, 0.2, 0.9),
-        TerrainBrushType::Erosion   => Color::srgba(0.6, 0.35, 0.1, 0.9),
-        TerrainBrushType::Hydro     => Color::srgba(0.1, 0.5, 0.9, 0.9),
-        TerrainBrushType::Noise     => Color::srgba(0.7, 0.5, 0.8, 0.9),
-        TerrainBrushType::Retop     => Color::srgba(0.4, 0.8, 0.4, 0.9),
-        TerrainBrushType::Terrace   => Color::srgba(0.8, 0.7, 0.3, 0.9),
-        TerrainBrushType::Pinch     => Color::srgba(0.9, 0.3, 0.7, 0.9),
-        TerrainBrushType::Relax     => Color::srgba(0.3, 0.8, 0.8, 0.9),
-        TerrainBrushType::Cliff     => Color::srgba(0.5, 0.4, 0.3, 0.9),
-        TerrainBrushType::Stamp     => Color::srgba(0.9, 0.6, 0.9, 0.9),
+        TerrainBrushType::Ramp => Color::srgba(0.9, 0.6, 0.2, 0.9),
+        TerrainBrushType::Erosion => Color::srgba(0.6, 0.35, 0.1, 0.9),
+        TerrainBrushType::Hydro => Color::srgba(0.1, 0.5, 0.9, 0.9),
+        TerrainBrushType::Noise => Color::srgba(0.7, 0.5, 0.8, 0.9),
+        TerrainBrushType::Retop => Color::srgba(0.4, 0.8, 0.4, 0.9),
+        TerrainBrushType::Terrace => Color::srgba(0.8, 0.7, 0.3, 0.9),
+        TerrainBrushType::Pinch => Color::srgba(0.9, 0.3, 0.7, 0.9),
+        TerrainBrushType::Relax => Color::srgba(0.3, 0.8, 0.8, 0.9),
+        TerrainBrushType::Cliff => Color::srgba(0.5, 0.4, 0.3, 0.9),
+        TerrainBrushType::Stamp => Color::srgba(0.9, 0.6, 0.9, 0.9),
     }
 }
 
@@ -543,7 +580,9 @@ pub fn terrain_paint_hover_system(
         return;
     }
 
-    let Ok(window) = window_query.single() else { return };
+    let Ok(window) = window_query.single() else {
+        return;
+    };
     let Some(cursor_pos) = window.cursor_position() else {
         paint_state.hover_position = None;
         return;
@@ -582,7 +621,9 @@ pub fn terrain_paint_hover_system(
             chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity)
         {
             let terrain_entity = chunk_of.0;
-            let Ok((_, terrain_data, _)) = terrain_query.get(terrain_entity) else { continue };
+            let Ok((_, terrain_data, _)) = terrain_query.get(terrain_entity) else {
+                continue;
+            };
 
             // Convert world hit position to chunk UV
             let local_hit = hit.point - chunk_transform.translation();
@@ -666,8 +707,12 @@ pub fn terrain_paint_system(
     if !paint_state.is_painting {
         return;
     }
-    let Some(uv) = paint_state.hover_uv else { return };
-    let Some(chunk_entity) = paint_state.active_entity else { return };
+    let Some(uv) = paint_state.hover_uv else {
+        return;
+    };
+    let Some(chunk_entity) = paint_state.active_entity else {
+        return;
+    };
     let dt = time.delta_secs();
 
     // Get the chunk's surface data
@@ -697,10 +742,7 @@ pub fn terrain_paint_activate_system(
     mut images: ResMut<Assets<Image>>,
     mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
     _settings: Res<TerrainSettings>,
-    chunk_query: Query<
-        (Entity, &TerrainChunkData, &TerrainChunkOf),
-        Without<SplatmapActive>,
-    >,
+    chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf), Without<SplatmapActive>>,
     surface_query: Query<&PaintableSurfaceData>,
     layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
 ) {
@@ -799,13 +841,16 @@ pub fn terrain_paint_command_system(
 
                                 // Load textures via asset server
                                 if let Some(ref albedo) = textures.0 {
-                                    layer_tex.layer_albedo[*layer] = Some(asset_server.load(albedo.clone()));
+                                    layer_tex.layer_albedo[*layer] =
+                                        Some(asset_server.load(albedo.clone()));
                                 }
                                 if let Some(ref normal) = textures.1 {
-                                    layer_tex.layer_normal[*layer] = Some(asset_server.load(normal.clone()));
+                                    layer_tex.layer_normal[*layer] =
+                                        Some(asset_server.load(normal.clone()));
                                 }
                                 if let Some(ref arm) = textures.2 {
-                                    layer_tex.layer_arm[*layer] = Some(asset_server.load(arm.clone()));
+                                    layer_tex.layer_arm[*layer] =
+                                        Some(asset_server.load(arm.clone()));
                                 }
 
                                 layer_tex.dirty = true;
@@ -869,12 +914,15 @@ pub fn sync_layer_preview_system(
         })
         .collect();
     if new_preview.len() != paint_state.layers_preview.len()
-        || new_preview.iter().zip(paint_state.layers_preview.iter()).any(|(a, b)| {
-            a.name != b.name
-                || a.material_source != b.material_source
-                || (a.carve_depth - b.carve_depth).abs() > 1e-5
-                || a.enabled != b.enabled
-        })
+        || new_preview
+            .iter()
+            .zip(paint_state.layers_preview.iter())
+            .any(|(a, b)| {
+                a.name != b.name
+                    || a.material_source != b.material_source
+                    || (a.carve_depth - b.carve_depth).abs() > 1e-5
+                    || a.enabled != b.enabled
+            })
     {
         paint_state.layers_preview = new_preview;
         paint_state.layer_count = surface.layers.len();
@@ -883,10 +931,10 @@ pub fn sync_layer_preview_system(
 
 fn paint_brush_color(settings: &SurfacePaintSettings) -> Color {
     match settings.brush_type {
-        paint::PaintBrushType::Paint  => Color::srgba(0.2, 0.7, 0.9, 0.9),
-        paint::PaintBrushType::Erase  => Color::srgba(0.9, 0.3, 0.2, 0.9),
+        paint::PaintBrushType::Paint => Color::srgba(0.2, 0.7, 0.9, 0.9),
+        paint::PaintBrushType::Erase => Color::srgba(0.9, 0.3, 0.2, 0.9),
         paint::PaintBrushType::Smooth => Color::srgba(0.3, 0.6, 0.9, 0.9),
-        paint::PaintBrushType::Fill   => Color::srgba(0.9, 0.8, 0.2, 0.9),
+        paint::PaintBrushType::Fill => Color::srgba(0.9, 0.8, 0.2, 0.9),
     }
 }
 
@@ -912,7 +960,11 @@ pub fn terrain_stroke_begin_system(
         snapshot.layer_mask_snapshots.clear();
 
         for (_, chunk) in chunk_query.iter() {
-            snapshot.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+            snapshot.chunk_snapshots.push((
+                chunk.chunk_x,
+                chunk.chunk_z,
+                chunk.base_heights.clone(),
+            ));
         }
         for (entity, surface) in surface_query.iter() {
             let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
@@ -936,7 +988,11 @@ pub fn terrain_stroke_end_system(
         // Check if anything actually changed
         let mut changed = false;
         for (_, chunk) in chunk_query.iter().enumerate() {
-            if let Some(snap) = snapshot.chunk_snapshots.iter().find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z) {
+            if let Some(snap) = snapshot
+                .chunk_snapshots
+                .iter()
+                .find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z)
+            {
                 if snap.2 != chunk.base_heights {
                     changed = true;
                     break;
@@ -986,7 +1042,11 @@ pub fn terrain_undo_redo_system(
                 layer_mask_snapshots: Vec::new(),
             };
             for chunk in chunk_query.iter_mut() {
-                redo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+                redo_entry.chunk_snapshots.push((
+                    chunk.chunk_x,
+                    chunk.chunk_z,
+                    chunk.base_heights.clone(),
+                ));
             }
             for (entity, surface) in surface_query.iter() {
                 let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
@@ -1005,7 +1065,11 @@ pub fn terrain_undo_redo_system(
                 layer_mask_snapshots: Vec::new(),
             };
             for chunk in chunk_query.iter_mut() {
-                undo_entry.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+                undo_entry.chunk_snapshots.push((
+                    chunk.chunk_x,
+                    chunk.chunk_z,
+                    chunk.base_heights.clone(),
+                ));
             }
             for (entity, surface) in surface_query.iter() {
                 let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
@@ -1046,13 +1110,19 @@ fn apply_undo_entry(
 
 // ── Foliage scatter system ────────────────────────────────────────────────
 
-use renzora_terrain::foliage::{TerrainFoliageConfig, FoliageBatch, generate_foliage_instances};
+use renzora_terrain::foliage::{generate_foliage_instances, FoliageBatch, TerrainFoliageConfig};
 
 /// Regenerate foliage instances when splatmap or foliage config changes.
 pub fn terrain_foliage_scatter_system(
     mut commands: Commands,
     terrain_query: Query<(Entity, &TerrainData)>,
-    chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform, &PaintableSurfaceData)>,
+    chunk_query: Query<(
+        Entity,
+        &TerrainChunkData,
+        &TerrainChunkOf,
+        &GlobalTransform,
+        &PaintableSurfaceData,
+    )>,
     foliage_query: Query<(Entity, &TerrainFoliageConfig)>,
     existing_batches: Query<(Entity, &FoliageBatch)>,
     asset_server: Res<AssetServer>,
@@ -1077,7 +1147,9 @@ pub fn terrain_foliage_scatter_system(
         let mesh_handle: Handle<Mesh> = asset_server.load(&config.mesh_path);
 
         for (_chunk_entity, chunk_data, chunk_of, chunk_transform, surface) in chunk_query.iter() {
-            let Ok((_, terrain_data)) = terrain_query.get(chunk_of.0) else { continue };
+            let Ok((_, terrain_data)) = terrain_query.get(chunk_of.0) else {
+                continue;
+            };
 
             // Check if this chunk's splatmap is dirty or batch doesn't exist
             let batch_exists = existing_batches.iter().any(|(_, b)| {
@@ -1168,7 +1240,9 @@ fn extract_layer_textures_from_json(
         })?;
         let from_node_id = conn["from_node"].as_u64()?;
         // Find source node
-        let source = nodes.iter().find(|n| n["id"].as_u64() == Some(from_node_id))?;
+        let source = nodes
+            .iter()
+            .find(|n| n["id"].as_u64() == Some(from_node_id))?;
         // Check if it's a texture sample node
         let node_type = source["node_type"].as_str()?;
         if !node_type.contains("texture") {

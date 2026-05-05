@@ -1,7 +1,7 @@
 //! Procedural mesh generators for shapes not provided by Bevy natively
 
-use bevy::prelude::*;
 use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::prelude::*;
 use std::f32::consts::PI;
 
 /// Ensure all triangles have correct CCW winding relative to their vertex normals.
@@ -89,32 +89,72 @@ pub fn create_wedge_mesh() -> Mesh {
     let mut indices = Vec::new();
 
     // Bottom face (Y=0), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
-        [0.0, -1.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        [0.0, -1.0, 0.0],
+    );
 
     // Back face (X=0, vertical), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
-        [-1.0, 0.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [0.0, 1.0, 0.0],
+        ],
+        [-1.0, 0.0, 0.0],
+    );
 
     // Slope face (hypotenuse)
     let slope_n = Vec3::new(1.0, 1.0, 0.0).normalize();
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
-        [slope_n.x, slope_n.y, slope_n.z]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [0.0, 1.0, 0.0],
+        ],
+        [slope_n.x, slope_n.y, slope_n.z],
+    );
 
     // Front triangle (Z=0), normal -Z
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         [0.0, 0.0, -1.0],
-        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+    );
 
     // Back triangle (Z=1), normal +Z
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0]],
         [0.0, 0.0, 1.0],
-        [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]]);
+        [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]],
+    );
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, 0.5]))
 }
@@ -137,20 +177,40 @@ pub fn create_stairs_mesh(steps: u32) -> Mesh {
         let zb = (i + 1) as f32 * step_d;
 
         // Top face of step, normal +Y
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [[0.0, yt, zf], [1.0, yt, zf], [1.0, yt, zb], [0.0, yt, zb]],
-            [0.0, 1.0, 0.0]);
+            [0.0, 1.0, 0.0],
+        );
 
         // Front face of step (riser), normal -Z
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [[0.0, yb, zf], [1.0, yb, zf], [1.0, yt, zf], [0.0, yt, zf]],
-            [0.0, 0.0, -1.0]);
+            [0.0, 0.0, -1.0],
+        );
     }
 
     // Bottom face, normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
-        [0.0, -1.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        [0.0, -1.0, 0.0],
+    );
 
     // Left side (X=0), normal -X — stepped profile
     for i in 0..steps {
@@ -159,9 +219,14 @@ pub fn create_stairs_mesh(steps: u32) -> Mesh {
         let zf = i as f32 * step_d;
         let zb = (i + 1) as f32 * step_d;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [[0.0, yb, zf], [0.0, yb, zb], [0.0, yt, zb], [0.0, yt, zf]],
-            [-1.0, 0.0, 0.0]);
+            [-1.0, 0.0, 0.0],
+        );
     }
 
     // Right side (X=1), normal +X — stepped profile
@@ -171,15 +236,30 @@ pub fn create_stairs_mesh(steps: u32) -> Mesh {
         let zf = i as f32 * step_d;
         let zb = (i + 1) as f32 * step_d;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [[1.0, yb, zf], [1.0, yt, zf], [1.0, yt, zb], [1.0, yb, zb]],
-            [1.0, 0.0, 0.0]);
+            [1.0, 0.0, 0.0],
+        );
     }
 
     // Back face (Z=1), normal +Z
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]],
-        [0.0, 0.0, 1.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ],
+        [0.0, 0.0, 1.0],
+    );
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, 0.5]))
 }
@@ -270,10 +350,19 @@ pub fn create_half_cylinder_mesh(segments: u32) -> Mesh {
     }
 
     // Flat face (the cut plane, facing -Z since half-cylinder is the +Z side)
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[radius, -half_h, 0.0], [-radius, -half_h, 0.0],
-         [-radius, half_h, 0.0], [radius, half_h, 0.0]],
-        [0.0, 0.0, -1.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [radius, -half_h, 0.0],
+            [-radius, -half_h, 0.0],
+            [-radius, half_h, 0.0],
+            [radius, half_h, 0.0],
+        ],
+        [0.0, 0.0, -1.0],
+    );
 
     // Top cap (half circle at Y=+half_h), normal +Y
     let center_top = positions.len() as u32;
@@ -350,14 +439,34 @@ pub fn create_quarter_pipe_mesh(segments: u32) -> Mesh {
     }
 
     // Bottom face (Y=0), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 0.0], [width, 0.0, 0.0], [width, 0.0, radius], [0.0, 0.0, radius]],
-        [0.0, -1.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [width, 0.0, 0.0],
+            [width, 0.0, radius],
+            [0.0, 0.0, radius],
+        ],
+        [0.0, -1.0, 0.0],
+    );
 
     // Back face (Z=0), normal -Z
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, 0.0], [width, 0.0, 0.0], [width, radius, 0.0], [0.0, radius, 0.0]],
-        [0.0, 0.0, -1.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, 0.0],
+            [width, 0.0, 0.0],
+            [width, radius, 0.0],
+            [0.0, radius, 0.0],
+        ],
+        [0.0, 0.0, -1.0],
+    );
 
     // Left side (X=0) — quarter-circle fan, normal -X
     let base = positions.len() as u32;
@@ -389,7 +498,13 @@ pub fn create_quarter_pipe_mesh(segments: u32) -> Mesh {
         indices.extend_from_slice(&[base, base + 1 + i, base + 2 + i]);
     }
 
-    build_mesh(positions, normals, uvs, indices, Some([width / 2.0, 0.5, 0.5]))
+    build_mesh(
+        positions,
+        normals,
+        uvs,
+        indices,
+        Some([width / 2.0, 0.5, 0.5]),
+    )
 }
 
 /// Create an L-shaped corner piece mesh
@@ -405,7 +520,12 @@ pub fn create_corner_mesh() -> Mesh {
     // L-profile vertices (2D, XY plane):
     //  (0,0) -> (1,0) -> (1,w) -> (w,w) -> (w,1) -> (0,1)
     let profile = [
-        [0.0, 0.0], [1.0, 0.0], [1.0, w], [w, w], [w, 1.0], [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, w],
+        [w, w],
+        [w, 1.0],
+        [0.0, 1.0],
     ];
 
     // Front face (Z=d), normal +Z
@@ -446,10 +566,19 @@ pub fn create_corner_mesh() -> Mesh {
         let nx = dy / len;
         let ny = -dx / len;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], p0[1], 0.0], [p1[0], p1[1], 0.0],
-             [p1[0], p1[1], d],   [p0[0], p0[1], d]],
-            [nx, ny, 0.0]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], p0[1], 0.0],
+                [p1[0], p1[1], 0.0],
+                [p1[0], p1[1], d],
+                [p0[0], p0[1], d],
+            ],
+            [nx, ny, 0.0],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, d / 2.0]))
@@ -472,16 +601,38 @@ pub fn create_prism_mesh() -> Mesh {
     let mut indices = Vec::new();
 
     // Bottom face (Y=0), normal -Y
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [tri[0], tri[2], tri[1]],
         [0.0, -1.0, 0.0],
-        [[tri[0][0] + 0.5, tri[0][2] + 0.5], [tri[2][0] + 0.5, tri[2][2] + 0.5], [tri[1][0] + 0.5, tri[1][2] + 0.5]]);
+        [
+            [tri[0][0] + 0.5, tri[0][2] + 0.5],
+            [tri[2][0] + 0.5, tri[2][2] + 0.5],
+            [tri[1][0] + 0.5, tri[1][2] + 0.5],
+        ],
+    );
 
     // Top face (Y=h), normal +Y
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[tri[0][0], h, tri[0][2]], [tri[1][0], h, tri[1][2]], [tri[2][0], h, tri[2][2]]],
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [tri[0][0], h, tri[0][2]],
+            [tri[1][0], h, tri[1][2]],
+            [tri[2][0], h, tri[2][2]],
+        ],
         [0.0, 1.0, 0.0],
-        [[tri[0][0] + 0.5, tri[0][2] + 0.5], [tri[1][0] + 0.5, tri[1][2] + 0.5], [tri[2][0] + 0.5, tri[2][2] + 0.5]]);
+        [
+            [tri[0][0] + 0.5, tri[0][2] + 0.5],
+            [tri[1][0] + 0.5, tri[1][2] + 0.5],
+            [tri[2][0] + 0.5, tri[2][2] + 0.5],
+        ],
+    );
 
     // Side faces
     for i in 0..3 {
@@ -495,10 +646,19 @@ pub fn create_prism_mesh() -> Mesh {
         let nx = dz / len;
         let nz = -dx / len;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], 0.0, p0[2]], [p1[0], 0.0, p1[2]],
-             [p1[0], h, p1[2]],   [p0[0], h, p0[2]]],
-            [nx, 0.0, nz]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], 0.0, p0[2]],
+                [p1[0], 0.0, p1[2]],
+                [p1[0], h, p1[2]],
+                [p0[0], h, p0[2]],
+            ],
+            [nx, 0.0, nz],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.0, h / 2.0, 0.0]))
@@ -522,9 +682,14 @@ pub fn create_pyramid_mesh() -> Mesh {
     let mut indices = Vec::new();
 
     // Base face, normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [base_verts[0], base_verts[3], base_verts[2], base_verts[1]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
 
     // Side faces — compute proper normals
     for i in 0..4 {
@@ -536,10 +701,15 @@ pub fn create_pyramid_mesh() -> Mesh {
         let to_apex = va - v0;
         let n = edge.cross(to_apex).normalize();
 
-        add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_tri(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [base_verts[i], base_verts[next], apex],
             [n.x, n.y, n.z],
-            [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]);
+            [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.0, h / 2.0, 0.0]))
@@ -611,7 +781,10 @@ pub fn create_pipe_mesh(segments: u32) -> Mesh {
 
             positions.push([inner_r * c, y, inner_r * s]);
             normals.push([0.0, ny, 0.0]);
-            uvs.push([(inner_r / outer_r * c + 1.0) / 2.0, (inner_r / outer_r * s + 1.0) / 2.0]);
+            uvs.push([
+                (inner_r / outer_r * c + 1.0) / 2.0,
+                (inner_r / outer_r * s + 1.0) / 2.0,
+            ]);
         }
 
         for i in 0..segments {
@@ -660,7 +833,10 @@ pub fn create_ring_mesh(segments: u32) -> Mesh {
 
             positions.push([inner_r * c, y, inner_r * s]);
             normals.push([0.0, ny, 0.0]);
-            uvs.push([(inner_r / outer_r * c + 1.0) / 2.0, (inner_r / outer_r * s + 1.0) / 2.0]);
+            uvs.push([
+                (inner_r / outer_r * c + 1.0) / 2.0,
+                (inner_r / outer_r * s + 1.0) / 2.0,
+            ]);
         }
 
         for i in 0..segments {
@@ -736,32 +912,57 @@ pub fn create_ramp_mesh() -> Mesh {
     let d = 1.0_f32;
 
     // Bottom face (Y=0), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [w, 0.0, 0.0], [w, 0.0, d], [0.0, 0.0, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
 
     // Back face (X=0, vertical), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [0.0, 0.0, d], [0.0, h, d], [0.0, h, 0.0]],
-        [-1.0, 0.0, 0.0]);
+        [-1.0, 0.0, 0.0],
+    );
 
     // Slope face (hypotenuse from X=w,Y=0 up to X=0,Y=h)
     let slope_n = Vec3::new(h, w, 0.0).normalize();
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[w, 0.0, 0.0], [w, 0.0, d], [0.0, h, d], [0.0, h, 0.0]],
-        [slope_n.x, slope_n.y, slope_n.z]);
+        [slope_n.x, slope_n.y, slope_n.z],
+    );
 
     // Front triangle (Z=0), normal -Z
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [w, 0.0, 0.0], [0.0, h, 0.0]],
         [0.0, 0.0, -1.0],
-        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+        [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+    );
 
     // Back triangle (Z=d), normal +Z
-    add_tri(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_tri(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, d], [0.0, h, d], [w, 0.0, d]],
         [0.0, 0.0, 1.0],
-        [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]]);
+        [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]],
+    );
 
     build_mesh(positions, normals, uvs, indices, Some([1.0, 0.25, 0.5]))
 }
@@ -934,16 +1135,34 @@ pub fn create_curved_wall_mesh(segments: u32) -> Mesh {
     }
 
     // End cap at angle=0 (flat face), normal -Z
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[outer_r, 0.0, 0.0], [inner_r, 0.0, 0.0],
-         [inner_r, height, 0.0], [outer_r, height, 0.0]],
-        [0.0, 0.0, -1.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [outer_r, 0.0, 0.0],
+            [inner_r, 0.0, 0.0],
+            [inner_r, height, 0.0],
+            [outer_r, height, 0.0],
+        ],
+        [0.0, 0.0, -1.0],
+    );
 
     // End cap at angle=PI/2 (flat face), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[0.0, 0.0, inner_r], [0.0, 0.0, outer_r],
-         [0.0, height, outer_r], [0.0, height, inner_r]],
-        [-1.0, 0.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [0.0, 0.0, inner_r],
+            [0.0, 0.0, outer_r],
+            [0.0, height, outer_r],
+            [0.0, height, inner_r],
+        ],
+        [-1.0, 0.0, 0.0],
+    );
 
     ensure_correct_winding(&positions, &normals, &mut indices);
 
@@ -964,81 +1183,157 @@ pub fn create_doorway_mesh() -> Mesh {
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
 
-    let w = 1.5_f32;    // wall width
-    let h = 2.0_f32;    // wall height
-    let d = 0.1_f32;    // wall depth
-    let dw = 0.6_f32;   // door width
-    let dh = 1.4_f32;   // door height
+    let w = 1.5_f32; // wall width
+    let h = 2.0_f32; // wall height
+    let d = 0.1_f32; // wall depth
+    let dw = 0.6_f32; // door width
+    let dh = 1.4_f32; // door height
     let dl = (w - dw) / 2.0; // door left edge
-    let dr = dl + dw;        // door right edge
+    let dr = dl + dw; // door right edge
 
     // Front face (Z=d), normal +Z
     // Left strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, d], [dl, 0.0, d], [dl, h, d], [0.0, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
     // Right strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dr, 0.0, d], [w, 0.0, d], [w, h, d], [dr, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
     // Top strip (above door)
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dl, dh, d], [dr, dh, d], [dr, h, d], [dl, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
 
     // Back face (Z=0), normal -Z
     // Left strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dl, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, h, 0.0], [dl, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
     // Right strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[w, 0.0, 0.0], [dr, 0.0, 0.0], [dr, h, 0.0], [w, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
     // Top strip (above door)
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dr, dh, 0.0], [dl, dh, 0.0], [dl, h, 0.0], [dr, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
 
     // Top face (Y=h), normal +Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, h, 0.0], [w, h, 0.0], [w, h, d], [0.0, h, d]],
-        [0.0, 1.0, 0.0]);
+        [0.0, 1.0, 0.0],
+    );
 
     // Bottom face left (Y=0), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [dl, 0.0, 0.0], [dl, 0.0, d], [0.0, 0.0, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
     // Bottom face right
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dr, 0.0, 0.0], [w, 0.0, 0.0], [w, 0.0, d], [dr, 0.0, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
 
     // Left side (X=0), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [0.0, 0.0, d], [0.0, h, d], [0.0, h, 0.0]],
-        [-1.0, 0.0, 0.0]);
+        [-1.0, 0.0, 0.0],
+    );
 
     // Right side (X=w), normal +X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[w, 0.0, d], [w, 0.0, 0.0], [w, h, 0.0], [w, h, d]],
-        [1.0, 0.0, 0.0]);
+        [1.0, 0.0, 0.0],
+    );
 
     // Door opening inner faces
     // Left jamb (X=dl), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dl, 0.0, d], [dl, 0.0, 0.0], [dl, dh, 0.0], [dl, dh, d]],
-        [-1.0, 0.0, 0.0]);
+        [-1.0, 0.0, 0.0],
+    );
     // Right jamb (X=dr), normal +X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dr, 0.0, 0.0], [dr, 0.0, d], [dr, dh, d], [dr, dh, 0.0]],
-        [1.0, 0.0, 0.0]);
+        [1.0, 0.0, 0.0],
+    );
     // Top of door opening (Y=dh), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[dl, dh, d], [dl, dh, 0.0], [dr, dh, 0.0], [dr, dh, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
 
-    build_mesh(positions, normals, uvs, indices, Some([w / 2.0, h / 2.0, d / 2.0]))
+    build_mesh(
+        positions,
+        normals,
+        uvs,
+        indices,
+        Some([w / 2.0, h / 2.0, d / 2.0]),
+    )
 }
 
 /// Create a wall with a rectangular window opening
@@ -1050,92 +1345,178 @@ pub fn create_window_wall_mesh() -> Mesh {
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
 
-    let w = 1.5_f32;     // wall width
-    let h = 2.0_f32;     // wall height
-    let d = 0.1_f32;     // wall depth
-    let ww = 0.6_f32;    // window width
-    let wh = 0.5_f32;    // window height
-    let wc = 1.1_f32;    // window center height
-    let wl = (w - ww) / 2.0;  // window left
-    let wr = wl + ww;         // window right
-    let wb = wc - wh / 2.0;   // window bottom
-    let wt = wc + wh / 2.0;   // window top
+    let w = 1.5_f32; // wall width
+    let h = 2.0_f32; // wall height
+    let d = 0.1_f32; // wall depth
+    let ww = 0.6_f32; // window width
+    let wh = 0.5_f32; // window height
+    let wc = 1.1_f32; // window center height
+    let wl = (w - ww) / 2.0; // window left
+    let wr = wl + ww; // window right
+    let wb = wc - wh / 2.0; // window bottom
+    let wt = wc + wh / 2.0; // window top
 
     // Front face (Z=d), normal +Z
     // Left strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, d], [wl, 0.0, d], [wl, h, d], [0.0, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
     // Right strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wr, 0.0, d], [w, 0.0, d], [w, h, d], [wr, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
     // Bottom strip (below window, between left/right strips)
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, 0.0, d], [wr, 0.0, d], [wr, wb, d], [wl, wb, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
     // Top strip (above window, between left/right strips)
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, wt, d], [wr, wt, d], [wr, h, d], [wl, h, d]],
-        [0.0, 0.0, 1.0]);
+        [0.0, 0.0, 1.0],
+    );
 
     // Back face (Z=0), normal -Z
     // Left strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, h, 0.0], [wl, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
     // Right strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[w, 0.0, 0.0], [wr, 0.0, 0.0], [wr, h, 0.0], [w, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
     // Bottom strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wr, 0.0, 0.0], [wl, 0.0, 0.0], [wl, wb, 0.0], [wr, wb, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
     // Top strip
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wr, wt, 0.0], [wl, wt, 0.0], [wl, h, 0.0], [wr, h, 0.0]],
-        [0.0, 0.0, -1.0]);
+        [0.0, 0.0, -1.0],
+    );
 
     // Top face (Y=h), normal +Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, h, 0.0], [w, h, 0.0], [w, h, d], [0.0, h, d]],
-        [0.0, 1.0, 0.0]);
+        [0.0, 1.0, 0.0],
+    );
 
     // Bottom face (Y=0), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [w, 0.0, 0.0], [w, 0.0, d], [0.0, 0.0, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
 
     // Left side (X=0), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[0.0, 0.0, 0.0], [0.0, 0.0, d], [0.0, h, d], [0.0, h, 0.0]],
-        [-1.0, 0.0, 0.0]);
+        [-1.0, 0.0, 0.0],
+    );
 
     // Right side (X=w), normal +X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[w, 0.0, d], [w, 0.0, 0.0], [w, h, 0.0], [w, h, d]],
-        [1.0, 0.0, 0.0]);
+        [1.0, 0.0, 0.0],
+    );
 
     // Window opening inner faces
     // Left sill (X=wl), normal -X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, wb, d], [wl, wb, 0.0], [wl, wt, 0.0], [wl, wt, d]],
-        [-1.0, 0.0, 0.0]);
+        [-1.0, 0.0, 0.0],
+    );
     // Right sill (X=wr), normal +X
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wr, wb, 0.0], [wr, wb, d], [wr, wt, d], [wr, wt, 0.0]],
-        [1.0, 0.0, 0.0]);
+        [1.0, 0.0, 0.0],
+    );
     // Bottom sill (Y=wb), normal -Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, wb, d], [wl, wb, 0.0], [wr, wb, 0.0], [wr, wb, d]],
-        [0.0, -1.0, 0.0]);
+        [0.0, -1.0, 0.0],
+    );
     // Top sill (Y=wt), normal +Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
         [[wl, wt, 0.0], [wl, wt, d], [wr, wt, d], [wr, wt, 0.0]],
-        [0.0, 1.0, 0.0]);
+        [0.0, 1.0, 0.0],
+    );
 
-    build_mesh(positions, normals, uvs, indices, Some([w / 2.0, h / 2.0, d / 2.0]))
+    build_mesh(
+        positions,
+        normals,
+        uvs,
+        indices,
+        Some([w / 2.0, h / 2.0, d / 2.0]),
+    )
 }
 
 /// Create an L-shaped floor block mesh
@@ -1152,7 +1533,12 @@ pub fn create_l_shape_mesh() -> Mesh {
     // L-profile vertices (2D, XY plane):
     // Bottom-left (0,0) -> right (1,0) -> step up (1,0.3) -> inner corner (0.3,0.3) -> up (0.3,1) -> top-left (0,1)
     let profile = [
-        [0.0, 0.0], [1.0, 0.0], [1.0, 0.3], [0.3, 0.3], [0.3, 1.0], [0.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 0.3],
+        [0.3, 0.3],
+        [0.3, 1.0],
+        [0.0, 1.0],
     ];
 
     // Front face (Z=d), normal +Z
@@ -1192,10 +1578,19 @@ pub fn create_l_shape_mesh() -> Mesh {
         let nx = dy / len;
         let ny = -dx / len;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], p0[1], 0.0], [p1[0], p1[1], 0.0],
-             [p1[0], p1[1], d],   [p0[0], p0[1], d]],
-            [nx, ny, 0.0]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], p0[1], 0.0],
+                [p1[0], p1[1], 0.0],
+                [p1[0], p1[1], d],
+                [p0[0], p0[1], d],
+            ],
+            [nx, ny, 0.0],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, d / 2.0]))
@@ -1214,19 +1609,19 @@ pub fn create_t_shape_mesh() -> Mesh {
 
     // T-profile (XY plane):
     // Stem bottom-left, going clockwise
-    let stem_left = (1.0 - 0.3) / 2.0;  // 0.35
-    let stem_right = stem_left + 0.3;    // 0.65
-    let bar_bottom = 0.7_f32;            // where the horizontal bar starts
+    let stem_left = (1.0 - 0.3) / 2.0; // 0.35
+    let stem_right = stem_left + 0.3; // 0.65
+    let bar_bottom = 0.7_f32; // where the horizontal bar starts
 
     let profile = [
-        [stem_left, 0.0],   // 0: stem bottom-left
-        [stem_right, 0.0],  // 1: stem bottom-right
+        [stem_left, 0.0],         // 0: stem bottom-left
+        [stem_right, 0.0],        // 1: stem bottom-right
         [stem_right, bar_bottom], // 2: stem meets bar right
-        [1.0, bar_bottom],  // 3: bar bottom-right
-        [1.0, 1.0],         // 4: bar top-right
-        [0.0, 1.0],         // 5: bar top-left
-        [0.0, bar_bottom],  // 6: bar bottom-left
-        [stem_left, bar_bottom], // 7: stem meets bar left
+        [1.0, bar_bottom],        // 3: bar bottom-right
+        [1.0, 1.0],               // 4: bar top-right
+        [0.0, 1.0],               // 5: bar top-left
+        [0.0, bar_bottom],        // 6: bar bottom-left
+        [stem_left, bar_bottom],  // 7: stem meets bar left
     ];
 
     // Front face (Z=d), normal +Z
@@ -1269,10 +1664,19 @@ pub fn create_t_shape_mesh() -> Mesh {
         let nx = dy / len;
         let ny = -dx / len;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], p0[1], 0.0], [p1[0], p1[1], 0.0],
-             [p1[0], p1[1], d],   [p0[0], p0[1], d]],
-            [nx, ny, 0.0]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], p0[1], 0.0],
+                [p1[0], p1[1], 0.0],
+                [p1[0], p1[1], d],
+                [p0[0], p0[1], d],
+            ],
+            [nx, ny, 0.0],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, d / 2.0]))
@@ -1292,18 +1696,18 @@ pub fn create_cross_shape_mesh() -> Mesh {
 
     // Cross profile (XY plane), 12 vertices going clockwise from bottom-left of bottom arm:
     let profile = [
-        [arm, 0.0],        // 0
-        [arm + 0.3, 0.0],  // 1
-        [arm + 0.3, arm],  // 2
-        [1.0, arm],        // 3
-        [1.0, arm + 0.3],  // 4
+        [arm, 0.0],             // 0
+        [arm + 0.3, 0.0],       // 1
+        [arm + 0.3, arm],       // 2
+        [1.0, arm],             // 3
+        [1.0, arm + 0.3],       // 4
         [arm + 0.3, arm + 0.3], // 5
-        [arm + 0.3, 1.0],  // 6
-        [arm, 1.0],        // 7
-        [arm, arm + 0.3],  // 8
-        [0.0, arm + 0.3],  // 9
-        [0.0, arm],        // 10
-        [arm, arm],         // 11
+        [arm + 0.3, 1.0],       // 6
+        [arm, 1.0],             // 7
+        [arm, arm + 0.3],       // 8
+        [0.0, arm + 0.3],       // 9
+        [0.0, arm],             // 10
+        [arm, arm],             // 11
     ];
 
     // Front face (Z=d), normal +Z
@@ -1361,10 +1765,19 @@ pub fn create_cross_shape_mesh() -> Mesh {
         let nx = dy / len;
         let ny = -dx / len;
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], p0[1], 0.0], [p1[0], p1[1], 0.0],
-             [p1[0], p1[1], d],   [p0[0], p0[1], d]],
-            [nx, ny, 0.0]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], p0[1], 0.0],
+                [p1[0], p1[1], 0.0],
+                [p1[0], p1[1], d],
+                [p0[0], p0[1], d],
+            ],
+            [nx, ny, 0.0],
+        );
     }
 
     build_mesh(positions, normals, uvs, indices, Some([0.5, 0.5, d / 2.0]))
@@ -1490,10 +1903,19 @@ pub fn create_gutter_mesh(segments: u32) -> Mesh {
     }
 
     // Flat top face (Y=0 plane, from x=-radius to x=+radius), normal +Y
-    add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-        [[-radius, 0.0, -half_l], [radius, 0.0, -half_l],
-         [radius, 0.0, half_l], [-radius, 0.0, half_l]],
-        [0.0, 1.0, 0.0]);
+    add_quad(
+        &mut positions,
+        &mut normals,
+        &mut uvs,
+        &mut indices,
+        [
+            [-radius, 0.0, -half_l],
+            [radius, 0.0, -half_l],
+            [radius, 0.0, half_l],
+            [-radius, 0.0, half_l],
+        ],
+        [0.0, 1.0, 0.0],
+    );
 
     // Front end cap (Z=-half_l), half-circle, normal -Z
     let front_center = positions.len() as u32;
@@ -1580,42 +2002,78 @@ pub fn create_spiral_stairs_mesh(steps: u32) -> Mesh {
         let outer1_b = [outer_r * c1, y_bot, outer_r * s1];
 
         // Top face (Y=y_top), normal +Y
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [inner0, outer0, outer1, inner1],
-            [0.0, 1.0, 0.0]);
+            [0.0, 1.0, 0.0],
+        );
 
         // Bottom face (Y=y_bot), normal -Y
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [inner1_b, outer1_b, outer0_b, inner0_b],
-            [0.0, -1.0, 0.0]);
+            [0.0, -1.0, 0.0],
+        );
 
         // Front face (riser at angle a0), normal pointing backward in angle direction
         let riser_n = Vec3::new(-s0, 0.0, c0).normalize();
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [inner0_b, outer0_b, outer0, inner0],
-            [-riser_n.x, riser_n.y, -riser_n.z]);
+            [-riser_n.x, riser_n.y, -riser_n.z],
+        );
 
         // Outer face (curved outer edge), normal pointing outward radially
         let mid_angle = (a0 + a1) / 2.0;
         let outer_n = [mid_angle.cos(), 0.0, mid_angle.sin()];
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [outer0_b, outer1_b, outer1, outer0],
-            outer_n);
+            outer_n,
+        );
 
         // Inner face (curved inner edge), normal pointing inward
         let inner_n = [-mid_angle.cos(), 0.0, -mid_angle.sin()];
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [inner1_b, inner0_b, inner0, inner1],
-            inner_n);
+            inner_n,
+        );
 
         // Back face (at angle a1), only needed if there is a gap (last step connects to first)
         let back_n = Vec3::new(s1, 0.0, -c1).normalize();
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
             [outer1_b, inner1_b, inner1, outer1],
-            [back_n.x, back_n.y, back_n.z]);
+            [back_n.x, back_n.y, back_n.z],
+        );
     }
 
-    build_mesh(positions, normals, uvs, indices, Some([0.0, total_height / 2.0, 0.0]))
+    build_mesh(
+        positions,
+        normals,
+        uvs,
+        indices,
+        Some([0.0, total_height / 2.0, 0.0]),
+    )
 }
 
 /// Create an octagonal pillar/column mesh
@@ -1648,10 +2106,19 @@ pub fn create_pillar_mesh() -> Mesh {
         let nx = mid_angle.cos();
         let nz = mid_angle.sin();
 
-        add_quad(&mut positions, &mut normals, &mut uvs, &mut indices,
-            [[p0[0], 0.0, p0[1]], [p1[0], 0.0, p1[1]],
-             [p1[0], height, p1[1]], [p0[0], height, p0[1]]],
-            [nx, 0.0, nz]);
+        add_quad(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            [
+                [p0[0], 0.0, p0[1]],
+                [p1[0], 0.0, p1[1]],
+                [p1[0], height, p1[1]],
+                [p0[0], height, p0[1]],
+            ],
+            [nx, 0.0, nz],
+        );
     }
 
     // Top cap (Y=height), normal +Y — triangle fan

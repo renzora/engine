@@ -116,25 +116,24 @@ impl EditMesh {
         let mut edge_lookup: HashMap<(u32, u32), EdgeId> = HashMap::new();
 
         let canon = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
-        let get_or_insert_edge =
-            |edges: &mut Vec<Edge>,
-             edge_lookup: &mut HashMap<(u32, u32), EdgeId>,
-             a: u32,
-             b: u32|
-             -> EdgeId {
-                let key = canon(a, b);
-                if let Some(&id) = edge_lookup.get(&key) {
-                    id
-                } else {
-                    let id = EdgeId(edges.len() as u32);
-                    edges.push(Edge {
-                        verts: [VertexId(key.0), VertexId(key.1)],
-                        faces: Vec::new(),
-                    });
-                    edge_lookup.insert(key, id);
-                    id
-                }
-            };
+        let get_or_insert_edge = |edges: &mut Vec<Edge>,
+                                  edge_lookup: &mut HashMap<(u32, u32), EdgeId>,
+                                  a: u32,
+                                  b: u32|
+         -> EdgeId {
+            let key = canon(a, b);
+            if let Some(&id) = edge_lookup.get(&key) {
+                id
+            } else {
+                let id = EdgeId(edges.len() as u32);
+                edges.push(Edge {
+                    verts: [VertexId(key.0), VertexId(key.1)],
+                    faces: Vec::new(),
+                });
+                edge_lookup.insert(key, id);
+                id
+            }
+        };
 
         for tri in indices.chunks_exact(3) {
             let (a, b, c) = (tri[0], tri[1], tri[2]);
@@ -164,7 +163,8 @@ impl EditMesh {
     pub fn rebuild_edges(&mut self) {
         let canon = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
         self.edges.clear();
-        let mut lookup: std::collections::HashMap<(u32, u32), EdgeId> = std::collections::HashMap::new();
+        let mut lookup: std::collections::HashMap<(u32, u32), EdgeId> =
+            std::collections::HashMap::new();
         for face in &mut self.faces {
             face.edges.clear();
             let n = face.verts.len();
@@ -195,7 +195,9 @@ impl EditMesh {
     /// go wrong when not perfectly planar. Returns `Vec3::Y` for degenerate faces.
     pub fn face_normal(&self, face: &Face) -> Vec3 {
         let n = face.verts.len();
-        if n < 3 { return Vec3::Y; }
+        if n < 3 {
+            return Vec3::Y;
+        }
         let mut normal = Vec3::ZERO;
         for i in 0..n {
             let a = self.vertices[face.verts[i].0 as usize].position;
@@ -208,10 +210,12 @@ impl EditMesh {
     /// Overwrite a Mesh asset from this EditMesh. Triangulates n-gons via
     /// a simple fan from the first vertex of each face.
     pub fn bake_to_mesh(&self, mesh: &mut Mesh) {
-        let positions: Vec<[f32; 3]> =
-            self.vertices.iter().map(|v| v.position.to_array()).collect();
-        let normals: Vec<[f32; 3]> =
-            self.vertices.iter().map(|v| v.normal.to_array()).collect();
+        let positions: Vec<[f32; 3]> = self
+            .vertices
+            .iter()
+            .map(|v| v.position.to_array())
+            .collect();
+        let normals: Vec<[f32; 3]> = self.vertices.iter().map(|v| v.normal.to_array()).collect();
         let uvs: Vec<[f32; 2]> = self.vertices.iter().map(|v| v.uv.to_array()).collect();
         let mut indices: Vec<u32> = Vec::with_capacity(self.faces.len() * 3);
         for face in &self.faces {

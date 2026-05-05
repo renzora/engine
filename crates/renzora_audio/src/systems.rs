@@ -5,14 +5,12 @@
 
 use bevy::prelude::*;
 use kira::{
-    sound::static_sound::StaticSoundData,
-    sound::streaming::StreamingSoundData,
-    sound::PlaybackState,
-    Tween,
+    sound::static_sound::StaticSoundData, sound::streaming::StreamingSoundData,
+    sound::PlaybackState, Tween,
 };
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
-use crate::manager::{KiraAudioManager, RolloffType, amplitude_to_db, vec3_to_mint, quat_to_mint};
+use crate::manager::{amplitude_to_db, quat_to_mint, vec3_to_mint, KiraAudioManager, RolloffType};
 use crate::mixer::MixerState;
 use crate::preview::AudioPreviewState;
 
@@ -44,11 +42,19 @@ pub fn process_audio_commands(
 ) {
     let Some(mut audio) = audio else { return };
     let Some(mixer) = mixer else { return };
-    if queue.is_empty() { return; }
+    if queue.is_empty() {
+        return;
+    }
 
     for cmd in queue.drain() {
         match cmd {
-            AudioCommand::PlaySound { path, volume, looping, bus, entity } => {
+            AudioCommand::PlaySound {
+                path,
+                volume,
+                looping,
+                bus,
+                entity,
+            } => {
                 let full_path = audio.resolve_path(&path);
                 let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
 
@@ -75,7 +81,13 @@ pub fn process_audio_commands(
                 }
             }
 
-            AudioCommand::PlaySound3D { path, volume, position, bus, entity } => {
+            AudioCommand::PlaySound3D {
+                path,
+                volume,
+                position,
+                bus,
+                entity,
+            } => {
                 let full_path = audio.resolve_path(&path);
                 let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
 
@@ -85,14 +97,25 @@ pub fn process_audio_commands(
 
                         if let Some(ent) = entity {
                             if let Some(spatial_track) = audio.get_or_create_spatial_track(
-                                ent, position, &bus, 1.0, 50.0, &RolloffType::Logarithmic, &mixer,
+                                ent,
+                                position,
+                                &bus,
+                                1.0,
+                                50.0,
+                                &RolloffType::Logarithmic,
+                                &mixer,
                             ) {
                                 match spatial_track.play(data) {
                                     Ok(handle) => {
                                         audio.track_sound(ent, handle);
-                                        debug!("[KiraAudio] Playing 3D sound: {} at {:?}", path, position);
+                                        debug!(
+                                            "[KiraAudio] Playing 3D sound: {} at {:?}",
+                                            path, position
+                                        );
                                     }
-                                    Err(e) => warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e),
+                                    Err(e) => {
+                                        warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e)
+                                    }
                                 }
                             }
                         } else {
@@ -101,7 +124,9 @@ pub fn process_audio_commands(
                                 Ok(_handle) => {
                                     debug!("[KiraAudio] Playing 3D sound (no entity): {}", path);
                                 }
-                                Err(e) => warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e),
+                                Err(e) => {
+                                    warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e)
+                                }
                             }
                         }
                     }
@@ -109,7 +134,12 @@ pub fn process_audio_commands(
                 }
             }
 
-            AudioCommand::PlayMusic { path, volume, fade_in, bus } => {
+            AudioCommand::PlayMusic {
+                path,
+                volume,
+                fade_in,
+                bus,
+            } => {
                 audio.stop_music(0.0);
 
                 let full_path = audio.resolve_path(&path);
@@ -196,7 +226,11 @@ pub fn process_audio_commands(
                 }
             }
 
-            AudioCommand::SetSoundVolume { entity, volume, fade } => {
+            AudioCommand::SetSoundVolume {
+                entity,
+                volume,
+                fade,
+            } => {
                 if let Some(handles) = audio.active_sounds.get_mut(&entity) {
                     let tween = if fade > 0.0 {
                         Tween {
@@ -212,7 +246,11 @@ pub fn process_audio_commands(
                 }
             }
 
-            AudioCommand::SetSoundPitch { entity, pitch, fade } => {
+            AudioCommand::SetSoundPitch {
+                entity,
+                pitch,
+                fade,
+            } => {
                 if let Some(handles) = audio.active_sounds.get_mut(&entity) {
                     let tween = if fade > 0.0 {
                         Tween {
@@ -228,7 +266,12 @@ pub fn process_audio_commands(
                 }
             }
 
-            AudioCommand::CrossfadeMusic { path, volume, duration, bus } => {
+            AudioCommand::CrossfadeMusic {
+                path,
+                volume,
+                duration,
+                bus,
+            } => {
                 audio.stop_music(duration);
 
                 let full_path = audio.resolve_path(&path);
@@ -252,7 +295,10 @@ pub fn process_audio_commands(
                             Err(e) => warn!("[KiraAudio] Crossfade failed {}: {}", path, e),
                         }
                     }
-                    Err(e) => warn!("[KiraAudio] Failed to load music for crossfade {}: {}", path, e),
+                    Err(e) => warn!(
+                        "[KiraAudio] Failed to load music for crossfade {}: {}",
+                        path, e
+                    ),
                 }
             }
         }
@@ -281,7 +327,9 @@ pub fn sync_spatial_audio(
     }
 
     // Update emitter positions and clean up despawned entities
-    let despawned: Vec<Entity> = audio.spatial_tracks.keys()
+    let despawned: Vec<Entity> = audio
+        .spatial_tracks
+        .keys()
         .filter(|e| spatial_entities.get(**e).is_err())
         .copied()
         .collect();
@@ -327,10 +375,13 @@ pub fn update_vu_meters(
 
     // Estimate activity from playing sounds (without emitter query, assume SFX bus)
     for (_entity, handles) in &audio.active_sounds {
-        let playing_count = handles.iter()
+        let playing_count = handles
+            .iter()
             .filter(|h| h.state() == PlaybackState::Playing)
             .count();
-        if playing_count == 0 { continue; }
+        if playing_count == 0 {
+            continue;
+        }
 
         let level = 0.8_f32.min(1.5);
         mixer.sfx.peak_level = mixer.sfx.peak_level.max(level);
@@ -354,7 +405,8 @@ pub fn update_vu_meters(
                     "Master" => mixer.master.peak_level = mixer.master.peak_level.max(level),
                     name => {
                         if let Some(idx) = mixer.custom_buses.iter().position(|(n, _)| n == name) {
-                            mixer.custom_buses[idx].1.peak_level = mixer.custom_buses[idx].1.peak_level.max(level);
+                            mixer.custom_buses[idx].1.peak_level =
+                                mixer.custom_buses[idx].1.peak_level.max(level);
                         } else {
                             mixer.sfx.peak_level = mixer.sfx.peak_level.max(level);
                         }
@@ -365,17 +417,19 @@ pub fn update_vu_meters(
     }
 
     // Master reflects all activity
-    let max_sub = mixer.sfx.peak_level
+    let max_sub = mixer
+        .sfx
+        .peak_level
         .max(mixer.music.peak_level)
         .max(mixer.ambient.peak_level);
     mixer.master.peak_level = mixer.master.peak_level.max(max_sub);
 }
 
 /// Auto-stop preview when its sound handle finishes playing.
-pub fn preview_audio_system(
-    mut preview: Option<ResMut<AudioPreviewState>>,
-) {
-    let Some(ref mut preview) = preview else { return };
+pub fn preview_audio_system(mut preview: Option<ResMut<AudioPreviewState>>) {
+    let Some(ref mut preview) = preview else {
+        return;
+    };
 
     // Clean up handle when sound finishes naturally
     if let Some(ref handle) = preview.handle {

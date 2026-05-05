@@ -11,9 +11,8 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use renzora::{
-    ActionState, CharacterCommand, CharacterCommandQueue,
-    PropertyValue, ScriptAction, ScriptActionValue, ScriptInput,
-    TransformWrite, TransformWriteQueue,
+    ActionState, CharacterCommand, CharacterCommandQueue, PropertyValue, ScriptAction,
+    ScriptActionValue, ScriptInput, TransformWrite, TransformWriteQueue,
 };
 
 use crate::graph::{BlueprintGraph, NodeId, PinValue};
@@ -315,25 +314,29 @@ impl<'a> EvalContext<'a> {
             }
             "input/is_key_pressed" => {
                 let key_str = self.resolve_input(node_id, "key").as_string();
-                let pressed = self.input.keys_pressed.iter().any(|(k, &v)| {
-                    v && format!("{:?}", k) == key_str
-                });
+                let pressed = self
+                    .input
+                    .keys_pressed
+                    .iter()
+                    .any(|(k, &v)| v && format!("{:?}", k) == key_str);
                 PinValue::Bool(pressed)
             }
             "input/is_key_just_pressed" => {
                 let key_str = self.resolve_input(node_id, "key").as_string();
-                let pressed = self.input.keys_just_pressed.iter().any(|(k, &v)| {
-                    v && format!("{:?}", k) == key_str
-                });
+                let pressed = self
+                    .input
+                    .keys_just_pressed
+                    .iter()
+                    .any(|(k, &v)| v && format!("{:?}", k) == key_str);
                 PinValue::Bool(pressed)
             }
-            "input/get_mouse_position" => {
-                match pin_name {
-                    "position" => PinValue::Vec2([self.input.mouse_position.x, self.input.mouse_position.y]),
-                    "delta" => PinValue::Vec2([self.input.mouse_delta.x, self.input.mouse_delta.y]),
-                    _ => PinValue::None,
+            "input/get_mouse_position" => match pin_name {
+                "position" => {
+                    PinValue::Vec2([self.input.mouse_position.x, self.input.mouse_position.y])
                 }
-            }
+                "delta" => PinValue::Vec2([self.input.mouse_delta.x, self.input.mouse_delta.y]),
+                _ => PinValue::None,
+            },
             "input/is_mouse_pressed" => {
                 let btn = self.resolve_input(node_id, "button").as_int();
                 let mouse_btn = match btn {
@@ -342,24 +345,27 @@ impl<'a> EvalContext<'a> {
                     2 => MouseButton::Middle,
                     _ => MouseButton::Left,
                 };
-                let pressed = self.input.mouse_pressed.get(&mouse_btn).copied().unwrap_or(false);
+                let pressed = self
+                    .input
+                    .mouse_pressed
+                    .get(&mouse_btn)
+                    .copied()
+                    .unwrap_or(false);
                 PinValue::Bool(pressed)
             }
-            "input/get_gamepad" => {
-                match pin_name {
-                    "left_stick" => {
-                        let v = self.input.get_gamepad_left_stick(0);
-                        PinValue::Vec2([v.x, v.y])
-                    }
-                    "right_stick" => {
-                        let v = self.input.get_gamepad_right_stick(0);
-                        PinValue::Vec2([v.x, v.y])
-                    }
-                    "left_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, true)),
-                    "right_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, false)),
-                    _ => PinValue::None,
+            "input/get_gamepad" => match pin_name {
+                "left_stick" => {
+                    let v = self.input.get_gamepad_left_stick(0);
+                    PinValue::Vec2([v.x, v.y])
                 }
-            }
+                "right_stick" => {
+                    let v = self.input.get_gamepad_right_stick(0);
+                    PinValue::Vec2([v.x, v.y])
+                }
+                "left_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, true)),
+                "right_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, false)),
+                _ => PinValue::None,
+            },
 
             // ── Action-mapped input reads ─────────────────────────────
             "input/is_action_pressed" => {
@@ -388,19 +394,36 @@ impl<'a> EvalContext<'a> {
             // ── Physics reads (from PhysicsReadState) ────────────────
             "physics/is_grounded" => {
                 let g = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "PhysicsReadState", "grounded"
-                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                    self.world,
+                    self.entity,
+                    "PhysicsReadState",
+                    "grounded",
+                )
+                .and_then(|v| match v {
+                    PropertyValue::Bool(b) => Some(b),
+                    _ => None,
+                })
                 .unwrap_or(false);
                 PinValue::Bool(g)
             }
             "physics/get_velocity" => {
                 let read = |field: &str| -> f32 {
-                    renzora::reflection::get_reflected_field(self.world, self.entity, "PhysicsReadState", field)
-                        .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
-                        .unwrap_or(0.0)
+                    renzora::reflection::get_reflected_field(
+                        self.world,
+                        self.entity,
+                        "PhysicsReadState",
+                        field,
+                    )
+                    .and_then(|v| match v {
+                        PropertyValue::Float(f) => Some(f),
+                        _ => None,
+                    })
+                    .unwrap_or(0.0)
                 };
                 match pin_name {
-                    "velocity" => PinValue::Vec3([read("velocity.x"), read("velocity.y"), read("velocity.z")]),
+                    "velocity" => {
+                        PinValue::Vec3([read("velocity.x"), read("velocity.y"), read("velocity.z")])
+                    }
                     "speed" => PinValue::Float(read("speed")),
                     _ => PinValue::None,
                 }
@@ -409,29 +432,57 @@ impl<'a> EvalContext<'a> {
             // ── Navigation reads (from NavReadState) ─────────────────
             "navigation/has_path" => {
                 let v = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "NavReadState", "has_path"
-                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                    self.world,
+                    self.entity,
+                    "NavReadState",
+                    "has_path",
+                )
+                .and_then(|v| match v {
+                    PropertyValue::Bool(b) => Some(b),
+                    _ => None,
+                })
                 .unwrap_or(false);
                 PinValue::Bool(v)
             }
             "navigation/has_target" => {
                 let v = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "NavReadState", "has_target"
-                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                    self.world,
+                    self.entity,
+                    "NavReadState",
+                    "has_target",
+                )
+                .and_then(|v| match v {
+                    PropertyValue::Bool(b) => Some(b),
+                    _ => None,
+                })
                 .unwrap_or(false);
                 PinValue::Bool(v)
             }
             "navigation/is_at_destination" => {
                 let v = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "NavReadState", "is_at_destination"
-                ).and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                    self.world,
+                    self.entity,
+                    "NavReadState",
+                    "is_at_destination",
+                )
+                .and_then(|v| match v {
+                    PropertyValue::Bool(b) => Some(b),
+                    _ => None,
+                })
                 .unwrap_or(false);
                 PinValue::Bool(v)
             }
             "navigation/distance_to_destination" => {
                 let v = renzora::reflection::get_reflected_field(
-                    self.world, self.entity, "NavReadState", "distance_to_destination"
-                ).and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                    self.world,
+                    self.entity,
+                    "NavReadState",
+                    "distance_to_destination",
+                )
+                .and_then(|v| match v {
+                    PropertyValue::Float(f) => Some(f),
+                    _ => None,
+                })
                 .unwrap_or(0.0);
                 PinValue::Float(v)
             }
@@ -445,7 +496,9 @@ impl<'a> EvalContext<'a> {
 
             // ── Flow control data outputs ────────────────────────────
             "flow/flip_flop" => match pin_name {
-                "is_a" => PinValue::Bool(*self.runtime.flip_flop_state.get(&node_id).unwrap_or(&true)),
+                "is_a" => {
+                    PinValue::Bool(*self.runtime.flip_flop_state.get(&node_id).unwrap_or(&true))
+                }
                 _ => PinValue::None,
             },
 
@@ -469,7 +522,10 @@ impl<'a> EvalContext<'a> {
                     "AnimatorReadState",
                     &format!("clip_lengths.{}", name),
                 )
-                .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                .and_then(|v| match v {
+                    PropertyValue::Float(f) => Some(f),
+                    _ => None,
+                })
                 .unwrap_or(0.0);
                 PinValue::Float(v)
             }
@@ -481,7 +537,10 @@ impl<'a> EvalContext<'a> {
                     "AnimatorReadState",
                     &format!("params.{}", name),
                 )
-                .and_then(|v| match v { PropertyValue::Float(f) => Some(f), _ => None })
+                .and_then(|v| match v {
+                    PropertyValue::Float(f) => Some(f),
+                    _ => None,
+                })
                 .unwrap_or(0.0);
                 PinValue::Float(v)
             }
@@ -493,7 +552,10 @@ impl<'a> EvalContext<'a> {
                     "AnimatorReadState",
                     &format!("bool_params.{}", name),
                 )
-                .and_then(|v| match v { PropertyValue::Bool(b) => Some(b), _ => None })
+                .and_then(|v| match v {
+                    PropertyValue::Bool(b) => Some(b),
+                    _ => None,
+                })
                 .unwrap_or(false);
                 PinValue::Bool(v)
             }
@@ -533,12 +595,21 @@ impl<'a> EvalContext<'a> {
             // ── Variable read ─────────────────────────────────────────
             "variable/get" => {
                 let name = self.resolve_input(node_id, "name").as_string();
-                self.runtime.variables.get(&name).cloned().unwrap_or(PinValue::None)
+                self.runtime
+                    .variables
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or(PinValue::None)
             }
 
             // ── Counter read ──────────────────────────────────────────
             "flow/counter" => {
-                let val = self.runtime.counter_values.get(&node_id).copied().unwrap_or(0.0);
+                let val = self
+                    .runtime
+                    .counter_values
+                    .get(&node_id)
+                    .copied()
+                    .unwrap_or(0.0);
                 PinValue::Float(val)
             }
 
@@ -565,9 +636,13 @@ impl<'a> EvalContext<'a> {
                 let b = self.resolve_input(node_id, "b").as_float();
                 PinValue::Float(a.max(b))
             }
-            "math/floor" => PinValue::Float(self.resolve_input(node_id, "value").as_float().floor()),
+            "math/floor" => {
+                PinValue::Float(self.resolve_input(node_id, "value").as_float().floor())
+            }
             "math/ceil" => PinValue::Float(self.resolve_input(node_id, "value").as_float().ceil()),
-            "math/round" => PinValue::Float(self.resolve_input(node_id, "value").as_float().round()),
+            "math/round" => {
+                PinValue::Float(self.resolve_input(node_id, "value").as_float().round())
+            }
             "math/modulo" => {
                 let a = self.resolve_input(node_id, "a").as_float();
                 let b = self.resolve_input(node_id, "b").as_float();
@@ -623,8 +698,18 @@ impl<'a> EvalContext<'a> {
                 };
                 PinValue::String(template.replace("{0}", &replacement))
             }
-            "string/to_float" => PinValue::Float(self.resolve_input(node_id, "value").as_string().parse().unwrap_or(0.0)),
-            "string/to_int" => PinValue::Int(self.resolve_input(node_id, "value").as_string().parse().unwrap_or(0)),
+            "string/to_float" => PinValue::Float(
+                self.resolve_input(node_id, "value")
+                    .as_string()
+                    .parse()
+                    .unwrap_or(0.0),
+            ),
+            "string/to_int" => PinValue::Int(
+                self.resolve_input(node_id, "value")
+                    .as_string()
+                    .parse()
+                    .unwrap_or(0),
+            ),
 
             // ── Type conversion ───────────────────────────────────────
             "convert/to_string" => {
@@ -658,7 +743,12 @@ impl<'a> EvalContext<'a> {
     }
 
     /// Push a ScriptAction with mixed arg types.
-    fn push_action_mixed(&mut self, name: &str, str_args: &[(&str, ScriptActionValue)], float_args: &[(&str, f32)]) {
+    fn push_action_mixed(
+        &mut self,
+        name: &str,
+        str_args: &[(&str, ScriptActionValue)],
+        float_args: &[(&str, f32)],
+    ) {
         let mut map = HashMap::new();
         for (k, v) in str_args {
             map.insert(k.to_string(), v.clone());
@@ -675,7 +765,12 @@ impl<'a> EvalContext<'a> {
     }
 
     /// Push a ScriptAction with Vec3 args.
-    fn push_action_vec3(&mut self, name: &str, str_args: &[(&str, ScriptActionValue)], vec3_args: &[(&str, [f32; 3])]) {
+    fn push_action_vec3(
+        &mut self,
+        name: &str,
+        str_args: &[(&str, ScriptActionValue)],
+        vec3_args: &[(&str, [f32; 3])],
+    ) {
         let mut map = HashMap::new();
         for (k, v) in str_args {
             map.insert(k.to_string(), v.clone());
@@ -692,7 +787,12 @@ impl<'a> EvalContext<'a> {
     }
 
     /// Push a ScriptAction targeting a specific entity (by name).
-    fn push_action_targeted(&mut self, name: &str, target: Option<String>, args: HashMap<String, ScriptActionValue>) {
+    fn push_action_targeted(
+        &mut self,
+        name: &str,
+        target: Option<String>,
+        args: HashMap<String, ScriptActionValue>,
+    ) {
         self.actions.push(ScriptAction {
             name: name.to_string(),
             entity: self.entity,
@@ -703,7 +803,9 @@ impl<'a> EvalContext<'a> {
 
     /// Execute an exec-pin chain starting from a node's output exec pin.
     fn follow_exec(&mut self, from_node: NodeId, from_pin: &str) {
-        let connections = self.graph.connections_from(from_node, from_pin)
+        let connections = self
+            .graph
+            .connections_from(from_node, from_pin)
             .into_iter()
             .map(|c| (c.to_node, c.to_pin.clone()))
             .collect::<Vec<_>>();
@@ -755,24 +857,26 @@ impl<'a> EvalContext<'a> {
                     self.follow_exec(node_id, "b");
                 }
             }
-            "flow/gate" => {
-                match _exec_pin {
-                    "open" => { self.runtime.gate_open.insert(node_id, true); }
-                    "close" => { self.runtime.gate_open.insert(node_id, false); }
-                    "toggle" => {
-                        let current = *self.runtime.gate_open.get(&node_id).unwrap_or(&true);
-                        self.runtime.gate_open.insert(node_id, !current);
-                    }
-                    "exec" => {
-                        let start_open = self.resolve_input(node_id, "start_open").as_bool();
-                        let open = *self.runtime.gate_open.get(&node_id).unwrap_or(&start_open);
-                        if open {
-                            self.follow_exec(node_id, "exit");
-                        }
-                    }
-                    _ => {}
+            "flow/gate" => match _exec_pin {
+                "open" => {
+                    self.runtime.gate_open.insert(node_id, true);
                 }
-            }
+                "close" => {
+                    self.runtime.gate_open.insert(node_id, false);
+                }
+                "toggle" => {
+                    let current = *self.runtime.gate_open.get(&node_id).unwrap_or(&true);
+                    self.runtime.gate_open.insert(node_id, !current);
+                }
+                "exec" => {
+                    let start_open = self.resolve_input(node_id, "start_open").as_bool();
+                    let open = *self.runtime.gate_open.get(&node_id).unwrap_or(&start_open);
+                    if open {
+                        self.follow_exec(node_id, "exit");
+                    }
+                }
+                _ => {}
+            },
 
             "flow/counter" => {
                 let step = self.resolve_input(node_id, "step").as_float();
@@ -782,7 +886,11 @@ impl<'a> EvalContext<'a> {
                 let val = self.runtime.counter_values.entry(node_id).or_insert(min);
                 *val += step * self.delta;
                 if *val > max {
-                    if do_loop { *val = min + (*val - max); } else { *val = max; }
+                    if do_loop {
+                        *val = min + (*val - max);
+                    } else {
+                        *val = max;
+                    }
                 }
                 self.follow_exec(node_id, "then");
             }
@@ -907,21 +1015,29 @@ impl<'a> EvalContext<'a> {
                 let path = self.resolve_input(node_id, "path").as_string();
                 let volume = self.resolve_input(node_id, "volume").as_float();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
-                self.push_action_mixed("play_sound", &[
-                    ("path", ScriptActionValue::String(path)),
-                    ("looping", ScriptActionValue::Bool(looping)),
-                    ("bus", ScriptActionValue::String("sfx".into())),
-                ], &[("volume", volume)]);
+                self.push_action_mixed(
+                    "play_sound",
+                    &[
+                        ("path", ScriptActionValue::String(path)),
+                        ("looping", ScriptActionValue::Bool(looping)),
+                        ("bus", ScriptActionValue::String("sfx".into())),
+                    ],
+                    &[("volume", volume)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "audio/play_music" => {
                 let path = self.resolve_input(node_id, "path").as_string();
                 let volume = self.resolve_input(node_id, "volume").as_float();
                 let fade_in = self.resolve_input(node_id, "fade_in").as_float();
-                self.push_action_mixed("play_music", &[
-                    ("path", ScriptActionValue::String(path)),
-                    ("bus", ScriptActionValue::String("music".into())),
-                ], &[("volume", volume), ("fade_in", fade_in)]);
+                self.push_action_mixed(
+                    "play_music",
+                    &[
+                        ("path", ScriptActionValue::String(path)),
+                        ("bus", ScriptActionValue::String("music".into())),
+                    ],
+                    &[("volume", volume), ("fade_in", fade_in)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "audio/stop_music" => {
@@ -947,16 +1063,20 @@ impl<'a> EvalContext<'a> {
             // ── Rendering ────────────────────────────────────────────
             "rendering/set_visibility" => {
                 let visible = self.resolve_input(node_id, "visible").as_bool();
-                self.push_action_mixed("set_visibility", &[
-                    ("visible", ScriptActionValue::Bool(visible)),
-                ], &[]);
+                self.push_action_mixed(
+                    "set_visibility",
+                    &[("visible", ScriptActionValue::Bool(visible))],
+                    &[],
+                );
                 self.follow_exec(node_id, "then");
             }
             "rendering/set_material_color" => {
                 let c = self.resolve_input(node_id, "color").as_color();
-                self.push_action_mixed("set_material_color", &[], &[
-                    ("r", c[0]), ("g", c[1]), ("b", c[2]), ("a", c[3]),
-                ]);
+                self.push_action_mixed(
+                    "set_material_color",
+                    &[],
+                    &[("r", c[0]), ("g", c[1]), ("b", c[2]), ("a", c[3])],
+                );
                 self.follow_exec(node_id, "then");
             }
 
@@ -965,10 +1085,14 @@ impl<'a> EvalContext<'a> {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
                 let speed = self.resolve_input(node_id, "speed").as_float();
-                self.push_action_mixed("play_animation", &[
-                    ("name", ScriptActionValue::String(name)),
-                    ("looping", ScriptActionValue::Bool(looping)),
-                ], &[("speed", speed)]);
+                self.push_action_mixed(
+                    "play_animation",
+                    &[
+                        ("name", ScriptActionValue::String(name)),
+                        ("looping", ScriptActionValue::Bool(looping)),
+                    ],
+                    &[("speed", speed)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "animation/stop" => {
@@ -992,27 +1116,37 @@ impl<'a> EvalContext<'a> {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let looping = self.resolve_input(node_id, "looping").as_bool();
-                self.push_action_mixed("crossfade_animation", &[
-                    ("name", ScriptActionValue::String(name)),
-                    ("looping", ScriptActionValue::Bool(looping)),
-                ], &[("duration", duration)]);
+                self.push_action_mixed(
+                    "crossfade_animation",
+                    &[
+                        ("name", ScriptActionValue::String(name)),
+                        ("looping", ScriptActionValue::Bool(looping)),
+                    ],
+                    &[("duration", duration)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "animation/set_param" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.push_action_mixed("set_animation_param", &[
-                    ("name", ScriptActionValue::String(name)),
-                ], &[("value", value)]);
+                self.push_action_mixed(
+                    "set_animation_param",
+                    &[("name", ScriptActionValue::String(name))],
+                    &[("value", value)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "animation/set_bool_param" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let value = self.resolve_input(node_id, "value").as_bool();
-                self.push_action_mixed("set_animation_bool_param", &[
-                    ("name", ScriptActionValue::String(name)),
-                    ("value", ScriptActionValue::Bool(value)),
-                ], &[]);
+                self.push_action_mixed(
+                    "set_animation_bool_param",
+                    &[
+                        ("name", ScriptActionValue::String(name)),
+                        ("value", ScriptActionValue::Bool(value)),
+                    ],
+                    &[],
+                );
                 self.follow_exec(node_id, "then");
             }
             "animation/trigger" => {
@@ -1023,18 +1157,27 @@ impl<'a> EvalContext<'a> {
             "animation/set_layer_weight" => {
                 let layer_name = self.resolve_input(node_id, "layer").as_string();
                 let weight = self.resolve_input(node_id, "weight").as_float();
-                self.push_action_mixed("set_animation_layer_weight", &[
-                    ("layer_name", ScriptActionValue::String(layer_name)),
-                ], &[("weight", weight)]);
+                self.push_action_mixed(
+                    "set_animation_layer_weight",
+                    &[("layer_name", ScriptActionValue::String(layer_name))],
+                    &[("weight", weight)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "animation/tween_position" => {
                 let target = self.resolve_input(node_id, "target").as_vec3();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let easing = self.resolve_input(node_id, "easing").as_string();
-                self.push_action_mixed("tween_position", &[
-                    ("easing", ScriptActionValue::String(easing)),
-                ], &[("tx", target[0]), ("ty", target[1]), ("tz", target[2]), ("duration", duration)]);
+                self.push_action_mixed(
+                    "tween_position",
+                    &[("easing", ScriptActionValue::String(easing))],
+                    &[
+                        ("tx", target[0]),
+                        ("ty", target[1]),
+                        ("tz", target[2]),
+                        ("duration", duration),
+                    ],
+                );
                 self.follow_exec(node_id, "then");
             }
 
@@ -1050,12 +1193,23 @@ impl<'a> EvalContext<'a> {
                 let end = self.resolve_input(node_id, "end").as_vec3();
                 let color = self.resolve_input(node_id, "color").as_color();
                 let duration = self.resolve_input(node_id, "duration").as_float();
-                self.push_action_mixed("draw_line", &[], &[
-                    ("sx", start[0]), ("sy", start[1]), ("sz", start[2]),
-                    ("ex", end[0]), ("ey", end[1]), ("ez", end[2]),
-                    ("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3]),
-                    ("duration", duration),
-                ]);
+                self.push_action_mixed(
+                    "draw_line",
+                    &[],
+                    &[
+                        ("sx", start[0]),
+                        ("sy", start[1]),
+                        ("sz", start[2]),
+                        ("ex", end[0]),
+                        ("ey", end[1]),
+                        ("ez", end[2]),
+                        ("r", color[0]),
+                        ("g", color[1]),
+                        ("b", color[2]),
+                        ("a", color[3]),
+                        ("duration", duration),
+                    ],
+                );
                 self.follow_exec(node_id, "then");
             }
 
@@ -1084,39 +1238,76 @@ impl<'a> EvalContext<'a> {
             "ui/set_progress" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.push_action_mixed("ui_set_progress", &[("name", renzora::ScriptActionValue::String(name))], &[("value", value)]);
+                self.push_action_mixed(
+                    "ui_set_progress",
+                    &[("name", renzora::ScriptActionValue::String(name))],
+                    &[("value", value)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_health" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let current = self.resolve_input(node_id, "current").as_float();
                 let max = self.resolve_input(node_id, "max").as_float();
-                self.push_action_mixed("ui_set_health", &[("name", renzora::ScriptActionValue::String(name))], &[("current", current), ("max", max)]);
+                self.push_action_mixed(
+                    "ui_set_health",
+                    &[("name", renzora::ScriptActionValue::String(name))],
+                    &[("current", current), ("max", max)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_slider" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let value = self.resolve_input(node_id, "value").as_float();
-                self.push_action_mixed("ui_set_slider", &[("name", renzora::ScriptActionValue::String(name))], &[("value", value)]);
+                self.push_action_mixed(
+                    "ui_set_slider",
+                    &[("name", renzora::ScriptActionValue::String(name))],
+                    &[("value", value)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_checkbox" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let checked = self.resolve_input(node_id, "checked").as_bool();
-                self.push_action_mixed("ui_set_checkbox", &[("name", renzora::ScriptActionValue::String(name)), ("checked", renzora::ScriptActionValue::Bool(checked))], &[]);
+                self.push_action_mixed(
+                    "ui_set_checkbox",
+                    &[
+                        ("name", renzora::ScriptActionValue::String(name)),
+                        ("checked", renzora::ScriptActionValue::Bool(checked)),
+                    ],
+                    &[],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_toggle" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let on = self.resolve_input(node_id, "on").as_bool();
-                self.push_action_mixed("ui_set_toggle", &[("name", renzora::ScriptActionValue::String(name)), ("on", renzora::ScriptActionValue::Bool(on))], &[]);
+                self.push_action_mixed(
+                    "ui_set_toggle",
+                    &[
+                        ("name", renzora::ScriptActionValue::String(name)),
+                        ("on", renzora::ScriptActionValue::Bool(on)),
+                    ],
+                    &[],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_visible" => {
                 let name = self.resolve_input(node_id, "element").as_string();
-                let name = if name.is_empty() { self.entity_name.clone() } else { name };
+                let name = if name.is_empty() {
+                    self.entity_name.clone()
+                } else {
+                    name
+                };
                 let visible = self.resolve_input(node_id, "visible").as_bool();
-                self.push_action_mixed("ui_set_visible", &[("name", renzora::ScriptActionValue::String(name)), ("visible", renzora::ScriptActionValue::Bool(visible))], &[]);
+                self.push_action_mixed(
+                    "ui_set_visible",
+                    &[
+                        ("name", renzora::ScriptActionValue::String(name)),
+                        ("visible", renzora::ScriptActionValue::Bool(visible)),
+                    ],
+                    &[],
+                );
                 self.follow_exec(node_id, "then");
             }
             "ui/set_theme" => {
@@ -1127,7 +1318,16 @@ impl<'a> EvalContext<'a> {
             "ui/set_color" => {
                 let name = self.resolve_input(node_id, "element").as_string();
                 let color = self.resolve_input(node_id, "color").as_color();
-                self.push_action_mixed("ui_set_color", &[("name", renzora::ScriptActionValue::String(name))], &[("r", color[0]), ("g", color[1]), ("b", color[2]), ("a", color[3])]);
+                self.push_action_mixed(
+                    "ui_set_color",
+                    &[("name", renzora::ScriptActionValue::String(name))],
+                    &[
+                        ("r", color[0]),
+                        ("g", color[1]),
+                        ("b", color[2]),
+                        ("a", color[3]),
+                    ],
+                );
                 self.follow_exec(node_id, "then");
             }
 
@@ -1151,10 +1351,14 @@ impl<'a> EvalContext<'a> {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let duration = self.resolve_input(node_id, "duration").as_float();
                 let repeat = self.resolve_input(node_id, "repeat").as_bool();
-                self.push_action_mixed("start_timer", &[
-                    ("name", ScriptActionValue::String(name)),
-                    ("repeat", ScriptActionValue::Bool(repeat)),
-                ], &[("duration", duration)]);
+                self.push_action_mixed(
+                    "start_timer",
+                    &[
+                        ("name", ScriptActionValue::String(name)),
+                        ("repeat", ScriptActionValue::Bool(repeat)),
+                    ],
+                    &[("duration", duration)],
+                );
                 self.follow_exec(node_id, "then");
             }
             "flow/delay" => {
@@ -1162,10 +1366,14 @@ impl<'a> EvalContext<'a> {
                 // For now, just start a timer with a unique name.
                 let timer_name = format!("__bp_delay_{}_{}", self.entity.index(), node_id);
                 let duration = self.resolve_input(node_id, "duration").as_float();
-                self.push_action_mixed("start_timer", &[
-                    ("name", ScriptActionValue::String(timer_name)),
-                    ("repeat", ScriptActionValue::Bool(false)),
-                ], &[("duration", duration)]);
+                self.push_action_mixed(
+                    "start_timer",
+                    &[
+                        ("name", ScriptActionValue::String(timer_name)),
+                        ("repeat", ScriptActionValue::Bool(false)),
+                    ],
+                    &[("duration", duration)],
+                );
                 // The "completed" exec will fire on the next ON_TIMER event.
                 // TODO: wire delay completion through timer system.
             }
@@ -1195,9 +1403,16 @@ impl<'a> EvalContext<'a> {
                     _ => ScriptActionValue::Float(0.0),
                 };
                 // Empty entity = self, otherwise target by name.
-                let target = if entity_val.is_empty() { None } else { Some(entity_val) };
+                let target = if entity_val.is_empty() {
+                    None
+                } else {
+                    Some(entity_val)
+                };
                 let mut args = HashMap::new();
-                args.insert("component".to_string(), ScriptActionValue::String(component));
+                args.insert(
+                    "component".to_string(),
+                    ScriptActionValue::String(component),
+                );
                 args.insert("field".to_string(), ScriptActionValue::String(field));
                 args.insert("value".to_string(), value_sav);
                 self.push_action_targeted("set_component_field", target, args);
@@ -1214,7 +1429,11 @@ impl<'a> EvalContext<'a> {
             "network/spawn" => {
                 let name = self.resolve_input(node_id, "name").as_string();
                 let pos = self.resolve_input(node_id, "position").as_vec3();
-                self.push_action_mixed("net_spawn", &[("name", renzora::ScriptActionValue::String(name))], &[("x", pos[0]), ("y", pos[1]), ("z", pos[2])]);
+                self.push_action_mixed(
+                    "net_spawn",
+                    &[("name", renzora::ScriptActionValue::String(name))],
+                    &[("x", pos[0]), ("y", pos[1]), ("z", pos[2])],
+                );
                 self.follow_exec(node_id, "then");
             }
 
@@ -1262,11 +1481,13 @@ pub fn run_blueprints(world: &mut World) {
     }
     let mut bp_entities: Vec<BpEntity> = Vec::new();
     {
-        let mut query = world.query::<(Entity, &BlueprintGraph, Option<&Transform>, Option<&Name>)>();
+        let mut query =
+            world.query::<(Entity, &BlueprintGraph, Option<&Transform>, Option<&Name>)>();
         for (entity, _graph, transform, name) in query.iter(world) {
             bp_entities.push(BpEntity {
                 entity,
-                entity_name: name.map(|n| n.as_str().to_string())
+                entity_name: name
+                    .map(|n| n.as_str().to_string())
                     .unwrap_or_else(|| format!("Entity_{}", entity.index())),
                 transform: transform.copied().unwrap_or_default(),
             });
@@ -1281,8 +1502,12 @@ pub fn run_blueprints(world: &mut World) {
 
     for bpe in &bp_entities {
         // Take BlueprintGraph and runtime state off the entity.
-        let Some(graph) = world.entity_mut(bpe.entity).take::<BlueprintGraph>() else { continue };
-        let mut runtime = world.entity_mut(bpe.entity).take::<BlueprintRuntimeState>()
+        let Some(graph) = world.entity_mut(bpe.entity).take::<BlueprintGraph>() else {
+            continue;
+        };
+        let mut runtime = world
+            .entity_mut(bpe.entity)
+            .take::<BlueprintRuntimeState>()
             .unwrap_or_default();
 
         let was_initialized = runtime.initialized;
@@ -1291,7 +1516,8 @@ pub fn run_blueprints(world: &mut World) {
         let anim_finished_clip: Option<String> = runtime.anim_finished_clip.take();
 
         // Find event nodes before creating the eval context.
-        let event_nodes: Vec<(NodeId, String)> = graph.event_nodes()
+        let event_nodes: Vec<(NodeId, String)> = graph
+            .event_nodes()
             .iter()
             .map(|n| (n.id, n.node_type.clone()))
             .collect();
@@ -1332,7 +1558,10 @@ pub fn run_blueprints(world: &mut World) {
                     }
                     "animation/on_finished" => {
                         if let Some(ref clip_name) = anim_finished_clip {
-                            ctx.cache.insert((*node_id, "name".to_string()), PinValue::String(clip_name.clone()));
+                            ctx.cache.insert(
+                                (*node_id, "name".to_string()),
+                                PinValue::String(clip_name.clone()),
+                            );
                             ctx.follow_exec(*node_id, "exec");
                         }
                     }
@@ -1356,9 +1585,21 @@ pub fn run_blueprints(world: &mut World) {
         runtime.initialized = true;
 
         // Push transform writes into the shared TransformWriteQueue.
-        renzora::clog_info!("Blueprint", "entity='{}' actions={} tw={} cc={}", bpe.entity_name, actions.len(), transform_writes.len(), character_commands.len());
+        renzora::clog_info!(
+            "Blueprint",
+            "entity='{}' actions={} tw={} cc={}",
+            bpe.entity_name,
+            actions.len(),
+            transform_writes.len(),
+            character_commands.len()
+        );
         for tw in &transform_writes {
-            renzora::clog_info!("Blueprint", "TW entity={:?} rot_delta={:?}", tw.entity, tw.rotation_delta);
+            renzora::clog_info!(
+                "Blueprint",
+                "TW entity={:?} rot_delta={:?}",
+                tw.entity,
+                tw.rotation_delta
+            );
         }
         {
             let mut tw_queue = world.resource_mut::<TransformWriteQueue>();

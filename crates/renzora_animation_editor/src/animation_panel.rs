@@ -51,21 +51,20 @@ impl EditorPanel for AnimationPanel {
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = world.get_resource::<ThemeManager>();
-        let (text_color, muted_color, accent_color) =
-            if let Some(tm) = theme {
-                let t = &tm.active_theme;
-                (
-                    t.text.primary.to_color32(),
-                    t.text.muted.to_color32(),
-                    t.semantic.accent.to_color32(),
-                )
-            } else {
-                (
-                    egui::Color32::WHITE,
-                    egui::Color32::GRAY,
-                    egui::Color32::from_rgb(100, 149, 237),
-                )
-            };
+        let (text_color, muted_color, accent_color) = if let Some(tm) = theme {
+            let t = &tm.active_theme;
+            (
+                t.text.primary.to_color32(),
+                t.text.muted.to_color32(),
+                t.semantic.accent.to_color32(),
+            )
+        } else {
+            (
+                egui::Color32::WHITE,
+                egui::Color32::GRAY,
+                egui::Color32::from_rgb(100, 149, 237),
+            )
+        };
 
         let theme_ref = theme.map(|tm| &tm.active_theme);
 
@@ -77,13 +76,22 @@ impl EditorPanel for AnimationPanel {
         let Some(entity) = selected_entity else {
             ui.vertical_centered(|ui| {
                 ui.add_space(ui.available_height() * 0.3);
-                ui.label(egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
-                    .size(24.0).color(muted_color));
+                ui.label(
+                    egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
+                        .size(24.0)
+                        .color(muted_color),
+                );
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("Select an entity with")
-                    .size(12.0).color(muted_color));
-                ui.label(egui::RichText::new("AnimatorComponent")
-                    .size(12.0).color(muted_color));
+                ui.label(
+                    egui::RichText::new("Select an entity with")
+                        .size(12.0)
+                        .color(muted_color),
+                );
+                ui.label(
+                    egui::RichText::new("AnimatorComponent")
+                        .size(12.0)
+                        .color(muted_color),
+                );
             });
             return;
         };
@@ -91,7 +99,11 @@ impl EditorPanel for AnimationPanel {
         let Some(animator) = world.get::<AnimatorComponent>(entity) else {
             ui.vertical_centered(|ui| {
                 ui.add_space(ui.available_height() * 0.3);
-                ui.label(egui::RichText::new("No AnimatorComponent").size(12.0).color(muted_color));
+                ui.label(
+                    egui::RichText::new("No AnimatorComponent")
+                        .size(12.0)
+                        .color(muted_color),
+                );
             });
             return;
         };
@@ -101,7 +113,11 @@ impl EditorPanel for AnimationPanel {
         if animator.clips.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(ui.available_height() * 0.3);
-                ui.label(egui::RichText::new("No animation clips").size(12.0).color(muted_color));
+                ui.label(
+                    egui::RichText::new("No animation clips")
+                        .size(12.0)
+                        .color(muted_color),
+                );
             });
             return;
         }

@@ -1,13 +1,17 @@
-pub mod graph;
-pub mod nodes;
-pub mod interpreter;
 pub mod compiler;
+pub mod graph;
+pub mod interpreter;
+pub mod nodes;
 
 use bevy::prelude::*;
 
-pub use graph::{BlueprintGraph, BlueprintNode, BlueprintConnection, PinType, PinDir, PinValue, PinTemplate, BlueprintNodeDef};
-pub use nodes::{ALL_NODES, node_def, categories, nodes_in_category};
+pub use graph::{
+    BlueprintConnection, BlueprintGraph, BlueprintNode, BlueprintNodeDef, PinDir, PinTemplate,
+    PinType, PinValue,
+};
+pub use nodes::{categories, node_def, nodes_in_category, ALL_NODES};
 
+#[derive(Default)]
 pub struct BlueprintPlugin;
 
 impl Plugin for BlueprintPlugin {
@@ -25,8 +29,7 @@ impl Plugin for BlueprintPlugin {
                 Update,
                 (
                     reset_blueprint_runtime_on_play_start,
-                    interpreter::run_blueprints
-                        .run_if(blueprints_should_run),
+                    interpreter::run_blueprints.run_if(blueprints_should_run),
                 )
                     .chain(),
             );
@@ -39,7 +42,10 @@ fn reset_blueprint_runtime_on_play_start(
     mut states: Query<&mut interpreter::BlueprintRuntimeState>,
     mut was_running: Local<bool>,
 ) {
-    let running = play_mode.as_ref().map(|pm| pm.is_scripts_running()).unwrap_or(false);
+    let running = play_mode
+        .as_ref()
+        .map(|pm| pm.is_scripts_running())
+        .unwrap_or(false);
     if running && !*was_running {
         for mut state in &mut states {
             *state = interpreter::BlueprintRuntimeState::default();
@@ -49,11 +55,11 @@ fn reset_blueprint_runtime_on_play_start(
 }
 
 /// Run condition: blueprints execute when scripts would.
-fn blueprints_should_run(
-    play_mode: Option<Res<renzora::PlayModeState>>,
-) -> bool {
+fn blueprints_should_run(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
     match play_mode {
         Some(pm) => pm.is_scripts_running(),
         None => true,
     }
 }
+
+renzora::add!(BlueprintPlugin);

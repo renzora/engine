@@ -16,7 +16,10 @@ pub struct WaveformConfig {
 
 impl Default for WaveformConfig {
     fn default() -> Self {
-        Self { height: 60.0, show_center_line: true }
+        Self {
+            height: 60.0,
+            show_center_line: true,
+        }
     }
 }
 

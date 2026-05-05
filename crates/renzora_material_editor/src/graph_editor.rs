@@ -3,13 +3,13 @@
 
 use std::collections::HashMap;
 
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
+use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
 use renzora_shader::material::graph::*;
 use renzora_shader::material::nodes::{self, MaterialNodeDef};
 use renzora_theme::Theme;
 use renzora_ui::widgets::node_graph::{
-    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
-    PinDef, PinDirection, PinShape,
+    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState, PinDef, PinDirection,
+    PinShape,
 };
 
 // ── Coordinate helpers ──────────────────────────────────────────────────────
@@ -60,7 +60,10 @@ pub fn category_icon(category: &str) -> &'static str {
 /// Map from texture asset path → egui TextureId for node thumbnails.
 pub type TextureThumbnailMap = HashMap<String, egui::TextureId>;
 
-pub fn sync_graph_to_widget(graph: &MaterialGraph, thumbnails: &TextureThumbnailMap) -> NodeGraphState {
+pub fn sync_graph_to_widget(
+    graph: &MaterialGraph,
+    thumbnails: &TextureThumbnailMap,
+) -> NodeGraphState {
     let nodes = graph
         .nodes
         .iter()
@@ -200,7 +203,9 @@ pub fn render_graph_editor(
             if let Some(cr) = state.canvas_rect {
                 let graph_w = max_x - min_x + 100.0;
                 let graph_h = max_y - min_y + 100.0;
-                let fit_zoom = (cr.width() / graph_w).min(cr.height() / graph_h).clamp(0.25, 1.5);
+                let fit_zoom = (cr.width() / graph_w)
+                    .min(cr.height() / graph_h)
+                    .clamp(0.25, 1.5);
                 state.widget_state.zoom = fit_zoom;
             }
         }
@@ -351,7 +356,8 @@ fn render_context_menu(
 
                     if row_resp.hovered() || is_open {
                         painter.rect_filled(
-                            row_rect, 0.0,
+                            row_rect,
+                            0.0,
                             Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                         );
                     }
@@ -370,16 +376,22 @@ fn render_context_menu(
                     };
 
                     painter.text(
-                        Pos2::new(base_x, cy), Align2::LEFT_CENTER,
-                        icon, egui::FontId::proportional(14.0), accent,
+                        Pos2::new(base_x, cy),
+                        Align2::LEFT_CENTER,
+                        icon,
+                        egui::FontId::proportional(14.0),
+                        accent,
                     );
                     painter.text(
-                        Pos2::new(base_x + 20.0, cy), Align2::LEFT_CENTER,
-                        category, egui::FontId::proportional(13.0),
+                        Pos2::new(base_x + 20.0, cy),
+                        Align2::LEFT_CENTER,
+                        category,
+                        egui::FontId::proportional(13.0),
                         theme.text.primary.to_color32(),
                     );
                     painter.text(
-                        Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
+                        Pos2::new(row_rect.max.x - 14.0, cy),
+                        Align2::CENTER_CENTER,
                         egui_phosphor::regular::CARET_RIGHT,
                         egui::FontId::proportional(12.0),
                         Color32::from_rgb(120, 120, 130),
@@ -398,7 +410,8 @@ fn render_context_menu(
     let mut submenu_rect_this_frame: Option<egui::Rect> = None;
 
     if let Some(cat_idx) = state.open_submenu {
-        let filtered_categories: Vec<&&str> = categories.iter().filter(|c| **c != "Output").collect();
+        let filtered_categories: Vec<&&str> =
+            categories.iter().filter(|c| **c != "Output").collect();
         if let Some(&&category) = filtered_categories.get(cat_idx) {
             let node_defs = nodes::nodes_in_category(category);
 
@@ -431,7 +444,8 @@ fn render_context_menu(
 
                             if row_resp.hovered() {
                                 painter.rect_filled(
-                                    row_rect, 0.0,
+                                    row_rect,
+                                    0.0,
                                     Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                                 );
                                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -442,12 +456,15 @@ fn render_context_menu(
                             let accent = header_color(def);
 
                             painter.text(
-                                Pos2::new(item_x, cy), Align2::LEFT_CENTER,
+                                Pos2::new(item_x, cy),
+                                Align2::LEFT_CENTER,
                                 category_icon(category),
-                                egui::FontId::proportional(13.0), accent,
+                                egui::FontId::proportional(13.0),
+                                accent,
                             );
                             painter.text(
-                                Pos2::new(item_x + 20.0, cy), Align2::LEFT_CENTER,
+                                Pos2::new(item_x + 20.0, cy),
+                                Align2::LEFT_CENTER,
                                 def.display_name,
                                 egui::FontId::proportional(12.0),
                                 theme.text.primary.to_color32(),

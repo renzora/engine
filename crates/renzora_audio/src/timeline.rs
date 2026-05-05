@@ -73,7 +73,9 @@ pub enum TransportState {
 }
 
 impl Default for TransportState {
-    fn default() -> Self { TransportState::Stopped }
+    fn default() -> Self {
+        TransportState::Stopped
+    }
 }
 
 /// Timeline-level transport / clock.
@@ -105,7 +107,9 @@ impl Default for Transport {
 }
 
 impl Transport {
-    pub fn is_playing(&self) -> bool { self.state == TransportState::Playing }
+    pub fn is_playing(&self) -> bool {
+        self.state == TransportState::Playing
+    }
 
     /// Convert a beat number (4 = bar 2 at 4/4) to seconds.
     pub fn beats_to_seconds(&self, beats: f64) -> f64 {
@@ -173,12 +177,12 @@ impl TimelineState {
     pub fn add_track(&mut self, name: impl Into<String>, bus_name: impl Into<String>) -> TrackId {
         let id = TrackId(self.fresh_id());
         let palette: [[u8; 4]; 6] = [
-            [228, 132, 52, 255],   // amber
-            [135, 90, 228, 255],   // violet
-            [48, 196, 140, 255],   // teal
-            [208, 75, 75, 255],    // crimson
-            [75, 162, 220, 255],   // sky
-            [205, 192, 52, 255],   // ochre
+            [228, 132, 52, 255], // amber
+            [135, 90, 228, 255], // violet
+            [48, 196, 140, 255], // teal
+            [208, 75, 75, 255],  // crimson
+            [75, 162, 220, 255], // sky
+            [205, 192, 52, 255], // ochre
         ];
         let color = palette[self.tracks.len() % palette.len()];
         self.tracks.push(TimelineTrack {
@@ -218,13 +222,7 @@ impl TimelineState {
     /// Insert a clip on `track` at `start` seconds, sourced from `path`.
     /// `length` defaults to a placeholder; the scheduler trims to the file's
     /// real duration once it loads.
-    pub fn add_clip(
-        &mut self,
-        track: TrackId,
-        path: PathBuf,
-        start: f64,
-        length: f64,
-    ) -> ClipId {
+    pub fn add_clip(&mut self, track: TrackId, path: PathBuf, start: f64, length: f64) -> ClipId {
         let id = ClipId(self.fresh_id());
         let name = path
             .file_stem()
@@ -262,7 +260,9 @@ impl TimelineState {
             return false;
         }
         let any_solo = self.any_track_soloed();
-        let Some(track) = self.track(clip.track) else { return false };
+        let Some(track) = self.track(clip.track) else {
+            return false;
+        };
         if track.muted {
             return false;
         }
@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn beats_to_seconds_at_120bpm() {
         let t = Transport::default(); // bpm=120
-        // 1 beat at 120 BPM = 0.5s
+                                      // 1 beat at 120 BPM = 0.5s
         assert!((t.beats_to_seconds(1.0) - 0.5).abs() < 1e-9);
         // 4 beats (one bar) = 2s
         assert!((t.beats_to_seconds(4.0) - 2.0).abs() < 1e-9);
@@ -291,18 +291,28 @@ mod tests {
 
     #[test]
     fn seconds_to_beats_inverts_beats_to_seconds() {
-        let t = Transport { bpm: 90.0, ..Transport::default() };
+        let t = Transport {
+            bpm: 90.0,
+            ..Transport::default()
+        };
         for beats in [0.0, 1.0, 2.5, 4.0, 7.25] {
             let s = t.beats_to_seconds(beats);
             let back = t.seconds_to_beats(s);
-            assert!((back - beats).abs() < 1e-9, "round trip failed for {} beats", beats);
+            assert!(
+                (back - beats).abs() < 1e-9,
+                "round trip failed for {} beats",
+                beats
+            );
         }
     }
 
     #[test]
     fn beats_to_seconds_clamps_zero_bpm() {
         // Guard against division by zero — bpm is clamped at 1 internally.
-        let t = Transport { bpm: 0.0, ..Transport::default() };
+        let t = Transport {
+            bpm: 0.0,
+            ..Transport::default()
+        };
         // bpm=1 → 1 beat = 60s
         assert!((t.beats_to_seconds(1.0) - 60.0).abs() < 1e-9);
     }
@@ -320,7 +330,10 @@ mod tests {
 
     #[test]
     fn snap_seconds_passthrough_when_disabled() {
-        let t = Transport { snap_div: 0, ..Transport::default() };
+        let t = Transport {
+            snap_div: 0,
+            ..Transport::default()
+        };
         assert_eq!(t.snap_seconds(0.337), 0.337);
     }
 

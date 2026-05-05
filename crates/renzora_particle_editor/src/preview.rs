@@ -2,19 +2,19 @@
 
 //! Particle preview system — isolated viewport for particle effect preview.
 
-use bevy::prelude::*;
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
-use renzora::core::{IsolatedCamera, EditorLocked, HideInHierarchy};
+use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor::DockingState;
 
-use renzora_hanabi::{ParticleEditorState, HanabiEffectDefinition, HanabiEmitShape};
 use renzora_hanabi::builder::build_complete_effect;
 use renzora_hanabi::data::EditorMode;
+use renzora_hanabi::{HanabiEffectDefinition, HanabiEmitShape, ParticleEditorState};
 
 pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 
@@ -159,12 +159,10 @@ fn spawn_preview_effect(
                 return;
             }
         }
-        EditorMode::Simple => {
-            match editor_state.current_effect {
-                Some(ref d) => d.clone(),
-                None => return,
-            }
-        }
+        EditorMode::Simple => match editor_state.current_effect {
+            Some(ref d) => d.clone(),
+            None => return,
+        },
     };
 
     let effect_asset = build_complete_effect(&def);
@@ -202,12 +200,10 @@ fn update_preview_effect(
                 return;
             }
         }
-        EditorMode::Simple => {
-            match editor_state.current_effect {
-                Some(ref d) => d.clone(),
-                None => return,
-            }
-        }
+        EditorMode::Simple => match editor_state.current_effect {
+            Some(ref d) => d.clone(),
+            None => return,
+        },
     };
 
     let current_path = editor_state.current_file_path.clone();
@@ -244,8 +240,8 @@ fn update_preview_effect(
 }
 
 fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
     def.name.hash(&mut hasher);
@@ -263,30 +259,47 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
         HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } => {
             ((radius * 1000.0) as u32).hash(&mut hasher);
         }
-        HanabiEmitShape::Cone { base_radius, top_radius, height, .. } => {
+        HanabiEmitShape::Cone {
+            base_radius,
+            top_radius,
+            height,
+            ..
+        } => {
             ((base_radius * 1000.0) as u32).hash(&mut hasher);
             ((top_radius * 1000.0) as u32).hash(&mut hasher);
             ((height * 1000.0) as u32).hash(&mut hasher);
         }
         HanabiEmitShape::Rect { half_extents, .. } => {
-            for v in half_extents { ((v * 1000.0) as u32).hash(&mut hasher); }
+            for v in half_extents {
+                ((v * 1000.0) as u32).hash(&mut hasher);
+            }
         }
         HanabiEmitShape::Box { half_extents } => {
-            for v in half_extents { ((v * 1000.0) as u32).hash(&mut hasher); }
+            for v in half_extents {
+                ((v * 1000.0) as u32).hash(&mut hasher);
+            }
         }
     }
     std::mem::discriminant(&def.velocity_mode).hash(&mut hasher);
     ((def.velocity_magnitude * 1000.0) as u32).hash(&mut hasher);
     ((def.velocity_spread * 1000.0) as u32).hash(&mut hasher);
-    for v in &def.velocity_direction { ((v * 1000.0) as i32).hash(&mut hasher); }
+    for v in &def.velocity_direction {
+        ((v * 1000.0) as i32).hash(&mut hasher);
+    }
     ((def.velocity_speed_min * 1000.0) as u32).hash(&mut hasher);
     ((def.velocity_speed_max * 1000.0) as u32).hash(&mut hasher);
-    for v in &def.velocity_axis { ((v * 1000.0) as i32).hash(&mut hasher); }
-    for v in &def.acceleration { ((v * 1000.0) as i32).hash(&mut hasher); }
+    for v in &def.velocity_axis {
+        ((v * 1000.0) as i32).hash(&mut hasher);
+    }
+    for v in &def.acceleration {
+        ((v * 1000.0) as i32).hash(&mut hasher);
+    }
     ((def.linear_drag * 1000.0) as u32).hash(&mut hasher);
     ((def.radial_acceleration * 1000.0) as i32).hash(&mut hasher);
     ((def.tangent_acceleration * 1000.0) as i32).hash(&mut hasher);
-    for v in &def.tangent_accel_axis { ((v * 1000.0) as i32).hash(&mut hasher); }
+    for v in &def.tangent_accel_axis {
+        ((v * 1000.0) as i32).hash(&mut hasher);
+    }
     def.conform_to_sphere.is_some().hash(&mut hasher);
     if let Some(ref c) = def.conform_to_sphere {
         ((c.radius * 1000.0) as u32).hash(&mut hasher);
@@ -306,10 +319,14 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
     def.color_gradient.len().hash(&mut hasher);
     for stop in &def.color_gradient {
         ((stop.position * 1000.0) as u32).hash(&mut hasher);
-        for v in &stop.color { ((v * 1000.0) as u32).hash(&mut hasher); }
+        for v in &stop.color {
+            ((v * 1000.0) as u32).hash(&mut hasher);
+        }
     }
     def.use_flat_color.hash(&mut hasher);
-    for v in &def.flat_color { ((v * 1000.0) as u32).hash(&mut hasher); }
+    for v in &def.flat_color {
+        ((v * 1000.0) as u32).hash(&mut hasher);
+    }
     def.use_hdr_color.hash(&mut hasher);
     ((def.hdr_intensity * 100.0) as u32).hash(&mut hasher);
     std::mem::discriminant(&def.color_blend_mode).hash(&mut hasher);
@@ -329,16 +346,30 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
     def.kill_zones.len().hash(&mut hasher);
     for zone in &def.kill_zones {
         match zone {
-            renzora_hanabi::KillZone::Sphere { center, radius, kill_inside } => {
+            renzora_hanabi::KillZone::Sphere {
+                center,
+                radius,
+                kill_inside,
+            } => {
                 0u8.hash(&mut hasher);
-                for v in center { ((v * 1000.0) as i32).hash(&mut hasher); }
+                for v in center {
+                    ((v * 1000.0) as i32).hash(&mut hasher);
+                }
                 ((radius * 1000.0) as u32).hash(&mut hasher);
                 kill_inside.hash(&mut hasher);
             }
-            renzora_hanabi::KillZone::Aabb { center, half_size, kill_inside } => {
+            renzora_hanabi::KillZone::Aabb {
+                center,
+                half_size,
+                kill_inside,
+            } => {
                 1u8.hash(&mut hasher);
-                for v in center { ((v * 1000.0) as i32).hash(&mut hasher); }
-                for v in half_size { ((v * 1000.0) as u32).hash(&mut hasher); }
+                for v in center {
+                    ((v * 1000.0) as i32).hash(&mut hasher);
+                }
+                for v in half_size {
+                    ((v * 1000.0) as u32).hash(&mut hasher);
+                }
                 kill_inside.hash(&mut hasher);
             }
         }

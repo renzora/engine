@@ -7,10 +7,10 @@
 //! comes from the vertex COLOR attribute. Being real 3D geometry gives
 //! pixel-perfect depth testing against scene meshes for free.
 
-use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
-use bevy::mesh::{PrimitiveTopology, VertexAttributeValues, MeshVertexBufferLayoutRef};
+use bevy::mesh::{MeshVertexBufferLayoutRef, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey, MaterialPlugin};
+use bevy::prelude::*;
 use bevy::render::render_resource::{
     AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
@@ -169,11 +169,15 @@ fn build_grid_mesh(config: &GridConfig) -> Mesh {
             let color = if is_major { major } else { minor };
             let pos = i as f32 * spacing;
             // Lines parallel to Z, stepping along X.
-            positions.push([pos, 0.0, -extent]); colors.push(color);
-            positions.push([pos, 0.0,  extent]); colors.push(color);
+            positions.push([pos, 0.0, -extent]);
+            colors.push(color);
+            positions.push([pos, 0.0, extent]);
+            colors.push(color);
             // Lines parallel to X, stepping along Z.
-            positions.push([-extent, 0.0, pos]); colors.push(color);
-            positions.push([ extent, 0.0, pos]); colors.push(color);
+            positions.push([-extent, 0.0, pos]);
+            colors.push(color);
+            positions.push([extent, 0.0, pos]);
+            colors.push(color);
         }
     }
 
@@ -181,23 +185,35 @@ fn build_grid_mesh(config: &GridConfig) -> Mesh {
         // Lift X/Z axes a hair so they sort cleanly above the grid plane,
         // matching the previous per-entity offset.
         let lift = 0.005;
-        let red   = [0.92, 0.32, 0.36, 1.0];
-        let blue  = [0.30, 0.58, 0.95, 1.0];
+        let red = [0.92, 0.32, 0.36, 1.0];
+        let blue = [0.30, 0.58, 0.95, 1.0];
         let green = [0.40, 0.83, 0.44, 1.0];
 
-        positions.push([-500.0, lift, 0.0]); colors.push(red);
-        positions.push([ 500.0, lift, 0.0]); colors.push(red);
+        positions.push([-500.0, lift, 0.0]);
+        colors.push(red);
+        positions.push([500.0, lift, 0.0]);
+        colors.push(red);
 
-        positions.push([0.0, lift, -500.0]); colors.push(blue);
-        positions.push([0.0, lift,  500.0]); colors.push(blue);
+        positions.push([0.0, lift, -500.0]);
+        colors.push(blue);
+        positions.push([0.0, lift, 500.0]);
+        colors.push(blue);
 
-        positions.push([0.0, -500.0, 0.0]); colors.push(green);
-        positions.push([0.0,  500.0, 0.0]); colors.push(green);
+        positions.push([0.0, -500.0, 0.0]);
+        colors.push(green);
+        positions.push([0.0, 500.0, 0.0]);
+        colors.push(green);
     }
 
     let mut mesh = Mesh::new(PrimitiveTopology::LineList, default());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, VertexAttributeValues::Float32x3(positions));
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,    VertexAttributeValues::Float32x4(colors));
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        VertexAttributeValues::Float32x3(positions),
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_COLOR,
+        VertexAttributeValues::Float32x4(colors),
+    );
     mesh
 }
 
@@ -208,10 +224,7 @@ fn linear_array(c: Color) -> [f32; 4] {
 
 // ── Systems ─────────────────────────────────────────────────────────────────
 
-fn sync_grid_from_viewport(
-    vp: Res<ViewportSettings>,
-    mut config: ResMut<GridConfig>,
-) {
+fn sync_grid_from_viewport(vp: Res<ViewportSettings>, mut config: ResMut<GridConfig>) {
     if !vp.is_changed() {
         return;
     }
@@ -231,7 +244,9 @@ fn rebuild_grid_mesh(
     if !config.is_changed() {
         return;
     }
-    let Ok(mesh_handle) = grid.single() else { return };
+    let Ok(mesh_handle) = grid.single() else {
+        return;
+    };
     let new_mesh = build_grid_mesh(&config);
     if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
         *mesh = new_mesh;
@@ -275,3 +290,5 @@ fn update_fade_distance(
         }
     }
 }
+
+renzora::add!(GridPlugin, Editor);

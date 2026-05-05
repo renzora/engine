@@ -14,19 +14,19 @@
 //! Activating any draw tool sets `ActiveTool::None` so built-in picking /
 //! gizmo / box-select disengage.
 
-use bevy::prelude::*;
-use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
+use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui::{self, Color32 as EColor, CursorIcon as ECursor};
-use renzora::core::EditorCamera;
-use renzora::core::viewport_types::ViewportState;
-use renzora_editor::{
-    ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry,
-    ToolEntry, ToolSection, ViewportOverlayRegistry,
-};
+use egui_phosphor::regular::{CUBE, LINK, POLYGON};
 use renzora::core::keybindings::KeyBinding;
-use egui_phosphor::regular::{CUBE, POLYGON, LINK};
+use renzora::core::viewport_types::ViewportState;
+use renzora::core::EditorCamera;
+use renzora_editor::{
+    ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry, ToolEntry,
+    ToolSection, ViewportOverlayRegistry,
+};
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,10 @@ pub struct MeshDrawRecipe {
 impl Default for MeshDrawRecipe {
     fn default() -> Self {
         Self {
-            footprint: Footprint::Box { min: Vec2::ZERO, max: Vec2::ONE },
+            footprint: Footprint::Box {
+                min: Vec2::ZERO,
+                max: Vec2::ONE,
+            },
             height: 1.0,
         }
     }
@@ -181,7 +184,6 @@ impl Plugin for MeshDrawPlugin {
     }
 }
 
-
 // ── Toolbar activation ─────────────────────────────────────────────────────
 
 fn is_active_with(world: &World, mode: ToolMode) -> bool {
@@ -224,7 +226,9 @@ fn toggle_tool(world: &mut World, target: ToolMode) {
 }
 
 fn selected_mesh_count(world: &World) -> usize {
-    let Some(sel) = world.get_resource::<EditorSelection>() else { return 0 };
+    let Some(sel) = world.get_resource::<EditorSelection>() else {
+        return 0;
+    };
     sel.get_all()
         .into_iter()
         .filter(|e| world.get::<Mesh3d>(*e).is_some())
@@ -246,11 +250,18 @@ fn update_cursor_state(
         return;
     }
     let clear = |s: &mut MeshDrawState| {
-        s.ray_origin = None; s.ray_dir = None; s.cursor_ground = None;
+        s.ray_origin = None;
+        s.ray_dir = None;
+        s.cursor_ground = None;
     };
     let Some(viewport) = viewport else { return };
-    let Ok(window) = window_q.single() else { return };
-    let Some(cursor) = window.cursor_position() else { clear(&mut state); return };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        clear(&mut state);
+        return;
+    };
 
     let vp_min = viewport.screen_position;
     let vp_max = vp_min + viewport.screen_size;
@@ -258,12 +269,18 @@ fn update_cursor_state(
         clear(&mut state);
         return;
     }
-    let Some((camera, cam_xform)) = camera_q.iter().next() else { clear(&mut state); return };
+    let Some((camera, cam_xform)) = camera_q.iter().next() else {
+        clear(&mut state);
+        return;
+    };
     let viewport_pos = Vec2::new(
         (cursor.x - vp_min.x) / viewport.screen_size.x * viewport.current_size.x as f32,
         (cursor.y - vp_min.y) / viewport.screen_size.y * viewport.current_size.y as f32,
     );
-    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else { clear(&mut state); return };
+    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else {
+        clear(&mut state);
+        return;
+    };
 
     let dir = ray.direction.as_vec3();
     state.ray_origin = Some(ray.origin);
@@ -272,9 +289,13 @@ fn update_cursor_state(
 }
 
 fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Vec3> {
-    if dir.y.abs() <= 1e-6 { return None; }
+    if dir.y.abs() <= 1e-6 {
+        return None;
+    }
     let t = -origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 { return None; }
+    if t <= 0.0 || t > 10_000.0 {
+        return None;
+    }
     let hit = origin + dir * t;
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
@@ -290,13 +311,19 @@ fn vertical_plane_hit(
     let dir = state.ray_dir?;
     let fwd = cam_xform.forward().as_vec3();
     let mut n = Vec3::new(fwd.x, 0.0, fwd.z);
-    if n.length_squared() < 1e-6 { n = Vec3::Z; }
+    if n.length_squared() < 1e-6 {
+        n = Vec3::Z;
+    }
     let n = n.normalize();
     let p0 = Vec3::new(center_xz.x, 0.0, center_xz.y);
     let denom = dir.dot(n);
-    if denom.abs() < 1e-6 { return None; }
+    if denom.abs() < 1e-6 {
+        return None;
+    }
     let t = (p0 - origin).dot(n) / denom;
-    if t <= 0.0 { return None; }
+    if t <= 0.0 {
+        return None;
+    }
     Some(origin + dir * t)
 }
 
@@ -308,7 +335,9 @@ fn handle_mouse_input(
     camera_q: Query<&GlobalTransform, With<EditorCamera>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
-    if !state.active { return; }
+    if !state.active {
+        return;
+    }
 
     if buttons.just_pressed(MouseButton::Right) {
         state.stage = DrawStage::Idle;
@@ -317,7 +346,9 @@ fn handle_mouse_input(
 
     match state.stage.clone() {
         DrawStage::Idle => {
-            if !buttons.just_pressed(MouseButton::Left) { return; }
+            if !buttons.just_pressed(MouseButton::Left) {
+                return;
+            }
             let Some(p) = state.cursor_ground else { return };
             match state.tool_mode {
                 ToolMode::Box => state.stage = DrawStage::DrawingFootprint { anchor: p },
@@ -326,7 +357,9 @@ fn handle_mouse_input(
         }
 
         DrawStage::DrawingFootprint { anchor } => {
-            if !buttons.just_released(MouseButton::Left) { return; }
+            if !buttons.just_released(MouseButton::Left) {
+                return;
+            }
             let Some(cur) = state.cursor_ground else {
                 state.stage = DrawStage::Idle;
                 return;
@@ -354,8 +387,7 @@ fn handle_mouse_input(
                 return;
             };
             // Close if clicking near first point
-            let close_now = points.len() >= 3
-                && cur.distance(points[0]) < POLY_CLOSE_RADIUS;
+            let close_now = points.len() >= 3 && cur.distance(points[0]) < POLY_CLOSE_RADIUS;
             if close_now {
                 let pts2: Vec<Vec2> = points.iter().map(|p| Vec2::new(p.x, p.z)).collect();
                 state.stage = DrawStage::Extruding {
@@ -385,14 +417,20 @@ fn handle_mouse_input(
                 .unwrap_or(0.01);
 
             if buttons.just_pressed(MouseButton::Left) {
-                let recipe = MeshDrawRecipe { footprint, height: new_height };
+                let recipe = MeshDrawRecipe {
+                    footprint,
+                    height: new_height,
+                };
                 let current_mode = state.tool_mode;
                 if let Some(cmds) = cmds {
                     cmds.push(move |world: &mut World| {
                         renzora_undo::execute(
                             world,
                             renzora_undo::UndoContext::Scene,
-                            Box::new(SpawnDrawnMeshCmd { recipe, entity: None }),
+                            Box::new(SpawnDrawnMeshCmd {
+                                recipe,
+                                entity: None,
+                            }),
                         );
                         // Auto-deactivate after committing so the next click
                         // doesn't immediately start another shape.
@@ -402,7 +440,10 @@ fn handle_mouse_input(
                 state.stage = DrawStage::Idle;
                 state.active = false;
             } else {
-                state.stage = DrawStage::Extruding { footprint, height: new_height };
+                state.stage = DrawStage::Extruding {
+                    footprint,
+                    height: new_height,
+                };
             }
         }
     }
@@ -412,13 +453,17 @@ fn handle_keys(world: &mut World) {
     let keys = world.resource::<ButtonInput<KeyCode>>();
     let escape = keys.just_pressed(KeyCode::Escape);
     let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
-    if !escape && !enter { return; }
+    if !escape && !enter {
+        return;
+    }
 
     let (active, stage_clone) = {
         let s = world.resource::<MeshDrawState>();
         (s.active, s.stage.clone())
     };
-    if !active { return; }
+    if !active {
+        return;
+    }
 
     if escape {
         match stage_clone {
@@ -451,14 +496,18 @@ fn handle_keys(world: &mut World) {
 // ── Preview (Bevy gizmos — pure outline, no occluder) ──────────────────────
 
 fn draw_preview_gizmos(mut gizmos: Gizmos, state: Res<MeshDrawState>) {
-    if !state.active { return; }
+    if !state.active {
+        return;
+    }
     let color = Color::srgb(0.35, 0.75, 1.0);
     let ghost = Color::srgba(0.35, 0.75, 1.0, 0.6);
 
     match &state.stage {
         DrawStage::Idle => {}
         DrawStage::DrawingFootprint { anchor } => {
-            let Some(cur) = state.cursor_ground else { return };
+            let Some(cur) = state.cursor_ground else {
+                return;
+            };
             let min = Vec3::new(anchor.x.min(cur.x), 0.01, anchor.z.min(cur.z));
             let max = Vec3::new(anchor.x.max(cur.x), 0.01, anchor.z.max(cur.z));
             draw_rect_y(&mut gizmos, min, max, color);
@@ -476,33 +525,39 @@ fn draw_preview_gizmos(mut gizmos: Gizmos, state: Res<MeshDrawState>) {
                 }
                 // First point marker
                 let r = 0.08;
-                gizmos.line(*first + Vec3::new(-r, 0.02, 0.0), *first + Vec3::new(r, 0.02, 0.0), color);
-                gizmos.line(*first + Vec3::new(0.0, 0.02, -r), *first + Vec3::new(0.0, 0.02, r), color);
+                gizmos.line(
+                    *first + Vec3::new(-r, 0.02, 0.0),
+                    *first + Vec3::new(r, 0.02, 0.0),
+                    color,
+                );
+                gizmos.line(
+                    *first + Vec3::new(0.0, 0.02, -r),
+                    *first + Vec3::new(0.0, 0.02, r),
+                    color,
+                );
             }
         }
-        DrawStage::Extruding { footprint, height } => {
-            match footprint {
-                Footprint::Box { min, max } => {
-                    let lo = Vec3::new(min.x, 0.0, min.y);
-                    let hi = Vec3::new(max.x, *height, max.y);
-                    draw_wire_box(&mut gizmos, lo, hi, color);
-                }
-                Footprint::Polygon { points } => {
-                    let n = points.len();
-                    for i in 0..n {
-                        let a2 = points[i];
-                        let b2 = points[(i + 1) % n];
-                        let a_lo = Vec3::new(a2.x, 0.0, a2.y);
-                        let b_lo = Vec3::new(b2.x, 0.0, b2.y);
-                        let a_hi = Vec3::new(a2.x, *height, a2.y);
-                        let b_hi = Vec3::new(b2.x, *height, b2.y);
-                        gizmos.line(a_lo, b_lo, color);
-                        gizmos.line(a_hi, b_hi, color);
-                        gizmos.line(a_lo, a_hi, color);
-                    }
+        DrawStage::Extruding { footprint, height } => match footprint {
+            Footprint::Box { min, max } => {
+                let lo = Vec3::new(min.x, 0.0, min.y);
+                let hi = Vec3::new(max.x, *height, max.y);
+                draw_wire_box(&mut gizmos, lo, hi, color);
+            }
+            Footprint::Polygon { points } => {
+                let n = points.len();
+                for i in 0..n {
+                    let a2 = points[i];
+                    let b2 = points[(i + 1) % n];
+                    let a_lo = Vec3::new(a2.x, 0.0, a2.y);
+                    let b_lo = Vec3::new(b2.x, 0.0, b2.y);
+                    let a_hi = Vec3::new(a2.x, *height, a2.y);
+                    let b_hi = Vec3::new(b2.x, *height, b2.y);
+                    gizmos.line(a_lo, b_lo, color);
+                    gizmos.line(a_hi, b_hi, color);
+                    gizmos.line(a_lo, a_hi, color);
                 }
             }
-        }
+        },
     }
 }
 
@@ -528,9 +583,18 @@ fn draw_wire_box(gizmos: &mut Gizmos, min: Vec3, max: Vec3, color: Color) {
     let t11 = Vec3::new(max.x, max.y, max.z);
     let t01 = Vec3::new(min.x, max.y, max.z);
     for (a, b) in [
-        (b00, b10), (b10, b11), (b11, b01), (b01, b00),
-        (t00, t10), (t10, t11), (t11, t01), (t01, t00),
-        (b00, t00), (b10, t10), (b11, t11), (b01, t01),
+        (b00, b10),
+        (b10, b11),
+        (b11, b01),
+        (b01, b00),
+        (t00, t10),
+        (t10, t11),
+        (t11, t01),
+        (t01, t00),
+        (b00, t00),
+        (b10, t10),
+        (b11, t11),
+        (b01, t01),
     ] {
         gizmos.line(a, b, color);
     }
@@ -539,14 +603,22 @@ fn draw_wire_box(gizmos: &mut Gizmos, min: Vec3, max: Vec3, color: Color) {
 // ── Viewport overlay (cursor + border tint) ────────────────────────────────
 
 fn draw_cursor_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    let Some(state) = world.get_resource::<MeshDrawState>() else { return };
-    if !state.active { return; }
-    let pointer_in = ui.ctx().pointer_hover_pos().map_or(false, |p| rect.contains(p));
+    let Some(state) = world.get_resource::<MeshDrawState>() else {
+        return;
+    };
+    if !state.active {
+        return;
+    }
+    let pointer_in = ui
+        .ctx()
+        .pointer_hover_pos()
+        .map_or(false, |p| rect.contains(p));
     if pointer_in {
         ui.ctx().set_cursor_icon(ECursor::Crosshair);
     }
     let stroke = egui::Stroke::new(1.0, EColor::from_rgba_unmultiplied(90, 190, 255, 180));
-    ui.painter().rect_stroke(rect, 0.0, stroke, egui::StrokeKind::Inside);
+    ui.painter()
+        .rect_stroke(rect, 0.0, stroke, egui::StrokeKind::Inside);
 }
 
 // ── Commit drawn meshes ────────────────────────────────────────────────────
@@ -556,16 +628,20 @@ fn spawn_drawn_mesh(world: &mut World, recipe: &MeshDrawRecipe) -> Entity {
     let (mesh, pivot) = build_recipe_mesh(recipe);
     let is_polygon = matches!(recipe.footprint, Footprint::Polygon { .. });
     let mesh_handle = world.resource_mut::<Assets<Mesh>>().add(mesh);
-    let material_handle = world.resource_mut::<Assets<StandardMaterial>>().add(
-        StandardMaterial {
+    let material_handle = world
+        .resource_mut::<Assets<StandardMaterial>>()
+        .add(StandardMaterial {
             base_color: Color::srgb(0.8, 0.75, 0.7),
             // Polygon footprints can end up with inverted winding depending
             // on the order the user clicked points. Render double-sided so
             // the shape always appears filled.
-            cull_mode: if is_polygon { None } else { Some(bevy::render::render_resource::Face::Back) },
+            cull_mode: if is_polygon {
+                None
+            } else {
+                Some(bevy::render::render_resource::Face::Back)
+            },
             ..default()
-        }
-    );
+        });
     world
         .spawn((
             Name::new("DrawnMesh"),
@@ -587,7 +663,9 @@ struct SpawnDrawnMeshCmd {
 }
 
 impl renzora_undo::UndoCommand for SpawnDrawnMeshCmd {
-    fn label(&self) -> &str { "Draw Mesh" }
+    fn label(&self) -> &str {
+        "Draw Mesh"
+    }
 
     fn execute(&mut self, world: &mut World) {
         self.entity = Some(spawn_drawn_mesh(world, &self.recipe));
@@ -611,11 +689,8 @@ fn build_recipe_mesh(recipe: &MeshDrawRecipe) -> (Mesh, Vec3) {
             let size = *max - *min;
             let center_xz = (*min + *max) * 0.5;
             let pivot = Vec3::new(center_xz.x, recipe.height * 0.5, center_xz.y);
-            let mesh: Mesh = Cuboid::new(
-                size.x.max(0.01),
-                recipe.height.max(0.01),
-                size.y.max(0.01),
-            ).into();
+            let mesh: Mesh =
+                Cuboid::new(size.x.max(0.01), recipe.height.max(0.01), size.y.max(0.01)).into();
             (mesh, pivot)
         }
         Footprint::Polygon { points } => {
@@ -648,7 +723,10 @@ fn build_prism_mesh(footprint: &[Vec2], height: f32) -> Mesh {
     };
     let n = poly.len();
     if n < 3 {
-        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        );
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new());
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<[f32; 3]>::new());
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<[f32; 2]>::new());
@@ -693,12 +771,17 @@ fn build_prism_mesh(footprint: &[Vec2], height: f32) -> Mesh {
         positions.push([b.x, 0.0, b.y]);
         positions.push([b.x, height, b.y]);
         positions.push([a.x, height, a.y]);
-        for _ in 0..4 { normals.push([nrm.x, nrm.y, nrm.z]); }
+        for _ in 0..4 {
+            normals.push([nrm.x, nrm.y, nrm.z]);
+        }
         uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -722,7 +805,9 @@ fn signed_area(poly: &[Vec2]) -> f32 {
 fn triangulate_ear_clip(poly: &[Vec2]) -> Vec<[u32; 3]> {
     let n = poly.len();
     let mut out: Vec<[u32; 3]> = Vec::with_capacity(n.saturating_sub(2));
-    if n < 3 { return out; }
+    if n < 3 {
+        return out;
+    }
 
     let mut remaining: Vec<u32> = (0..n as u32).collect();
     // Safety bound: at most n iterations to guard against pathological input.
@@ -741,18 +826,24 @@ fn triangulate_ear_clip(poly: &[Vec2]) -> Vec<[u32; 3]> {
             let c = poly[ic as usize];
 
             // Must be a convex corner (CCW triangle).
-            if tri_signed_area(a, b, c) <= 1e-7 { continue; }
+            if tri_signed_area(a, b, c) <= 1e-7 {
+                continue;
+            }
 
             // No other remaining vertex may lie strictly inside triangle abc.
             let mut any_inside = false;
             for &idx in &remaining {
-                if idx == ia || idx == ib || idx == ic { continue; }
+                if idx == ia || idx == ib || idx == ic {
+                    continue;
+                }
                 if point_in_triangle(poly[idx as usize], a, b, c) {
                     any_inside = true;
                     break;
                 }
             }
-            if any_inside { continue; }
+            if any_inside {
+                continue;
+            }
 
             out.push([ia, ib, ic]);
             remaining.remove(i);
@@ -795,19 +886,29 @@ fn point_in_triangle(p: Vec2, a: Vec2, b: Vec2, c: Vec2) -> bool {
 
 fn join_selected_meshes(world: &mut World) {
     let entities = {
-        let Some(sel) = world.get_resource::<EditorSelection>() else { return };
+        let Some(sel) = world.get_resource::<EditorSelection>() else {
+            return;
+        };
         sel.get_all()
     };
-    if entities.len() < 2 { return; }
+    if entities.len() < 2 {
+        return;
+    }
 
     // Collect mesh handle + world transform per selected entity.
     let mut sources: Vec<(Entity, Handle<Mesh>, Transform)> = Vec::new();
     for e in &entities {
-        let Some(mesh3d) = world.get::<Mesh3d>(*e) else { continue };
-        let Some(gt) = world.get::<GlobalTransform>(*e) else { continue };
+        let Some(mesh3d) = world.get::<Mesh3d>(*e) else {
+            continue;
+        };
+        let Some(gt) = world.get::<GlobalTransform>(*e) else {
+            continue;
+        };
         sources.push((*e, mesh3d.0.clone(), gt.compute_transform()));
     }
-    if sources.len() < 2 { return; }
+    if sources.len() < 2 {
+        return;
+    }
 
     // Build merged mesh in world space.
     let merged = {
@@ -816,16 +917,21 @@ fn join_selected_meshes(world: &mut World) {
     };
 
     let mesh_handle = world.resource_mut::<Assets<Mesh>>().add(merged);
-    let material_handle = world.resource_mut::<Assets<StandardMaterial>>().add(
-        StandardMaterial { base_color: Color::srgb(0.8, 0.75, 0.7), ..default() }
-    );
-    let new_entity = world.spawn((
-        Name::new("JoinedMesh"),
-        Mesh3d(mesh_handle),
-        MeshMaterial3d(material_handle),
-        Transform::IDENTITY,
-        Visibility::default(),
-    )).id();
+    let material_handle = world
+        .resource_mut::<Assets<StandardMaterial>>()
+        .add(StandardMaterial {
+            base_color: Color::srgb(0.8, 0.75, 0.7),
+            ..default()
+        });
+    let new_entity = world
+        .spawn((
+            Name::new("JoinedMesh"),
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(material_handle),
+            Transform::IDENTITY,
+            Visibility::default(),
+        ))
+        .id();
 
     // Despawn originals, reselect the merged result.
     if let Some(sel) = world.get_resource::<EditorSelection>() {
@@ -845,15 +951,22 @@ fn merge_meshes(assets: &Assets<Mesh>, sources: &[(Entity, Handle<Mesh>, Transfo
     let mut indices: Vec<u32> = Vec::new();
 
     for (_, handle, xform) in sources {
-        let Some(mesh) = assets.get(handle) else { continue };
-        if mesh.primitive_topology() != PrimitiveTopology::TriangleList { continue; }
+        let Some(mesh) = assets.get(handle) else {
+            continue;
+        };
+        if mesh.primitive_topology() != PrimitiveTopology::TriangleList {
+            continue;
+        }
 
         let Some(pos_vals) = mesh
             .attribute(Mesh::ATTRIBUTE_POSITION)
             .and_then(|v| match v {
                 VertexAttributeValues::Float32x3(v) => Some(v.clone()),
                 _ => None,
-            }) else { continue };
+            })
+        else {
+            continue;
+        };
 
         let base = positions.len() as u32;
         let matrix = xform.to_matrix();
@@ -863,12 +976,12 @@ fn merge_meshes(assets: &Assets<Mesh>, sources: &[(Entity, Handle<Mesh>, Transfo
             positions.push([v.x, v.y, v.z]);
         }
 
-        let src_normals: Option<Vec<[f32; 3]>> = mesh
-            .attribute(Mesh::ATTRIBUTE_NORMAL)
-            .and_then(|v| match v {
-                VertexAttributeValues::Float32x3(v) => Some(v.clone()),
-                _ => None,
-            });
+        let src_normals: Option<Vec<[f32; 3]>> =
+            mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+                .and_then(|v| match v {
+                    VertexAttributeValues::Float32x3(v) => Some(v.clone()),
+                    _ => None,
+                });
         if let Some(ns) = src_normals {
             for n in &ns {
                 let rotated = xform.rotation * Vec3::from_array(*n);
@@ -876,34 +989,54 @@ fn merge_meshes(assets: &Assets<Mesh>, sources: &[(Entity, Handle<Mesh>, Transfo
                 normals.push([rn.x, rn.y, rn.z]);
             }
         } else {
-            for _ in 0..pos_vals.len() { normals.push([0.0, 1.0, 0.0]); }
+            for _ in 0..pos_vals.len() {
+                normals.push([0.0, 1.0, 0.0]);
+            }
         }
 
-        let src_uvs: Option<Vec<[f32; 2]>> = mesh
-            .attribute(Mesh::ATTRIBUTE_UV_0)
-            .and_then(|v| match v {
+        let src_uvs: Option<Vec<[f32; 2]>> =
+            mesh.attribute(Mesh::ATTRIBUTE_UV_0).and_then(|v| match v {
                 VertexAttributeValues::Float32x2(v) => Some(v.clone()),
                 _ => None,
             });
         if let Some(us) = src_uvs {
-            for u in &us { uvs.push(*u); }
+            for u in &us {
+                uvs.push(*u);
+            }
         } else {
-            for _ in 0..pos_vals.len() { uvs.push([0.0, 0.0]); }
+            for _ in 0..pos_vals.len() {
+                uvs.push([0.0, 0.0]);
+            }
         }
 
         match mesh.indices() {
-            Some(Indices::U32(idxs)) => { for i in idxs { indices.push(base + i); } }
-            Some(Indices::U16(idxs)) => { for i in idxs { indices.push(base + *i as u32); } }
+            Some(Indices::U32(idxs)) => {
+                for i in idxs {
+                    indices.push(base + i);
+                }
+            }
+            Some(Indices::U16(idxs)) => {
+                for i in idxs {
+                    indices.push(base + *i as u32);
+                }
+            }
             None => {
-                for i in 0..pos_vals.len() as u32 { indices.push(base + i); }
+                for i in 0..pos_vals.len() as u32 {
+                    indices.push(base + i);
+                }
             }
         }
     }
 
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_indices(Indices::U32(indices));
     mesh
 }
+
+renzora::add!(MeshDrawPlugin, Editor);

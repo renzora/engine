@@ -10,10 +10,10 @@ use bevy::window::PrimaryWindow;
 use bevy_egui::egui;
 
 use renzora::core::{EditorCamera, ShapeRegistry};
-use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
 };
+use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
 use crate::ViewportState;
 
@@ -198,7 +198,11 @@ pub fn shape_drag_raycast_system(
         }
 
         let normal = hit.normal.normalize_or_zero();
-        let surface_normal = if normal == Vec3::ZERO { Vec3::Y } else { normal };
+        let surface_normal = if normal == Vec3::ZERO {
+            Vec3::Y
+        } else {
+            normal
+        };
 
         drag_state.drag_surface_position = Some(hit.point);
         drag_state.drag_surface_normal = surface_normal;
@@ -327,8 +331,7 @@ pub fn update_shape_drag_preview(
         (true, Some(entity)) => {
             if let Some(ground_pos) = drag_state.drag_ground_position {
                 if let Ok(mut tf) = transform_query.get_mut(entity) {
-                    let effective_pos =
-                        drag_state.drag_surface_position.unwrap_or(ground_pos);
+                    let effective_pos = drag_state.drag_surface_position.unwrap_or(ground_pos);
                     let normal = if drag_state.drag_surface_normal != Vec3::ZERO {
                         drag_state.drag_surface_normal
                     } else {
@@ -363,22 +366,38 @@ pub fn update_shape_drag_preview(
 /// Runs every frame, consumes the pending drop.
 pub fn handle_shape_spawn(world: &mut World) {
     let drop = {
-        let Some(mut state) = world.get_resource_mut::<ShapeDragState>() else { return };
-        let Some(d) = state.pending_drop.take() else { return };
+        let Some(mut state) = world.get_resource_mut::<ShapeDragState>() else {
+            return;
+        };
+        let Some(d) = state.pending_drop.take() else {
+            return;
+        };
         d
     };
-    let Some((shape_id, name, default_color)) = world.get_resource::<ShapeRegistry>()
+    let Some((shape_id, name, default_color)) = world
+        .get_resource::<ShapeRegistry>()
         .and_then(|r| r.get(drop.shape_id))
         .map(|e| (e.id.to_string(), e.name.to_string(), e.default_color))
     else {
         warn!("Shape '{}' not found in registry", drop.shape_id);
         return;
     };
-    let normal = if drop.normal != Vec3::ZERO { drop.normal } else { Vec3::Y };
+    let normal = if drop.normal != Vec3::ZERO {
+        drop.normal
+    } else {
+        Vec3::Y
+    };
     let position = drop.position + normal * 0.5;
 
-    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
-        entity: Entity::PLACEHOLDER,
-        shape_id, name, position, color: default_color,
-    }));
+    renzora_undo::execute(
+        world,
+        UndoContext::Scene,
+        Box::new(SpawnShapeCmd {
+            entity: Entity::PLACEHOLDER,
+            shape_id,
+            name,
+            position,
+            color: default_color,
+        }),
+    );
 }

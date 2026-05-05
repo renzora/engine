@@ -4,7 +4,9 @@
 //! Workspace layouts are switched independently via the layout/workspace system.
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{
+    self, Color32, CornerRadius, CursorIcon, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2,
+};
 use egui_phosphor::regular;
 use renzora_theme::Theme;
 
@@ -207,7 +209,12 @@ impl DocumentTabState {
     }
 
     /// Add a tab of the given kind and return its index.
-    pub fn add_tab_of_kind(&mut self, name: String, path: Option<String>, kind: DocTabKind) -> usize {
+    pub fn add_tab_of_kind(
+        &mut self,
+        name: String,
+        path: Option<String>,
+        kind: DocTabKind,
+    ) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         self.tabs.push(DocumentTab {
@@ -222,9 +229,9 @@ impl DocumentTabState {
 
     /// Find an existing tab for the given project-relative path and kind.
     pub fn find_by_path(&self, path: &str, kind: DocTabKind) -> Option<usize> {
-        self.tabs.iter().position(|t| {
-            t.kind == kind && t.scene_path.as_deref() == Some(path)
-        })
+        self.tabs
+            .iter()
+            .position(|t| t.kind == kind && t.scene_path.as_deref() == Some(path))
     }
 
     /// Close a tab by index. Returns the closed tab's id for buffer cleanup,
@@ -241,7 +248,11 @@ impl DocumentTabState {
         // Don't close the last scene tab — Asset mode requires a scene to
         // return to when the user leaves Asset mode via the title bar.
         if self.tabs[index].kind == DocTabKind::Scene {
-            let scene_count = self.tabs.iter().filter(|t| t.kind == DocTabKind::Scene).count();
+            let scene_count = self
+                .tabs
+                .iter()
+                .filter(|t| t.kind == DocTabKind::Scene)
+                .count();
             if scene_count <= 1 {
                 return None;
             }
@@ -276,7 +287,9 @@ impl DocumentTabState {
 
     /// Push a scene tab to the top of the MRU stack. No-op for non-scene tabs.
     pub fn touch_scene_mru(&mut self, index: usize) {
-        let Some(tab) = self.tabs.get(index) else { return };
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
         if tab.kind != DocTabKind::Scene {
             return;
         }
@@ -290,7 +303,11 @@ impl DocumentTabState {
     /// first scene tab in display order if MRU is empty.
     pub fn find_mru_scene_tab(&mut self) -> Option<usize> {
         while let Some(&id) = self.scene_mru.last() {
-            if let Some(idx) = self.tabs.iter().position(|t| t.id == id && t.kind == DocTabKind::Scene) {
+            if let Some(idx) = self
+                .tabs
+                .iter()
+                .position(|t| t.id == id && t.kind == DocTabKind::Scene)
+            {
                 return Some(idx);
             }
             self.scene_mru.pop();
@@ -360,7 +377,11 @@ pub fn render_document_tabs(
 
     egui::TopBottomPanel::top("renzora_document_tabs")
         .exact_height(DOC_TAB_BAR_HEIGHT)
-        .frame(egui::Frame::NONE.fill(bg_color).inner_margin(egui::Margin::ZERO))
+        .frame(
+            egui::Frame::NONE
+                .fill(bg_color)
+                .inner_margin(egui::Margin::ZERO),
+        )
         .show(ctx, |ui| {
             let panel_rect = ui.available_rect_before_wrap();
             let top_y = panel_rect.min.y;
@@ -411,18 +432,24 @@ pub fn render_document_tabs(
                         tab.name.clone()
                     };
                     let text_width = ui.fonts_mut(|f| {
-                        f.layout_no_wrap(tab_text.clone(), font_id.clone(), Color32::WHITE).size().x
+                        f.layout_no_wrap(tab_text.clone(), font_id.clone(), Color32::WHITE)
+                            .size()
+                            .x
                     });
                     let (display_text, display_text_width) = if text_width > max_text_width {
                         let ellipsis_width = ui.fonts_mut(|f| {
-                            f.layout_no_wrap("...".to_string(), font_id.clone(), Color32::WHITE).size().x
+                            f.layout_no_wrap("...".to_string(), font_id.clone(), Color32::WHITE)
+                                .size()
+                                .x
                         });
                         let available_for_text = max_text_width - ellipsis_width;
                         let mut truncated = String::new();
                         for ch in tab_text.chars() {
                             let test = format!("{}{}", truncated, ch);
                             let test_width = ui.fonts_mut(|f| {
-                                f.layout_no_wrap(test.clone(), font_id.clone(), Color32::WHITE).size().x
+                                f.layout_no_wrap(test.clone(), font_id.clone(), Color32::WHITE)
+                                    .size()
+                                    .x
                             });
                             if test_width > available_for_text {
                                 break;
@@ -431,13 +458,16 @@ pub fn render_document_tabs(
                         }
                         let final_text = format!("{}...", truncated);
                         let final_width = ui.fonts_mut(|f| {
-                            f.layout_no_wrap(final_text.clone(), font_id.clone(), Color32::WHITE).size().x
+                            f.layout_no_wrap(final_text.clone(), font_id.clone(), Color32::WHITE)
+                                .size()
+                                .x
                         });
                         (final_text, final_width)
                     } else {
                         (tab_text, text_width)
                     };
-                    let tab_width = (display_text_width + base_width).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
+                    let tab_width =
+                        (display_text_width + base_width).clamp(MIN_TAB_WIDTH, MAX_TAB_WIDTH);
                     (display_text, tab_width)
                 })
                 .collect();
@@ -551,7 +581,11 @@ pub fn render_document_tabs(
                 );
 
                 // Tab text
-                let txt_color = if is_active { text_active_color } else { text_color };
+                let txt_color = if is_active {
+                    text_active_color
+                } else {
+                    text_color
+                };
                 ui.painter().text(
                     Pos2::new(tab_rect.min.x + 24.0, tab_rect.center().y),
                     egui::Align2::LEFT_CENTER,

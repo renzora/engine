@@ -19,8 +19,8 @@
 
 use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportMode;
-use renzora_editor::AppEditorExt;
 use renzora_editor::sdk::conditions::in_mode;
+use renzora_editor::AppEditorExt;
 
 pub mod edit_mesh;
 pub mod header;
@@ -29,7 +29,7 @@ pub mod selection;
 pub mod systems;
 pub mod undo;
 
-pub use edit_mesh::{EditMesh, EdgeId, FaceId, VertexId};
+pub use edit_mesh::{EdgeId, EditMesh, FaceId, VertexId};
 pub use selection::{MeshSelection, SelectMode};
 
 #[derive(Default)]
@@ -58,16 +58,13 @@ impl Plugin for MeshEditPlugin {
                     .chain()
                     .run_if(in_mode(ViewportMode::Edit)),
             )
-            .add_systems(
-                Update,
-                systems::exit_edit_mode.run_if(not_in_edit_mode),
-            );
+            .add_systems(Update, systems::exit_edit_mode.run_if(not_in_edit_mode));
     }
 }
 
-
-fn not_in_edit_mode(
-    s: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
-) -> bool {
-    s.map(|s| s.viewport_mode != ViewportMode::Edit).unwrap_or(true)
+fn not_in_edit_mode(s: Option<Res<renzora::core::viewport_types::ViewportSettings>>) -> bool {
+    s.map(|s| s.viewport_mode != ViewportMode::Edit)
+        .unwrap_or(true)
 }
+
+renzora::add!(MeshEditPlugin, Editor);

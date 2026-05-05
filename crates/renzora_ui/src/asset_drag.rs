@@ -46,12 +46,19 @@ impl AssetDragPayload {
             return true; // empty = accept all
         }
         let ext = self.extension();
-        extensions.iter().any(|&allowed| ext.eq_ignore_ascii_case(allowed))
+        extensions
+            .iter()
+            .any(|&allowed| ext.eq_ignore_ascii_case(allowed))
     }
 }
 
 /// Draw a floating ghost showing the dragged asset following the cursor.
-pub fn draw_asset_drag_ghost(ctx: &egui::Context, payload: &AssetDragPayload, pointer: Pos2, theme: &Theme) {
+pub fn draw_asset_drag_ghost(
+    ctx: &egui::Context,
+    payload: &AssetDragPayload,
+    pointer: Pos2,
+    theme: &Theme,
+) {
     let offset = Vec2::new(14.0, -10.0);
     let pos = pointer + offset;
 
@@ -124,7 +131,11 @@ pub fn asset_drop_target(
 
     // Reserve space for clear button if we have a value
     let has_value = current_path.map_or(false, |p| !p.is_empty());
-    let field_width = if has_value { available - 20.0 } else { available };
+    let field_width = if has_value {
+        available - 20.0
+    } else {
+        available
+    };
 
     let (rect, response) = ui.allocate_exact_size(
         Vec2::new(field_width, height),

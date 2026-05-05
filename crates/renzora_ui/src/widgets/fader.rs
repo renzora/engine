@@ -125,7 +125,12 @@ pub fn vertical_fader(
             Vec2::new(config.width - 8.0, handle_h),
         );
         painter.rect_filled(handle_rect, 3.0, handle_color);
-        painter.rect_stroke(handle_rect, 3.0, Stroke::new(1.0, Color32::from_rgb(30, 30, 35)), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            handle_rect,
+            3.0,
+            Stroke::new(1.0, Color32::from_rgb(30, 30, 35)),
+            egui::StrokeKind::Outside,
+        );
         // Handle center line
         painter.line_segment(
             [

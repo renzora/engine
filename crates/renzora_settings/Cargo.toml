@@ -15,3 +15,6 @@ renzora_viewport = { path = "../renzora_viewport" }
 renzora_splash = { path = "../renzora_splash" }
 renzora_input = { path = "../renzora_input" }
 rfd = "0.15"
+
+[lints]
+workspace = true

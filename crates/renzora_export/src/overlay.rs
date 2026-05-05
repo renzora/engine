@@ -9,7 +9,9 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
-use renzora_rpak::{pack_project_with_progress, pack_project_filtered, RpakPacker, SERVER_EXTENSIONS};
+use renzora_rpak::{
+    pack_project_filtered, pack_project_with_progress, RpakPacker, SERVER_EXTENSIONS,
+};
 use renzora_theme::ThemeManager;
 
 use crate::templates::{Platform, TemplateManager};
@@ -112,10 +114,7 @@ impl Default for ExportOverlayState {
 
 /// Drain progress messages from the background thread into overlay state.
 fn poll_export_task(world: &mut World) {
-    let has_task = world
-        .resource::<ExportOverlayState>()
-        .active_task
-        .is_some();
+    let has_task = world.resource::<ExportOverlayState>().active_task.is_some();
     if !has_task {
         return;
     }
@@ -226,9 +225,14 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .add(egui::Button::new(
-                                egui::RichText::new(regular::X).size(16.0).color(text_secondary),
-                            ).frame(false))
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(regular::X)
+                                        .size(16.0)
+                                        .color(text_secondary),
+                                )
+                                .frame(false),
+                            )
                             .clicked()
                         {
                             let mut s = world.resource_mut::<ExportOverlayState>();
@@ -250,11 +254,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     return;
                 }
 
-                let project_name = world
-                    .resource::<CurrentProject>()
-                    .config
-                    .name
-                    .clone();
+                let project_name = world.resource::<CurrentProject>().config.name.clone();
 
                 // --- Platform ---
                 section_label(ui, regular::DESKTOP_TOWER, "Platform", text_primary);
@@ -302,21 +302,47 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 drop(export_state);
 
                 // Template status
-                let template_installed = world.resource::<TemplateManager>().is_installed(selected_platform);
+                let template_installed = world
+                    .resource::<TemplateManager>()
+                    .is_installed(selected_platform);
                 ui.add_space(2.0);
                 if template_installed {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(regular::CHECK_CIRCLE).color(egui::Color32::from_rgb(89, 191, 115)));
-                        ui.label(egui::RichText::new("Template installed").size(11.0).color(text_secondary));
+                        ui.label(
+                            egui::RichText::new(regular::CHECK_CIRCLE)
+                                .color(egui::Color32::from_rgb(89, 191, 115)),
+                        );
+                        ui.label(
+                            egui::RichText::new("Template installed")
+                                .size(11.0)
+                                .color(text_secondary),
+                        );
                     });
                 } else {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(regular::WARNING).color(egui::Color32::from_rgb(242, 166, 64)));
-                        ui.label(egui::RichText::new("Template not installed").size(11.0).color(text_secondary));
+                        ui.label(
+                            egui::RichText::new(regular::WARNING)
+                                .color(egui::Color32::from_rgb(242, 166, 64)),
+                        );
+                        ui.label(
+                            egui::RichText::new("Template not installed")
+                                .size(11.0)
+                                .color(text_secondary),
+                        );
 
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(format!("{} Install from file...", regular::FOLDER_OPEN)).size(11.0),
-                        ).fill(surface_mid)).clicked() {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(format!(
+                                        "{} Install from file...",
+                                        regular::FOLDER_OPEN
+                                    ))
+                                    .size(11.0),
+                                )
+                                .fill(surface_mid),
+                            )
+                            .clicked()
+                        {
                             let platform = selected_platform;
                             if let Some(path) = rfd::FileDialog::new()
                                 .set_title("Select runtime template binary")
@@ -337,8 +363,12 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                 ui.add_space(12.0);
 
-                let is_desktop = matches!(selected_platform,
-                    Platform::WindowsX64 | Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64
+                let is_desktop = matches!(
+                    selected_platform,
+                    Platform::WindowsX64
+                        | Platform::LinuxX64
+                        | Platform::MacOSX64
+                        | Platform::MacOSArm64
                 );
 
                 // --- Packaging (desktop only) ---
@@ -374,7 +404,11 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     }
                     let mut export_state = world.resource_mut::<ExportOverlayState>();
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Compression:").size(12.0).color(text_secondary));
+                        ui.label(
+                            egui::RichText::new("Compression:")
+                                .size(12.0)
+                                .color(text_secondary),
+                        );
                         ui.add(
                             egui::Slider::new(&mut export_state.compression_level, 1..=19)
                                 .text("zstd level"),
@@ -405,8 +439,11 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                                         .color(text_secondary),
                                 );
                                 ui.add(
-                                    egui::Slider::new(&mut export_state.mesh_simplify_ratio, 0.1..=1.0)
-                                        .text("triangles"),
+                                    egui::Slider::new(
+                                        &mut export_state.mesh_simplify_ratio,
+                                        0.1..=1.0,
+                                    )
+                                    .text("triangles"),
                                 );
                             });
                         });
@@ -429,9 +466,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                                         .size(12.0)
                                         .color(text_secondary),
                                 );
-                                ui.add(
-                                    egui::Slider::new(&mut export_state.mesh_lod_levels, 1..=5),
-                                );
+                                ui.add(egui::Slider::new(&mut export_state.mesh_lod_levels, 1..=5));
                             });
                         });
                     }
@@ -469,10 +504,24 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     if export_state.window_mode == WindowMode::Windowed {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Size:").size(12.0).color(text_secondary));
-                            ui.add(egui::DragValue::new(&mut export_state.window_width).speed(1).range(320..=7680).suffix("w"));
+                            ui.label(
+                                egui::RichText::new("Size:")
+                                    .size(12.0)
+                                    .color(text_secondary),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut export_state.window_width)
+                                    .speed(1)
+                                    .range(320..=7680)
+                                    .suffix("w"),
+                            );
                             ui.label(egui::RichText::new("x").color(text_secondary));
-                            ui.add(egui::DragValue::new(&mut export_state.window_height).speed(1).range(240..=4320).suffix("h"));
+                            ui.add(
+                                egui::DragValue::new(&mut export_state.window_height)
+                                    .speed(1)
+                                    .range(240..=4320)
+                                    .suffix("h"),
+                            );
                         });
                     }
 
@@ -501,32 +550,64 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                         if export_state.include_server {
                             drop(export_state);
-                            let server_installed = world.resource::<TemplateManager>().is_server_installed(selected_platform);
+                            let server_installed = world
+                                .resource::<TemplateManager>()
+                                .is_server_installed(selected_platform);
                             ui.indent("server_template_status", |ui| {
                                 if server_installed {
                                     ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(regular::CHECK_CIRCLE).color(egui::Color32::from_rgb(89, 191, 115)));
-                                        ui.label(egui::RichText::new("Server template installed").size(11.0).color(text_secondary));
+                                        ui.label(
+                                            egui::RichText::new(regular::CHECK_CIRCLE)
+                                                .color(egui::Color32::from_rgb(89, 191, 115)),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new("Server template installed")
+                                                .size(11.0)
+                                                .color(text_secondary),
+                                        );
                                     });
                                 } else {
                                     ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new(regular::WARNING).color(egui::Color32::from_rgb(242, 166, 64)));
-                                        ui.label(egui::RichText::new("Server template not installed").size(11.0).color(text_secondary));
-                                        if ui.add(egui::Button::new(
-                                            egui::RichText::new(format!("{} Install from file...", regular::FOLDER_OPEN)).size(11.0),
-                                        ).fill(surface_mid)).clicked() {
+                                        ui.label(
+                                            egui::RichText::new(regular::WARNING)
+                                                .color(egui::Color32::from_rgb(242, 166, 64)),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new("Server template not installed")
+                                                .size(11.0)
+                                                .color(text_secondary),
+                                        );
+                                        if ui
+                                            .add(
+                                                egui::Button::new(
+                                                    egui::RichText::new(format!(
+                                                        "{} Install from file...",
+                                                        regular::FOLDER_OPEN
+                                                    ))
+                                                    .size(11.0),
+                                                )
+                                                .fill(surface_mid),
+                                            )
+                                            .clicked()
+                                        {
                                             let platform = selected_platform;
                                             if let Some(path) = rfd::FileDialog::new()
                                                 .set_title("Select server template binary")
                                                 .pick_file()
                                             {
-                                                let mut mgr = world.resource_mut::<TemplateManager>();
-                                                if let Some(server_name) = platform.server_binary_name_in_dir() {
+                                                let mut mgr =
+                                                    world.resource_mut::<TemplateManager>();
+                                                if let Some(server_name) =
+                                                    platform.server_binary_name_in_dir()
+                                                {
                                                     let server_dir = mgr.dist_dir.join("server");
                                                     let _ = std::fs::create_dir_all(&server_dir);
                                                     let dest = server_dir.join(server_name);
                                                     if let Err(e) = std::fs::copy(&path, &dest) {
-                                                        warn!("Failed to install server template: {}", e);
+                                                        warn!(
+                                                            "Failed to install server template: {}",
+                                                            e
+                                                        );
                                                     }
                                                     mgr.scan();
                                                 }
@@ -545,9 +626,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                 // Scan runtime plugins directory once
                 if !world.resource::<ExportOverlayState>().plugins_scanned {
-                    let plugins_dir = world
-                        .resource::<TemplateManager>()
-                        .runtime_plugins_dir();
+                    let plugins_dir = world.resource::<TemplateManager>().runtime_plugins_dir();
                     let plugins = dynamic_plugin_loader::scan_plugins(&plugins_dir);
                     let mut state = world.resource_mut::<ExportOverlayState>();
                     for p in &plugins {
@@ -564,20 +643,34 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                         section_label(ui, regular::PUZZLE_PIECE, "Plugins", text_primary);
                         ui.add_space(4.0);
 
-                        let plugins: Vec<_> = state.available_plugins.iter().map(|p| (p.id.clone(), p.scope)).collect();
-                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                            for (id, scope) in &plugins {
-                                let mut checked = state.selected_plugins.contains(id.as_str());
-                                let label = format!("{} ({:?})", id, scope);
-                                if ui.checkbox(&mut checked, egui::RichText::new(label).size(12.0).color(text_primary)).changed() {
-                                    if checked {
-                                        state.selected_plugins.insert(id.clone());
-                                    } else {
-                                        state.selected_plugins.remove(id.as_str());
+                        let plugins: Vec<_> = state
+                            .available_plugins
+                            .iter()
+                            .map(|p| (p.id.clone(), p.scope))
+                            .collect();
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                for (id, scope) in &plugins {
+                                    let mut checked = state.selected_plugins.contains(id.as_str());
+                                    let label = format!("{} ({:?})", id, scope);
+                                    if ui
+                                        .checkbox(
+                                            &mut checked,
+                                            egui::RichText::new(label)
+                                                .size(12.0)
+                                                .color(text_primary),
+                                        )
+                                        .changed()
+                                    {
+                                        if checked {
+                                            state.selected_plugins.insert(id.clone());
+                                        } else {
+                                            state.selected_plugins.remove(id.as_str());
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
                     }
                 }
 
@@ -586,21 +679,40 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 // Icon
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Icon:").size(12.0).color(text_secondary));
+                    ui.label(
+                        egui::RichText::new("Icon:")
+                            .size(12.0)
+                            .color(text_secondary),
+                    );
                     if let Some(ref icon) = export_state.icon_path {
-                        ui.label(egui::RichText::new(icon.as_str()).size(11.0).color(text_primary));
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new(regular::X).size(12.0),
-                        ).frame(false)).clicked() {
+                        ui.label(
+                            egui::RichText::new(icon.as_str())
+                                .size(11.0)
+                                .color(text_primary),
+                        );
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new(regular::X).size(12.0))
+                                    .frame(false),
+                            )
+                            .clicked()
+                        {
                             export_state.icon_path = None;
                         }
                     } else {
                         ui.label(egui::RichText::new("None").size(11.0).color(text_secondary));
                     }
                     let icon_path_mut = &mut export_state.icon_path;
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(format!("{} Browse", regular::IMAGE)).size(11.0),
-                    ).fill(surface_mid)).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Browse", regular::IMAGE))
+                                    .size(11.0),
+                            )
+                            .fill(surface_mid),
+                        )
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .set_title("Select icon")
                             .add_filter("Images", &["png", "ico", "svg"])
@@ -627,9 +739,16 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                     ui.add(text_edit);
 
                     let output_dir_mut = &mut export_state.output_dir;
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(format!("{} Browse", regular::FOLDER)).size(11.0),
-                    ).fill(surface_mid)).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("{} Browse", regular::FOLDER))
+                                    .size(11.0),
+                            )
+                            .fill(surface_mid),
+                        )
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .set_title("Select output directory")
                             .pick_folder()
@@ -643,7 +762,10 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 let can_export = template_installed
                     && !export_state.output_dir.is_empty()
                     && export_state.active_task.is_none()
-                    && matches!(progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_));
+                    && matches!(
+                        progress,
+                        ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_)
+                    );
 
                 drop(export_state);
 
@@ -659,10 +781,16 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                         });
                     }
                     ExportProgress::Done(msg) => {
-                        ui.label(egui::RichText::new(format!("{} {}", regular::CHECK_CIRCLE, msg)).color(egui::Color32::from_rgb(89, 191, 115)));
+                        ui.label(
+                            egui::RichText::new(format!("{} {}", regular::CHECK_CIRCLE, msg))
+                                .color(egui::Color32::from_rgb(89, 191, 115)),
+                        );
                     }
                     ExportProgress::Error(msg) => {
-                        ui.label(egui::RichText::new(format!("{} {}", regular::WARNING, msg)).color(error_color));
+                        ui.label(
+                            egui::RichText::new(format!("{} {}", regular::WARNING, msg))
+                                .color(error_color),
+                        );
                     }
                 }
 
@@ -714,14 +842,14 @@ fn export_android_apk(
 
     // Copy all existing entries from template
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
+        let mut entry = archive
+            .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let name = entry.name().to_string();
 
         // Android requires resources.arsc and native libs to be stored
         // uncompressed with 4-byte alignment (R+ / API 30+)
-        let must_store = name == "resources.arsc"
-            || name.ends_with(".so");
+        let must_store = name == "resources.arsc" || name.ends_with(".so");
 
         let options = if must_store {
             zip::write::SimpleFileOptions::default()
@@ -734,7 +862,8 @@ fn export_android_apk(
                 .unix_permissions(entry.unix_mode().unwrap_or(0o644))
         };
 
-        writer.start_file(name, options)
+        writer
+            .start_file(name, options)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
@@ -742,13 +871,15 @@ fn export_android_apk(
     }
 
     // Add the rpak as assets/game.rpak
-    let rpak_options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
-    writer.start_file("assets/game.rpak", rpak_options)
+    let rpak_options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer
+        .start_file("assets/game.rpak", rpak_options)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     writer.write_all(&rpak_bytes)?;
 
-    writer.finish()
+    writer
+        .finish()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     Ok(())
@@ -782,7 +913,8 @@ fn export_ios_app(
 
     // Copy all existing entries from template
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
+        let mut entry = archive
+            .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let name = entry.name().to_string();
 
@@ -791,10 +923,12 @@ fn export_ios_app(
             .unix_permissions(entry.unix_mode().unwrap_or(0o644));
 
         if entry.is_dir() {
-            writer.add_directory(&name, options)
+            writer
+                .add_directory(&name, options)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         } else {
-            writer.start_file(&name, options)
+            writer
+                .start_file(&name, options)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
@@ -806,19 +940,22 @@ fn export_ios_app(
     // IPA structure: Payload/AppName.app/game.rpak
     // Template structure: RenzoraRuntime.app/game.rpak
     // Find the .app directory name from existing entries
-    let app_prefix = archive.file_names()
+    let app_prefix = archive
+        .file_names()
         .find(|n| n.ends_with(".app/"))
         .map(|n| n.to_string())
         .unwrap_or_else(|| "Payload/RenzoraRuntime.app/".to_string());
 
     let rpak_path = format!("{}game.rpak", app_prefix);
-    let rpak_options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
-    writer.start_file(&rpak_path, rpak_options)
+    let rpak_options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer
+        .start_file(&rpak_path, rpak_options)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     writer.write_all(&rpak_bytes)?;
 
-    writer.finish()
+    writer
+        .finish()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     Ok(())
@@ -854,18 +991,20 @@ fn export_wasm_zip(
 
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
-    let stored = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     // Copy all template entries (js + wasm) into the output zip
     for i in 0..template_archive.len() {
-        let mut entry = template_archive.by_index(i)
+        let mut entry = template_archive
+            .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let name = entry.name().to_string();
 
         let file_options = options;
 
-        writer.start_file(&name, file_options)
+        writer
+            .start_file(&name, file_options)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
@@ -873,7 +1012,8 @@ fn export_wasm_zip(
     }
 
     // Add the rpak as game.rpak
-    writer.start_file("game.rpak", stored)
+    writer
+        .start_file("game.rpak", stored)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     writer.write_all(&rpak_bytes)?;
 
@@ -937,11 +1077,13 @@ fn export_wasm_zip(
         title = project_name,
     );
 
-    writer.start_file("index.html", options)
+    writer
+        .start_file("index.html", options)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     writer.write_all(index_html.as_bytes())?;
 
-    writer.finish()
+    writer
+        .finish()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     info!("[export] WASM zip written to {}", zip_path.display());
@@ -975,7 +1117,9 @@ fn run_export(world: &mut World, project_name: &str) {
     let mesh_quantize = export_state.mesh_quantize;
     let mesh_generate_lods = export_state.mesh_generate_lods;
     let mesh_lod_levels = export_state.mesh_lod_levels;
-    let selected_plugins: Vec<std::path::PathBuf> = export_state.available_plugins.iter()
+    let selected_plugins: Vec<std::path::PathBuf> = export_state
+        .available_plugins
+        .iter()
         .filter(|p| export_state.selected_plugins.contains(&p.id))
         .map(|p| p.path.clone())
         .collect();
@@ -1010,9 +1154,7 @@ fn run_export(world: &mut World, project_name: &str) {
     {
         let mut state = world.resource_mut::<ExportOverlayState>();
         state.progress = ExportProgress::Working("Packing assets...".into());
-        state.active_task = Some(ExportTask {
-            rx: Mutex::new(rx),
-        });
+        state.active_task = Some(ExportTask { rx: Mutex::new(rx) });
     }
 
     // Spawn background thread
@@ -1232,16 +1374,23 @@ fn export_worker(
             if !is_wasm {
                 // Copy shared libraries from runtime build (bevy_dylib + std + SDK)
                 let _ = tx.send(ExportMsg::Progress("Copying shared libraries...".into()));
-                for entry in std::fs::read_dir(&runtime_dir).into_iter().flatten().flatten() {
+                for entry in std::fs::read_dir(&runtime_dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                {
                     let name = entry.file_name();
                     let name_str = name.to_string_lossy();
                     if let Some(ext) = entry.path().extension() {
                         let ext = ext.to_string_lossy();
                         if ext == "dll" || ext == "so" || ext == "dylib" {
                             // Copy SDK + bevy_dylib + std (not plugins/ or binaries)
-                            if name_str.starts_with("bevy_dylib") || name_str.starts_with("libbevy_dylib")
-                                || name_str.starts_with("std-") || name_str.starts_with("libstd-")
-                                || name_str.starts_with("renzora.") || name_str.starts_with("librenzora.")
+                            if name_str.starts_with("bevy_dylib")
+                                || name_str.starts_with("libbevy_dylib")
+                                || name_str.starts_with("std-")
+                                || name_str.starts_with("libstd-")
+                                || name_str.starts_with("renzora.")
+                                || name_str.starts_with("librenzora.")
                             {
                                 let _ = std::fs::copy(entry.path(), output_dir.join(&name));
                             }
@@ -1263,7 +1412,10 @@ fn export_worker(
                             }
                         }
                     }
-                    info!("[export] Copied {} plugins to output", selected_plugins.len());
+                    info!(
+                        "[export] Copied {} plugins to output",
+                        selected_plugins.len()
+                    );
                 }
             }
 

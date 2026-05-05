@@ -81,3 +81,6 @@ features = ["multi-threaded"]
 
 [dev-dependencies.criterion]
 version = "0.5"
+
+[lints]
+workspace = true

@@ -44,13 +44,20 @@ pub fn file_drop_zone(
     let is_matching_ext = |path: &std::path::Path| -> bool {
         path.extension()
             .and_then(|e| e.to_str())
-            .map(|ext| extensions.iter().any(|&allowed| ext.eq_ignore_ascii_case(allowed)))
+            .map(|ext| {
+                extensions
+                    .iter()
+                    .any(|&allowed| ext.eq_ignore_ascii_case(allowed))
+            })
             .unwrap_or(false)
     };
 
     // Check for OS drag hover
     let os_hovered = ui.ctx().input(|i| {
-        i.raw.hovered_files.iter().any(|f| f.path.as_ref().map_or(false, |p| is_matching_ext(p)))
+        i.raw
+            .hovered_files
+            .iter()
+            .any(|f| f.path.as_ref().map_or(false, |p| is_matching_ext(p)))
     });
 
     // Check for OS drop
@@ -67,11 +74,14 @@ pub fn file_drop_zone(
 
     ui.horizontal(|ui| {
         let drop_width = available_width - 34.0;
-        let (rect, _response) =
-            ui.allocate_exact_size(Vec2::new(drop_width, drop_zone_height), Sense::click_and_drag());
+        let (rect, _response) = ui.allocate_exact_size(
+            Vec2::new(drop_width, drop_zone_height),
+            Sense::click_and_drag(),
+        );
 
         // Background
-        ui.painter().rect_filled(rect, 4.0, theme.widget_inactive_bg);
+        ui.painter()
+            .rect_filled(rect, 4.0, theme.widget_inactive_bg);
         ui.painter().rect_stroke(
             rect,
             4.0,
@@ -158,10 +168,7 @@ pub fn file_drop_zone(
     if current_path.map_or(false, |p| !p.is_empty()) {
         ui.add_space(4.0);
         if ui
-            .button(
-                egui::RichText::new(format!("{} Clear", X_CIRCLE))
-                    .color(theme.semantic_error),
-            )
+            .button(egui::RichText::new(format!("{} Clear", X_CIRCLE)).color(theme.semantic_error))
             .clicked()
         {
             result.cleared = true;

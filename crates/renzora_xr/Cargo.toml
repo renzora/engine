@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "XR/VR plugin for Renzora Engine — OpenXR stereo rendering, head tracking, controller input, hand tracking, locomotion"
 
-[lib]
-crate-type = ["dylib"]
-
 [features]
 default = ["editor"]
 editor = ["renzora/editor"]
@@ -22,3 +19,6 @@ serde = { version = "1", features = ["derive"] }
 log = "*"
 
 
+
+[lints]
+workspace = true

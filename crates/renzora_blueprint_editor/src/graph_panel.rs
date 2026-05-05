@@ -5,19 +5,19 @@ use std::cell::RefCell;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular::{
-    PLUS, CROSSHAIR, MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
-    FLOW_ARROW, CUBE, LIGHTNING, EXPORT,
+    CROSSHAIR, CUBE, EXPORT, FLOW_ARROW, LIGHTNING, MAGNIFYING_GLASS_MINUS, MAGNIFYING_GLASS_PLUS,
+    PLUS,
 };
 
+use renzora::core::CurrentProject;
+use renzora_blueprint::BlueprintGraph;
 use renzora_editor::{
     DocTabKind, EditorCommands, EditorContext, EditorPanel, EditorSelection, PanelLocation,
 };
 use renzora_theme::ThemeManager;
-use renzora_blueprint::BlueprintGraph;
-use renzora::core::CurrentProject;
 
-use crate::BlueprintEditorState;
 use crate::graph_editor::{self, GraphEditorState};
+use crate::BlueprintEditorState;
 
 thread_local! {
     static GRAPH_EDITOR_STATE: RefCell<GraphEditorState> = RefCell::new(GraphEditorState::default());
@@ -61,12 +61,16 @@ impl EditorPanel for BlueprintGraphPanel {
             .map(|p| p.path.clone());
 
         // Asset mode: a `.blueprint` doc tab is active.
-        let asset_path: Option<String> = world
-            .get_resource::<EditorContext>()
-            .and_then(|ctx| match ctx {
-                EditorContext::Asset { path, kind: DocTabKind::Blueprint } => Some(path.clone()),
-                _ => None,
-            });
+        let asset_path: Option<String> =
+            world
+                .get_resource::<EditorContext>()
+                .and_then(|ctx| match ctx {
+                    EditorContext::Asset {
+                        path,
+                        kind: DocTabKind::Blueprint,
+                    } => Some(path.clone()),
+                    _ => None,
+                });
 
         if let Some(rel_path) = asset_path {
             // Render the file-driven branch: load on first frame / when path
@@ -122,7 +126,17 @@ impl EditorPanel for BlueprintGraphPanel {
         // ── Toolbar ──
         let toolbar_modified = GRAPH_EDITOR_STATE.with(|cell| {
             let mut gs = cell.borrow_mut();
-            render_toolbar(ui, &mut graph, &mut gs, cmds, &entity_name, has_blueprint, entity, &theme, &project_path)
+            render_toolbar(
+                ui,
+                &mut graph,
+                &mut gs,
+                cmds,
+                &entity_name,
+                has_blueprint,
+                entity,
+                &theme,
+                &project_path,
+            )
         });
 
         ui.separator();
@@ -317,10 +331,7 @@ impl BlueprintGraphPanel {
 /// project-relative path via `CurrentProject` if available. Returns `None`
 /// if the file is missing or unparseable — caller should fall back to an
 /// empty graph.
-fn load_blueprint_file(
-    project: Option<&CurrentProject>,
-    rel_path: &str,
-) -> Option<BlueprintGraph> {
+fn load_blueprint_file(project: Option<&CurrentProject>, rel_path: &str) -> Option<BlueprintGraph> {
     let abs = project
         .map(|p| p.resolve_path(rel_path))
         .unwrap_or_else(|| std::path::PathBuf::from(rel_path));
@@ -350,7 +361,10 @@ pub(crate) fn save_blueprint_file(
                 warn!("[blueprint_editor] save failed for {}: {}", rel_path, e);
             }
         }
-        Err(e) => warn!("[blueprint_editor] serialise failed for {}: {}", rel_path, e),
+        Err(e) => warn!(
+            "[blueprint_editor] serialise failed for {}: {}",
+            rel_path, e
+        ),
     }
 }
 
@@ -390,7 +404,9 @@ fn render_toolbar(
 
         // ── Add Node ──
         let add_btn = ui.add(egui::Button::new(
-            RichText::new(format!("{PLUS} Add Node")).size(12.0).color(accent),
+            RichText::new(format!("{PLUS} Add Node"))
+                .size(12.0)
+                .color(accent),
         ));
         let add_id = ui.make_persistent_id("bp_add_node_popup");
         if add_btn.clicked() {
@@ -410,7 +426,8 @@ fn render_toolbar(
                     ui.menu_button(format!("{icon} {category}"), |ui| {
                         let defs = renzora_blueprint::nodes_in_category(category);
                         for def in &defs {
-                            let btn = ui.button(format!("{icon} {}", def.display_name))
+                            let btn = ui
+                                .button(format!("{icon} {}", def.display_name))
                                 .on_hover_text(def.description);
                             if btn.clicked() {
                                 let canvas_pos = if let Some(cr) = state.canvas_rect {
@@ -440,7 +457,9 @@ fn render_toolbar(
         // ── Center ──
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{CROSSHAIR}")).size(12.0).color(text_muted),
+                RichText::new(format!("{CROSSHAIR}"))
+                    .size(12.0)
+                    .color(text_muted),
             ))
             .on_hover_text("Center Graph")
             .clicked()
@@ -474,7 +493,11 @@ fn render_toolbar(
         }
 
         let zoom_pct = (state.widget_state.zoom * 100.0) as u32;
-        ui.label(RichText::new(format!("{zoom_pct}%")).size(11.0).color(text_muted));
+        ui.label(
+            RichText::new(format!("{zoom_pct}%"))
+                .size(11.0)
+                .color(text_muted),
+        );
 
         if ui
             .add(egui::Button::new(
@@ -493,9 +516,14 @@ fn render_toolbar(
             // ── Apply (compile to Lua) ──
             if project_path.is_some() {
                 let apply_btn = ui.add(egui::Button::new(
-                    RichText::new(format!("{EXPORT} Apply")).size(12.0).color(accent),
+                    RichText::new(format!("{EXPORT} Apply"))
+                        .size(12.0)
+                        .color(accent),
                 ));
-                if apply_btn.on_hover_text("Compile blueprint to Lua script and attach to entity").clicked() {
+                if apply_btn
+                    .on_hover_text("Compile blueprint to Lua script and attach to entity")
+                    .clicked()
+                {
                     let compiled_graph = graph.clone();
                     let proj = project_path.clone().unwrap();
                     let ent_name = entity_name.to_string();
@@ -509,9 +537,11 @@ fn render_toolbar(
             let node_count = graph.nodes.len();
             let conn_count = graph.connections.len();
             ui.label(
-                RichText::new(format!("{FLOW_ARROW} {node_count} nodes, {conn_count} connections"))
-                    .size(11.0)
-                    .color(text_muted),
+                RichText::new(format!(
+                    "{FLOW_ARROW} {node_count} nodes, {conn_count} connections"
+                ))
+                .size(11.0)
+                .color(text_muted),
             );
         });
     });
@@ -536,7 +566,13 @@ fn apply_blueprint_to_lua(
     // Sanitize entity name for filename
     let safe_name: String = entity_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let file_name = format!("bp_{}.lua", safe_name.to_lowercase());
 
@@ -565,7 +601,10 @@ fn apply_blueprint_to_lua(
     if let Some(mut sc) = world.get_mut::<ScriptComponent>(entity) {
         // Check if this blueprint script is already attached
         let existing = sc.scripts.iter().position(|e| {
-            e.script_path.as_ref().map(|p| p.ends_with(&file_name)).unwrap_or(false)
+            e.script_path
+                .as_ref()
+                .map(|p| p.ends_with(&file_name))
+                .unwrap_or(false)
         });
         if let Some(idx) = existing {
             // Update path (forces reload) and reset runtime state

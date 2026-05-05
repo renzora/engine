@@ -9,9 +9,7 @@ use egui_phosphor::regular;
 use renzora_audio::{
     BusInsertsSummary, ChannelStrip, MixerFxCommand, MixerFxOp, MixerState, PluginCatalog,
 };
-use renzora_editor::{
-    mixer_channel_strip, EditorCommands, MixerStripConfig, MixerStripState,
-};
+use renzora_editor::{mixer_channel_strip, EditorCommands, MixerStripConfig, MixerStripState};
 use renzora_theme::Theme;
 
 /// Bus accent colors
@@ -85,15 +83,19 @@ fn render_bus_strip(
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     render_strip_fx_button(
-                        ui, id.with("fx"), bus_key, accent, theme, inserts, catalog, commands,
+                        ui,
+                        id.with("fx"),
+                        bus_key,
+                        accent,
+                        theme,
+                        inserts,
+                        catalog,
+                        commands,
                     );
                     // Push cog to the right edge.
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            render_strip_settings_cog(ui, id.with("cog"), strip, theme);
-                        },
-                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        render_strip_settings_cog(ui, id.with("cog"), strip, theme);
+                    });
                 });
             });
 
@@ -117,7 +119,9 @@ fn render_bus_strip(
 fn fire_fx_command(commands: Option<&EditorCommands>, cmd: MixerFxCommand) {
     let Some(cmds) = commands else { return };
     cmds.push(move |world| {
-        if let Some(mut messages) = world.get_resource_mut::<bevy::ecs::message::Messages<MixerFxCommand>>() {
+        if let Some(mut messages) =
+            world.get_resource_mut::<bevy::ecs::message::Messages<MixerFxCommand>>()
+        {
             messages.write(cmd);
         }
     });
@@ -139,7 +143,11 @@ fn render_strip_fx_button(
 ) {
     let chain_len = inserts.map(|s| s.slot_count(bus_name)).unwrap_or(0);
     let active = chain_len > 0;
-    let icon_color = if active { accent } else { theme.text.muted.to_color32() };
+    let icon_color = if active {
+        accent
+    } else {
+        theme.text.muted.to_color32()
+    };
 
     let label = if active {
         format!("FX·{}", chain_len)
@@ -218,10 +226,13 @@ fn render_strip_fx_button(
                                         )
                                         .frame(false);
                                         if ui.add(remove).on_hover_text("Remove").clicked() {
-                                            fire_fx_command(commands, MixerFxCommand {
-                                                bus: bus.clone(),
-                                                op: MixerFxOp::Remove { local_id },
-                                            });
+                                            fire_fx_command(
+                                                commands,
+                                                MixerFxCommand {
+                                                    bus: bus.clone(),
+                                                    op: MixerFxOp::Remove { local_id },
+                                                },
+                                            );
                                         }
                                         // Move down
                                         let dn = egui::Button::new(
@@ -231,10 +242,13 @@ fn render_strip_fx_button(
                                         )
                                         .frame(false);
                                         if ui.add(dn).on_hover_text("Move down").clicked() {
-                                            fire_fx_command(commands, MixerFxCommand {
-                                                bus: bus.clone(),
-                                                op: MixerFxOp::MoveDown { local_id },
-                                            });
+                                            fire_fx_command(
+                                                commands,
+                                                MixerFxCommand {
+                                                    bus: bus.clone(),
+                                                    op: MixerFxOp::MoveDown { local_id },
+                                                },
+                                            );
                                         }
                                         // Move up
                                         let up = egui::Button::new(
@@ -244,10 +258,13 @@ fn render_strip_fx_button(
                                         )
                                         .frame(false);
                                         if ui.add(up).on_hover_text("Move up").clicked() {
-                                            fire_fx_command(commands, MixerFxCommand {
-                                                bus: bus.clone(),
-                                                op: MixerFxOp::MoveUp { local_id },
-                                            });
+                                            fire_fx_command(
+                                                commands,
+                                                MixerFxCommand {
+                                                    bus: bus.clone(),
+                                                    op: MixerFxOp::MoveUp { local_id },
+                                                },
+                                            );
                                         }
                                         // Bypass toggle
                                         let bypass_color = if slot.bypass {
@@ -260,10 +277,13 @@ fn render_strip_fx_button(
                                         )
                                         .frame(false);
                                         if ui.add(by).on_hover_text("Bypass").clicked() {
-                                            fire_fx_command(commands, MixerFxCommand {
-                                                bus: bus.clone(),
-                                                op: MixerFxOp::ToggleBypass { local_id },
-                                            });
+                                            fire_fx_command(
+                                                commands,
+                                                MixerFxCommand {
+                                                    bus: bus.clone(),
+                                                    op: MixerFxOp::ToggleBypass { local_id },
+                                                },
+                                            );
                                         }
 
                                         // Open / Close floating editor
@@ -300,10 +320,7 @@ fn render_strip_fx_button(
                                             } else {
                                                 MixerFxOp::OpenEditor { local_id }
                                             };
-                                            fire_fx_command(
-                                                commands,
-                                                MixerFxCommand { bus, op },
-                                            );
+                                            fire_fx_command(commands, MixerFxCommand { bus, op });
                                         }
                                     },
                                 );
@@ -378,10 +395,7 @@ fn render_strip_fx_button(
                                         let label = if entry.vendor.is_empty() {
                                             entry.name.clone()
                                         } else {
-                                            format!(
-                                                "{}  ·  {}",
-                                                entry.name, entry.vendor
-                                            )
+                                            format!("{}  ·  {}", entry.name, entry.vendor)
                                         };
                                         let row_h = 20.0;
                                         let (rect, resp) = ui.allocate_exact_size(
@@ -390,15 +404,11 @@ fn render_strip_fx_button(
                                         );
                                         if resp.hovered() {
                                             ui.painter().rect_filled(rect, 2.0, hover_bg);
-                                            ui.ctx().set_cursor_icon(
-                                                egui::CursorIcon::PointingHand,
-                                            );
+                                            ui.ctx()
+                                                .set_cursor_icon(egui::CursorIcon::PointingHand);
                                         }
                                         ui.painter().text(
-                                            egui::Pos2::new(
-                                                rect.left() + 6.0,
-                                                rect.center().y,
-                                            ),
+                                            egui::Pos2::new(rect.left() + 6.0, rect.center().y),
                                             egui::Align2::LEFT_CENTER,
                                             &label,
                                             egui::FontId::proportional(10.5),
@@ -410,9 +420,7 @@ fn render_strip_fx_button(
                                                 MixerFxCommand {
                                                     bus: bus_name.to_string(),
                                                     op: MixerFxOp::Add {
-                                                        plugin_catalog_id: entry
-                                                            .id
-                                                            .clone(),
+                                                        plugin_catalog_id: entry.id.clone(),
                                                     },
                                                 },
                                             );
@@ -448,10 +456,8 @@ fn render_strip_settings_cog(
     } else {
         theme.text.muted.to_color32()
     };
-    let btn = egui::Button::new(
-        RichText::new(regular::GEAR).size(13.0).color(icon_color),
-    )
-    .frame(false);
+    let btn =
+        egui::Button::new(RichText::new(regular::GEAR).size(13.0).color(icon_color)).frame(false);
     let resp = ui
         .add_sized(Vec2::new(20.0, 20.0), btn)
         .on_hover_text("Bus device routing");
@@ -537,10 +543,7 @@ fn inline_device_list(
         .corner_radius(3.0)
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 1.0;
-            if ui
-                .selectable_label(current.is_none(), "(none)")
-                .clicked()
-            {
+            if ui.selectable_label(current.is_none(), "(none)").clicked() {
                 *current = None;
             }
             if devices.is_empty() {
@@ -599,10 +602,7 @@ fn render_add_bus_ghost(ui: &mut egui::Ui, mixer: &mut MixerState, theme: &Theme
 
         let outline = theme.widgets.border.to_color32().gamma_multiply(0.85);
         let body_h = ui.available_height().max(40.0);
-        let (rect, resp) = ui.allocate_exact_size(
-            Vec2::new(strip_width, body_h),
-            Sense::click(),
-        );
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(strip_width, body_h), Sense::click());
         let painter = ui.painter_at(rect);
 
         let bg = if resp.hovered() {
@@ -731,35 +731,55 @@ pub fn render_mixer_content(
                         // label; the second is the bus key the audio engine
                         // routes by (also the key under which inserts live).
                         render_bus_strip(
-                            ui, "master", "MASTER", "Master",
+                            ui,
+                            "master",
+                            "MASTER",
+                            "Master",
                             &mut mixer.master,
                             bus_accent("MASTER", None),
                             &theme,
-                            inserts, catalog, commands,
+                            inserts,
+                            catalog,
+                            commands,
                         );
                         // Heavier divider after Master so it visually
                         // separates the main bus from the routing strips.
                         master_divider(ui, available_h, &theme);
                         render_bus_strip(
-                            ui, "sfx", "SFX", "Sfx",
+                            ui,
+                            "sfx",
+                            "SFX",
+                            "Sfx",
                             &mut mixer.sfx,
                             bus_accent("SFX", None),
                             &theme,
-                            inserts, catalog, commands,
+                            inserts,
+                            catalog,
+                            commands,
                         );
                         render_bus_strip(
-                            ui, "music", "MUSIC", "Music",
+                            ui,
+                            "music",
+                            "MUSIC",
+                            "Music",
                             &mut mixer.music,
                             bus_accent("MUSIC", None),
                             &theme,
-                            inserts, catalog, commands,
+                            inserts,
+                            catalog,
+                            commands,
                         );
                         render_bus_strip(
-                            ui, "ambient", "AMBIENT", "Ambient",
+                            ui,
+                            "ambient",
+                            "AMBIENT",
+                            "Ambient",
                             &mut mixer.ambient,
                             bus_accent("AMBIENT", None),
                             &theme,
-                            inserts, catalog, commands,
+                            inserts,
+                            catalog,
+                            commands,
                         );
 
                         if !mixer.custom_buses.is_empty() {
@@ -782,16 +802,14 @@ pub fn render_mixer_content(
                                 &mut mixer.custom_buses[i].1,
                                 accent,
                                 &theme,
-                                inserts, catalog, commands,
+                                inserts,
+                                catalog,
+                                commands,
                             );
 
                             // Context menu on the strip area
                             let strip_id = egui::Id::new("bus_ctx").with(i);
-                            let resp = ui.interact(
-                                ui.min_rect(),
-                                strip_id,
-                                Sense::click(),
-                            );
+                            let resp = ui.interact(ui.min_rect(), strip_id, Sense::click());
                             resp.context_menu(|ui| {
                                 ui.set_min_width(120.0);
                                 if ui.button("Rename").clicked() {
@@ -835,13 +853,8 @@ pub fn render_mixer_content(
                             ui.vertical(|ui| {
                                 ui.set_width(120.0);
                                 ui.add_space(8.0);
-                                ui.label(
-                                    RichText::new("Bus name")
-                                        .size(10.5)
-                                        .color(muted_color),
-                                );
-                                let resp =
-                                    ui.text_edit_singleline(&mut mixer.new_bus_name);
+                                ui.label(RichText::new("Bus name").size(10.5).color(muted_color));
+                                let resp = ui.text_edit_singleline(&mut mixer.new_bus_name);
                                 if resp.lost_focus()
                                     && ui.input(|i| i.key_pressed(egui::Key::Escape))
                                 {
@@ -852,12 +865,10 @@ pub fn render_mixer_content(
                                     let ok = !mixer.new_bus_name.trim().is_empty();
                                     ui.add_enabled_ui(ok, |ui| {
                                         if ui.button("Create").clicked() {
-                                            let name =
-                                                mixer.new_bus_name.trim().to_string();
-                                            mixer.custom_buses.push((
-                                                name,
-                                                ChannelStrip::default(),
-                                            ));
+                                            let name = mixer.new_bus_name.trim().to_string();
+                                            mixer
+                                                .custom_buses
+                                                .push((name, ChannelStrip::default()));
                                             mixer.new_bus_name.clear();
                                             mixer.adding_bus = false;
                                         }

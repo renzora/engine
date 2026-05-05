@@ -7,15 +7,16 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use bevy::prelude::*;
 use bevy::asset::uuid_handle;
-use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey, MaterialPlugin as BevyMaterialPlugin};
+use bevy::mesh::MeshVertexBufferLayoutRef;
+use bevy::pbr::{
+    Material, MaterialPipeline, MaterialPipelineKey, MaterialPlugin as BevyMaterialPlugin,
+};
+use bevy::prelude::*;
 use bevy::render::render_resource::{
-    AsBindGroup, ShaderType,
-    RenderPipelineDescriptor, SpecializedMeshPipelineError,
+    AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
-use bevy::mesh::MeshVertexBufferLayoutRef;
 
 // ── Default shader handle ───────────────────────────────────────────────────
 
@@ -204,10 +205,7 @@ fn setup_default_code_shader(mut shaders: ResMut<Assets<Shader>>) {
 }
 
 /// Update time/resolution/mouse uniforms on all `CodeShaderMaterial` instances each frame.
-fn update_code_shader_uniforms(
-    time: Res<Time>,
-    mut materials: ResMut<Assets<CodeShaderMaterial>>,
-) {
+fn update_code_shader_uniforms(time: Res<Time>, mut materials: ResMut<Assets<CodeShaderMaterial>>) {
     let t = time.elapsed_secs();
     let dt = time.delta_secs();
 

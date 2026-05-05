@@ -1,8 +1,10 @@
 //! Debug state resources and update systems
 
+use bevy::diagnostic::{
+    DiagnosticsStore, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
+};
 use bevy::prelude::*;
-use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin};
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 
 const MAX_SAMPLES: usize = 120;
 
@@ -45,7 +47,9 @@ impl Default for DiagnosticsState {
 
 impl DiagnosticsState {
     pub fn avg_fps(&self) -> f32 {
-        if self.fps_history.is_empty() { return 0.0; }
+        if self.fps_history.is_empty() {
+            return 0.0;
+        }
         self.fps_history.iter().sum::<f32>() / self.fps_history.len() as f32
     }
 
@@ -58,12 +62,16 @@ impl DiagnosticsState {
     }
 
     pub fn avg_frame_time(&self) -> f32 {
-        if self.frame_time_history.is_empty() { return 0.0; }
+        if self.frame_time_history.is_empty() {
+            return 0.0;
+        }
         self.frame_time_history.iter().sum::<f32>() / self.frame_time_history.len() as f32
     }
 
     pub fn one_percent_low_fps(&self) -> f32 {
-        if self.fps_history.is_empty() { return 0.0; }
+        if self.fps_history.is_empty() {
+            return 0.0;
+        }
         let mut sorted: Vec<f32> = self.fps_history.iter().copied().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let count = (sorted.len() as f32 * 0.01).max(1.0) as usize;
@@ -144,7 +152,8 @@ impl Default for SystemTimingState {
             update_interval: 0.5,
             time_since_update: 0.0,
             limitation_note: "Per-system timing requires Tracy integration. \
-                Run with --features tracy for detailed profiling.".to_string(),
+                Run with --features tracy for detailed profiling."
+                .to_string(),
         }
     }
 }
@@ -217,7 +226,14 @@ impl MemoryProfilerState {
         }
 
         let recent: Vec<f32> = self.memory_history.iter().rev().take(10).copied().collect();
-        let older: Vec<f32> = self.memory_history.iter().rev().skip(10).take(10).copied().collect();
+        let older: Vec<f32> = self
+            .memory_history
+            .iter()
+            .rev()
+            .skip(10)
+            .take(10)
+            .copied()
+            .collect();
 
         if older.is_empty() {
             self.memory_trend = MemoryTrend::Stable;
@@ -328,16 +344,14 @@ impl Default for CameraDebugState {
 
 impl CameraDebugState {
     pub fn selected_camera_info(&self) -> Option<&CameraInfo> {
-        self.selected_camera.and_then(|entity| {
-            self.cameras.iter().find(|c| c.entity == entity)
-        })
+        self.selected_camera
+            .and_then(|entity| self.cameras.iter().find(|c| c.entity == entity))
     }
 
     pub fn scene_camera_count(&self) -> usize {
         self.cameras.len()
     }
 }
-
 
 // ============================================================================
 // Culling Debug State
@@ -386,10 +400,14 @@ pub fn update_diagnostics_state(
     time: Res<Time>,
     entities: Query<Entity>,
 ) {
-    if !state.enabled { return; }
+    if !state.enabled {
+        return;
+    }
 
     state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval { return; }
+    if state.time_since_update < state.update_interval {
+        return;
+    }
     state.time_since_update = 0.0;
 
     if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
@@ -427,7 +445,9 @@ pub fn update_render_stats(
     meshes: Res<Assets<Mesh>>,
 ) {
     stats.time_since_update += time.delta_secs();
-    if stats.time_since_update < stats.update_interval { return; }
+    if stats.time_since_update < stats.update_interval {
+        return;
+    }
     stats.time_since_update = 0.0;
 
     let mut total_vertices: u64 = 0;
@@ -486,7 +506,9 @@ pub fn update_memory_profiler(
     materials: Res<Assets<StandardMaterial>>,
 ) {
     state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval { return; }
+    if state.time_since_update < state.update_interval {
+        return;
+    }
     let dt = state.time_since_update;
     state.time_since_update = 0.0;
 
@@ -544,7 +566,9 @@ pub fn update_system_timing(
     diagnostics: Res<DiagnosticsStore>,
 ) {
     state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval { return; }
+    if state.time_since_update < state.update_interval {
+        return;
+    }
     state.time_since_update = 0.0;
 
     let frame_time_ms = if let Some(ft) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
@@ -554,32 +578,51 @@ pub fn update_system_timing(
     };
 
     state.schedule_timings = vec![
-        ScheduleTiming { name: "PreUpdate".to_string(), time_ms: frame_time_ms * 0.05, percentage: 5.0 },
-        ScheduleTiming { name: "Update".to_string(), time_ms: frame_time_ms * 0.35, percentage: 35.0 },
-        ScheduleTiming { name: "PostUpdate".to_string(), time_ms: frame_time_ms * 0.10, percentage: 10.0 },
-        ScheduleTiming { name: "Render".to_string(), time_ms: frame_time_ms * 0.50, percentage: 50.0 },
+        ScheduleTiming {
+            name: "PreUpdate".to_string(),
+            time_ms: frame_time_ms * 0.05,
+            percentage: 5.0,
+        },
+        ScheduleTiming {
+            name: "Update".to_string(),
+            time_ms: frame_time_ms * 0.35,
+            percentage: 35.0,
+        },
+        ScheduleTiming {
+            name: "PostUpdate".to_string(),
+            time_ms: frame_time_ms * 0.10,
+            percentage: 10.0,
+        },
+        ScheduleTiming {
+            name: "Render".to_string(),
+            time_ms: frame_time_ms * 0.50,
+            percentage: 50.0,
+        },
     ];
 }
 
 pub fn update_camera_debug_state(
     mut state: ResMut<CameraDebugState>,
     time: Res<Time>,
-    cameras_3d: Query<(
-        Entity,
-        &Camera,
-        &GlobalTransform,
-        Option<&Name>,
-        Option<&Projection>,
-    ), With<Camera3d>>,
-    cameras_2d: Query<(
-        Entity,
-        &Camera,
-        &GlobalTransform,
-        Option<&Name>,
-    ), (With<Camera2d>, Without<Camera3d>)>,
+    cameras_3d: Query<
+        (
+            Entity,
+            &Camera,
+            &GlobalTransform,
+            Option<&Name>,
+            Option<&Projection>,
+        ),
+        With<Camera3d>,
+    >,
+    cameras_2d: Query<
+        (Entity, &Camera, &GlobalTransform, Option<&Name>),
+        (With<Camera2d>, Without<Camera3d>),
+    >,
 ) {
     state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval { return; }
+    if state.time_since_update < state.update_interval {
+        return;
+    }
     state.time_since_update = 0.0;
 
     state.cameras.clear();
@@ -601,10 +644,22 @@ pub fn update_camera_debug_state(
                     o.far,
                     Some(o.scale),
                 ),
-                _ => (CameraProjectionType::Perspective, Some(45.0), 0.1, 1000.0, None),
+                _ => (
+                    CameraProjectionType::Perspective,
+                    Some(45.0),
+                    0.1,
+                    1000.0,
+                    None,
+                ),
             }
         } else {
-            (CameraProjectionType::Perspective, Some(45.0), 0.1, 1000.0, None)
+            (
+                CameraProjectionType::Perspective,
+                Some(45.0),
+                0.1,
+                1000.0,
+                None,
+            )
         };
 
         let (_, rotation, translation) = transform.to_scale_rotation_translation();
@@ -632,7 +687,9 @@ pub fn update_camera_debug_state(
 
         state.cameras.push(CameraInfo {
             entity,
-            name: name.map(|n| n.as_str().to_string()).unwrap_or_else(|| format!("Camera {:?}", entity)),
+            name: name
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|| format!("Camera {:?}", entity)),
             is_active: camera.is_active,
             order: camera.order,
             projection_type,
@@ -666,7 +723,9 @@ pub fn update_camera_debug_state(
 
         state.cameras.push(CameraInfo {
             entity,
-            name: name.map(|n| n.as_str().to_string()).unwrap_or_else(|| format!("Camera2D {:?}", entity)),
+            name: name
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|| format!("Camera2D {:?}", entity)),
             is_active: camera.is_active,
             order: camera.order,
             projection_type: CameraProjectionType::Orthographic,
@@ -699,10 +758,16 @@ pub fn update_culling_debug_state(
     camera_q: Query<&GlobalTransform, With<Camera3d>>,
 ) {
     state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval { return; }
+    if state.time_since_update < state.update_interval {
+        return;
+    }
     state.time_since_update = 0.0;
 
-    let camera_pos = camera_q.iter().next().map(|t| t.translation()).unwrap_or(Vec3::ZERO);
+    let camera_pos = camera_q
+        .iter()
+        .next()
+        .map(|t| t.translation())
+        .unwrap_or(Vec3::ZERO);
 
     let mut total = 0u32;
     let mut frustum_visible = 0u32;
@@ -718,11 +783,17 @@ pub fn update_culling_debug_state(
         total += 1;
         let dist = transform.translation().distance(camera_pos);
 
-        let bucket_idx = if dist < 50.0 { 0 }
-            else if dist < 100.0 { 1 }
-            else if dist < 200.0 { 2 }
-            else if dist < 500.0 { 3 }
-            else { 4 };
+        let bucket_idx = if dist < 50.0 {
+            0
+        } else if dist < 100.0 {
+            1
+        } else if dist < 200.0 {
+            2
+        } else if dist < 500.0 {
+            3
+        } else {
+            4
+        };
         buckets[bucket_idx] += 1;
 
         if view_vis.get() {
@@ -807,7 +878,9 @@ pub fn update_ecs_stats(world: &mut World) {
     {
         let mut state = world.resource_mut::<EcsStatsState>();
         state.time_since_update += time_delta;
-        if state.time_since_update < state.update_interval { return; }
+        if state.time_since_update < state.update_interval {
+            return;
+        }
         state.time_since_update = 0.0;
     }
 
@@ -818,7 +891,9 @@ pub fn update_ecs_stats(world: &mut World) {
 
     for archetype in world.archetypes().iter() {
         let arch_entity_count = archetype.len() as usize;
-        if arch_entity_count == 0 { continue; }
+        if arch_entity_count == 0 {
+            continue;
+        }
 
         let mut components: Vec<String> = Vec::new();
         for component_id in archetype.components() {
@@ -844,13 +919,21 @@ pub fn update_ecs_stats(world: &mut World) {
 
     let mut stats: Vec<ComponentTypeStats> = component_counts
         .into_iter()
-        .map(|(name, (instance_count, archetype_count))| ComponentTypeStats { name, instance_count, archetype_count })
+        .map(
+            |(name, (instance_count, archetype_count))| ComponentTypeStats {
+                name,
+                instance_count,
+                archetype_count,
+            },
+        )
         .collect();
     stats.sort_by(|a, b| b.instance_count.cmp(&a.instance_count));
 
     let mut state = world.resource_mut::<EcsStatsState>();
     state.entity_count = entity_count;
-    if state.entity_count_history.len() >= MAX_SAMPLES { state.entity_count_history.pop_front(); }
+    if state.entity_count_history.len() >= MAX_SAMPLES {
+        state.entity_count_history.pop_front();
+    }
     state.entity_count_history.push_back(entity_count as f32);
     state.archetype_count = archetype_count;
     state.top_archetypes = top_archetypes;
@@ -927,7 +1010,10 @@ pub struct RenderPipelineCanvasState {
 
 impl Default for RenderPipelineCanvasState {
     fn default() -> Self {
-        Self { offset: [0.0, 0.0], zoom: 1.0 }
+        Self {
+            offset: [0.0, 0.0],
+            zoom: 1.0,
+        }
     }
 }
 
@@ -936,9 +1022,18 @@ impl RenderPipelineCanvasState {
         let old_zoom = self.zoom;
         self.zoom = (self.zoom * (1.0 + delta * 0.003)).clamp(0.15, 5.0);
         if (self.zoom - old_zoom).abs() > 0.0001 {
-            let rel = [screen_pos[0] - canvas_center[0], screen_pos[1] - canvas_center[1]];
-            let canvas_before = [rel[0] / old_zoom - self.offset[0], rel[1] / old_zoom - self.offset[1]];
-            let canvas_after = [rel[0] / self.zoom - self.offset[0], rel[1] / self.zoom - self.offset[1]];
+            let rel = [
+                screen_pos[0] - canvas_center[0],
+                screen_pos[1] - canvas_center[1],
+            ];
+            let canvas_before = [
+                rel[0] / old_zoom - self.offset[0],
+                rel[1] / old_zoom - self.offset[1],
+            ];
+            let canvas_after = [
+                rel[0] / self.zoom - self.offset[0],
+                rel[1] / self.zoom - self.offset[1],
+            ];
             self.offset[0] += canvas_after[0] - canvas_before[0];
             self.offset[1] += canvas_after[1] - canvas_before[1];
         }
@@ -982,7 +1077,9 @@ impl Default for RenderPipelineGraphData {
 
 impl RenderPipelineGraphData {
     pub fn get_node(&self, id: usize) -> Option<&RenderGraphNode> {
-        self.node_index.get(&id).and_then(|&idx| self.nodes.get(idx))
+        self.node_index
+            .get(&id)
+            .and_then(|&idx| self.nodes.get(idx))
     }
 
     pub fn rebuild_index(&mut self) {
@@ -994,8 +1091,8 @@ impl RenderPipelineGraphData {
 }
 
 pub fn extract_render_graph(app: &mut App) {
-    use bevy::render::RenderApp;
     use bevy::render::render_graph::RenderGraph;
+    use bevy::render::RenderApp;
 
     let mut data = app.world_mut().resource_mut::<RenderPipelineGraphData>();
     data.nodes.clear();
@@ -1011,12 +1108,26 @@ pub fn extract_render_graph(app: &mut App) {
     if let Some(render_app) = app.get_sub_app(RenderApp) {
         let render_graph = render_app.world().resource::<RenderGraph>();
 
-        let label_to_id = extract_graph_nodes(render_graph, "Main", &mut all_nodes, &mut all_edges, &mut next_id);
-        if !label_to_id.is_empty() { sub_graph_names.push("Main".to_string()); }
+        let label_to_id = extract_graph_nodes(
+            render_graph,
+            "Main",
+            &mut all_nodes,
+            &mut all_edges,
+            &mut next_id,
+        );
+        if !label_to_id.is_empty() {
+            sub_graph_names.push("Main".to_string());
+        }
 
         for (sub_label, sub_graph) in render_graph.iter_sub_graphs() {
             let sg_name = format!("{:?}", sub_label);
-            extract_graph_nodes(sub_graph, &sg_name, &mut all_nodes, &mut all_edges, &mut next_id);
+            extract_graph_nodes(
+                sub_graph,
+                &sg_name,
+                &mut all_nodes,
+                &mut all_edges,
+                &mut next_id,
+            );
             sub_graph_names.push(sg_name);
         }
     }
@@ -1050,21 +1161,32 @@ fn extract_graph_nodes(
         label_to_id.insert(label_str, id);
 
         all_nodes.push(RenderGraphNode {
-            id, display_name, type_name,
+            id,
+            display_name,
+            type_name,
             sub_graph: sub_graph_name.to_string(),
-            category, position: [0.0, 0.0], layer: 0, gpu_time_ms: 0.0,
+            category,
+            position: [0.0, 0.0],
+            layer: 0,
+            gpu_time_ms: 0.0,
         });
     }
 
     for node_state in graph.iter_nodes() {
         let from_label = format!("{:?}", node_state.label);
-        let from_id = match label_to_id.get(&from_label) { Some(&id) => id, None => continue };
+        let from_id = match label_to_id.get(&from_label) {
+            Some(&id) => id,
+            None => continue,
+        };
 
         for edge in node_state.edges.output_edges() {
             let to_label = format!("{:?}", edge.get_input_node());
             if let Some(&to_id) = label_to_id.get(&to_label) {
                 if !all_edges.iter().any(|e| e.from == from_id && e.to == to_id) {
-                    all_edges.push(RenderGraphEdge { from: from_id, to: to_id });
+                    all_edges.push(RenderGraphEdge {
+                        from: from_id,
+                        to: to_id,
+                    });
                 }
             }
         }
@@ -1074,49 +1196,95 @@ fn extract_graph_nodes(
 }
 
 fn clean_type_name(type_name: &str, label_str: &str) -> String {
-    let label_clean = label_str.trim_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '_');
+    let label_clean =
+        label_str.trim_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '_');
     let struct_name = type_name.rsplit("::").next().unwrap_or(type_name);
-    let name = struct_name.trim_end_matches("Node").trim_end_matches("Pass").trim_end_matches("Driver");
+    let name = struct_name
+        .trim_end_matches("Node")
+        .trim_end_matches("Pass")
+        .trim_end_matches("Driver");
 
-    if name.is_empty() { return label_clean.replace('_', " "); }
+    if name.is_empty() {
+        return label_clean.replace('_', " ");
+    }
 
     let mut result = String::new();
     for (i, ch) in name.chars().enumerate() {
         if i > 0 && ch.is_uppercase() {
             let prev = name.chars().nth(i - 1).unwrap_or(' ');
-            if prev.is_lowercase() || (prev.is_uppercase() && name.chars().nth(i + 1).map_or(false, |n| n.is_lowercase())) {
+            if prev.is_lowercase()
+                || (prev.is_uppercase()
+                    && name.chars().nth(i + 1).map_or(false, |n| n.is_lowercase()))
+            {
                 result.push(' ');
             }
         }
         result.push(ch);
     }
 
-    if result.trim().is_empty() { label_clean.replace('_', " ") } else { result }
+    if result.trim().is_empty() {
+        label_clean.replace('_', " ")
+    } else {
+        result
+    }
 }
 
 fn categorize_node(type_name: &str, label_str: &str) -> RenderNodeCategory {
     let lower = type_name.to_lowercase();
     let label_lower = label_str.to_lowercase();
 
-    if lower.contains("camera") || lower.contains("driver") { return RenderNodeCategory::CameraSetup; }
-    if lower.contains("shadow") { return RenderNodeCategory::Shadow; }
-    if lower.contains("opaque") || lower.contains("prepass") || lower.contains("deferred")
-        || lower.contains("main_pass") || label_lower.contains("opaque") { return RenderNodeCategory::Geometry; }
-    if lower.contains("transparent") || lower.contains("transmissive") || lower.contains("alpha")
-        || label_lower.contains("transparent") { return RenderNodeCategory::Transparency; }
-    if lower.contains("bloom") || lower.contains("tonemap") || lower.contains("fxaa")
-        || lower.contains("smaa") || lower.contains("taa") || lower.contains("sharpen")
-        || lower.contains("auto_exposure") || lower.contains("msaa") || lower.contains("skybox")
-        || lower.contains("dof") || lower.contains("motion_blur") || lower.contains("chromatic")
-        || lower.contains("post_process") || lower.contains("copy_deferred") { return RenderNodeCategory::PostProcess; }
-    if lower.contains("upscal") || label_lower.contains("upscal") { return RenderNodeCategory::Upscale; }
-    if lower.contains("outline") || lower.contains("renzora") || lower.contains("custom") { return RenderNodeCategory::Custom; }
+    if lower.contains("camera") || lower.contains("driver") {
+        return RenderNodeCategory::CameraSetup;
+    }
+    if lower.contains("shadow") {
+        return RenderNodeCategory::Shadow;
+    }
+    if lower.contains("opaque")
+        || lower.contains("prepass")
+        || lower.contains("deferred")
+        || lower.contains("main_pass")
+        || label_lower.contains("opaque")
+    {
+        return RenderNodeCategory::Geometry;
+    }
+    if lower.contains("transparent")
+        || lower.contains("transmissive")
+        || lower.contains("alpha")
+        || label_lower.contains("transparent")
+    {
+        return RenderNodeCategory::Transparency;
+    }
+    if lower.contains("bloom")
+        || lower.contains("tonemap")
+        || lower.contains("fxaa")
+        || lower.contains("smaa")
+        || lower.contains("taa")
+        || lower.contains("sharpen")
+        || lower.contains("auto_exposure")
+        || lower.contains("msaa")
+        || lower.contains("skybox")
+        || lower.contains("dof")
+        || lower.contains("motion_blur")
+        || lower.contains("chromatic")
+        || lower.contains("post_process")
+        || lower.contains("copy_deferred")
+    {
+        return RenderNodeCategory::PostProcess;
+    }
+    if lower.contains("upscal") || label_lower.contains("upscal") {
+        return RenderNodeCategory::Upscale;
+    }
+    if lower.contains("outline") || lower.contains("renzora") || lower.contains("custom") {
+        return RenderNodeCategory::Custom;
+    }
 
     RenderNodeCategory::Other
 }
 
 pub fn auto_layout(data: &mut RenderPipelineGraphData) {
-    if data.nodes.is_empty() { return; }
+    if data.nodes.is_empty() {
+        return;
+    }
 
     let node_width: f32 = 180.0;
     let node_height: f32 = 60.0;
@@ -1125,17 +1293,30 @@ pub fn auto_layout(data: &mut RenderPipelineGraphData) {
 
     let mut predecessors: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut successors: HashMap<usize, Vec<usize>> = HashMap::new();
-    for node in &data.nodes { predecessors.insert(node.id, Vec::new()); successors.insert(node.id, Vec::new()); }
-    for edge in &data.edges { predecessors.entry(edge.to).or_default().push(edge.from); successors.entry(edge.from).or_default().push(edge.to); }
+    for node in &data.nodes {
+        predecessors.insert(node.id, Vec::new());
+        successors.insert(node.id, Vec::new());
+    }
+    for edge in &data.edges {
+        predecessors.entry(edge.to).or_default().push(edge.from);
+        successors.entry(edge.from).or_default().push(edge.to);
+    }
 
     let mut layer_of: HashMap<usize, usize> = HashMap::new();
     let mut in_degree: HashMap<usize, usize> = HashMap::new();
-    for node in &data.nodes { in_degree.insert(node.id, 0); }
-    for edge in &data.edges { *in_degree.entry(edge.to).or_default() += 1; }
+    for node in &data.nodes {
+        in_degree.insert(node.id, 0);
+    }
+    for edge in &data.edges {
+        *in_degree.entry(edge.to).or_default() += 1;
+    }
 
     let mut queue: Vec<usize> = Vec::new();
     for node in &data.nodes {
-        if in_degree[&node.id] == 0 { queue.push(node.id); layer_of.insert(node.id, 0); }
+        if in_degree[&node.id] == 0 {
+            queue.push(node.id);
+            layer_of.insert(node.id, 0);
+        }
     }
 
     while let Some(nid) = queue.first().copied() {
@@ -1147,27 +1328,38 @@ pub fn auto_layout(data: &mut RenderPipelineGraphData) {
                 *entry = (*entry).max(current_layer + 1);
                 let deg = in_degree.get_mut(&s).unwrap();
                 *deg -= 1;
-                if *deg == 0 { queue.push(s); }
+                if *deg == 0 {
+                    queue.push(s);
+                }
             }
         }
     }
 
-    for node in &data.nodes { layer_of.entry(node.id).or_insert(0); }
+    for node in &data.nodes {
+        layer_of.entry(node.id).or_insert(0);
+    }
     let max_layer = layer_of.values().copied().max().unwrap_or(0);
 
     let mut layers: Vec<Vec<usize>> = vec![Vec::new(); max_layer + 1];
-    for node in &data.nodes { layers[layer_of[&node.id]].push(node.id); }
+    for node in &data.nodes {
+        layers[layer_of[&node.id]].push(node.id);
+    }
 
     for layer_idx in 1..=max_layer {
         let mut barycenters: Vec<(usize, f32)> = Vec::new();
         for &nid in &layers[layer_idx] {
             let preds = &predecessors[&nid];
-            if preds.is_empty() { barycenters.push((nid, 0.0)); } else {
+            if preds.is_empty() {
+                barycenters.push((nid, 0.0));
+            } else {
                 let mut sum = 0.0f32;
                 let mut count = 0;
                 for &p in preds {
                     let p_layer = layer_of[&p];
-                    if let Some(pos) = layers[p_layer].iter().position(|&x| x == p) { sum += pos as f32; count += 1; }
+                    if let Some(pos) = layers[p_layer].iter().position(|&x| x == p) {
+                        sum += pos as f32;
+                        count += 1;
+                    }
                 }
                 barycenters.push((nid, if count > 0 { sum / count as f32 } else { 0.0 }));
             }
@@ -1186,7 +1378,10 @@ pub fn auto_layout(data: &mut RenderPipelineGraphData) {
             let x_offset = (total_width - layer_width) / 2.0;
             for (node_idx, &nid) in layer_nodes.iter().enumerate() {
                 if let Some(&idx) = data.node_index.get(&nid) {
-                    data.nodes[idx].position = [x_offset + node_idx as f32 * (node_width + h_gap), layer_idx as f32 * (node_height + v_gap + 40.0)];
+                    data.nodes[idx].position = [
+                        x_offset + node_idx as f32 * (node_width + h_gap),
+                        layer_idx as f32 * (node_height + v_gap + 40.0),
+                    ];
                     data.nodes[idx].layer = layer_idx;
                 }
             }
@@ -1198,7 +1393,10 @@ pub fn auto_layout(data: &mut RenderPipelineGraphData) {
             let y_offset = (total_height - layer_height) / 2.0;
             for (node_idx, &nid) in layer_nodes.iter().enumerate() {
                 if let Some(&idx) = data.node_index.get(&nid) {
-                    data.nodes[idx].position = [layer_idx as f32 * (node_width + h_gap), y_offset + node_idx as f32 * (node_height + v_gap)];
+                    data.nodes[idx].position = [
+                        layer_idx as f32 * (node_width + h_gap),
+                        y_offset + node_idx as f32 * (node_height + v_gap),
+                    ];
                     data.nodes[idx].layer = layer_idx;
                 }
             }
@@ -1210,10 +1408,16 @@ pub fn update_render_pipeline_timing(
     mut graph_data: ResMut<RenderPipelineGraphData>,
     render_stats: Res<RenderStats>,
 ) {
-    if !graph_data.initialized { return; }
+    if !graph_data.initialized {
+        return;
+    }
 
     if render_stats.gpu_time_ms > 0.0 {
-        let total_weight: f32 = graph_data.nodes.iter().map(|n| category_weight(n.category)).sum();
+        let total_weight: f32 = graph_data
+            .nodes
+            .iter()
+            .map(|n| category_weight(n.category))
+            .sum();
         if total_weight > 0.0 {
             for node in &mut graph_data.nodes {
                 let weight = category_weight(node.category);

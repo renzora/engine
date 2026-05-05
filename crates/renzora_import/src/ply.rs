@@ -102,7 +102,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     }
 
     if vertices.is_empty() {
-        return Err(ImportError::ParseError("PLY file contains no vertices".into()));
+        return Err(ImportError::ParseError(
+            "PLY file contains no vertices".into(),
+        ));
     }
 
     let mut warnings = Vec::new();
@@ -112,7 +114,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     let mut normals = Vec::with_capacity(vertices.len() * 3);
     let mut texcoords = Vec::with_capacity(vertices.len() * 2);
 
-    let has_normals = vertices.iter().any(|v| v.nx != 0.0 || v.ny != 0.0 || v.nz != 0.0);
+    let has_normals = vertices
+        .iter()
+        .any(|v| v.nx != 0.0 || v.ny != 0.0 || v.nz != 0.0);
 
     for vert in &vertices {
         let (x, mut y, mut z) = (
@@ -139,7 +143,11 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             normals.extend_from_slice(&[nx, ny, nz]);
         }
 
-        let tv = if settings.flip_uvs { 1.0 - vert.v } else { vert.v };
+        let tv = if settings.flip_uvs {
+            1.0 - vert.v
+        } else {
+            vert.v
+        };
         texcoords.extend_from_slice(&[vert.u, tv]);
     }
 
@@ -175,11 +183,19 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         normals = vec![0.0; vertices.len() * 3];
     }
 
-    let glb_bytes = build_glb(&positions, &normals, &texcoords, &indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = build_glb(
+        &positions,
+        &normals,
+        &texcoords,
+        &indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 

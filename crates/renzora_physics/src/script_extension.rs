@@ -49,28 +49,44 @@ impl ScriptExtension for PhysicsScriptExtension {
         }
 
         // move_controller(dx, dy, dz) — kinematic collide-and-slide.
-        let _ = globals.set("move_controller", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-            push_action("kinematic_slide", xyz(x, y, z));
-            Ok(())
-        }).unwrap());
+        let _ = globals.set(
+            "move_controller",
+            lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+                push_action("kinematic_slide", xyz(x, y, z));
+                Ok(())
+            })
+            .unwrap(),
+        );
 
         // apply_force(x, y, z)
-        let _ = globals.set("apply_force", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-            push_action("apply_force", xyz(x, y, z));
-            Ok(())
-        }).unwrap());
+        let _ = globals.set(
+            "apply_force",
+            lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+                push_action("apply_force", xyz(x, y, z));
+                Ok(())
+            })
+            .unwrap(),
+        );
 
         // apply_impulse(x, y, z)
-        let _ = globals.set("apply_impulse", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-            push_action("apply_impulse", xyz(x, y, z));
-            Ok(())
-        }).unwrap());
+        let _ = globals.set(
+            "apply_impulse",
+            lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+                push_action("apply_impulse", xyz(x, y, z));
+                Ok(())
+            })
+            .unwrap(),
+        );
 
         // set_linear_velocity(x, y, z)
-        let _ = globals.set("set_linear_velocity", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-            push_action("set_velocity", xyz(x, y, z));
-            Ok(())
-        }).unwrap());
+        let _ = globals.set(
+            "set_linear_velocity",
+            lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+                push_action("set_velocity", xyz(x, y, z));
+                Ok(())
+            })
+            .unwrap(),
+        );
 
         // Reads — use `get("PhysicsReadState.grounded")` etc. from the existing
         // reflect path dispatcher. No extra bindings needed.

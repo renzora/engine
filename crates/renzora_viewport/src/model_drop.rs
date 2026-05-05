@@ -18,8 +18,8 @@ use bevy::scene::{SceneInstanceReady, SceneRoot};
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui;
 
-use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
+use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
@@ -175,7 +175,10 @@ pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect
                     let gltf_handle = s.mesh_handle.take();
                     s.name = None;
                     s.cursor_in_viewport = false;
-                    entity.zip(asset_path).zip(gltf_handle).map(|((e, p), h)| (e, p, h))
+                    entity
+                        .zip(asset_path)
+                        .zip(gltf_handle)
+                        .map(|((e, p), h)| (e, p, h))
                 });
 
             if let Some((entity, asset_path, gltf_handle)) = promotion {
@@ -242,7 +245,9 @@ fn compute_ground_position(
     let render_x = vp_x / viewport_rect.width() * vp_state.current_size.x as f32;
     let render_y = vp_y / viewport_rect.height() * vp_state.current_size.y as f32;
 
-    let ray = camera.viewport_to_world(&camera_transform, Vec2::new(render_x, render_y)).ok()?;
+    let ray = camera
+        .viewport_to_world(&camera_transform, Vec2::new(render_x, render_y))
+        .ok()?;
 
     // Intersect with Y=0 ground plane
     if ray.direction.y.abs() < 1e-6 {
@@ -285,7 +290,10 @@ fn run_import_pipeline(
     let result = match convert_to_glb(source, &settings) {
         Ok(r) => r,
         Err(e) => {
-            warn!("[model_drop] convert failed for {:?}: {}; falling back to plain copy", source, e);
+            warn!(
+                "[model_drop] convert failed for {:?}: {}; falling back to plain copy",
+                source, e
+            );
             if source != dest {
                 if let Err(ce) = std::fs::copy(source, dest) {
                     error!("[model_drop] copy fallback failed: {}", ce);
@@ -351,7 +359,9 @@ fn run_import_pipeline(
                 occlusion_texture: prefix(&mat.occlusion_texture),
                 specular_glossiness_texture: prefix(&mat.specular_glossiness_texture),
                 alpha_mode: match mat.alpha_mode {
-                    renzora_import::ExtractedAlphaMode::Opaque => renzora::core::PbrAlphaMode::Opaque,
+                    renzora_import::ExtractedAlphaMode::Opaque => {
+                        renzora::core::PbrAlphaMode::Opaque
+                    }
                     renzora_import::ExtractedAlphaMode::Mask => renzora::core::PbrAlphaMode::Mask,
                     renzora_import::ExtractedAlphaMode::Blend => renzora::core::PbrAlphaMode::Blend,
                 },
@@ -507,7 +517,9 @@ fn discover_animation_clips(
 ) -> Option<AnimatorComponent> {
     let project = project?;
     // Model is e.g. "models/Man.glb" → look in "models/animations/"
-    let model_dir = std::path::Path::new(asset_path).parent().unwrap_or(std::path::Path::new(""));
+    let model_dir = std::path::Path::new(asset_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(""));
     let anim_dir_abs = project.path.join(model_dir).join("animations");
 
     if !anim_dir_abs.is_dir() {
@@ -518,11 +530,7 @@ fn discover_animation_clips(
     let mut entries: Vec<_> = std::fs::read_dir(&anim_dir_abs)
         .ok()?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map_or(false, |ext| ext == "anim")
-        })
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "anim"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
 
@@ -594,7 +602,9 @@ pub fn align_models_to_ground(
                         for sz in [-1.0f32, 1.0] {
                             let corner: Vec3 = center + half * Vec3::new(sx, sy, sz);
                             let world_pos: Vec3 = global_transform.transform_point(corner);
-                            lowest_y = Some(lowest_y.map_or(world_pos.y, |prev: f32| prev.min(world_pos.y)));
+                            lowest_y = Some(
+                                lowest_y.map_or(world_pos.y, |prev: f32| prev.min(world_pos.y)),
+                            );
                         }
                     }
                 }
@@ -621,7 +631,11 @@ pub fn auto_discover_animations(
     mut commands: Commands,
     query: Query<
         (Entity, &MeshInstanceData),
-        (Without<AnimatorComponent>, Without<renzora_animation::AnimatorState>, Without<AnimationDiscoveryDone>),
+        (
+            Without<AnimatorComponent>,
+            Without<renzora_animation::AnimatorState>,
+            Without<AnimationDiscoveryDone>,
+        ),
     >,
     project: Option<Res<CurrentProject>>,
 ) {
@@ -681,7 +695,9 @@ pub fn track_model_drag_preview(
         // when no preview is available (e.g. file outside the project).
         state.origin_path = Some(payload.path.clone());
 
-        let Some(project) = project.as_deref() else { return };
+        let Some(project) = project.as_deref() else {
+            return;
+        };
         let asset_path = project.make_asset_relative(&payload.path);
         // Heuristic: if the path didn't strip cleanly to a relative path,
         // it's outside the project — skip the preview. Drop will still work
@@ -786,8 +802,12 @@ pub fn update_model_drag_ghost(
     if !state.cursor_in_viewport {
         return;
     }
-    let Some(handle) = state.mesh_handle.as_ref() else { return };
-    let Some(gltf) = gltf_assets.get(handle) else { return };
+    let Some(handle) = state.mesh_handle.as_ref() else {
+        return;
+    };
+    let Some(gltf) = gltf_assets.get(handle) else {
+        return;
+    };
     let Some(scene) = gltf
         .default_scene
         .clone()
@@ -798,10 +818,7 @@ pub fn update_model_drag_ghost(
         return;
     };
 
-    let display_name = state
-        .name
-        .clone()
-        .unwrap_or_else(|| "Model".to_string());
+    let display_name = state.name.clone().unwrap_or_else(|| "Model".to_string());
 
     // Spawn a minimal preview entity: just the SceneRoot scene under a
     // transform parent. No production markers (`MeshInstanceData`,
@@ -853,9 +870,11 @@ pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> 
     let asset_server = world.get_resource::<AssetServer>();
 
     if let Some(state) = world.get_resource::<ModelDragPreviewState>() {
-        if let (Some(handle), Some(server), Some(name)) =
-            (state.mesh_handle.as_ref(), asset_server, state.name.as_ref())
-        {
+        if let (Some(handle), Some(server), Some(name)) = (
+            state.mesh_handle.as_ref(),
+            asset_server,
+            state.name.as_ref(),
+        ) {
             let loaded = matches!(server.get_load_state(handle.id()), Some(LoadState::Loaded));
             if !loaded {
                 out.push((format!("{} (mesh)", name), None));
@@ -863,12 +882,13 @@ pub fn collect_model_load_progress(world: &World) -> Vec<(String, Option<f32>)> 
         }
     }
 
-    if let (Some(pending), Some(server)) = (
-        world.get_resource::<PendingGltfLoads>(),
-        asset_server,
-    ) {
+    if let (Some(pending), Some(server)) = (world.get_resource::<PendingGltfLoads>(), asset_server)
+    {
         for load in &pending.loads {
-            let loaded = matches!(server.get_load_state(load.handle.id()), Some(LoadState::Loaded));
+            let loaded = matches!(
+                server.get_load_state(load.handle.id()),
+                Some(LoadState::Loaded)
+            );
             let frac = if loaded { Some(1.0) } else { None };
             out.push((load.name.clone(), frac));
         }
@@ -900,7 +920,11 @@ pub fn bind_material_refs(
     children_query: Query<&Children>,
     mesh_mat_query: Query<
         &MeshMaterial3d<StandardMaterial>,
-        (With<Mesh3d>, Without<MaterialBindingDone>, Without<renzora::MaterialRef>),
+        (
+            With<Mesh3d>,
+            Without<MaterialBindingDone>,
+            Without<renzora::MaterialRef>,
+        ),
     >,
     gltf_assets: Res<Assets<Gltf>>,
 ) {
@@ -918,7 +942,9 @@ pub fn bind_material_refs(
         // No `model_path` means there's nothing to bind to; the marker is
         // useless on this entity, drop it.
         let Some(model_path) = mesh_data.model_path.as_deref() else {
-            commands.entity(root_entity).remove::<PendingMaterialBinding>();
+            commands
+                .entity(root_entity)
+                .remove::<PendingMaterialBinding>();
             continue;
         };
         let model_dir_rel = std::path::Path::new(model_path)
@@ -1028,10 +1054,9 @@ pub fn decorate_rehydrated_scene_on_ready(
     // calling load again is just a refcount bump on the cached asset.
     let gltf_handle: Handle<Gltf> = asset_server.load(model_path);
 
-    commands.entity(parent_entity).try_insert((
-        ImportedRoot,
-        PendingMaterialBinding { gltf_handle },
-    ));
+    commands
+        .entity(parent_entity)
+        .try_insert((ImportedRoot, PendingMaterialBinding { gltf_handle }));
     commands
         .entity(scene_root_entity)
         .try_insert(PendingFlatten::default());
@@ -1057,4 +1082,3 @@ fn sanitize_material_name(name: &str) -> String {
         safe
     }
 }
-

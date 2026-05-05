@@ -4,8 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora editor SDK — RenzoraEditorPlugin + extension contracts (EditorPanel, registries, EditorSelection, etc.). Shipped as renzora_editor.dll so loadable plugins dynamically share its symbols (egui, bevy_egui, egui-phosphor flow through via re-export)."
 
+# Ships as a desktop dylib so distribution plugins (post-process effects,
+# editor panels) link to a single compiled copy of the editor SDK rather
+# than each embedding ~21MB of egui + bevy_egui + widget code.
+# `prefer-dynamic` in `.cargo/config.toml` resolves this to the dylib
+# automatically. Mobile builds use the rlib variant (no dylib produced).
 [lib]
-crate-type = ["dylib"]
+crate-type = ["dylib", "rlib"]
 
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
@@ -19,3 +24,6 @@ renzora_postprocess = { path = "../renzora_postprocess" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+
+[lints]
+workspace = true

@@ -15,8 +15,8 @@
 //! hundreds of separate meshes), nothing collapses at the fan-out level —
 //! only vertical single-child chains fold.
 
-use bevy::prelude::*;
 use bevy::mesh::skinning::SkinnedMesh;
+use bevy::prelude::*;
 use bevy::scene::{SceneInstance, SceneRoot};
 use std::collections::HashSet;
 
@@ -143,11 +143,7 @@ fn flatten_subtree(scene_root: Entity, world: &mut World) {
 /// If `entity` is a pass-through node (single child, safe transform, no role,
 /// not a joint), reparent its child directly under `entity`'s parent with the
 /// composed transform, then despawn `entity`.
-fn try_collapse_into_child(
-    entity: Entity,
-    world: &mut World,
-    joint_set: &HashSet<Entity>,
-) {
+fn try_collapse_into_child(entity: Entity, world: &mut World, joint_set: &HashSet<Entity>) {
     if joint_set.contains(&entity) {
         return;
     }
@@ -157,8 +153,12 @@ fn try_collapse_into_child(
 
     // Must have exactly one child.
     let child = {
-        let Ok(e) = world.get_entity(entity) else { return };
-        let Some(children) = e.get::<Children>() else { return };
+        let Ok(e) = world.get_entity(entity) else {
+            return;
+        };
+        let Some(children) = e.get::<Children>() else {
+            return;
+        };
         if children.len() != 1 {
             return;
         }
@@ -234,9 +234,7 @@ fn try_collapse_into_child(
     entity_mut.remove::<SceneInstance>();
     entity_mut.despawn();
 
-    let child_parent_after = world
-        .get::<ChildOf>(child)
-        .map(|c| c.parent());
+    let child_parent_after = world.get::<ChildOf>(child).map(|c| c.parent());
     debug!(
         "[flatten] collapsed {:?}({}) into child {:?}({}); child.parent={:?}, grandparent_was={:?}",
         entity, entity_name, child, child_name, child_parent_after, grandparent
@@ -391,7 +389,9 @@ pub fn hide_gltf_wrappers(
             if hidden_query.get(entity).is_ok() {
                 continue;
             }
-            let Ok(name) = name_query.get(entity) else { continue };
+            let Ok(name) = name_query.get(entity) else {
+                continue;
+            };
             if is_gltf_wrapper_name(name.as_str()) {
                 commands.entity(entity).try_insert(renzora::HideInHierarchy);
             }

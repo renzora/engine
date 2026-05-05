@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use rhai::{Dynamic, Engine, AST, Scope, Map, ImmutableString};
+use rhai::{Dynamic, Engine, ImmutableString, Map, Scope, AST};
 
 use crate::backend::{FileReader, ScriptBackend};
 use crate::command::{PropertyValue, ScriptCommand};
@@ -20,7 +20,7 @@ struct CachedScript {
     props: Vec<ScriptVariableDefinition>,
 }
 
-use super::{push_command, drain_commands};
+use super::{drain_commands, push_command};
 
 pub struct RhaiBackend {
     engine: RwLock<Engine>,
@@ -63,26 +63,41 @@ impl RhaiBackend {
             if let Some(s) = reader(path) {
                 s
             } else {
-                std::fs::read_to_string(path)
-                    .map_err(|e| format!("Failed to read: {}", e))?
+                std::fs::read_to_string(path).map_err(|e| format!("Failed to read: {}", e))?
             }
         } else {
-            std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to read: {}", e))?
+            std::fs::read_to_string(path).map_err(|e| format!("Failed to read: {}", e))?
         };
 
-        let ast = self.engine.read().unwrap().compile(&source)
+        let ast = self
+            .engine
+            .read()
+            .unwrap()
+            .compile(&source)
             .map_err(|e| format!("Compile error: {}", e))?;
 
         let props = parse_script_props(&self.engine.read().unwrap(), &ast);
 
-        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
         let last_modified = std::fs::metadata(path)
             .and_then(|m| m.modified())
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
 
         if let Ok(mut cache) = self.cache.write() {
-            cache.insert(path.to_path_buf(), CachedScript { ast, path: path.to_path_buf(), name, last_modified, props });
+            cache.insert(
+                path.to_path_buf(),
+                CachedScript {
+                    ast,
+                    path: path.to_path_buf(),
+                    name,
+                    last_modified,
+                    props,
+                },
+            );
         }
         Ok(())
     }
@@ -102,10 +117,14 @@ impl RhaiBackend {
         };
 
         // Register extension functions once (lazily on first execution)
-        if !self.extensions_registered.load(std::sync::atomic::Ordering::Relaxed) {
+        if !self
+            .extensions_registered
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             if let Some(extensions) = ctx.extensions() {
                 extensions.register_rhai_functions(&mut self.engine.write().unwrap());
-                self.extensions_registered.store(true, std::sync::atomic::Ordering::Relaxed);
+                self.extensions_registered
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
 
@@ -119,12 +138,20 @@ impl RhaiBackend {
 
         drain_commands();
 
-        match self.engine.read().unwrap().call_fn::<Dynamic>(&mut scope, &ast, hook, ()) {
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .call_fn::<Dynamic>(&mut scope, &ast, hook, ())
+        {
             Ok(_) => {}
             Err(e) => {
                 let err = e.to_string();
                 if !err.contains("Function not found") {
-                    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown");
                     return Err(format!("{} {}: {}", name, hook, e));
                 }
             }
@@ -136,8 +163,12 @@ impl RhaiBackend {
 }
 
 impl ScriptBackend for RhaiBackend {
-    fn name(&self) -> &str { "Rhai" }
-    fn extensions(&self) -> &[&str] { &["rhai"] }
+    fn name(&self) -> &str {
+        "Rhai"
+    }
+    fn extensions(&self) -> &[&str] {
+        &["rhai"]
+    }
 
     fn set_scripts_folder(&mut self, path: PathBuf) {
         self.scripts_folder = Some(path);
@@ -148,13 +179,19 @@ impl ScriptBackend for RhaiBackend {
     }
 
     fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
-        let Some(folder) = &self.scripts_folder else { return Vec::new() };
+        let Some(folder) = &self.scripts_folder else {
+            return Vec::new();
+        };
         let mut scripts = Vec::new();
         if let Ok(entries) = std::fs::read_dir(folder) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "rhai") {
-                    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
                     scripts.push((name, path));
                 }
             }
@@ -164,38 +201,68 @@ impl ScriptBackend for RhaiBackend {
 
     fn get_script_props(&self, path: &Path) -> Vec<ScriptVariableDefinition> {
         let _ = self.load_script(path);
-        self.cache.read().ok()
+        self.cache
+            .read()
+            .ok()
             .and_then(|c| c.get(path).map(|s| s.props.clone()))
             .unwrap_or_default()
     }
 
-    fn call_on_ready(&self, path: &Path, ctx: &mut ScriptContext, vars: &mut ScriptVariables) -> Result<Vec<ScriptCommand>, String> {
+    fn call_on_ready(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
         self.execute_hook(path, "on_ready", ctx, vars)
     }
 
-    fn call_on_update(&self, path: &Path, ctx: &mut ScriptContext, vars: &mut ScriptVariables) -> Result<Vec<ScriptCommand>, String> {
+    fn call_on_update(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
         self.execute_hook(path, "on_update", ctx, vars)
     }
 
     fn needs_reload(&self, path: &Path) -> bool {
-        let cache = match self.cache.read() { Ok(c) => c, Err(_) => return false };
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
         // Not in cache = never loaded yet, not a "reload" scenario
-        let Some(cached) = cache.get(path) else { return false };
-        if self.file_reader.is_some() { return false; }
-        let Ok(meta) = std::fs::metadata(path) else { return false };
-        let Ok(modified) = meta.modified() else { return false };
+        let Some(cached) = cache.get(path) else {
+            return false;
+        };
+        if self.file_reader.is_some() {
+            return false;
+        }
+        let Ok(meta) = std::fs::metadata(path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            return false;
+        };
         modified != cached.last_modified
     }
 
     fn reload(&self, path: &Path) -> Result<(), String> {
-        if let Ok(mut cache) = self.cache.write() { cache.remove(path); }
+        if let Ok(mut cache) = self.cache.write() {
+            cache.remove(path);
+        }
         self.load_script(path)
     }
 
     fn eval_expression(&self, expr: &str) -> Result<String, String> {
         let mut scope = Scope::new();
         drain_commands();
-        match self.engine.read().unwrap().eval_with_scope::<Dynamic>(&mut scope, expr) {
+        match self
+            .engine
+            .read()
+            .unwrap()
+            .eval_with_scope::<Dynamic>(&mut scope, expr)
+        {
             Ok(result) => {
                 let _ = drain_commands();
                 let s = format!("{}", result);
@@ -212,86 +279,257 @@ impl ScriptBackend for RhaiBackend {
 
 fn register_api(engine: &mut Engine) {
     // Transform
-    engine.register_fn("set_position", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::SetPosition { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("set_rotation", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::SetRotation { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("set_scale", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::SetScale { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("set_scale_uniform", |s: f64| { push_command(ScriptCommand::SetScale { x: s as f32, y: s as f32, z: s as f32 }); });
-    engine.register_fn("translate", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::Translate { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("rotate", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::Rotate { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("look_at", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::LookAt { x: x as f32, y: y as f32, z: z as f32 }); });
+    engine.register_fn("set_position", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::SetPosition {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("set_rotation", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::SetRotation {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("set_scale", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::SetScale {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("set_scale_uniform", |s: f64| {
+        push_command(ScriptCommand::SetScale {
+            x: s as f32,
+            y: s as f32,
+            z: s as f32,
+        });
+    });
+    engine.register_fn("translate", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::Translate {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("rotate", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::Rotate {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("look_at", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::LookAt {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
 
     // Parent transform
-    engine.register_fn("parent_set_position", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::ParentSetPosition { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("parent_set_rotation", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::ParentSetRotation { x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("parent_translate", |x: f64, y: f64, z: f64| { push_command(ScriptCommand::ParentTranslate { x: x as f32, y: y as f32, z: z as f32 }); });
+    engine.register_fn("parent_set_position", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::ParentSetPosition {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("parent_set_rotation", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::ParentSetRotation {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
+    engine.register_fn("parent_translate", |x: f64, y: f64, z: f64| {
+        push_command(ScriptCommand::ParentTranslate {
+            x: x as f32,
+            y: y as f32,
+            z: z as f32,
+        });
+    });
 
     // Child transform
-    engine.register_fn("set_child_position", |name: ImmutableString, x: f64, y: f64, z: f64| { push_command(ScriptCommand::ChildSetPosition { name: name.to_string(), x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("set_child_rotation", |name: ImmutableString, x: f64, y: f64, z: f64| { push_command(ScriptCommand::ChildSetRotation { name: name.to_string(), x: x as f32, y: y as f32, z: z as f32 }); });
-    engine.register_fn("child_translate", |name: ImmutableString, x: f64, y: f64, z: f64| { push_command(ScriptCommand::ChildTranslate { name: name.to_string(), x: x as f32, y: y as f32, z: z as f32 }); });
+    engine.register_fn(
+        "set_child_position",
+        |name: ImmutableString, x: f64, y: f64, z: f64| {
+            push_command(ScriptCommand::ChildSetPosition {
+                name: name.to_string(),
+                x: x as f32,
+                y: y as f32,
+                z: z as f32,
+            });
+        },
+    );
+    engine.register_fn(
+        "set_child_rotation",
+        |name: ImmutableString, x: f64, y: f64, z: f64| {
+            push_command(ScriptCommand::ChildSetRotation {
+                name: name.to_string(),
+                x: x as f32,
+                y: y as f32,
+                z: z as f32,
+            });
+        },
+    );
+    engine.register_fn(
+        "child_translate",
+        |name: ImmutableString, x: f64, y: f64, z: f64| {
+            push_command(ScriptCommand::ChildTranslate {
+                name: name.to_string(),
+                x: x as f32,
+                y: y as f32,
+                z: z as f32,
+            });
+        },
+    );
 
     // Input
-    engine.register_fn("is_key_pressed", |keys_map: Map, key: ImmutableString| -> bool {
-        keys_map.get(key.as_str()).and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false)
-    });
-    engine.register_fn("is_key_just_pressed", |keys_map: Map, key: ImmutableString| -> bool {
-        keys_map.get(key.as_str()).and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false)
-    });
-    engine.register_fn("is_key_just_released", |keys_map: Map, key: ImmutableString| -> bool {
-        keys_map.get(key.as_str()).and_then(|v| v.clone().try_cast::<bool>()).unwrap_or(false)
-    });
+    engine.register_fn(
+        "is_key_pressed",
+        |keys_map: Map, key: ImmutableString| -> bool {
+            keys_map
+                .get(key.as_str())
+                .and_then(|v| v.clone().try_cast::<bool>())
+                .unwrap_or(false)
+        },
+    );
+    engine.register_fn(
+        "is_key_just_pressed",
+        |keys_map: Map, key: ImmutableString| -> bool {
+            keys_map
+                .get(key.as_str())
+                .and_then(|v| v.clone().try_cast::<bool>())
+                .unwrap_or(false)
+        },
+    );
+    engine.register_fn(
+        "is_key_just_released",
+        |keys_map: Map, key: ImmutableString| -> bool {
+            keys_map
+                .get(key.as_str())
+                .and_then(|v| v.clone().try_cast::<bool>())
+                .unwrap_or(false)
+        },
+    );
 
     // Audio
     engine.register_fn("play_sound", |path: ImmutableString| {
-        push_command(ScriptCommand::PlaySound { path: path.to_string(), volume: 1.0, looping: false, bus: "Sfx".into() });
+        push_command(ScriptCommand::PlaySound {
+            path: path.to_string(),
+            volume: 1.0,
+            looping: false,
+            bus: "Sfx".into(),
+        });
     });
-    engine.register_fn("play_sound_at_volume", |path: ImmutableString, volume: f64| {
-        push_command(ScriptCommand::PlaySound { path: path.to_string(), volume: volume as f32, looping: false, bus: "Sfx".into() });
-    });
-    engine.register_fn("play_sound_looping", |path: ImmutableString, volume: f64| {
-        push_command(ScriptCommand::PlaySound { path: path.to_string(), volume: volume as f32, looping: true, bus: "Sfx".into() });
-    });
+    engine.register_fn(
+        "play_sound_at_volume",
+        |path: ImmutableString, volume: f64| {
+            push_command(ScriptCommand::PlaySound {
+                path: path.to_string(),
+                volume: volume as f32,
+                looping: false,
+                bus: "Sfx".into(),
+            });
+        },
+    );
+    engine.register_fn(
+        "play_sound_looping",
+        |path: ImmutableString, volume: f64| {
+            push_command(ScriptCommand::PlaySound {
+                path: path.to_string(),
+                volume: volume as f32,
+                looping: true,
+                bus: "Sfx".into(),
+            });
+        },
+    );
     engine.register_fn("play_music", |path: ImmutableString| {
-        push_command(ScriptCommand::PlayMusic { path: path.to_string(), volume: 1.0, fade_in: 0.0, bus: "Music".into() });
+        push_command(ScriptCommand::PlayMusic {
+            path: path.to_string(),
+            volume: 1.0,
+            fade_in: 0.0,
+            bus: "Music".into(),
+        });
     });
-    engine.register_fn("stop_music", || { push_command(ScriptCommand::StopMusic { fade_out: 0.0 }); });
-    engine.register_fn("stop_all_sounds", || { push_command(ScriptCommand::StopAllSounds); });
+    engine.register_fn("stop_music", || {
+        push_command(ScriptCommand::StopMusic { fade_out: 0.0 });
+    });
+    engine.register_fn("stop_all_sounds", || {
+        push_command(ScriptCommand::StopAllSounds);
+    });
 
     // Physics
     engine.register_fn("apply_force", |x: f64, y: f64, z: f64| {
-        push_command(ScriptCommand::ApplyForce { entity_id: None, force: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
+        push_command(ScriptCommand::ApplyForce {
+            entity_id: None,
+            force: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32),
+        });
     });
     engine.register_fn("apply_impulse", |x: f64, y: f64, z: f64| {
-        push_command(ScriptCommand::ApplyImpulse { entity_id: None, impulse: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
+        push_command(ScriptCommand::ApplyImpulse {
+            entity_id: None,
+            impulse: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32),
+        });
     });
     engine.register_fn("set_velocity", |x: f64, y: f64, z: f64| {
-        push_command(ScriptCommand::SetVelocity { entity_id: None, velocity: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32) });
+        push_command(ScriptCommand::SetVelocity {
+            entity_id: None,
+            velocity: bevy::prelude::Vec3::new(x as f32, y as f32, z as f32),
+        });
     });
 
     // Timers
     engine.register_fn("start_timer", |name: ImmutableString, duration: f64| {
-        push_command(ScriptCommand::StartTimer { name: name.to_string(), duration: duration as f32, repeat: false });
+        push_command(ScriptCommand::StartTimer {
+            name: name.to_string(),
+            duration: duration as f32,
+            repeat: false,
+        });
     });
-    engine.register_fn("start_timer_repeat", |name: ImmutableString, duration: f64| {
-        push_command(ScriptCommand::StartTimer { name: name.to_string(), duration: duration as f32, repeat: true });
-    });
+    engine.register_fn(
+        "start_timer_repeat",
+        |name: ImmutableString, duration: f64| {
+            push_command(ScriptCommand::StartTimer {
+                name: name.to_string(),
+                duration: duration as f32,
+                repeat: true,
+            });
+        },
+    );
     engine.register_fn("stop_timer", |name: ImmutableString| {
-        push_command(ScriptCommand::StopTimer { name: name.to_string() });
+        push_command(ScriptCommand::StopTimer {
+            name: name.to_string(),
+        });
     });
 
     // Debug
     engine.register_fn("print_log", |msg: ImmutableString| {
-        push_command(ScriptCommand::Log { level: "Info".into(), message: msg.to_string() });
+        push_command(ScriptCommand::Log {
+            level: "Info".into(),
+            message: msg.to_string(),
+        });
     });
 
     // Rendering
     engine.register_fn("set_visibility", |visible: bool| {
-        push_command(ScriptCommand::SetVisibility { entity_id: None, visible });
+        push_command(ScriptCommand::SetVisibility {
+            entity_id: None,
+            visible,
+        });
     });
 
     // Animation
     engine.register_fn("play_animation", |name: ImmutableString| {
-        push_command(ScriptCommand::PlayAnimation { entity_id: None, name: name.to_string(), looping: true, speed: 1.0 });
+        push_command(ScriptCommand::PlayAnimation {
+            entity_id: None,
+            name: name.to_string(),
+            looping: true,
+            speed: 1.0,
+        });
     });
     engine.register_fn("stop_animation", || {
         push_command(ScriptCommand::StopAnimation { entity_id: None });
@@ -303,36 +541,74 @@ fn register_api(engine: &mut Engine) {
         push_command(ScriptCommand::ResumeAnimation { entity_id: None });
     });
     engine.register_fn("set_animation_speed", |speed: f64| {
-        push_command(ScriptCommand::SetAnimationSpeed { entity_id: None, speed: speed as f32 });
+        push_command(ScriptCommand::SetAnimationSpeed {
+            entity_id: None,
+            speed: speed as f32,
+        });
     });
-    engine.register_fn("crossfade_animation", |name: ImmutableString, duration: f64| {
-        push_command(ScriptCommand::CrossfadeAnimation { entity_id: None, name: name.to_string(), duration: duration as f32, looping: true });
-    });
+    engine.register_fn(
+        "crossfade_animation",
+        |name: ImmutableString, duration: f64| {
+            push_command(ScriptCommand::CrossfadeAnimation {
+                entity_id: None,
+                name: name.to_string(),
+                duration: duration as f32,
+                looping: true,
+            });
+        },
+    );
     engine.register_fn("set_anim_param", |name: ImmutableString, value: f64| {
-        push_command(ScriptCommand::SetAnimationParam { entity_id: None, name: name.to_string(), value: value as f32 });
+        push_command(ScriptCommand::SetAnimationParam {
+            entity_id: None,
+            name: name.to_string(),
+            value: value as f32,
+        });
     });
     engine.register_fn("set_anim_bool", |name: ImmutableString, value: bool| {
-        push_command(ScriptCommand::SetAnimationBoolParam { entity_id: None, name: name.to_string(), value });
+        push_command(ScriptCommand::SetAnimationBoolParam {
+            entity_id: None,
+            name: name.to_string(),
+            value,
+        });
     });
     engine.register_fn("trigger_anim", |name: ImmutableString| {
-        push_command(ScriptCommand::TriggerAnimation { entity_id: None, name: name.to_string() });
+        push_command(ScriptCommand::TriggerAnimation {
+            entity_id: None,
+            name: name.to_string(),
+        });
     });
-    engine.register_fn("set_layer_weight", |layer_name: ImmutableString, weight: f64| {
-        push_command(ScriptCommand::SetAnimationLayerWeight { entity_id: None, layer_name: layer_name.to_string(), weight: weight as f32 });
-    });
+    engine.register_fn(
+        "set_layer_weight",
+        |layer_name: ImmutableString, weight: f64| {
+            push_command(ScriptCommand::SetAnimationLayerWeight {
+                entity_id: None,
+                layer_name: layer_name.to_string(),
+                weight: weight as f32,
+            });
+        },
+    );
 
     // Cursor
-    engine.register_fn("lock_cursor", || { push_command(ScriptCommand::LockCursor); });
-    engine.register_fn("unlock_cursor", || { push_command(ScriptCommand::UnlockCursor); });
+    engine.register_fn("lock_cursor", || {
+        push_command(ScriptCommand::LockCursor);
+    });
+    engine.register_fn("unlock_cursor", || {
+        push_command(ScriptCommand::UnlockCursor);
+    });
 
     // Camera
     engine.register_fn("screen_shake", |intensity: f64, duration: f64| {
-        push_command(ScriptCommand::ScreenShake { intensity: intensity as f32, duration: duration as f32 });
+        push_command(ScriptCommand::ScreenShake {
+            intensity: intensity as f32,
+            duration: duration as f32,
+        });
     });
 
     // ECS
     engine.register_fn("spawn_entity", |name: ImmutableString| {
-        push_command(ScriptCommand::SpawnEntity { name: name.to_string() });
+        push_command(ScriptCommand::SpawnEntity {
+            name: name.to_string(),
+        });
     });
     engine.register_fn("despawn_self", || {
         push_command(ScriptCommand::DespawnSelf);
@@ -340,10 +616,17 @@ fn register_api(engine: &mut Engine) {
 
     // Environment
     engine.register_fn("set_sun_angles", |azimuth: f64, elevation: f64| {
-        push_command(ScriptCommand::SetSunAngles { azimuth: azimuth as f32, elevation: elevation as f32 });
+        push_command(ScriptCommand::SetSunAngles {
+            azimuth: azimuth as f32,
+            elevation: elevation as f32,
+        });
     });
     engine.register_fn("set_fog", |enabled: bool, start: f64, end: f64| {
-        push_command(ScriptCommand::SetFog { enabled, start: start as f32, end: end as f32 });
+        push_command(ScriptCommand::SetFog {
+            enabled,
+            start: start as f32,
+            end: end as f32,
+        });
     });
 
     // Generic reflection API
@@ -358,17 +641,20 @@ fn register_api(engine: &mut Engine) {
             });
         }
     });
-    engine.register_fn("set_on", |entity: ImmutableString, path: ImmutableString, value: Dynamic| {
-        if let Some((comp, field)) = parse_component_path(&path) {
-            push_command(ScriptCommand::SetComponentField {
-                entity_id: None,
-                entity_name: Some(entity.to_string()),
-                component_type: comp,
-                field_path: field,
-                value: rhai_to_property_value(&value),
-            });
-        }
-    });
+    engine.register_fn(
+        "set_on",
+        |entity: ImmutableString, path: ImmutableString, value: Dynamic| {
+            if let Some((comp, field)) = parse_component_path(&path) {
+                push_command(ScriptCommand::SetComponentField {
+                    entity_id: None,
+                    entity_name: Some(entity.to_string()),
+                    component_type: comp,
+                    field_path: field,
+                    value: rhai_to_property_value(&value),
+                });
+            }
+        },
+    );
 
     // Generic reflection API (get/get_on)
     engine.register_fn("get", |path: ImmutableString| -> Dynamic {
@@ -379,14 +665,18 @@ fn register_api(engine: &mut Engine) {
         }
         Dynamic::UNIT
     });
-    engine.register_fn("get_on", |entity: ImmutableString, path: ImmutableString| -> Dynamic {
-        if let Some((comp, field)) = parse_component_path(&path) {
-            if let Some(v) = crate::get_handler::call_get(Some(entity.as_str()), &comp, &field) {
-                return property_value_to_dynamic(v);
+    engine.register_fn(
+        "get_on",
+        |entity: ImmutableString, path: ImmutableString| -> Dynamic {
+            if let Some((comp, field)) = parse_component_path(&path) {
+                if let Some(v) = crate::get_handler::call_get(Some(entity.as_str()), &comp, &field)
+                {
+                    return property_value_to_dynamic(v);
+                }
             }
-        }
-        Dynamic::UNIT
-    });
+            Dynamic::UNIT
+        },
+    );
 
     // Math helpers
     engine.register_fn("vec3", |x: f64, y: f64, z: f64| -> Map {
@@ -402,9 +692,7 @@ fn register_api(engine: &mut Engine) {
         m.insert("y".into(), Dynamic::from(y));
         m
     });
-    engine.register_fn("lerp", |a: f64, b: f64, t: f64| -> f64 {
-        a + (b - a) * t
-    });
+    engine.register_fn("lerp", |a: f64, b: f64, t: f64| -> f64 { a + (b - a) * t });
     engine.register_fn("clamp", |v: f64, min: f64, max: f64| -> f64 {
         v.max(min).min(max)
     });
@@ -468,7 +756,10 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     scope.push("mouse_right", ctx.mouse_buttons_pressed[1]);
     scope.push("mouse_middle", ctx.mouse_buttons_pressed[2]);
     scope.push("mouse_left_just_pressed", ctx.mouse_buttons_just_pressed[0]);
-    scope.push("mouse_right_just_pressed", ctx.mouse_buttons_just_pressed[1]);
+    scope.push(
+        "mouse_right_just_pressed",
+        ctx.mouse_buttons_just_pressed[1],
+    );
     scope.push("mouse_scroll", ctx.mouse_scroll as f64);
 
     // Entity
@@ -498,7 +789,11 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     scope.push("is_colliding", !ctx.active_collisions.is_empty());
 
     // Timers
-    let timers: rhai::Array = ctx.timers_just_finished.iter().map(|n| Dynamic::from(n.clone())).collect();
+    let timers: rhai::Array = ctx
+        .timers_just_finished
+        .iter()
+        .map(|n| Dynamic::from(n.clone()))
+        .collect();
     scope.push("timers_finished", timers);
 
     // Health
@@ -557,27 +852,62 @@ fn read_back_variables(scope: &Scope, vars: &mut ScriptVariables) {
 }
 
 fn dynamic_to_script_value(value: &Dynamic) -> Option<ScriptValue> {
-    if let Some(v) = value.clone().try_cast::<f64>() { return Some(ScriptValue::Float(v as f32)); }
-    if let Some(v) = value.clone().try_cast::<i64>() { return Some(ScriptValue::Int(v as i32)); }
-    if let Some(v) = value.clone().try_cast::<bool>() { return Some(ScriptValue::Bool(v)); }
-    if let Some(v) = value.clone().try_cast::<ImmutableString>() { return Some(ScriptValue::String(v.to_string())); }
+    if let Some(v) = value.clone().try_cast::<f64>() {
+        return Some(ScriptValue::Float(v as f32));
+    }
+    if let Some(v) = value.clone().try_cast::<i64>() {
+        return Some(ScriptValue::Int(v as i32));
+    }
+    if let Some(v) = value.clone().try_cast::<bool>() {
+        return Some(ScriptValue::Bool(v));
+    }
+    if let Some(v) = value.clone().try_cast::<ImmutableString>() {
+        return Some(ScriptValue::String(v.to_string()));
+    }
     if let Some(map) = value.clone().try_cast::<Map>() {
         if map.contains_key("x") && map.contains_key("y") && !map.contains_key("z") {
-            let x = map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-            let y = map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+            let x = map
+                .get("x")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0) as f32;
+            let y = map
+                .get("y")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0) as f32;
             return Some(ScriptValue::Vec2(bevy::prelude::Vec2::new(x, y)));
         }
         if map.contains_key("x") && map.contains_key("y") && map.contains_key("z") {
-            let x = map.get("x").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-            let y = map.get("y").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
-            let z = map.get("z").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(0.0) as f32;
+            let x = map
+                .get("x")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0) as f32;
+            let y = map
+                .get("y")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0) as f32;
+            let z = map
+                .get("z")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(0.0) as f32;
             return Some(ScriptValue::Vec3(bevy::prelude::Vec3::new(x, y, z)));
         }
         if map.contains_key("r") && map.contains_key("g") && map.contains_key("b") {
-            let r = map.get("r").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-            let g = map.get("g").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-            let b = map.get("b").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
-            let a = map.get("a").and_then(|v| v.clone().try_cast::<f64>()).unwrap_or(1.0) as f32;
+            let r = map
+                .get("r")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(1.0) as f32;
+            let g = map
+                .get("g")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(1.0) as f32;
+            let b = map
+                .get("b")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(1.0) as f32;
+            let a = map
+                .get("a")
+                .and_then(|v| v.clone().try_cast::<f64>())
+                .unwrap_or(1.0) as f32;
             return Some(ScriptValue::Color(bevy::prelude::Vec4::new(r, g, b, a)));
         }
     }
@@ -587,8 +917,12 @@ fn dynamic_to_script_value(value: &Dynamic) -> Option<ScriptValue> {
 fn parse_script_props(engine: &Engine, ast: &AST) -> Vec<ScriptVariableDefinition> {
     let mut scope = Scope::new();
     let result: Result<Dynamic, _> = engine.call_fn(&mut scope, ast, "props", ());
-    let Ok(result) = result else { return Vec::new() };
-    let Some(map) = result.try_cast::<Map>() else { return Vec::new() };
+    let Ok(result) = result else {
+        return Vec::new();
+    };
+    let Some(map) = result.try_cast::<Map>() else {
+        return Vec::new();
+    };
 
     let mut props = Vec::new();
     for (key, value) in map.iter() {
@@ -599,15 +933,22 @@ fn parse_script_props(engine: &Engine, ast: &AST) -> Vec<ScriptVariableDefinitio
             let default_val = prop_map.get("value").or_else(|| prop_map.get("default"));
             if let Some(default_val) = default_val {
                 if let Some(sv) = dynamic_to_script_value(default_val) {
-                    let hint = prop_map.get("hint")
+                    let hint = prop_map
+                        .get("hint")
                         .and_then(|v| v.clone().try_cast::<ImmutableString>())
                         .map(|s| s.to_string());
-                    let tab = prop_map.get("tab")
+                    let tab = prop_map
+                        .get("tab")
                         .and_then(|v| v.clone().try_cast::<ImmutableString>())
                         .map(|s| s.to_string());
-                    let mut def = ScriptVariableDefinition::new(name.clone(), sv).with_display_name(display_name.clone());
-                    if let Some(h) = hint { def = def.with_hint(h); }
-                    if let Some(t) = tab { def = def.with_tab(t); }
+                    let mut def = ScriptVariableDefinition::new(name.clone(), sv)
+                        .with_display_name(display_name.clone());
+                    if let Some(h) = hint {
+                        def = def.with_hint(h);
+                    }
+                    if let Some(t) = tab {
+                        def = def.with_tab(t);
+                    }
                     props.push(def);
                     continue;
                 }
@@ -627,7 +968,9 @@ fn parse_component_path(path: &str) -> Option<(String, String)> {
     let dot = path.find('.')?;
     let component = path[..dot].to_string();
     let field = path[dot + 1..].to_string();
-    if component.is_empty() || field.is_empty() { return None; }
+    if component.is_empty() || field.is_empty() {
+        return None;
+    }
     Some((component, field))
 }
 
@@ -670,7 +1013,6 @@ fn property_value_to_dynamic(value: PropertyValue) -> Dynamic {
         }
     }
 }
-
 
 fn to_display_name(name: &str) -> String {
     name.split('_')

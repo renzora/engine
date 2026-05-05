@@ -1,3 +1,10 @@
-# This file is intentionally empty.
-# The bevy_oxr subcrates (bevy_openxr, bevy_xr, bevy_xr_utils) are members
-# of the renzora engine workspace, not this directory's workspace.
+# Vendored upstream crate; excluded from the renzora workspace via
+# `exclude = ["crates/bevy_oxr"]` in the root Cargo.toml. The subcrates
+# (bevy_openxr, bevy_xr, bevy_xr_utils, bevy_webxr) are used as path
+# deps from renzora_xr but are not workspace members.
+#
+# A standalone Cargo.toml needs at least a [package] or [workspace]
+# section. We give it a trivial [workspace] with itself as the only
+# member so cargo can parse it on the off-chance it gets traversed.
+[workspace]
+members = []

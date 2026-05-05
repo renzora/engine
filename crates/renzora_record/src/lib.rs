@@ -273,11 +273,13 @@ fn draw_top_row(
 
         match snapshot {
             InnerSnapshot::Idle if matches!(ffmpeg, FfmpegState::Ready) => {
-                ui.label(
-                    egui::RichText::new("Idle").color(theme.text.muted.to_color32()),
-                );
+                ui.label(egui::RichText::new("Idle").color(theme.text.muted.to_color32()));
             }
-            InnerSnapshot::Recording { elapsed_secs, frame_index, size } => {
+            InnerSnapshot::Recording {
+                elapsed_secs,
+                frame_index,
+                size,
+            } => {
                 ui.vertical(|ui| {
                     ui.label(
                         egui::RichText::new(format!("● REC  {}", fmt_elapsed(*elapsed_secs)))
@@ -314,10 +316,7 @@ fn draw_settings_rows(
     cmds: &EditorCommands,
 ) {
     const TARGET_VALUES: [RecordTarget; 2] = [RecordTarget::Viewport, RecordTarget::Window];
-    const TARGET_LABELS: &[&str] = &[
-        "Viewport (3D scene only)",
-        "Entire window (full editor)",
-    ];
+    const TARGET_LABELS: &[&str] = &["Viewport (3D scene only)", "Entire window (full editor)"];
     const FPS_VALUES: [u32; 4] = [24, 30, 60, 120];
     const FPS_LABELS: &[&str] = &["24", "30", "60", "120"];
     const CRF_VALUES: [u8; 5] = [0, 12, 17, 20, 23];
@@ -335,9 +334,12 @@ fn draw_settings_rows(
         .position(|t| *t == config.target)
         .unwrap_or(0);
     inline_property(ui, 0, "Source", theme, |ui| {
-        if let Some(idx) =
-            enum_combobox(ui, egui::Id::new("record_target"), target_idx, TARGET_LABELS)
-        {
+        if let Some(idx) = enum_combobox(
+            ui,
+            egui::Id::new("record_target"),
+            target_idx,
+            TARGET_LABELS,
+        ) {
             let new_target = TARGET_VALUES[idx];
             cmds.push(move |w: &mut World| {
                 if let Some(mut cfg) = w.get_resource_mut::<RecordingConfig>() {
@@ -428,9 +430,15 @@ impl From<&Inner> for InnerSnapshot {
 
 fn record_button(ui: &mut egui::Ui, active: bool) -> bool {
     let (label, color) = if active {
-        (format!("{}  Stop", regular::STOP), Color32::from_rgb(220, 60, 60))
+        (
+            format!("{}  Stop", regular::STOP),
+            Color32::from_rgb(220, 60, 60),
+        )
     } else {
-        (format!("{}  Record", regular::RECORD), Color32::from_rgb(220, 60, 60))
+        (
+            format!("{}  Record", regular::RECORD),
+            Color32::from_rgb(220, 60, 60),
+        )
     };
     let btn = egui::Button::new(
         egui::RichText::new(label)
@@ -466,11 +474,14 @@ fn start_recording(world: &mut World) {
         return;
     };
 
-    let project = world.get_resource::<CurrentProject>().map(|p| p.path.clone());
+    let project = world
+        .get_resource::<CurrentProject>()
+        .map(|p| p.path.clone());
 
-    let output_dir = config.output_dir.clone().or_else(|| {
-        project.map(|p| p.join("recordings"))
-    });
+    let output_dir = config
+        .output_dir
+        .clone()
+        .or_else(|| project.map(|p| p.join("recordings")));
     let Some(output_dir) = output_dir else {
         warn!("[record] No project open and no output_dir set — refusing to record");
         return;
@@ -586,8 +597,12 @@ fn capture_frame_system(
     state: Res<RecordingState>,
     viewport_target: Res<ViewportRenderTarget>,
 ) {
-    let Ok(mut guard) = state.inner.lock() else { return };
-    let Inner::Recording(active) = &mut *guard else { return };
+    let Ok(mut guard) = state.inner.lock() else {
+        return;
+    };
+    let Inner::Recording(active) = &mut *guard else {
+        return;
+    };
 
     if active.stop_requested {
         return;
@@ -595,7 +610,9 @@ fn capture_frame_system(
 
     let screenshot = match active.target {
         RecordTarget::Viewport => {
-            let Some(handle) = viewport_target.image.clone() else { return };
+            let Some(handle) = viewport_target.image.clone() else {
+                return;
+            };
             Screenshot::image(handle)
         }
         RecordTarget::Window => Screenshot::primary_window(),
@@ -615,7 +632,10 @@ fn capture_frame_system(
             let dyn_img = match trigger.image.clone().try_into_dynamic() {
                 Ok(d) => d,
                 Err(e) => {
-                    warn!("[record] frame {} format conversion failed: {}", frame_idx, e);
+                    warn!(
+                        "[record] frame {} format conversion failed: {}",
+                        frame_idx, e
+                    );
                     return;
                 }
             };
@@ -630,14 +650,18 @@ fn capture_frame_system(
                 );
                 return;
             }
-            let _ = tx.send(Frame { bytes: rgba.into_raw() });
+            let _ = tx.send(Frame {
+                bytes: rgba.into_raw(),
+            });
         });
 }
 
 /// System: when the user has requested stop, transition Recording → Stopping,
 /// dropping the encoder sender so the worker drains and finalises the file.
 fn drive_stop_transition(state: Res<RecordingState>) {
-    let Ok(mut guard) = state.inner.lock() else { return };
+    let Ok(mut guard) = state.inner.lock() else {
+        return;
+    };
     let needs_transition = matches!(&*guard, Inner::Recording(a) if a.stop_requested);
     if !needs_transition {
         return;
@@ -657,18 +681,27 @@ fn drive_stop_transition(state: Res<RecordingState>) {
 /// System: when in Stopping, poll the worker. Once it exits, transition to
 /// Done with a status message and fire a toast on success.
 fn drive_finalise(state: Res<RecordingState>, mut toasts: Option<ResMut<Toasts>>) {
-    let Ok(mut guard) = state.inner.lock() else { return };
+    let Ok(mut guard) = state.inner.lock() else {
+        return;
+    };
     let take_finished = matches!(&*guard, Inner::Stopping { worker, .. } if worker.is_finished());
     if !take_finished {
         return;
     }
 
-    let Inner::Stopping { worker, output_path } = std::mem::replace(&mut *guard, Inner::Idle) else {
+    let Inner::Stopping {
+        worker,
+        output_path,
+    } = std::mem::replace(&mut *guard, Inner::Idle)
+    else {
         return;
     };
 
     match worker.join() {
-        Ok(EncoderResult::Ok { frames_written, output_path }) => {
+        Ok(EncoderResult::Ok {
+            frames_written,
+            output_path,
+        }) => {
             info!(
                 "[record] Saved {} frames → {}",
                 frames_written,
@@ -740,4 +773,3 @@ fn spawn_ffmpeg_prefetch() -> FfmpegReadiness {
 }
 
 renzora::add!(RecordPlugin, Editor);
-

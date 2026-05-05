@@ -11,8 +11,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use crate::data::{TerrainChunkData, TerrainData, TerrainChunkOf};
-use crate::paint::{MAX_LAYERS, PaintableSurfaceData};
+use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
+use crate::paint::{PaintableSurfaceData, MAX_LAYERS};
 
 /// A non-destructive delta applied on top of the base sculpt.
 ///
@@ -90,7 +90,11 @@ impl HeightLayerStack {
 pub fn compose_height_layers_system(
     mut layer_stack: ResMut<HeightLayerStack>,
     terrain_query: Query<&TerrainData>,
-    mut chunk_query: Query<(&mut TerrainChunkData, Option<&TerrainChunkOf>, Option<&PaintableSurfaceData>)>,
+    mut chunk_query: Query<(
+        &mut TerrainChunkData,
+        Option<&TerrainChunkOf>,
+        Option<&PaintableSurfaceData>,
+    )>,
 ) {
     let layer_dirty_chunks = layer_stack.drain_dirty_chunks();
     if !layer_dirty_chunks.is_empty() {
@@ -173,7 +177,12 @@ pub fn compose_height_layers_system(
 }
 
 /// Bilinear sample of the derived splatmap at UV `(u, v)` in `[0, 1]`.
-fn sample_splatmap_bilinear(weights: &[[f32; MAX_LAYERS]], res: u32, u: f32, v: f32) -> [f32; MAX_LAYERS] {
+fn sample_splatmap_bilinear(
+    weights: &[[f32; MAX_LAYERS]],
+    res: u32,
+    u: f32,
+    v: f32,
+) -> [f32; MAX_LAYERS] {
     let res_f = res as f32;
     let fx = (u * (res_f - 1.0)).clamp(0.0, res_f - 1.0);
     let fy = (v * (res_f - 1.0)).clamp(0.0, res_f - 1.0);
@@ -184,9 +193,7 @@ fn sample_splatmap_bilinear(weights: &[[f32; MAX_LAYERS]], res: u32, u: f32, v: 
     let tx = fx - x0 as f32;
     let ty = fy - y0 as f32;
 
-    let idx = |x: u32, y: u32| -> [f32; MAX_LAYERS] {
-        weights[(y * res + x) as usize]
-    };
+    let idx = |x: u32, y: u32| -> [f32; MAX_LAYERS] { weights[(y * res + x) as usize] };
     let a = idx(x0, y0);
     let b = idx(x1, y0);
     let c = idx(x0, y1);
@@ -205,7 +212,9 @@ fn sample_splatmap_bilinear(weights: &[[f32; MAX_LAYERS]], res: u32, u: f32, v: 
 /// Serde skips the composed `heights` field, so freshly-loaded chunks have an
 /// empty composed buffer. This system initialises it from `base_heights` and
 /// flags the chunk dirty so the composition/mesh systems pick it up.
-pub fn ensure_composed_buffer_system(mut chunks: Query<&mut TerrainChunkData, Added<TerrainChunkData>>) {
+pub fn ensure_composed_buffer_system(
+    mut chunks: Query<&mut TerrainChunkData, Added<TerrainChunkData>>,
+) {
     for mut chunk in chunks.iter_mut() {
         chunk.ensure_composed_buffer();
     }

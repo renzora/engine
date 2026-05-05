@@ -46,7 +46,11 @@ fn animator_custom_ui(
     // Blend duration
     let mut blend = animator.blend_duration;
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Blend Duration").size(11.0).color(muted_color));
+        ui.label(
+            egui::RichText::new("Blend Duration")
+                .size(11.0)
+                .color(muted_color),
+        );
         let response = ui.add(
             egui::DragValue::new(&mut blend)
                 .speed(0.01)
@@ -70,13 +74,20 @@ fn animator_custom_ui(
     let clip_names: Vec<String> = animator.clips.iter().map(|c| c.name.clone()).collect();
 
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Default Clip").size(11.0).color(muted_color));
+        ui.label(
+            egui::RichText::new("Default Clip")
+                .size(11.0)
+                .color(muted_color),
+        );
         let current_label = default_clip.as_deref().unwrap_or("(none)");
         egui::ComboBox::from_id_salt("animator_default_clip")
             .selected_text(current_label)
             .width(ui.available_width() - 4.0)
             .show_ui(ui, |ui| {
-                if ui.selectable_label(default_clip.is_none(), "(none)").clicked() {
+                if ui
+                    .selectable_label(default_clip.is_none(), "(none)")
+                    .clicked()
+                {
                     cmds.push(move |world: &mut World| {
                         if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {
                             a.default_clip = None;
@@ -93,7 +104,9 @@ fn animator_custom_ui(
                                 a.default_clip = Some(n);
                             }
                             // Also play the clip immediately
-                            if let Some(mut queue) = world.get_resource_mut::<crate::AnimationCommandQueue>() {
+                            if let Some(mut queue) =
+                                world.get_resource_mut::<crate::AnimationCommandQueue>()
+                            {
                                 queue.commands.push(crate::systems::AnimationCommand::Play {
                                     entity,
                                     name: n2,
@@ -110,14 +123,22 @@ fn animator_custom_ui(
     ui.add_space(6.0);
 
     // Clips list
-    ui.label(egui::RichText::new("Animation Clips").size(11.0).color(text_color));
+    ui.label(
+        egui::RichText::new("Animation Clips")
+            .size(11.0)
+            .color(text_color),
+    );
     ui.add_space(2.0);
 
     let clips = animator.clips.clone();
     let mut remove_idx: Option<usize> = None;
 
     if clips.is_empty() {
-        ui.label(egui::RichText::new("No clips assigned").size(10.0).color(muted_color));
+        ui.label(
+            egui::RichText::new("No clips assigned")
+                .size(10.0)
+                .color(muted_color),
+        );
     }
 
     for (i, slot) in clips.iter().enumerate() {
@@ -133,7 +154,9 @@ fn animator_custom_ui(
                 // in egui memory so keystrokes aren't lost when the inspector
                 // rebuilds each frame. Commit on focus loss or Enter.
                 let edit_id = egui::Id::new(("anim_clip_name", entity, i));
-                let mut name_buf: String = ui.data(|d| d.get_temp::<String>(edit_id)).unwrap_or_else(|| slot.name.clone());
+                let mut name_buf: String = ui
+                    .data(|d| d.get_temp::<String>(edit_id))
+                    .unwrap_or_else(|| slot.name.clone());
                 // If the underlying slot name changed externally (e.g. undo),
                 // reset the buffer unless this field is currently focused.
                 let is_focused = ui.memory(|m| m.focused()) == Some(edit_id);
@@ -152,7 +175,12 @@ fn animator_custom_ui(
                 if committed && name_buf != slot.name {
                     let trimmed = name_buf.trim().to_string();
                     let original = slot.name.clone();
-                    if !trimmed.is_empty() && !clips.iter().enumerate().any(|(j, s)| j != i && s.name == trimmed) {
+                    if !trimmed.is_empty()
+                        && !clips
+                            .iter()
+                            .enumerate()
+                            .any(|(j, s)| j != i && s.name == trimmed)
+                    {
                         cmds.push(move |world: &mut World| {
                             if let Some(mut a) = world.get_mut::<AnimatorComponent>(entity) {
                                 if let Some(slot) = a.clips.get_mut(i) {
@@ -171,16 +199,23 @@ fn animator_custom_ui(
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Remove button
-                    if ui.small_button(
-                        egui::RichText::new(egui_phosphor::regular::TRASH)
-                            .size(11.0)
-                            .color(muted_color),
-                    ).clicked() {
+                    if ui
+                        .small_button(
+                            egui::RichText::new(egui_phosphor::regular::TRASH)
+                                .size(11.0)
+                                .color(muted_color),
+                        )
+                        .clicked()
+                    {
                         remove_idx = Some(i);
                     }
 
                     // Looping indicator
-                    let loop_color = if slot.looping { accent_color } else { muted_color };
+                    let loop_color = if slot.looping {
+                        accent_color
+                    } else {
+                        muted_color
+                    };
                     ui.label(
                         egui::RichText::new(egui_phosphor::regular::REPEAT)
                             .size(10.0)
@@ -224,21 +259,23 @@ fn animator_custom_ui(
         .corner_radius(3.0)
         .inner_margin(egui::Margin::same(6));
 
-    let drop_response = drop_frame.show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.set_min_height(DROP_ZONE_HEIGHT);
-        ui.set_max_height(DROP_ZONE_HEIGHT);
-        ui.horizontal_centered(|ui| {
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} Drop .anim files here",
-                    egui_phosphor::regular::PLUS_CIRCLE
-                ))
-                .size(11.0)
-                .color(muted_color),
-            );
-        });
-    }).response;
+    let drop_response = drop_frame
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.set_min_height(DROP_ZONE_HEIGHT);
+            ui.set_max_height(DROP_ZONE_HEIGHT);
+            ui.horizontal_centered(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} Drop .anim files here",
+                        egui_phosphor::regular::PLUS_CIRCLE
+                    ))
+                    .size(11.0)
+                    .color(muted_color),
+                );
+            });
+        })
+        .response;
 
     // Handle drag-drop from asset browser (supports multi-select).
     if let Some(payload) = world.get_resource::<renzora_ui::asset_drag::AssetDragPayload>() {
@@ -269,14 +306,10 @@ fn animator_custom_ui(
                                 if a.clips.iter().any(|c| c.path == asset_path) {
                                     continue;
                                 }
-                                let name = path
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("clip");
-                                let clip_name = name
-                                    .strip_suffix(".anim")
-                                    .unwrap_or(name)
-                                    .to_string();
+                                let name =
+                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("clip");
+                                let clip_name =
+                                    name.strip_suffix(".anim").unwrap_or(name).to_string();
                                 a.clips.push(crate::AnimClipSlot {
                                     name: clip_name,
                                     path: asset_path,

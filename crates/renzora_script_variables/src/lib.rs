@@ -120,3 +120,4 @@ impl Plugin for ScriptVariablesPlugin {
     }
 }
 
+renzora::add!(ScriptVariablesPlugin, Editor);

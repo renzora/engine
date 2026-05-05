@@ -13,7 +13,11 @@ use crate::state::{file_icon, folder_icon_color, AssetBrowserState};
 const ROW_HEIGHT: f32 = 22.0;
 
 /// Renders the file list with multi-selection, context menu, rename, and delete.
-pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Theme) -> GridResult {
+pub fn list_ui_interactive(
+    ui: &mut egui::Ui,
+    state: &mut AssetBrowserState,
+    theme: &Theme,
+) -> GridResult {
     let entries = match collect_entries(state) {
         Some(e) => e,
         None => {
@@ -75,12 +79,17 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
     }
 
     // Delete key — only when this panel area has focus
-    if ui.ui_contains_pointer() && ui.input(|i| i.key_pressed(egui::Key::Delete)) && !state.selected_assets.is_empty() {
+    if ui.ui_contains_pointer()
+        && ui.input(|i| i.key_pressed(egui::Key::Delete))
+        && !state.selected_assets.is_empty()
+    {
         state.pending_delete = state.selected_assets.iter().cloned().collect();
     }
 
     // Ctrl+D to duplicate
-    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D)) && !state.selected_assets.is_empty() {
+    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D))
+        && !state.selected_assets.is_empty()
+    {
         ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::D));
         ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D));
         state.duplicate_selected();
@@ -117,7 +126,9 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                     file_icon(&entry.path)
                 };
 
-                let row_rect = ui.allocate_space(egui::vec2(ui.available_width(), ROW_HEIGHT)).1;
+                let row_rect = ui
+                    .allocate_space(egui::vec2(ui.available_width(), ROW_HEIGHT))
+                    .1;
                 let resp = ui.interact(row_rect, ui.id().with(index), Sense::click_and_drag());
 
                 // Track for marquee
@@ -233,8 +244,12 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                 }
 
                 // Drop target: folder rows under the pointer during an active drag
-                if entry.is_dir && !state.drag_moving.is_empty() && !state.drag_moving.contains(&entry.path) {
-                    let pointer_over = ctx.input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                if entry.is_dir
+                    && !state.drag_moving.is_empty()
+                    && !state.drag_moving.contains(&entry.path)
+                {
+                    let pointer_over = ctx
+                        .input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
                         .map(|p| row_rect.contains(p))
                         .unwrap_or(false);
                     if pointer_over {
@@ -243,7 +258,12 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
                         ui.painter().rect_filled(
                             row_rect,
                             2.0,
-                            egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
+                            egui::Color32::from_rgba_unmultiplied(
+                                accent.r(),
+                                accent.g(),
+                                accent.b(),
+                                40,
+                            ),
                         );
                         ui.painter().rect_stroke(
                             row_rect,
@@ -318,5 +338,9 @@ pub fn list_ui_interactive(ui: &mut egui::Ui, state: &mut AssetBrowserState, the
         state.move_drop_target = None;
     }
 
-    GridResult { drag_payload, double_clicked_file, ..GridResult::default() }
+    GridResult {
+        drag_payload,
+        double_clicked_file,
+        ..GridResult::default()
+    }
 }

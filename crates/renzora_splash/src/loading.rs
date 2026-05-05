@@ -158,10 +158,8 @@ pub fn paint_loading_overlay(
 ) {
     // Compute aggregate progress from registered loading tasks. Each task
     // contributes its `completed/total` to the bar.
-    let (total_completed, total_total): (u64, u64) = tasks
-        .tasks
-        .iter()
-        .fold((0, 0), |(sc, st), (_, t)| {
+    let (total_completed, total_total): (u64, u64) =
+        tasks.tasks.iter().fold((0, 0), |(sc, st), (_, t)| {
             (sc + t.completed as u64, st + t.total as u64)
         });
     let fraction = if total_total == 0 {
@@ -420,8 +418,7 @@ fn draw_neon_grid(painter: &egui::Painter, rect: egui::Rect, t: f64) {
     let aspect_mod = 0.35 + 0.12 * ((t * 0.22) as f32).sin();
 
     for i in 0..n_ellipses {
-        let ring_theta =
-            base_rot + (i as f32 / n_ellipses as f32) * std::f32::consts::TAU;
+        let ring_theta = base_rot + (i as f32 / n_ellipses as f32) * std::f32::consts::TAU;
         let (sin_r, cos_r) = ring_theta.sin_cos();
 
         // Each ellipse: major axis = full radius, minor axis oscillates (breathing).
@@ -451,10 +448,7 @@ fn draw_neon_grid(painter: &egui::Painter, rect: egui::Rect, t: f64) {
                 // Thin core stroke + a faint thicker glow underlay for neon feel.
                 painter.line_segment(
                     [pp, point],
-                    egui::Stroke::new(
-                        2.5,
-                        egui::Color32::from_rgba_unmultiplied(rr, gg, bb, 22),
-                    ),
+                    egui::Stroke::new(2.5, egui::Color32::from_rgba_unmultiplied(rr, gg, bb, 22)),
                 );
                 painter.line_segment([pp, point], egui::Stroke::new(1.0, color));
             }

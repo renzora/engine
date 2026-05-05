@@ -13,3 +13,6 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ui = { path = "../renzora_ui" }
 renzora_animation = { path = "../renzora_animation" }
 ron = "0.8"
+
+[lints]
+workspace = true

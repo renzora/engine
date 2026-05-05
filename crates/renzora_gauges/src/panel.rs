@@ -208,8 +208,7 @@ impl EditorPanel for GaugesPanel {
                                         );
 
                                         // Bar
-                                        let bar_width =
-                                            (ui.available_width() - 44.0).max(30.0);
+                                        let bar_width = (ui.available_width() - 44.0).max(30.0);
                                         let (rect, _) = ui.allocate_exact_size(
                                             egui::vec2(bar_width, 12.0),
                                             egui::Sense::hover(),
@@ -226,10 +225,7 @@ impl EditorPanel for GaugesPanel {
                                         if ratio > 0.0 {
                                             let fill = egui::Rect::from_min_size(
                                                 rect.min,
-                                                egui::vec2(
-                                                    rect.width() * ratio,
-                                                    rect.height(),
-                                                ),
+                                                egui::vec2(rect.width() * ratio, rect.height()),
                                             );
                                             ui.painter().rect_filled(
                                                 fill,

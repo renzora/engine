@@ -147,7 +147,11 @@ fn find_blender() -> Result<PathBuf, ImportError> {
 
     #[cfg(target_os = "linux")]
     {
-        for candidate in &["/usr/bin/blender", "/usr/local/bin/blender", "/snap/bin/blender"] {
+        for candidate in &[
+            "/usr/bin/blender",
+            "/usr/local/bin/blender",
+            "/snap/bin/blender",
+        ] {
             if Path::new(candidate).exists() {
                 return Ok(PathBuf::from(*candidate));
             }
@@ -155,7 +159,10 @@ fn find_blender() -> Result<PathBuf, ImportError> {
     }
 
     // 3. Try PATH
-    if let Ok(output) = std::process::Command::new("blender").arg("--version").output() {
+    if let Ok(output) = std::process::Command::new("blender")
+        .arg("--version")
+        .output()
+    {
         if output.status.success() {
             return Ok(PathBuf::from("blender"));
         }

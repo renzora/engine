@@ -1,10 +1,10 @@
 use bevy::{
+    camera::visibility::RenderLayers,
     math::Affine3,
     mesh::skinning::SkinnedMesh,
     pbr::SkinUniforms,
     platform::collections::HashMap,
     prelude::*,
-    camera::visibility::RenderLayers,
     render::{
         batching::{no_gpu_preprocessing::BatchedInstanceBuffer, NoAutomaticBatching},
         mesh::allocator::MeshAllocator,
@@ -97,9 +97,7 @@ pub(crate) struct OutlineInstanceBindGroup {
     pub bind_group: BindGroup,
 }
 
-pub(crate) fn set_outline_visibility(
-    mut query: Query<(&mut ViewVisibility, &ComputedOutline)>,
-) {
+pub(crate) fn set_outline_visibility(mut query: Query<(&mut ViewVisibility, &ComputedOutline)>) {
     use bevy::camera::visibility::SetViewVisibility;
     for (mut visibility, computed) in query.iter_mut() {
         if let ComputedOutline(Some(computed)) = computed {
@@ -129,8 +127,16 @@ pub(crate) fn extract_outlines(
 ) {
     render_outlines.entity_map.clear();
 
-    for (entity, render_entity, computed, key, transform, mesh, no_automatic_batching, is_skinned) in
-        outlines.iter()
+    for (
+        entity,
+        render_entity,
+        computed,
+        key,
+        transform,
+        mesh,
+        no_automatic_batching,
+        is_skinned,
+    ) in outlines.iter()
     {
         // Skip skinned meshes - outline pipeline doesn't support skinned mesh bind group layout
         if is_skinned {

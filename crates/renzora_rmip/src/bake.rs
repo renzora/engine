@@ -16,12 +16,8 @@ use crate::{mip_count, RmipFormat, MAGIC, VERSION};
 ///
 /// `format` controls the sRGB vs. linear flag stored in the header. The
 /// caller picks based on the texture's role (color vs. data map).
-pub fn bake_from_image_bytes(
-    bytes: &[u8],
-    format: RmipFormat,
-) -> Result<Vec<u8>, String> {
-    let img = image::load_from_memory(bytes)
-        .map_err(|e| format!("decode image: {e}"))?;
+pub fn bake_from_image_bytes(bytes: &[u8], format: RmipFormat) -> Result<Vec<u8>, String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("decode image: {e}"))?;
     let (w, h) = img.dimensions();
     let rgba = img.to_rgba8();
     bake_from_rgba8(rgba.as_raw(), w, h, format)
@@ -49,9 +45,8 @@ pub fn bake_from_rgba8(
             expected,
         ));
     }
-    let buf: ImageBuffer<Rgba<u8>, _> =
-        ImageBuffer::from_raw(width, height, pixels.to_vec())
-            .ok_or_else(|| "ImageBuffer::from_raw failed".to_string())?;
+    let buf: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(width, height, pixels.to_vec())
+        .ok_or_else(|| "ImageBuffer::from_raw failed".to_string())?;
 
     let mips = mip_count(width, height);
     let mut levels: Vec<Vec<u8>> = Vec::with_capacity(mips as usize);

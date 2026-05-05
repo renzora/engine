@@ -49,17 +49,17 @@ pub fn shortcut_recorder(
     let label = if recording {
         "Press a key…".to_string()
     } else {
-        current.map(|s| s.format()).unwrap_or_else(|| "(unbound)".to_string())
+        current
+            .map(|s| s.format())
+            .unwrap_or_else(|| "(unbound)".to_string())
     };
 
     let resp = ui.add(
-        egui::Button::new(
-            egui::RichText::new(label).color(if recording {
-                theme.widgets.active_bg.to_color32()
-            } else {
-                theme.text.primary.to_color32()
-            }),
-        )
+        egui::Button::new(egui::RichText::new(label).color(if recording {
+            theme.widgets.active_bg.to_color32()
+        } else {
+            theme.text.primary.to_color32()
+        }))
         .min_size(egui::vec2(140.0, 20.0)),
     );
     if resp.clicked() {
@@ -70,8 +70,17 @@ pub fn shortcut_recorder(
     if recording {
         let input = ui.input(|i| i.clone());
         for event in &input.events {
-            if let egui::Event::Key { key, pressed: true, modifiers, .. } = event {
-                captured = Some(Shortcut { modifiers: *modifiers, key: *key });
+            if let egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = event
+            {
+                captured = Some(Shortcut {
+                    modifiers: *modifiers,
+                    key: *key,
+                });
                 recording = false;
                 break;
             }

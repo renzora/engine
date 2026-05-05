@@ -1,3 +1,4 @@
+use bevy::camera::visibility::RenderLayers;
 use bevy::core_pipeline::prepass::MotionVectorPrepass;
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::system::SystemChangeTick;
@@ -17,7 +18,6 @@ use bevy::render::render_resource::{
 };
 use bevy::render::sync_world::{MainEntity, MainEntityHashMap};
 use bevy::render::view::{ExtractedView, RetainedViewEntity};
-use bevy::camera::visibility::RenderLayers;
 use bevy::render::Extract;
 
 use crate::node::{
@@ -298,7 +298,8 @@ pub(crate) fn queue_outline_mesh(
         // leaving a brief window where this lookup misses. The phase
         // lookups just below use the same `let ... else { continue }`
         // pattern; mirror it here so deletes don't panic.
-        let Some(outline_view_cache) = outline_cache.view_map.get(&view.retained_view_entity) else {
+        let Some(outline_view_cache) = outline_cache.view_map.get(&view.retained_view_entity)
+        else {
             continue;
         };
 

@@ -1,14 +1,14 @@
 //! Shader preview panel — renders compiled code shaders on a fullscreen quad
 //! via render-to-texture in an egui panel.
 
-use bevy::prelude::*;
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, RichText, TextureId};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
-use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
+use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
 use renzora_theme::ThemeManager;
@@ -68,7 +68,10 @@ impl PreviewMesh {
             PreviewMesh::Cylinder => Mesh::from(Cylinder::new(0.8, 1.5)),
             PreviewMesh::Capsule => Mesh::from(Capsule3d::new(0.5, 1.0)),
             PreviewMesh::Torus => Mesh::from(Torus::new(0.4, 1.0)),
-            PreviewMesh::Cone => Mesh::from(Cone { radius: 0.8, height: 1.5 }),
+            PreviewMesh::Cone => Mesh::from(Cone {
+                radius: 0.8,
+                height: 1.5,
+            }),
             PreviewMesh::Tetrahedron => Mesh::from(Tetrahedron::default()),
             PreviewMesh::Plane => Plane3d::default().mesh().size(2.0, 2.0).build(),
         }
@@ -276,11 +279,14 @@ impl Plugin for ShaderPreviewPlugin {
         info!("[editor] ShaderPreviewPlugin");
         app.init_resource::<ShaderPreviewImage>()
             .add_systems(PostStartup, setup_shader_preview)
-            .add_systems(Update, (
-                sync_shader_preview_camera,
-                update_shader_preview,
-                swap_preview_mesh,
-            ));
+            .add_systems(
+                Update,
+                (
+                    sync_shader_preview_camera,
+                    update_shader_preview,
+                    swap_preview_mesh,
+                ),
+            );
     }
 }
 
@@ -335,12 +341,13 @@ impl EditorPanel for ShaderPreviewPanel {
         let preview_ok = editor_state.map_or(true, |s| s.preview_compatible);
         if !preview_ok {
             let msg = match editor_state.map(|s| s.shader_file.shader_type) {
-                Some(renzora_shader::file::ShaderType::Material) =>
-                    "Material shaders use custom bind groups — preview in scene viewport",
-                Some(renzora_shader::file::ShaderType::PostProcess) =>
-                    "Post-process preview not yet supported",
-                _ =>
-                    "Preview unavailable — shader uses custom material bindings",
+                Some(renzora_shader::file::ShaderType::Material) => {
+                    "Material shaders use custom bind groups — preview in scene viewport"
+                }
+                Some(renzora_shader::file::ShaderType::PostProcess) => {
+                    "Post-process preview not yet supported"
+                }
+                _ => "Preview unavailable — shader uses custom material bindings",
             };
             ui.centered_and_justified(|ui| {
                 ui.label(RichText::new(msg).size(11.0).color(muted));
@@ -355,17 +362,23 @@ impl EditorPanel for ShaderPreviewPanel {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     ui.label(RichText::new("Mesh").size(11.0).color(muted));
-                    let current_mesh = editor_state.map_or(PreviewMesh::default(), |s| s.preview_mesh);
+                    let current_mesh =
+                        editor_state.map_or(PreviewMesh::default(), |s| s.preview_mesh);
                     egui::ComboBox::from_id_salt("preview_mesh_select")
                         .selected_text(current_mesh.label())
                         .width(90.0)
                         .show_ui(ui, |ui| {
                             for mesh in PreviewMesh::ALL {
-                                if ui.selectable_label(current_mesh == *mesh, mesh.label()).clicked() {
+                                if ui
+                                    .selectable_label(current_mesh == *mesh, mesh.label())
+                                    .clicked()
+                                {
                                     let m = *mesh;
                                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                                         cmds.push(move |world: &mut World| {
-                                            if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                            if let Some(mut s) =
+                                                world.get_resource_mut::<ShaderEditorState>()
+                                            {
                                                 s.preview_mesh = m;
                                             }
                                         });

@@ -66,9 +66,9 @@ impl DockTree {
     /// Find a mutable reference to the leaf that contains `panel`.
     pub fn find_leaf_mut(&mut self, panel: &str) -> Option<&mut DockTree> {
         match self {
-            DockTree::Split { first, second, .. } => {
-                first.find_leaf_mut(panel).or_else(|| second.find_leaf_mut(panel))
-            }
+            DockTree::Split { first, second, .. } => first
+                .find_leaf_mut(panel)
+                .or_else(|| second.find_leaf_mut(panel)),
             DockTree::Leaf { tabs, .. } => {
                 if tabs.iter().any(|t| t == panel) {
                     Some(self)
@@ -157,9 +157,9 @@ impl DockTree {
             DockTree::Split { first, second, .. } => {
                 first.is_active_tab(panel) || second.is_active_tab(panel)
             }
-            DockTree::Leaf { tabs, active_tab } => tabs
-                .get(*active_tab)
-                .map_or(false, |t| t == panel),
+            DockTree::Leaf { tabs, active_tab } => {
+                tabs.get(*active_tab).map_or(false, |t| t == panel)
+            }
             DockTree::Empty => false,
         }
     }
@@ -378,7 +378,9 @@ pub fn load_saved_workspace() -> Option<crate::layouts::LayoutManager> {
         toml::from_str::<crate::layouts::LayoutManager>(&content).ok()
     }
     #[cfg(target_arch = "wasm32")]
-    { None }
+    {
+        None
+    }
 }
 
 /// Persist the workspace (all layouts + active index) to the user config
@@ -386,7 +388,9 @@ pub fn load_saved_workspace() -> Option<crate::layouts::LayoutManager> {
 pub fn save_workspace(manager: &crate::layouts::LayoutManager) {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = layout_config_path() else { return };
+        let Some(path) = layout_config_path() else {
+            return;
+        };
         if let Some(parent) = path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 warn!("[dock] couldn't create layout config dir: {e}");
@@ -403,7 +407,9 @@ pub fn save_workspace(manager: &crate::layouts::LayoutManager) {
         }
     }
     #[cfg(target_arch = "wasm32")]
-    { let _ = manager; }
+    {
+        let _ = manager;
+    }
 }
 
 /// Delete the saved workspace file (used by "Reset Layout").

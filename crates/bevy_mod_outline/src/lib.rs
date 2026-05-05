@@ -33,15 +33,17 @@
 use std::any::TypeId;
 
 use bevy::asset::load_internal_asset;
+use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::mesh::MeshVertexAttribute;
 use bevy::pbr::{MeshInputUniform, MeshUniform};
+use bevy::prelude::TransformSystems;
 use bevy::prelude::*;
 use bevy::render::batching::gpu_preprocessing::{self, GpuPreprocessingSupport};
 use bevy::render::batching::no_gpu_preprocessing::{
     clear_batched_cpu_instance_buffers, write_batched_instance_buffer, BatchedInstanceBuffer,
 };
 use bevy::render::extract_component::UniformComponentPlugin;
-use bevy::mesh::MeshVertexAttribute;
 use bevy::render::render_graph::{EmptyNode, RenderGraphExt, RenderLabel, ViewNodeRunner};
 use bevy::render::render_phase::{
     sort_phase_system, AddRenderCommand, BinnedRenderPhasePlugin, DrawFunctions, PhaseItem,
@@ -50,9 +52,7 @@ use bevy::render::render_phase::{
 use bevy::render::render_resource::{SpecializedMeshPipelines, VertexFormat};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::sync_component::SyncComponentPlugin;
-use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
 use bevy::render::{Render, RenderApp, RenderDebugFlags, RenderSystems};
-use bevy::prelude::TransformSystems;
 use uniforms::extract_outlines;
 use uniforms::AlphaMaskBindGroups;
 use uniforms::RenderOutlineInstances;
@@ -413,8 +413,7 @@ impl Plugin for OutlinePlugin {
                 compute_outline
                     .after(TransformSystems::Propagate)
                     .after(VisibilitySystems::VisibilityPropagate),
-                compute_outline_key
-                    .after(compute_outline),
+                compute_outline_key.after(compute_outline),
                 check_outline_entities_changed.after(compute_outline_key),
                 set_outline_visibility.in_set(VisibilitySystems::CheckVisibility),
             ),
@@ -448,8 +447,14 @@ impl Plugin for OutlinePlugin {
             )
                 .in_set(RenderSystems::PrepareBindGroups),
         )
-        .add_systems(Render, specialise_outlines.in_set(RenderSystems::PrepareMeshes))
-        .add_systems(Render, queue_outline_mesh.in_set(RenderSystems::QueueMeshes))
+        .add_systems(
+            Render,
+            specialise_outlines.in_set(RenderSystems::PrepareMeshes),
+        )
+        .add_systems(
+            Render,
+            queue_outline_mesh.in_set(RenderSystems::QueueMeshes),
+        )
         .add_systems(
             Render,
             sort_phase_system::<TransparentOutline>.in_set(RenderSystems::PhaseSort),
@@ -499,7 +504,8 @@ impl Plugin for OutlinePlugin {
             .init_resource::<AlphaMaskBindGroups>();
 
         let render_device = render_app.world().resource::<RenderDevice>();
-        let instance_buffer = BatchedInstanceBuffer::<OutlineInstanceUniform>::new(&render_device.limits());
+        let instance_buffer =
+            BatchedInstanceBuffer::<OutlineInstanceUniform>::new(&render_device.limits());
         render_app.insert_resource(instance_buffer).add_systems(
             Render,
             write_batched_instance_buffer::<OutlinePipeline>

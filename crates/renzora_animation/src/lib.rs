@@ -30,15 +30,18 @@ pub mod tween;
 pub use blend_tree::BlendTree;
 pub use clip::{AnimClip, BoneTrack};
 pub use component::{AnimClipSlot, AnimatorComponent, AnimatorState};
-pub use read_state::AnimatorReadState;
 pub use layers::{AnimationLayer, LayerBlendMode};
 pub use loader::AnimClipLoader;
-pub use state_machine::{AnimCondition, AnimParams, AnimState, AnimTransition, AnimationStateMachine, StateMotion};
+pub use read_state::AnimatorReadState;
+pub use state_machine::{
+    AnimCondition, AnimParams, AnimState, AnimTransition, AnimationStateMachine, StateMotion,
+};
 pub use systems::{AnimationCommand, AnimationCommandQueue};
 pub use tween::{EasingFunction, ProceduralTween, TweenProperty};
 
 use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct AnimationPlugin;
 
 impl Plugin for AnimationPlugin {
@@ -54,8 +57,7 @@ impl Plugin for AnimationPlugin {
             .init_asset::<AnimationStateMachine>()
             .init_asset_loader::<AnimClipLoader>()
             .init_asset_loader::<sm_loader::AnimSmLoader>()
-            .init_resource::<AnimationCommandQueue>()
-            ;
+            .init_resource::<AnimationCommandQueue>();
 
         #[cfg(feature = "editor")]
         {
@@ -68,27 +70,27 @@ impl Plugin for AnimationPlugin {
 
         // Register Lua/Rhai functions owned by the animation crate.
         {
-            let mut extensions = app
-                .world_mut()
-                .get_resource_or_insert_with(renzora_scripting::extension::ScriptExtensions::default);
+            let mut extensions = app.world_mut().get_resource_or_insert_with(
+                renzora_scripting::extension::ScriptExtensions::default,
+            );
             extensions.register(script_extension::AnimationScriptExtension);
         }
 
         app.add_systems(
-                Update,
-                (
-                    systems::rehydrate_animators,
-                    systems::initialize_animation_graphs,
-                    systems::ensure_animation_targets,
-                    systems::auto_play_default,
-                    systems::process_animation_commands,
-                    systems::update_state_machines,
-                    systems::update_layer_weights,
-                    systems::detect_animation_finished,
-                    tween::update_procedural_tweens,
-                )
-                    .chain(),
-            );
+            Update,
+            (
+                systems::rehydrate_animators,
+                systems::initialize_animation_graphs,
+                systems::ensure_animation_targets,
+                systems::auto_play_default,
+                systems::process_animation_commands,
+                systems::update_state_machines,
+                systems::update_layer_weights,
+                systems::detect_animation_finished,
+                tween::update_procedural_tweens,
+            )
+                .chain(),
+        );
 
         app.add_systems(
             Update,
@@ -146,3 +148,5 @@ fn apply_asset_path_changes_to_animators(
         }
     }
 }
+
+renzora::add!(AnimationPlugin);

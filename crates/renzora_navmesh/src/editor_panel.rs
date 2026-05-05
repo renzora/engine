@@ -8,8 +8,8 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use renzora_editor::{EditorPanel, PanelLocation};
 use vleue_navigator::{
-    NavMesh,
     prelude::{ManagedNavMesh, NavMeshStatus, NavMeshUpdateMode},
+    NavMesh,
 };
 
 use crate::{NavMeshVolume, NavPath};
@@ -58,7 +58,10 @@ impl NavMeshPanelState {
     /// True when agent path gizmos should render. Called from the nav
     /// plugin's `draw_agent_paths` system.
     pub fn show_agent_paths(&self) -> bool {
-        self.shared.lock().map(|s| s.show_agent_paths).unwrap_or(true)
+        self.shared
+            .lock()
+            .map(|s| s.show_agent_paths)
+            .unwrap_or(true)
     }
 }
 
@@ -81,12 +84,24 @@ pub struct VolumeRow {
 pub struct NavMeshPanel;
 
 impl EditorPanel for NavMeshPanel {
-    fn id(&self) -> &str { "navmesh" }
-    fn title(&self) -> &str { "NavMesh" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::POLYGON) }
-    fn category(&self) -> &str { "World" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Right }
-    fn min_size(&self) -> [f32; 2] { [220.0, 150.0] }
+    fn id(&self) -> &str {
+        "navmesh"
+    }
+    fn title(&self) -> &str {
+        "NavMesh"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::POLYGON)
+    }
+    fn category(&self) -> &str {
+        "World"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [220.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let Some(state) = world.get_resource::<NavMeshPanelState>() else {
@@ -120,12 +135,22 @@ impl EditorPanel for NavMeshPanel {
                 }
             }
             if ui.button("Reset Agents").clicked() {
-                state.shared.lock().unwrap().pending.push(PanelAction::ResetAgents);
+                state
+                    .shared
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .push(PanelAction::ResetAgents);
             }
         });
         ui.horizontal(|ui| {
             if ui.button("Bake to Disk").clicked() {
-                state.shared.lock().unwrap().pending.push(PanelAction::BakeToDisk);
+                state
+                    .shared
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .push(PanelAction::BakeToDisk);
             }
         });
 
@@ -148,40 +173,60 @@ impl EditorPanel for NavMeshPanel {
             return;
         }
 
-        egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-            for row in &mirror.volumes {
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.strong(&row.name);
-                        ui.weak(format!("({:?})", row.entity));
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for row in &mirror.volumes {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(&row.name);
+                            ui.weak(format!("({:?})", row.entity));
+                        });
+                        ui.horizontal(|ui| {
+                            let (label, color) = match row.status {
+                                NavMeshStatus::Built => {
+                                    ("Built", egui::Color32::from_rgb(120, 220, 120))
+                                }
+                                NavMeshStatus::Building => {
+                                    ("Building…", egui::Color32::from_rgb(240, 200, 90))
+                                }
+                                NavMeshStatus::Failed => {
+                                    ("Failed", egui::Color32::from_rgb(230, 90, 90))
+                                }
+                                NavMeshStatus::Cancelled => {
+                                    ("Cancelled", egui::Color32::from_rgb(180, 180, 180))
+                                }
+                                NavMeshStatus::Invalid => {
+                                    ("Invalid", egui::Color32::from_rgb(180, 180, 180))
+                                }
+                            };
+                            ui.colored_label(color, label);
+                            if let Some(n) = row.polygon_count {
+                                ui.weak(format!("{} polygons", n));
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            let mut debug = row.debug_draw;
+                            if ui.checkbox(&mut debug, "Debug Draw").changed() {
+                                state
+                                    .shared
+                                    .lock()
+                                    .unwrap()
+                                    .pending
+                                    .push(PanelAction::ToggleVolumeDebug(row.entity));
+                            }
+                            if ui.button("Rebuild").clicked() {
+                                state
+                                    .shared
+                                    .lock()
+                                    .unwrap()
+                                    .pending
+                                    .push(PanelAction::RebuildVolume(row.entity));
+                            }
+                        });
                     });
-                    ui.horizontal(|ui| {
-                        let (label, color) = match row.status {
-                            NavMeshStatus::Built => ("Built", egui::Color32::from_rgb(120, 220, 120)),
-                            NavMeshStatus::Building => ("Building…", egui::Color32::from_rgb(240, 200, 90)),
-                            NavMeshStatus::Failed => ("Failed", egui::Color32::from_rgb(230, 90, 90)),
-                            NavMeshStatus::Cancelled => ("Cancelled", egui::Color32::from_rgb(180, 180, 180)),
-                            NavMeshStatus::Invalid => ("Invalid", egui::Color32::from_rgb(180, 180, 180)),
-                        };
-                        ui.colored_label(color, label);
-                        if let Some(n) = row.polygon_count {
-                            ui.weak(format!("{} polygons", n));
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        let mut debug = row.debug_draw;
-                        if ui.checkbox(&mut debug, "Debug Draw").changed() {
-                            state.shared.lock().unwrap().pending
-                                .push(PanelAction::ToggleVolumeDebug(row.entity));
-                        }
-                        if ui.button("Rebuild").clicked() {
-                            state.shared.lock().unwrap().pending
-                                .push(PanelAction::RebuildVolume(row.entity));
-                        }
-                    });
-                });
-            }
-        });
+                }
+            });
     }
 }
 
@@ -295,7 +340,9 @@ pub fn apply_auto_rebuild_setting(
         s.auto_rebuild_dirty = false;
         out
     };
-    if !dirty { return; }
+    if !dirty {
+        return;
+    }
     let target = if auto {
         NavMeshUpdateMode::Direct
     } else {

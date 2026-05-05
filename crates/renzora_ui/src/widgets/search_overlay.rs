@@ -1,7 +1,10 @@
 //! Godot-style search overlay — backdrop + centered popup with search bar and
 //! categorized item list with tree-line connectors.
 
-use bevy_egui::egui::{self, Align2, Color32, CornerRadius, CursorIcon, Margin, Order, Pos2, RichText, Sense, Stroke, Vec2};
+use bevy_egui::egui::{
+    self, Align2, Color32, CornerRadius, CursorIcon, Margin, Order, Pos2, RichText, Sense, Stroke,
+    Vec2,
+};
 use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT, MAGNIFYING_GLASS};
 use renzora_theme::Theme;
 
@@ -92,7 +95,8 @@ pub fn search_overlay(
                                 .color(theme.text.heading.to_color32()),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (rect, resp) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), Sense::click());
+                            let (rect, resp) =
+                                ui.allocate_exact_size(Vec2::new(24.0, 24.0), Sense::click());
                             let icon_color = if resp.hovered() {
                                 theme.text.primary.to_color32()
                             } else {
@@ -100,7 +104,11 @@ pub fn search_overlay(
                             };
                             if resp.hovered() {
                                 let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
-                                ui.painter().rect_filled(rect, CornerRadius::same(4), Color32::from_rgba_unmultiplied(r, g, b, 80));
+                                ui.painter().rect_filled(
+                                    rect,
+                                    CornerRadius::same(4),
+                                    Color32::from_rgba_unmultiplied(r, g, b, 80),
+                                );
                                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                             }
                             ui.painter().text(
@@ -154,165 +162,114 @@ pub fn search_overlay(
                         let mut scroll_target: Option<String> = None;
 
                         ui.horizontal_top(|ui| {
-                        // Left: category sidebar
-                        ui.vertical(|ui| {
-                            ui.set_width(100.0);
-                            ui.set_max_height(520.0);
-                            ui.add_space(4.0);
-                            ui.label(RichText::new("Categories").size(12.0).color(theme.text.disabled.to_color32()));
-                            ui.add_space(2.0);
-                            for cat in &categories {
-                                let (accent, _) = category_colors(theme, cat);
-                                let w = ui.available_width();
-                                let (rect, resp) = ui.allocate_exact_size(
-                                    Vec2::new(w, 24.0),
-                                    Sense::click(),
+                            // Left: category sidebar
+                            ui.vertical(|ui| {
+                                ui.set_width(100.0);
+                                ui.set_max_height(520.0);
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new("Categories")
+                                        .size(12.0)
+                                        .color(theme.text.disabled.to_color32()),
                                 );
-                                let is_active = scroll_target.as_deref() == Some(*cat);
-                                if resp.hovered() || is_active {
-                                    let bg = if is_active {
-                                        Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 30)
-                                    } else {
-                                        let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
-                                        Color32::from_rgba_unmultiplied(r, g, b, 50)
-                                    };
-                                    ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
-                                }
-                                if resp.hovered() {
-                                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                                }
-                                ui.painter().text(
-                                    rect.left_center() + Vec2::new(6.0, 0.0),
-                                    Align2::LEFT_CENTER,
-                                    capitalize(cat),
-                                    egui::FontId::proportional(13.0),
-                                    accent,
-                                );
-                                if resp.clicked() {
-                                    scroll_target = Some(cat.to_string());
-                                }
-                            }
-                        });
-
-                        // Right: scrollable categorized tree list
-                        let right_width = ui.available_width();
-                        ui.vertical(|ui| {
-                            ui.set_width(right_width);
-                        egui::ScrollArea::vertical()
-                            .max_height(520.0)
-                            .id_salt(egui::Id::new(id_salt).with("_scroll"))
-                            .show(ui, |ui| {
-                                ui.spacing_mut().item_spacing.y = 0.0;
-
-                                let tree_line_color = theme.widgets.border.to_color32();
-                                let line_stroke = Stroke::new(1.5, tree_line_color);
-                                let row_height = 28.0_f32;
-                                let indent = 24.0_f32;
-                                let row_even = theme.panels.inspector_row_even.to_color32();
-                                let row_odd = theme.panels.inspector_row_odd.to_color32();
-
-                                let mut row_index: usize = 0;
-
+                                ui.add_space(2.0);
                                 for cat in &categories {
-                                    let (accent, _header_bg) = category_colors(theme, cat);
-
-                                    // Category expand/collapse state
-                                    let cat_id = egui::Id::new(id_salt).with("_cat").with(*cat);
-                                    let is_expanded = if has_search {
-                                        true
-                                    } else {
-                                        ui.ctx().data_mut(|d| {
-                                            *d.get_persisted_mut_or_insert_with(cat_id, || true)
-                                        })
-                                    };
-
-                                    // --- Category row ---
-                                    let (cat_rect, cat_response) = ui.allocate_exact_size(
-                                        Vec2::new(ui.available_width(), row_height),
-                                        Sense::click(),
-                                    );
-                                    let painter = ui.painter();
-
-                                    // Alternating row bg
-                                    let bg = if row_index % 2 == 0 { row_even } else { row_odd };
-                                    painter.rect_filled(cat_rect, 0.0, bg);
-
-                                    // Hover highlight
-                                    if cat_response.hovered() {
-                                        let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
-                                        painter.rect_filled(
-                                            cat_rect,
-                                            0.0,
-                                            Color32::from_rgba_unmultiplied(r, g, b, 40),
-                                        );
+                                    let (accent, _) = category_colors(theme, cat);
+                                    let w = ui.available_width();
+                                    let (rect, resp) =
+                                        ui.allocate_exact_size(Vec2::new(w, 24.0), Sense::click());
+                                    let is_active = scroll_target.as_deref() == Some(*cat);
+                                    if resp.hovered() || is_active {
+                                        let bg = if is_active {
+                                            Color32::from_rgba_unmultiplied(
+                                                accent.r(),
+                                                accent.g(),
+                                                accent.b(),
+                                                30,
+                                            )
+                                        } else {
+                                            let [r, g, b, _] =
+                                                theme.widgets.hovered_bg.to_color32().to_array();
+                                            Color32::from_rgba_unmultiplied(r, g, b, 50)
+                                        };
+                                        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+                                    }
+                                    if resp.hovered() {
                                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                                     }
-                                    row_index += 1;
-
-                                    let base_x = cat_rect.min.x + 4.0;
-                                    let center_y = cat_rect.center().y;
-
-                                    // Caret
-                                    let caret = if is_expanded { CARET_DOWN } else { CARET_RIGHT };
-                                    let caret_color = Color32::from_rgb(140, 140, 150);
-                                    painter.text(
-                                        Pos2::new(base_x + 2.0, center_y),
-                                        Align2::LEFT_CENTER,
-                                        caret,
-                                        egui::FontId::proportional(13.0),
-                                        caret_color,
-                                    );
-
-                                    // Category label
-                                    painter.text(
-                                        Pos2::new(base_x + 20.0, center_y),
+                                    ui.painter().text(
+                                        rect.left_center() + Vec2::new(6.0, 0.0),
                                         Align2::LEFT_CENTER,
                                         capitalize(cat),
-                                        egui::FontId::proportional(14.0),
+                                        egui::FontId::proportional(13.0),
                                         accent,
                                     );
-
-                                    // Scroll to this category if the sidebar requested it
-                                    if scroll_target.as_deref() == Some(*cat) {
-                                        cat_response.scroll_to_me(Some(egui::Align::TOP));
+                                    if resp.clicked() {
+                                        scroll_target = Some(cat.to_string());
                                     }
+                                }
+                            });
 
-                                    // Toggle expand on click
-                                    if cat_response.clicked() && !has_search {
-                                        let new_val = !is_expanded;
-                                        ui.ctx().data_mut(|d| d.insert_persisted(cat_id, new_val));
-                                    }
+                            // Right: scrollable categorized tree list
+                            let right_width = ui.available_width();
+                            ui.vertical(|ui| {
+                                ui.set_width(right_width);
+                                egui::ScrollArea::vertical()
+                                    .max_height(520.0)
+                                    .id_salt(egui::Id::new(id_salt).with("_scroll"))
+                                    .show(ui, |ui| {
+                                        ui.spacing_mut().item_spacing.y = 0.0;
 
-                                    // --- Children ---
-                                    if is_expanded {
-                                        let items: Vec<&&OverlayEntry> = filtered
-                                            .iter()
-                                            .filter(|e| e.category == *cat)
-                                            .collect();
-                                        let item_count = items.len();
+                                        let tree_line_color = theme.widgets.border.to_color32();
+                                        let line_stroke = Stroke::new(1.5, tree_line_color);
+                                        let row_height = 28.0_f32;
+                                        let indent = 24.0_f32;
+                                        let row_even = theme.panels.inspector_row_even.to_color32();
+                                        let row_odd = theme.panels.inspector_row_odd.to_color32();
 
-                                        for (i_idx, entry) in items.iter().enumerate() {
-                                            if first_id.is_none() {
-                                                first_id = Some(entry.id.to_string());
-                                            }
+                                        let mut row_index: usize = 0;
 
-                                            let is_last_item = i_idx == item_count - 1;
+                                        for cat in &categories {
+                                            let (accent, _header_bg) = category_colors(theme, cat);
 
-                                            let (row_rect, row_response) = ui.allocate_exact_size(
+                                            // Category expand/collapse state
+                                            let cat_id =
+                                                egui::Id::new(id_salt).with("_cat").with(*cat);
+                                            let is_expanded = if has_search {
+                                                true
+                                            } else {
+                                                ui.ctx().data_mut(|d| {
+                                                    *d.get_persisted_mut_or_insert_with(
+                                                        cat_id,
+                                                        || true,
+                                                    )
+                                                })
+                                            };
+
+                                            // --- Category row ---
+                                            let (cat_rect, cat_response) = ui.allocate_exact_size(
                                                 Vec2::new(ui.available_width(), row_height),
                                                 Sense::click(),
                                             );
                                             let painter = ui.painter();
 
                                             // Alternating row bg
-                                            let bg = if row_index % 2 == 0 { row_even } else { row_odd };
-                                            painter.rect_filled(row_rect, 0.0, bg);
+                                            let bg = if row_index % 2 == 0 {
+                                                row_even
+                                            } else {
+                                                row_odd
+                                            };
+                                            painter.rect_filled(cat_rect, 0.0, bg);
 
                                             // Hover highlight
-                                            if row_response.hovered() {
-                                                let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
+                                            if cat_response.hovered() {
+                                                let [r, g, b, _] = theme
+                                                    .widgets
+                                                    .hovered_bg
+                                                    .to_color32()
+                                                    .to_array();
                                                 painter.rect_filled(
-                                                    row_rect,
+                                                    cat_rect,
                                                     0.0,
                                                     Color32::from_rgba_unmultiplied(r, g, b, 40),
                                                 );
@@ -320,66 +277,165 @@ pub fn search_overlay(
                                             }
                                             row_index += 1;
 
-                                            let child_center_y = row_rect.center().y;
-                                            let line_x = base_x + indent / 2.0 - 1.0;
-                                            let line_overlap = 3.0;
+                                            let base_x = cat_rect.min.x + 4.0;
+                                            let center_y = cat_rect.center().y;
 
-                                            // Vertical tree line
-                                            if !is_last_item {
-                                                painter.line_segment(
-                                                    [
-                                                        Pos2::new(line_x, row_rect.min.y - line_overlap),
-                                                        Pos2::new(line_x, row_rect.max.y + line_overlap),
-                                                    ],
-                                                    line_stroke,
-                                                );
-                                            } else {
-                                                painter.line_segment(
-                                                    [
-                                                        Pos2::new(line_x, row_rect.min.y - line_overlap),
-                                                        Pos2::new(line_x, child_center_y),
-                                                    ],
-                                                    line_stroke,
-                                                );
-                                            }
-
-                                            // Horizontal connector
-                                            let h_end_x = base_x + indent - 2.0;
-                                            painter.line_segment(
-                                                [
-                                                    Pos2::new(line_x, child_center_y),
-                                                    Pos2::new(h_end_x, child_center_y),
-                                                ],
-                                                line_stroke,
+                                            // Caret
+                                            let caret =
+                                                if is_expanded { CARET_DOWN } else { CARET_RIGHT };
+                                            let caret_color = Color32::from_rgb(140, 140, 150);
+                                            painter.text(
+                                                Pos2::new(base_x + 2.0, center_y),
+                                                Align2::LEFT_CENTER,
+                                                caret,
+                                                egui::FontId::proportional(13.0),
+                                                caret_color,
                                             );
 
-                                            // Item icon + label
-                                            let item_x = base_x + indent + 2.0;
+                                            // Category label
                                             painter.text(
-                                                Pos2::new(item_x, child_center_y),
+                                                Pos2::new(base_x + 20.0, center_y),
                                                 Align2::LEFT_CENTER,
-                                                entry.icon,
-                                                egui::FontId::proportional(15.0),
+                                                capitalize(cat),
+                                                egui::FontId::proportional(14.0),
                                                 accent,
                                             );
-                                            painter.text(
-                                                Pos2::new(item_x + 22.0, child_center_y),
-                                                Align2::LEFT_CENTER,
-                                                entry.label,
-                                                egui::FontId::proportional(13.0),
-                                                theme.text.primary.to_color32(),
-                                            );
 
-                                            if row_response.clicked() {
-                                                action = OverlayAction::Selected(
-                                                    entry.id.to_string(),
-                                                );
+                                            // Scroll to this category if the sidebar requested it
+                                            if scroll_target.as_deref() == Some(*cat) {
+                                                cat_response.scroll_to_me(Some(egui::Align::TOP));
+                                            }
+
+                                            // Toggle expand on click
+                                            if cat_response.clicked() && !has_search {
+                                                let new_val = !is_expanded;
+                                                ui.ctx().data_mut(|d| {
+                                                    d.insert_persisted(cat_id, new_val)
+                                                });
+                                            }
+
+                                            // --- Children ---
+                                            if is_expanded {
+                                                let items: Vec<&&OverlayEntry> = filtered
+                                                    .iter()
+                                                    .filter(|e| e.category == *cat)
+                                                    .collect();
+                                                let item_count = items.len();
+
+                                                for (i_idx, entry) in items.iter().enumerate() {
+                                                    if first_id.is_none() {
+                                                        first_id = Some(entry.id.to_string());
+                                                    }
+
+                                                    let is_last_item = i_idx == item_count - 1;
+
+                                                    let (row_rect, row_response) = ui
+                                                        .allocate_exact_size(
+                                                            Vec2::new(
+                                                                ui.available_width(),
+                                                                row_height,
+                                                            ),
+                                                            Sense::click(),
+                                                        );
+                                                    let painter = ui.painter();
+
+                                                    // Alternating row bg
+                                                    let bg = if row_index % 2 == 0 {
+                                                        row_even
+                                                    } else {
+                                                        row_odd
+                                                    };
+                                                    painter.rect_filled(row_rect, 0.0, bg);
+
+                                                    // Hover highlight
+                                                    if row_response.hovered() {
+                                                        let [r, g, b, _] = theme
+                                                            .widgets
+                                                            .hovered_bg
+                                                            .to_color32()
+                                                            .to_array();
+                                                        painter.rect_filled(
+                                                            row_rect,
+                                                            0.0,
+                                                            Color32::from_rgba_unmultiplied(
+                                                                r, g, b, 40,
+                                                            ),
+                                                        );
+                                                        ui.ctx().set_cursor_icon(
+                                                            CursorIcon::PointingHand,
+                                                        );
+                                                    }
+                                                    row_index += 1;
+
+                                                    let child_center_y = row_rect.center().y;
+                                                    let line_x = base_x + indent / 2.0 - 1.0;
+                                                    let line_overlap = 3.0;
+
+                                                    // Vertical tree line
+                                                    if !is_last_item {
+                                                        painter.line_segment(
+                                                            [
+                                                                Pos2::new(
+                                                                    line_x,
+                                                                    row_rect.min.y - line_overlap,
+                                                                ),
+                                                                Pos2::new(
+                                                                    line_x,
+                                                                    row_rect.max.y + line_overlap,
+                                                                ),
+                                                            ],
+                                                            line_stroke,
+                                                        );
+                                                    } else {
+                                                        painter.line_segment(
+                                                            [
+                                                                Pos2::new(
+                                                                    line_x,
+                                                                    row_rect.min.y - line_overlap,
+                                                                ),
+                                                                Pos2::new(line_x, child_center_y),
+                                                            ],
+                                                            line_stroke,
+                                                        );
+                                                    }
+
+                                                    // Horizontal connector
+                                                    let h_end_x = base_x + indent - 2.0;
+                                                    painter.line_segment(
+                                                        [
+                                                            Pos2::new(line_x, child_center_y),
+                                                            Pos2::new(h_end_x, child_center_y),
+                                                        ],
+                                                        line_stroke,
+                                                    );
+
+                                                    // Item icon + label
+                                                    let item_x = base_x + indent + 2.0;
+                                                    painter.text(
+                                                        Pos2::new(item_x, child_center_y),
+                                                        Align2::LEFT_CENTER,
+                                                        entry.icon,
+                                                        egui::FontId::proportional(15.0),
+                                                        accent,
+                                                    );
+                                                    painter.text(
+                                                        Pos2::new(item_x + 22.0, child_center_y),
+                                                        Align2::LEFT_CENTER,
+                                                        entry.label,
+                                                        egui::FontId::proportional(13.0),
+                                                        theme.text.primary.to_color32(),
+                                                    );
+
+                                                    if row_response.clicked() {
+                                                        action = OverlayAction::Selected(
+                                                            entry.id.to_string(),
+                                                        );
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
-                                }
-                            });
-                        }); // end vertical (right side)
+                                    });
+                            }); // end vertical (right side)
                         }); // end horizontal_top (sidebar + items)
                     }
                 });

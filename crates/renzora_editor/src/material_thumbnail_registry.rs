@@ -137,9 +137,12 @@ pub fn migrate_legacy_thumbnail_cache(project: &CurrentProject) {
 /// Example: `<project>/assets/shaders/rock.material` → `<project>/.cache/thumbnails/materials/shaders/rock.png`.
 /// If the material path isn't under the project, falls back to a flattened name.
 pub fn material_thumb_path(material_abs: &Path, project: &CurrentProject) -> PathBuf {
-    let rel = project
-        .make_relative(material_abs)
-        .unwrap_or_else(|| material_abs.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+    let rel = project.make_relative(material_abs).unwrap_or_else(|| {
+        material_abs
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    });
     let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
     let mut out = thumbnail_cache_dir(project, "materials").join(rel);
     out.set_extension("png");

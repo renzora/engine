@@ -80,7 +80,10 @@ impl RpakArchive {
 
         let read_u32 = |pos: &mut usize| -> io::Result<u32> {
             if *pos + 4 > raw.len() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated rpak"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated rpak",
+                ));
             }
             let bytes: [u8; 4] = raw[*pos..*pos + 4].try_into().unwrap();
             *pos += 4;
@@ -89,7 +92,10 @@ impl RpakArchive {
 
         let read_u64 = |pos: &mut usize| -> io::Result<u64> {
             if *pos + 8 > raw.len() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated rpak"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated rpak",
+                ));
             }
             let bytes: [u8; 8] = raw[*pos..*pos + 8].try_into().unwrap();
             *pos += 8;
@@ -103,7 +109,10 @@ impl RpakArchive {
         for _ in 0..entry_count {
             let path_len = read_u32(&mut pos)? as usize;
             if pos + path_len > raw.len() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "truncated rpak path"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "truncated rpak path",
+                ));
             }
             let path = std::str::from_utf8(&raw[pos..pos + path_len])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?

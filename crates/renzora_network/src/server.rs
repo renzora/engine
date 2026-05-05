@@ -1,8 +1,8 @@
 //! Server-side networking plugin and systems.
 
 use bevy::prelude::*;
-use lightyear::prelude::*;
 use lightyear::prelude::server::*;
+use lightyear::prelude::*;
 
 use crate::components::*;
 use crate::config::NetworkConfig;
@@ -31,9 +31,7 @@ impl Plugin for NetworkServerPlugin {
 
         let tick_duration = Duration::from_secs_f64(1.0 / self.config.tick_rate as f64);
 
-        app.add_plugins(ServerPlugins {
-            tick_duration,
-        });
+        app.add_plugins(ServerPlugins { tick_duration });
 
         // Register protocol (must be after ServerPlugins)
         protocol::register_protocol(app);
@@ -49,11 +47,14 @@ impl Plugin for NetworkServerPlugin {
 
         // Systems
         app.add_systems(Startup, spawn_server_entity);
-        app.add_systems(Update, (
-            auto_replicate_networked,
-            handle_new_clients,
-            assign_network_ids,
-        ));
+        app.add_systems(
+            Update,
+            (
+                auto_replicate_networked,
+                handle_new_clients,
+                assign_network_ids,
+            ),
+        );
     }
 }
 
@@ -62,10 +63,7 @@ impl Plugin for NetworkServerPlugin {
 struct ServerNetworkConfig(NetworkConfig);
 
 /// Spawn the server entity with UDP IO and netcode, then trigger Start.
-fn spawn_server_entity(
-    mut commands: Commands,
-    config: Res<ServerNetworkConfig>,
-) {
+fn spawn_server_entity(mut commands: Commands, config: Res<ServerNetworkConfig>) {
     let addr = format!("0.0.0.0:{}", config.0.port)
         .parse::<std::net::SocketAddr>()
         .unwrap_or_else(|_| {
@@ -77,22 +75,23 @@ fn spawn_server_entity(
 
     info!("[network] Spawning server entity on {}", addr);
 
-    let server_entity = commands.spawn((
-        ServerUdpIo::default(),
-        LocalAddr(addr),
-        NetcodeServer::new(NetcodeConfig::default()),
-        Name::new("NetworkServer"),
-    )).id();
+    let server_entity = commands
+        .spawn((
+            ServerUdpIo::default(),
+            LocalAddr(addr),
+            NetcodeServer::new(NetcodeConfig::default()),
+            Name::new("NetworkServer"),
+        ))
+        .id();
 
     // Trigger the server to start listening
-    commands.trigger(Start { entity: server_entity });
+    commands.trigger(Start {
+        entity: server_entity,
+    });
 }
 
 /// Auto-insert Lightyear `Replicate` marker on entities that gain the `Networked` marker.
-fn auto_replicate_networked(
-    mut commands: Commands,
-    query: Query<Entity, Added<Networked>>,
-) {
+fn auto_replicate_networked(mut commands: Commands, query: Query<Entity, Added<Networked>>) {
     for entity in &query {
         commands.entity(entity).insert(Replicate::default());
         info!("[network] Auto-replicate entity {:?}", entity);
@@ -119,7 +118,10 @@ fn handle_new_clients(
 ) {
     for entity in &query {
         *next_client_id += 1;
-        info!("[network] Client connected: entity={:?} id={}", entity, *next_client_id);
+        info!(
+            "[network] Client connected: entity={:?} id={}",
+            entity, *next_client_id
+        );
         status.connected_clients.push(ConnectedClient {
             client_id: *next_client_id,
             rtt_ms: 0.0,

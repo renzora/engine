@@ -52,3 +52,6 @@ features = [
     "naga-ir",
     "fragile-send-sync-non-atomic-wasm",
 ]
+
+[lints]
+workspace = true

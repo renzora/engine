@@ -36,7 +36,6 @@ struct ImportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'s
 #[cfg(not(target_arch = "wasm32"))]
 fn import_overlay_system(world: &mut World) {
     use bevy::ecs::system::SystemState;
-    
 
     if !world.contains_resource::<ImportEguiState>() {
         let s = ImportEguiState(SystemState::new(world));
@@ -76,7 +75,8 @@ fn import_overlay_system(world: &mut World) {
     // Check for global file drops (3D model files)
     {
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
-            i.raw.dropped_files
+            i.raw
+                .dropped_files
                 .iter()
                 .filter_map(|f| f.path.clone())
                 .filter(|p| renzora_import::formats::is_supported(p))
@@ -139,3 +139,4 @@ fn import_overlay_system(world: &mut World) {
     overlay::draw_import_overlay(world, &ctx);
 }
 
+renzora::add!(ImportPlugin, Editor);

@@ -126,7 +126,11 @@ pub enum ViewportMode {
 
 impl ViewportMode {
     pub const ALL: &'static [ViewportMode] = &[
-        Self::Scene, Self::Edit, Self::Sculpt, Self::Paint, Self::Animate,
+        Self::Scene,
+        Self::Edit,
+        Self::Sculpt,
+        Self::Paint,
+        Self::Animate,
     ];
     pub fn label(&self) -> &'static str {
         match self {
@@ -385,7 +389,10 @@ impl PersistedViewportSettings {
             show_subgrid: s.show_subgrid,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
-            collision_always: matches!(s.collision_gizmo_visibility, CollisionGizmoVisibility::Always),
+            collision_always: matches!(
+                s.collision_gizmo_visibility,
+                CollisionGizmoVisibility::Always
+            ),
             orthographic: matches!(s.projection_mode, ProjectionMode::Orthographic),
             move_speed: c.move_speed,
             look_sensitivity: c.look_sensitivity,
@@ -467,7 +474,9 @@ impl PersistedViewportSettings {
     }
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
 /// The runtime ignores this section, and `renzora_export` strips it from
@@ -539,13 +548,22 @@ mod tests {
 
         // Skip pending_view_angle (transient) and viewport_mode (not persisted).
         assert_eq!(original.render_toggles, restored.render_toggles);
-        assert!(matches!(restored.visualization_mode, VisualizationMode::Normals));
+        assert!(matches!(
+            restored.visualization_mode,
+            VisualizationMode::Normals
+        ));
         assert_eq!(original.show_grid, restored.show_grid);
         assert_eq!(original.show_subgrid, restored.show_subgrid);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
-        assert!(matches!(restored.collision_gizmo_visibility, CollisionGizmoVisibility::Always));
-        assert!(matches!(restored.projection_mode, ProjectionMode::Orthographic));
+        assert!(matches!(
+            restored.collision_gizmo_visibility,
+            CollisionGizmoVisibility::Always
+        ));
+        assert!(matches!(
+            restored.projection_mode,
+            ProjectionMode::Orthographic
+        ));
         assert_eq!(original.camera, restored.camera);
         assert_eq!(original.snap, restored.snap);
         assert_eq!(original.vsync, restored.vsync);
@@ -582,7 +600,8 @@ mod tests {
                 std::mem::discriminant(&restored.visualization_mode)
                     == std::mem::discriminant(&mode),
                 "round trip lost mode {:?}, got {:?}",
-                mode, restored.visualization_mode,
+                mode,
+                restored.visualization_mode,
             );
         }
     }

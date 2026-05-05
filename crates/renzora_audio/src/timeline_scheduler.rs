@@ -47,10 +47,7 @@ pub struct ActiveClips {
 const START_WINDOW: f64 = 0.080;
 
 /// Advance the transport playhead while playing.
-pub fn tick_transport(
-    mut timeline: ResMut<TimelineState>,
-    time: Res<Time>,
-) {
+pub fn tick_transport(mut timeline: ResMut<TimelineState>, time: Res<Time>) {
     if !timeline.transport.is_playing() {
         return;
     }
@@ -147,20 +144,23 @@ pub fn drive_clip_playback(
             )
         };
 
-        if !audible { continue; }
-        if active.by_clip.contains_key(&id) { continue; }
+        if !audible {
+            continue;
+        }
+        if active.by_clip.contains_key(&id) {
+            continue;
+        }
 
         let in_window = now >= start && now < start + length;
-        if !in_window { continue; }
+        if !in_window {
+            continue;
+        }
 
         let bus = timeline
             .track(track_id)
             .map(|t| t.bus_name.clone())
             .unwrap_or_else(|| "Sfx".to_string());
-        let track_volume = timeline
-            .track(track_id)
-            .map(|t| t.volume)
-            .unwrap_or(1.0);
+        let track_volume = timeline.track(track_id).map(|t| t.volume).unwrap_or(1.0);
 
         let full_path = audio.resolve_path(source.to_string_lossy().as_ref());
         if !full_path.exists() {
@@ -243,7 +243,9 @@ pub fn cache_clip_durations(
         }
         match StaticSoundData::from_file(&full) {
             Ok(data) => {
-                active.durations.insert(source, data.duration().as_secs_f64());
+                active
+                    .durations
+                    .insert(source, data.duration().as_secs_f64());
             }
             Err(e) => {
                 warn!("[Timeline] Duration probe failed for {:?}: {}", full, e);

@@ -10,8 +10,7 @@
 //! Must be registered **before** `DefaultPlugins` via [`setup_asset_reader`].
 
 use bevy::asset::io::{
-    AssetReader, AssetReaderError, AssetSourceBuilder, AssetSourceId, PathStream, Reader,
-    VecReader,
+    AssetReader, AssetReaderError, AssetSourceBuilder, AssetSourceId, PathStream, Reader, VecReader,
 };
 use bevy::prelude::*;
 use renzora_rpak::RpakArchive;
@@ -142,9 +141,19 @@ impl EmbeddedAssetReader {
         };
         let entries: Vec<PathBuf> = archive
             .paths()
-            .filter(|p| if prefix.is_empty() { !p.contains('/') } else { p.starts_with(&prefix) })
+            .filter(|p| {
+                if prefix.is_empty() {
+                    !p.contains('/')
+                } else {
+                    p.starts_with(&prefix)
+                }
+            })
             .filter_map(|p| {
-                let relative = if prefix.is_empty() { p } else { p.strip_prefix(&prefix)? };
+                let relative = if prefix.is_empty() {
+                    p
+                } else {
+                    p.strip_prefix(&prefix)?
+                };
                 // Only direct children
                 if relative.contains('/') {
                     None
@@ -153,13 +162,21 @@ impl EmbeddedAssetReader {
                 }
             })
             .collect();
-        if entries.is_empty() { None } else { Some(entries) }
+        if entries.is_empty() {
+            None
+        } else {
+            Some(entries)
+        }
     }
 
     /// Check if the archive contains any files under a directory prefix.
     fn archive_has_dir(&self, normalized: &str) -> bool {
-        let Ok(lock) = self.archive.read() else { return false };
-        let Some(archive) = lock.as_ref() else { return false };
+        let Ok(lock) = self.archive.read() else {
+            return false;
+        };
+        let Some(archive) = lock.as_ref() else {
+            return false;
+        };
         let prefix = if normalized.is_empty() || normalized == "." {
             String::new()
         } else {
@@ -325,11 +342,13 @@ pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
     app.insert_resource(shared_archive);
     app.register_asset_source(
         AssetSourceId::Default,
-        AssetSourceBuilder::new(move || Box::new(EmbeddedAssetReader {
-            project_path: reader_path.clone(),
-            archive: reader_archive.clone(),
-            exe_dir: exe_dir.clone(),
-        })),
+        AssetSourceBuilder::new(move || {
+            Box::new(EmbeddedAssetReader {
+                project_path: reader_path.clone(),
+                archive: reader_archive.clone(),
+                exe_dir: exe_dir.clone(),
+            })
+        }),
     );
     project_asset_path
 }

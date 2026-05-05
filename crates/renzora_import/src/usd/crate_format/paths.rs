@@ -36,23 +36,38 @@ pub fn read_paths(
 
     let s = section.offset as usize;
     let e = s + section.size as usize;
-    if e > data.len() { return Err(UsdError::Parse("PATHS truncated".into())); }
+    if e > data.len() {
+        return Err(UsdError::Parse("PATHS truncated".into()));
+    }
     let sd = &data[s..e];
-    if sd.len() < 8 { return Ok(Vec::new()); }
+    if sd.len() < 8 {
+        return Ok(Vec::new());
+    }
 
     let num_paths = u64::from_le_bytes(sd[0..8].try_into().unwrap()) as usize;
     let mut pos = 8usize;
-    if num_paths == 0 { return Ok(Vec::new()); }
+    if num_paths == 0 {
+        return Ok(Vec::new());
+    }
 
     let path_indexes = compression::read_compressed_ints_with_count(sd, &mut pos, num_paths)?;
     let elem_token_indexes = compression::read_compressed_signed_ints(sd, &mut pos, num_paths)?;
     let jumps = compression::read_compressed_signed_ints(sd, &mut pos, num_paths)?;
 
     // Reconstruct paths using the jump-encoded tree traversal
-    let mut paths = vec![PathEntry { name: String::new(), parent_index: -1 }; num_paths];
+    let mut paths = vec![
+        PathEntry {
+            name: String::new(),
+            parent_index: -1
+        };
+        num_paths
+    ];
     let mut parent_stack: Vec<i32> = vec![-1]; // stack of parent path indices
 
-    let n = path_indexes.len().min(elem_token_indexes.len()).min(jumps.len());
+    let n = path_indexes
+        .len()
+        .min(elem_token_indexes.len())
+        .min(jumps.len());
 
     for i in 0..n {
         let path_idx = path_indexes[i] as usize;

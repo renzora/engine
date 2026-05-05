@@ -1,13 +1,13 @@
-pub mod graph;
-pub mod nodes;
 pub mod codegen;
-pub mod surface_ext;
-pub mod runtime;
-pub mod material_ref;
-pub mod resolver;
-pub mod pbr_build;
-pub mod standard_build;
+pub mod graph;
 pub mod instance;
+pub mod material_ref;
+pub mod nodes;
+pub mod pbr_build;
+pub mod resolver;
+pub mod runtime;
+pub mod standard_build;
+pub mod surface_ext;
 
 // Re-export the public asset type at module root so downstream code can write
 // `material::GraphMaterial` the same way it did before this rewrite.
@@ -15,6 +15,7 @@ pub use surface_ext::GraphMaterial;
 
 use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct MaterialPlugin;
 
 impl Plugin for MaterialPlugin {
@@ -99,3 +100,5 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
         Err(e) => warn!("[material] serialize '{}': {}", ev.name, e),
     }
 }
+
+renzora::add!(MaterialPlugin);

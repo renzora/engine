@@ -49,3 +49,6 @@ serde_json = "1"
 # downsample. Loader-only consumers (editor, runtime) skip this feature
 # and stay light.
 renzora_rmip = { path = "../renzora_rmip", features = ["bake"] }
+
+[lints]
+workspace = true

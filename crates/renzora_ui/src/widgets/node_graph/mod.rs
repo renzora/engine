@@ -4,11 +4,11 @@
 //! and a [`NodeGraphConfig`] for theming.  The function returns a
 //! [`NodeGraphResponse`] describing any user actions that occurred.
 
-pub mod types;
 mod render;
+pub mod types;
 
-pub use types::*;
 use render::*;
+pub use types::*;
 
 use bevy_egui::egui::{self, Key, Pos2, Rect, Sense, Vec2};
 
@@ -46,8 +46,14 @@ pub fn node_graph(
             if (state.zoom - old_zoom).abs() > 0.0001 {
                 let center = canvas_rect.center();
                 let rel = mouse_pos - center;
-                let before = [rel.x / old_zoom - state.offset[0], rel.y / old_zoom - state.offset[1]];
-                let after  = [rel.x / state.zoom - state.offset[0], rel.y / state.zoom - state.offset[1]];
+                let before = [
+                    rel.x / old_zoom - state.offset[0],
+                    rel.y / old_zoom - state.offset[1],
+                ];
+                let after = [
+                    rel.x / state.zoom - state.offset[0],
+                    rel.y / state.zoom - state.offset[1],
+                ];
                 state.offset[0] -= before[0] - after[0];
                 state.offset[1] -= before[1] - after[1];
             }
@@ -82,9 +88,9 @@ pub fn node_graph(
 
     // ── Hit-testing (using layout pre-pass) ──────────────────────────
     // Pin hit area always covers the full row (dot + label text)
-    let hovered_pin_idx = all_pin_positions.iter().position(|p| {
-        p.hit_rect.contains(mouse_pos)
-    });
+    let hovered_pin_idx = all_pin_positions
+        .iter()
+        .position(|p| p.hit_rect.contains(mouse_pos));
 
     // Snapshot the hovered pin's ID, screen pos, and color (releases borrow)
     let hovered_pin_info = hovered_pin_idx.map(|i| {
@@ -93,7 +99,9 @@ pub fn node_graph(
     });
 
     // Find node under mouse (reverse order = top-most first)
-    let hovered_node_id = node_rects.iter().rev()
+    let hovered_node_id = node_rects
+        .iter()
+        .rev()
         .find(|(_, rect)| rect.contains(mouse_pos))
         .map(|&(id, _)| id);
 
@@ -116,15 +124,26 @@ pub fn node_graph(
     // ── Draw connections ───────────────────────────────────────────────
     for conn in &state.connections {
         let from_pos = all_pin_positions.iter().find(|p| {
-            p.id.node == conn.from_node && p.id.name == conn.from_pin && p.id.direction == PinDirection::Output
+            p.id.node == conn.from_node
+                && p.id.name == conn.from_pin
+                && p.id.direction == PinDirection::Output
         });
         let to_pos = all_pin_positions.iter().find(|p| {
-            p.id.node == conn.to_node && p.id.name == conn.to_pin && p.id.direction == PinDirection::Input
+            p.id.node == conn.to_node
+                && p.id.name == conn.to_pin
+                && p.id.direction == PinDirection::Input
         });
 
         if let (Some(from), Some(to)) = (from_pos, to_pos) {
             let color = conn.color.unwrap_or(from.color);
-            draw_connection(&painter, from.screen_pos, to.screen_pos, color, state.zoom, config);
+            draw_connection(
+                &painter,
+                from.screen_pos,
+                to.screen_pos,
+                color,
+                state.zoom,
+                config,
+            );
         }
     }
 
@@ -136,7 +155,14 @@ pub fn node_graph(
         let is_sel = state.selected.contains(&node.id);
         let is_hov = hovered_node_body == Some(node.id);
         let (nrect, pins) = render::draw_node(
-            &painter, node, state.offset, state.zoom, canvas_rect, is_sel, is_hov, config,
+            &painter,
+            node,
+            state.offset,
+            state.zoom,
+            canvas_rect,
+            is_sel,
+            is_hov,
+            config,
         );
         node_rects.push((node.id, nrect));
         all_pin_positions.extend(pins);
@@ -144,8 +170,10 @@ pub fn node_graph(
 
     // ── Draw pending connection ────────────────────────────────────────
     if let Some(ref conn_state) = state.connecting {
-        let from_screen = canvas_to_screen(conn_state.from_pos, state.offset, state.zoom, canvas_rect);
-        let color = all_pin_positions.iter()
+        let from_screen =
+            canvas_to_screen(conn_state.from_pos, state.offset, state.zoom, canvas_rect);
+        let color = all_pin_positions
+            .iter()
             .find(|p| p.id == conn_state.from)
             .map(|p| p.color)
             .unwrap_or(config.selection_stroke);
@@ -224,7 +252,7 @@ pub fn node_graph(
             let pid = pin_id.clone();
             state.connections.retain(|c| {
                 let hits_from = c.from_node == pid.node && c.from_pin == pid.name;
-                let hits_to   = c.to_node == pid.node && c.to_pin == pid.name;
+                let hits_to = c.to_node == pid.node && c.to_pin == pid.name;
                 !(hits_from || hits_to)
             });
             if state.connections.len() != before {
@@ -238,13 +266,23 @@ pub fn node_graph(
             let mut cut_idx = None;
             for (i, conn) in state.connections.iter().enumerate() {
                 let from_pos = all_pin_positions.iter().find(|p| {
-                    p.id.node == conn.from_node && p.id.name == conn.from_pin && p.id.direction == PinDirection::Output
+                    p.id.node == conn.from_node
+                        && p.id.name == conn.from_pin
+                        && p.id.direction == PinDirection::Output
                 });
                 let to_pos = all_pin_positions.iter().find(|p| {
-                    p.id.node == conn.to_node && p.id.name == conn.to_pin && p.id.direction == PinDirection::Input
+                    p.id.node == conn.to_node
+                        && p.id.name == conn.to_pin
+                        && p.id.direction == PinDirection::Input
                 });
                 if let (Some(from), Some(to)) = (from_pos, to_pos) {
-                    if point_near_cable(from.screen_pos, to.screen_pos, mouse_pos, state.zoom, cable_threshold) {
+                    if point_near_cable(
+                        from.screen_pos,
+                        to.screen_pos,
+                        mouse_pos,
+                        state.zoom,
+                        cable_threshold,
+                    ) {
                         cut_idx = Some(i);
                         break;
                     }
@@ -271,8 +309,10 @@ pub fn node_graph(
 
                 // Only connect output→input across different nodes
                 let valid = from.node != to.node
-                    && ((from.direction == PinDirection::Output && to.direction == PinDirection::Input)
-                        || (from.direction == PinDirection::Input && to.direction == PinDirection::Output));
+                    && ((from.direction == PinDirection::Output
+                        && to.direction == PinDirection::Input)
+                        || (from.direction == PinDirection::Input
+                            && to.direction == PinDirection::Output));
 
                 if valid {
                     let (out_pin, in_pin) = if from.direction == PinDirection::Output {
@@ -315,7 +355,8 @@ pub fn node_graph(
             }
             // Start dragging
             if let Some(node) = state.nodes.iter().find(|n| n.id == node_id) {
-                let node_screen = canvas_to_screen(node.position, state.offset, state.zoom, canvas_rect);
+                let node_screen =
+                    canvas_to_screen(node.position, state.offset, state.zoom, canvas_rect);
                 state.dragging = Some(DragState {
                     node: node_id,
                     offset: [mouse_pos.x - node_screen.x, mouse_pos.y - node_screen.y],
@@ -366,7 +407,8 @@ pub fn node_graph(
         if let Some(ref drag) = state.dragging.as_ref().map(|d| (d.node, d.offset)) {
             let (drag_node, drag_off) = *drag;
             let target_screen = Pos2::new(mouse_pos.x - drag_off[0], mouse_pos.y - drag_off[1]);
-            let target_canvas = screen_to_canvas(target_screen, state.offset, state.zoom, canvas_rect);
+            let target_canvas =
+                screen_to_canvas(target_screen, state.offset, state.zoom, canvas_rect);
 
             // Find delta from dragged node's current position
             if let Some(dn) = state.nodes.iter().find(|n| n.id == drag_node) {
@@ -398,8 +440,10 @@ pub fn node_graph(
                 let from = &conn_state.from;
                 let to = pin_id;
                 let valid = from.node != to.node
-                    && ((from.direction == PinDirection::Output && to.direction == PinDirection::Input)
-                        || (from.direction == PinDirection::Input && to.direction == PinDirection::Output));
+                    && ((from.direction == PinDirection::Output
+                        && to.direction == PinDirection::Input)
+                        || (from.direction == PinDirection::Input
+                            && to.direction == PinDirection::Output));
                 if valid {
                     let (out_pin, in_pin) = if from.direction == PinDirection::Output {
                         (from.clone(), to.clone())
@@ -453,12 +497,25 @@ fn draw_node_layout(
 ) -> (Rect, Vec<PinPos>) {
     let screen_pos = canvas_to_screen(node.position, offset, zoom, canvas_rect);
 
-    let input_count = node.pins.iter().filter(|p| p.direction == PinDirection::Input).count();
-    let output_count = node.pins.iter().filter(|p| p.direction == PinDirection::Output).count();
+    let input_count = node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Input)
+        .count();
+    let output_count = node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Output)
+        .count();
     let max_pins = input_count.max(output_count);
 
-    let thumb_bottom_pad = if node.thumbnail.is_some() { config.node_width * 0.3 + 4.0 } else { 0.0 };
-    let node_height = config.header_height + (max_pins as f32 * config.pin_height) + 8.0 + thumb_bottom_pad;
+    let thumb_bottom_pad = if node.thumbnail.is_some() {
+        config.node_width * 0.3 + 4.0
+    } else {
+        0.0
+    };
+    let node_height =
+        config.header_height + (max_pins as f32 * config.pin_height) + 8.0 + thumb_bottom_pad;
     let scaled_w = config.node_width * zoom;
     let scaled_h = node_height * zoom;
     let node_rect = Rect::from_min_size(screen_pos, Vec2::new(scaled_w, scaled_h));
@@ -472,7 +529,11 @@ fn draw_node_layout(
     let mut pin_positions = Vec::new();
 
     let mut iy = 0;
-    for pin in node.pins.iter().filter(|p| p.direction == PinDirection::Input) {
+    for pin in node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Input)
+    {
         let py = pin_start_y + (iy as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x, py);
         let hit_rect = Rect::from_min_max(
@@ -480,7 +541,11 @@ fn draw_node_layout(
             Pos2::new(pos.x + pin_zone_w, py + half_row),
         );
         pin_positions.push(PinPos {
-            id: PinId { node: node.id, name: pin.name.clone(), direction: PinDirection::Input },
+            id: PinId {
+                node: node.id,
+                name: pin.name.clone(),
+                direction: PinDirection::Input,
+            },
             screen_pos: pos,
             color: pin.color,
             hit_rect,
@@ -489,7 +554,11 @@ fn draw_node_layout(
     }
 
     let mut oi = 0;
-    for pin in node.pins.iter().filter(|p| p.direction == PinDirection::Output) {
+    for pin in node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Output)
+    {
         let py = pin_start_y + (oi as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x + scaled_w, py);
         let hit_rect = Rect::from_min_max(
@@ -497,7 +566,11 @@ fn draw_node_layout(
             Pos2::new(pos.x + pin_radius, py + half_row),
         );
         pin_positions.push(PinPos {
-            id: PinId { node: node.id, name: pin.name.clone(), direction: PinDirection::Output },
+            id: PinId {
+                node: node.id,
+                name: pin.name.clone(),
+                direction: PinDirection::Output,
+            },
             screen_pos: pos,
             color: pin.color,
             hit_rect,

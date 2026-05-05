@@ -17,7 +17,10 @@ pub struct ImageViewerState {
 
 impl Default for ImageViewerState {
     fn default() -> Self {
-        Self { pan: Vec2::ZERO, zoom: 1.0 }
+        Self {
+            pan: Vec2::ZERO,
+            zoom: 1.0,
+        }
     }
 }
 

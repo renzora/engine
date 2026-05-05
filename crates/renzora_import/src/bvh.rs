@@ -14,8 +14,8 @@ use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ImportError, ImportResult};
 use crate::settings::ImportSettings;
 
-use renzora::{AnimClip, BoneTrack};
 use renzora::write_anim_file;
+use renzora::{AnimClip, BoneTrack};
 
 /// BVH has no mesh geometry — always fails so the animation fallback kicks in.
 pub fn convert(_path: &Path, _settings: &ImportSettings) -> Result<ImportResult, ImportError> {
@@ -31,8 +31,8 @@ pub fn extract_animations_from_bvh(
     path: &Path,
     output_dir: &Path,
 ) -> Result<AnimExtractResult, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read BVH file: {}", e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read BVH file: {}", e))?;
 
     let bvh = parse_bvh(&content)?;
 
@@ -53,8 +53,7 @@ pub fn extract_animations_from_bvh(
         .unwrap_or("bvh_clip");
     let out_path = output_dir.join(format!("{}.anim", file_name));
 
-    write_anim_file(&clip, &out_path)
-        .map_err(|e| format!("Failed to write animation: {}", e))?;
+    write_anim_file(&clip, &out_path).map_err(|e| format!("Failed to write animation: {}", e))?;
 
     Ok(AnimExtractResult {
         written_files: vec![out_path.display().to_string()],
@@ -251,12 +250,30 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
                 let value = frame.get(data_idx).copied().unwrap_or(0.0);
 
                 match channel {
-                    BvhChannel::Xposition => { tx = value; has_translation = true; }
-                    BvhChannel::Yposition => { ty = value; has_translation = true; }
-                    BvhChannel::Zposition => { tz = value; has_translation = true; }
-                    BvhChannel::Xrotation => { rx = value; has_rotation = true; }
-                    BvhChannel::Yrotation => { ry = value; has_rotation = true; }
-                    BvhChannel::Zrotation => { rz = value; has_rotation = true; }
+                    BvhChannel::Xposition => {
+                        tx = value;
+                        has_translation = true;
+                    }
+                    BvhChannel::Yposition => {
+                        ty = value;
+                        has_translation = true;
+                    }
+                    BvhChannel::Zposition => {
+                        tz = value;
+                        has_translation = true;
+                    }
+                    BvhChannel::Xrotation => {
+                        rx = value;
+                        has_rotation = true;
+                    }
+                    BvhChannel::Yrotation => {
+                        ry = value;
+                        has_rotation = true;
+                    }
+                    BvhChannel::Zrotation => {
+                        rz = value;
+                        has_rotation = true;
+                    }
                 }
             }
 
@@ -265,11 +282,7 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
             }
 
             if has_rotation {
-                let quat = euler_to_quat(
-                    rx.to_radians(),
-                    ry.to_radians(),
-                    rz.to_radians(),
-                );
+                let quat = euler_to_quat(rx.to_radians(), ry.to_radians(), rz.to_radians());
                 rotations.push((time, quat));
             }
         }

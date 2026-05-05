@@ -21,6 +21,11 @@
 // a separate workspace dep if they want.
 pub use bevy;
 
+// Re-export inventory so the `add!` macro can reach it as
+// `$crate::inventory::...`. Plugin authors don't need to add inventory as
+// a direct dep.
+pub use inventory;
+
 // ── Core types ───────────────────────────────────────────────────────────
 // Everything that used to live in `renzora_core`. Re-exported at the crate
 // root so callers write `renzora::Foo` instead of `renzora::core::Foo`.
@@ -33,7 +38,7 @@ pub use core::*;
 // `.dylib`. Originally lived in a separate `dynamic_plugin_meta` crate;
 // folded in here so plugin authors only ever need `bevy` + `renzora`.
 mod plugin_meta;
-pub use plugin_meta::PluginScope;
+pub use plugin_meta::{PluginScope, StaticPlugin, for_each_static_plugin};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
 // ── App lifecycle state ──────────────────────────────────────────────────

@@ -3,8 +3,8 @@
 //! Uses a dedicated render layer + offscreen camera to render a `CodeShaderMaterial`
 //! onto a sphere, displayed as an egui texture in the overlay.
 
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
@@ -172,8 +172,7 @@ fn apply_hub_shader(
     }
 
     if let Some(wgsl) = request.wgsl.take() {
-        let handle =
-            shader_cache.get_or_insert(&wgsl, "code_shader://hub_preview", &mut shaders);
+        let handle = shader_cache.get_or_insert(&wgsl, "code_shader://hub_preview", &mut shaders);
 
         for mat_handle in subject_q.iter() {
             if let Some(mat) = materials.get_mut(&mat_handle.0) {
@@ -198,6 +197,5 @@ impl Plugin for HubPreviewPlugin {
             .init_resource::<HubShaderRequest>()
             .add_systems(PostStartup, setup_hub_preview)
             .add_systems(Update, apply_hub_shader);
-
     }
 }

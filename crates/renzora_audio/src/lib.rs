@@ -44,6 +44,7 @@ pub use fx_bridge::{
 };
 
 /// Bevy plugin that initializes the Kira audio system.
+#[derive(Default)]
 pub struct KiraPlugin;
 
 impl Plugin for KiraPlugin {
@@ -58,9 +59,11 @@ impl Plugin for KiraPlugin {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use self::{manager::KiraAudioManager, preview::AudioPreviewState,
-                       commands::AudioCommandQueue, microphone, mixer, systems, systems::AudioSet,
-                       timeline::TimelineState, timeline_scheduler};
+            use self::{
+                commands::AudioCommandQueue, manager::KiraAudioManager, microphone, mixer,
+                preview::AudioPreviewState, systems, systems::AudioSet, timeline::TimelineState,
+                timeline_scheduler,
+            };
 
             _app.insert_non_send_resource(KiraAudioManager::new())
                 .insert_non_send_resource(timeline_scheduler::ActiveClips::default())
@@ -76,10 +79,7 @@ impl Plugin for KiraPlugin {
                     Update,
                     systems::process_audio_commands.in_set(AudioSet::Commands),
                 )
-                .add_systems(
-                    Update,
-                    systems::sync_spatial_audio.in_set(AudioSet::Sync),
-                )
+                .add_systems(Update, systems::sync_spatial_audio.in_set(AudioSet::Sync))
                 .add_systems(Update, mixer::sync_mixer_to_kira)
                 .add_systems(Update, microphone::sync_microphone_inputs)
                 .add_systems(Update, systems::preview_audio_system)
@@ -89,7 +89,11 @@ impl Plugin for KiraPlugin {
                 )
                 .add_systems(Update, systems::update_vu_meters)
                 .add_systems(Update, timeline_scheduler::tick_transport)
-                .add_systems(Update, timeline_scheduler::drive_clip_playback.after(timeline_scheduler::tick_transport))
+                .add_systems(
+                    Update,
+                    timeline_scheduler::drive_clip_playback
+                        .after(timeline_scheduler::tick_transport),
+                )
                 .add_systems(Update, timeline_scheduler::cache_clip_durations);
         }
 
@@ -97,3 +101,5 @@ impl Plugin for KiraPlugin {
         info!("[runtime] Audio disabled on WASM");
     }
 }
+
+renzora::add!(KiraPlugin);

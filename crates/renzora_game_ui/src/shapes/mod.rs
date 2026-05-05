@@ -84,7 +84,10 @@ impl Plugin for ShapesPlugin {
         );
         app.add_systems(
             Update,
-            (rehydrate_basic_shape_materials, rehydrate_polygonal_shape_materials),
+            (
+                rehydrate_basic_shape_materials,
+                rehydrate_polygonal_shape_materials,
+            ),
         );
     }
 }
@@ -96,9 +99,18 @@ impl Plugin for ShapesPlugin {
 
 fn rehydrate_basic_shape_materials(
     mut commands: Commands,
-    circles: Query<(Entity, &CircleShape), (Added<CircleShape>, Without<MaterialNode<CircleMaterial>>)>,
+    circles: Query<
+        (Entity, &CircleShape),
+        (Added<CircleShape>, Without<MaterialNode<CircleMaterial>>),
+    >,
     arcs: Query<(Entity, &ArcShape), (Added<ArcShape>, Without<MaterialNode<ArcMaterial>>)>,
-    radials: Query<(Entity, &RadialProgressShape), (Added<RadialProgressShape>, Without<MaterialNode<RadialProgressMaterial>>)>,
+    radials: Query<
+        (Entity, &RadialProgressShape),
+        (
+            Added<RadialProgressShape>,
+            Without<MaterialNode<RadialProgressMaterial>>,
+        ),
+    >,
     lines: Query<(Entity, &LineShape), (Added<LineShape>, Without<MaterialNode<LineMaterial>>)>,
     mut circle_mats: ResMut<Assets<CircleMaterial>>,
     mut arc_mats: ResMut<Assets<ArcMaterial>>,
@@ -125,9 +137,24 @@ fn rehydrate_basic_shape_materials(
 
 fn rehydrate_polygonal_shape_materials(
     mut commands: Commands,
-    triangles: Query<(Entity, &TriangleShape), (Added<TriangleShape>, Without<MaterialNode<TriangleMaterial>>)>,
-    polygons: Query<(Entity, &PolygonShape), (Added<PolygonShape>, Without<MaterialNode<PolygonMaterial>>)>,
-    rectangles: Query<(Entity, &RectangleShape), (Added<RectangleShape>, Without<MaterialNode<RectangleMaterial>>)>,
+    triangles: Query<
+        (Entity, &TriangleShape),
+        (
+            Added<TriangleShape>,
+            Without<MaterialNode<TriangleMaterial>>,
+        ),
+    >,
+    polygons: Query<
+        (Entity, &PolygonShape),
+        (Added<PolygonShape>, Without<MaterialNode<PolygonMaterial>>),
+    >,
+    rectangles: Query<
+        (Entity, &RectangleShape),
+        (
+            Added<RectangleShape>,
+            Without<MaterialNode<RectangleMaterial>>,
+        ),
+    >,
     wedges: Query<(Entity, &WedgeShape), (Added<WedgeShape>, Without<MaterialNode<WedgeMaterial>>)>,
     mut tri_mats: ResMut<Assets<TriangleMaterial>>,
     mut poly_mats: ResMut<Assets<PolygonMaterial>>,

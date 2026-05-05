@@ -46,15 +46,24 @@ pub fn clear_get_handler() {
 }
 
 /// Read a single field from a component.
-pub fn call_get(entity_name: Option<&str>, component_type: &str, field_path: &str) -> Option<PropertyValue> {
+pub fn call_get(
+    entity_name: Option<&str>,
+    component_type: &str,
+    field_path: &str,
+) -> Option<PropertyValue> {
     GET_HANDLER.with(|h| {
         let borrow = h.borrow();
-        borrow.as_ref().and_then(|f| f(entity_name, component_type, field_path))
+        borrow
+            .as_ref()
+            .and_then(|f| f(entity_name, component_type, field_path))
     })
 }
 
 /// Read all fields from a component as a HashMap.
-pub fn call_get_component(entity_name: Option<&str>, component_type: &str) -> Option<HashMap<String, PropertyValue>> {
+pub fn call_get_component(
+    entity_name: Option<&str>,
+    component_type: &str,
+) -> Option<HashMap<String, PropertyValue>> {
     GET_COMPONENT_HANDLER.with(|h| {
         let borrow = h.borrow();
         borrow.as_ref().and_then(|f| f(entity_name, component_type))

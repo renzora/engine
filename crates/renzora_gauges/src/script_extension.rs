@@ -12,14 +12,11 @@
 use bevy::prelude::*;
 use renzora::ScriptAction;
 
+use crate::{AttributesMut, InstantModifierSet, Modifier};
 use bevy_gauge::prelude::InstantExt;
-use crate::{AttributesMut, Modifier, InstantModifierSet};
 
 /// Observer that handles gauge-related ScriptAction events.
-pub fn handle_gauge_script_actions(
-    trigger: On<ScriptAction>,
-    mut attrs: AttributesMut,
-) {
+pub fn handle_gauge_script_actions(trigger: On<ScriptAction>, mut attrs: AttributesMut) {
     use renzora::ScriptActionValue;
     let action = trigger.event();
 

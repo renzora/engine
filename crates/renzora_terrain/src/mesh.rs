@@ -1,10 +1,10 @@
 //! Terrain mesh generation — heightmap to triangle mesh with normals via central differences.
 
-use bevy::prelude::*;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::RenderAssetUsages;
-use std::collections::HashMap;
+use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::prelude::*;
 use renzora::console_log::console_info;
+use std::collections::HashMap;
 
 use renzora_physics::{CollisionShapeData, PhysicsBodyData};
 
@@ -82,7 +82,10 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
     );
     mesh.insert_attribute(
         Mesh::ATTRIBUTE_POSITION,
-        positions.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>(),
+        positions
+            .iter()
+            .map(|p| [p.x, p.y, p.z])
+            .collect::<Vec<_>>(),
     );
     mesh.insert_attribute(
         Mesh::ATTRIBUTE_NORMAL,
@@ -93,7 +96,6 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
 
     mesh
 }
-
 
 /// Spawn a complete terrain entity with chunk children.
 ///
@@ -140,7 +142,10 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
         ))
         .id();
 
-    console_info("Terrain", format!("Spawning terrain with {} chunks", chunks.len()));
+    console_info(
+        "Terrain",
+        format!("Spawning terrain with {} chunks", chunks.len()),
+    );
 
     for (mut chunk_data, mesh_handle, origin) in chunks {
         chunk_data.dirty = false;
@@ -160,7 +165,9 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             .id();
         // Insert ChildOf separately to trigger Bevy's hierarchy hooks
         // (on_insert hooks don't fire when ChildOf is part of a spawn bundle)
-        world.entity_mut(chunk_entity).insert(ChildOf(terrain_entity));
+        world
+            .entity_mut(chunk_entity)
+            .insert(ChildOf(terrain_entity));
     }
 
     terrain_entity
@@ -174,7 +181,13 @@ pub fn rehydrate_terrain_chunks(
     mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     terrain_query: Query<&TerrainData>,
     chunk_query: Query<
-        (Entity, &TerrainChunkData, Option<&TerrainChunkOf>, Option<&ChildOf>, Option<&MaterialRef>),
+        (
+            Entity,
+            &TerrainChunkData,
+            Option<&TerrainChunkOf>,
+            Option<&ChildOf>,
+            Option<&MaterialRef>,
+        ),
         Without<Mesh3d>,
     >,
 ) {
@@ -186,9 +199,7 @@ pub fn rehydrate_terrain_chunks(
 
     for (entity, chunk_data, chunk_of, child_of, mat_ref) in chunk_query.iter() {
         // Resolve parent terrain: prefer TerrainChunkOf, fall back to ChildOf parent
-        let parent = chunk_of
-            .map(|c| c.0)
-            .or_else(|| child_of.map(|c| c.0));
+        let parent = chunk_of.map(|c| c.0).or_else(|| child_of.map(|c| c.0));
         let Some(parent_entity) = parent else {
             continue;
         };
@@ -197,10 +208,9 @@ pub fn rehydrate_terrain_chunks(
         };
 
         // Ensure parent has required hierarchy components (scene loader may omit them)
-        commands.entity(parent_entity).insert((
-            GlobalTransform::default(),
-            InheritedVisibility::default(),
-        ));
+        commands
+            .entity(parent_entity)
+            .insert((GlobalTransform::default(), InheritedVisibility::default()));
 
         let mesh = generate_chunk_mesh(terrain_data, chunk_data);
         let mesh_handle = meshes.add(mesh);
@@ -244,7 +254,9 @@ pub fn terrain_chunk_mesh_update_system(
         }
         // Re-inserting triggers Changed<CollisionShapeData>, which makes the
         // physics layer rebuild the avian trimesh from the updated Mesh asset.
-        commands.entity(entity).try_insert(CollisionShapeData::mesh());
+        commands
+            .entity(entity)
+            .try_insert(CollisionShapeData::mesh());
         chunk.dirty = false;
     }
 }
@@ -271,8 +283,12 @@ fn resample_heights(old_heights: &[f32], old_res: u32, new_res: u32) -> Vec<f32>
             let tx = fx.fract();
             let tz = fz.fract();
 
-            let get =
-                |x: u32, z: u32| old_heights.get((z * old_res + x) as usize).copied().unwrap_or(0.2);
+            let get = |x: u32, z: u32| {
+                old_heights
+                    .get((z * old_res + x) as usize)
+                    .copied()
+                    .unwrap_or(0.2)
+            };
 
             let h = get(ox0, oz0) * (1.0 - tx) * (1.0 - tz)
                 + get(ox1, oz0) * tx * (1.0 - tz)

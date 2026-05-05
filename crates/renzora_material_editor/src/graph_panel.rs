@@ -10,23 +10,21 @@ use std::cell::RefCell;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_phosphor::regular::{
-    PLUS, CROSSHAIR,
-    MAGNIFYING_GLASS_PLUS, MAGNIFYING_GLASS_MINUS,
-    FLOW_ARROW, CUBE,
+    CROSSHAIR, CUBE, FLOW_ARROW, MAGNIFYING_GLASS_MINUS, MAGNIFYING_GLASS_PLUS, PLUS,
 };
 
+use renzora::core::CurrentProject;
 use renzora_editor::{EditorCommands, EditorPanel, EditorSelection, PanelLocation};
-use renzora_theme::{Theme, ThemeManager};
-use renzora_shader::material::graph::{MaterialGraph, PinValue};
 use renzora_shader::material::codegen;
+use renzora_shader::material::graph::{MaterialGraph, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
+use renzora_theme::{Theme, ThemeManager};
 use renzora_ui::asset_drag::AssetDragPayload;
 use renzora_ui::{DocTabKind, EditorContext};
-use renzora::core::CurrentProject;
 
-use crate::{MaterialEditorState, MaterialEditMode};
 use crate::graph_editor::{self, GraphEditorState};
+use crate::{MaterialEditMode, MaterialEditorState};
 
 thread_local! {
     static GRAPH_EDITOR_STATE: RefCell<GraphEditorState> = RefCell::new(GraphEditorState::default());
@@ -68,12 +66,16 @@ impl EditorPanel for MaterialGraphPanel {
         // Asset mode: editor's open-document tab is a standalone .material
         // file → load from path, ignore EditorSelection. Scene mode: follow
         // the selected entity's MaterialRef.
-        let asset_path: Option<String> = world
-            .get_resource::<EditorContext>()
-            .and_then(|ctx| match ctx {
-                EditorContext::Asset { path, kind: DocTabKind::Material } => Some(path.clone()),
-                _ => None,
-            });
+        let asset_path: Option<String> =
+            world
+                .get_resource::<EditorContext>()
+                .and_then(|ctx| match ctx {
+                    EditorContext::Asset {
+                        path,
+                        kind: DocTabKind::Material,
+                    } => Some(path.clone()),
+                    _ => None,
+                });
 
         if let Some(path) = asset_path {
             // Need to (re)load if we're not already editing this exact file.
@@ -94,7 +96,8 @@ impl EditorPanel for MaterialGraphPanel {
             // Scene mode: drive sync from selected entity.
             let selection = world.get_resource::<EditorSelection>();
             let selected_entity = selection.and_then(|s| s.get());
-            let mat_ref_path = selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
+            let mat_ref_path =
+                selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
 
             let current_edit_path = match &editor_state.edit_mode {
                 MaterialEditMode::Existing { path, .. } => Some(path.clone()),
@@ -103,12 +106,14 @@ impl EditorPanel for MaterialGraphPanel {
             let entity_changed = selected_entity != editor_state.editing_entity;
             let path_changed = !entity_changed && mat_ref_path != current_edit_path;
             // Also re-sync when leaving asset mode back to scene mode.
-            let leaving_asset_mode = matches!(editor_state.edit_mode, MaterialEditMode::EditingFile { .. });
+            let leaving_asset_mode =
+                matches!(editor_state.edit_mode, MaterialEditMode::EditingFile { .. });
 
             if entity_changed || path_changed || leaving_asset_mode {
                 let new_entity = selected_entity;
                 let has_mesh = new_entity.map_or(false, |e| world.get::<Mesh3d>(e).is_some());
-                let entity_name = new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
+                let entity_name =
+                    new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
 
                 cmds.push(move |world: &mut World| {
                     sync_to_entity(world, new_entity, has_mesh, mat_ref_path, entity_name);
@@ -155,7 +160,8 @@ impl EditorPanel for MaterialGraphPanel {
         // ── Graph canvas ──
         let (graph_modified, selected) = GRAPH_EDITOR_STATE.with(|cell| {
             let mut gs = cell.borrow_mut();
-            let m = graph_editor::render_graph_editor(ui, &mut graph, &mut gs, &theme, &thumbnail_map);
+            let m =
+                graph_editor::render_graph_editor(ui, &mut graph, &mut gs, &theme, &thumbnail_map);
             let sel = if gs.widget_state.selected.len() == 1 {
                 Some(gs.widget_state.selected[0])
             } else {
@@ -219,10 +225,15 @@ impl EditorPanel for MaterialGraphPanel {
 
                     // Set MaterialRef on the entity
                     world.entity_mut(entity).remove::<MaterialResolved>();
-                    world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
+                    world
+                        .entity_mut(entity)
+                        .insert(MaterialRef(asset_path.clone()));
 
                     let mut state = world.resource_mut::<MaterialEditorState>();
-                    state.edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
+                    state.edit_mode = MaterialEditMode::Existing {
+                        path: asset_path,
+                        entity,
+                    };
                 }
 
                 let mut state = world.resource_mut::<MaterialEditorState>();
@@ -271,13 +282,19 @@ fn sync_to_file(world: &mut World, path: String) {
 
     // File missing or unparseable — start a fresh graph named after the file
     // so the user can save it back into place.
-    warn!("[material_editor] Failed to load asset '{}', starting fresh", path);
+    warn!(
+        "[material_editor] Failed to load asset '{}', starting fresh",
+        path
+    );
     let name = std::path::Path::new(&path)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("material")
         .to_string();
-    let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+    let graph = MaterialGraph::new(
+        &name,
+        renzora_shader::material::graph::MaterialDomain::Surface,
+    );
     let result = codegen::compile(&graph);
     state.compiled_wgsl = Some(result.fragment_shader);
     state.compile_errors = result.errors;
@@ -300,7 +317,10 @@ fn sync_to_entity(
 
     let Some(entity) = new_entity else {
         state.edit_mode = MaterialEditMode::Inactive;
-        state.graph = MaterialGraph::new("New Material", renzora_shader::material::graph::MaterialDomain::Surface);
+        state.graph = MaterialGraph::new(
+            "New Material",
+            renzora_shader::material::graph::MaterialDomain::Surface,
+        );
         state.compiled_wgsl = None;
         state.compile_errors.clear();
         return;
@@ -308,7 +328,10 @@ fn sync_to_entity(
 
     if !has_mesh {
         state.edit_mode = MaterialEditMode::Inactive;
-        state.graph = MaterialGraph::new("New Material", renzora_shader::material::graph::MaterialDomain::Surface);
+        state.graph = MaterialGraph::new(
+            "New Material",
+            renzora_shader::material::graph::MaterialDomain::Surface,
+        );
         state.compiled_wgsl = None;
         state.compile_errors.clear();
         return;
@@ -337,13 +360,19 @@ fn sync_to_entity(
         }
 
         // File failed to load — treat as pending with the path's name
-        warn!("[material_editor] Failed to load '{}', starting fresh", path);
+        warn!(
+            "[material_editor] Failed to load '{}', starting fresh",
+            path
+        );
         let name = std::path::Path::new(&path)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("material")
             .to_string();
-        let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+        let graph = MaterialGraph::new(
+            &name,
+            renzora_shader::material::graph::MaterialDomain::Surface,
+        );
         let result = codegen::compile(&graph);
         state.compiled_wgsl = Some(result.fragment_shader);
         state.compile_errors = result.errors;
@@ -352,7 +381,10 @@ fn sync_to_entity(
     } else {
         // No MaterialRef — show empty graph, will save on first edit
         let name = entity_name.unwrap_or_else(|| format!("material_{}", entity.index()));
-        let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+        let graph = MaterialGraph::new(
+            &name,
+            renzora_shader::material::graph::MaterialDomain::Surface,
+        );
         let result = codegen::compile(&graph);
 
         let mut state = world.resource_mut::<MaterialEditorState>();
@@ -553,10 +585,14 @@ fn render_toolbar(
     modified
 }
 
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp",
+];
 
 fn is_image_extension(ext: &str) -> bool {
-    IMAGE_EXTENSIONS.iter().any(|&allowed| ext.eq_ignore_ascii_case(allowed))
+    IMAGE_EXTENSIONS
+        .iter()
+        .any(|&allowed| ext.eq_ignore_ascii_case(allowed))
 }
 
 /// Check for texture asset drag-and-drop onto the graph canvas.
@@ -579,14 +615,22 @@ fn handle_texture_drop(
     // --- OS file drag ---
     let os_hovering = ui.ctx().input(|i| {
         i.raw.hovered_files.iter().any(|f| {
-            f.path.as_ref().and_then(|p| p.extension()).and_then(|e| e.to_str())
+            f.path
+                .as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
                 .map_or(false, is_image_extension)
         })
     });
     let os_dropped: Option<std::path::PathBuf> = ui.ctx().input(|i| {
-        i.raw.dropped_files.iter()
+        i.raw
+            .dropped_files
+            .iter()
             .find(|f| {
-                f.path.as_ref().and_then(|p| p.extension()).and_then(|e| e.to_str())
+                f.path
+                    .as_ref()
+                    .and_then(|p| p.extension())
+                    .and_then(|e| e.to_str())
                     .map_or(false, is_image_extension)
             })
             .and_then(|f| f.path.clone())
@@ -624,7 +668,10 @@ fn handle_texture_drop(
         painter.text(
             label_pos,
             egui::Align2::CENTER_BOTTOM,
-            format!("{} Drop to create texture node", egui_phosphor::regular::IMAGE),
+            format!(
+                "{} Drop to create texture node",
+                egui_phosphor::regular::IMAGE
+            ),
             egui::FontId::proportional(12.0),
             accent,
         );
@@ -694,10 +741,16 @@ fn handle_texture_drop(
 }
 
 /// Create a Sample Texture node with the texture path pre-set.
-fn spawn_texture_nodes(graph: &mut MaterialGraph, canvas_pos: [f32; 2], texture_path: String) -> bool {
+fn spawn_texture_nodes(
+    graph: &mut MaterialGraph,
+    canvas_pos: [f32; 2],
+    texture_path: String,
+) -> bool {
     let tex_id = graph.add_node("texture/sample", canvas_pos);
     if let Some(tex_node) = graph.get_node_mut(tex_id) {
-        tex_node.input_values.insert("texture".to_string(), PinValue::TexturePath(texture_path));
+        tex_node
+            .input_values
+            .insert("texture".to_string(), PinValue::TexturePath(texture_path));
     }
     true
 }

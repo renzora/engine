@@ -114,9 +114,7 @@ impl BusInserts {
 
     /// Mutable borrow, creating an empty chain if needed.
     pub fn entry(&mut self, key: &str) -> &mut PluginInsertChain {
-        self.chains
-            .entry(key.to_string())
-            .or_default()
+        self.chains.entry(key.to_string()).or_default()
     }
 
     /// Discard chains that have become empty so the map doesn't grow

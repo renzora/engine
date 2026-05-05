@@ -73,11 +73,13 @@ impl ShaderBackendRegistry {
     /// injection. Use this when you need to inject params separately (e.g. from edited
     /// values in the shader properties panel).
     pub fn transpile(&self, language: &str, source: &str) -> Result<String, ShaderCompileError> {
-        let backend = self.find_by_name(language).ok_or_else(|| ShaderCompileError {
-            message: format!("Unknown shader language: '{}'", language),
-            line: None,
-            column: None,
-        })?;
+        let backend = self
+            .find_by_name(language)
+            .ok_or_else(|| ShaderCompileError {
+                message: format!("Unknown shader language: '{}'", language),
+                line: None,
+                column: None,
+            })?;
         let wgsl = backend.to_wgsl(source)?;
 
         // Only inject ShaderUniforms if the shader actually uses `uniforms.*`
@@ -119,7 +121,11 @@ pub fn has_custom_material_bindings(wgsl: &str) -> bool {
             saw_group3 = true;
         } else if saw_group3 && has_var && !is_ours {
             return true;
-        } else if saw_group3 && !trimmed.is_empty() && !trimmed.starts_with("@binding") && !trimmed.starts_with("//") {
+        } else if saw_group3
+            && !trimmed.is_empty()
+            && !trimmed.starts_with("@binding")
+            && !trimmed.starts_with("//")
+        {
             saw_group3 = false;
         }
     }
@@ -177,7 +183,11 @@ fn find_after_last_import(source: &str) -> usize {
         }
     }
 
-    if found { last_import_end } else { 0 }
+    if found {
+        last_import_end
+    } else {
+        0
+    }
 }
 
 /// Iterate lines with their byte offset in the source string.

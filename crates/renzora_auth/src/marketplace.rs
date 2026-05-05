@@ -116,10 +116,7 @@ pub fn get_asset(slug: &str) -> Result<AssetDetail, String> {
 /// Returns the download URL for the asset file.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadResponse, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/download");
 
@@ -174,10 +171,7 @@ pub fn list_categories() -> Result<Vec<Category>, String> {
 /// Purchase an asset with credits (requires authentication).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn purchase_asset(session: &AuthSession, asset_id: &str) -> Result<PurchaseResponse, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/credits/purchase");
     let body = serde_json::json!({ "asset_id": asset_id });
@@ -200,10 +194,7 @@ pub fn purchase_asset(session: &AuthSession, asset_id: &str) -> Result<PurchaseR
 /// Get the user's purchased/owned assets.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_my_assets(session: &AuthSession) -> Result<MarketplaceListResponse, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/marketplace/purchased");
 
@@ -223,10 +214,7 @@ pub fn get_my_assets(session: &AuthSession) -> Result<MarketplaceListResponse, S
 /// Get the user's credit balance.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_credit_balance(session: &AuthSession) -> Result<CreditBalanceResponse, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/credits/balance");
 
@@ -309,10 +297,7 @@ pub fn post_comment(
     slug: &str,
     content: &str,
 ) -> Result<AssetComment, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/marketplace/detail/{slug}/comments");
     let body = serde_json::json!({ "content": content });
@@ -344,9 +329,7 @@ pub fn get_rating(slug: &str, session: Option<&AuthSession>) -> Result<AssetRati
         }
     }
 
-    let response = req
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
+    let response = req.call().map_err(|e| format!("Request failed: {e}"))?;
 
     let body = response
         .into_body()
@@ -358,15 +341,8 @@ pub fn get_rating(slug: &str, session: Option<&AuthSession>) -> Result<AssetRati
 
 /// Submit or update a rating for an asset (requires authentication).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn post_rating(
-    session: &AuthSession,
-    slug: &str,
-    rating: i32,
-) -> Result<AssetRating, String> {
-    let token = session
-        .access_token
-        .as_deref()
-        .ok_or("Not signed in")?;
+pub fn post_rating(session: &AuthSession, slug: &str, rating: i32) -> Result<AssetRating, String> {
+    let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
     let url = format!("{API_BASE}/api/marketplace/detail/{slug}/rating");
     let body = serde_json::json!({ "rating": rating });

@@ -16,3 +16,6 @@ renzora = { path = "../renzora", default-features = false }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_theme = { path = "../renzora_theme", optional = true }
 serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

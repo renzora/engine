@@ -67,7 +67,12 @@ impl Default for ConsoleState {
 
 impl ConsoleState {
     /// Add a log entry directly.
-    pub fn log(&mut self, level: LogLevel, category: impl Into<String>, message: impl Into<String>) {
+    pub fn log(
+        &mut self,
+        level: LogLevel,
+        category: impl Into<String>,
+        message: impl Into<String>,
+    ) {
         let cat = category.into();
         if !cat.is_empty() && !self.seen_categories.contains(&cat) {
             self.seen_categories.push(cat.clone());
@@ -129,13 +134,19 @@ impl ConsoleState {
             }
 
             if !self.category_filter.is_empty()
-                && !entry.category.to_lowercase().contains(&self.category_filter.to_lowercase())
+                && !entry
+                    .category
+                    .to_lowercase()
+                    .contains(&self.category_filter.to_lowercase())
             {
                 return false;
             }
 
             if !self.search_filter.is_empty()
-                && !entry.message.to_lowercase().contains(&self.search_filter.to_lowercase())
+                && !entry
+                    .message
+                    .to_lowercase()
+                    .contains(&self.search_filter.to_lowercase())
             {
                 return false;
             }
@@ -185,7 +196,10 @@ mod tests {
         state.log(LogLevel::Info, "alpha", "1");
         state.log(LogLevel::Info, "alpha", "2"); // duplicate category
         state.log(LogLevel::Info, "beta", "3");
-        assert_eq!(state.seen_categories, vec!["alpha".to_string(), "beta".to_string()]);
+        assert_eq!(
+            state.seen_categories,
+            vec!["alpha".to_string(), "beta".to_string()]
+        );
     }
 
     #[test]
@@ -225,7 +239,10 @@ mod tests {
         state.log(LogLevel::Warning, "c", "warn-msg");
         state.log(LogLevel::Error, "c", "err-msg");
         state.show_warnings = false;
-        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        let visible: Vec<&str> = state
+            .filtered_entries()
+            .map(|e| e.message.as_str())
+            .collect();
         assert_eq!(visible, vec!["info-msg", "err-msg"]);
     }
 
@@ -236,7 +253,10 @@ mod tests {
         state.log(LogLevel::Info, "alpha", "a");
         state.log(LogLevel::Info, "beta", "b");
         state.hidden_categories.insert("alpha".into());
-        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        let visible: Vec<&str> = state
+            .filtered_entries()
+            .map(|e| e.message.as_str())
+            .collect();
         assert_eq!(visible, vec!["b"]);
     }
 
@@ -247,7 +267,10 @@ mod tests {
         state.log(LogLevel::Info, "Renderer", "1");
         state.log(LogLevel::Info, "physics", "2");
         state.category_filter = "REND".into();
-        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        let visible: Vec<&str> = state
+            .filtered_entries()
+            .map(|e| e.message.as_str())
+            .collect();
         assert_eq!(visible, vec!["1"]);
     }
 
@@ -258,7 +281,10 @@ mod tests {
         state.log(LogLevel::Info, "c", "Loading scene 'foo.ron'");
         state.log(LogLevel::Info, "c", "spawned 12 entities");
         state.search_filter = "LOAD".into();
-        let visible: Vec<&str> = state.filtered_entries().map(|e| e.message.as_str()).collect();
+        let visible: Vec<&str> = state
+            .filtered_entries()
+            .map(|e| e.message.as_str())
+            .collect();
         assert_eq!(visible.len(), 1);
         assert!(visible[0].contains("Loading"));
     }

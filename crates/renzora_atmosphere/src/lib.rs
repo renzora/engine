@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -58,7 +58,11 @@ struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
 fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
-    sources: Query<(Entity, Ref<AtmosphereComponentSettings>, Option<&AtmosphereMediumHandle>)>,
+    sources: Query<(
+        Entity,
+        Ref<AtmosphereComponentSettings>,
+        Option<&AtmosphereMediumHandle>,
+    )>,
     existing: Query<&Atmosphere>,
     routing: Res<renzora::EffectRouting>,
 ) {
@@ -79,7 +83,9 @@ fn sync_atmosphere(
                     atmo.medium.clone()
                 } else {
                     let h = mediums.add(ScatteringMedium::default());
-                    commands.entity(entity).insert(AtmosphereMediumHandle(h.clone()));
+                    commands
+                        .entity(entity)
+                        .insert(AtmosphereMediumHandle(h.clone()));
                     h
                 };
 
@@ -150,16 +156,28 @@ fn inspector_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(AtmosphereComponentSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(AtmosphereComponentSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(AtmosphereComponentSettings, Atmosphere, AtmosphereSettings, AtmosphereMediumHandle)>();
+            world.entity_mut(entity).remove::<(
+                AtmosphereComponentSettings,
+                Atmosphere,
+                AtmosphereSettings,
+                AtmosphereMediumHandle,
+            )>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<AtmosphereComponentSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<AtmosphereComponentSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(atmosphere_custom_ui),
@@ -174,7 +192,9 @@ fn atmosphere_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<AtmosphereComponentSettings>(entity) else { return };
+    let Some(settings) = world.get::<AtmosphereComponentSettings>(entity) else {
+        return;
+    };
     let mut row = 0;
 
     // Rendering mode
@@ -189,7 +209,9 @@ fn atmosphere_custom_ui(
                     if ui.selectable_value(&mut new_idx, i, *label).changed() {
                         let mode = new_idx as u32;
                         cmds.push(move |world: &mut World| {
-                            if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                            if let Some(mut s) =
+                                world.get_mut::<AtmosphereComponentSettings>(entity)
+                            {
                                 s.mode = mode;
                             }
                         });
@@ -203,10 +225,16 @@ fn atmosphere_custom_ui(
     let mut bottom = settings.bottom_radius;
     inline_property(ui, row, "Bottom Radius", theme, |ui| {
         let orig = bottom;
-        ui.add(egui::DragValue::new(&mut bottom).speed(1000.0).range(0.0..=100_000_000.0));
+        ui.add(
+            egui::DragValue::new(&mut bottom)
+                .speed(1000.0)
+                .range(0.0..=100_000_000.0),
+        );
         if bottom != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.bottom_radius = bottom; }
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                    s.bottom_radius = bottom;
+                }
             });
         }
     });
@@ -216,10 +244,16 @@ fn atmosphere_custom_ui(
     let mut top = settings.top_radius;
     inline_property(ui, row, "Top Radius", theme, |ui| {
         let orig = top;
-        ui.add(egui::DragValue::new(&mut top).speed(1000.0).range(0.0..=100_000_000.0));
+        ui.add(
+            egui::DragValue::new(&mut top)
+                .speed(1000.0)
+                .range(0.0..=100_000_000.0),
+        );
         if top != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.top_radius = top; }
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                    s.top_radius = top;
+                }
             });
         }
     });
@@ -229,10 +263,16 @@ fn atmosphere_custom_ui(
     let mut albedo = settings.ground_albedo;
     inline_property(ui, row, "Ground Albedo", theme, |ui| {
         let orig = albedo;
-        ui.add(egui::DragValue::new(&mut albedo).speed(0.01).range(0.0..=1.0));
+        ui.add(
+            egui::DragValue::new(&mut albedo)
+                .speed(0.01)
+                .range(0.0..=1.0),
+        );
         if albedo != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.ground_albedo = albedo; }
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                    s.ground_albedo = albedo;
+                }
             });
         }
     });
@@ -242,15 +282,23 @@ fn atmosphere_custom_ui(
     let mut scale = settings.scene_units_to_m;
     inline_property(ui, row, "Units to m", theme, |ui| {
         let orig = scale;
-        ui.add(egui::DragValue::new(&mut scale).speed(0.1).range(0.0001..=10000.0).max_decimals(4));
+        ui.add(
+            egui::DragValue::new(&mut scale)
+                .speed(0.1)
+                .range(0.0001..=10000.0)
+                .max_decimals(4),
+        );
         if scale != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) { s.scene_units_to_m = scale; }
+                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
+                    s.scene_units_to_m = scale;
+                }
             });
         }
     });
 }
 
+#[derive(Default)]
 pub struct AtmospherePlugin;
 
 impl Plugin for AtmospherePlugin {
@@ -262,3 +310,5 @@ impl Plugin for AtmospherePlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(AtmospherePlugin);

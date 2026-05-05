@@ -37,7 +37,9 @@ pub fn auto_init_physics_read_state(
     q: Query<Entity, (With<PhysicsBodyData>, Without<PhysicsReadState>)>,
 ) {
     for entity in &q {
-        commands.entity(entity).try_insert(PhysicsReadState::default());
+        commands
+            .entity(entity)
+            .try_insert(PhysicsReadState::default());
     }
 }
 

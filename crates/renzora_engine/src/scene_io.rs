@@ -5,7 +5,10 @@
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use renzora::console_log::*;
-use renzora::{CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData, MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget};
+use renzora::{
+    CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData,
+    MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget,
+};
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
 use std::collections::BTreeSet;
@@ -57,7 +60,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut entities: Vec<Entity> = Vec::new();
-    let mut query = world.query_filtered::<Entity, (With<Name>, Without<HideInHierarchy>, Without<EditorCamera>, Without<bevy::input::gamepad::Gamepad>)>();
+    let mut query = world.query_filtered::<Entity, (
+        With<Name>,
+        Without<HideInHierarchy>,
+        Without<EditorCamera>,
+        Without<bevy::input::gamepad::Gamepad>,
+    )>();
     for entity in query.iter(world) {
         entities.push(entity);
     }
@@ -89,9 +97,13 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
             });
             let excluded = before - entities.len();
             if excluded > 0 {
-                console_info("Scene", format!(
-                    "Excluded {} nested-scene descendant entities from save", excluded
-                ));
+                console_info(
+                    "Scene",
+                    format!(
+                        "Excluded {} nested-scene descendant entities from save",
+                        excluded
+                    ),
+                );
             }
         }
     }
@@ -125,9 +137,10 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
             });
             let excluded = before - entities.len();
             if excluded > 0 {
-                console_info("Scene", format!(
-                    "Excluded {} GLTF descendant entities from save", excluded
-                ));
+                console_info(
+                    "Scene",
+                    format!("Excluded {} GLTF descendant entities from save", excluded),
+                );
             }
         }
     }
@@ -226,8 +239,19 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, &serialized)?;
-    console_info("Scene", format!("Saved scene to {} ({} entities)", path.display(), scene.entities.len()));
-    info!("Saved scene to {} ({} entities)", path.display(), scene.entities.len());
+    console_info(
+        "Scene",
+        format!(
+            "Saved scene to {} ({} entities)",
+            path.display(),
+            scene.entities.len()
+        ),
+    );
+    info!(
+        "Saved scene to {} ({} entities)",
+        path.display(),
+        scene.entities.len()
+    );
     Ok(())
 }
 
@@ -236,7 +260,12 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut entities: Vec<Entity> = Vec::new();
-    let mut query = world.query_filtered::<Entity, (With<Name>, Without<HideInHierarchy>, Without<EditorCamera>, Without<bevy::input::gamepad::Gamepad>)>();
+    let mut query = world.query_filtered::<Entity, (
+        With<Name>,
+        Without<HideInHierarchy>,
+        Without<EditorCamera>,
+        Without<bevy::input::gamepad::Gamepad>,
+    )>();
     for entity in query.iter(world) {
         entities.push(entity);
     }
@@ -388,7 +417,11 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
             let children_with_parents: Vec<(Entity, Entity)> = entity_map
                 .values()
                 .filter_map(|&entity| {
-                    world.get_entity(entity).ok()?.get::<ChildOf>().map(|c| (entity, c.parent()))
+                    world
+                        .get_entity(entity)
+                        .ok()?
+                        .get::<ChildOf>()
+                        .map(|c| (entity, c.parent()))
                 })
                 .collect();
 
@@ -423,7 +456,10 @@ pub fn save_current_scene(world: &mut World) {
 ///
 /// Tries the Vfs (rpak archive) first, then falls back to disk.
 pub fn load_scene(world: &mut World, path: &Path) {
-    console_info("Scene", format!("=== Loading scene from {} ===", path.display()));
+    console_info(
+        "Scene",
+        format!("=== Loading scene from {} ===", path.display()),
+    );
 
     let path_str = path.to_string_lossy().to_string();
     if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
@@ -438,7 +474,10 @@ pub fn load_scene(world: &mut World, path: &Path) {
         let path_str = path.to_string_lossy().replace('\\', "/");
         let archive_key = path_str.strip_prefix("./").unwrap_or(&path_str);
         if let Some(s) = vfs.read_string(archive_key) {
-            console_info("Scene", format!("Read {} bytes from rpak: {}", s.len(), archive_key));
+            console_info(
+                "Scene",
+                format!("Read {} bytes from rpak: {}", s.len(), archive_key),
+            );
             Some(s)
         } else {
             None
@@ -452,17 +491,26 @@ pub fn load_scene(world: &mut World, path: &Path) {
         Some(c) => c,
         None => {
             if !path.exists() {
-                console_warn("Scene", format!("Scene file does not exist: {}", path.display()));
+                console_warn(
+                    "Scene",
+                    format!("Scene file does not exist: {}", path.display()),
+                );
                 info!("Scene file does not exist yet: {}", path.display());
                 return;
             }
             match std::fs::read_to_string(path) {
                 Ok(c) => {
-                    console_info("Scene", format!("Read {} bytes from {}", c.len(), path.display()));
+                    console_info(
+                        "Scene",
+                        format!("Read {} bytes from {}", c.len(), path.display()),
+                    );
                     c
                 }
                 Err(e) => {
-                    console_error("Scene", format!("Failed to read scene file {}: {}", path.display(), e));
+                    console_error(
+                        "Scene",
+                        format!("Failed to read scene file {}: {}", path.display(), e),
+                    );
                     error!("Failed to read scene file {}: {}", path.display(), e);
                     return;
                 }
@@ -478,7 +526,9 @@ pub fn load_scene(world: &mut World, path: &Path) {
             state.phase = SceneLoadPhase::Ready;
             state.progress = 1.0;
         }
-        world.trigger(SceneLoaded { path: path_str.clone() });
+        world.trigger(SceneLoaded {
+            path: path_str.clone(),
+        });
         return;
     }
 
@@ -510,29 +560,49 @@ pub fn load_scene(world: &mut World, path: &Path) {
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     match scene.write_to_world(world, &mut entity_map) {
         Ok(()) => {
-            console_info("Scene", format!(
-                "Scene written to world: {} entities mapped from {}",
-                entity_map.len(), path.display()
-            ));
+            console_info(
+                "Scene",
+                format!(
+                    "Scene written to world: {} entities mapped from {}",
+                    entity_map.len(),
+                    path.display()
+                ),
+            );
 
             // Log each mapped entity
             for (&scene_entity, &world_entity) in &entity_map {
-                let name = world.get::<Name>(world_entity)
+                let name = world
+                    .get::<Name>(world_entity)
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "unnamed".into());
                 let has_scene_cam = world.get::<SceneCamera>(world_entity).is_some();
                 let has_default = world.get::<DefaultCamera>(world_entity).is_some();
                 let mut tags = Vec::new();
-                if has_scene_cam { tags.push("SceneCamera"); }
-                if has_default { tags.push("DefaultCamera"); }
-                let tag_str = if tags.is_empty() { String::new() } else { format!(" [{}]", tags.join(", ")) };
-                console_info("Scene", format!(
-                    "  scene:{:?} -> world:{:?} \"{}\"{}",
-                    scene_entity, world_entity, name, tag_str
-                ));
+                if has_scene_cam {
+                    tags.push("SceneCamera");
+                }
+                if has_default {
+                    tags.push("DefaultCamera");
+                }
+                let tag_str = if tags.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", tags.join(", "))
+                };
+                console_info(
+                    "Scene",
+                    format!(
+                        "  scene:{:?} -> world:{:?} \"{}\"{}",
+                        scene_entity, world_entity, name, tag_str
+                    ),
+                );
             }
 
-            info!("Loaded scene from {} ({} entities mapped)", path.display(), entity_map.len());
+            info!(
+                "Loaded scene from {} ({} entities mapped)",
+                path.display(),
+                entity_map.len()
+            );
 
             // Bevy's write_to_world inserts ChildOf via reflection, which may not
             // trigger the on_insert hooks that maintain the parent's Children component.
@@ -540,14 +610,21 @@ pub fn load_scene(world: &mut World, path: &Path) {
             let children_with_parents: Vec<(Entity, Entity)> = entity_map
                 .values()
                 .filter_map(|&entity| {
-                    world.get_entity(entity).ok()?.get::<ChildOf>().map(|c| (entity, c.parent()))
+                    world
+                        .get_entity(entity)
+                        .ok()?
+                        .get::<ChildOf>()
+                        .map(|c| (entity, c.parent()))
                 })
                 .collect();
 
-            console_info("Scene", format!(
-                "Re-inserting ChildOf on {} entities to trigger hierarchy hooks",
-                children_with_parents.len()
-            ));
+            console_info(
+                "Scene",
+                format!(
+                    "Re-inserting ChildOf on {} entities to trigger hierarchy hooks",
+                    children_with_parents.len()
+                ),
+            );
 
             for (child, parent) in children_with_parents {
                 // Remove and re-insert ChildOf to trigger hooks
@@ -558,23 +635,34 @@ pub fn load_scene(world: &mut World, path: &Path) {
             // Expand nested scene instances referenced from the host scene.
             expand_scene_instances(world);
 
-            console_success("Scene", format!("=== Scene load complete: {} ===", path.display()));
+            console_success(
+                "Scene",
+                format!("=== Scene load complete: {} ===", path.display()),
+            );
 
             if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
                 state.phase = SceneLoadPhase::Ready;
                 state.progress = 1.0;
             }
-            world.trigger(SceneLoaded { path: path_str.clone() });
+            world.trigger(SceneLoaded {
+                path: path_str.clone(),
+            });
         }
         Err(e) => {
-            console_error("Scene", format!("Failed to write scene to world {}: {}", path.display(), e));
+            console_error(
+                "Scene",
+                format!("Failed to write scene to world {}: {}", path.display(), e),
+            );
             error!("Failed to write scene to world {}: {}", path.display(), e);
 
             if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
                 state.phase = SceneLoadPhase::Failed;
             }
             let err_str = e.to_string();
-            world.trigger(SceneLoadFailed { path: path_str.clone(), error: err_str });
+            world.trigger(SceneLoadFailed {
+                path: path_str.clone(),
+                error: err_str,
+            });
         }
     }
 }
@@ -602,10 +690,15 @@ pub fn expand_scene_instances(world: &mut World) {
         for (entity, inst) in q.iter(world) {
             // Skip entities that already have children (already expanded, or
             // user added children before save).
-            if world.get::<Children>(entity).map_or(false, |c| c.iter().count() > 0) {
+            if world
+                .get::<Children>(entity)
+                .map_or(false, |c| c.iter().count() > 0)
+            {
                 continue;
             }
-            let Some(ref root) = project_root else { continue };
+            let Some(ref root) = project_root else {
+                continue;
+            };
             let abs = root.join(&inst.source);
             // Skip if this path is already being expanded up the stack (cycle).
             let in_stack = EXPAND_STACK.with(|s| s.borrow().iter().any(|p| p == &abs));
@@ -647,7 +740,9 @@ pub fn expand_scene_instances(world: &mut World) {
             world.entity_mut(root).insert(ChildOf(instance_entity));
         }
 
-        EXPAND_STACK.with(|s| { s.borrow_mut().pop(); });
+        EXPAND_STACK.with(|s| {
+            s.borrow_mut().pop();
+        });
     }
 }
 
@@ -711,7 +806,13 @@ impl SceneReferenceCache {
         if needs_reload {
             let text = std::fs::read_to_string(&canon).ok()?;
             let sources = extract_scene_instance_sources(&text);
-            self.entries.insert(canon.clone(), CachedRefs { mtime: fresh_mtime, sources });
+            self.entries.insert(
+                canon.clone(),
+                CachedRefs {
+                    mtime: fresh_mtime,
+                    sources,
+                },
+            );
         }
 
         self.entries.get(&canon).map(|e| e.sources.as_slice())
@@ -741,9 +842,13 @@ pub fn would_create_reference_cycle(
 
     while let Some(current) = stack.pop() {
         let canon = current.canonicalize().unwrap_or_else(|_| current.clone());
-        if !visited.insert(canon) { continue }
+        if !visited.insert(canon) {
+            continue;
+        }
 
-        let Some(sources) = cache.references_for(&current) else { continue };
+        let Some(sources) = cache.references_for(&current) else {
+            continue;
+        };
         // Clone out so we can drop the borrow on `cache` before recursing.
         let sources: Vec<String> = sources.to_vec();
         for rel in sources {
@@ -767,16 +872,25 @@ fn extract_scene_instance_sources(text: &str) -> Vec<String> {
     let mut cursor = 0usize;
     while let Some(mi) = text[cursor..].find(MARKER) {
         let pos = cursor + mi;
-        let Some(ki) = text[pos..].find(KEY) else { break };
+        let Some(ki) = text[pos..].find(KEY) else {
+            break;
+        };
         let kpos = pos + ki + KEY.len();
         // Skip whitespace until opening quote.
         let mut i = kpos;
         let bytes = text.as_bytes();
-        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') { i += 1; }
-        if i >= bytes.len() || bytes[i] != b'"' { cursor = kpos; continue }
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'"' {
+            cursor = kpos;
+            continue;
+        }
         i += 1;
         let start = i;
-        while i < bytes.len() && bytes[i] != b'"' { i += 1; }
+        while i < bytes.len() && bytes[i] != b'"' {
+            i += 1;
+        }
         if i <= bytes.len() {
             out.push(text[start..i].to_string());
         }
@@ -964,10 +1078,14 @@ pub fn save_prefab_source(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(source_path, &serialized)?;
-    console_info("Scene", format!(
-        "Saved prefab source to {} ({} entities)",
-        source_path.display(), scene.entities.len()
-    ));
+    console_info(
+        "Scene",
+        format!(
+            "Saved prefab source to {} ({} entities)",
+            source_path.display(),
+            scene.entities.len()
+        ),
+    );
     Ok(())
 }
 
@@ -1013,10 +1131,13 @@ pub fn save_all_scene_instances(world: &mut World, host_scene_path: &Path) {
         let source_canon = source_abs.canonicalize().ok();
         if let (Some(host), Some(src)) = (&host_canon, &source_canon) {
             if host == src {
-                console_warn("Scene", format!(
-                    "Skipping self-referencing instance → {} (source == host scene)",
-                    source_rel
-                ));
+                console_warn(
+                    "Scene",
+                    format!(
+                        "Skipping self-referencing instance → {} (source == host scene)",
+                        source_rel
+                    ),
+                );
                 continue;
             }
         }
@@ -1024,19 +1145,22 @@ pub fn save_all_scene_instances(world: &mut World, host_scene_path: &Path) {
         // Guard 2: multiple instances with the same source in this host.
         // We can't pick which interior to propagate, so skip all of them.
         if source_counts.get(&source_rel).copied().unwrap_or(0) > 1 {
-            console_warn("Scene", format!(
-                "Skipping instance {} — multiple instances share this source in the host; \
+            console_warn(
+                "Scene",
+                format!(
+                    "Skipping instance {} — multiple instances share this source in the host; \
                  edit the source directly or unpack to propagate changes",
-                source_rel
-            ));
+                    source_rel
+                ),
+            );
             continue;
         }
 
         if let Err(e) = save_prefab_source(world, entity, &source_abs) {
-            console_error("Scene", format!(
-                "Failed to save prefab source {}: {e}",
-                source_abs.display()
-            ));
+            console_error(
+                "Scene",
+                format!("Failed to save prefab source {}: {e}", source_abs.display()),
+            );
         }
     }
 }
@@ -1065,7 +1189,9 @@ pub fn rehydrate_meshes(
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else { return };
+    let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
+        return;
+    };
     for (entity, primitive, color) in &query {
         let Some(mesh) = registry.create_mesh(&primitive.0, &mut meshes) else {
             warn!("Unknown shape ID '{}' — skipping rehydration", primitive.0);
@@ -1078,7 +1204,9 @@ pub fn rehydrate_meshes(
             ..default()
         });
 
-        commands.entity(entity).try_insert((Mesh3d(mesh), MeshMaterial3d(material)));
+        commands
+            .entity(entity)
+            .try_insert((Mesh3d(mesh), MeshMaterial3d(material)));
     }
 }
 
@@ -1107,13 +1235,16 @@ pub fn rehydrate_cameras(
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
 ) {
-    if query.is_empty() { return; }
+    if query.is_empty() {
+        return;
+    }
 
     let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     let is_editor = !editor_camera.is_empty() && !in_play_mode;
 
     // Find which entity should be the active camera in runtime mode
-    let default_entity = query.iter()
+    let default_entity = query
+        .iter()
         .find(|(_, dc)| dc.is_some())
         .or_else(|| query.iter().next())
         .map(|(e, _)| e);
@@ -1134,14 +1265,20 @@ pub fn rehydrate_cameras(
         if in_play_mode && is_active {
             use renzora::console_log::*;
             let name = commands.entity(entity).id();
-            console_info("Rehydration", format!(
-                "Play mode active — configuring {:?} as play mode camera", name
-            ));
+            console_info(
+                "Rehydration",
+                format!(
+                    "Play mode active — configuring {:?} as play mode camera",
+                    name
+                ),
+            );
             commands.entity(entity).try_insert(PlayModeCamera);
             if let Some(ref img) = render_target.as_ref().and_then(|rt| rt.image.as_ref()) {
-                commands.entity(entity).try_insert(
-                    bevy::camera::RenderTarget::Image(Handle::<Image>::clone(img).into()),
-                );
+                commands
+                    .entity(entity)
+                    .try_insert(bevy::camera::RenderTarget::Image(
+                        Handle::<Image>::clone(img).into(),
+                    ));
             }
         }
     }
@@ -1153,12 +1290,18 @@ pub fn sync_play_mode_camera(
     query: Query<Entity, Added<PlayModeCamera>>,
     play_mode: Option<ResMut<PlayModeState>>,
 ) {
-    let Some(mut play_mode) = play_mode else { return; };
+    let Some(mut play_mode) = play_mode else {
+        return;
+    };
     for entity in &query {
         if play_mode.active_game_camera != Some(entity) {
-            renzora::console_log::console_info("PlayMode", format!(
-                "Play mode camera updated: {:?} -> {:?}", play_mode.active_game_camera, entity
-            ));
+            renzora::console_log::console_info(
+                "PlayMode",
+                format!(
+                    "Play mode camera updated: {:?} -> {:?}",
+                    play_mode.active_game_camera, entity
+                ),
+            );
             play_mode.active_game_camera = Some(entity);
         }
     }
@@ -1172,11 +1315,16 @@ pub fn enforce_single_active_camera(
     mut cameras: Query<(Entity, &mut Camera, Option<&DefaultCamera>), With<SceneCamera>>,
     editor_camera: Query<(), With<EditorCamera>>,
 ) {
-    if !editor_camera.is_empty() { return; }
-    if cameras.is_empty() { return; }
+    if !editor_camera.is_empty() {
+        return;
+    }
+    if cameras.is_empty() {
+        return;
+    }
 
     // Find which entity should be active: DefaultCamera > first
-    let default_entity = cameras.iter()
+    let default_entity = cameras
+        .iter()
         .find(|(_, _, dc)| dc.is_some())
         .or_else(|| cameras.iter().next())
         .map(|(e, _, _)| e);
@@ -1277,10 +1425,8 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
     let registry = type_registry.read();
 
     // Collect reflected component data from the scene camera.
-    let mut components_to_sync: Vec<(
-        bevy::ecs::reflect::ReflectComponent,
-        Box<dyn Reflect>,
-    )> = Vec::new();
+    let mut components_to_sync: Vec<(bevy::ecs::reflect::ReflectComponent, Box<dyn Reflect>)> =
+        Vec::new();
     let mut synced_type_paths: Vec<&'static str> = Vec::new();
 
     let entity_ref = world.entity(src);
@@ -1385,7 +1531,14 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
 /// have children (e.g. model_drop already spawned the SceneRoot child).
 pub fn rehydrate_mesh_instances(
     mut commands: Commands,
-    query: Query<(Entity, &MeshInstanceData), (Without<Children>, Without<PendingMeshInstanceRehydrate>, Added<MeshInstanceData>)>,
+    query: Query<
+        (Entity, &MeshInstanceData),
+        (
+            Without<Children>,
+            Without<PendingMeshInstanceRehydrate>,
+            Added<MeshInstanceData>,
+        ),
+    >,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, instance) in &query {
@@ -1397,7 +1550,9 @@ pub fn rehydrate_mesh_instances(
 
         // We need to wait for the GLTF to load before spawning the scene.
         // Insert a pending-load marker so a follow-up system can spawn the scene child.
-        commands.entity(entity).try_insert(PendingMeshInstanceRehydrate(gltf_handle));
+        commands
+            .entity(entity)
+            .try_insert(PendingMeshInstanceRehydrate(gltf_handle));
     }
 }
 
@@ -1411,7 +1566,9 @@ pub fn finish_mesh_instance_rehydrate(
     query: Query<(Entity, &PendingMeshInstanceRehydrate)>,
     gltf_assets: Option<Res<Assets<Gltf>>>,
 ) {
-    let Some(gltf_assets) = gltf_assets else { return };
+    let Some(gltf_assets) = gltf_assets else {
+        return;
+    };
     for (entity, pending) in &query {
         let Some(gltf) = gltf_assets.get(&pending.0) else {
             continue;
@@ -1432,21 +1589,20 @@ pub fn finish_mesh_instance_rehydrate(
             ));
         }
 
-        commands.entity(entity).remove::<PendingMeshInstanceRehydrate>();
+        commands
+            .entity(entity)
+            .remove::<PendingMeshInstanceRehydrate>();
     }
 }
 
 /// Rehydrate sun entities — syncs `DirectionalLight` + `Transform` from `Sun` on newly added entities.
-pub fn rehydrate_suns(
-    mut query: Query<(&Sun, &mut DirectionalLight, &mut Transform), Added<Sun>>,
-) {
+pub fn rehydrate_suns(mut query: Query<(&Sun, &mut DirectionalLight, &mut Transform), Added<Sun>>) {
     for (sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance;
         light.shadows_enabled = sun.shadows_enabled;
-        *transform = Transform::from_rotation(
-            Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()),
-        );
+        *transform =
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
     }
 }
 
@@ -1467,14 +1623,22 @@ pub fn rehydrate_lights(
     needs_transform: Query<
         Entity,
         (
-            Or<(With<bevy::light::PointLight>, With<bevy::light::SpotLight>, With<bevy::light::DirectionalLight>)>,
+            Or<(
+                With<bevy::light::PointLight>,
+                With<bevy::light::SpotLight>,
+                With<bevy::light::DirectionalLight>,
+            )>,
             Without<Transform>,
         ),
     >,
     needs_visibility: Query<
         Entity,
         (
-            Or<(With<bevy::light::PointLight>, With<bevy::light::SpotLight>, With<bevy::light::DirectionalLight>)>,
+            Or<(
+                With<bevy::light::PointLight>,
+                With<bevy::light::SpotLight>,
+                With<bevy::light::DirectionalLight>,
+            )>,
             Without<Visibility>,
         ),
     >,

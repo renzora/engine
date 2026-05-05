@@ -8,3 +8,6 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
 ron = "0.10"
+
+[lints]
+workspace = true

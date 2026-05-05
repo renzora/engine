@@ -142,16 +142,40 @@ pub fn run_scripts(world: &mut World) {
     }
 
     let mouse_buttons_pressed = [
-        input.mouse_pressed.get(&MouseButton::Left).copied().unwrap_or(false),
-        input.mouse_pressed.get(&MouseButton::Right).copied().unwrap_or(false),
-        input.mouse_pressed.get(&MouseButton::Middle).copied().unwrap_or(false),
+        input
+            .mouse_pressed
+            .get(&MouseButton::Left)
+            .copied()
+            .unwrap_or(false),
+        input
+            .mouse_pressed
+            .get(&MouseButton::Right)
+            .copied()
+            .unwrap_or(false),
+        input
+            .mouse_pressed
+            .get(&MouseButton::Middle)
+            .copied()
+            .unwrap_or(false),
         false,
         false,
     ];
     let mouse_buttons_just_pressed = [
-        input.mouse_just_pressed.get(&MouseButton::Left).copied().unwrap_or(false),
-        input.mouse_just_pressed.get(&MouseButton::Right).copied().unwrap_or(false),
-        input.mouse_just_pressed.get(&MouseButton::Middle).copied().unwrap_or(false),
+        input
+            .mouse_just_pressed
+            .get(&MouseButton::Left)
+            .copied()
+            .unwrap_or(false),
+        input
+            .mouse_just_pressed
+            .get(&MouseButton::Right)
+            .copied()
+            .unwrap_or(false),
+        input
+            .mouse_just_pressed
+            .get(&MouseButton::Middle)
+            .copied()
+            .unwrap_or(false),
         false,
         false,
     ];
@@ -161,13 +185,22 @@ pub fn run_scripts(world: &mut World) {
 
     use bevy::input::gamepad::GamepadButton;
     let gamepad_button_list = [
-        GamepadButton::South, GamepadButton::East, GamepadButton::West, GamepadButton::North,
-        GamepadButton::LeftTrigger, GamepadButton::RightTrigger,
-        GamepadButton::LeftTrigger2, GamepadButton::RightTrigger2,
-        GamepadButton::Select, GamepadButton::Start,
-        GamepadButton::LeftThumb, GamepadButton::RightThumb,
-        GamepadButton::DPadUp, GamepadButton::DPadDown,
-        GamepadButton::DPadLeft, GamepadButton::DPadRight,
+        GamepadButton::South,
+        GamepadButton::East,
+        GamepadButton::West,
+        GamepadButton::North,
+        GamepadButton::LeftTrigger,
+        GamepadButton::RightTrigger,
+        GamepadButton::LeftTrigger2,
+        GamepadButton::RightTrigger2,
+        GamepadButton::Select,
+        GamepadButton::Start,
+        GamepadButton::LeftThumb,
+        GamepadButton::RightThumb,
+        GamepadButton::DPadUp,
+        GamepadButton::DPadDown,
+        GamepadButton::DPadLeft,
+        GamepadButton::DPadRight,
     ];
     let mut gamepad_buttons = [false; 16];
     for (i, btn) in gamepad_button_list.iter().enumerate() {
@@ -185,7 +218,14 @@ pub fn run_scripts(world: &mut World) {
 
     let mut script_entities: Vec<ScriptEntityData> = Vec::new();
     {
-        let mut query = world.query::<(Entity, &ScriptComponent, &Transform, Option<&Name>, Option<&ChildOf>, Option<&Children>)>();
+        let mut query = world.query::<(
+            Entity,
+            &ScriptComponent,
+            &Transform,
+            Option<&Name>,
+            Option<&ChildOf>,
+            Option<&Children>,
+        )>();
         for (entity, _sc, transform, name, parent, children) in query.iter(world) {
             script_entities.push(ScriptEntityData {
                 entity,
@@ -217,8 +257,11 @@ pub fn run_scripts(world: &mut World) {
         let mut child_infos: Vec<(Entity, String, Transform)> = Vec::new();
         let mut queue: VecDeque<Entity> = sed.children.iter().copied().collect();
         while let Some(child_e) = queue.pop_front() {
-            let Some(t) = world.get::<Transform>(child_e) else { continue };
-            let name = world.get::<Name>(child_e)
+            let Some(t) = world.get::<Transform>(child_e) else {
+                continue;
+            };
+            let name = world
+                .get::<Name>(child_e)
                 .map(|n| n.as_str().to_string())
                 .unwrap_or_else(|| format!("Entity_{}", child_e.index()));
             child_infos.push((child_e, name, *t));
@@ -228,20 +271,22 @@ pub fn run_scripts(world: &mut World) {
         }
 
         // Take the ScriptComponent off the entity so we can use world freely
-        let Some(mut sc) = world.entity_mut(sed.entity).take::<ScriptComponent>() else { continue };
+        let Some(mut sc) = world.entity_mut(sed.entity).take::<ScriptComponent>() else {
+            continue;
+        };
 
         for entry in sc.scripts.iter_mut() {
-            if !entry.enabled { continue; }
+            if !entry.enabled {
+                continue;
+            }
             let script_path = match &entry.script_path {
                 Some(p) => p.clone(),
                 None => continue,
             };
 
             // Build context
-            let mut ctx = ScriptContext::new(
-                script_time,
-                ScriptTransform::from_transform(&sed.transform),
-            );
+            let mut ctx =
+                ScriptContext::new(script_time, ScriptTransform::from_transform(&sed.transform));
 
             ctx.self_entity = Some(sed.entity);
             ctx.self_entity_id = sed.entity.to_bits();
@@ -317,7 +362,12 @@ pub fn run_scripts(world: &mut World) {
                     } else {
                         self_entity
                     };
-                    super::reflection::get_reflected_field(world_ref, target, component_type, field_path)
+                    super::reflection::get_reflected_field(
+                        world_ref,
+                        target,
+                        component_type,
+                        field_path,
+                    )
                 }
             }));
 
@@ -364,7 +414,9 @@ pub fn run_scripts(world: &mut World) {
                 let props = engine.get_script_props(&script_path);
                 for prop in &props {
                     if entry.variables.get(&prop.name).is_none() {
-                        entry.variables.set(prop.name.clone(), prop.default_value.clone());
+                        entry
+                            .variables
+                            .set(prop.name.clone(), prop.default_value.clone());
                     }
                 }
 
@@ -454,4 +506,3 @@ pub fn run_scripts(world: &mut World) {
         world.entity_mut(sed.entity).insert(sc);
     }
 }
-

@@ -1,5 +1,4 @@
 #![allow(unused_variables, dead_code)]
-
 #![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
 
 //! UI Canvas panel — 2D visual editor for laying out bevy_ui widgets.
@@ -9,13 +8,15 @@
 
 use std::sync::RwLock;
 
-use bevy::prelude::*;
 use bevy::camera::RenderTarget;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
-use renzora_editor::{AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{
+    AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation,
+};
 use renzora_theme::ThemeManager;
 
 use crate::components::*;
@@ -45,7 +46,9 @@ pub struct UiCanvasPreview {
 pub struct UiCanvasPreviewEnabled(pub bool);
 
 impl Default for UiCanvasPreviewEnabled {
-    fn default() -> Self { Self(true) }
+    fn default() -> Self {
+        Self(true)
+    }
 }
 
 use renzora::UiCanvasPreviewCamera;
@@ -91,8 +94,17 @@ pub fn update_canvas_preview(
     selection: Res<EditorSelection>,
     mut preview: ResMut<UiCanvasPreview>,
     scene_cameras: Query<
-        (Entity, &GlobalTransform, &Projection, Option<&renzora::DefaultCamera>),
-        (With<Camera3d>, Without<UiCanvasPreviewCamera>, Without<renzora::EditorCamera>),
+        (
+            Entity,
+            &GlobalTransform,
+            &Projection,
+            Option<&renzora::DefaultCamera>,
+        ),
+        (
+            With<Camera3d>,
+            Without<UiCanvasPreviewCamera>,
+            Without<renzora::EditorCamera>,
+        ),
     >,
     mut preview_cameras: Query<
         (Entity, &mut Transform, &mut Projection),
@@ -115,12 +127,7 @@ pub fn update_canvas_preview(
                 .find(|(_, _, _, dc)| dc.is_some())
                 .map(|(e, gt, p, _)| (e, gt, p))
         })
-        .or_else(|| {
-            scene_cameras
-                .iter()
-                .next()
-                .map(|(e, gt, p, _)| (e, gt, p))
-        });
+        .or_else(|| scene_cameras.iter().next().map(|(e, gt, p, _)| (e, gt, p)));
 
     let existing = preview_cameras.iter_mut().next();
 
@@ -133,7 +140,11 @@ pub fn update_canvas_preview(
     if let Some((cam_entity, cam_gt, cam_proj)) = target {
         preview.previewing = Some(cam_entity);
         let (scale, rotation, translation) = cam_gt.to_scale_rotation_translation();
-        let cam_transform = Transform { translation, rotation, scale };
+        let cam_transform = Transform {
+            translation,
+            rotation,
+            scale,
+        };
 
         match existing {
             Some((entity, mut t, mut p)) => {
@@ -142,7 +153,9 @@ pub fn update_canvas_preview(
                 if let Some(ref skybox) = editor_skybox {
                     commands.entity(entity).try_insert(skybox.clone());
                 } else {
-                    commands.entity(entity).remove::<bevy::core_pipeline::Skybox>();
+                    commands
+                        .entity(entity)
+                        .remove::<bevy::core_pipeline::Skybox>();
                 }
             }
             None => {
@@ -178,7 +191,6 @@ pub fn update_canvas_preview(
         }
     }
 }
-
 
 /// Image file extensions accepted for drag-and-drop onto the canvas.
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "tga", "webp"];
@@ -294,7 +306,7 @@ enum WidgetDataSnapshot {
     },
     // ── HUD ──
     Crosshair {
-        style: String,  // "Cross", "Dot", "CircleDot", "CrossDot"
+        style: String, // "Cross", "Dot", "CircleDot", "CrossDot"
         color: [f32; 4],
         size: f32,
         thickness: f32,
@@ -323,7 +335,7 @@ enum WidgetDataSnapshot {
         color: [f32; 4],
     },
     Minimap {
-        shape: String,  // "Circle" or "Square"
+        shape: String, // "Circle" or "Square"
         bg_color: [f32; 4],
         border_color: [f32; 4],
     },
@@ -596,7 +608,10 @@ impl ResizeHandle {
     }
 
     fn is_corner(self) -> bool {
-        matches!(self, Self::TopLeft | Self::TopRight | Self::BottomRight | Self::BottomLeft)
+        matches!(
+            self,
+            Self::TopLeft | Self::TopRight | Self::BottomRight | Self::BottomLeft
+        )
     }
 
     /// The egui cursor icon to display for this handle, accounting for rotation.
@@ -719,7 +734,10 @@ fn ws_screen_rect(ws: &WidgetSnapshot, canvas_rect: Rect, z: f32) -> Rect {
 
 /// Compute the bounding box (in design-space px) of a list of widgets.
 /// Ignores rotation — uses axis-aligned rects. Returns (x, y, w, h).
-fn selection_bbox(snapshots: &[WidgetSnapshot], entities: &[Entity]) -> Option<(f32, f32, f32, f32)> {
+fn selection_bbox(
+    snapshots: &[WidgetSnapshot],
+    entities: &[Entity],
+) -> Option<(f32, f32, f32, f32)> {
     let mut min_x = f32::INFINITY;
     let mut min_y = f32::INFINITY;
     let mut max_x = f32::NEG_INFINITY;
@@ -889,23 +907,33 @@ impl EditorPanel for UiCanvasPanel {
 
             // Alignment buttons (dim when nothing selected)
             let has_sel = !all_sel.is_empty();
-            let btn_color = if has_sel { text_muted } else { Color32::from_white_alpha(30) };
+            let btn_color = if has_sel {
+                text_muted
+            } else {
+                Color32::from_white_alpha(30)
+            };
 
             let align_buttons: &[(&str, &str, AlignAction)] = &[
                 (regular::ALIGN_LEFT, "Align left", AlignAction::Left),
-                (regular::ALIGN_CENTER_HORIZONTAL, "Align center H", AlignAction::CenterH),
+                (
+                    regular::ALIGN_CENTER_HORIZONTAL,
+                    "Align center H",
+                    AlignAction::CenterH,
+                ),
                 (regular::ALIGN_RIGHT, "Align right", AlignAction::Right),
                 (regular::ALIGN_TOP, "Align top", AlignAction::Top),
-                (regular::ALIGN_CENTER_VERTICAL, "Align center V", AlignAction::CenterV),
+                (
+                    regular::ALIGN_CENTER_VERTICAL,
+                    "Align center V",
+                    AlignAction::CenterV,
+                ),
                 (regular::ALIGN_BOTTOM, "Align bottom", AlignAction::Bottom),
             ];
             for (icon, tooltip, action) in align_buttons {
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new(*icon).size(13.0).color(btn_color),
-                        )
-                        .fill(Color32::TRANSPARENT),
+                        egui::Button::new(egui::RichText::new(*icon).size(13.0).color(btn_color))
+                            .fill(Color32::TRANSPARENT),
                     )
                     .on_hover_text(*tooltip)
                     .clicked()
@@ -935,7 +963,11 @@ impl EditorPanel for UiCanvasPanel {
             ui.separator();
 
             // Distribute (dim when < 3 selected)
-            let dist_color = if all_sel.len() >= 3 { text_muted } else { Color32::from_white_alpha(30) };
+            let dist_color = if all_sel.len() >= 3 {
+                text_muted
+            } else {
+                Color32::from_white_alpha(30)
+            };
 
             if ui
                 .add(
@@ -1015,15 +1047,29 @@ impl EditorPanel for UiCanvasPanel {
 
                 // Grid size
                 let mut gs = state.grid_size;
-                ui.add(egui::DragValue::new(&mut gs).range(2.0..=100.0).speed(1.0).prefix("grid: "));
+                ui.add(
+                    egui::DragValue::new(&mut gs)
+                        .range(2.0..=100.0)
+                        .speed(1.0)
+                        .prefix("grid: "),
+                );
                 state.grid_size = gs;
 
                 // Snap toggle
-                let snap_color = if state.snap_enabled { accent } else { text_muted };
+                let snap_color = if state.snap_enabled {
+                    accent
+                } else {
+                    text_muted
+                };
                 if ui
-                    .add(egui::Button::new(
-                        egui::RichText::new(regular::DOTS_NINE).size(14.0).color(snap_color),
-                    ).fill(Color32::TRANSPARENT))
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(regular::DOTS_NINE)
+                                .size(14.0)
+                                .color(snap_color),
+                        )
+                        .fill(Color32::TRANSPARENT),
+                    )
                     .on_hover_text("Toggle snap to grid")
                     .clicked()
                 {
@@ -1033,9 +1079,14 @@ impl EditorPanel for UiCanvasPanel {
                 // Grid toggle
                 let grid_color = if state.show_grid { accent } else { text_muted };
                 if ui
-                    .add(egui::Button::new(
-                        egui::RichText::new(regular::GRID_FOUR).size(14.0).color(grid_color),
-                    ).fill(Color32::TRANSPARENT))
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(regular::GRID_FOUR)
+                                .size(14.0)
+                                .color(grid_color),
+                        )
+                        .fill(Color32::TRANSPARENT),
+                    )
                     .on_hover_text("Toggle grid")
                     .clicked()
                 {
@@ -1043,12 +1094,19 @@ impl EditorPanel for UiCanvasPanel {
                 }
 
                 // Preview toggle (show viewport render behind canvas)
-                let preview_on = world.get_resource::<UiCanvasPreviewEnabled>().map_or(true, |r| r.0);
+                let preview_on = world
+                    .get_resource::<UiCanvasPreviewEnabled>()
+                    .map_or(true, |r| r.0);
                 let preview_color = if preview_on { accent } else { text_muted };
                 if ui
-                    .add(egui::Button::new(
-                        egui::RichText::new(regular::MONITOR).size(14.0).color(preview_color),
-                    ).fill(Color32::TRANSPARENT))
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(regular::MONITOR)
+                                .size(14.0)
+                                .color(preview_color),
+                        )
+                        .fill(Color32::TRANSPARENT),
+                    )
                     .on_hover_text("Toggle game viewport preview")
                     .clicked()
                 {
@@ -1101,9 +1159,7 @@ impl EditorPanel for UiCanvasPanel {
                     // Look up egui texture for Image widgets
                     let image_texture_id = world
                         .get::<ImageNode>(entity)
-                        .and_then(|img| {
-                            user_textures.and_then(|ut| ut.image_id(img.image.id()))
-                        });
+                        .and_then(|img| user_textures.and_then(|ut| ut.image_id(img.image.id())));
 
                     // Read individual style components
                     let border_radius_comp = world.get::<UiBorderRadius>(entity);
@@ -1128,7 +1184,8 @@ impl EditorPanel for UiCanvasPanel {
                         .map(|t| t.0.clone());
                     let text_font = world.get::<TextFont>(entity);
                     let text_color_comp = world.get::<TextColor>(entity);
-                    let text_size = text_style_comp.map(|s| s.size)
+                    let text_size = text_style_comp
+                        .map(|s| s.size)
                         .or_else(|| text_font.map(|f| f.font_size))
                         .unwrap_or(14.0);
                     let text_color = text_style_comp
@@ -1141,9 +1198,7 @@ impl EditorPanel for UiCanvasPanel {
                     let widget_data = snapshot_widget_data(world, entity, &widget.widget_type);
 
                     let ui_transform = world.get::<bevy::ui::UiTransform>(entity);
-                    let rotation = ui_transform
-                        .map(|t| t.rotation.as_radians())
-                        .unwrap_or(0.0);
+                    let rotation = ui_transform.map(|t| t.rotation.as_radians()).unwrap_or(0.0);
                     let (scale_x, scale_y) = ui_transform
                         .map(|t| (t.scale.x, t.scale.y))
                         .unwrap_or((1.0, 1.0));
@@ -1188,11 +1243,8 @@ impl EditorPanel for UiCanvasPanel {
         // draws first so that the top item in the hierarchy renders on top.
         if let Some(active_canvas) = state.active_canvas {
             if let Some(children) = world.get::<Children>(active_canvas) {
-                let order_map: std::collections::HashMap<Entity, usize> = children
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| (e, i))
-                    .collect();
+                let order_map: std::collections::HashMap<Entity, usize> =
+                    children.iter().enumerate().map(|(i, e)| (e, i)).collect();
                 // Reverse sort: higher sibling index first → drawn first → behind.
                 // Lower sibling index (top of hierarchy) drawn last → on top.
                 state.widgets.sort_by(|a, b| {
@@ -1238,11 +1290,25 @@ impl EditorPanel for UiCanvasPanel {
             // Widget types grouped by category with separators
             let tool_groups: &[&[UiWidgetType]] = &[
                 // Layout
-                &[UiWidgetType::Container, UiWidgetType::Panel, UiWidgetType::ScrollView],
+                &[
+                    UiWidgetType::Container,
+                    UiWidgetType::Panel,
+                    UiWidgetType::ScrollView,
+                ],
                 // Basic
-                &[UiWidgetType::Text, UiWidgetType::Image, UiWidgetType::Button],
+                &[
+                    UiWidgetType::Text,
+                    UiWidgetType::Image,
+                    UiWidgetType::Button,
+                ],
                 // Input
-                &[UiWidgetType::Slider, UiWidgetType::Checkbox, UiWidgetType::Toggle, UiWidgetType::Dropdown, UiWidgetType::TextInput],
+                &[
+                    UiWidgetType::Slider,
+                    UiWidgetType::Checkbox,
+                    UiWidgetType::Toggle,
+                    UiWidgetType::Dropdown,
+                    UiWidgetType::TextInput,
+                ],
                 // Display
                 &[UiWidgetType::ProgressBar, UiWidgetType::HealthBar],
                 // Overlay
@@ -1261,9 +1327,14 @@ impl EditorPanel for UiCanvasPanel {
             ];
 
             let shape_types: &[UiWidgetType] = &[
-                UiWidgetType::Rectangle, UiWidgetType::Circle, UiWidgetType::Triangle,
-                UiWidgetType::Polygon, UiWidgetType::Arc, UiWidgetType::Wedge,
-                UiWidgetType::Line, UiWidgetType::RadialProgress,
+                UiWidgetType::Rectangle,
+                UiWidgetType::Circle,
+                UiWidgetType::Triangle,
+                UiWidgetType::Polygon,
+                UiWidgetType::Arc,
+                UiWidgetType::Wedge,
+                UiWidgetType::Line,
+                UiWidgetType::RadialProgress,
             ];
 
             const COL_GAP: f32 = 4.0;
@@ -1289,7 +1360,10 @@ impl EditorPanel for UiCanvasPanel {
 
                     // Hover detection
                     let hovered = tb_response.hovered()
-                        && ui.ctx().pointer_latest_pos().map_or(false, |p| btn_rect.contains(p));
+                        && ui
+                            .ctx()
+                            .pointer_latest_pos()
+                            .map_or(false, |p| btn_rect.contains(p));
                     let bg = if is_active_draw {
                         accent
                     } else if hovered {
@@ -1446,7 +1520,10 @@ impl EditorPanel for UiCanvasPanel {
         painter.rect_filled(canvas_rect, 0.0, Color32::from_rgb(20, 20, 24));
 
         // ── Camera preview (game render behind the canvas) ─────────────
-        if world.get_resource::<UiCanvasPreviewEnabled>().map_or(true, |r| r.0) {
+        if world
+            .get_resource::<UiCanvasPreviewEnabled>()
+            .map_or(true, |r| r.0)
+        {
             // Activate the preview camera
             if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
                 if preview.previewing.is_some() {
@@ -1503,7 +1580,10 @@ impl EditorPanel for UiCanvasPanel {
                 let mut x = canvas_rect.min.x;
                 while x <= canvas_rect.max.x {
                     painter.line_segment(
-                        [Pos2::new(x, canvas_rect.min.y), Pos2::new(x, canvas_rect.max.y)],
+                        [
+                            Pos2::new(x, canvas_rect.min.y),
+                            Pos2::new(x, canvas_rect.max.y),
+                        ],
                         Stroke::new(0.5, grid_color),
                     );
                     x += gs;
@@ -1512,7 +1592,10 @@ impl EditorPanel for UiCanvasPanel {
                 let mut y = canvas_rect.min.y;
                 while y <= canvas_rect.max.y {
                     painter.line_segment(
-                        [Pos2::new(canvas_rect.min.x, y), Pos2::new(canvas_rect.max.x, y)],
+                        [
+                            Pos2::new(canvas_rect.min.x, y),
+                            Pos2::new(canvas_rect.max.x, y),
+                        ],
                         Stroke::new(0.5, grid_color),
                     );
                     y += gs;
@@ -1659,8 +1742,10 @@ impl EditorPanel for UiCanvasPanel {
                                 crate::spawn::spawn_image_at(
                                     world,
                                     &asset_path,
-                                    lx, ly,
-                                    snap_on, grid,
+                                    lx,
+                                    ly,
+                                    snap_on,
+                                    grid,
                                     active_canvas,
                                 );
                             });
@@ -1677,7 +1762,8 @@ impl EditorPanel for UiCanvasPanel {
 
         // Delete selected widgets
         if response.has_focus() || response.hovered() {
-            if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+            if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+            {
                 let to_delete = all_sel.clone();
                 if !to_delete.is_empty() {
                     state.multi_selection.clear();
@@ -1725,7 +1811,10 @@ impl EditorPanel for UiCanvasPanel {
                 let positions: Vec<_> = entities_to_nudge
                     .iter()
                     .filter_map(|e| {
-                        widget_snapshots.iter().find(|w| w.entity == *e).map(|w| (*e, w.x, w.y))
+                        widget_snapshots
+                            .iter()
+                            .find(|w| w.entity == *e)
+                            .map(|w| (*e, w.x, w.y))
                     })
                     .collect();
                 for (entity, wx, wy) in positions {
@@ -1794,10 +1883,15 @@ impl EditorPanel for UiCanvasPanel {
                                             name.set(format!("{} (copy)", entry.name));
                                         }
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            node.left = bevy::ui::Val::Percent(offset_x / ref_w * 100.0);
-                                            node.top = bevy::ui::Val::Percent(offset_y / ref_h * 100.0);
-                                            node.width = bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
-                                            node.height = bevy::ui::Val::Percent(entry.height / ref_h * 100.0);
+                                            node.left =
+                                                bevy::ui::Val::Percent(offset_x / ref_w * 100.0);
+                                            node.top =
+                                                bevy::ui::Val::Percent(offset_y / ref_h * 100.0);
+                                            node.width =
+                                                bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
+                                            node.height = bevy::ui::Val::Percent(
+                                                entry.height / ref_h * 100.0,
+                                            );
                                             node.position_type = bevy::ui::PositionType::Absolute;
                                         }
                                         if entry.has_bg {
@@ -1851,10 +1945,15 @@ impl EditorPanel for UiCanvasPanel {
                                             name.set(format!("{} (copy)", entry.name));
                                         }
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            node.left = bevy::ui::Val::Percent(entry.x / ref_w * 100.0);
-                                            node.top = bevy::ui::Val::Percent(entry.y / ref_h * 100.0);
-                                            node.width = bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
-                                            node.height = bevy::ui::Val::Percent(entry.height / ref_h * 100.0);
+                                            node.left =
+                                                bevy::ui::Val::Percent(entry.x / ref_w * 100.0);
+                                            node.top =
+                                                bevy::ui::Val::Percent(entry.y / ref_h * 100.0);
+                                            node.width =
+                                                bevy::ui::Val::Percent(entry.width / ref_w * 100.0);
+                                            node.height = bevy::ui::Val::Percent(
+                                                entry.height / ref_h * 100.0,
+                                            );
                                             node.position_type = bevy::ui::PositionType::Absolute;
                                         }
                                         if entry.has_bg {
@@ -2166,12 +2265,20 @@ impl EditorPanel for UiCanvasPanel {
                             let ldx = raw_dx * cos - raw_dy * sin;
                             let ldy = raw_dx * sin + raw_dy * cos;
                             let (l, t, r, b) = resize.handle.sides();
-                            let fx = if r { 1.0 + ldx / resize.bbox_w.max(1.0) }
-                                else if l { 1.0 - ldx / resize.bbox_w.max(1.0) }
-                                else { 1.0 };
-                            let fy = if b { 1.0 + ldy / resize.bbox_h.max(1.0) }
-                                else if t { 1.0 - ldy / resize.bbox_h.max(1.0) }
-                                else { 1.0 };
+                            let fx = if r {
+                                1.0 + ldx / resize.bbox_w.max(1.0)
+                            } else if l {
+                                1.0 - ldx / resize.bbox_w.max(1.0)
+                            } else {
+                                1.0
+                            };
+                            let fy = if b {
+                                1.0 + ldy / resize.bbox_h.max(1.0)
+                            } else if t {
+                                1.0 - ldy / resize.bbox_h.max(1.0)
+                            } else {
+                                1.0
+                            };
                             (resize.orig_scale_x * fx, resize.orig_scale_y * fy)
                         } else {
                             (resize.orig_scale_x * ratio, resize.orig_scale_y * ratio)
@@ -2196,107 +2303,131 @@ impl EditorPanel for UiCanvasPanel {
                         // Fall through: skip the Node-resize branch below but
                         // keep the rest of the frame running (cursor, readout, release).
                     } else {
-                    // Convert pointer delta into the rotation frame of the
-                    // handle. We use single-selection rotation; for multi-select
-                    // rotation is always 0 (selection_bbox returns an AABB).
-                    let single_rot = if resize.entities.len() == 1 {
-                        widget_snapshots
-                            .iter()
-                            .find(|w| w.entity == resize.entities[0])
-                            .map(|w| w.rotation)
-                            .unwrap_or(0.0)
-                    } else {
-                        0.0
-                    };
+                        // Convert pointer delta into the rotation frame of the
+                        // handle. We use single-selection rotation; for multi-select
+                        // rotation is always 0 (selection_bbox returns an AABB).
+                        let single_rot = if resize.entities.len() == 1 {
+                            widget_snapshots
+                                .iter()
+                                .find(|w| w.entity == resize.entities[0])
+                                .map(|w| w.rotation)
+                                .unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
 
-                    // Delta in local (un-rotated) frame. When the widget has a
-                    // non-unit scale, the visible rect is larger than the layout
-                    // rect — divide the visual delta by scale to get the layout delta.
-                    let raw_dx = (pointer.x - resize.start_pos.x) / z;
-                    let raw_dy = (pointer.y - resize.start_pos.y) / z;
-                    let (sin, cos) = ((-single_rot).sin(), (-single_rot).cos());
-                    let visual_dx = raw_dx * cos - raw_dy * sin;
-                    let visual_dy = raw_dx * sin + raw_dy * cos;
-                    let dx = if resize.orig_scale_x.abs() > 0.001 {
-                        visual_dx / resize.orig_scale_x.abs()
-                    } else { visual_dx };
-                    let dy = if resize.orig_scale_y.abs() > 0.001 {
-                        visual_dy / resize.orig_scale_y.abs()
-                    } else { visual_dy };
+                        // Delta in local (un-rotated) frame. When the widget has a
+                        // non-unit scale, the visible rect is larger than the layout
+                        // rect — divide the visual delta by scale to get the layout delta.
+                        let raw_dx = (pointer.x - resize.start_pos.x) / z;
+                        let raw_dy = (pointer.y - resize.start_pos.y) / z;
+                        let (sin, cos) = ((-single_rot).sin(), (-single_rot).cos());
+                        let visual_dx = raw_dx * cos - raw_dy * sin;
+                        let visual_dy = raw_dx * sin + raw_dy * cos;
+                        let dx = if resize.orig_scale_x.abs() > 0.001 {
+                            visual_dx / resize.orig_scale_x.abs()
+                        } else {
+                            visual_dx
+                        };
+                        let dy = if resize.orig_scale_y.abs() > 0.001 {
+                            visual_dy / resize.orig_scale_y.abs()
+                        } else {
+                            visual_dy
+                        };
 
-                    let (l, t, r, b) = resize.handle.sides();
-                    let mut nx = resize.bbox_x + if l { dx } else { 0.0 };
-                    let mut ny = resize.bbox_y + if t { dy } else { 0.0 };
-                    let mut nw = resize.bbox_w + if r { dx } else { 0.0 } - if l { dx } else { 0.0 };
-                    let mut nh = resize.bbox_h + if b { dy } else { 0.0 } - if t { dy } else { 0.0 };
+                        let (l, t, r, b) = resize.handle.sides();
+                        let mut nx = resize.bbox_x + if l { dx } else { 0.0 };
+                        let mut ny = resize.bbox_y + if t { dy } else { 0.0 };
+                        let mut nw =
+                            resize.bbox_w + if r { dx } else { 0.0 } - if l { dx } else { 0.0 };
+                        let mut nh =
+                            resize.bbox_h + if b { dy } else { 0.0 } - if t { dy } else { 0.0 };
 
-                    // Shift = preserve original aspect ratio (corner handles only)
-                    if shift && resize.handle.is_corner() && resize.bbox_h > 0.0 {
-                        let aspect = resize.bbox_w / resize.bbox_h;
-                        // Drive height from width to keep the corner the user is dragging stable.
-                        let forced_h = (nw / aspect).max(10.0);
-                        let dh = forced_h - nh;
-                        nh = forced_h;
-                        if t { ny -= dh; }
-                    }
-
-                    // Alt = resize from center (mirror the delta across the opposite edge)
-                    if alt {
-                        let cx = resize.bbox_x + resize.bbox_w * 0.5;
-                        let cy = resize.bbox_y + resize.bbox_h * 0.5;
-                        if l || r {
-                            // Horizontal: grow/shrink symmetrically around cx
-                            nw = if l { resize.bbox_w - 2.0 * dx } else { resize.bbox_w + 2.0 * dx };
-                            nx = cx - nw * 0.5;
-                        }
-                        if t || b {
-                            nh = if t { resize.bbox_h - 2.0 * dy } else { resize.bbox_h + 2.0 * dy };
-                            ny = cy - nh * 0.5;
-                        }
-                    }
-
-                    // Enforce min size
-                    nw = nw.max(10.0);
-                    nh = nh.max(10.0);
-
-                    let snap_on = state.snap_enabled;
-                    let grid = state.grid_size;
-                    if snap_on {
-                        nw = snap(nw, grid).max(grid);
-                        nh = snap(nh, grid).max(grid);
-                        nx = snap(nx, grid);
-                        ny = snap(ny, grid);
-                    }
-
-                    // Scale factors vs original bbox
-                    let sx = if resize.bbox_w > 0.0 { nw / resize.bbox_w } else { 1.0 };
-                    let sy = if resize.bbox_h > 0.0 { nh / resize.bbox_h } else { 1.0 };
-                    let tx = nx - resize.bbox_x * sx;
-                    let ty = ny - resize.bbox_y * sy;
-
-                    // Apply to each entity: position + size scaled into the new bbox.
-                    let entity_updates: Vec<(Entity, f32, f32, f32, f32)> = resize
-                        .entities
-                        .iter()
-                        .zip(resize.originals.iter())
-                        .map(|(e, (ox, oy, ow, oh))| {
-                            (*e, ox * sx + tx, oy * sy + ty, ow * sx, oh * sy)
-                        })
-                        .collect();
-
-                    commands.push(move |world: &mut World| {
-                        for (entity, nx, ny, nw, nh) in &entity_updates {
-                            if let Ok(mut em) = world.get_entity_mut(*entity) {
-                                if let Some(mut node) = em.get_mut::<Node>() {
-                                    node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
-                                    node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
-                                    node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
-                                    node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
-                                    node.position_type = bevy::ui::PositionType::Absolute;
-                                }
+                        // Shift = preserve original aspect ratio (corner handles only)
+                        if shift && resize.handle.is_corner() && resize.bbox_h > 0.0 {
+                            let aspect = resize.bbox_w / resize.bbox_h;
+                            // Drive height from width to keep the corner the user is dragging stable.
+                            let forced_h = (nw / aspect).max(10.0);
+                            let dh = forced_h - nh;
+                            nh = forced_h;
+                            if t {
+                                ny -= dh;
                             }
                         }
-                    });
+
+                        // Alt = resize from center (mirror the delta across the opposite edge)
+                        if alt {
+                            let cx = resize.bbox_x + resize.bbox_w * 0.5;
+                            let cy = resize.bbox_y + resize.bbox_h * 0.5;
+                            if l || r {
+                                // Horizontal: grow/shrink symmetrically around cx
+                                nw = if l {
+                                    resize.bbox_w - 2.0 * dx
+                                } else {
+                                    resize.bbox_w + 2.0 * dx
+                                };
+                                nx = cx - nw * 0.5;
+                            }
+                            if t || b {
+                                nh = if t {
+                                    resize.bbox_h - 2.0 * dy
+                                } else {
+                                    resize.bbox_h + 2.0 * dy
+                                };
+                                ny = cy - nh * 0.5;
+                            }
+                        }
+
+                        // Enforce min size
+                        nw = nw.max(10.0);
+                        nh = nh.max(10.0);
+
+                        let snap_on = state.snap_enabled;
+                        let grid = state.grid_size;
+                        if snap_on {
+                            nw = snap(nw, grid).max(grid);
+                            nh = snap(nh, grid).max(grid);
+                            nx = snap(nx, grid);
+                            ny = snap(ny, grid);
+                        }
+
+                        // Scale factors vs original bbox
+                        let sx = if resize.bbox_w > 0.0 {
+                            nw / resize.bbox_w
+                        } else {
+                            1.0
+                        };
+                        let sy = if resize.bbox_h > 0.0 {
+                            nh / resize.bbox_h
+                        } else {
+                            1.0
+                        };
+                        let tx = nx - resize.bbox_x * sx;
+                        let ty = ny - resize.bbox_y * sy;
+
+                        // Apply to each entity: position + size scaled into the new bbox.
+                        let entity_updates: Vec<(Entity, f32, f32, f32, f32)> = resize
+                            .entities
+                            .iter()
+                            .zip(resize.originals.iter())
+                            .map(|(e, (ox, oy, ow, oh))| {
+                                (*e, ox * sx + tx, oy * sy + ty, ow * sx, oh * sy)
+                            })
+                            .collect();
+
+                        commands.push(move |world: &mut World| {
+                            for (entity, nx, ny, nw, nh) in &entity_updates {
+                                if let Ok(mut em) = world.get_entity_mut(*entity) {
+                                    if let Some(mut node) = em.get_mut::<Node>() {
+                                        node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
+                                        node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
+                                        node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                        node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
+                                        node.position_type = bevy::ui::PositionType::Absolute;
+                                    }
+                                }
+                            }
+                        });
                     } // end !handled_scale branch
                 }
             }
@@ -2347,13 +2478,13 @@ impl EditorPanel for UiCanvasPanel {
                 0.0,
                 Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 40),
             );
-            painter.rect_stroke(
-                r,
-                0.0,
-                Stroke::new(1.5, accent),
-                egui::StrokeKind::Inside,
+            painter.rect_stroke(r, 0.0, Stroke::new(1.5, accent), egui::StrokeKind::Inside);
+            let label = format!(
+                "{} {:.0}×{:.0}",
+                ds.widget_type.label(),
+                r.width() / z,
+                r.height() / z
             );
-            let label = format!("{} {:.0}×{:.0}", ds.widget_type.label(), r.width() / z, r.height() / z);
             painter.text(
                 Pos2::new(r.center().x, r.max.y + 14.0),
                 egui::Align2::CENTER_CENTER,
@@ -2378,7 +2509,6 @@ impl EditorPanel for UiCanvasPanel {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
                 }
             } else
-
             // Active-drag cursors (must re-assert each frame since egui resets)
             if state.rotating.is_some() {
                 show_rotate_cursor = true;
@@ -2467,7 +2597,10 @@ impl EditorPanel for UiCanvasPanel {
             // Live size/position/rotation readout during drag/resize/rotate
             let readout: Option<(String, Pos2)> = if let Some(resize) = &state.resizing {
                 let rect = Rect::from_min_size(
-                    Pos2::new(canvas_rect.min.x + resize.bbox_x * z, canvas_rect.min.y + resize.bbox_y * z),
+                    Pos2::new(
+                        canvas_rect.min.x + resize.bbox_x * z,
+                        canvas_rect.min.y + resize.bbox_y * z,
+                    ),
                     Vec2::new(resize.bbox_w * z, resize.bbox_h * z),
                 );
                 if resize.is_scale {
@@ -2495,16 +2628,13 @@ impl EditorPanel for UiCanvasPanel {
             } else if let Some(drag) = &state.dragging {
                 let first = drag.entities.first().copied();
                 first.and_then(|e| {
-                    widget_snapshots
-                        .iter()
-                        .find(|w| w.entity == e)
-                        .map(|w| {
-                            let r = ws_screen_rect(w, canvas_rect, z);
-                            (
-                                format!("{:.0}, {:.0}", w.x, w.y),
-                                Pos2::new(r.center().x, r.max.y + 12.0),
-                            )
-                        })
+                    widget_snapshots.iter().find(|w| w.entity == e).map(|w| {
+                        let r = ws_screen_rect(w, canvas_rect, z);
+                        (
+                            format!("{:.0}, {:.0}", w.x, w.y),
+                            Pos2::new(r.center().x, r.max.y + 12.0),
+                        )
+                    })
                 })
             } else if let Some(rot) = &state.rotating {
                 widget_snapshots
@@ -2525,10 +2655,7 @@ impl EditorPanel for UiCanvasPanel {
                 let font = egui::FontId::proportional(11.0);
                 let galley = painter.layout_no_wrap(text.clone(), font.clone(), Color32::WHITE);
                 let padding = Vec2::new(6.0, 3.0);
-                let bg_rect = Rect::from_center_size(
-                    pos,
-                    galley.size() + padding * 2.0,
-                );
+                let bg_rect = Rect::from_center_size(pos, galley.size() + padding * 2.0);
                 painter.rect_filled(bg_rect, 3.0, Color32::from_black_alpha(200));
                 painter.text(pos, egui::Align2::CENTER_CENTER, text, font, Color32::WHITE);
             }
@@ -2646,8 +2773,7 @@ impl EditorPanel for UiCanvasPanel {
                                         if let Some(mut node) = em.get_mut::<Node>() {
                                             node.left = bevy::ui::Val::Px(canvas_x);
                                             node.top = bevy::ui::Val::Px(canvas_y);
-                                            node.position_type =
-                                                bevy::ui::PositionType::Absolute;
+                                            node.position_type = bevy::ui::PositionType::Absolute;
                                         }
                                     }
                                 }
@@ -2813,44 +2939,65 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
         UiWidgetType::Slider => {
             if let Some(d) = world.get::<SliderData>(entity) {
                 WidgetDataSnapshot::Slider {
-                    value: d.value, min: d.min, max: d.max,
+                    value: d.value,
+                    min: d.min,
+                    max: d.max,
                     track_color: c2a(d.track_color),
                     fill_color: c2a(d.fill_color),
                     thumb_color: c2a(d.thumb_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::ProgressBar => {
             if let Some(d) = world.get::<ProgressBarData>(entity) {
                 WidgetDataSnapshot::ProgressBar {
-                    value: d.value, max: d.max, fill_color: c2a(d.fill_color),
+                    value: d.value,
+                    max: d.max,
+                    fill_color: c2a(d.fill_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::HealthBar => {
             if let Some(d) = world.get::<HealthBarData>(entity) {
                 WidgetDataSnapshot::HealthBar {
-                    current: d.current, max: d.max, low_threshold: d.low_threshold,
-                    fill_color: c2a(d.fill_color), low_color: c2a(d.low_color),
+                    current: d.current,
+                    max: d.max,
+                    low_threshold: d.low_threshold,
+                    fill_color: c2a(d.fill_color),
+                    low_color: c2a(d.low_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Checkbox => {
             if let Some(d) = world.get::<CheckboxData>(entity) {
                 WidgetDataSnapshot::Checkbox {
-                    checked: d.checked, label: d.label.clone(),
-                    check_color: c2a(d.check_color), box_color: c2a(d.box_color),
+                    checked: d.checked,
+                    label: d.label.clone(),
+                    check_color: c2a(d.check_color),
+                    box_color: c2a(d.box_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Toggle => {
             if let Some(d) = world.get::<ToggleData>(entity) {
                 WidgetDataSnapshot::Toggle {
-                    on: d.on, label: d.label.clone(),
-                    on_color: c2a(d.on_color), off_color: c2a(d.off_color),
+                    on: d.on,
+                    label: d.label.clone(),
+                    on_color: c2a(d.on_color),
+                    off_color: c2a(d.off_color),
                     knob_color: c2a(d.knob_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Dropdown => {
             if let Some(d) = world.get::<DropdownData>(entity) {
@@ -2859,48 +3006,74 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 } else {
                     d.placeholder.clone()
                 };
-                WidgetDataSnapshot::Dropdown { selected_text: text, open: d.open }
-            } else { WidgetDataSnapshot::None }
+                WidgetDataSnapshot::Dropdown {
+                    selected_text: text,
+                    open: d.open,
+                }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::TextInput => {
             if let Some(d) = world.get::<TextInputData>(entity) {
                 WidgetDataSnapshot::TextInput {
-                    text: d.text.clone(), placeholder: d.placeholder.clone(),
+                    text: d.text.clone(),
+                    placeholder: d.placeholder.clone(),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::TabBar => {
             if let Some(d) = world.get::<TabBarData>(entity) {
                 WidgetDataSnapshot::TabBar {
-                    tabs: d.tabs.clone(), active: d.active,
-                    tab_color: c2a(d.tab_color), active_color: c2a(d.active_color),
+                    tabs: d.tabs.clone(),
+                    active: d.active,
+                    tab_color: c2a(d.tab_color),
+                    active_color: c2a(d.active_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Spinner => {
             if let Some(d) = world.get::<SpinnerData>(entity) {
-                WidgetDataSnapshot::Spinner { color: c2a(d.color) }
-            } else { WidgetDataSnapshot::None }
+                WidgetDataSnapshot::Spinner {
+                    color: c2a(d.color),
+                }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::RadioButton => {
             if let Some(d) = world.get::<RadioButtonData>(entity) {
                 WidgetDataSnapshot::RadioButton {
-                    selected: d.selected, label: d.label.clone(),
+                    selected: d.selected,
+                    label: d.label.clone(),
                     active_color: c2a(d.active_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Modal => {
             if let Some(d) = world.get::<ModalData>(entity) {
-                WidgetDataSnapshot::Modal { title: d.title.clone() }
-            } else { WidgetDataSnapshot::None }
+                WidgetDataSnapshot::Modal {
+                    title: d.title.clone(),
+                }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::DraggableWindow => {
             if let Some(d) = world.get::<DraggableWindowData>(entity) {
                 WidgetDataSnapshot::DraggableWindow {
-                    title: d.title.clone(), title_bar_color: c2a(d.title_bar_color),
+                    title: d.title.clone(),
+                    title_bar_color: c2a(d.title_bar_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         // ── HUD ──
         UiWidgetType::Crosshair => {
@@ -2911,16 +3084,22 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     size: d.size,
                     thickness: d.thickness,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::AmmoCounter => {
             if let Some(d) = world.get::<AmmoCounterData>(entity) {
                 WidgetDataSnapshot::AmmoCounter {
-                    current: d.current, max: d.max,
-                    color: c2a(d.color), low_color: c2a(d.low_color),
+                    current: d.current,
+                    max: d.max,
+                    color: c2a(d.color),
+                    low_color: c2a(d.low_color),
                     low_threshold: d.low_threshold,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Compass => {
             if let Some(d) = world.get::<CompassData>(entity) {
@@ -2928,7 +3107,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     heading: d.heading,
                     color: c2a(d.text_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::StatusEffectBar => {
             if let Some(d) = world.get::<StatusEffectBarData>(entity) {
@@ -2936,7 +3117,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     effect_count: d.effects.len(),
                     color: [0.3, 0.7, 1.0, 1.0],
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::NotificationFeed => {
             if let Some(d) = world.get::<NotificationFeedData>(entity) {
@@ -2944,7 +3127,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     count: d.max_visible,
                     color: [0.9, 0.9, 0.9, 1.0],
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::RadialMenu => {
             if let Some(d) = world.get::<RadialMenuData>(entity) {
@@ -2952,7 +3137,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     item_count: d.items.len().max(1),
                     color: c2a(d.bg_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Minimap => {
             if let Some(d) = world.get::<MinimapData>(entity) {
@@ -2961,7 +3148,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     bg_color: c2a(d.bg_color),
                     border_color: c2a(d.border_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         // ── Shapes ──
         UiWidgetType::Circle => {
@@ -2971,7 +3160,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     stroke_color: c2a(d.stroke_color),
                     stroke_width: d.stroke_width,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Arc => {
             if let Some(d) = world.get::<ArcShape>(entity) {
@@ -2980,7 +3171,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     start_angle: d.start_angle,
                     end_angle: d.end_angle,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Triangle => {
             if let Some(d) = world.get::<TriangleShape>(entity) {
@@ -2988,7 +3181,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     color: c2a(d.color),
                     stroke_color: c2a(d.stroke_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Line => {
             if let Some(d) = world.get::<LineShape>(entity) {
@@ -2996,7 +3191,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     color: c2a(d.color),
                     thickness: d.thickness,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Polygon => {
             if let Some(d) = world.get::<PolygonShape>(entity) {
@@ -3005,7 +3202,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     stroke_color: c2a(d.stroke_color),
                     sides: d.sides,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Rectangle => {
             if let Some(d) = world.get::<RectangleShape>(entity) {
@@ -3015,7 +3214,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     stroke_width: d.stroke_width,
                     corner_radius: d.corner_radius,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Wedge => {
             if let Some(d) = world.get::<WedgeShape>(entity) {
@@ -3024,7 +3225,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     start_angle: d.start_angle,
                     end_angle: d.end_angle,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::RadialProgress => {
             if let Some(d) = world.get::<RadialProgressShape>(entity) {
@@ -3033,25 +3236,35 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     track_color: c2a(d.bg_color),
                     value: d.value,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         // ── Menu ──
         UiWidgetType::InventoryGrid => {
             if let Some(d) = world.get::<InventoryGridData>(entity) {
                 WidgetDataSnapshot::InventoryGrid {
-                    columns: d.columns, rows: d.rows, slot_size: d.slot_size,
+                    columns: d.columns,
+                    rows: d.rows,
+                    slot_size: d.slot_size,
                     slot_bg_color: c2a(d.slot_bg_color),
                     slot_border_color: c2a(d.slot_border_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::DialogBox => {
             if let Some(d) = world.get::<DialogBoxData>(entity) {
                 WidgetDataSnapshot::DialogBox {
-                    speaker: d.speaker.clone(), text: d.text.clone(),
-                    bg_color: c2a(d.bg_color), speaker_color: c2a(d.speaker_color),
+                    speaker: d.speaker.clone(),
+                    text: d.text.clone(),
+                    bg_color: c2a(d.bg_color),
+                    speaker_color: c2a(d.speaker_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::ObjectiveTracker => {
             if let Some(d) = world.get::<ObjectiveTrackerData>(entity) {
@@ -3060,57 +3273,80 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     objective_count: d.objectives.len(),
                     title_color: c2a(d.title_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::LoadingScreen => {
             if let Some(d) = world.get::<LoadingScreenData>(entity) {
                 WidgetDataSnapshot::LoadingScreen {
-                    progress: d.progress, message: d.message.clone(),
-                    bar_color: c2a(d.bar_color), bg_color: c2a(d.bg_color),
+                    progress: d.progress,
+                    message: d.message.clone(),
+                    bar_color: c2a(d.bar_color),
+                    bg_color: c2a(d.bg_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::KeybindRow => {
             if let Some(d) = world.get::<KeybindRowData>(entity) {
                 WidgetDataSnapshot::KeybindRow {
-                    action: d.action.clone(), binding: d.binding.clone(),
+                    action: d.action.clone(),
+                    binding: d.binding.clone(),
                     key_bg_color: c2a(d.key_bg_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::SettingsRow => {
             if let Some(d) = world.get::<SettingsRowData>(entity) {
                 WidgetDataSnapshot::SettingsRow {
-                    label: d.label.clone(), value: d.value.clone(),
+                    label: d.label.clone(),
+                    value: d.value.clone(),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         // ── Extra ──
         UiWidgetType::Separator => {
             if let Some(d) = world.get::<SeparatorData>(entity) {
                 WidgetDataSnapshot::Separator {
                     horizontal: matches!(d.direction, SeparatorDirection::Horizontal),
-                    color: c2a(d.color), thickness: d.thickness,
+                    color: c2a(d.color),
+                    thickness: d.thickness,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::NumberInput => {
             if let Some(d) = world.get::<NumberInputData>(entity) {
                 WidgetDataSnapshot::NumberInput {
-                    value: d.value, precision: d.precision,
-                    bg_color: c2a(d.bg_color), button_color: c2a(d.button_color),
+                    value: d.value,
+                    precision: d.precision,
+                    bg_color: c2a(d.bg_color),
+                    button_color: c2a(d.button_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::VerticalSlider => {
             if let Some(d) = world.get::<VerticalSliderData>(entity) {
                 WidgetDataSnapshot::VerticalSlider {
-                    value: d.value, min: d.min, max: d.max,
+                    value: d.value,
+                    min: d.min,
+                    max: d.max,
                     track_color: c2a(d.track_color),
                     fill_color: c2a(d.fill_color),
                     thumb_color: c2a(d.thumb_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::Scrollbar => {
             if let Some(d) = world.get::<ScrollbarData>(entity) {
@@ -3121,7 +3357,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     track_color: c2a(d.track_color),
                     thumb_color: c2a(d.thumb_color),
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         UiWidgetType::List => {
             if let Some(d) = world.get::<ListData>(entity) {
@@ -3131,7 +3369,9 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     selected_bg_color: c2a(d.selected_bg_color),
                     item_height: d.item_height,
                 }
-            } else { WidgetDataSnapshot::None }
+            } else {
+                WidgetDataSnapshot::None
+            }
         }
         _ => WidgetDataSnapshot::None,
     }
@@ -3191,22 +3431,76 @@ fn paint_widget_preview(
 
     // Dispatch to per-type painter, or fall back to generic
     match &ws.widget_data {
-        WidgetDataSnapshot::Slider { value, min, max, track_color, fill_color, thumb_color } => {
-            paint_slider(painter, rect, z, rounding, *value, *min, *max, track_color, fill_color, thumb_color);
+        WidgetDataSnapshot::Slider {
+            value,
+            min,
+            max,
+            track_color,
+            fill_color,
+            thumb_color,
+        } => {
+            paint_slider(
+                painter,
+                rect,
+                z,
+                rounding,
+                *value,
+                *min,
+                *max,
+                track_color,
+                fill_color,
+                thumb_color,
+            );
         }
-        WidgetDataSnapshot::ProgressBar { value, max, fill_color } => {
+        WidgetDataSnapshot::ProgressBar {
+            value,
+            max,
+            fill_color,
+        } => {
             paint_progress_bar(painter, ws, rect, z, rounding, *value, *max, fill_color);
         }
-        WidgetDataSnapshot::HealthBar { current, max, low_threshold, fill_color, low_color } => {
+        WidgetDataSnapshot::HealthBar {
+            current,
+            max,
+            low_threshold,
+            fill_color,
+            low_color,
+        } => {
             let ratio = if *max > 0.0 { *current / *max } else { 0.0 };
-            let color = if ratio < *low_threshold { low_color } else { fill_color };
+            let color = if ratio < *low_threshold {
+                low_color
+            } else {
+                fill_color
+            };
             paint_progress_bar(painter, ws, rect, z, rounding, *current, *max, color);
         }
-        WidgetDataSnapshot::Checkbox { checked, label, check_color, box_color } => {
-            paint_checkbox(painter, ws, rect, z, *checked, label, check_color, box_color);
+        WidgetDataSnapshot::Checkbox {
+            checked,
+            label,
+            check_color,
+            box_color,
+        } => {
+            paint_checkbox(
+                painter,
+                ws,
+                rect,
+                z,
+                *checked,
+                label,
+                check_color,
+                box_color,
+            );
         }
-        WidgetDataSnapshot::Toggle { on, label, on_color, off_color, knob_color } => {
-            paint_toggle(painter, ws, rect, z, *on, label, on_color, off_color, knob_color);
+        WidgetDataSnapshot::Toggle {
+            on,
+            label,
+            on_color,
+            off_color,
+            knob_color,
+        } => {
+            paint_toggle(
+                painter, ws, rect, z, *on, label, on_color, off_color, knob_color,
+            );
         }
         WidgetDataSnapshot::Dropdown { selected_text, .. } => {
             paint_dropdown(painter, ws, rect, z, rounding, selected_text);
@@ -3214,32 +3508,67 @@ fn paint_widget_preview(
         WidgetDataSnapshot::TextInput { text, placeholder } => {
             paint_text_input(painter, ws, rect, z, rounding, text, placeholder);
         }
-        WidgetDataSnapshot::TabBar { tabs, active, tab_color, active_color } => {
+        WidgetDataSnapshot::TabBar {
+            tabs,
+            active,
+            tab_color,
+            active_color,
+        } => {
             paint_tab_bar(painter, ws, rect, z, tabs, *active, tab_color, active_color);
         }
         WidgetDataSnapshot::Spinner { color } => {
             paint_spinner(painter, rect, z, color);
         }
-        WidgetDataSnapshot::RadioButton { selected, label, active_color } => {
+        WidgetDataSnapshot::RadioButton {
+            selected,
+            label,
+            active_color,
+        } => {
             paint_radio_button(painter, ws, rect, z, *selected, label, active_color);
         }
         WidgetDataSnapshot::Modal { title } => {
             paint_window_like(painter, ws, rect, z, rounding, title, &ws.bg_color);
         }
-        WidgetDataSnapshot::DraggableWindow { title, title_bar_color } => {
+        WidgetDataSnapshot::DraggableWindow {
+            title,
+            title_bar_color,
+        } => {
             paint_window_like(painter, ws, rect, z, rounding, title, title_bar_color);
         }
         // ── HUD ──
-        WidgetDataSnapshot::Crosshair { style, color, size, thickness } => {
+        WidgetDataSnapshot::Crosshair {
+            style,
+            color,
+            size,
+            thickness,
+        } => {
             paint_crosshair(painter, rect, z, style, color, *size, *thickness);
         }
-        WidgetDataSnapshot::AmmoCounter { current, max, color, low_color, low_threshold } => {
-            paint_ammo_counter(painter, rect, z, *current, *max, color, low_color, *low_threshold);
+        WidgetDataSnapshot::AmmoCounter {
+            current,
+            max,
+            color,
+            low_color,
+            low_threshold,
+        } => {
+            paint_ammo_counter(
+                painter,
+                rect,
+                z,
+                *current,
+                *max,
+                color,
+                low_color,
+                *low_threshold,
+            );
         }
         WidgetDataSnapshot::Compass { heading, color } => {
             paint_compass(painter, rect, z, *heading, color);
         }
-        WidgetDataSnapshot::StatusEffectBar { effect_count, color } => {
+        WidgetDataSnapshot::StatusEffectBar {
+            effect_count,
+            color,
+        } => {
             paint_status_effect_bar(painter, rect, z, *effect_count, color);
         }
         WidgetDataSnapshot::NotificationFeed { count, color } => {
@@ -3248,68 +3577,243 @@ fn paint_widget_preview(
         WidgetDataSnapshot::RadialMenu { item_count, color } => {
             paint_radial_menu(painter, rect, z, *item_count, color);
         }
-        WidgetDataSnapshot::Minimap { shape, bg_color, border_color } => {
+        WidgetDataSnapshot::Minimap {
+            shape,
+            bg_color,
+            border_color,
+        } => {
             paint_minimap(painter, rect, z, shape, bg_color, border_color);
         }
         // ── Shapes ──
-        WidgetDataSnapshot::ShapeCircle { color, stroke_color, stroke_width } => {
+        WidgetDataSnapshot::ShapeCircle {
+            color,
+            stroke_color,
+            stroke_width,
+        } => {
             paint_shape_circle(painter, rect, z, color, stroke_color, *stroke_width);
         }
-        WidgetDataSnapshot::ShapeArc { color, start_angle, end_angle } => {
-            paint_shape_arc(painter, rect, z, ws.rotation, color, *start_angle, *end_angle);
+        WidgetDataSnapshot::ShapeArc {
+            color,
+            start_angle,
+            end_angle,
+        } => {
+            paint_shape_arc(
+                painter,
+                rect,
+                z,
+                ws.rotation,
+                color,
+                *start_angle,
+                *end_angle,
+            );
         }
-        WidgetDataSnapshot::ShapeTriangle { color, stroke_color } => {
+        WidgetDataSnapshot::ShapeTriangle {
+            color,
+            stroke_color,
+        } => {
             paint_shape_triangle(painter, rect, z, ws.rotation, color, stroke_color);
         }
         WidgetDataSnapshot::ShapeLine { color, thickness } => {
             paint_shape_line(painter, rect, z, ws.rotation, color, *thickness);
         }
-        WidgetDataSnapshot::ShapePolygon { color, stroke_color, sides } => {
+        WidgetDataSnapshot::ShapePolygon {
+            color,
+            stroke_color,
+            sides,
+        } => {
             paint_shape_polygon(painter, rect, z, ws.rotation, color, stroke_color, *sides);
         }
-        WidgetDataSnapshot::ShapeRectangle { color, stroke_color, stroke_width, corner_radius } => {
-            paint_shape_rectangle(painter, rect, ws.rotation, color, stroke_color, *stroke_width, corner_radius);
+        WidgetDataSnapshot::ShapeRectangle {
+            color,
+            stroke_color,
+            stroke_width,
+            corner_radius,
+        } => {
+            paint_shape_rectangle(
+                painter,
+                rect,
+                ws.rotation,
+                color,
+                stroke_color,
+                *stroke_width,
+                corner_radius,
+            );
         }
-        WidgetDataSnapshot::ShapeWedge { color, start_angle, end_angle } => {
-            paint_shape_wedge(painter, rect, z, ws.rotation, color, *start_angle, *end_angle);
+        WidgetDataSnapshot::ShapeWedge {
+            color,
+            start_angle,
+            end_angle,
+        } => {
+            paint_shape_wedge(
+                painter,
+                rect,
+                z,
+                ws.rotation,
+                color,
+                *start_angle,
+                *end_angle,
+            );
         }
-        WidgetDataSnapshot::ShapeRadialProgress { color, track_color, value } => {
+        WidgetDataSnapshot::ShapeRadialProgress {
+            color,
+            track_color,
+            value,
+        } => {
             paint_shape_radial_progress(painter, rect, z, ws.rotation, color, track_color, *value);
         }
         // ── Menu ──
-        WidgetDataSnapshot::InventoryGrid { columns, rows, slot_size, slot_bg_color, slot_border_color } => {
-            paint_inventory_grid(painter, ws, rect, z, *columns, *rows, *slot_size, slot_bg_color, slot_border_color);
+        WidgetDataSnapshot::InventoryGrid {
+            columns,
+            rows,
+            slot_size,
+            slot_bg_color,
+            slot_border_color,
+        } => {
+            paint_inventory_grid(
+                painter,
+                ws,
+                rect,
+                z,
+                *columns,
+                *rows,
+                *slot_size,
+                slot_bg_color,
+                slot_border_color,
+            );
         }
-        WidgetDataSnapshot::DialogBox { speaker, text, bg_color, speaker_color } => {
-            paint_dialog_box(painter, ws, rect, z, rounding, speaker, text, bg_color, speaker_color);
+        WidgetDataSnapshot::DialogBox {
+            speaker,
+            text,
+            bg_color,
+            speaker_color,
+        } => {
+            paint_dialog_box(
+                painter,
+                ws,
+                rect,
+                z,
+                rounding,
+                speaker,
+                text,
+                bg_color,
+                speaker_color,
+            );
         }
-        WidgetDataSnapshot::ObjectiveTracker { title, objective_count, title_color } => {
-            paint_objective_tracker(painter, ws, rect, z, rounding, title, *objective_count, title_color);
+        WidgetDataSnapshot::ObjectiveTracker {
+            title,
+            objective_count,
+            title_color,
+        } => {
+            paint_objective_tracker(
+                painter,
+                ws,
+                rect,
+                z,
+                rounding,
+                title,
+                *objective_count,
+                title_color,
+            );
         }
-        WidgetDataSnapshot::LoadingScreen { progress, message, bar_color, bg_color } => {
+        WidgetDataSnapshot::LoadingScreen {
+            progress,
+            message,
+            bar_color,
+            bg_color,
+        } => {
             paint_loading_screen(painter, rect, z, *progress, message, bar_color, bg_color);
         }
-        WidgetDataSnapshot::KeybindRow { action, binding, key_bg_color } => {
+        WidgetDataSnapshot::KeybindRow {
+            action,
+            binding,
+            key_bg_color,
+        } => {
             paint_keybind_row(painter, ws, rect, z, action, binding, key_bg_color);
         }
         WidgetDataSnapshot::SettingsRow { label, value } => {
             paint_settings_row(painter, ws, rect, z, label, value);
         }
         // ── Extra ──
-        WidgetDataSnapshot::Separator { horizontal, color, thickness } => {
+        WidgetDataSnapshot::Separator {
+            horizontal,
+            color,
+            thickness,
+        } => {
             paint_separator(painter, rect, z, *horizontal, color, *thickness);
         }
-        WidgetDataSnapshot::NumberInput { value, precision, bg_color, button_color } => {
-            paint_number_input(painter, ws, rect, z, rounding, *value, *precision, bg_color, button_color);
+        WidgetDataSnapshot::NumberInput {
+            value,
+            precision,
+            bg_color,
+            button_color,
+        } => {
+            paint_number_input(
+                painter,
+                ws,
+                rect,
+                z,
+                rounding,
+                *value,
+                *precision,
+                bg_color,
+                button_color,
+            );
         }
-        WidgetDataSnapshot::VerticalSlider { value, min, max, track_color, fill_color, thumb_color } => {
-            paint_vertical_slider(painter, rect, z, *value, *min, *max, track_color, fill_color, thumb_color);
+        WidgetDataSnapshot::VerticalSlider {
+            value,
+            min,
+            max,
+            track_color,
+            fill_color,
+            thumb_color,
+        } => {
+            paint_vertical_slider(
+                painter,
+                rect,
+                z,
+                *value,
+                *min,
+                *max,
+                track_color,
+                fill_color,
+                thumb_color,
+            );
         }
-        WidgetDataSnapshot::Scrollbar { vertical, viewport_fraction, position, track_color, thumb_color } => {
-            paint_scrollbar(painter, rect, z, *vertical, *viewport_fraction, *position, track_color, thumb_color);
+        WidgetDataSnapshot::Scrollbar {
+            vertical,
+            viewport_fraction,
+            position,
+            track_color,
+            thumb_color,
+        } => {
+            paint_scrollbar(
+                painter,
+                rect,
+                z,
+                *vertical,
+                *viewport_fraction,
+                *position,
+                track_color,
+                thumb_color,
+            );
         }
-        WidgetDataSnapshot::ListWidget { item_count, bg_color, selected_bg_color, item_height } => {
-            paint_list_widget(painter, ws, rect, z, rounding, *item_count, bg_color, selected_bg_color, *item_height);
+        WidgetDataSnapshot::ListWidget {
+            item_count,
+            bg_color,
+            selected_bg_color,
+            item_height,
+        } => {
+            paint_list_widget(
+                painter,
+                ws,
+                rect,
+                z,
+                rounding,
+                *item_count,
+                bg_color,
+                selected_bg_color,
+                *item_height,
+            );
         }
         WidgetDataSnapshot::None => {
             // Generic: text widget, container, panel, image
@@ -3320,7 +3824,12 @@ fn paint_widget_preview(
     // ── Widget border (selection outline is drawn by the rotation-aware gizmo) ──
     if !is_sel && ws.stroke_width > 0.0 && ws.has_border {
         let sc = arr_to_c32(&ws.border_color);
-        painter.rect_stroke(rect, rounding, Stroke::new(ws.stroke_width * z, sc), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            rect,
+            rounding,
+            Stroke::new(ws.stroke_width * z, sc),
+            egui::StrokeKind::Outside,
+        );
     }
 
     // ── Resize handles ──────────────────────────────────────────────
@@ -3329,7 +3838,13 @@ fn paint_widget_preview(
 
 // ── Individual widget painters ──────────────────────────────────────────────
 
-fn paint_generic(painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding) {
+fn paint_generic(
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+) {
     // Image widget with texture — draw as a rotated quad so UiTransform.rotation
     // shows in the preview (egui's painter.image() is axis-aligned only).
     if let Some(tex_id) = ws.image_texture_id {
@@ -3395,9 +3910,16 @@ fn paint_generic(painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f3
 }
 
 fn paint_slider(
-    painter: &egui::Painter, rect: Rect, z: f32, _rounding: egui::Rounding,
-    value: f32, min: f32, max: f32,
-    track_color: &[f32; 4], fill_color: &[f32; 4], thumb_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    _rounding: egui::Rounding,
+    value: f32,
+    min: f32,
+    max: f32,
+    track_color: &[f32; 4],
+    fill_color: &[f32; 4],
+    thumb_color: &[f32; 4],
 ) {
     // Track width already follows `rect.width()`, so horizontal scaling is
     // automatic. Use the rect height to scale the track thickness and thumb.
@@ -3414,7 +3936,11 @@ fn paint_slider(
     painter.rect_filled(track_rect, track_round, arr_to_c32(track_color));
 
     // Fill
-    let ratio = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+    let ratio = if max > min {
+        ((value - min) / (max - min)).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let fill_w = rect.width() * ratio;
     if fill_w > 0.5 {
         let fill_rect = Rect::from_min_size(track_rect.min, Vec2::new(fill_w, track_h));
@@ -3432,15 +3958,29 @@ fn paint_slider(
 }
 
 fn paint_progress_bar(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    value: f32, max: f32, fill_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    value: f32,
+    max: f32,
+    fill_color: &[f32; 4],
 ) {
     // Background
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(40, 40, 45) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgb(40, 40, 45)
+    };
     painter.rect_filled(rect, rounding, bg);
 
     // Fill bar
-    let ratio = if max > 0.0 { (value / max).clamp(0.0, 1.0) } else { 0.0 };
+    let ratio = if max > 0.0 {
+        (value / max).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let fill_w = rect.width() * ratio;
     if fill_w > 0.5 {
         let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_w, rect.height()));
@@ -3449,8 +3989,14 @@ fn paint_progress_bar(
 }
 
 fn paint_checkbox(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    checked: bool, label: &str, check_color: &[f32; 4], box_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    checked: bool,
+    label: &str,
+    check_color: &[f32; 4],
+    box_color: &[f32; 4],
 ) {
     // Scale box with UiTransform (use min scale so it stays square)
     let s = ws.scale_x.abs().min(ws.scale_y.abs()).max(0.05);
@@ -3462,7 +4008,12 @@ fn paint_checkbox(
 
     // Box
     painter.rect_filled(box_rect, box_round, arr_to_c32(box_color));
-    painter.rect_stroke(box_rect, box_round, Stroke::new(1.5 * z, Color32::from_rgb(120, 120, 130)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        box_rect,
+        box_round,
+        Stroke::new(1.5 * z, Color32::from_rgb(120, 120, 130)),
+        egui::StrokeKind::Outside,
+    );
 
     // Checkmark
     if checked {
@@ -3485,9 +4036,15 @@ fn paint_checkbox(
 }
 
 fn paint_toggle(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    on: bool, label: &str,
-    on_color: &[f32; 4], off_color: &[f32; 4], knob_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    on: bool,
+    label: &str,
+    on_color: &[f32; 4],
+    off_color: &[f32; 4],
+    knob_color: &[f32; 4],
 ) {
     // Respect UiTransform.scale in the preview: bump the effective zoom per axis
     // so the toggle visibly scales with the widget's transform.
@@ -3499,10 +4056,15 @@ fn paint_toggle(
     let track_w = (44.0 * zx).max(20.0);
     let track_h = (24.0 * zy).max(12.0);
     let track_y = rect.center().y - track_h / 2.0;
-    let track_rect = Rect::from_min_size(Pos2::new(rect.min.x, track_y), Vec2::new(track_w, track_h));
+    let track_rect =
+        Rect::from_min_size(Pos2::new(rect.min.x, track_y), Vec2::new(track_w, track_h));
     let track_round = round_f(track_h / 2.0);
 
-    let track_color = if on { arr_to_c32(on_color) } else { arr_to_c32(off_color) };
+    let track_color = if on {
+        arr_to_c32(on_color)
+    } else {
+        arr_to_c32(off_color)
+    };
     painter.rect_filled(track_rect, track_round, track_color);
 
     // Knob
@@ -3512,7 +4074,11 @@ fn paint_toggle(
     } else {
         track_rect.min.x + knob_r + 2.0 * zx
     };
-    painter.circle_filled(Pos2::new(knob_x, rect.center().y), knob_r, arr_to_c32(knob_color));
+    painter.circle_filled(
+        Pos2::new(knob_x, rect.center().y),
+        knob_r,
+        arr_to_c32(knob_color),
+    );
 
     // Label
     if !label.is_empty() {
@@ -3528,12 +4094,25 @@ fn paint_toggle(
 }
 
 fn paint_dropdown(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
     selected_text: &str,
 ) {
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(45, 45, 50) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgb(45, 45, 50)
+    };
     painter.rect_filled(rect, rounding, bg);
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(80, 80, 90)),
+        egui::StrokeKind::Outside,
+    );
 
     // Text
     let tc = arr_to_c32(&ws.text_color);
@@ -3558,12 +4137,26 @@ fn paint_dropdown(
 }
 
 fn paint_text_input(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    text: &str, placeholder: &str,
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    text: &str,
+    placeholder: &str,
 ) {
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(35, 35, 40) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgb(35, 35, 40)
+    };
     painter.rect_filled(rect, rounding, bg);
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(80, 80, 90)),
+        egui::StrokeKind::Outside,
+    );
 
     let pad = 8.0 * z;
     let (display_text, color) = if text.is_empty() {
@@ -3598,17 +4191,30 @@ fn paint_text_input(
 }
 
 fn paint_tab_bar(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    tabs: &[String], active: usize, tab_color: &[f32; 4], active_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    tabs: &[String],
+    active: usize,
+    tab_color: &[f32; 4],
+    active_color: &[f32; 4],
 ) {
-    if tabs.is_empty() { return; }
+    if tabs.is_empty() {
+        return;
+    }
     let tab_w = rect.width() / tabs.len() as f32;
     let tc = arr_to_c32(&ws.text_color);
 
     for (i, tab) in tabs.iter().enumerate() {
         let x = rect.min.x + tab_w * i as f32;
-        let tab_rect = Rect::from_min_size(Pos2::new(x, rect.min.y), Vec2::new(tab_w, rect.height()));
-        let color = if i == active { arr_to_c32(active_color) } else { arr_to_c32(tab_color) };
+        let tab_rect =
+            Rect::from_min_size(Pos2::new(x, rect.min.y), Vec2::new(tab_w, rect.height()));
+        let color = if i == active {
+            arr_to_c32(active_color)
+        } else {
+            arr_to_c32(tab_color)
+        };
         painter.rect_filled(tab_rect, 0.0, color);
 
         painter.text(
@@ -3641,8 +4247,13 @@ fn paint_spinner(painter: &egui::Painter, rect: Rect, z: f32, color: &[f32; 4]) 
 }
 
 fn paint_radio_button(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    selected: bool, label: &str, active_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    selected: bool,
+    label: &str,
+    active_color: &[f32; 4],
 ) {
     let s = ws.scale_x.abs().min(ws.scale_y.abs()).max(0.05);
     let z = z * s;
@@ -3652,7 +4263,8 @@ fn paint_radio_button(
 
     // Outer circle
     painter.circle_stroke(
-        Pos2::new(cx, cy), circle_r,
+        Pos2::new(cx, cy),
+        circle_r,
         Stroke::new(1.5 * z, Color32::from_rgb(120, 120, 130)),
     );
 
@@ -3675,17 +4287,31 @@ fn paint_radio_button(
 }
 
 fn paint_window_like(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    title: &str, title_bar_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    title: &str,
+    title_bar_color: &[f32; 4],
 ) {
     // Body
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(40, 40, 48) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgb(40, 40, 48)
+    };
     painter.rect_filled(rect, rounding, bg);
 
     // Title bar
     let tb_h = (28.0 * z).max(12.0);
     let tb_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), tb_h));
-    let tb_round = egui::Rounding { nw: rounding.nw, ne: rounding.ne, se: 0, sw: 0 };
+    let tb_round = egui::Rounding {
+        nw: rounding.nw,
+        ne: rounding.ne,
+        se: 0,
+        sw: 0,
+    };
     painter.rect_filled(tb_rect, tb_round, arr_to_c32(title_bar_color));
 
     // Title text
@@ -3698,14 +4324,24 @@ fn paint_window_like(
     );
 
     // Border
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(70, 70, 80)),
+        egui::StrokeKind::Outside,
+    );
 }
 
 // ── HUD widget painters ────────────────────────────────────────────────────
 
 fn paint_crosshair(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    style: &str, color: &[f32; 4], _size: f32, thickness: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    style: &str,
+    color: &[f32; 4],
+    _size: f32,
+    thickness: f32,
 ) {
     let center = rect.center();
     let c = arr_to_c32(color);
@@ -3723,11 +4359,17 @@ fn paint_crosshair(
         "CrossDot" => {
             // Cross lines
             painter.line_segment(
-                [Pos2::new(center.x - arm, center.y), Pos2::new(center.x + arm, center.y)],
+                [
+                    Pos2::new(center.x - arm, center.y),
+                    Pos2::new(center.x + arm, center.y),
+                ],
                 Stroke::new(sw, c),
             );
             painter.line_segment(
-                [Pos2::new(center.x, center.y - arm), Pos2::new(center.x, center.y + arm)],
+                [
+                    Pos2::new(center.x, center.y - arm),
+                    Pos2::new(center.x, center.y + arm),
+                ],
                 Stroke::new(sw, c),
             );
             painter.circle_filled(center, (2.0 * z).max(1.0), c);
@@ -3735,11 +4377,17 @@ fn paint_crosshair(
         _ => {
             // "Cross" (default)
             painter.line_segment(
-                [Pos2::new(center.x - arm, center.y), Pos2::new(center.x + arm, center.y)],
+                [
+                    Pos2::new(center.x - arm, center.y),
+                    Pos2::new(center.x + arm, center.y),
+                ],
                 Stroke::new(sw, c),
             );
             painter.line_segment(
-                [Pos2::new(center.x, center.y - arm), Pos2::new(center.x, center.y + arm)],
+                [
+                    Pos2::new(center.x, center.y - arm),
+                    Pos2::new(center.x, center.y + arm),
+                ],
                 Stroke::new(sw, c),
             );
         }
@@ -3747,13 +4395,27 @@ fn paint_crosshair(
 }
 
 fn paint_ammo_counter(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    current: u32, max: u32, color: &[f32; 4], low_color: &[f32; 4], low_threshold: u32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    current: u32,
+    max: u32,
+    color: &[f32; 4],
+    low_color: &[f32; 4],
+    low_threshold: u32,
 ) {
     // Background
-    painter.rect_filled(rect, round_f(4.0 * z), Color32::from_rgba_unmultiplied(20, 20, 25, 200));
+    painter.rect_filled(
+        rect,
+        round_f(4.0 * z),
+        Color32::from_rgba_unmultiplied(20, 20, 25, 200),
+    );
 
-    let c = if current <= low_threshold { arr_to_c32(low_color) } else { arr_to_c32(color) };
+    let c = if current <= low_threshold {
+        arr_to_c32(low_color)
+    } else {
+        arr_to_c32(color)
+    };
     let text = format!("{}/{}", current, max);
     painter.text(
         rect.center(),
@@ -3764,12 +4426,13 @@ fn paint_ammo_counter(
     );
 }
 
-fn paint_compass(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    heading: f32, color: &[f32; 4],
-) {
+fn paint_compass(painter: &egui::Painter, rect: Rect, z: f32, heading: f32, color: &[f32; 4]) {
     // Background bar
-    painter.rect_filled(rect, round_f(2.0 * z), Color32::from_rgba_unmultiplied(20, 20, 25, 180));
+    painter.rect_filled(
+        rect,
+        round_f(2.0 * z),
+        Color32::from_rgba_unmultiplied(20, 20, 25, 180),
+    );
 
     let c = arr_to_c32(color);
     let tick_c = Color32::from_rgba_unmultiplied(100, 100, 110, 200);
@@ -3781,8 +4444,12 @@ fn paint_compass(
         let deg = i as f32 * 90.0;
         // Offset from heading, wrapped to -180..180
         let mut diff = deg - heading;
-        while diff > 180.0 { diff -= 360.0; }
-        while diff < -180.0 { diff += 360.0; }
+        while diff > 180.0 {
+            diff -= 360.0;
+        }
+        while diff < -180.0 {
+            diff += 360.0;
+        }
         let frac = diff / 180.0; // -1..1
         let x = center_x + frac * w * 0.5;
         if x >= rect.min.x && x <= rect.max.x {
@@ -3804,17 +4471,25 @@ fn paint_compass(
 
     // Center indicator triangle
     painter.line_segment(
-        [Pos2::new(center_x, rect.min.y), Pos2::new(center_x, rect.min.y + 4.0 * z)],
+        [
+            Pos2::new(center_x, rect.min.y),
+            Pos2::new(center_x, rect.min.y + 4.0 * z),
+        ],
         Stroke::new(2.0 * z, c),
     );
 }
 
 fn paint_status_effect_bar(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    effect_count: usize, color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    effect_count: usize,
+    color: &[f32; 4],
 ) {
     let count = effect_count.max(3); // show at least 3 placeholder slots
-    let slot_size = (rect.height() * 0.8).min(rect.width() / count as f32 - 2.0 * z).max(8.0);
+    let slot_size = (rect.height() * 0.8)
+        .min(rect.width() / count as f32 - 2.0 * z)
+        .max(8.0);
     let spacing = 2.0 * z;
     let total_w = count as f32 * (slot_size + spacing) - spacing;
     let start_x = rect.center().x - total_w / 2.0;
@@ -3832,8 +4507,11 @@ fn paint_status_effect_bar(
 }
 
 fn paint_notification_feed(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    count: usize, color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    count: usize,
+    color: &[f32; 4],
 ) {
     let n = count.max(1).min(5);
     let card_h = ((rect.height() - (n as f32 - 1.0) * 2.0 * z) / n as f32).max(12.0);
@@ -3842,10 +4520,8 @@ fn paint_notification_feed(
 
     for i in 0..n {
         let y = rect.min.y + i as f32 * (card_h + 2.0 * z);
-        let card_rect = Rect::from_min_size(
-            Pos2::new(rect.min.x, y),
-            Vec2::new(rect.width(), card_h),
-        );
+        let card_rect =
+            Rect::from_min_size(Pos2::new(rect.min.x, y), Vec2::new(rect.width(), card_h));
         let alpha = (255 - (i as u16 * 40).min(180)) as u8;
         let bg = Color32::from_rgba_unmultiplied(40, 42, 48, alpha);
         painter.rect_filled(card_rect, round_f(3.0 * z), bg);
@@ -3857,13 +4533,20 @@ fn paint_notification_feed(
             Pos2::new(card_rect.min.x + pad, card_rect.center().y - line_h / 2.0),
             Vec2::new(line_w, line_h),
         );
-        painter.rect_filled(line_rect, round_f(1.0), Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha));
+        painter.rect_filled(
+            line_rect,
+            round_f(1.0),
+            Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha),
+        );
     }
 }
 
 fn paint_radial_menu(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    item_count: usize, color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    item_count: usize,
+    color: &[f32; 4],
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
@@ -3878,19 +4561,33 @@ fn paint_radial_menu(
     let angle_step = std::f32::consts::TAU / n as f32;
     for i in 0..n {
         let angle = angle_step * i as f32 - std::f32::consts::FRAC_PI_2;
-        let outer = Pos2::new(center.x + radius * angle.cos(), center.y + radius * angle.sin());
+        let outer = Pos2::new(
+            center.x + radius * angle.cos(),
+            center.y + radius * angle.sin(),
+        );
         let inner_r = radius * 0.3;
-        let inner = Pos2::new(center.x + inner_r * angle.cos(), center.y + inner_r * angle.sin());
+        let inner = Pos2::new(
+            center.x + inner_r * angle.cos(),
+            center.y + inner_r * angle.sin(),
+        );
         painter.line_segment([inner, outer], Stroke::new(z, line_c));
     }
 
     // Inner circle
-    painter.circle_filled(center, radius * 0.3, Color32::from_rgba_unmultiplied(30, 30, 35, 220));
+    painter.circle_filled(
+        center,
+        radius * 0.3,
+        Color32::from_rgba_unmultiplied(30, 30, 35, 220),
+    );
 }
 
 fn paint_minimap(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    shape: &str, bg_color: &[f32; 4], border_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    shape: &str,
+    bg_color: &[f32; 4],
+    border_color: &[f32; 4],
 ) {
     let center = rect.center();
     let size = rect.width().min(rect.height());
@@ -3907,15 +4604,26 @@ fn paint_minimap(
         for i in 1..4 {
             let offset = step * i as f32;
             painter.line_segment(
-                [Pos2::new(sq.min.x + offset, sq.min.y), Pos2::new(sq.min.x + offset, sq.max.y)],
+                [
+                    Pos2::new(sq.min.x + offset, sq.min.y),
+                    Pos2::new(sq.min.x + offset, sq.max.y),
+                ],
                 Stroke::new(z * 0.5, grid_c),
             );
             painter.line_segment(
-                [Pos2::new(sq.min.x, sq.min.y + offset), Pos2::new(sq.max.x, sq.min.y + offset)],
+                [
+                    Pos2::new(sq.min.x, sq.min.y + offset),
+                    Pos2::new(sq.max.x, sq.min.y + offset),
+                ],
                 Stroke::new(z * 0.5, grid_c),
             );
         }
-        painter.rect_stroke(sq, round_f(2.0 * z), Stroke::new(2.0 * z, border), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            sq,
+            round_f(2.0 * z),
+            Stroke::new(2.0 * z, border),
+            egui::StrokeKind::Outside,
+        );
     } else {
         // Circle
         painter.circle_filled(center, radius, bg);
@@ -3926,11 +4634,17 @@ fn paint_minimap(
             // Approximate chord-clipped lines
             let half_chord = (radius * radius - offset * offset).max(0.0).sqrt();
             painter.line_segment(
-                [Pos2::new(center.x - half_chord, center.y + offset), Pos2::new(center.x + half_chord, center.y + offset)],
+                [
+                    Pos2::new(center.x - half_chord, center.y + offset),
+                    Pos2::new(center.x + half_chord, center.y + offset),
+                ],
                 Stroke::new(z * 0.5, grid_c),
             );
             painter.line_segment(
-                [Pos2::new(center.x + offset, center.y - half_chord), Pos2::new(center.x + offset, center.y + half_chord)],
+                [
+                    Pos2::new(center.x + offset, center.y - half_chord),
+                    Pos2::new(center.x + offset, center.y + half_chord),
+                ],
                 Stroke::new(z * 0.5, grid_c),
             );
         }
@@ -3944,8 +4658,12 @@ fn paint_minimap(
 // ── Shape widget painters ──────────────────────────────────────────────────
 
 fn paint_shape_circle(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    color: &[f32; 4], stroke_color: &[f32; 4], stroke_width: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    color: &[f32; 4],
+    stroke_color: &[f32; 4],
+    stroke_width: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 1.0;
@@ -3960,8 +4678,13 @@ fn paint_shape_circle(
 }
 
 fn paint_shape_arc(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], start_angle: f32, end_angle: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    start_angle: f32,
+    end_angle: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
@@ -3983,8 +4706,12 @@ fn paint_shape_arc(
 }
 
 fn paint_shape_triangle(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], stroke_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    stroke_color: &[f32; 4],
 ) {
     let center = rect.center();
     let half_w = rect.width() / 2.0 - 2.0 * z;
@@ -3992,8 +4719,16 @@ fn paint_shape_triangle(
     let c = arr_to_c32(color);
 
     let top = rotate_around(Pos2::new(center.x, center.y - half_h), center, rotation);
-    let bl = rotate_around(Pos2::new(center.x - half_w, center.y + half_h), center, rotation);
-    let br = rotate_around(Pos2::new(center.x + half_w, center.y + half_h), center, rotation);
+    let bl = rotate_around(
+        Pos2::new(center.x - half_w, center.y + half_h),
+        center,
+        rotation,
+    );
+    let br = rotate_around(
+        Pos2::new(center.x + half_w, center.y + half_h),
+        center,
+        rotation,
+    );
 
     let path = egui::epaint::PathShape::convex_polygon(vec![top, bl, br], c, Stroke::NONE);
     painter.add(path);
@@ -4007,8 +4742,12 @@ fn paint_shape_triangle(
 }
 
 fn paint_shape_line(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], thickness: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    thickness: f32,
 ) {
     let c = arr_to_c32(color);
     let sw = (thickness * z).max(1.0);
@@ -4019,8 +4758,13 @@ fn paint_shape_line(
 }
 
 fn paint_shape_polygon(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], stroke_color: &[f32; 4], sides: u32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    stroke_color: &[f32; 4],
+    sides: u32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
@@ -4029,10 +4773,12 @@ fn paint_shape_polygon(
 
     let mut points = Vec::with_capacity(n);
     for i in 0..n {
-        let angle = std::f32::consts::TAU * i as f32 / n as f32
-            - std::f32::consts::FRAC_PI_2
-            + rotation;
-        points.push(Pos2::new(center.x + radius * angle.cos(), center.y + radius * angle.sin()));
+        let angle =
+            std::f32::consts::TAU * i as f32 / n as f32 - std::f32::consts::FRAC_PI_2 + rotation;
+        points.push(Pos2::new(
+            center.x + radius * angle.cos(),
+            center.y + radius * angle.sin(),
+        ));
     }
 
     let path = egui::epaint::PathShape::convex_polygon(points.clone(), c, Stroke::NONE);
@@ -4053,8 +4799,13 @@ fn paint_shape_polygon(
 /// in the preview (egui's polygon doesn't round corners) — the widget still
 /// renders with the correct radius at runtime via the WGSL shader.
 fn paint_shape_rectangle(
-    painter: &egui::Painter, rect: Rect, rotation: f32,
-    color: &[f32; 4], stroke_color: &[f32; 4], stroke_width: f32, _corner_radius: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    rotation: f32,
+    color: &[f32; 4],
+    stroke_color: &[f32; 4],
+    stroke_width: f32,
+    _corner_radius: &[f32; 4],
 ) {
     let corners = rotated_corners(rect, rotation);
     let c = arr_to_c32(color);
@@ -4073,8 +4824,13 @@ fn paint_shape_rectangle(
 }
 
 fn paint_shape_wedge(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], start_angle: f32, end_angle: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    start_angle: f32,
+    end_angle: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
@@ -4089,7 +4845,10 @@ fn paint_shape_wedge(
     points.push(center);
     for i in 0..=segments {
         let a = start_rad + sweep * (i as f32 / segments as f32);
-        points.push(Pos2::new(center.x + radius * a.cos(), center.y + radius * a.sin()));
+        points.push(Pos2::new(
+            center.x + radius * a.cos(),
+            center.y + radius * a.sin(),
+        ));
     }
 
     let path = egui::epaint::PathShape::convex_polygon(points, c, Stroke::NONE);
@@ -4097,8 +4856,13 @@ fn paint_shape_wedge(
 }
 
 fn paint_shape_radial_progress(
-    painter: &egui::Painter, rect: Rect, z: f32, rotation: f32,
-    color: &[f32; 4], track_color: &[f32; 4], value: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    rotation: f32,
+    color: &[f32; 4],
+    track_color: &[f32; 4],
+    value: f32,
 ) {
     let center = rect.center();
     let radius = rect.width().min(rect.height()) / 2.0 - 2.0 * z;
@@ -4117,7 +4881,9 @@ fn paint_shape_radial_progress(
     for i in 0..segments {
         let frac0 = i as f32 / segments as f32;
         let frac1 = (i + 1) as f32 / segments as f32;
-        if frac0 >= value { break; }
+        if frac0 >= value {
+            break;
+        }
         let a0 = start_angle + sweep * frac0;
         let a1 = start_angle + sweep * (frac1.min(value));
         let p0 = Pos2::new(center.x + radius * a0.cos(), center.y + radius * a0.sin());
@@ -4129,11 +4895,21 @@ fn paint_shape_radial_progress(
 // ── Menu widget painters ────────────────────────────────────────────────────
 
 fn paint_inventory_grid(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    columns: u32, rows: u32, slot_size: f32,
-    slot_bg_color: &[f32; 4], slot_border_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    columns: u32,
+    rows: u32,
+    slot_size: f32,
+    slot_bg_color: &[f32; 4],
+    slot_border_color: &[f32; 4],
 ) {
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgb(30, 30, 35) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgb(30, 30, 35)
+    };
     painter.rect_filled(rect, round_f(4.0 * z), bg);
 
     let slot = (slot_size * z).max(8.0);
@@ -4147,21 +4923,39 @@ fn paint_inventory_grid(
         for col in 0..columns {
             let x = rect.min.x + pad + (slot + gap) * col as f32;
             let y = rect.min.y + pad + (slot + gap) * row as f32;
-            if x + slot > rect.max.x || y + slot > rect.max.y { continue; }
+            if x + slot > rect.max.x || y + slot > rect.max.y {
+                continue;
+            }
             let slot_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::splat(slot));
             painter.rect_filled(slot_rect, slot_round, slot_bg);
-            painter.rect_stroke(slot_rect, slot_round, Stroke::new(z, slot_border), egui::StrokeKind::Outside);
+            painter.rect_stroke(
+                slot_rect,
+                slot_round,
+                Stroke::new(z, slot_border),
+                egui::StrokeKind::Outside,
+            );
         }
     }
 }
 
 fn paint_dialog_box(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    speaker: &str, text: &str,
-    bg_color: &[f32; 4], speaker_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    speaker: &str,
+    text: &str,
+    bg_color: &[f32; 4],
+    speaker_color: &[f32; 4],
 ) {
     painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(70, 70, 80)),
+        egui::StrokeKind::Outside,
+    );
 
     let pad = 10.0 * z;
 
@@ -4189,10 +4983,20 @@ fn paint_dialog_box(
 }
 
 fn paint_objective_tracker(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    title: &str, objective_count: usize, title_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    title: &str,
+    objective_count: usize,
+    title_color: &[f32; 4],
 ) {
-    let bg = if ws.has_bg { arr_to_c32(&ws.bg_color) } else { Color32::from_rgba_unmultiplied(20, 20, 25, 180) };
+    let bg = if ws.has_bg {
+        arr_to_c32(&ws.bg_color)
+    } else {
+        Color32::from_rgba_unmultiplied(20, 20, 25, 180)
+    };
     painter.rect_filled(rect, rounding, bg);
 
     let pad = 8.0 * z;
@@ -4211,14 +5015,20 @@ fn paint_objective_tracker(
     let display_count = objective_count.min(6);
     for i in 0..display_count {
         let y = bullet_y_start + line_h * i as f32;
-        if y + line_h > rect.max.y { break; }
+        if y + line_h > rect.max.y {
+            break;
+        }
         let bullet_r = (2.5 * z).max(1.0);
         painter.circle_filled(
             Pos2::new(rect.min.x + pad + bullet_r, y + line_h / 2.0),
-            bullet_r, tc,
+            bullet_r,
+            tc,
         );
         painter.text(
-            Pos2::new(rect.min.x + pad + bullet_r * 2.0 + 6.0 * z, y + line_h / 2.0),
+            Pos2::new(
+                rect.min.x + pad + bullet_r * 2.0 + 6.0 * z,
+                y + line_h / 2.0,
+            ),
             egui::Align2::LEFT_CENTER,
             &format!("Objective {}", i + 1),
             egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0)),
@@ -4228,9 +5038,13 @@ fn paint_objective_tracker(
 }
 
 fn paint_loading_screen(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    progress: f32, message: &str,
-    bar_color: &[f32; 4], bg_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    progress: f32,
+    message: &str,
+    bar_color: &[f32; 4],
+    bg_color: &[f32; 4],
 ) {
     painter.rect_filled(rect, 0.0, arr_to_c32(bg_color));
 
@@ -4263,8 +5077,13 @@ fn paint_loading_screen(
 }
 
 fn paint_keybind_row(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    action: &str, binding: &str, key_bg_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    action: &str,
+    binding: &str,
+    key_bg_color: &[f32; 4],
 ) {
     let pad = 8.0 * z;
     let tc = arr_to_c32(&ws.text_color);
@@ -4287,7 +5106,12 @@ fn paint_keybind_row(
     let key_round = round_f(4.0 * z);
 
     painter.rect_filled(key_rect, key_round, arr_to_c32(key_bg_color));
-    painter.rect_stroke(key_rect, key_round, Stroke::new(z, Color32::from_rgb(90, 90, 100)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        key_rect,
+        key_round,
+        Stroke::new(z, Color32::from_rgb(90, 90, 100)),
+        egui::StrokeKind::Outside,
+    );
     painter.text(
         key_rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -4298,8 +5122,12 @@ fn paint_keybind_row(
 }
 
 fn paint_settings_row(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32,
-    label: &str, value: &str,
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    label: &str,
+    value: &str,
 ) {
     let pad = 8.0 * z;
     let tc = arr_to_c32(&ws.text_color);
@@ -4324,8 +5152,12 @@ fn paint_settings_row(
 // ── Extra widget painters ───────────────────────────────────────────────────
 
 fn paint_separator(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    horizontal: bool, color: &[f32; 4], thickness: f32,
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    horizontal: bool,
+    color: &[f32; 4],
+    thickness: f32,
 ) {
     let c = arr_to_c32(color);
     let t = (thickness * z).max(1.0);
@@ -4346,12 +5178,23 @@ fn paint_separator(
 }
 
 fn paint_number_input(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    value: f64, precision: u32,
-    bg_color: &[f32; 4], button_color: &[f32; 4],
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    value: f64,
+    precision: u32,
+    bg_color: &[f32; 4],
+    button_color: &[f32; 4],
 ) {
     painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(80, 80, 90)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(80, 80, 90)),
+        egui::StrokeKind::Outside,
+    );
 
     let btn_w = (28.0 * z).max(14.0);
     let btn_c = arr_to_c32(button_color);
@@ -4360,26 +5203,57 @@ fn paint_number_input(
     let val_font = egui::FontId::proportional((ws.text_size * z).clamp(6.0, 28.0));
 
     let left_rect = Rect::from_min_size(rect.min, Vec2::new(btn_w, rect.height()));
-    let left_round = egui::Rounding { nw: rounding.nw, ne: 0, se: 0, sw: rounding.sw };
+    let left_round = egui::Rounding {
+        nw: rounding.nw,
+        ne: 0,
+        se: 0,
+        sw: rounding.sw,
+    };
     painter.rect_filled(left_rect, left_round, btn_c);
-    painter.text(left_rect.center(), egui::Align2::CENTER_CENTER, "\u{2212}", btn_font.clone(), tc);
-
-    let right_rect = Rect::from_min_max(
-        Pos2::new(rect.max.x - btn_w, rect.min.y),
-        rect.max,
+    painter.text(
+        left_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "\u{2212}",
+        btn_font.clone(),
+        tc,
     );
-    let right_round = egui::Rounding { nw: 0, ne: rounding.ne, se: rounding.se, sw: 0 };
+
+    let right_rect = Rect::from_min_max(Pos2::new(rect.max.x - btn_w, rect.min.y), rect.max);
+    let right_round = egui::Rounding {
+        nw: 0,
+        ne: rounding.ne,
+        se: rounding.se,
+        sw: 0,
+    };
     painter.rect_filled(right_rect, right_round, btn_c);
-    painter.text(right_rect.center(), egui::Align2::CENTER_CENTER, "+", btn_font, tc);
+    painter.text(
+        right_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "+",
+        btn_font,
+        tc,
+    );
 
     let value_text = format!("{:.prec$}", value, prec = precision as usize);
-    painter.text(rect.center(), egui::Align2::CENTER_CENTER, &value_text, val_font, tc);
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        &value_text,
+        val_font,
+        tc,
+    );
 }
 
 fn paint_vertical_slider(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    value: f32, min: f32, max: f32,
-    track_color: &[f32; 4], fill_color: &[f32; 4], thumb_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    value: f32,
+    min: f32,
+    max: f32,
+    track_color: &[f32; 4],
+    fill_color: &[f32; 4],
+    thumb_color: &[f32; 4],
 ) {
     let track_w = (6.0 * z).max(2.0);
     let track_x = rect.center().x - track_w / 2.0;
@@ -4391,7 +5265,11 @@ fn paint_vertical_slider(
 
     painter.rect_filled(track_rect, track_round, arr_to_c32(track_color));
 
-    let ratio = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+    let ratio = if max > min {
+        ((value - min) / (max - min)).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let fill_h = rect.height() * ratio;
     if fill_h > 0.5 {
         let fill_rect = Rect::from_min_size(
@@ -4411,9 +5289,14 @@ fn paint_vertical_slider(
 }
 
 fn paint_scrollbar(
-    painter: &egui::Painter, rect: Rect, z: f32,
-    vertical: bool, viewport_fraction: f32, position: f32,
-    track_color: &[f32; 4], thumb_color: &[f32; 4],
+    painter: &egui::Painter,
+    rect: Rect,
+    z: f32,
+    vertical: bool,
+    viewport_fraction: f32,
+    position: f32,
+    track_color: &[f32; 4],
+    thumb_color: &[f32; 4],
 ) {
     let track_round = round_f(3.0 * z);
 
@@ -4444,8 +5327,15 @@ fn paint_scrollbar(
 }
 
 fn paint_list_widget(
-    painter: &egui::Painter, ws: &WidgetSnapshot, rect: Rect, z: f32, rounding: egui::Rounding,
-    item_count: usize, bg_color: &[f32; 4], selected_bg_color: &[f32; 4], item_height: f32,
+    painter: &egui::Painter,
+    ws: &WidgetSnapshot,
+    rect: Rect,
+    z: f32,
+    rounding: egui::Rounding,
+    item_count: usize,
+    bg_color: &[f32; 4],
+    selected_bg_color: &[f32; 4],
+    item_height: f32,
 ) {
     painter.rect_filled(rect, rounding, arr_to_c32(bg_color));
 
@@ -4457,8 +5347,11 @@ fn paint_list_widget(
 
     for i in 0..display_count {
         let y = rect.min.y + row_h * i as f32;
-        if y + row_h > rect.max.y { break; }
-        let row_rect = Rect::from_min_size(Pos2::new(rect.min.x, y), Vec2::new(rect.width(), row_h));
+        if y + row_h > rect.max.y {
+            break;
+        }
+        let row_rect =
+            Rect::from_min_size(Pos2::new(rect.min.x, y), Vec2::new(rect.width(), row_h));
 
         if i == 0 {
             painter.rect_filled(row_rect, 0.0, sel_bg);
@@ -4473,5 +5366,10 @@ fn paint_list_widget(
         );
     }
 
-    painter.rect_stroke(rect, rounding, Stroke::new(z, Color32::from_rgb(70, 70, 80)), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(z, Color32::from_rgb(70, 70, 80)),
+        egui::StrokeKind::Outside,
+    );
 }

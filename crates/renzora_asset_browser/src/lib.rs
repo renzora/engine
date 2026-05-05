@@ -110,10 +110,8 @@ impl EditorPanel for AssetBrowserPanel {
 
         // Content area below toolbar
         let content_top = sep_y + 1.0;
-        let content_rect = egui::Rect::from_min_max(
-            egui::pos2(available.min.x, content_top),
-            available.max,
-        );
+        let content_rect =
+            egui::Rect::from_min_max(egui::pos2(available.min.x, content_top), available.max);
 
         if content_rect.height() < 10.0 {
             return;
@@ -163,8 +161,7 @@ impl EditorPanel for AssetBrowserPanel {
                     .clamp(100.0, (content_rect.width() - 100.0).max(100.0));
             }
             if splitter_resp.hovered() || splitter_resp.dragged() {
-                ui.ctx()
-                    .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
             }
 
             let splitter_color = if splitter_resp.hovered() || splitter_resp.dragged() {
@@ -201,15 +198,11 @@ impl EditorPanel for AssetBrowserPanel {
                 grid::ThumbnailLookup { ids }
             };
 
-            let mut grid_child =
-                ui.new_child(egui::UiBuilder::new().max_rect(grid_rect));
+            let mut grid_child = ui.new_child(egui::UiBuilder::new().max_rect(grid_rect));
             match state.view_mode {
-                ViewMode::Grid => grid::grid_ui_interactive(
-                    &mut grid_child,
-                    &mut state,
-                    &theme,
-                    &thumb_lookup,
-                ),
+                ViewMode::Grid => {
+                    grid::grid_ui_interactive(&mut grid_child, &mut state, &theme, &thumb_lookup)
+                }
                 ViewMode::List => list::list_ui_interactive(&mut grid_child, &mut state, &theme),
             }
         };
@@ -224,7 +217,8 @@ impl EditorPanel for AssetBrowserPanel {
 
             // Collect dropped files early so we can use `has_drops` in position logic
             let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
-                i.raw.dropped_files
+                i.raw
+                    .dropped_files
                     .iter()
                     .filter_map(|f| f.path.clone())
                     .collect()
@@ -248,7 +242,8 @@ impl EditorPanel for AssetBrowserPanel {
             let over_panel = if has_drops {
                 true
             } else {
-                drag_pos.map(|p| available.contains(p))
+                drag_pos
+                    .map(|p| available.contains(p))
                     .unwrap_or(has_file_hover)
             };
 
@@ -259,7 +254,9 @@ impl EditorPanel for AssetBrowserPanel {
             // hovered folder. It gets cleared after the drop is processed.
             if has_file_hover && over_tree {
                 state.drop_target_folder = drag_pos.and_then(|pos| {
-                    state.tree_folder_rects.iter()
+                    state
+                        .tree_folder_rects
+                        .iter()
                         .find(|(_, rect)| rect.contains(pos))
                         .map(|(path, _)| path.clone())
                 });
@@ -292,8 +289,8 @@ impl EditorPanel for AssetBrowserPanel {
 
                     // Highlight the specific folder row being hovered
                     if let Some(ref target) = state.drop_target_folder {
-                        if let Some((_, rect)) = state.tree_folder_rects.iter()
-                            .find(|(p, _)| p == target)
+                        if let Some((_, rect)) =
+                            state.tree_folder_rects.iter().find(|(p, _)| p == target)
                         {
                             painter.rect_filled(
                                 *rect,
@@ -308,7 +305,8 @@ impl EditorPanel for AssetBrowserPanel {
                             );
                         }
 
-                        let target_name = target.file_name()
+                        let target_name = target
+                            .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("folder");
                         painter.text(
@@ -331,7 +329,9 @@ impl EditorPanel for AssetBrowserPanel {
                     );
 
                     // Label at the bottom so it doesn't cover content
-                    let folder_name = state.current_folder.as_ref()
+                    let folder_name = state
+                        .current_folder
+                        .as_ref()
                         .and_then(|p| p.file_name())
                         .and_then(|n| n.to_str())
                         .unwrap_or("current folder");
@@ -347,7 +347,11 @@ impl EditorPanel for AssetBrowserPanel {
                     painter.text(
                         label_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        format!("{} Drop files into \"{}\"", regular::DOWNLOAD_SIMPLE, folder_name),
+                        format!(
+                            "{} Drop files into \"{}\"",
+                            regular::DOWNLOAD_SIMPLE,
+                            folder_name
+                        ),
                         FontId::proportional(12.0),
                         Color32::from_rgb(200, 220, 255),
                     );
@@ -356,7 +360,9 @@ impl EditorPanel for AssetBrowserPanel {
 
             if has_drops && over_panel {
                 // Use the drop target folder (tree folder hover) or fall back to current folder
-                let import_target = state.drop_target_folder.clone()
+                let import_target = state
+                    .drop_target_folder
+                    .clone()
                     .or_else(|| state.current_folder.clone());
 
                 let mut model_files = Vec::new();
@@ -367,7 +373,12 @@ impl EditorPanel for AssetBrowserPanel {
                 for path in dropped {
                     if path.is_dir() {
                         dir_drops.push(path);
-                    } else if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("zip")).unwrap_or(false) {
+                    } else if path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| e.eq_ignore_ascii_case("zip"))
+                        .unwrap_or(false)
+                    {
                         zip_files.push(path);
                     } else if state::is_3d_model(&path) {
                         model_files.push(path);
@@ -408,7 +419,9 @@ impl EditorPanel for AssetBrowserPanel {
 
                     // Copy dropped folders recursively
                     for source_dir in &dir_drops {
-                        let Some(dir_name) = source_dir.file_name() else { continue };
+                        let Some(dir_name) = source_dir.file_name() else {
+                            continue;
+                        };
                         let dest_dir = folder.join(dir_name);
                         if source_dir == &dest_dir {
                             continue;
@@ -458,12 +471,17 @@ impl EditorPanel for AssetBrowserPanel {
                 // Route 3D model files to the import overlay
                 if !model_files.is_empty() {
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
-                        let target_dir = import_target.as_ref().and_then(|folder| {
-                            let project = world.get_resource::<renzora::core::CurrentProject>()?;
-                            folder.strip_prefix(&project.path).ok().map(|rel| {
-                                rel.to_string_lossy().replace('\\', "/")
+                        let target_dir = import_target
+                            .as_ref()
+                            .and_then(|folder| {
+                                let project =
+                                    world.get_resource::<renzora::core::CurrentProject>()?;
+                                folder
+                                    .strip_prefix(&project.path)
+                                    .ok()
+                                    .map(|rel| rel.to_string_lossy().replace('\\', "/"))
                             })
-                        }).unwrap_or_default();
+                            .unwrap_or_default();
 
                         cmds.push(move |world: &mut bevy::prelude::World| {
                             world.insert_resource(renzora::core::ImportRequested);
@@ -550,16 +568,18 @@ impl EditorPanel for AssetBrowserPanel {
                     });
                     ui.horizontal(|ui| {
                         ui.label("Start at:");
-                        ui.add(
-                            egui::DragValue::new(&mut state.batch_rename_start).range(0..=9999),
-                        );
+                        ui.add(egui::DragValue::new(&mut state.batch_rename_start).range(0..=9999));
                     });
                     ui.add_space(4.0);
                     let preview_text = match &preview_ext {
                         Some(ext) => format!(
                             "Preview: {}_{:02}.{}, {}_{:02}.{}, … ({} files)",
-                            state.batch_rename_base, state.batch_rename_start, ext,
-                            state.batch_rename_base, state.batch_rename_start + 1, ext,
+                            state.batch_rename_base,
+                            state.batch_rename_start,
+                            ext,
+                            state.batch_rename_base,
+                            state.batch_rename_start + 1,
+                            ext,
                             count,
                         ),
                         None => format!(
@@ -721,7 +741,9 @@ impl EditorPanel for AssetBrowserPanel {
                 let requests = grid_result.thumbnail_requests;
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     let asset_server = world.resource::<bevy::prelude::AssetServer>().clone();
-                    let project = world.get_resource::<renzora::core::CurrentProject>().cloned();
+                    let project = world
+                        .get_resource::<renzora::core::CurrentProject>()
+                        .cloned();
                     let mut cache = world.resource_mut::<thumbnails::ThumbnailCache>();
                     for path in requests {
                         cache.request(path, &asset_server, project.as_ref());
@@ -734,7 +756,9 @@ impl EditorPanel for AssetBrowserPanel {
             if let Some(cmds) = world.get_resource::<EditorCommands>() {
                 let requests = grid_result.material_thumbnail_requests;
                 cmds.push(move |world: &mut bevy::prelude::World| {
-                    if let Some(mut registry) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
+                    if let Some(mut registry) =
+                        world.get_resource_mut::<MaterialThumbnailRegistry>()
+                    {
                         for path in requests {
                             registry.request(path);
                         }
@@ -772,12 +796,17 @@ impl EditorPanel for AssetBrowserPanel {
         if state.import_clicked {
             state.import_clicked = false;
             if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                let target_dir = state.current_folder.as_ref().and_then(|folder| {
-                    let project = world.get_resource::<renzora::core::CurrentProject>()?;
-                    folder.strip_prefix(&project.path).ok().map(|rel| {
-                        rel.to_string_lossy().replace('\\', "/")
+                let target_dir = state
+                    .current_folder
+                    .as_ref()
+                    .and_then(|folder| {
+                        let project = world.get_resource::<renzora::core::CurrentProject>()?;
+                        folder
+                            .strip_prefix(&project.path)
+                            .ok()
+                            .map(|rel| rel.to_string_lossy().replace('\\', "/"))
                     })
-                }).unwrap_or_default();
+                    .unwrap_or_default();
 
                 cmds.push(move |world: &mut bevy::prelude::World| {
                     world.insert_resource(renzora::core::ImportRequested);
@@ -823,11 +852,15 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
     // `.ron` is intentionally absent: it's the engine's scene format and is
     // routed to a Scene doc tab via `asset_doc_kind` so the scene system
     // can load it instead of dumping the raw text into the code editor.
-    let is_editable = path.extension()
+    let is_editable = path
+        .extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(),
-            "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
-        ))
+        .map(|e| {
+            matches!(
+                e.to_lowercase().as_str(),
+                "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
+            )
+        })
         .unwrap_or(false);
     if is_editable {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -842,7 +875,10 @@ fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
 /// file doesn't correspond to a known editor-opening asset type.
 fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> {
     use renzora_editor::DocTabKind;
-    let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_lowercase())?;
     if name.ends_with(".material_bp") || name.ends_with(".material") {
         return Some(DocTabKind::Material);
     }
@@ -893,7 +929,11 @@ fn render_context_menu(
     // 8 create items + header + separator + selection section (variable) + separator + import
     let has_selection = !state.selected_assets.is_empty();
     let selection_items = if has_selection {
-        let rename_item = if state.selected_assets.len() == 1 { 1 } else { 0 };
+        let rename_item = if state.selected_assets.len() == 1 {
+            1
+        } else {
+            0
+        };
         1 + rename_item + 1 // header + rename? + delete
     } else {
         0
@@ -932,7 +972,12 @@ fn render_context_menu(
                     ui.set_max_width(menu_width);
                     ui.spacing_mut().item_spacing.y = 1.0;
 
-                    let menu_item = |ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str, icon_color: Color32| -> bool {
+                    let menu_item = |ui: &mut egui::Ui,
+                                     icon: &str,
+                                     label: &str,
+                                     shortcut: &str,
+                                     icon_color: Color32|
+                     -> bool {
                         let desired_size = Vec2::new(menu_width, item_height);
                         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click());
 
@@ -1032,7 +1077,8 @@ fn render_context_menu(
 
                         // Favorite toggle for single folder selection
                         if state.selected_assets.len() == 1 {
-                            let selected_path = state.selected_assets.iter().next().unwrap().clone();
+                            let selected_path =
+                                state.selected_assets.iter().next().unwrap().clone();
                             if selected_path.is_dir() {
                                 let is_fav = state.is_favorite(&selected_path);
                                 let fav_label = if is_fav { "Unfavorite" } else { "Favorite" };
@@ -1073,11 +1119,7 @@ fn render_context_menu(
                             // `CurrentProject` to compute the asset-relative
                             // master path). The context menu only sees
                             // `&mut state`.
-                            let selected = state
-                                .selected_assets
-                                .iter()
-                                .next()
-                                .cloned();
+                            let selected = state.selected_assets.iter().next().cloned();
                             if let Some(path) = selected {
                                 let is_master = path
                                     .extension()
@@ -1098,7 +1140,8 @@ fn render_context_menu(
                                 }
                             }
                         } else if state.selected_assets.len() > 1 {
-                            if menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary) {
+                            if menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary)
+                            {
                                 let mut assets: Vec<std::path::PathBuf> =
                                     state.selected_assets.iter().cloned().collect();
                                 assets.sort();
@@ -1125,7 +1168,13 @@ fn render_context_menu(
                         } else {
                             "Delete".to_string()
                         };
-                        if menu_item(ui, regular::TRASH, &delete_label, "Del", theme.semantic.error.to_color32()) {
+                        if menu_item(
+                            ui,
+                            regular::TRASH,
+                            &delete_label,
+                            "Del",
+                            theme.semantic.error.to_color32(),
+                        ) {
                             state.pending_delete = state.selected_assets.iter().cloned().collect();
                             state.context_menu_pos = None;
                         }
@@ -1199,3 +1248,4 @@ fn emit_asset_path_change(
     });
 }
 
+renzora::add!(AssetBrowserPlugin, Editor);

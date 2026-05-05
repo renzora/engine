@@ -78,11 +78,8 @@ impl MonoFont {
         }
     }
 
-    pub const BUILTIN: &'static [MonoFont] = &[
-        Self::JetBrainsMono,
-        Self::FiraCode,
-        Self::SourceCodePro,
-    ];
+    pub const BUILTIN: &'static [MonoFont] =
+        &[Self::JetBrainsMono, Self::FiraCode, Self::SourceCodePro];
 
     pub fn font_key(&self) -> &str {
         match self {

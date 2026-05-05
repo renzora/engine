@@ -78,7 +78,11 @@ impl<'a> TileGrid<'a> {
 
     /// Spacing between tiles.
     fn spacing(&self) -> f32 {
-        if self.available_width < 200.0 { 4.0 } else { 8.0 }
+        if self.available_width < 200.0 {
+            4.0
+        } else {
+            8.0
+        }
     }
 
     /// Render the grid. `render_tile` is called once per tile with:
@@ -119,8 +123,7 @@ impl<'a> TileGrid<'a> {
                 );
 
                 let icon_center = Pos2::new(rect.center().x, rect.min.y + tile_size / 2.0);
-                let icon_rect =
-                    egui::Rect::from_center_size(icon_center, Vec2::splat(icon_size));
+                let icon_rect = egui::Rect::from_center_size(icon_center, Vec2::splat(icon_size));
                 let thumbnail_rect =
                     egui::Rect::from_center_size(icon_center, Vec2::splat(thumbnail_size));
                 let icon_area_rect =
@@ -164,7 +167,12 @@ impl<'a> TileGrid<'a> {
                     if !is_hovered {
                         painter.rect_filled(
                             icon_area_rect,
-                            CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 },
+                            CornerRadius {
+                                nw: 8,
+                                ne: 8,
+                                sw: 0,
+                                se: 0,
+                            },
                             surface_faint,
                         );
                     }
@@ -209,7 +217,11 @@ impl<'a> TileGrid<'a> {
                 }
 
                 // Color separator
-                let sep_alpha = if state.is_selected || state.is_hovered { 200 } else { 120 };
+                let sep_alpha = if state.is_selected || state.is_hovered {
+                    200
+                } else {
+                    120
+                };
                 if let Some(c) = state.color {
                     painter.rect_filled(
                         separator_rect,
@@ -252,7 +264,10 @@ impl TileLayout {
     /// Center position for the first line of label text.
     pub fn label_line1_pos(&self) -> Pos2 {
         let line_h = self.font_size + 2.0;
-        Pos2::new(self.label_rect.center().x, self.label_rect.min.y + line_h / 2.0)
+        Pos2::new(
+            self.label_rect.center().x,
+            self.label_rect.min.y + line_h / 2.0,
+        )
     }
 
     /// Center position for the second line of label text.

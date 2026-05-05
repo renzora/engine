@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
-use bevy::prelude::*;
 use avian3d::prelude::*;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::component::{GerstnerWave, WaterSurface};
@@ -156,7 +156,10 @@ mod tests {
     /// Build a minimal WaterSurface with a hand-rolled wave list. We want
     /// deterministic inputs, so we override the heavy default surface.
     fn surface_with(waves: Vec<GerstnerWave>) -> WaterSurface {
-        WaterSurface { waves, ..WaterSurface::default() }
+        WaterSurface {
+            waves,
+            ..WaterSurface::default()
+        }
     }
 
     #[test]
@@ -214,7 +217,10 @@ mod tests {
                 assert!(
                     h.abs() <= amp + 1e-4,
                     "height {} exceeded amplitude {} at x={} t={}",
-                    h, amp, x, t,
+                    h,
+                    amp,
+                    x,
+                    t,
                 );
             }
         }
@@ -242,7 +248,8 @@ mod tests {
         assert!(
             (h0 - h1).abs() < 1e-4,
             "expected periodic, got {} vs {}",
-            h0, h1,
+            h0,
+            h1,
         );
     }
 
@@ -252,8 +259,18 @@ mod tests {
         // through the time term — the total has to equal the sum of
         // individual contributions, never less.
         let waves = vec![
-            GerstnerWave { direction: Vec2::X,  steepness: 0.5, wavelength: 10.0, amplitude: 0.4 },
-            GerstnerWave { direction: Vec2::Y,  steepness: 0.5, wavelength: 14.0, amplitude: 0.3 },
+            GerstnerWave {
+                direction: Vec2::X,
+                steepness: 0.5,
+                wavelength: 10.0,
+                amplitude: 0.4,
+            },
+            GerstnerWave {
+                direction: Vec2::Y,
+                steepness: 0.5,
+                wavelength: 14.0,
+                amplitude: 0.3,
+            },
         ];
         let surface = surface_with(waves.clone());
         let pos = Vec2::new(0.0, 0.0);
@@ -265,7 +282,9 @@ mod tests {
         assert!(
             (total - (alone_a + alone_b)).abs() < 1e-5,
             "{} vs {} + {}",
-            total, alone_a, alone_b,
+            total,
+            alone_a,
+            alone_b,
         );
     }
 
@@ -302,7 +321,9 @@ mod tests {
             assert!(
                 v.dot(perp).abs() < 1e-5,
                 "velocity {:?} not aligned with direction {:?} at t={}",
-                v, dir, t,
+                v,
+                dir,
+                t,
             );
         }
     }
@@ -321,7 +342,7 @@ mod tests {
 
 #[cfg(feature = "editor")]
 pub fn buoyant_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "buoyant",
@@ -341,61 +362,101 @@ pub fn buoyant_inspector_entry() -> renzora_editor::InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "Force",
-                field_type: FieldType::Float { speed: 0.5, min: 0.0, max: 200.0 },
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 0.0,
+                    max: 200.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<Buoyant>(entity).map(|s| FieldValue::Float(s.force))
+                    world
+                        .get::<Buoyant>(entity)
+                        .map(|s| FieldValue::Float(s.force))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) { s.force = v; }
+                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
+                            s.force = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Damping",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<Buoyant>(entity).map(|s| FieldValue::Float(s.damping))
+                    world
+                        .get::<Buoyant>(entity)
+                        .map(|s| FieldValue::Float(s.damping))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) { s.damping = v; }
+                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
+                            s.damping = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Submerge Depth",
-                field_type: FieldType::Float { speed: 0.05, min: 0.1, max: 5.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.1,
+                    max: 5.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<Buoyant>(entity).map(|s| FieldValue::Float(s.submerge_depth))
+                    world
+                        .get::<Buoyant>(entity)
+                        .map(|s| FieldValue::Float(s.submerge_depth))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) { s.submerge_depth = v; }
+                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
+                            s.submerge_depth = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Wave Push",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<Buoyant>(entity).map(|s| FieldValue::Float(s.wave_push))
+                    world
+                        .get::<Buoyant>(entity)
+                        .map(|s| FieldValue::Float(s.wave_push))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) { s.wave_push = v; }
+                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
+                            s.wave_push = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Drag",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<Buoyant>(entity).map(|s| FieldValue::Float(s.drag))
+                    world
+                        .get::<Buoyant>(entity)
+                        .map(|s| FieldValue::Float(s.drag))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) { s.drag = v; }
+                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
+                            s.drag = v;
+                        }
                     }
                 },
             },

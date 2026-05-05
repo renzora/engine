@@ -55,10 +55,12 @@ impl PinType {
         if from == to {
             return true;
         }
-        let numeric = |t: PinType| matches!(
-            t,
-            PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color
-        );
+        let numeric = |t: PinType| {
+            matches!(
+                t,
+                PinType::Float | PinType::Vec2 | PinType::Vec3 | PinType::Vec4 | PinType::Color
+            )
+        };
         numeric(from) && numeric(to)
     }
 
@@ -282,13 +284,17 @@ impl MaterialNode {
 pub enum AlphaMode {
     Opaque,
     /// Discard fragments below `cutoff`. Used for foliage, masks.
-    Mask { cutoff: f32 },
+    Mask {
+        cutoff: f32,
+    },
     /// Standard alpha blending. Used for glass, smoke, decals.
     Blend,
 }
 
 impl Default for AlphaMode {
-    fn default() -> Self { Self::Opaque }
+    fn default() -> Self {
+        Self::Opaque
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -338,7 +344,8 @@ impl MaterialGraph {
         };
         let id = self.next_id;
         self.next_id += 1;
-        self.nodes.push(MaterialNode::new(id, node_type, [300.0, 0.0]));
+        self.nodes
+            .push(MaterialNode::new(id, node_type, [300.0, 0.0]));
     }
 
     pub fn add_node(&mut self, node_type: &str, position: [f32; 2]) -> NodeId {
@@ -360,13 +367,7 @@ impl MaterialGraph {
             .retain(|c| c.from_node != id && c.to_node != id);
     }
 
-    pub fn connect(
-        &mut self,
-        from_node: NodeId,
-        from_pin: &str,
-        to_node: NodeId,
-        to_pin: &str,
-    ) {
+    pub fn connect(&mut self, from_node: NodeId, from_pin: &str, to_node: NodeId, to_pin: &str) {
         // Remove existing connection to this input (inputs accept only one connection)
         self.connections
             .retain(|c| !(c.to_node == to_node && c.to_pin == to_pin));
@@ -395,7 +396,9 @@ impl MaterialGraph {
 
     /// Find the output node for this graph.
     pub fn output_node(&self) -> Option<&MaterialNode> {
-        self.nodes.iter().find(|n| n.node_type.starts_with("output/"))
+        self.nodes
+            .iter()
+            .find(|n| n.node_type.starts_with("output/"))
     }
 
     /// Find which output pin connects to a given input.

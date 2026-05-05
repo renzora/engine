@@ -12,7 +12,7 @@ use egui_phosphor::regular;
 use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
-use state::{GamepadDebugState, update_gamepad_debug_state};
+use state::{update_gamepad_debug_state, GamepadDebugState};
 
 // ---------------------------------------------------------------------------
 // Panel
@@ -82,8 +82,12 @@ impl Plugin for GamepadPlugin {
         info!("[editor] GamepadPlugin");
         app.init_resource::<GamepadDebugState>();
         use renzora_editor::SplashState;
-        app.add_systems(Update, update_gamepad_debug_state.run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            update_gamepad_debug_state.run_if(in_state(SplashState::Editor)),
+        );
         app.register_panel(GamepadPanel::default());
     }
 }
 
+renzora::add!(GamepadPlugin, Editor);

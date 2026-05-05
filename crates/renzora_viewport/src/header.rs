@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use egui_phosphor::regular::*;
 use renzora_editor::{
-    ActiveTool, EditorCommands, ToolEntry, ToolOptionsRegistry, ToolSection,
-    ToolbarRegistry, ViewportModeOptionsRegistry,
+    ActiveTool, EditorCommands, ToolEntry, ToolOptionsRegistry, ToolSection, ToolbarRegistry,
+    ViewportModeOptionsRegistry,
 };
 use renzora_theme::ThemeManager;
 
@@ -20,33 +20,52 @@ const BTN_H: f32 = 22.0;
 /// View angle preset for the camera.
 #[derive(Clone, Copy)]
 enum ViewAngle {
-    Front, Back, Left, Right, Top, Bottom,
+    Front,
+    Back,
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 impl ViewAngle {
     const ALL: &'static [ViewAngle] = &[
-        Self::Front, Self::Back, Self::Left, Self::Right, Self::Top, Self::Bottom,
+        Self::Front,
+        Self::Back,
+        Self::Left,
+        Self::Right,
+        Self::Top,
+        Self::Bottom,
     ];
     fn label(&self) -> &'static str {
         match self {
-            Self::Front => "Front", Self::Back => "Back",
-            Self::Left => "Left",   Self::Right => "Right",
-            Self::Top => "Top",     Self::Bottom => "Bottom",
+            Self::Front => "Front",
+            Self::Back => "Back",
+            Self::Left => "Left",
+            Self::Right => "Right",
+            Self::Top => "Top",
+            Self::Bottom => "Bottom",
         }
     }
     fn shortcut(&self) -> &'static str {
         match self {
-            Self::Front => "Num1",     Self::Back => "Ctrl+Num1",
-            Self::Left => "Ctrl+Num3", Self::Right => "Num3",
-            Self::Top => "Num7",       Self::Bottom => "Ctrl+Num7",
+            Self::Front => "Num1",
+            Self::Back => "Ctrl+Num1",
+            Self::Left => "Ctrl+Num3",
+            Self::Right => "Num3",
+            Self::Top => "Num7",
+            Self::Bottom => "Ctrl+Num7",
         }
     }
     fn yaw_pitch(&self) -> (f32, f32) {
         use std::f32::consts::{FRAC_PI_2, PI};
         match self {
-            Self::Front => (0.0, 0.0),       Self::Back => (PI, 0.0),
-            Self::Right => (FRAC_PI_2, 0.0), Self::Left => (-FRAC_PI_2, 0.0),
-            Self::Top => (0.0, FRAC_PI_2),   Self::Bottom => (0.0, -FRAC_PI_2),
+            Self::Front => (0.0, 0.0),
+            Self::Back => (PI, 0.0),
+            Self::Right => (FRAC_PI_2, 0.0),
+            Self::Left => (-FRAC_PI_2, 0.0),
+            Self::Top => (0.0, FRAC_PI_2),
+            Self::Bottom => (0.0, -FRAC_PI_2),
         }
     }
 }
@@ -59,12 +78,15 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
     };
     let cmds = world.get_resource::<EditorCommands>();
     let settings = world.get_resource::<ViewportSettings>();
-    let (Some(settings), Some(cmds)) = (settings, cmds) else { return };
+    let (Some(settings), Some(cmds)) = (settings, cmds) else {
+        return;
+    };
 
     let rect = ui.available_rect_before_wrap();
     let header_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEADER_HEIGHT));
     ui.advance_cursor_after_rect(header_rect);
-    ui.painter().rect_filled(header_rect, 0.0, theme.surfaces.panel.to_color32());
+    ui.painter()
+        .rect_filled(header_rect, 0.0, theme.surfaces.panel.to_color32());
 
     let active = theme.semantic.accent.to_color32();
     let inactive = theme.widgets.inactive_bg.to_color32();
@@ -111,8 +133,7 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     strip.set_height(BTN_H);
-    render_strip_contents(&mut strip, world, settings, cmds,
-        active, inactive, hovered);
+    render_strip_contents(&mut strip, world, settings, cmds, active, inactive, hovered);
 
     let measured = strip.min_rect().width();
     if (measured - cached_w).abs() > 0.5 {
@@ -152,7 +173,10 @@ fn render_strip_contents(
     }
 
     // ── Context-sensitive tool options (Photoshop-style) ─────────────────────
-    let active_tool = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
+    let active_tool = world
+        .get_resource::<ActiveTool>()
+        .copied()
+        .unwrap_or_default();
     let tool_drawer = world
         .get_resource::<ToolOptionsRegistry>()
         .and_then(|r| r.drawer_for(active_tool));
@@ -164,15 +188,54 @@ fn render_strip_contents(
 
     // ── Inline snapping: T / R / S toggles with inline value editors ─────────
     let snap = settings.snap;
-    snap_pair(ui, ARROWS_OUT_CARDINAL, "Translate", snap.translate_enabled, snap.translate_snap, 0.01..=100.0, 0.02, 2, active, inactive, hovered, cmds,
+    snap_pair(
+        ui,
+        ARROWS_OUT_CARDINAL,
+        "Translate",
+        snap.translate_enabled,
+        snap.translate_snap,
+        0.01..=100.0,
+        0.02,
+        2,
+        active,
+        inactive,
+        hovered,
+        cmds,
         |s, on| s.snap.translate_enabled = on,
-        |s, v| s.snap.translate_snap = v);
-    snap_pair(ui, ARROW_CLOCKWISE, "Rotate", snap.rotate_enabled, snap.rotate_snap, 1.0..=90.0, 0.2, 0, active, inactive, hovered, cmds,
+        |s, v| s.snap.translate_snap = v,
+    );
+    snap_pair(
+        ui,
+        ARROW_CLOCKWISE,
+        "Rotate",
+        snap.rotate_enabled,
+        snap.rotate_snap,
+        1.0..=90.0,
+        0.2,
+        0,
+        active,
+        inactive,
+        hovered,
+        cmds,
         |s, on| s.snap.rotate_enabled = on,
-        |s, v| s.snap.rotate_snap = v);
-    snap_pair(ui, ARROWS_OUT, "Scale", snap.scale_enabled, snap.scale_snap, 0.01..=10.0, 0.01, 2, active, inactive, hovered, cmds,
+        |s, v| s.snap.rotate_snap = v,
+    );
+    snap_pair(
+        ui,
+        ARROWS_OUT,
+        "Scale",
+        snap.scale_enabled,
+        snap.scale_snap,
+        0.01..=10.0,
+        0.01,
+        2,
+        active,
+        inactive,
+        hovered,
+        cmds,
         |s, on| s.snap.scale_enabled = on,
-        |s, v| s.snap.scale_snap = v);
+        |s, v| s.snap.scale_snap = v,
+    );
 
     separator(ui);
 
@@ -189,25 +252,32 @@ fn render_strip_contents(
 
             let (rect, _) = ui.allocate_exact_size(Vec2::new(18.0, BTN_H), Sense::hover());
             if ui.is_rect_visible(rect) {
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER,
-                    VIDEO_CAMERA, FontId::proportional(13.0), Color32::WHITE);
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    VIDEO_CAMERA,
+                    FontId::proportional(13.0),
+                    Color32::WHITE,
+                );
             }
 
-            let resp = ui.scope(|ui| {
-                let w = &mut ui.style_mut().visuals.widgets;
-                w.inactive.bg_fill = Color32::TRANSPARENT;
-                w.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                w.inactive.bg_stroke.width = 0.0;
-                w.hovered.bg_fill = Color32::from_black_alpha(40);
-                w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
-                w.hovered.bg_stroke.width = 0.0;
-                ui.add(
-                    egui::DragValue::new(&mut cam_speed)
-                        .range(0.1..=100.0)
-                        .speed(0.5)
-                        .max_decimals(1),
-                )
-            }).inner;
+            let resp = ui
+                .scope(|ui| {
+                    let w = &mut ui.style_mut().visuals.widgets;
+                    w.inactive.bg_fill = Color32::TRANSPARENT;
+                    w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                    w.inactive.bg_stroke.width = 0.0;
+                    w.hovered.bg_fill = Color32::from_black_alpha(40);
+                    w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
+                    w.hovered.bg_stroke.width = 0.0;
+                    ui.add(
+                        egui::DragValue::new(&mut cam_speed)
+                            .range(0.1..=100.0)
+                            .speed(0.5)
+                            .max_decimals(1),
+                    )
+                })
+                .inner;
             if resp.changed() {
                 cmds.push(move |w: &mut World| {
                     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
@@ -235,7 +305,9 @@ fn mode_dropdown(
     // Approximate width: label + caret.
     let btn_size = Vec2::new(80.0, BTN_H);
     let (rect, resp) = ui.allocate_exact_size(btn_size, Sense::click());
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     let popup_id = ui.make_persistent_id("viewport_mode_dropdown");
     if ui.is_rect_visible(rect) {
         let bg = if resp.hovered() { hovered } else { inactive };
@@ -244,45 +316,71 @@ fn mode_dropdown(
             Pos2::new(rect.min.x + 6.0, rect.min.y),
             Pos2::new(rect.max.x - 14.0, rect.max.y),
         );
-        ui.painter().text(text_rect.left_center(), egui::Align2::LEFT_CENTER, label,
-            FontId::proportional(12.0), Color32::WHITE);
-        ui.painter().text(Pos2::new(rect.max.x - 8.0, rect.center().y),
-            egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(10.0), Color32::WHITE);
+        ui.painter().text(
+            text_rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(12.0),
+            Color32::WHITE,
+        );
+        ui.painter().text(
+            Pos2::new(rect.max.x - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(10.0),
+            Color32::WHITE,
+        );
     }
     if resp.clicked() {
         #[allow(deprecated)]
         ui.memory_mut(|m| m.toggle_popup(popup_id));
     }
     #[allow(deprecated)]
-    egui::popup_below_widget(ui, popup_id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(120.0);
-        ui.style_mut().spacing.item_spacing.y = 2.0;
-        for mode in ViewportMode::ALL {
-            let is_current = *mode == current;
-            let (row_rect, row_resp) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), BTN_H), Sense::click());
-            if row_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if ui.is_rect_visible(row_rect) {
-                let bg = if is_current { active }
-                    else if row_resp.hovered() { hovered }
-                    else { Color32::TRANSPARENT };
-                ui.painter().rect_filled(row_rect, CornerRadius::same(3), bg);
-                ui.painter().text(
-                    Pos2::new(row_rect.min.x + 8.0, row_rect.center().y),
-                    egui::Align2::LEFT_CENTER, mode.label(),
-                    FontId::proportional(12.0), Color32::WHITE);
+    egui::popup_below_widget(
+        ui,
+        popup_id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(120.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+            for mode in ViewportMode::ALL {
+                let is_current = *mode == current;
+                let (row_rect, row_resp) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), BTN_H), Sense::click());
+                if row_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if ui.is_rect_visible(row_rect) {
+                    let bg = if is_current {
+                        active
+                    } else if row_resp.hovered() {
+                        hovered
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter()
+                        .rect_filled(row_rect, CornerRadius::same(3), bg);
+                    ui.painter().text(
+                        Pos2::new(row_rect.min.x + 8.0, row_rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        mode.label(),
+                        FontId::proportional(12.0),
+                        Color32::WHITE,
+                    );
+                }
+                if row_resp.clicked() {
+                    let m = *mode;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.viewport_mode = m;
+                        }
+                    });
+                    ui.close();
+                }
             }
-            if row_resp.clicked() {
-                let m = *mode;
-                cmds.push(move |w: &mut World| {
-                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                        s.viewport_mode = m;
-                    }
-                });
-                ui.close();
-            }
-        }
-    });
+        },
+    );
 }
 
 // ── Inline helpers ───────────────────────────────────────────────────────────
@@ -328,9 +426,14 @@ fn render_left_actions(
         let mut found = false;
         for archetype in world.archetypes().iter() {
             for ae in archetype.entities() {
-                if world.get::<SceneCamera>(ae.id()).is_some() { found = true; break; }
+                if world.get::<SceneCamera>(ae.id()).is_some() {
+                    found = true;
+                    break;
+                }
             }
-            if found { break; }
+            if found {
+                break;
+            }
         }
         found
     };
@@ -349,15 +452,25 @@ fn render_left_actions(
     let mut x = inner.min.x;
     let y = inner.min.y;
 
-    let action_btn = |ui: &mut egui::Ui, x: &mut f32, icon: &str, enabled: bool,
-                      color: Color32, tooltip: &str, id_salt: &str|
-                      -> egui::Response {
+    let action_btn = |ui: &mut egui::Ui,
+                      x: &mut f32,
+                      icon: &str,
+                      enabled: bool,
+                      color: Color32,
+                      tooltip: &str,
+                      id_salt: &str|
+     -> egui::Response {
         let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);
-        let sense = if enabled { Sense::click() } else { Sense::hover() };
+        let sense = if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
         let resp = ui.interact(rect, ui.id().with(id_salt), sense);
         if enabled && resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_bg);
+            ui.painter()
+                .rect_filled(rect, CornerRadius::same(3), hovered_bg);
         }
         let glyph_color = if enabled { color } else { muted };
         ui.painter().text(
@@ -373,12 +486,28 @@ fn render_left_actions(
     };
 
     // Undo
-    let r = action_btn(ui, &mut x, ARROW_U_UP_LEFT, can_undo, primary, "Undo (Ctrl+Z)", "vp_hdr_undo");
+    let r = action_btn(
+        ui,
+        &mut x,
+        ARROW_U_UP_LEFT,
+        can_undo,
+        primary,
+        "Undo (Ctrl+Z)",
+        "vp_hdr_undo",
+    );
     if can_undo && r.clicked() {
         cmds.push(|w: &mut World| renzora_undo::undo_once(w));
     }
     // Redo
-    let r = action_btn(ui, &mut x, ARROW_U_UP_RIGHT, can_redo, primary, "Redo (Ctrl+Y)", "vp_hdr_redo");
+    let r = action_btn(
+        ui,
+        &mut x,
+        ARROW_U_UP_RIGHT,
+        can_redo,
+        primary,
+        "Redo (Ctrl+Y)",
+        "vp_hdr_redo",
+    );
     if can_redo && r.clicked() {
         cmds.push(|w: &mut World| renzora_undo::redo_once(w));
     }
@@ -386,10 +515,24 @@ fn render_left_actions(
     x += gap_group - gap_small;
 
     // Save
-    let save_tip = if can_save { "Save Scene (Ctrl+S)" } else { "No unsaved changes" };
-    let r = action_btn(ui, &mut x, FLOPPY_DISK, can_save, primary, save_tip, "vp_hdr_save");
+    let save_tip = if can_save {
+        "Save Scene (Ctrl+S)"
+    } else {
+        "No unsaved changes"
+    };
+    let r = action_btn(
+        ui,
+        &mut x,
+        FLOPPY_DISK,
+        can_save,
+        primary,
+        save_tip,
+        "vp_hdr_save",
+    );
     if can_save && r.clicked() {
-        cmds.push(|w: &mut World| { w.insert_resource(SaveSceneRequested); });
+        cmds.push(|w: &mut World| {
+            w.insert_resource(SaveSceneRequested);
+        });
     }
 
     x += gap_group - gap_small;
@@ -404,7 +547,15 @@ fn render_left_actions(
     } else {
         (PLAY, play_color, "Play (F5)")
     };
-    let r = action_btn(ui, &mut x, play_icon, play_clickable, play_icon_color, play_tip, "vp_hdr_play");
+    let r = action_btn(
+        ui,
+        &mut x,
+        play_icon,
+        play_clickable,
+        play_icon_color,
+        play_tip,
+        "vp_hdr_play",
+    );
     if play_clickable && r.clicked() {
         cmds.push(|w: &mut World| {
             if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
@@ -429,7 +580,15 @@ fn render_left_actions(
     } else {
         (CODE, scripts_color, "Run Scripts (Shift+F5)")
     };
-    let r = action_btn(ui, &mut x, scr_icon, scripts_clickable && !is_playing, scr_color, scr_tip, "vp_hdr_scripts");
+    let r = action_btn(
+        ui,
+        &mut x,
+        scr_icon,
+        scripts_clickable && !is_playing,
+        scr_color,
+        scr_tip,
+        "vp_hdr_scripts",
+    );
     if scripts_clickable && !is_playing && r.clicked() {
         cmds.push(|w: &mut World| {
             if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
@@ -473,7 +632,12 @@ fn render_left_tools(
     let custom_sections: Vec<(&'static str, Vec<ToolEntry>)> = registry
         .custom_sections()
         .into_iter()
-        .map(|id| (id, registry.visible_in_section(world, &ToolSection::Custom(id))))
+        .map(|id| {
+            (
+                id,
+                registry.visible_in_section(world, &ToolSection::Custom(id)),
+            )
+        })
         .filter(|(_, tools)| !tools.is_empty())
         .collect();
 
@@ -490,9 +654,7 @@ fn render_left_tools(
 
     // Vertical separator drawn between sections.
     let separator = |ui: &mut egui::Ui, x: &mut f32| {
-        let sep_color = Color32::from_rgba_unmultiplied(
-            muted.r(), muted.g(), muted.b(), 70,
-        );
+        let sep_color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 70);
         let y0 = y + 3.0;
         let y1 = y + BTN_H - 3.0;
         ui.painter().line_segment(
@@ -507,44 +669,52 @@ fn render_left_tools(
     // boundary is clear.
     let sep_color = Color32::from_rgba_unmultiplied(muted.r(), muted.g(), muted.b(), 70);
     ui.painter().line_segment(
-        [Pos2::new(x - 4.0, y + 3.0), Pos2::new(x - 4.0, y + BTN_H - 3.0)],
+        [
+            Pos2::new(x - 4.0, y + 3.0),
+            Pos2::new(x - 4.0, y + BTN_H - 3.0),
+        ],
         egui::Stroke::new(1.0, sep_color),
     );
 
-    let mut paint_section = |ui: &mut egui::Ui, x: &mut f32, tools: &[ToolEntry], id_prefix: &str| {
-        for (i, entry) in tools.iter().enumerate() {
-            let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);
-            let is_active = (entry.is_active)(world);
-            let resp = ui.interact(
-                rect,
-                ui.id().with(id_prefix).with(i).with(entry.icon),
-                Sense::click(),
-            );
-            if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
-            if ui.is_rect_visible(rect) {
-                if is_active {
-                    ui.painter().rect_filled(rect, CornerRadius::same(3), active_color);
-                } else if resp.hovered() {
-                    ui.painter().rect_filled(rect, CornerRadius::same(3), hovered_bg);
-                }
-                ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    entry.icon,
-                    FontId::proportional(15.0),
-                    Color32::WHITE,
+    let mut paint_section =
+        |ui: &mut egui::Ui, x: &mut f32, tools: &[ToolEntry], id_prefix: &str| {
+            for (i, entry) in tools.iter().enumerate() {
+                let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);
+                let is_active = (entry.is_active)(world);
+                let resp = ui.interact(
+                    rect,
+                    ui.id().with(id_prefix).with(i).with(entry.icon),
+                    Sense::click(),
                 );
+                if resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if ui.is_rect_visible(rect) {
+                    if is_active {
+                        ui.painter()
+                            .rect_filled(rect, CornerRadius::same(3), active_color);
+                    } else if resp.hovered() {
+                        ui.painter()
+                            .rect_filled(rect, CornerRadius::same(3), hovered_bg);
+                    }
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        entry.icon,
+                        FontId::proportional(15.0),
+                        Color32::WHITE,
+                    );
+                }
+                resp.clone().on_hover_text(entry.tooltip);
+                if resp.clicked() {
+                    let activate = entry.activate.clone();
+                    cmds.push(move |w: &mut World| {
+                        (activate)(w);
+                    });
+                }
+                *x += btn_size.x + gap;
             }
-            resp.clone().on_hover_text(entry.tooltip);
-            if resp.clicked() {
-                let activate = entry.activate.clone();
-                cmds.push(move |w: &mut World| { (activate)(w); });
-            }
-            *x += btn_size.x + gap;
-        }
-    };
+        };
 
     let mut first = true;
     if !transform_tools.is_empty() {
@@ -552,12 +722,16 @@ fn render_left_tools(
         paint_section(ui, &mut x, &transform_tools, "vp_hdr_tool_t");
     }
     if !terrain_tools.is_empty() {
-        if !first { separator(ui, &mut x); }
+        if !first {
+            separator(ui, &mut x);
+        }
         first = false;
         paint_section(ui, &mut x, &terrain_tools, "vp_hdr_tool_te");
     }
     for (id, tools) in &custom_sections {
-        if !first { separator(ui, &mut x); }
+        if !first {
+            separator(ui, &mut x);
+        }
         first = false;
         paint_section(ui, &mut x, tools, id);
     }
@@ -598,17 +772,31 @@ fn render_right_dropdowns(
     let hovered = theme.widgets.hovered_bg.to_color32();
     let muted = theme.text.muted.to_color32();
 
-    display_dropdown(&mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme);
-    snap_dropdown(&mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme);
-    camera_dropdown(&mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme);
+    display_dropdown(
+        &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
+    );
+    snap_dropdown(
+        &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
+    );
+    camera_dropdown(
+        &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
+    );
 
     total_w
 }
 
 fn snap_pair(
-    ui: &mut egui::Ui, icon: &str, tip_name: &str, enabled: bool, value: f32,
-    range: std::ops::RangeInclusive<f32>, speed: f64, decimals: usize,
-    active: Color32, inactive: Color32, hovered: Color32,
+    ui: &mut egui::Ui,
+    icon: &str,
+    tip_name: &str,
+    enabled: bool,
+    value: f32,
+    range: std::ops::RangeInclusive<f32>,
+    speed: f64,
+    decimals: usize,
+    active: Color32,
+    inactive: Color32,
+    hovered: Color32,
     cmds: &EditorCommands,
     toggle_fn: fn(&mut ViewportSettings, bool),
     value_fn: fn(&mut ViewportSettings, f32),
@@ -626,16 +814,28 @@ fn snap_pair(
 
             // Icon toggle
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(18.0, BTN_H), Sense::click());
-            if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
             if ui.is_rect_visible(rect) {
                 if resp.hovered() && !enabled {
-                    ui.painter().rect_filled(rect, CornerRadius::same(2), hovered);
+                    ui.painter()
+                        .rect_filled(rect, CornerRadius::same(2), hovered);
                 }
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon,
-                    FontId::proportional(13.0), Color32::WHITE);
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    icon,
+                    FontId::proportional(13.0),
+                    Color32::WHITE,
+                );
             }
             let clicked = resp.clicked();
-            let _ = resp.on_hover_text(format!("{} snap: {}", tip_name, if enabled { "ON" } else { "OFF" }));
+            let _ = resp.on_hover_text(format!(
+                "{} snap: {}",
+                tip_name,
+                if enabled { "ON" } else { "OFF" }
+            ));
             if clicked {
                 cmds.push(move |w: &mut World| {
                     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
@@ -646,21 +846,23 @@ fn snap_pair(
 
             // DragValue with transparent chrome so the pill shows through.
             let mut v = value;
-            let dv = ui.scope(|ui| {
-                let w = &mut ui.style_mut().visuals.widgets;
-                w.inactive.bg_fill = Color32::TRANSPARENT;
-                w.inactive.weak_bg_fill = Color32::TRANSPARENT;
-                w.inactive.bg_stroke.width = 0.0;
-                w.hovered.bg_fill = Color32::from_black_alpha(40);
-                w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
-                w.hovered.bg_stroke.width = 0.0;
-                ui.add(
-                    egui::DragValue::new(&mut v)
-                        .range(range)
-                        .speed(speed)
-                        .max_decimals(decimals),
-                )
-            }).inner;
+            let dv = ui
+                .scope(|ui| {
+                    let w = &mut ui.style_mut().visuals.widgets;
+                    w.inactive.bg_fill = Color32::TRANSPARENT;
+                    w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                    w.inactive.bg_stroke.width = 0.0;
+                    w.hovered.bg_fill = Color32::from_black_alpha(40);
+                    w.hovered.weak_bg_fill = Color32::from_black_alpha(40);
+                    w.hovered.bg_stroke.width = 0.0;
+                    ui.add(
+                        egui::DragValue::new(&mut v)
+                            .range(range)
+                            .speed(speed)
+                            .max_decimals(decimals),
+                    )
+                })
+                .inner;
             if dv.changed() {
                 cmds.push(move |w: &mut World| {
                     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
@@ -674,19 +876,39 @@ fn snap_pair(
 // ── Dropdown helpers ────────────────────────────────────────────────────────
 
 fn dropdown_button_ui(
-    ui: &mut egui::Ui, icon: &str,
-    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
+    ui: &mut egui::Ui,
+    icon: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
 ) -> egui::Response {
     let size = Vec2::new(40.0, BTN_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     if ui.is_rect_visible(rect) {
-        let fill = if resp.hovered() { hovered_color } else { bg_color };
+        let fill = if resp.hovered() {
+            hovered_color
+        } else {
+            bg_color
+        };
         ui.painter().rect_filled(rect, CornerRadius::same(3), fill);
-        ui.painter().text(Pos2::new(rect.left() + 12.0, rect.center().y),
-            egui::Align2::CENTER_CENTER, icon, FontId::proportional(15.0), icon_color);
-        ui.painter().text(Pos2::new(rect.right() - 7.0, rect.center().y),
-            egui::Align2::CENTER_CENTER, CARET_DOWN, FontId::proportional(8.0), caret_color);
+        ui.painter().text(
+            Pos2::new(rect.left() + 12.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            FontId::proportional(15.0),
+            icon_color,
+        );
+        ui.painter().text(
+            Pos2::new(rect.right() - 7.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(8.0),
+            caret_color,
+        );
     }
     resp
 }
@@ -703,8 +925,13 @@ fn check_row(ui: &mut egui::Ui, label: &str, value: &mut bool) {
 // ── Display dropdown (visualization + render flags + overlays + collision) ──
 
 fn display_dropdown(
-    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
-    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
+    ui: &mut egui::Ui,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
     theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_display_drop");
@@ -725,67 +952,104 @@ fn display_dropdown(
     let collision_vis = settings.collision_gizmo_visibility;
 
     #[allow(deprecated)]
-    egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(190.0);
-        ui.style_mut().spacing.item_spacing.y = 4.0;
+    egui::popup_below_widget(
+        ui,
+        id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(190.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
 
-        ui.label(RichText::new("Visualization").small().color(label_color));
-        ui.add_space(2.0);
-        for mode in VisualizationMode::ALL {
-            let selected = current_viz == *mode;
-            let label = if selected { format!("• {}", mode.label()) } else { format!("  {}", mode.label()) };
-            if ui.add(egui::Button::new(&label).fill(Color32::TRANSPARENT)
-                .corner_radius(CornerRadius::same(2))
-                .min_size(Vec2::new(ui.available_width(), 0.0))).clicked()
+            ui.label(RichText::new("Visualization").small().color(label_color));
+            ui.add_space(2.0);
+            for mode in VisualizationMode::ALL {
+                let selected = current_viz == *mode;
+                let label = if selected {
+                    format!("• {}", mode.label())
+                } else {
+                    format!("  {}", mode.label())
+                };
+                if ui
+                    .add(
+                        egui::Button::new(&label)
+                            .fill(Color32::TRANSPARENT)
+                            .corner_radius(CornerRadius::same(2))
+                            .min_size(Vec2::new(ui.available_width(), 0.0)),
+                    )
+                    .clicked()
+                {
+                    let m = *mode;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.visualization_mode = m;
+                        }
+                    });
+                }
+            }
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Render").small().color(label_color));
+            ui.add_space(2.0);
+            check_row(ui, "Mesh", &mut toggles.mesh);
+            check_row(ui, "Textures", &mut toggles.textures);
+            check_row(ui, "Wireframe", &mut toggles.wireframe);
+            check_row(ui, "Lighting", &mut toggles.lighting);
+            check_row(ui, "Shadows", &mut toggles.shadows);
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Overlays").small().color(label_color));
+            ui.add_space(2.0);
+            check_row(ui, "Grid", &mut show_grid);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Sub-grid").size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_enabled(show_grid, egui::Checkbox::new(&mut show_subgrid, ""));
+                });
+            });
+            check_row(ui, "Axis Gizmo", &mut show_axis);
+            check_row(ui, "Scene Icons", &mut show_scene_icons);
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Collision Gizmos").small().color(label_color));
+            ui.add_space(2.0);
+            let mut selected_only = collision_vis == CollisionGizmoVisibility::SelectedOnly;
+            if ui
+                .radio_value(
+                    &mut selected_only,
+                    true,
+                    RichText::new("Selected Only").size(12.0),
+                )
+                .clicked()
             {
-                let m = *mode;
-                cmds.push(move |w: &mut World| {
+                cmds.push(|w: &mut World| {
                     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                        s.visualization_mode = m;
+                        s.collision_gizmo_visibility = CollisionGizmoVisibility::SelectedOnly;
                     }
                 });
             }
-        }
-
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Render").small().color(label_color));
-        ui.add_space(2.0);
-        check_row(ui, "Mesh",      &mut toggles.mesh);
-        check_row(ui, "Textures",  &mut toggles.textures);
-        check_row(ui, "Wireframe", &mut toggles.wireframe);
-        check_row(ui, "Lighting",  &mut toggles.lighting);
-        check_row(ui, "Shadows",   &mut toggles.shadows);
-
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Overlays").small().color(label_color));
-        ui.add_space(2.0);
-        check_row(ui, "Grid", &mut show_grid);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Sub-grid").size(12.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_enabled(show_grid, egui::Checkbox::new(&mut show_subgrid, ""));
-            });
-        });
-        check_row(ui, "Axis Gizmo", &mut show_axis);
-        check_row(ui, "Scene Icons", &mut show_scene_icons);
-
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Collision Gizmos").small().color(label_color));
-        ui.add_space(2.0);
-        let mut selected_only = collision_vis == CollisionGizmoVisibility::SelectedOnly;
-        if ui.radio_value(&mut selected_only, true,  RichText::new("Selected Only").size(12.0)).clicked() {
-            cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.collision_gizmo_visibility = CollisionGizmoVisibility::SelectedOnly; } });
-        }
-        if ui.radio_value(&mut selected_only, false, RichText::new("Always").size(12.0)).clicked() {
-            cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.collision_gizmo_visibility = CollisionGizmoVisibility::Always; } });
-        }
-    });
+            if ui
+                .radio_value(
+                    &mut selected_only,
+                    false,
+                    RichText::new("Always").size(12.0),
+                )
+                .clicked()
+            {
+                cmds.push(|w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        s.collision_gizmo_visibility = CollisionGizmoVisibility::Always;
+                    }
+                });
+            }
+        },
+    );
 
     cmds.push(move |w: &mut World| {
         if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
@@ -801,8 +1065,13 @@ fn display_dropdown(
 // ── Camera dropdown (projection + view angles + sensitivities, merged) ─────
 
 fn camera_dropdown(
-    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
-    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
+    ui: &mut egui::Ui,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
     theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_camera_drop");
@@ -817,87 +1086,164 @@ fn camera_dropdown(
     let mut cam = settings.camera;
 
     #[allow(deprecated)]
-    egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(220.0);
-        ui.style_mut().spacing.item_spacing.y = 4.0;
+    egui::popup_below_widget(
+        ui,
+        id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(220.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
 
-        ui.label(RichText::new("Projection").small().color(label_color));
-        ui.add_space(2.0);
-        let persp_label = if proj == ProjectionMode::Perspective { "• Perspective" } else { "  Perspective" };
-        if ui.add(egui::Button::new(persp_label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
-            cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.projection_mode = ProjectionMode::Perspective; } });
-        }
-        let ortho_label = if proj == ProjectionMode::Orthographic { "• Orthographic" } else { "  Orthographic" };
-        if ui.add(egui::Button::new(ortho_label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
-            cmds.push(|w: &mut World| { if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.projection_mode = ProjectionMode::Orthographic; } });
-        }
-
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("View Angles").small().color(label_color));
-        ui.add_space(2.0);
-        for view in ViewAngle::ALL {
-            let label = format!("{}  ({})", view.label(), view.shortcut());
-            if ui.add(egui::Button::new(&label).fill(Color32::TRANSPARENT).corner_radius(CornerRadius::same(2)).min_size(Vec2::new(ui.available_width(), 0.0))).clicked() {
-                let (yaw, pitch) = view.yaw_pitch();
-                cmds.push(move |w: &mut World| {
+            ui.label(RichText::new("Projection").small().color(label_color));
+            ui.add_space(2.0);
+            let persp_label = if proj == ProjectionMode::Perspective {
+                "• Perspective"
+            } else {
+                "  Perspective"
+            };
+            if ui
+                .add(
+                    egui::Button::new(persp_label)
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(2))
+                        .min_size(Vec2::new(ui.available_width(), 0.0)),
+                )
+                .clicked()
+            {
+                cmds.push(|w: &mut World| {
                     if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                        s.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
+                        s.projection_mode = ProjectionMode::Perspective;
                     }
                 });
-                ui.close();
             }
-        }
-
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Sensitivities").small().color(label_color));
-        ui.add_space(4.0);
-        let drag_row = |ui: &mut egui::Ui, label_text: &str, val: &mut f32, range: std::ops::RangeInclusive<f64>, speed: f64, decimals: usize| {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(label_text).size(12.0));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(egui::DragValue::new(val).range(range).speed(speed).max_decimals(decimals));
+            let ortho_label = if proj == ProjectionMode::Orthographic {
+                "• Orthographic"
+            } else {
+                "  Orthographic"
+            };
+            if ui
+                .add(
+                    egui::Button::new(ortho_label)
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(2))
+                        .min_size(Vec2::new(ui.available_width(), 0.0)),
+                )
+                .clicked()
+            {
+                cmds.push(|w: &mut World| {
+                    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                        s.projection_mode = ProjectionMode::Orthographic;
+                    }
                 });
-            });
-        };
-        drag_row(ui, "Look",  &mut cam.look_sensitivity,  0.05..=2.0, 0.05, 2);
-        drag_row(ui, "Orbit", &mut cam.orbit_sensitivity, 0.05..=2.0, 0.05, 2);
-        drag_row(ui, "Pan",   &mut cam.pan_sensitivity,   0.1..=5.0,  0.1,  1);
-        drag_row(ui, "Zoom",  &mut cam.zoom_sensitivity,  0.1..=5.0,  0.1,  1);
+            }
 
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        check_row(ui, "Invert Y Axis", &mut cam.invert_y);
-        check_row(ui, "Distance Relative Speed", &mut cam.distance_relative_speed);
-        ui.add_space(4.0);
-        if ui.add(egui::Button::new(RichText::new("Reset to Defaults").size(12.0))
-            .min_size(Vec2::new(ui.available_width(), 24.0))).clicked()
-        {
-            cam = CameraSettingsState::default();
-        }
-    });
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("View Angles").small().color(label_color));
+            ui.add_space(2.0);
+            for view in ViewAngle::ALL {
+                let label = format!("{}  ({})", view.label(), view.shortcut());
+                if ui
+                    .add(
+                        egui::Button::new(&label)
+                            .fill(Color32::TRANSPARENT)
+                            .corner_radius(CornerRadius::same(2))
+                            .min_size(Vec2::new(ui.available_width(), 0.0)),
+                    )
+                    .clicked()
+                {
+                    let (yaw, pitch) = view.yaw_pitch();
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
+                        }
+                    });
+                    ui.close();
+                }
+            }
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Sensitivities").small().color(label_color));
+            ui.add_space(4.0);
+            let drag_row = |ui: &mut egui::Ui,
+                            label_text: &str,
+                            val: &mut f32,
+                            range: std::ops::RangeInclusive<f64>,
+                            speed: f64,
+                            decimals: usize| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(label_text).size(12.0));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add(
+                            egui::DragValue::new(val)
+                                .range(range)
+                                .speed(speed)
+                                .max_decimals(decimals),
+                        );
+                    });
+                });
+            };
+            drag_row(ui, "Look", &mut cam.look_sensitivity, 0.05..=2.0, 0.05, 2);
+            drag_row(ui, "Orbit", &mut cam.orbit_sensitivity, 0.05..=2.0, 0.05, 2);
+            drag_row(ui, "Pan", &mut cam.pan_sensitivity, 0.1..=5.0, 0.1, 1);
+            drag_row(ui, "Zoom", &mut cam.zoom_sensitivity, 0.1..=5.0, 0.1, 1);
+
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            check_row(ui, "Invert Y Axis", &mut cam.invert_y);
+            check_row(
+                ui,
+                "Distance Relative Speed",
+                &mut cam.distance_relative_speed,
+            );
+            ui.add_space(4.0);
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("Reset to Defaults").size(12.0))
+                        .min_size(Vec2::new(ui.available_width(), 24.0)),
+                )
+                .clicked()
+            {
+                cam = CameraSettingsState::default();
+            }
+        },
+    );
 
     cmds.push(move |w: &mut World| {
-        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.camera = cam; }
+        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+            s.camera = cam;
+        }
     });
 }
 
 // ── Snap dropdown (object/floor + edge/scale-bottom transform aids) ────────
 
 fn snap_dropdown(
-    ui: &mut egui::Ui, settings: &ViewportSettings, cmds: &EditorCommands,
-    icon_color: Color32, bg_color: Color32, hovered_color: Color32, caret_color: Color32,
+    ui: &mut egui::Ui,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    icon_color: Color32,
+    bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
     theme: &renzora_theme::Theme,
 ) {
     let id = ui.make_persistent_id("vp_snap_drop");
     let s = &settings.snap;
-    let any_active = s.object_snap_enabled || s.floor_snap_enabled
-        || s.translate_edge_snap || s.scale_bottom_anchor;
-    let snap_bg = if any_active { theme.semantic.accent.to_color32() } else { bg_color };
+    let any_active = s.object_snap_enabled
+        || s.floor_snap_enabled
+        || s.translate_edge_snap
+        || s.scale_bottom_anchor;
+    let snap_bg = if any_active {
+        theme.semantic.accent.to_color32()
+    } else {
+        bg_color
+    };
     let resp = dropdown_button_ui(ui, MAGNET, icon_color, snap_bg, hovered_color, caret_color);
     if resp.clicked() {
         #[allow(deprecated)]
@@ -910,38 +1256,84 @@ fn snap_dropdown(
     let mut snap = settings.snap;
 
     #[allow(deprecated)]
-    egui::popup_below_widget(ui, id, &resp, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(220.0);
-        ui.style_mut().spacing.item_spacing.y = 4.0;
-        ui.label(RichText::new("Object Snapping").small().color(label_color));
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Objects").size(12.0))
-                .fill(if snap.object_snap_enabled { active_btn } else { inactive_btn })
-                .min_size(Vec2::new(70.0, 20.0))).clicked() {
-                snap.object_snap_enabled = !snap.object_snap_enabled;
-            }
-            ui.add(egui::DragValue::new(&mut snap.object_snap_distance).range(0.1..=10.0).speed(0.1).max_decimals(1).suffix(" dist"));
-        });
-        ui.horizontal(|ui| {
-            if ui.add(egui::Button::new(RichText::new("Floor").size(12.0))
-                .fill(if snap.floor_snap_enabled { active_btn } else { inactive_btn })
-                .min_size(Vec2::new(70.0, 20.0))).clicked() {
-                snap.floor_snap_enabled = !snap.floor_snap_enabled;
-            }
-            ui.add(egui::DragValue::new(&mut snap.floor_y).range(-1000.0..=1000.0).speed(0.1).max_decimals(1).suffix(" Y"));
-        });
+    egui::popup_below_widget(
+        ui,
+        id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(220.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
+            ui.label(RichText::new("Object Snapping").small().color(label_color));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("Objects").size(12.0))
+                            .fill(if snap.object_snap_enabled {
+                                active_btn
+                            } else {
+                                inactive_btn
+                            })
+                            .min_size(Vec2::new(70.0, 20.0)),
+                    )
+                    .clicked()
+                {
+                    snap.object_snap_enabled = !snap.object_snap_enabled;
+                }
+                ui.add(
+                    egui::DragValue::new(&mut snap.object_snap_distance)
+                        .range(0.1..=10.0)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" dist"),
+                );
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("Floor").size(12.0))
+                            .fill(if snap.floor_snap_enabled {
+                                active_btn
+                            } else {
+                                inactive_btn
+                            })
+                            .min_size(Vec2::new(70.0, 20.0)),
+                    )
+                    .clicked()
+                {
+                    snap.floor_snap_enabled = !snap.floor_snap_enabled;
+                }
+                ui.add(
+                    egui::DragValue::new(&mut snap.floor_y)
+                        .range(-1000.0..=1000.0)
+                        .speed(0.1)
+                        .max_decimals(1)
+                        .suffix(" Y"),
+                );
+            });
 
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Transform Aids").small().color(label_color));
-        ui.add_space(2.0);
-        check_row(ui, "Edge Snap (align AABB min to grid)", &mut snap.translate_edge_snap);
-        check_row(ui, "Scale from Bottom (keep AABB floor on Y)", &mut snap.scale_bottom_anchor);
-    });
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(RichText::new("Transform Aids").small().color(label_color));
+            ui.add_space(2.0);
+            check_row(
+                ui,
+                "Edge Snap (align AABB min to grid)",
+                &mut snap.translate_edge_snap,
+            );
+            check_row(
+                ui,
+                "Scale from Bottom (keep AABB floor on Y)",
+                &mut snap.scale_bottom_anchor,
+            );
+        },
+    );
 
     cmds.push(move |w: &mut World| {
-        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() { s.snap = snap; }
+        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+            s.snap = snap;
+        }
     });
 }

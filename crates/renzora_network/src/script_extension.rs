@@ -64,7 +64,8 @@ pub fn handle_network_script_actions(
             log::info!(
                 "[network] Host server request (port={}, max={}). \
                  Use renzora-server binary for dedicated servers.",
-                port, max_clients
+                port,
+                max_clients
             );
         }
         "net_send" | "net_send_message" => {
@@ -86,7 +87,13 @@ pub fn handle_network_script_actions(
             let x = get_f32("x");
             let y = get_f32("y");
             let z = get_f32("z");
-            log::info!("[network] Script spawn request: {} at ({}, {}, {})", name, x, y, z);
+            log::info!(
+                "[network] Script spawn request: {} at ({}, {}, {})",
+                name,
+                x,
+                y,
+                z
+            );
             // TODO: send SpawnRequest to server
         }
         "net_rpc" => {

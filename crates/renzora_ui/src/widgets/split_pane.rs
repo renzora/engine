@@ -33,7 +33,9 @@ pub fn split_pane(
             ui.horizontal(|ui| {
                 let a_rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(a_w, avail.y));
                 ui.scope_builder(
-                    egui::UiBuilder::new().max_rect(a_rect).layout(egui::Layout::top_down(egui::Align::Min)),
+                    egui::UiBuilder::new()
+                        .max_rect(a_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
                     |ui| first(ui),
                 );
 
@@ -60,7 +62,9 @@ pub fn split_pane(
                     Vec2::new(b_w, avail.y),
                 );
                 ui.scope_builder(
-                    egui::UiBuilder::new().max_rect(b_rect).layout(egui::Layout::top_down(egui::Align::Min)),
+                    egui::UiBuilder::new()
+                        .max_rect(b_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
                     |ui| second(ui),
                 );
             });
@@ -72,7 +76,9 @@ pub fn split_pane(
             ui.vertical(|ui| {
                 let a_rect = egui::Rect::from_min_size(ui.cursor().min, Vec2::new(avail.x, a_h));
                 ui.scope_builder(
-                    egui::UiBuilder::new().max_rect(a_rect).layout(egui::Layout::top_down(egui::Align::Min)),
+                    egui::UiBuilder::new()
+                        .max_rect(a_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
                     |ui| first(ui),
                 );
 
@@ -99,7 +105,9 @@ pub fn split_pane(
                     Vec2::new(avail.x, b_h),
                 );
                 ui.scope_builder(
-                    egui::UiBuilder::new().max_rect(b_rect).layout(egui::Layout::top_down(egui::Align::Min)),
+                    egui::UiBuilder::new()
+                        .max_rect(b_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
                     |ui| second(ui),
                 );
             });

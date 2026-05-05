@@ -1,0 +1,6 @@
+# Force LF line endings for files that run in Linux containers / Unix shells.
+# Without this, Windows checkouts get CRLF and bash inside Docker fails on
+# the shebang line.
+*.sh    text eol=lf
+*.bash  text eol=lf
+Dockerfile text eol=lf

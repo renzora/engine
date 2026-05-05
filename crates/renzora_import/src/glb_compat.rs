@@ -114,10 +114,7 @@ fn repack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
             b.len() + pad
         })
         .unwrap_or(0);
-    let total_len = 12
-        + 8
-        + json_chunk_len
-        + if bin.is_some() { 8 + bin_chunk_len } else { 0 };
+    let total_len = 12 + 8 + json_chunk_len + if bin.is_some() { 8 + bin_chunk_len } else { 0 };
 
     let mut out = Vec::with_capacity(total_len);
     out.extend_from_slice(&0x46546C67u32.to_le_bytes());

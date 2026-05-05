@@ -8,8 +8,8 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 
 use renzora_editor::{
-    AppEditorExt, DockingState, FloatingPanels, PanelRegistry, SplashState,
-    StatusBarAlignment, StatusBarItem,
+    AppEditorExt, DockingState, FloatingPanels, PanelRegistry, SplashState, StatusBarAlignment,
+    StatusBarItem,
 };
 use renzora_theme::ThemeManager;
 
@@ -43,7 +43,9 @@ fn apply_open_marketplace(
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let should_open = {
-        let Ok(mut flag) = pending.open_marketplace.lock() else { return };
+        let Ok(mut flag) = pending.open_marketplace.lock() else {
+            return;
+        };
         std::mem::replace(&mut *flag, false)
     };
     if !should_open {
@@ -106,7 +108,9 @@ impl StatusBarItem for ThemeStatusItem {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let Some(tm) = world.get_resource::<ThemeManager>() else { return };
+        let Some(tm) = world.get_resource::<ThemeManager>() else {
+            return;
+        };
         let theme = tm.active_theme.clone();
         let active_name = tm.active_theme_name.clone();
         let available = tm.available_themes.clone();
@@ -118,7 +122,12 @@ impl StatusBarItem for ThemeStatusItem {
         let selection_bg = accent_color.linear_multiply(0.18);
 
         // Button
-        let button_label = format!("{} {}  {}", regular::PALETTE, active_name, regular::CARET_UP);
+        let button_label = format!(
+            "{} {}  {}",
+            regular::PALETTE,
+            active_name,
+            regular::CARET_UP
+        );
         let btn = egui::Button::new(
             egui::RichText::new(button_label)
                 .size(11.0)
@@ -143,11 +152,7 @@ impl StatusBarItem for ThemeStatusItem {
                 ui.set_max_width(POPUP_WIDTH);
                 ui.spacing_mut().item_spacing.y = 2.0;
 
-                ui.label(
-                    egui::RichText::new("Themes")
-                        .size(10.0)
-                        .color(muted_color),
-                );
+                ui.label(egui::RichText::new("Themes").size(10.0).color(muted_color));
                 ui.add_space(2.0);
 
                 egui::ScrollArea::vertical()
@@ -158,9 +163,7 @@ impl StatusBarItem for ThemeStatusItem {
                             let row_color = if is_active { accent_color } else { text_color };
 
                             if theme_row(ui, name, is_active, row_color, selection_bg, hover_bg) {
-                                if let Some(pending) =
-                                    world.get_resource::<ThemeStatusPending>()
-                                {
+                                if let Some(pending) = world.get_resource::<ThemeStatusPending>() {
                                     if let Ok(mut slot) = pending.next.lock() {
                                         *slot = Some(name.clone());
                                     }
@@ -197,10 +200,7 @@ fn theme_row(
     hover_bg: egui::Color32,
 ) -> bool {
     let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(width, ROW_HEIGHT),
-        egui::Sense::click(),
-    );
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, ROW_HEIGHT), egui::Sense::click());
 
     let bg = if is_active {
         selection_bg
@@ -239,13 +239,9 @@ fn theme_row(
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     child.add(
-        egui::Label::new(
-            egui::RichText::new(name)
-                .size(11.0)
-                .color(text_color),
-        )
-        .truncate()
-        .selectable(false),
+        egui::Label::new(egui::RichText::new(name).size(11.0).color(text_color))
+            .truncate()
+            .selectable(false),
     );
 
     resp.clicked()
@@ -254,12 +250,13 @@ fn theme_row(
 /// "Browse themes" footer row — opens the Marketplace panel.
 fn browse_row(ui: &mut egui::Ui, muted: egui::Color32, hover_bg: egui::Color32) -> bool {
     let width = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(width, ROW_HEIGHT),
-        egui::Sense::click(),
-    );
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, ROW_HEIGHT), egui::Sense::click());
 
-    let bg = if resp.hovered() { hover_bg } else { egui::Color32::TRANSPARENT };
+    let bg = if resp.hovered() {
+        hover_bg
+    } else {
+        egui::Color32::TRANSPARENT
+    };
     if bg != egui::Color32::TRANSPARENT {
         ui.painter()
             .rect_filled(rect, egui::CornerRadius::same(3), bg);
@@ -293,10 +290,10 @@ impl Plugin for ThemeStatusPlugin {
         app.init_resource::<ThemeStatusPending>();
         app.add_systems(
             Update,
-            (apply_pending_theme, apply_open_marketplace)
-                .run_if(in_state(SplashState::Editor)),
+            (apply_pending_theme, apply_open_marketplace).run_if(in_state(SplashState::Editor)),
         );
         app.register_status_item(ThemeStatusItem);
     }
 }
 
+renzora::add!(ThemeStatusPlugin, Editor);

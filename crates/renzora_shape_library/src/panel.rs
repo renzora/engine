@@ -99,10 +99,10 @@ impl EditorPanel for ShapeLibraryPanel {
         egui::ScrollArea::vertical().show(ui, |ui| {
             let available_width = ui.available_width() - panel_padding * 2.0;
             let min_tile = 48.0;
-            let cols =
-                ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
-            let tile_size =
-                (available_width - spacing * (cols as f32 - 1.0)) / cols as f32;
+            let cols = ((available_width + spacing) / (min_tile + spacing))
+                .floor()
+                .max(1.0) as usize;
+            let tile_size = (available_width - spacing * (cols as f32 - 1.0)) / cols as f32;
             let label_height = 16.0;
 
             ui.add_space(2.0);
@@ -223,10 +223,17 @@ impl EditorPanel for ShapeLibraryPanel {
                                 let color = shape.default_color;
                                 let shape_id = shape.id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
-                                        entity: Entity::PLACEHOLDER,
-                                        shape_id, name, position: Vec3::ZERO, color,
-                                    }));
+                                    renzora_undo::execute(
+                                        world,
+                                        UndoContext::Scene,
+                                        Box::new(SpawnShapeCmd {
+                                            entity: Entity::PLACEHOLDER,
+                                            shape_id,
+                                            name,
+                                            position: Vec3::ZERO,
+                                            color,
+                                        }),
+                                    );
                                 });
                             }
                         }
@@ -237,4 +244,3 @@ impl EditorPanel for ShapeLibraryPanel {
         });
     }
 }
-

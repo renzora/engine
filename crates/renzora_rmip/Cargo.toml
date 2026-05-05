@@ -15,3 +15,6 @@ bake = ["dep:image"]
 bevy = { workspace = true }
 thiserror = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"], optional = true }
+
+[lints]
+workspace = true

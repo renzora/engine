@@ -19,7 +19,12 @@ pub struct CurveKey {
 
 impl CurveKey {
     pub fn linear(t: f32, value: f32) -> Self {
-        Self { t, value, in_tangent: Vec2::ZERO, out_tangent: Vec2::ZERO }
+        Self {
+            t,
+            value,
+            in_tangent: Vec2::ZERO,
+            out_tangent: Vec2::ZERO,
+        }
     }
 }
 
@@ -52,7 +57,8 @@ pub fn curve_editor(
     theme: &Theme,
 ) -> egui::Response {
     let w = ui.available_width().max(120.0);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(w, cfg.height), Sense::click_and_drag());
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(w, cfg.height), Sense::click_and_drag());
 
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, theme.surfaces.faint.to_color32());
@@ -132,7 +138,9 @@ pub fn curve_editor(
     let mut drag_idx = ui.memory(|m| m.data.get_temp::<Option<usize>>(response.id).flatten());
     if response.drag_started() {
         if let Some(pos) = response.interact_pointer_pos() {
-            drag_idx = keys.iter().position(|k| (to_screen(k) - pos).length() < 8.0);
+            drag_idx = keys
+                .iter()
+                .position(|k| (to_screen(k) - pos).length() < 8.0);
         }
     }
     if response.dragged() {
@@ -151,7 +159,10 @@ pub fn curve_editor(
 
     if response.double_clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
-            if let Some(idx) = keys.iter().position(|k| (to_screen(k) - pos).length() < 8.0) {
+            if let Some(idx) = keys
+                .iter()
+                .position(|k| (to_screen(k) - pos).length() < 8.0)
+            {
                 keys.remove(idx);
             } else {
                 let (t, v) = to_curve(pos);

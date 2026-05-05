@@ -16,7 +16,11 @@ pub fn inline_property<R>(
 ) -> R {
     let row_even = theme.panels.inspector_row_even.to_color32();
     let row_odd = theme.panels.inspector_row_odd.to_color32();
-    let bg_color = if row_index % 2 == 0 { row_even } else { row_odd };
+    let bg_color = if row_index % 2 == 0 {
+        row_even
+    } else {
+        row_odd
+    };
     let available_width = ui.available_width().max(MIN_WIDTH);
 
     egui::Frame::new()

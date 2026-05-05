@@ -3,12 +3,16 @@
 //! These live in the editor framework so that they are always available,
 //! regardless of which engine plugins are loaded.
 
-use bevy::prelude::*;
+use bevy::light::{
+    EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricFog, VolumetricLight,
+};
 use bevy::pbr::Lightmap;
-use bevy::light::{EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricFog, VolumetricLight};
+use bevy::prelude::*;
 use egui_phosphor::regular;
 
-use crate::inspector_registry::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use crate::inspector_registry::{
+    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
+};
 use crate::spawn_registry::{ComponentIconEntry, ComponentIconRegistry};
 use crate::{EntityLabelColor, EntityTag};
 
@@ -125,7 +129,9 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                 ))
                 .id();
             if is_first {
-                world.entity_mut(entity).insert(renzora::core::DefaultCamera);
+                world
+                    .entity_mut(entity)
+                    .insert(renzora::core::DefaultCamera);
             }
             entity
         },
@@ -271,11 +277,7 @@ fn name_entry() -> InspectorEntry {
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color([r, g, b]) = val {
-                        let color = [
-                            (r * 255.0) as u8,
-                            (g * 255.0) as u8,
-                            (b * 255.0) as u8,
-                        ];
+                        let color = [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8];
                         world.entity_mut(entity).insert(EntityLabelColor(color));
                     }
                 },
@@ -799,9 +801,9 @@ fn camera_entry() -> InspectorEntry {
                 name: "Output",
                 field_type: FieldType::ReadOnly,
                 get_fn: |world, entity| {
-                    world.get::<Camera>(entity).map(|c| {
-                        FieldValue::ReadOnly(format!("{:?}", c.output_mode))
-                    })
+                    world
+                        .get::<Camera>(entity)
+                        .map(|c| FieldValue::ReadOnly(format!("{:?}", c.output_mode)))
                 },
                 set_fn: |_, _, _| {},
             },
@@ -989,9 +991,11 @@ fn light_probe_entry() -> InspectorEntry {
             name: "Info",
             field_type: FieldType::ReadOnly,
             get_fn: |world, entity| {
-                world
-                    .get::<LightProbe>(entity)
-                    .map(|_| FieldValue::ReadOnly("Marker — add EnvironmentMapLight or IrradianceVolume".to_string()))
+                world.get::<LightProbe>(entity).map(|_| {
+                    FieldValue::ReadOnly(
+                        "Marker — add EnvironmentMapLight or IrradianceVolume".to_string(),
+                    )
+                })
             },
             set_fn: |_, _, _| {},
         }],
@@ -1079,7 +1083,10 @@ fn lightmap_entry() -> InspectorEntry {
                 field_type: FieldType::ReadOnly,
                 get_fn: |world, entity| {
                     world.get::<Lightmap>(entity).map(|l| {
-                        FieldValue::ReadOnly(format!("({:.2}, {:.2})", l.uv_rect.min.x, l.uv_rect.min.y))
+                        FieldValue::ReadOnly(format!(
+                            "({:.2}, {:.2})",
+                            l.uv_rect.min.x, l.uv_rect.min.y
+                        ))
                     })
                 },
                 set_fn: |_, _, _| {},
@@ -1089,7 +1096,10 @@ fn lightmap_entry() -> InspectorEntry {
                 field_type: FieldType::ReadOnly,
                 get_fn: |world, entity| {
                     world.get::<Lightmap>(entity).map(|l| {
-                        FieldValue::ReadOnly(format!("({:.2}, {:.2})", l.uv_rect.max.x, l.uv_rect.max.y))
+                        FieldValue::ReadOnly(format!(
+                            "({:.2}, {:.2})",
+                            l.uv_rect.max.x, l.uv_rect.max.y
+                        ))
                     })
                 },
                 set_fn: |_, _, _| {},
@@ -1118,9 +1128,11 @@ fn volumetric_light_entry() -> InspectorEntry {
             name: "Info",
             field_type: FieldType::ReadOnly,
             get_fn: |world, entity| {
-                world
-                    .get::<VolumetricLight>(entity)
-                    .map(|_| FieldValue::ReadOnly("Enables god rays (requires VolumetricFog on camera)".to_string()))
+                world.get::<VolumetricLight>(entity).map(|_| {
+                    FieldValue::ReadOnly(
+                        "Enables god rays (requires VolumetricFog on camera)".to_string(),
+                    )
+                })
             },
             set_fn: |_, _, _| {},
         }],
@@ -1225,4 +1237,3 @@ fn volumetric_fog_entry() -> InspectorEntry {
         custom_ui_fn: None,
     }
 }
-

@@ -3,8 +3,8 @@
 //! Provides `Sun` (directional light via azimuth/elevation), with sync
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
-use bevy::prelude::*;
 use bevy::light::SunDisk;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -63,11 +63,7 @@ impl Sun {
     pub fn direction(&self) -> Vec3 {
         let az = self.azimuth.to_radians();
         let el = self.elevation.to_radians();
-        Vec3::new(
-            -el.cos() * az.sin(),
-            -el.sin(),
-            -el.cos() * az.cos(),
-        )
+        Vec3::new(-el.cos() * az.sin(), -el.sin(), -el.cos() * az.cos())
     }
 }
 
@@ -77,15 +73,17 @@ impl Sun {
 
 fn sync_sun(
     mut commands: Commands,
-    mut query: Query<(Entity, &Sun, &mut DirectionalLight, &mut Transform), Or<(Changed<Sun>, Without<SunDisk>)>>,
+    mut query: Query<
+        (Entity, &Sun, &mut DirectionalLight, &mut Transform),
+        Or<(Changed<Sun>, Without<SunDisk>)>,
+    >,
 ) {
     for (entity, sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance;
         light.shadows_enabled = sun.shadows_enabled;
-        *transform = Transform::from_rotation(
-            Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()),
-        );
+        *transform =
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
         commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
             intensity: sun.sun_disk_intensity,
@@ -234,15 +232,15 @@ fn inspector_entry() -> InspectorEntry {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct LightingPlugin;
 
 /// Observer: handle sun angle changes from scripts via ScriptAction.
-fn handle_sun_script_actions(
-    trigger: On<renzora::ScriptAction>,
-    mut sun_query: Query<&mut Sun>,
-) {
+fn handle_sun_script_actions(trigger: On<renzora::ScriptAction>, mut sun_query: Query<&mut Sun>) {
     let action = trigger.event();
-    if action.name != "set_sun_angles" { return; }
+    if action.name != "set_sun_angles" {
+        return;
+    }
     use renzora::ScriptActionValue;
     let azimuth = match action.args.get("azimuth") {
         Some(ScriptActionValue::Float(v)) => *v,
@@ -279,7 +277,9 @@ mod tests {
         assert!(
             (a - b).length() < eps,
             "expected {:?}, got {:?} (diff {})",
-            b, a, (a - b).length(),
+            b,
+            a,
+            (a - b).length(),
         );
     }
 
@@ -287,33 +287,53 @@ mod tests {
     fn direction_north_horizon_points_south() {
         // Azimuth 0 = sun in the north on the horizon. Light travels away
         // from the sun toward -Z.
-        let sun = Sun { azimuth: 0.0, elevation: 0.0, ..Sun::default() };
+        let sun = Sun {
+            azimuth: 0.0,
+            elevation: 0.0,
+            ..Sun::default()
+        };
         approx_eq(sun.direction(), Vec3::new(0.0, 0.0, -1.0));
     }
 
     #[test]
     fn direction_overhead_points_straight_down() {
-        let sun = Sun { azimuth: 0.0, elevation: 90.0, ..Sun::default() };
+        let sun = Sun {
+            azimuth: 0.0,
+            elevation: 90.0,
+            ..Sun::default()
+        };
         approx_eq(sun.direction(), Vec3::new(0.0, -1.0, 0.0));
     }
 
     #[test]
     fn direction_below_horizon_points_up() {
-        let sun = Sun { azimuth: 0.0, elevation: -90.0, ..Sun::default() };
+        let sun = Sun {
+            azimuth: 0.0,
+            elevation: -90.0,
+            ..Sun::default()
+        };
         approx_eq(sun.direction(), Vec3::new(0.0, 1.0, 0.0));
     }
 
     #[test]
     fn direction_east_horizon_points_west() {
         // Azimuth 90 = sun in the east on the horizon. Light travels to -X.
-        let sun = Sun { azimuth: 90.0, elevation: 0.0, ..Sun::default() };
+        let sun = Sun {
+            azimuth: 90.0,
+            elevation: 0.0,
+            ..Sun::default()
+        };
         approx_eq(sun.direction(), Vec3::new(-1.0, 0.0, 0.0));
     }
 
     #[test]
     fn direction_south_horizon_points_north() {
         // Azimuth 180 = sun in the south on the horizon. Light travels to +Z.
-        let sun = Sun { azimuth: 180.0, elevation: 0.0, ..Sun::default() };
+        let sun = Sun {
+            azimuth: 180.0,
+            elevation: 0.0,
+            ..Sun::default()
+        };
         approx_eq(sun.direction(), Vec3::new(0.0, 0.0, 1.0));
     }
 
@@ -323,12 +343,18 @@ mod tests {
         // construction should always produce a unit vector.
         for az in [0.0, 37.5, 90.0, 175.0, 245.0, 359.0] {
             for el in [-89.9, -45.0, 0.0, 22.5, 60.0, 89.9] {
-                let sun = Sun { azimuth: az, elevation: el, ..Sun::default() };
+                let sun = Sun {
+                    azimuth: az,
+                    elevation: el,
+                    ..Sun::default()
+                };
                 let len = sun.direction().length();
                 assert!(
                     (len - 1.0).abs() < 1e-5,
                     "az={} el={} produced direction with length {}",
-                    az, el, len,
+                    az,
+                    el,
+                    len,
                 );
             }
         }
@@ -350,8 +376,18 @@ mod tests {
     fn azimuth_360_equivalent_to_zero() {
         // Wraps because the construction is pure trig — 360° must produce
         // the same direction as 0° within float precision.
-        let a = Sun { azimuth: 0.0, elevation: 30.0, ..Sun::default() };
-        let b = Sun { azimuth: 360.0, elevation: 30.0, ..Sun::default() };
+        let a = Sun {
+            azimuth: 0.0,
+            elevation: 30.0,
+            ..Sun::default()
+        };
+        let b = Sun {
+            azimuth: 360.0,
+            elevation: 30.0,
+            ..Sun::default()
+        };
         approx_eq(a.direction(), b.direction());
     }
 }
+
+renzora::add!(LightingPlugin);

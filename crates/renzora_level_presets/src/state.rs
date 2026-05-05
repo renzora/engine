@@ -65,9 +65,16 @@ impl LevelPreset {
     }
 
     pub const ALL: &'static [Self] = &[
-        Self::FPS, Self::ThirdPerson, Self::Platformer, Self::TopDown,
-        Self::Racing, Self::Sandbox, Self::Corridor, Self::Arena,
-        Self::Showcase, Self::Terrain,
+        Self::FPS,
+        Self::ThirdPerson,
+        Self::Platformer,
+        Self::TopDown,
+        Self::Racing,
+        Self::Sandbox,
+        Self::Corridor,
+        Self::Arena,
+        Self::Showcase,
+        Self::Terrain,
     ];
 }
 

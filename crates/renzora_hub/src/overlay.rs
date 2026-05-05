@@ -10,7 +10,6 @@ use renzora_auth::marketplace::{AssetComment, AssetDetail, AssetRating, Comments
 use renzora_auth::session::AuthSession;
 use renzora_editor::EditorCommands;
 
-
 use crate::images::ImageCache;
 use crate::install;
 use crate::preview::{HubPreviewImage, HubShaderRequest};
@@ -363,8 +362,7 @@ impl AssetOverlay {
         });
         let tx = self.result_tx.clone();
         std::thread::spawn(move || {
-            let result =
-                renzora_auth::marketplace::get_rating(&slug, session_clone.as_ref());
+            let result = renzora_auth::marketplace::get_rating(&slug, session_clone.as_ref());
             let _ = tx.send(OverlayResult::Rating(result));
         });
     }
@@ -408,9 +406,8 @@ impl AssetOverlay {
 
         std::thread::spawn(move || {
             let result = (|| {
-                let dl_resp =
-                    renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                        .map_err(|e| format!("Failed to get download URL: {e}"))?;
+                let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
+                    .map_err(|e| format!("Failed to get download URL: {e}"))?;
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)
                     .map_err(|e| format!("Failed to download file: {e}"))?;
 
@@ -447,9 +444,8 @@ impl AssetOverlay {
 
         std::thread::spawn(move || {
             let result = (|| -> Result<Vec<u8>, String> {
-                let dl_resp =
-                    renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                        .map_err(|e| format!("{e}"))?;
+                let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
+                    .map_err(|e| format!("{e}"))?;
                 renzora_auth::marketplace::download_file(&dl_resp.download_url)
                     .map_err(|e| format!("{e}"))
             })();
@@ -470,9 +466,8 @@ impl AssetOverlay {
 
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
-                let dl_resp =
-                    renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                        .map_err(|e| format!("{e}"))?;
+                let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
+                    .map_err(|e| format!("{e}"))?;
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)
                     .map_err(|e| format!("{e}"))?;
 
@@ -501,8 +496,7 @@ impl AssetOverlay {
         self.state.write().unwrap().posting_comment = true;
 
         std::thread::spawn(move || {
-            let result =
-                renzora_auth::marketplace::post_comment(&session_clone, &slug, &content);
+            let result = renzora_auth::marketplace::post_comment(&session_clone, &slug, &content);
             let _ = tx.send(OverlayResult::PostComment(result));
         });
     }
@@ -518,8 +512,7 @@ impl AssetOverlay {
         let tx = self.result_tx.clone();
 
         std::thread::spawn(move || {
-            let result =
-                renzora_auth::marketplace::post_rating(&session_clone, &slug, rating);
+            let result = renzora_auth::marketplace::post_rating(&session_clone, &slug, rating);
             let _ = tx.send(OverlayResult::PostRating(result));
         });
     }
@@ -595,8 +588,7 @@ impl AssetOverlay {
         // ── Dimmed background (painted at Middle layer, below Foreground modal) ──
         #[allow(deprecated)]
         let screen = ctx.screen_rect();
-        let bg_layer =
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new("hub_overlay_dim"));
+        let bg_layer = egui::LayerId::new(egui::Order::Middle, egui::Id::new("hub_overlay_dim"));
         ctx.layer_painter(bg_layer)
             .rect_filled(screen, 0.0, Color32::from_black_alpha(160));
 
@@ -1410,13 +1402,7 @@ impl AssetOverlay {
         if let Some((asset_id, asset_name, category)) = do_install {
             if let Some(pp) = project_path {
                 #[cfg(not(target_arch = "wasm32"))]
-                self.download_and_install(
-                    &session,
-                    &asset_id,
-                    &asset_name,
-                    &category,
-                    pp.clone(),
-                );
+                self.download_and_install(&session, &asset_id, &asset_name, &category, pp.clone());
             }
         }
         if let Some(asset_id) = do_audio_play {
@@ -1454,7 +1440,10 @@ impl AssetOverlay {
 
 fn is_audio_asset(category: &str) -> bool {
     let lower = category.to_lowercase();
-    lower.contains("audio") || lower.contains("sound") || lower.contains("music") || lower.contains("sfx")
+    lower.contains("audio")
+        || lower.contains("sound")
+        || lower.contains("music")
+        || lower.contains("sfx")
 }
 
 fn is_shader_asset(category: &str) -> bool {

@@ -19,9 +19,9 @@ impl Plugin for MixerPlugin {
 #[cfg(not(target_arch = "wasm32"))]
 mod inspectors;
 #[cfg(not(target_arch = "wasm32"))]
-mod render;
-#[cfg(not(target_arch = "wasm32"))]
 mod native;
+#[cfg(not(target_arch = "wasm32"))]
+mod render;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Plugin for MixerPlugin {
@@ -31,3 +31,4 @@ impl Plugin for MixerPlugin {
     }
 }
 
+renzora::add!(MixerPlugin, Editor);

@@ -7,10 +7,10 @@ pub mod api;
 pub mod marketplace;
 pub mod session;
 
-use bevy::prelude::*;
 use bevy::ecs::system::SystemState;
-use bevy_egui::EguiContexts;
+use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, Sense};
+use bevy_egui::EguiContexts;
 use renzora_theme::{Theme, ThemeManager};
 
 pub use session::AuthSession;
@@ -36,12 +36,18 @@ impl Plugin for AuthPlugin {
 /// and syncs the bridge resource.
 fn auth_system(world: &mut World) {
     // Handle toggle/sign-out requests from the editor (via marker resources).
-    if world.remove_resource::<renzora::core::AuthToggleWindowRequest>().is_some() {
+    if world
+        .remove_resource::<renzora::core::AuthToggleWindowRequest>()
+        .is_some()
+    {
         if let Some(mut auth) = world.get_resource_mut::<AuthState>() {
             auth.window_open = !auth.window_open;
         }
     }
-    if world.remove_resource::<renzora::core::AuthSignOutRequest>().is_some() {
+    if world
+        .remove_resource::<renzora::core::AuthSignOutRequest>()
+        .is_some()
+    {
         if let Some(mut session) = world.get_resource_mut::<AuthSession>() {
             session.clear();
             #[cfg(not(target_arch = "wasm32"))]
@@ -307,7 +313,11 @@ fn render_sign_in_form(
     text_secondary: Color32,
 ) {
     // Email
-    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Email")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.email)
@@ -317,7 +327,11 @@ fn render_sign_in_form(
     ui.add_space(8.0);
 
     // Password
-    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Password")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.password)
@@ -350,7 +364,11 @@ fn render_sign_in_form(
     ui.add_space(12.0);
 
     // Sign In button
-    let btn_text = if state.loading { "Signing in..." } else { "Sign In" };
+    let btn_text = if state.loading {
+        "Signing in..."
+    } else {
+        "Sign In"
+    };
     let btn = ui.add_sized(
         [ui.available_width(), 32.0],
         egui::Button::new(
@@ -404,7 +422,11 @@ fn render_register_form(
     text_secondary: Color32,
 ) {
     // Username
-    ui.label(egui::RichText::new("Username").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Username")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.username)
@@ -414,7 +436,11 @@ fn render_register_form(
     ui.add_space(8.0);
 
     // Email
-    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Email")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.email)
@@ -424,7 +450,11 @@ fn render_register_form(
     ui.add_space(8.0);
 
     // Password
-    ui.label(egui::RichText::new("Password").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Password")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.password)
@@ -529,7 +559,11 @@ fn render_forgot_password_form(
     ui.add_space(12.0);
 
     // Email
-    ui.label(egui::RichText::new("Email").size(11.0).color(text_secondary));
+    ui.label(
+        egui::RichText::new("Email")
+            .size(11.0)
+            .color(text_secondary),
+    );
     ui.add_space(2.0);
     ui.add(
         egui::TextEdit::singleline(&mut state.email)
@@ -619,3 +653,4 @@ pub fn try_restore_session() -> AuthSession {
     AuthSession::default()
 }
 
+renzora::add!(AuthPlugin, Editor);

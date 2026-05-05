@@ -2,15 +2,13 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular::{SLIDERS, FLOW_ARROW, PLUGS_CONNECTED, PLUG};
+use egui_phosphor::regular::{FLOW_ARROW, PLUG, PLUGS_CONNECTED, SLIDERS};
 
-use renzora_blueprint::graph::*;
-use renzora_blueprint::{BlueprintGraph, nodes};
-use renzora_editor::{
-    DocTabKind, EditorCommands, EditorContext, EditorPanel, PanelLocation,
-};
-use renzora_theme::ThemeManager;
 use renzora::core::CurrentProject;
+use renzora_blueprint::graph::*;
+use renzora_blueprint::{nodes, BlueprintGraph};
+use renzora_editor::{DocTabKind, EditorCommands, EditorContext, EditorPanel, PanelLocation};
+use renzora_theme::ThemeManager;
 
 use crate::BlueprintEditorState;
 
@@ -56,7 +54,10 @@ impl EditorPanel for BlueprintPropertiesPanel {
         // BlueprintGraph component on the editing entity.
         let asset_mode = matches!(
             world.get_resource::<EditorContext>(),
-            Some(EditorContext::Asset { kind: DocTabKind::Blueprint, .. })
+            Some(EditorContext::Asset {
+                kind: DocTabKind::Blueprint,
+                ..
+            })
         );
 
         let Some(selected_id) = bp_state.selected_node else {
@@ -151,9 +152,7 @@ impl EditorPanel for BlueprintPropertiesPanel {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for pin in &input_pins {
-                    let is_connected = connections_to_node
-                        .iter()
-                        .any(|c| c.to_pin == pin.name);
+                    let is_connected = connections_to_node.iter().any(|c| c.to_pin == pin.name);
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -168,11 +167,7 @@ impl EditorPanel for BlueprintPropertiesPanel {
                         };
                         ui.label(RichText::new(conn_icon).size(11.0).color(conn_color));
 
-                        ui.label(
-                            RichText::new(&pin.label)
-                                .size(12.0)
-                                .color(text_primary),
-                        );
+                        ui.label(RichText::new(&pin.label).size(12.0).color(text_primary));
 
                         // Show type badge
                         ui.label(
@@ -200,7 +195,9 @@ impl EditorPanel for BlueprintPropertiesPanel {
                             .cloned()
                             .unwrap_or_else(|| pin.default_value.clone());
 
-                        if let Some(new_val) = render_pin_editor(ui, &pin.name, pin.pin_type, &current, &theme) {
+                        if let Some(new_val) =
+                            render_pin_editor(ui, &pin.name, pin.pin_type, &current, &theme)
+                        {
                             updated_values.push((pin.name.clone(), new_val));
                         }
                     }
@@ -230,11 +227,7 @@ impl EditorPanel for BlueprintPropertiesPanel {
                     for pin in &output_pins {
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
-                            ui.label(
-                                RichText::new(&pin.label)
-                                    .size(11.0)
-                                    .color(text_primary),
-                            );
+                            ui.label(RichText::new(&pin.label).size(11.0).color(text_primary));
                             ui.label(
                                 RichText::new(pin_type_label(pin.pin_type))
                                     .size(10.0)
@@ -356,11 +349,19 @@ fn render_pin_editor(
                 let mut y = v[1];
                 let mut any_changed = false;
 
-                ui.label(RichText::new("X").size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("X")
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 if ui.add(egui::DragValue::new(&mut x).speed(0.01)).changed() {
                     any_changed = true;
                 }
-                ui.label(RichText::new("Y").size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Y")
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 if ui.add(egui::DragValue::new(&mut y).speed(0.01)).changed() {
                     any_changed = true;
                 }
@@ -376,15 +377,27 @@ fn render_pin_editor(
                 let mut z = v[2];
                 let mut any_changed = false;
 
-                ui.label(RichText::new("X").size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("X")
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 if ui.add(egui::DragValue::new(&mut x).speed(0.01)).changed() {
                     any_changed = true;
                 }
-                ui.label(RichText::new("Y").size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Y")
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 if ui.add(egui::DragValue::new(&mut y).speed(0.01)).changed() {
                     any_changed = true;
                 }
-                ui.label(RichText::new("Z").size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Z")
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 if ui.add(egui::DragValue::new(&mut z).speed(0.01)).changed() {
                     any_changed = true;
                 }

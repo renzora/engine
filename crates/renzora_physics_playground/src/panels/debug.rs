@@ -19,9 +19,17 @@ pub fn render_physics_debug_content(
                 if !state.physics_available {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
-                        ui.label(RichText::new("No physics bodies detected").size(14.0).color(theme.text.muted.to_color32()));
+                        ui.label(
+                            RichText::new("No physics bodies detected")
+                                .size(14.0)
+                                .color(theme.text.muted.to_color32()),
+                        );
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Add RigidBody components to see physics stats").size(11.0).color(theme.text.muted.to_color32()));
+                        ui.label(
+                            RichText::new("Add RigidBody components to see physics stats")
+                                .size(11.0)
+                                .color(theme.text.muted.to_color32()),
+                        );
                     });
                     return;
                 }
@@ -43,7 +51,11 @@ pub fn render_physics_debug_content(
 
 fn render_status_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &Theme) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Physics").size(12.0).color(theme.text.muted.to_color32()));
+        ui.label(
+            RichText::new("Physics")
+                .size(12.0)
+                .color(theme.text.muted.to_color32()),
+        );
         ui.add_space(8.0);
         let (color, text) = if state.simulation_running {
             (theme.semantic.success.to_color32(), "Running")
@@ -56,12 +68,25 @@ fn render_status_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &T
 }
 
 fn render_body_counts_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &Theme) {
-    ui.label(RichText::new("Rigid Bodies").size(12.0).color(theme.text.muted.to_color32()));
+    ui.label(
+        RichText::new("Rigid Bodies")
+            .size(12.0)
+            .color(theme.text.muted.to_color32()),
+    );
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{}", state.total_body_count())).size(24.0).color(theme.text.primary.to_color32()).strong());
-        ui.label(RichText::new("total").size(11.0).color(theme.text.muted.to_color32()));
+        ui.label(
+            RichText::new(format!("{}", state.total_body_count()))
+                .size(24.0)
+                .color(theme.text.primary.to_color32())
+                .strong(),
+        );
+        ui.label(
+            RichText::new("total")
+                .size(11.0)
+                .color(theme.text.muted.to_color32()),
+        );
     });
 
     ui.add_space(8.0);
@@ -72,13 +97,25 @@ fn render_body_counts_section(ui: &mut egui::Ui, state: &PhysicsDebugState, them
 
     ui.horizontal(|ui| {
         ui.label(RichText::new("\u{25cf}").size(10.0).color(dynamic_color));
-        ui.label(RichText::new(format!("Dynamic: {}", state.dynamic_body_count)).size(10.0).color(theme.text.secondary.to_color32()));
+        ui.label(
+            RichText::new(format!("Dynamic: {}", state.dynamic_body_count))
+                .size(10.0)
+                .color(theme.text.secondary.to_color32()),
+        );
         ui.add_space(12.0);
         ui.label(RichText::new("\u{25cf}").size(10.0).color(kinematic_color));
-        ui.label(RichText::new(format!("Kinematic: {}", state.kinematic_body_count)).size(10.0).color(theme.text.secondary.to_color32()));
+        ui.label(
+            RichText::new(format!("Kinematic: {}", state.kinematic_body_count))
+                .size(10.0)
+                .color(theme.text.secondary.to_color32()),
+        );
         ui.add_space(12.0);
         ui.label(RichText::new("\u{25cf}").size(10.0).color(static_color));
-        ui.label(RichText::new(format!("Static: {}", state.static_body_count)).size(10.0).color(theme.text.secondary.to_color32()));
+        ui.label(
+            RichText::new(format!("Static: {}", state.static_body_count))
+                .size(10.0)
+                .color(theme.text.secondary.to_color32()),
+        );
     });
 
     ui.add_space(6.0);
@@ -95,25 +132,56 @@ fn render_body_counts_section(ui: &mut egui::Ui, state: &PhysicsDebugState, them
         let kw = rect.width() * state.kinematic_body_count as f32 / total as f32;
 
         if dw > 0.0 {
-            painter.rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(dw, rect.height())), 3.0, dynamic_color);
+            painter.rect_filled(
+                egui::Rect::from_min_size(rect.min, Vec2::new(dw, rect.height())),
+                3.0,
+                dynamic_color,
+            );
         }
         if kw > 0.0 {
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.min.x + dw, rect.min.y), Vec2::new(kw, rect.height())), 0.0, kinematic_color);
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(rect.min.x + dw, rect.min.y),
+                    Vec2::new(kw, rect.height()),
+                ),
+                0.0,
+                kinematic_color,
+            );
         }
         let sw = rect.width() - dw - kw;
         if sw > 0.0 {
-            painter.rect_filled(egui::Rect::from_min_size(egui::pos2(rect.min.x + dw + kw, rect.min.y), Vec2::new(sw, rect.height())), 0.0, static_color);
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(rect.min.x + dw + kw, rect.min.y),
+                    Vec2::new(sw, rect.height()),
+                ),
+                0.0,
+                static_color,
+            );
         }
     }
 }
 
 fn render_collider_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &Theme) {
-    ui.label(RichText::new("Colliders").size(12.0).color(theme.text.muted.to_color32()));
+    ui.label(
+        RichText::new("Colliders")
+            .size(12.0)
+            .color(theme.text.muted.to_color32()),
+    );
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{}", state.collider_count)).size(20.0).color(theme.text.primary.to_color32()).strong());
-        ui.label(RichText::new("total").size(11.0).color(theme.text.muted.to_color32()));
+        ui.label(
+            RichText::new(format!("{}", state.collider_count))
+                .size(20.0)
+                .color(theme.text.primary.to_color32())
+                .strong(),
+        );
+        ui.label(
+            RichText::new("total")
+                .size(11.0)
+                .color(theme.text.muted.to_color32()),
+        );
     });
 
     if !state.colliders_by_type.is_empty() {
@@ -123,23 +191,48 @@ fn render_collider_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: 
 
         for (shape_type, count) in sorted.iter().take(6) {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("\u{25a0}").size(10.0).color(shape_type_color(**shape_type)));
-                ui.label(RichText::new(format!("{}: {}", shape_type, count)).size(10.0).color(theme.text.secondary.to_color32()));
+                ui.label(
+                    RichText::new("\u{25a0}")
+                        .size(10.0)
+                        .color(shape_type_color(**shape_type)),
+                );
+                ui.label(
+                    RichText::new(format!("{}: {}", shape_type, count))
+                        .size(10.0)
+                        .color(theme.text.secondary.to_color32()),
+                );
             });
         }
     }
 }
 
 fn render_step_time_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme: &Theme) {
-    ui.label(RichText::new("Step Time").size(12.0).color(theme.text.muted.to_color32()));
+    ui.label(
+        RichText::new("Step Time")
+            .size(12.0)
+            .color(theme.text.muted.to_color32()),
+    );
     ui.add_space(4.0);
 
     let step_color = step_time_to_color(state.step_time_ms);
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{:.2}", state.step_time_ms)).size(20.0).color(step_color).strong());
-        ui.label(RichText::new("ms").size(11.0).color(theme.text.muted.to_color32()));
+        ui.label(
+            RichText::new(format!("{:.2}", state.step_time_ms))
+                .size(20.0)
+                .color(step_color)
+                .strong(),
+        );
+        ui.label(
+            RichText::new("ms")
+                .size(11.0)
+                .color(theme.text.muted.to_color32()),
+        );
         ui.add_space(12.0);
-        ui.label(RichText::new(format!("avg: {:.2}ms", state.avg_step_time_ms)).size(10.0).color(theme.text.secondary.to_color32()));
+        ui.label(
+            RichText::new(format!("avg: {:.2}ms", state.avg_step_time_ms))
+                .size(10.0)
+                .color(theme.text.secondary.to_color32()),
+        );
     });
 
     ui.add_space(6.0);
@@ -147,28 +240,44 @@ fn render_step_time_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme:
     // Step time graph
     let height = 40.0;
     let available_width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(available_width, height), egui::Sense::hover());
-    if !ui.is_rect_visible(rect) { return; }
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(available_width, height), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
 
     let painter = ui.painter();
     painter.rect_filled(rect, 2.0, theme.surfaces.extreme.to_color32());
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, theme.widgets.border.to_color32()), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(1.0, theme.widgets.border.to_color32()),
+        egui::StrokeKind::Inside,
+    );
 
     let data: Vec<f32> = state.step_time_history.iter().copied().collect();
-    if data.is_empty() { return; }
+    if data.is_empty() {
+        return;
+    }
 
     let max_val = data.iter().copied().fold(1.0_f32, f32::max) * 1.2;
-    if max_val <= 0.0 { return; }
+    if max_val <= 0.0 {
+        return;
+    }
 
     let step = rect.width() / data.len().max(1) as f32;
     let line_color = theme.semantic.success.to_color32();
 
-    let points: Vec<egui::Pos2> = data.iter().enumerate().map(|(i, &val)| {
-        let x = rect.min.x + i as f32 * step;
-        let normalized = (val / max_val).clamp(0.0, 1.0);
-        let y = rect.max.y - normalized * rect.height();
-        egui::pos2(x, y)
-    }).collect();
+    let points: Vec<egui::Pos2> = data
+        .iter()
+        .enumerate()
+        .map(|(i, &val)| {
+            let x = rect.min.x + i as f32 * step;
+            let normalized = (val / max_val).clamp(0.0, 1.0);
+            let y = rect.max.y - normalized * rect.height();
+            egui::pos2(x, y)
+        })
+        .collect();
 
     if points.len() >= 2 {
         let success = theme.semantic.success.to_color32();
@@ -176,21 +285,41 @@ fn render_step_time_section(ui: &mut egui::Ui, state: &PhysicsDebugState, theme:
         let mut fill_points = points.clone();
         fill_points.push(egui::pos2(rect.max.x, rect.max.y));
         fill_points.push(egui::pos2(rect.min.x, rect.max.y));
-        painter.add(egui::Shape::convex_polygon(fill_points, fill_color, Stroke::NONE));
+        painter.add(egui::Shape::convex_polygon(
+            fill_points,
+            fill_color,
+            Stroke::NONE,
+        ));
         painter.add(egui::Shape::line(points, Stroke::new(1.5, line_color)));
     }
 }
 
 fn render_collision_pairs_section(ui: &mut egui::Ui, state: &mut PhysicsDebugState, theme: &Theme) {
     let header = ui.horizontal(|ui| {
-        let icon = if state.show_collision_pairs { "\u{25be}" } else { "\u{25b8}" };
-        ui.label(RichText::new(icon).size(12.0).color(theme.text.secondary.to_color32()));
-        ui.label(RichText::new(format!("Collision Pairs ({})", state.collision_pair_count)).size(12.0).color(theme.text.primary.to_color32()));
+        let icon = if state.show_collision_pairs {
+            "\u{25be}"
+        } else {
+            "\u{25b8}"
+        };
+        ui.label(
+            RichText::new(icon)
+                .size(12.0)
+                .color(theme.text.secondary.to_color32()),
+        );
+        ui.label(
+            RichText::new(format!("Collision Pairs ({})", state.collision_pair_count))
+                .size(12.0)
+                .color(theme.text.primary.to_color32()),
+        );
     });
 
     let interact = header.response.interact(egui::Sense::click());
-    if interact.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
-    if interact.clicked() { state.show_collision_pairs = !state.show_collision_pairs; }
+    if interact.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if interact.clicked() {
+        state.show_collision_pairs = !state.show_collision_pairs;
+    }
 
     if state.show_collision_pairs {
         ui.add_space(4.0);
@@ -200,18 +329,47 @@ fn render_collision_pairs_section(ui: &mut egui::Ui, state: &mut PhysicsDebugSta
             .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
                 if state.collision_pairs.is_empty() {
-                    ui.label(RichText::new("No active collisions").size(10.0).color(theme.text.muted.to_color32()));
+                    ui.label(
+                        RichText::new("No active collisions")
+                            .size(10.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
                 } else {
                     for pair in state.collision_pairs.iter().take(10) {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("{:?}", pair.entity_a)).size(9.0).color(theme.text.secondary.to_color32()).monospace());
-                            ui.label(RichText::new("\u{2194}").size(9.0).color(theme.text.muted.to_color32()));
-                            ui.label(RichText::new(format!("{:?}", pair.entity_b)).size(9.0).color(theme.text.secondary.to_color32()).monospace());
-                            ui.label(RichText::new(format!("({} contacts)", pair.contact_count)).size(9.0).color(theme.text.muted.to_color32()));
+                            ui.label(
+                                RichText::new(format!("{:?}", pair.entity_a))
+                                    .size(9.0)
+                                    .color(theme.text.secondary.to_color32())
+                                    .monospace(),
+                            );
+                            ui.label(
+                                RichText::new("\u{2194}")
+                                    .size(9.0)
+                                    .color(theme.text.muted.to_color32()),
+                            );
+                            ui.label(
+                                RichText::new(format!("{:?}", pair.entity_b))
+                                    .size(9.0)
+                                    .color(theme.text.secondary.to_color32())
+                                    .monospace(),
+                            );
+                            ui.label(
+                                RichText::new(format!("({} contacts)", pair.contact_count))
+                                    .size(9.0)
+                                    .color(theme.text.muted.to_color32()),
+                            );
                         });
                     }
                     if state.collision_pair_count > 10 {
-                        ui.label(RichText::new(format!("... and {} more", state.collision_pair_count - 10)).size(9.0).color(theme.text.muted.to_color32()));
+                        ui.label(
+                            RichText::new(format!(
+                                "... and {} more",
+                                state.collision_pair_count - 10
+                            ))
+                            .size(9.0)
+                            .color(theme.text.muted.to_color32()),
+                        );
                     }
                 }
             });
@@ -219,7 +377,11 @@ fn render_collision_pairs_section(ui: &mut egui::Ui, state: &mut PhysicsDebugSta
 }
 
 fn render_debug_toggles_section(ui: &mut egui::Ui, state: &mut PhysicsDebugState, theme: &Theme) {
-    ui.label(RichText::new("Debug Visualization").size(12.0).color(theme.text.muted.to_color32()));
+    ui.label(
+        RichText::new("Debug Visualization")
+            .size(12.0)
+            .color(theme.text.muted.to_color32()),
+    );
     ui.add_space(4.0);
 
     egui::Frame::NONE
@@ -231,7 +393,10 @@ fn render_debug_toggles_section(ui: &mut egui::Ui, state: &mut PhysicsDebugState
             ui.checkbox(&mut state.debug_toggles.show_contacts, "Show Contacts");
             ui.checkbox(&mut state.debug_toggles.show_aabbs, "Show AABBs");
             ui.checkbox(&mut state.debug_toggles.show_velocities, "Show Velocities");
-            ui.checkbox(&mut state.debug_toggles.show_center_of_mass, "Show Center of Mass");
+            ui.checkbox(
+                &mut state.debug_toggles.show_center_of_mass,
+                "Show Center of Mass",
+            );
             ui.checkbox(&mut state.debug_toggles.show_joints, "Show Joints");
         });
 }
@@ -252,8 +417,13 @@ fn shape_type_color(shape: ColliderShapeType) -> Color32 {
 }
 
 fn step_time_to_color(ms: f32) -> Color32 {
-    if ms <= 2.0 { Color32::from_rgb(100, 200, 100) }
-    else if ms <= 5.0 { Color32::from_rgb(200, 200, 100) }
-    else if ms <= 10.0 { Color32::from_rgb(200, 150, 80) }
-    else { Color32::from_rgb(200, 100, 100) }
+    if ms <= 2.0 {
+        Color32::from_rgb(100, 200, 100)
+    } else if ms <= 5.0 {
+        Color32::from_rgb(200, 200, 100)
+    } else if ms <= 10.0 {
+        Color32::from_rgb(200, 150, 80)
+    } else {
+        Color32::from_rgb(200, 100, 100)
+    }
 }

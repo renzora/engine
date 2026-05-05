@@ -330,7 +330,12 @@ impl Hash for NoiseTurbulenceModifier {
 
 impl NoiseTurbulenceModifier {
     /// Create a new modifier.
-    pub fn new(frequency: ExprHandle, amplitude: ExprHandle, octaves: u32, lacunarity: f32) -> Self {
+    pub fn new(
+        frequency: ExprHandle,
+        amplitude: ExprHandle,
+        octaves: u32,
+        lacunarity: f32,
+    ) -> Self {
         Self {
             frequency,
             amplitude,

@@ -277,7 +277,11 @@ impl AssetBrowserState {
             if new_paths.len() == 1 {
                 let p = &new_paths[0];
                 self.renaming_asset = Some(p.clone());
-                self.rename_buffer = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                self.rename_buffer = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
                 self.rename_focus_set = false;
             }
         }
@@ -329,7 +333,11 @@ impl AssetBrowserState {
                 let anchor_idx = self.visible_item_order.iter().position(|p| p == anchor);
                 let current_idx = self.visible_item_order.iter().position(|p| p == path);
                 if let (Some(start), Some(end)) = (anchor_idx, current_idx) {
-                    let (start, end) = if start <= end { (start, end) } else { (end, start) };
+                    let (start, end) = if start <= end {
+                        (start, end)
+                    } else {
+                        (end, start)
+                    };
                     self.selected_assets.clear();
                     for idx in start..=end {
                         if let Some(p) = self.visible_item_order.get(idx) {
@@ -370,7 +378,9 @@ impl AssetBrowserState {
     /// Create a new asset file in the current folder with a default name,
     /// then immediately enter rename mode so the user can type a name.
     pub fn create_inline(&mut self, default_name: &str, content: &str) {
-        let Some(ref folder) = self.current_folder else { return };
+        let Some(ref folder) = self.current_folder else {
+            return;
+        };
         let path = folder.join(default_name);
         // Avoid overwriting existing files — append a number
         let path = find_unique_path(&path);
@@ -382,7 +392,10 @@ impl AssetBrowserState {
             std::fs::write(&path, content).is_ok()
         };
         if ok {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(default_name);
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(default_name);
             self.renaming_asset = Some(path.clone());
             self.rename_buffer = name.to_string();
             self.rename_focus_set = false;
@@ -450,21 +463,35 @@ impl AssetBrowserState {
 
     /// Save favorites to `.editor/favorites` in the project root (one relative path per line).
     fn save_favorites(&self) {
-        let Some(ref root) = self.project_root else { return };
+        let Some(ref root) = self.project_root else {
+            return;
+        };
         let editor_dir = root.join(".editor");
         let _ = std::fs::create_dir_all(&editor_dir);
-        let content: String = self.favorites.iter().filter_map(|p| {
-            p.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/"))
-        }).collect::<Vec<_>>().join("\n");
+        let content: String = self
+            .favorites
+            .iter()
+            .filter_map(|p| {
+                p.strip_prefix(root)
+                    .ok()
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         let _ = std::fs::write(editor_dir.join("favorites"), content);
     }
 
     /// Load favorites from `.editor/favorites` in the project root.
     pub fn load_favorites(&mut self) {
-        let Some(ref root) = self.project_root else { return };
+        let Some(ref root) = self.project_root else {
+            return;
+        };
         let fav_path = root.join(".editor").join("favorites");
-        let Ok(content) = std::fs::read_to_string(&fav_path) else { return };
-        self.favorites = content.lines()
+        let Ok(content) = std::fs::read_to_string(&fav_path) else {
+            return;
+        };
+        self.favorites = content
+            .lines()
             .filter(|l| !l.trim().is_empty())
             .map(|l| root.join(l.trim()))
             .filter(|p| p.exists())
@@ -486,20 +513,34 @@ impl AssetBrowserState {
     }
 
     fn save_recent(&self) {
-        let Some(ref root) = self.project_root else { return };
+        let Some(ref root) = self.project_root else {
+            return;
+        };
         let editor_dir = root.join(".editor");
         let _ = std::fs::create_dir_all(&editor_dir);
-        let content: String = self.recent_files.iter().filter_map(|p| {
-            p.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/"))
-        }).collect::<Vec<_>>().join("\n");
+        let content: String = self
+            .recent_files
+            .iter()
+            .filter_map(|p| {
+                p.strip_prefix(root)
+                    .ok()
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         let _ = std::fs::write(editor_dir.join("recent"), content);
     }
 
     pub fn load_recent(&mut self) {
-        let Some(ref root) = self.project_root else { return };
+        let Some(ref root) = self.project_root else {
+            return;
+        };
         let recent_path = root.join(".editor").join("recent");
-        let Ok(content) = std::fs::read_to_string(&recent_path) else { return };
-        self.recent_files = content.lines()
+        let Ok(content) = std::fs::read_to_string(&recent_path) else {
+            return;
+        };
+        self.recent_files = content
+            .lines()
             .filter(|l| !l.trim().is_empty())
             .map(|l| root.join(l.trim()))
             .filter(|p| p.exists())
@@ -524,10 +565,7 @@ pub fn format_file_size(bytes: u64) -> String {
 
 /// Returns a Phosphor icon and accent color for a given file path.
 pub fn file_icon(path: &Path) -> (&'static str, Color32) {
-    let filename = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let lower = filename.to_lowercase();
 
     // Special compound extensions
@@ -576,23 +614,33 @@ pub fn file_icon(path: &Path) -> (&'static str, Color32) {
         "js" | "ts" => (regular::CODE, Color32::from_rgb(240, 220, 80)),
 
         // Shaders
-        "wgsl" | "glsl" | "vert" | "frag" => (regular::GRAPHICS_CARD, Color32::from_rgb(220, 120, 255)),
+        "wgsl" | "glsl" | "vert" | "frag" => {
+            (regular::GRAPHICS_CARD, Color32::from_rgb(220, 120, 255))
+        }
 
         // Rust
         "rs" => (regular::FILE_RS, Color32::from_rgb(255, 130, 80)),
 
         // Images
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" => (regular::IMAGE, Color32::from_rgb(150, 230, 130)),
+        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" => {
+            (regular::IMAGE, Color32::from_rgb(150, 230, 130))
+        }
         "hdr" | "exr" => (regular::SUN, Color32::from_rgb(255, 220, 100)),
 
         // 3D Models
-        "gltf" | "glb" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae" | "blend" => (regular::CUBE, Color32::from_rgb(255, 170, 100)),
+        "gltf" | "glb" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
+        | "blend" => (regular::CUBE, Color32::from_rgb(255, 170, 100)),
 
         // Motion Capture
-        "bvh" => (regular::PERSON_SIMPLE_WALK, Color32::from_rgb(180, 140, 255)),
+        "bvh" => (
+            regular::PERSON_SIMPLE_WALK,
+            Color32::from_rgb(180, 140, 255),
+        ),
 
         // Audio
-        "wav" | "ogg" | "mp3" | "flac" | "opus" => (regular::MUSIC_NOTES, Color32::from_rgb(200, 130, 230)),
+        "wav" | "ogg" | "mp3" | "flac" | "opus" => {
+            (regular::MUSIC_NOTES, Color32::from_rgb(200, 130, 230))
+        }
 
         // Video
         "mp4" | "avi" | "mov" | "webm" => (regular::VIDEO, Color32::from_rgb(230, 100, 100)),
@@ -632,20 +680,54 @@ pub fn folder_icon_color(name: &str) -> Color32 {
 /// 3D models (gltf, glb, obj, fbx, etc.) are handled by `renzora_import_ui`.
 const COPYABLE_EXTENSIONS: &[&str] = &[
     // Images
-    "png", "jpg", "jpeg", "bmp", "tga", "webp", "hdr", "exr",
+    "png",
+    "jpg",
+    "jpeg",
+    "bmp",
+    "tga",
+    "webp",
+    "hdr",
+    "exr",
     // Audio
-    "wav", "ogg", "mp3", "flac", "opus",
+    "wav",
+    "ogg",
+    "mp3",
+    "flac",
+    "opus",
     // Video
-    "mp4", "avi", "mov", "webm",
+    "mp4",
+    "avi",
+    "mov",
+    "webm",
     // Scripts
-    "rhai", "lua", "js", "ts",
+    "rhai",
+    "lua",
+    "js",
+    "ts",
     // Shaders
-    "wgsl", "glsl", "vert", "frag",
+    "wgsl",
+    "glsl",
+    "vert",
+    "frag",
     // Data
-    "json", "toml", "yaml", "yml", "ron", "txt", "md",
+    "json",
+    "toml",
+    "yaml",
+    "yml",
+    "ron",
+    "txt",
+    "md",
     // Engine formats
-    "blueprint", "bp", "material", "material_bp", "anim",
-    "video", "particle", "level", "terrain", "texture",
+    "blueprint",
+    "bp",
+    "material",
+    "material_bp",
+    "anim",
+    "video",
+    "particle",
+    "level",
+    "terrain",
+    "texture",
 ];
 
 /// Returns true if this file extension can be imported by simple copy.
@@ -667,10 +749,25 @@ pub fn is_droppable_file(path: &Path) -> bool {
     // 3D model formats handled by renzora_import
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|ext| matches!(ext.to_lowercase().as_str(),
-            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usda" | "usdc" | "usdz"
-            | "abc" | "dae" | "bvh" | "blend"
-        ))
+        .map(|ext| {
+            matches!(
+                ext.to_lowercase().as_str(),
+                "gltf"
+                    | "glb"
+                    | "obj"
+                    | "stl"
+                    | "ply"
+                    | "fbx"
+                    | "usd"
+                    | "usda"
+                    | "usdc"
+                    | "usdz"
+                    | "abc"
+                    | "dae"
+                    | "bvh"
+                    | "blend"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -678,10 +775,25 @@ pub fn is_droppable_file(path: &Path) -> bool {
 pub fn is_3d_model(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|ext| matches!(ext.to_lowercase().as_str(),
-            "gltf" | "glb" | "obj" | "stl" | "ply" | "fbx" | "usd" | "usda" | "usdc" | "usdz"
-            | "abc" | "dae" | "bvh" | "blend"
-        ))
+        .map(|ext| {
+            matches!(
+                ext.to_lowercase().as_str(),
+                "gltf"
+                    | "glb"
+                    | "obj"
+                    | "stl"
+                    | "ply"
+                    | "fbx"
+                    | "usd"
+                    | "usda"
+                    | "usdc"
+                    | "usdz"
+                    | "abc"
+                    | "dae"
+                    | "bvh"
+                    | "blend"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -770,26 +882,25 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<usize> {
 
 /// Extract a zip archive into `dest_folder`, returning the number of items extracted.
 pub fn extract_zip(zip_path: &Path, dest_folder: &Path) -> Result<usize, String> {
-    let file = std::fs::File::open(zip_path)
-        .map_err(|e| format!("Cannot open zip: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Invalid zip: {}", e))?;
+    let file = std::fs::File::open(zip_path).map_err(|e| format!("Cannot open zip: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Invalid zip: {}", e))?;
 
     let mut count = 0;
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
+        let mut entry = archive
+            .by_index(i)
             .map_err(|e| format!("Zip entry error: {}", e))?;
 
-        let Some(enclosed) = entry.enclosed_name() else { continue };
+        let Some(enclosed) = entry.enclosed_name() else {
+            continue;
+        };
         let out_path = dest_folder.join(enclosed);
 
         if entry.is_dir() {
-            std::fs::create_dir_all(&out_path)
-                .map_err(|e| format!("Cannot create dir: {}", e))?;
+            std::fs::create_dir_all(&out_path).map_err(|e| format!("Cannot create dir: {}", e))?;
         } else {
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Cannot create dir: {}", e))?;
+                std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create dir: {}", e))?;
             }
             let mut out_file = std::fs::File::create(&out_path)
                 .map_err(|e| format!("Cannot create file: {}", e))?;
@@ -806,6 +917,5 @@ const HIDDEN_FILES: &[&str] = &["project.toml"];
 
 pub fn is_hidden(path: &Path) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    name.starts_with('.')
-        || HIDDEN_FILES.iter().any(|&h| name.eq_ignore_ascii_case(h))
+    name.starts_with('.') || HIDDEN_FILES.iter().any(|&h| name.eq_ignore_ascii_case(h))
 }

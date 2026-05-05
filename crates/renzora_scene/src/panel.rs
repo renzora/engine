@@ -42,7 +42,9 @@ impl EditorPanel for ScenesPanel {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let Some(theme) = world.get_resource::<ThemeManager>().map(|t| t.active_theme.clone())
+        let Some(theme) = world
+            .get_resource::<ThemeManager>()
+            .map(|t| t.active_theme.clone())
         else {
             return;
         };
@@ -53,8 +55,7 @@ impl EditorPanel for ScenesPanel {
             ui.add_space(8.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    egui::RichText::new("No project open.")
-                        .color(theme.text.muted.to_color32()),
+                    egui::RichText::new("No project open.").color(theme.text.muted.to_color32()),
                 );
             });
             return;
@@ -200,11 +201,8 @@ impl EditorPanel for ScenesPanel {
                             egui::pos2(rect.min.x + 28.0, rect.min.y + 3.0),
                             egui::vec2(rect.width() - 36.0, row_height - 6.0),
                         );
-                        let buffer = &mut state
-                            .renaming
-                            .as_mut()
-                            .expect("is_renaming implies Some")
-                            .1;
+                        let buffer =
+                            &mut state.renaming.as_mut().expect("is_renaming implies Some").1;
                         let te = ui.put(
                             text_rect,
                             egui::TextEdit::singleline(buffer)
@@ -222,8 +220,7 @@ impl EditorPanel for ScenesPanel {
                             state.rename_focus_set = false;
                             let trimmed = new_name.trim().to_string();
                             if !trimmed.is_empty() && trimmed != name {
-                                let new_path = old_path
-                                    .with_file_name(format!("{trimmed}.ron"));
+                                let new_path = old_path.with_file_name(format!("{trimmed}.ron"));
                                 commands.push(move |_world: &mut World| {
                                     if let Err(e) = std::fs::rename(&old_path, &new_path) {
                                         renzora::core::console_log::console_error(
@@ -248,7 +245,11 @@ impl EditorPanel for ScenesPanel {
                             egui::Align2::LEFT_CENTER,
                             &name,
                             egui::FontId::proportional(11.5),
-                            if is_current { text_primary } else { text_primary },
+                            if is_current {
+                                text_primary
+                            } else {
+                                text_primary
+                            },
                         );
 
                         if is_boot {
@@ -304,7 +305,9 @@ impl EditorPanel for ScenesPanel {
                                                 if let Err(e) = project.save_config() {
                                                     renzora::core::console_log::console_error(
                                                         "Scene",
-                                                        format!("Failed to save project config: {e}"),
+                                                        format!(
+                                                            "Failed to save project config: {e}"
+                                                        ),
                                                     );
                                                 }
                                             }
@@ -313,10 +316,7 @@ impl EditorPanel for ScenesPanel {
                                     ui.close();
                                 }
                             }
-                            if ui
-                                .button(format!("{} Delete", regular::TRASH))
-                                .clicked()
-                            {
+                            if ui.button(format!("{} Delete", regular::TRASH)).clicked() {
                                 let target = path.clone();
                                 commands.push(move |_world: &mut World| {
                                     if let Err(e) = std::fs::remove_file(&target) {
@@ -439,7 +439,12 @@ fn open_scene(world: &mut World, path: &std::path::Path) {
             .unwrap_or_else(|_| "(entities: {}, resources: {})".to_string());
         let (focus, distance, yaw, pitch) =
             if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
-                (orbit.focus.to_array(), orbit.distance, orbit.yaw, orbit.pitch)
+                (
+                    orbit.focus.to_array(),
+                    orbit.distance,
+                    orbit.yaw,
+                    orbit.pitch,
+                )
             } else {
                 let def = OrbitCameraState::default();
                 (def.focus.to_array(), def.distance, def.yaw, def.pitch)
@@ -472,10 +477,7 @@ fn open_scene(world: &mut World, path: &std::path::Path) {
     scene_io::load_scene(world, path);
     crate::extract_orbit_from_scene_camera(world);
 
-    if let (Some(rel), Some(mut project)) = (
-        relative,
-        world.get_resource_mut::<CurrentProject>(),
-    ) {
+    if let (Some(rel), Some(mut project)) = (relative, world.get_resource_mut::<CurrentProject>()) {
         if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
             project.config.editor_last_scene = Some(rel);
             let _ = project.save_config();

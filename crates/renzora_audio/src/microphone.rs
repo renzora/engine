@@ -191,7 +191,10 @@ pub fn open_microphone(device_name: &str) -> Result<OpenedMicrophone, MicError> 
 
     Ok(OpenedMicrophone {
         stream,
-        data: MicrophoneSoundData { consumer, stop_flag },
+        data: MicrophoneSoundData {
+            consumer,
+            stop_flag,
+        },
         config,
     })
 }
@@ -239,10 +242,7 @@ const BUILT_IN_BUS_NAMES: [&str; 4] = ["Master", "Sfx", "Music", "Ambient"];
 /// Always-on while the binding is set: streams aren't gated on whether the
 /// user is recording. That way the mixer's level meters work continuously
 /// and the user can dial in mic gain before pressing record.
-pub fn sync_microphone_inputs(
-    mixer: Res<MixerState>,
-    audio: Option<NonSendMut<KiraAudioManager>>,
-) {
+pub fn sync_microphone_inputs(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraAudioManager>>) {
     let Some(mut audio) = audio else { return };
     if !mixer.is_changed() {
         return;
@@ -286,10 +286,7 @@ pub fn sync_microphone_inputs(
                                 sound: handle,
                             },
                         );
-                        info!(
-                            "[MicCapture] Opened input '{}' → bus '{}'",
-                            dev, bus
-                        );
+                        info!("[MicCapture] Opened input '{}' → bus '{}'", dev, bus);
                     }
                     Err(e) => warn!(
                         "[MicCapture] play '{}' on bus '{}' failed: {:?}",
@@ -297,7 +294,10 @@ pub fn sync_microphone_inputs(
                     ),
                 }
             }
-            Err(e) => warn!("[MicCapture] open '{}' for bus '{}' failed: {}", dev, bus, e),
+            Err(e) => warn!(
+                "[MicCapture] open '{}' for bus '{}' failed: {}",
+                dev, bus, e
+            ),
         }
     }
 }

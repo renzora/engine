@@ -12,3 +12,6 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 log = "0.4"
 renzora_scripting = { path = "../renzora_scripting" }
+
+[lints]
+workspace = true

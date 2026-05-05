@@ -65,7 +65,12 @@ pub struct PlayModeInfo {
 
 impl Default for PlayModeInfo {
     fn default() -> Self {
-        Self { is_playing: false, is_paused: false, is_scripts_only: false, has_scene_camera: false }
+        Self {
+            is_playing: false,
+            is_paused: false,
+            is_scripts_only: false,
+            has_scene_camera: false,
+        }
     }
 }
 
@@ -111,15 +116,14 @@ pub fn render_title_bar(
                 // About overlay state lives in egui memory; the Help → About
                 // menu item below toggles it on click.
                 let about_open_id = ui.id().with("about_overlay_open");
-                let about_open = ui
-                    .memory(|m| m.data.get_temp::<bool>(about_open_id).unwrap_or(false));
+                let about_open =
+                    ui.memory(|m| m.data.get_temp::<bool>(about_open_id).unwrap_or(false));
                 if about_open {
                     let close_requested = render_about_overlay(ui.ctx(), theme);
                     if close_requested {
                         ui.memory_mut(|m| m.data.insert_temp(about_open_id, false));
                     }
                 }
-
 
                 // Match menu buttons' idle/hover/active look to the layout tabs
                 // (transparent idle, brightened bg on hover/open, rounded corners).
@@ -232,33 +236,24 @@ pub fn render_title_bar(
                         .right_text(egui_phosphor::regular::CARET_RIGHT),
                     )
                     .ui(ui, |ui| {
-                            if menu_item(
-                                ui,
-                                egui_phosphor::regular::MAGNIFYING_GLASS_PLUS,
-                                "Zoom In",
-                            ) {
-                                action = TitleBarAction::ZoomIn;
-                                ui.close();
-                            }
-                            if menu_item(
-                                ui,
-                                egui_phosphor::regular::MAGNIFYING_GLASS_MINUS,
-                                "Zoom Out",
-                            ) {
-                                action = TitleBarAction::ZoomOut;
-                                ui.close();
-                            }
-                            ui.separator();
-                            if menu_item(
-                                ui,
-                                egui_phosphor::regular::MAGNIFYING_GLASS,
-                                "Reset Zoom",
-                            ) {
-                                action = TitleBarAction::ResetZoom;
-                                ui.close();
-                            }
-                        },
-                    );
+                        if menu_item(ui, egui_phosphor::regular::MAGNIFYING_GLASS_PLUS, "Zoom In") {
+                            action = TitleBarAction::ZoomIn;
+                            ui.close();
+                        }
+                        if menu_item(
+                            ui,
+                            egui_phosphor::regular::MAGNIFYING_GLASS_MINUS,
+                            "Zoom Out",
+                        ) {
+                            action = TitleBarAction::ZoomOut;
+                            ui.close();
+                        }
+                        ui.separator();
+                        if menu_item(ui, egui_phosphor::regular::MAGNIFYING_GLASS, "Reset Zoom") {
+                            action = TitleBarAction::ResetZoom;
+                            ui.close();
+                        }
+                    });
                     if zoom_resp.hovered() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
@@ -284,26 +279,25 @@ pub fn render_title_bar(
                         .right_text(egui_phosphor::regular::CARET_RIGHT),
                     )
                     .ui(ui, |ui| {
-                            for (i, layout) in layout_manager.visible_layouts() {
-                                let is_active = i == layout_manager.active_index
-                                    || (layout_manager
-                                        .layouts
-                                        .get(layout_manager.active_index)
-                                        .map(|l| l.hidden)
-                                        .unwrap_or(false)
-                                        && i == layout_manager.last_scene_index);
-                                let icon = if is_active {
-                                    egui_phosphor::regular::CHECK
-                                } else {
-                                    " "
-                                };
-                                if menu_item(ui, icon, &layout.name) {
-                                    action = TitleBarAction::SwitchLayout(i);
-                                    ui.close();
-                                }
+                        for (i, layout) in layout_manager.visible_layouts() {
+                            let is_active = i == layout_manager.active_index
+                                || (layout_manager
+                                    .layouts
+                                    .get(layout_manager.active_index)
+                                    .map(|l| l.hidden)
+                                    .unwrap_or(false)
+                                    && i == layout_manager.last_scene_index);
+                            let icon = if is_active {
+                                egui_phosphor::regular::CHECK
+                            } else {
+                                " "
+                            };
+                            if menu_item(ui, icon, &layout.name) {
+                                action = TitleBarAction::SwitchLayout(i);
+                                ui.close();
                             }
-                        },
-                    );
+                        }
+                    });
                     if layouts_resp.hovered() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
@@ -441,15 +435,16 @@ pub fn render_title_bar(
                     let mut x = start_x;
                     for (visible_idx, _) in visible_layouts.iter().enumerate() {
                         let tw = tab_widths[visible_idx];
-                        tab_rects
-                            .push(Rect::from_min_size(Pos2::new(x, tab_y), Vec2::new(tw, tab_h)));
+                        tab_rects.push(Rect::from_min_size(
+                            Pos2::new(x, tab_y),
+                            Vec2::new(tw, tab_h),
+                        ));
                         x += tw + tab_spacing;
                     }
                 }
 
                 let drag_id = ui.id().with("layout_tab_drag");
-                let dragging_tab: Option<usize> =
-                    ui.memory(|m| m.data.get_temp::<usize>(drag_id));
+                let dragging_tab: Option<usize> = ui.memory(|m| m.data.get_temp::<usize>(drag_id));
 
                 // Rename state: which tab is in rename mode + buffer for the
                 // edited name. Stored in egui memory keyed off the title bar.
@@ -481,8 +476,7 @@ pub fn render_title_bar(
                     let is_renaming_this = renaming.as_ref().map(|(j, _)| *j == i).unwrap_or(false);
 
                     if !is_renaming_this {
-                        let response =
-                            ui.interact(tab_rect, tab_id, Sense::click_and_drag());
+                        let response = ui.interact(tab_rect, tab_id, Sense::click_and_drag());
 
                         if response.drag_started() {
                             ui.memory_mut(|m| m.data.insert_temp(drag_id, i));
@@ -559,11 +553,8 @@ pub fn render_title_bar(
                         }
 
                         // Right-click context menu.
-                        let visible_count = layout_manager
-                            .layouts
-                            .iter()
-                            .filter(|l| !l.hidden)
-                            .count();
+                        let visible_count =
+                            layout_manager.layouts.iter().filter(|l| !l.hidden).count();
                         let can_delete = visible_count > 1;
                         response.context_menu(|ui| {
                             if ui
@@ -574,8 +565,7 @@ pub fn render_title_bar(
                                 .clicked()
                             {
                                 ui.memory_mut(|m| {
-                                    m.data
-                                        .insert_temp(rename_id, (i, layout.name.clone()));
+                                    m.data.insert_temp(rename_id, (i, layout.name.clone()));
                                 });
                                 ui.close();
                             }
@@ -595,8 +585,10 @@ pub fn render_title_bar(
                         });
                     } else {
                         // Inline rename: render a TextEdit in place of the label.
-                        let mut buffer =
-                            renaming.as_ref().map(|(_, s)| s.clone()).unwrap_or_default();
+                        let mut buffer = renaming
+                            .as_ref()
+                            .map(|(_, s)| s.clone())
+                            .unwrap_or_default();
                         let pad = 4.0;
                         let edit_rect = Rect::from_min_size(
                             Pos2::new(tab_rect.min.x + pad, tab_rect.min.y + 2.0),
@@ -613,9 +605,8 @@ pub fn render_title_bar(
                             })
                             .inner;
                         let focus_id = rename_id.with("focused");
-                        let focused = ui.memory(|m| {
-                            m.data.get_temp::<bool>(focus_id).unwrap_or(false)
-                        });
+                        let focused =
+                            ui.memory(|m| m.data.get_temp::<bool>(focus_id).unwrap_or(false));
                         if !focused {
                             edit_resp.request_focus();
                             ui.memory_mut(|m| m.data.insert_temp(focus_id, true));
@@ -682,9 +673,8 @@ pub fn render_title_bar(
                         // Convert visible target → absolute "to" for
                         // `move_layout` (which removes-then-inserts at the
                         // post-remove index).
-                        let dragged_visible = visible_layouts
-                            .iter()
-                            .position(|(i, _)| *i == drag_i);
+                        let dragged_visible =
+                            visible_layouts.iter().position(|(i, _)| *i == drag_i);
                         let suppress_indicator = dragged_visible
                             .map(|dv| target_visible == dv || target_visible == dv + 1)
                             .unwrap_or(false);
@@ -704,11 +694,7 @@ pub fn render_title_bar(
                                 Pos2::new(line_x - 1.5, tab_y + 2.0),
                                 Vec2::new(3.0, tab_h - 4.0),
                             );
-                            crate::drag_drop::draw_tab_insert_marker(
-                                ui,
-                                indicator_rect,
-                                theme,
-                            );
+                            crate::drag_drop::draw_tab_insert_marker(ui, indicator_rect, theme);
                         }
 
                         // Dispatch reorder + clear drag state on release.
@@ -775,8 +761,8 @@ pub fn render_title_bar(
                     any_widget_hovered = true;
                 }
                 let popup_open_id = plus_id.with("popup_open");
-                let popup_open: bool = ui
-                    .memory(|m| m.data.get_temp::<bool>(popup_open_id).unwrap_or(false));
+                let popup_open: bool =
+                    ui.memory(|m| m.data.get_temp::<bool>(popup_open_id).unwrap_or(false));
                 if plus_resp.clicked() {
                     let new = !popup_open;
                     ui.memory_mut(|m| m.data.insert_temp(popup_open_id, new));
@@ -853,26 +839,20 @@ pub fn render_title_bar(
                                         });
                                         if !was_open {
                                             edit.request_focus();
-                                            ui.memory_mut(|m| {
-                                                m.data.insert_temp(opened_id, true)
-                                            });
+                                            ui.memory_mut(|m| m.data.insert_temp(opened_id, true));
                                         }
-                                        let enter_pressed =
-                                            edit.lost_focus()
-                                                && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                        let enter_pressed = edit.lost_focus()
+                                            && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
                                         let confirm = ui.add_enabled(
                                             valid,
                                             egui::Button::new(
-                                                egui::RichText::new(
-                                                    egui_phosphor::regular::CHECK,
-                                                )
-                                                .size(14.0),
+                                                egui::RichText::new(egui_phosphor::regular::CHECK)
+                                                    .size(14.0),
                                             )
                                             .min_size(Vec2::new(28.0, 24.0)),
                                         );
-                                        let submit = confirm.clicked()
-                                            || (enter_pressed && valid);
+                                        let submit = confirm.clicked() || (enter_pressed && valid);
                                         if submit {
                                             submit_requested = true;
                                             submitted_name = Some(trimmed.clone());
@@ -923,12 +903,19 @@ pub fn render_title_bar(
                 let sign_in_width = 80.0;
                 // Reserve room on the right for the window min/max/close buttons.
                 let right_margin = WINDOW_CTRL_WIDTH + 8.0;
-                let in_any_play = play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
+                let in_any_play =
+                    play_mode.is_playing || play_mode.is_paused || play_mode.is_scripts_only;
                 // In edit mode show Play + Scripts; while playing/scripting
                 // show Pause + Stop. Both flavours occupy 2 buttons so the
                 // layout reserve is the same either way.
                 let play_controls_width = btn_size * 2.0 + 4.0;
-                let remaining = ui.available_width() - play_controls_width - 8.0 - sign_in_width - 8.0 - gear_size - right_margin;
+                let remaining = ui.available_width()
+                    - play_controls_width
+                    - 8.0
+                    - sign_in_width
+                    - 8.0
+                    - gear_size
+                    - right_margin;
                 if remaining > 0.0 {
                     ui.add_space(remaining);
                 }
@@ -944,7 +931,11 @@ pub fn render_title_bar(
                     let play_resp = ui.interact(
                         play_rect,
                         play_id,
-                        if play_clickable { Sense::click() } else { Sense::hover() },
+                        if play_clickable {
+                            Sense::click()
+                        } else {
+                            Sense::hover()
+                        },
                     );
                     let play_color = if !play_clickable {
                         theme.text.muted.to_color32()
@@ -997,9 +988,7 @@ pub fn render_title_bar(
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                         any_widget_hovered = true;
                     }
-                    scripts_resp
-                        .clone()
-                        .on_hover_text("Run Scripts (Shift+F5)");
+                    scripts_resp.clone().on_hover_text("Run Scripts (Shift+F5)");
                     if scripts_resp.clicked() {
                         action = TitleBarAction::ScriptsOnly;
                     }
@@ -1141,8 +1130,7 @@ pub fn render_title_bar(
                         sign_in_size,
                     );
                     let sign_in_id = ui.id().with("sign_in_btn");
-                    let sign_in_resp =
-                        ui.interact(sign_in_rect, sign_in_id, Sense::click());
+                    let sign_in_resp = ui.interact(sign_in_rect, sign_in_id, Sense::click());
 
                     if sign_in_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -1156,17 +1144,11 @@ pub fn render_title_bar(
                     } else {
                         Color32::TRANSPARENT
                     };
-                    ui.painter().rect_filled(
-                        sign_in_rect,
-                        egui::CornerRadius::same(3),
-                        bg,
-                    );
+                    ui.painter()
+                        .rect_filled(sign_in_rect, egui::CornerRadius::same(3), bg);
 
                     ui.painter().text(
-                        Pos2::new(
-                            sign_in_rect.left() + 14.0,
-                            sign_in_rect.center().y,
-                        ),
+                        Pos2::new(sign_in_rect.left() + 14.0, sign_in_rect.center().y),
                         egui::Align2::CENTER_CENTER,
                         egui_phosphor::regular::USER,
                         egui::FontId::proportional(12.0),
@@ -1174,10 +1156,7 @@ pub fn render_title_bar(
                     );
 
                     ui.painter().text(
-                        Pos2::new(
-                            sign_in_rect.left() + 28.0,
-                            sign_in_rect.center().y,
-                        ),
+                        Pos2::new(sign_in_rect.left() + 28.0, sign_in_rect.center().y),
                         egui::Align2::LEFT_CENTER,
                         "Sign In",
                         egui::FontId::proportional(11.0),
@@ -1233,10 +1212,8 @@ fn renzora_icon_texture(ctx: &egui::Context) -> Option<egui::TextureHandle> {
     }
     let img = image::load_from_memory(RENZORA_ICON_PNG).ok()?.to_rgba8();
     let (w, h) = img.dimensions();
-    let color_image = egui::ColorImage::from_rgba_unmultiplied(
-        [w as usize, h as usize],
-        img.as_raw(),
-    );
+    let color_image =
+        egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], img.as_raw());
     let handle = ctx.load_texture(
         "renzora_title_icon",
         color_image,
@@ -1311,7 +1288,10 @@ fn draw_about_grid(painter: &egui::Painter, rect: Rect, grid_timer: f32, time: f
 
     // Subtle horizon glow line.
     painter.line_segment(
-        [Pos2::new(rect.min.x, horizon_y), Pos2::new(rect.max.x, horizon_y)],
+        [
+            Pos2::new(rect.min.x, horizon_y),
+            Pos2::new(rect.max.x, horizon_y),
+        ],
         egui::Stroke::new(1.0, base.gamma_multiply(0.35)),
     );
 
@@ -1354,11 +1334,8 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
         .fixed_pos(Pos2::ZERO)
         .show(ctx, |ui| {
             let resp = ui.allocate_rect(screen, Sense::click());
-            ui.painter().rect_filled(
-                screen,
-                0.0,
-                Color32::from_rgba_unmultiplied(0, 0, 0, 170),
-            );
+            ui.painter()
+                .rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 170));
             if resp.clicked() {
                 close_requested = true;
             }
@@ -1372,8 +1349,9 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
             let timer_id = egui::Id::new("about_grid_timer");
             let dt = ui.input(|i| i.unstable_dt);
             let time = ui.input(|i| i.time);
-            let mut grid_timer =
-                ui.ctx().memory(|m| m.data.get_temp::<f32>(timer_id).unwrap_or(0.0));
+            let mut grid_timer = ui
+                .ctx()
+                .memory(|m| m.data.get_temp::<f32>(timer_id).unwrap_or(0.0));
             grid_timer = (grid_timer + dt * 0.35) % 1.0;
             ui.ctx()
                 .memory_mut(|m| m.data.insert_temp(timer_id, grid_timer));
@@ -1410,11 +1388,8 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
                 ),
                 Vec2::splat(close_size),
             );
-            let close_resp = ui.interact(
-                close_rect,
-                egui::Id::new("about_close_btn"),
-                Sense::click(),
-            );
+            let close_resp =
+                ui.interact(close_rect, egui::Id::new("about_close_btn"), Sense::click());
             if close_resp.hovered() {
                 ui.painter().rect_filled(
                     close_rect,
@@ -1471,7 +1446,11 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
 
             // Link buttons in a horizontal row, evenly spaced.
             let links: &[(&str, &str, &str)] = &[
-                (egui_phosphor::regular::GLOBE, "Website", "https://renzora.com"),
+                (
+                    egui_phosphor::regular::GLOBE,
+                    "Website",
+                    "https://renzora.com",
+                ),
                 (
                     egui_phosphor::regular::YOUTUBE_LOGO,
                     "YouTube",
@@ -1510,11 +1489,8 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
                     } else {
                         Color32::from_rgba_unmultiplied(255, 255, 255, 12)
                     };
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::CornerRadius::same(6),
-                        bg,
-                    );
+                    ui.painter()
+                        .rect_filled(rect, egui::CornerRadius::same(6), bg);
                     let icon_color = if hovered {
                         Color32::WHITE
                     } else {
@@ -1564,10 +1540,7 @@ fn menu_item(ui: &mut egui::Ui, icon: &str, label: &str) -> bool {
 /// Like `menu_item` but takes an `enabled` flag — disabled items are dimmed
 /// and unclickable. Cursor only changes when the item is enabled.
 fn menu_item_enabled(ui: &mut egui::Ui, icon: &str, label: &str, enabled: bool) -> bool {
-    let resp = ui.add_enabled(
-        enabled,
-        egui::Button::new(format!("{}  {}", icon, label)),
-    );
+    let resp = ui.add_enabled(enabled, egui::Button::new(format!("{}  {}", icon, label)));
     if enabled && resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -1579,7 +1552,9 @@ fn open_url(url: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(url).spawn();
         #[cfg(all(unix, not(target_os = "macos")))]

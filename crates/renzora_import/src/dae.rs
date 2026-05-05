@@ -120,12 +120,19 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_normals = generate_flat_normals(&all_positions, &all_indices, vertex_count);
     }
 
-    let glb_bytes =
-        crate::obj::build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = crate::obj::build_glb(
+        &all_positions,
+        &all_normals,
+        &all_texcoords,
+        &all_indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 
@@ -156,7 +163,10 @@ fn detect_up_axis(xml: &str) -> ColladaUpAxis {
     }
 }
 
-fn parse_collada(xml: &str, warnings: &mut Vec<String>) -> Result<Vec<ColladaGeometry>, ImportError> {
+fn parse_collada(
+    xml: &str,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<ColladaGeometry>, ImportError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
@@ -203,7 +213,8 @@ fn parse_collada(xml: &str, warnings: &mut Vec<String>) -> Result<Vec<ColladaGeo
                     "source" if in_mesh => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"id" {
-                                current_source_id = String::from_utf8_lossy(&attr.value).to_string();
+                                current_source_id =
+                                    String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
                     }
@@ -229,9 +240,17 @@ fn parse_collada(xml: &str, warnings: &mut Vec<String>) -> Result<Vec<ColladaGeo
 
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"semantic" => semantic = String::from_utf8_lossy(&attr.value).to_string(),
-                                b"source" => source = String::from_utf8_lossy(&attr.value).trim_start_matches('#').to_string(),
-                                b"offset" => offset = String::from_utf8_lossy(&attr.value).parse().ok(),
+                                b"semantic" => {
+                                    semantic = String::from_utf8_lossy(&attr.value).to_string()
+                                }
+                                b"source" => {
+                                    source = String::from_utf8_lossy(&attr.value)
+                                        .trim_start_matches('#')
+                                        .to_string()
+                                }
+                                b"offset" => {
+                                    offset = String::from_utf8_lossy(&attr.value).parse().ok()
+                                }
                                 _ => {}
                             }
                         }
@@ -393,7 +412,9 @@ fn find_source<'a>(sources: &'a [(String, Vec<f32>)], id: &str) -> Option<&'a [f
     // Try exact match first, then suffix match (for vertices indirection)
     sources
         .iter()
-        .find(|(sid, _)| sid == id || sid.ends_with(&format!("-{}", id)) || id.ends_with(sid.as_str()))
+        .find(|(sid, _)| {
+            sid == id || sid.ends_with(&format!("-{}", id)) || id.ends_with(sid.as_str())
+        })
         .map(|(_, data)| data.as_slice())
         .or_else(|| {
             // Try matching by common naming: if id is "X-vertices", look for "X-positions"
@@ -431,7 +452,8 @@ fn build_geometry_triangles(
             // Position
             let pos_idx = p_data.get(base + vertex_offset).copied().unwrap_or(0) as usize;
             if pos_idx * 3 + 2 < positions.len() {
-                geom.positions.extend_from_slice(&positions[pos_idx * 3..pos_idx * 3 + 3]);
+                geom.positions
+                    .extend_from_slice(&positions[pos_idx * 3..pos_idx * 3 + 3]);
             } else {
                 geom.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
             }
@@ -440,7 +462,8 @@ fn build_geometry_triangles(
             if let (Some(off), Some(norms)) = (normal_offset, normals) {
                 let norm_idx = p_data.get(base + off).copied().unwrap_or(0) as usize;
                 if norm_idx * 3 + 2 < norms.len() {
-                    geom.normals.extend_from_slice(&norms[norm_idx * 3..norm_idx * 3 + 3]);
+                    geom.normals
+                        .extend_from_slice(&norms[norm_idx * 3..norm_idx * 3 + 3]);
                 } else {
                     geom.normals.extend_from_slice(&[0.0, 1.0, 0.0]);
                 }
@@ -450,7 +473,8 @@ fn build_geometry_triangles(
             if let (Some(off), Some(tcs)) = (texcoord_offset, texcoords) {
                 let tc_idx = p_data.get(base + off).copied().unwrap_or(0) as usize;
                 if tc_idx * 2 + 1 < tcs.len() {
-                    geom.texcoords.extend_from_slice(&tcs[tc_idx * 2..tc_idx * 2 + 2]);
+                    geom.texcoords
+                        .extend_from_slice(&tcs[tc_idx * 2..tc_idx * 2 + 2]);
                 } else {
                     geom.texcoords.extend_from_slice(&[0.0, 0.0]);
                 }
@@ -498,7 +522,8 @@ fn build_geometry_polylist(
             // Position
             let pos_idx = p_data.get(base + vertex_offset).copied().unwrap_or(0) as usize;
             if pos_idx * 3 + 2 < positions.len() {
-                geom.positions.extend_from_slice(&positions[pos_idx * 3..pos_idx * 3 + 3]);
+                geom.positions
+                    .extend_from_slice(&positions[pos_idx * 3..pos_idx * 3 + 3]);
             } else {
                 geom.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
             }
@@ -507,7 +532,8 @@ fn build_geometry_polylist(
             if let (Some(off), Some(norms)) = (normal_offset, normals) {
                 let norm_idx = p_data.get(base + off).copied().unwrap_or(0) as usize;
                 if norm_idx * 3 + 2 < norms.len() {
-                    geom.normals.extend_from_slice(&norms[norm_idx * 3..norm_idx * 3 + 3]);
+                    geom.normals
+                        .extend_from_slice(&norms[norm_idx * 3..norm_idx * 3 + 3]);
                 } else {
                     geom.normals.extend_from_slice(&[0.0, 1.0, 0.0]);
                 }
@@ -517,7 +543,8 @@ fn build_geometry_polylist(
             if let (Some(off), Some(tcs)) = (texcoord_offset, texcoords) {
                 let tc_idx = p_data.get(base + off).copied().unwrap_or(0) as usize;
                 if tc_idx * 2 + 1 < tcs.len() {
-                    geom.texcoords.extend_from_slice(&tcs[tc_idx * 2..tc_idx * 2 + 2]);
+                    geom.texcoords
+                        .extend_from_slice(&tcs[tc_idx * 2..tc_idx * 2 + 2]);
                 } else {
                     geom.texcoords.extend_from_slice(&[0.0, 0.0]);
                 }
@@ -557,9 +584,21 @@ fn generate_flat_normals(positions: &[f32], indices: &[u32], vertex_count: usize
             continue;
         }
 
-        let p0 = [positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]];
-        let p1 = [positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]];
-        let p2 = [positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]];
+        let p0 = [
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
+        ];
+        let p1 = [
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
+        ];
+        let p2 = [
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
+        ];
 
         let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
         let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];

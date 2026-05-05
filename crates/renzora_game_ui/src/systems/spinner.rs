@@ -8,10 +8,7 @@ use bevy::prelude::*;
 
 use crate::components::SpinnerData;
 
-pub fn spinner_system(
-    time: Res<Time>,
-    mut spinners: Query<(&SpinnerData, &mut BorderColor)>,
-) {
+pub fn spinner_system(time: Res<Time>, mut spinners: Query<(&SpinnerData, &mut BorderColor)>) {
     let t = time.elapsed_secs();
 
     for (data, mut border) in &mut spinners {

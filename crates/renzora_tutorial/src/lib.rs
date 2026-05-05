@@ -137,8 +137,7 @@ fn tutorial_overlay_system(world: &mut World) {
 
     // Get egui context
     let ctx = {
-        let mut sys_state =
-            bevy::ecs::system::SystemState::<EguiContexts>::new(world);
+        let mut sys_state = bevy::ecs::system::SystemState::<EguiContexts>::new(world);
         let mut contexts = sys_state.get_mut(world);
         let ctx = match contexts.ctx_mut() {
             Ok(c) => c.clone(),
@@ -182,7 +181,6 @@ fn tutorial_overlay_system(world: &mut World) {
     world.insert_resource(state);
 }
 
-
 // ── Panel rect computation ─────────────────────────────────────────────────────
 
 /// Walk the dock tree to compute the screen rect for each panel.
@@ -225,15 +223,27 @@ fn walk_tree(tree: &DockTree, rect: Rect, out: &mut HashMap<String, Rect>) {
                 renzora_editor::SplitDirection::Horizontal => {
                     let mid = rect.min.x + rect.width() * ratio;
                     (
-                        Rect::from_min_max(rect.min, Pos2::new(mid - RESIZE_HANDLE / 2.0, rect.max.y)),
-                        Rect::from_min_max(Pos2::new(mid + RESIZE_HANDLE / 2.0, rect.min.y), rect.max),
+                        Rect::from_min_max(
+                            rect.min,
+                            Pos2::new(mid - RESIZE_HANDLE / 2.0, rect.max.y),
+                        ),
+                        Rect::from_min_max(
+                            Pos2::new(mid + RESIZE_HANDLE / 2.0, rect.min.y),
+                            rect.max,
+                        ),
                     )
                 }
                 renzora_editor::SplitDirection::Vertical => {
                     let mid = rect.min.y + rect.height() * ratio;
                     (
-                        Rect::from_min_max(rect.min, Pos2::new(rect.max.x, mid - RESIZE_HANDLE / 2.0)),
-                        Rect::from_min_max(Pos2::new(rect.min.x, mid + RESIZE_HANDLE / 2.0), rect.max),
+                        Rect::from_min_max(
+                            rect.min,
+                            Pos2::new(rect.max.x, mid - RESIZE_HANDLE / 2.0),
+                        ),
+                        Rect::from_min_max(
+                            Pos2::new(rect.min.x, mid + RESIZE_HANDLE / 2.0),
+                            rect.max,
+                        ),
                     )
                 }
             };
@@ -242,10 +252,8 @@ fn walk_tree(tree: &DockTree, rect: Rect, out: &mut HashMap<String, Rect>) {
         }
         DockTree::Leaf { tabs, .. } => {
             // The content area is below the tab bar
-            let content = Rect::from_min_max(
-                Pos2::new(rect.min.x, rect.min.y + TAB_BAR_H),
-                rect.max,
-            );
+            let content =
+                Rect::from_min_max(Pos2::new(rect.min.x, rect.min.y + TAB_BAR_H), rect.max);
             for tab in tabs {
                 out.insert(tab.clone(), content);
             }
@@ -253,3 +261,5 @@ fn walk_tree(tree: &DockTree, rect: Rect, out: &mut HashMap<String, Rect>) {
         DockTree::Empty => {}
     }
 }
+
+renzora::add!(TutorialPlugin, Editor);

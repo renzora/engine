@@ -56,7 +56,10 @@ pub struct FoliageBatch {
 
 /// Simple hash for deterministic random from grid position.
 fn hash_position(x: u32, z: u32, seed: u32) -> f32 {
-    let mut h = x.wrapping_mul(2654435761).wrapping_add(z.wrapping_mul(2246822519)).wrapping_add(seed);
+    let mut h = x
+        .wrapping_mul(2654435761)
+        .wrapping_add(z.wrapping_mul(2246822519))
+        .wrapping_add(seed);
     h ^= h >> 13;
     h = h.wrapping_mul(1274126177);
     h ^= h >> 16;
@@ -104,7 +107,8 @@ pub fn generate_foliage_instances(
             let uv_z = local_z / chunk_size;
             let sx = (uv_x * (splatmap_resolution - 1) as f32).round() as u32;
             let sz = (uv_z * (splatmap_resolution - 1) as f32).round() as u32;
-            let si = (sz.min(splatmap_resolution - 1) * splatmap_resolution + sx.min(splatmap_resolution - 1)) as usize;
+            let si = (sz.min(splatmap_resolution - 1) * splatmap_resolution
+                + sx.min(splatmap_resolution - 1)) as usize;
 
             if si >= weights.len() || layer >= 8 {
                 continue;
@@ -127,7 +131,10 @@ pub fn generate_foliage_instances(
             let tz = fz.fract();
 
             let get_h = |x: u32, z: u32| -> f32 {
-                heights.get((z * chunk_resolution + x) as usize).copied().unwrap_or(0.0)
+                heights
+                    .get((z * chunk_resolution + x) as usize)
+                    .copied()
+                    .unwrap_or(0.0)
             };
 
             let h_norm = get_h(vx0, vz0) * (1.0 - tx) * (1.0 - tz)
@@ -139,9 +146,11 @@ pub fn generate_foliage_instances(
 
             // Random scale
             let scale_rand = hash_position(gx * 13, gz * 17, seed_val.wrapping_add(2));
-            let h_scale = config.height_range.x + (config.height_range.y - config.height_range.x) * scale_rand;
+            let h_scale = config.height_range.x
+                + (config.height_range.y - config.height_range.x) * scale_rand;
             let w_rand = hash_position(gx * 23, gz * 29, seed_val.wrapping_add(3));
-            let w_scale = config.width_range.x + (config.width_range.y - config.width_range.x) * w_rand;
+            let w_scale =
+                config.width_range.x + (config.width_range.y - config.width_range.x) * w_rand;
 
             // Random rotation
             let rot_y = if config.random_rotation {

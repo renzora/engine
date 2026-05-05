@@ -22,7 +22,9 @@ impl Plugin for RapierBackendPlugin {
         // TODO: Add bevy_rapier3d plugins
         // app.add_plugins(RapierPhysicsPlugin::<NoUserData>::default());
         // app.add_plugins(RapierDebugRenderPlugin::default());
-        unimplemented!("Rapier backend not yet implemented — waiting for bevy_rapier3d Bevy 0.18 support");
+        unimplemented!(
+            "Rapier backend not yet implemented — waiting for bevy_rapier3d Bevy 0.18 support"
+        );
     }
 }
 
@@ -30,7 +32,11 @@ pub fn spawn_physics_body(_commands: &mut Commands, _entity: Entity, _body_data:
     unimplemented!("Rapier spawn_physics_body")
 }
 
-pub fn spawn_collision_shape(_commands: &mut Commands, _entity: Entity, _shape_data: &CollisionShapeData) {
+pub fn spawn_collision_shape(
+    _commands: &mut Commands,
+    _entity: Entity,
+    _shape_data: &CollisionShapeData,
+) {
     unimplemented!("Rapier spawn_collision_shape")
 }
 

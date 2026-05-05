@@ -112,7 +112,14 @@ impl EditorPanel for InspectorPanel {
                 .collect();
 
             let ctx = ui.ctx().clone();
-            match search_overlay(&ctx, "add_component_overlay", "Add Component", &entries, &mut state.add_search, &theme) {
+            match search_overlay(
+                &ctx,
+                "add_component_overlay",
+                "Add Component",
+                &entries,
+                &mut state.add_search,
+                &theme,
+            ) {
                 OverlayAction::Selected(id) => {
                     state.show_add_overlay = false;
                     if let Some(entry) = registry.iter().find(|e| e.type_id == id) {
@@ -134,12 +141,12 @@ impl EditorPanel for InspectorPanel {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(4.0);
-            if ui.add(
-                egui::Button::new(
-                    RichText::new(format!("{} Add", regular::PUZZLE_PIECE))
-                        .size(12.0),
-                ),
-            ).clicked() {
+            if ui
+                .add(egui::Button::new(
+                    RichText::new(format!("{} Add", regular::PUZZLE_PIECE)).size(12.0),
+                ))
+                .clicked()
+            {
                 state.show_add_overlay = true;
                 state.add_search.clear();
             }
@@ -149,7 +156,10 @@ impl EditorPanel for InspectorPanel {
             ui.add(
                 egui::TextEdit::singleline(&mut state.component_filter)
                     .desired_width(search_width)
-                    .hint_text(format!("{} Filter components...", regular::MAGNIFYING_GLASS)),
+                    .hint_text(format!(
+                        "{} Filter components...",
+                        regular::MAGNIFYING_GLASS
+                    )),
             );
             if has_filter
                 && ui
@@ -245,9 +255,17 @@ impl EditorPanel for InspectorPanel {
                             true,
                             |ui| {
                                 let (icon, color, tooltip) = if is_locked {
-                                    (regular::LOCK_SIMPLE, accent, "Unlock — resume following selection")
+                                    (
+                                        regular::LOCK_SIMPLE,
+                                        accent,
+                                        "Unlock — resume following selection",
+                                    )
                                 } else {
-                                    (regular::LOCK_SIMPLE_OPEN, muted, "Lock inspector to this entity")
+                                    (
+                                        regular::LOCK_SIMPLE_OPEN,
+                                        muted,
+                                        "Lock inspector to this entity",
+                                    )
                                 };
                                 let btn = ui
                                     .add(
@@ -322,11 +340,8 @@ impl EditorPanel for InspectorPanel {
                 ui.vertical_centered(|ui| {
                     let resp = ui.add(
                         egui::Button::new(
-                            RichText::new(format!(
-                                "{} Add Component",
-                                regular::PUZZLE_PIECE
-                            ))
-                            .size(12.0),
+                            RichText::new(format!("{} Add Component", regular::PUZZLE_PIECE))
+                                .size(12.0),
                         )
                         .min_size(egui::vec2(180.0, 24.0)),
                     );
@@ -370,3 +385,4 @@ impl Plugin for InspectorPanelPlugin {
     }
 }
 
+renzora::add!(InspectorPanelPlugin, Editor);

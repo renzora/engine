@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis};
+use bevy::prelude::*;
 
 use crate::action::{ActionKind, InputBinding};
 use crate::map::InputMap;
@@ -97,19 +97,32 @@ pub fn update_action_state(
                 let mut combined = Vec2::ZERO;
                 for binding in &action.bindings {
                     match binding {
-                        InputBinding::Composite2D { up, down, left, right } => {
+                        InputBinding::Composite2D {
+                            up,
+                            down,
+                            left,
+                            right,
+                        } => {
                             let mut v = Vec2::ZERO;
                             if let Some(k) = InputBinding::resolve_key(up) {
-                                if keyboard.pressed(k) { v.y += 1.0; }
+                                if keyboard.pressed(k) {
+                                    v.y += 1.0;
+                                }
                             }
                             if let Some(k) = InputBinding::resolve_key(down) {
-                                if keyboard.pressed(k) { v.y -= 1.0; }
+                                if keyboard.pressed(k) {
+                                    v.y -= 1.0;
+                                }
                             }
                             if let Some(k) = InputBinding::resolve_key(left) {
-                                if keyboard.pressed(k) { v.x -= 1.0; }
+                                if keyboard.pressed(k) {
+                                    v.x -= 1.0;
+                                }
                             }
                             if let Some(k) = InputBinding::resolve_key(right) {
-                                if keyboard.pressed(k) { v.x += 1.0; }
+                                if keyboard.pressed(k) {
+                                    v.x += 1.0;
+                                }
                             }
                             if v.length_squared() > 0.0 {
                                 combined += v.normalize();

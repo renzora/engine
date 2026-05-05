@@ -45,7 +45,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
 
     match format {
         TextureFormat::R16Uint | TextureFormat::R16Unorm => {
-            if data.len() < pixel_count * 2 { return None; }
+            if data.len() < pixel_count * 2 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = u16::from_le_bytes([data[i * 2], data[i * 2 + 1]]);
                 let byte = (val >> 8) as u8;
@@ -56,7 +58,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
             }
         }
         TextureFormat::R16Sint | TextureFormat::R16Snorm => {
-            if data.len() < pixel_count * 2 { return None; }
+            if data.len() < pixel_count * 2 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = i16::from_le_bytes([data[i * 2], data[i * 2 + 1]]);
                 let byte = ((val as f32 / i16::MAX as f32).clamp(0.0, 1.0) * 255.0) as u8;
@@ -67,10 +71,15 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
             }
         }
         TextureFormat::R32Float => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = f32::from_le_bytes([
-                    data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3],
+                    data[i * 4],
+                    data[i * 4 + 1],
+                    data[i * 4 + 2],
+                    data[i * 4 + 3],
                 ]);
                 let byte = (val.clamp(0.0, 1.0) * 255.0) as u8;
                 rgba[i * 4] = byte;
@@ -80,10 +89,15 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
             }
         }
         TextureFormat::R32Uint => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = u32::from_le_bytes([
-                    data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3],
+                    data[i * 4],
+                    data[i * 4 + 1],
+                    data[i * 4 + 2],
+                    data[i * 4 + 3],
                 ]);
                 let byte = (val >> 24) as u8;
                 rgba[i * 4] = byte;
@@ -93,7 +107,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
             }
         }
         TextureFormat::Rgba16Unorm => {
-            if data.len() < pixel_count * 8 { return None; }
+            if data.len() < pixel_count * 8 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let off = i * 8;
                 rgba[i * 4] = (u16::from_le_bytes([data[off], data[off + 1]]) >> 8) as u8;
@@ -103,7 +119,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
             }
         }
         TextureFormat::Rg16Uint | TextureFormat::Rg16Unorm => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let off = i * 4;
                 let r = (u16::from_le_bytes([data[off], data[off + 1]]) >> 8) as u8;
@@ -118,7 +136,11 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
     }
 
     Some(Image::new(
-        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: 1,
+        },
         TextureDimension::D2,
         rgba,
         TextureFormat::Rgba8UnormSrgb,
@@ -166,9 +188,7 @@ impl NodeThumbnails {
     pub fn to_map(&self) -> HashMap<String, egui::TextureId> {
         self.entries
             .iter()
-            .filter_map(|(path, entry)| {
-                entry.texture_id.map(|id| (path.clone(), id))
-            })
+            .filter_map(|(path, entry)| entry.texture_id.map(|id| (path.clone(), id)))
             .collect()
     }
 }
@@ -193,7 +213,9 @@ fn update_node_thumbnails(
     }
 
     // Remove entries no longer needed
-    thumbnails.entries.retain(|path, _| needed_paths.contains(path));
+    thumbnails
+        .entries
+        .retain(|path, _| needed_paths.contains(path));
 
     // Load new textures and register with egui
     for path in &needed_paths {
@@ -222,12 +244,8 @@ fn update_node_thumbnails(
         if let Some(image) = images.get(&image_handle) {
             let image_clone = image.clone();
             resolved = true;
-            texture_id = register_thumbnail(
-                &image_clone,
-                &image_handle,
-                &mut images,
-                &mut user_textures,
-            );
+            texture_id =
+                register_thumbnail(&image_clone, &image_handle, &mut images, &mut user_textures);
         }
 
         thumbnails.entries.insert(

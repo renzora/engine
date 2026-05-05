@@ -68,8 +68,12 @@ impl WaveformCache {
     /// Returns true if a fresh decode should be kicked off for `path` —
     /// either no entry exists, or the existing one is stale per fingerprint.
     pub fn needs_request(&self, path: &Path) -> bool {
-        let Some(fp) = fingerprint(path) else { return false };
-        let Ok(inner) = self.inner.lock() else { return false };
+        let Some(fp) = fingerprint(path) else {
+            return false;
+        };
+        let Ok(inner) = self.inner.lock() else {
+            return false;
+        };
         match inner.entries.get(path) {
             None => true,
             Some(Entry::Pending(prev)) | Some(Entry::Done(prev, _)) | Some(Entry::Failed(prev)) => {
@@ -97,7 +101,9 @@ impl WaveformCache {
                     return;
                 }
             }
-            inner.entries.insert(path.clone(), Entry::Pending(fp.clone()));
+            inner
+                .entries
+                .insert(path.clone(), Entry::Pending(fp.clone()));
         }
 
         let cache = self.clone();
@@ -155,8 +161,12 @@ fn decode_to_peaks(path: &Path) -> Result<WaveformPeaks, String> {
         for f in slice {
             // Mono mix of L/R for visual purposes.
             let s = (f.left + f.right) * 0.5;
-            if s < min { min = s; }
-            if s > max { max = s; }
+            if s < min {
+                min = s;
+            }
+            if s > max {
+                max = s;
+            }
         }
         out.push((min, max));
     }

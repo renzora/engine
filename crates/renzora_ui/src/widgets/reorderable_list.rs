@@ -23,8 +23,10 @@ pub fn reorderable_list<T>(
     let mut swap: Option<(usize, usize)> = None;
 
     for i in 0..items.len() {
-        let (rect, resp) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::click_and_drag());
+        let (rect, resp) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), row_height),
+            Sense::click_and_drag(),
+        );
         let bg = if i % 2 == 0 {
             theme.panels.inspector_row_even.to_color32()
         } else {
@@ -41,7 +43,11 @@ pub fn reorderable_list<T>(
             egui::FontId::proportional(13.0),
             theme.text.muted.to_color32(),
         );
-        let handle_resp = ui.interact(handle_rect, ui.id().with(("handle", i)), Sense::click_and_drag());
+        let handle_resp = ui.interact(
+            handle_rect,
+            ui.id().with(("handle", i)),
+            Sense::click_and_drag(),
+        );
         if handle_resp.drag_started() {
             new_dragging = Some(i);
         }
@@ -50,13 +56,20 @@ pub fn reorderable_list<T>(
         let body_rect =
             egui::Rect::from_min_max(egui::Pos2::new(rect.min.x + 20.0, rect.min.y), rect.max);
         ui.scope_builder(
-            egui::UiBuilder::new().max_rect(body_rect).layout(egui::Layout::left_to_right(egui::Align::Center)),
+            egui::UiBuilder::new()
+                .max_rect(body_rect)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
             |ui| row(ui, i, &mut items[i]),
         );
 
         // Drop feedback
         if let Some(from) = new_dragging {
-            if ui.ctx().pointer_interact_pos().map_or(false, |p| rect.contains(p)) && from != i {
+            if ui
+                .ctx()
+                .pointer_interact_pos()
+                .map_or(false, |p| rect.contains(p))
+                && from != i
+            {
                 ui.painter().rect_stroke(
                     rect,
                     0.0,

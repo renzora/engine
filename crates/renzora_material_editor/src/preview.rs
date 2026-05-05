@@ -5,17 +5,19 @@
 
 use std::marker::PhantomData;
 
-use bevy::prelude::*;
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, RichText, TextureId};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
-use renzora::core::{IsolatedCamera, HideInHierarchy, EditorLocked};
+use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor::{EditorPanel, PanelLocation};
-use renzora_shader::material::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
+use renzora_shader::material::runtime::{
+    new_graph_material, FallbackTexture, GraphMaterial, GraphMaterialShaderState,
+};
 use renzora_theme::ThemeManager;
 
 use crate::MaterialEditorState;
@@ -305,18 +307,52 @@ fn hash_pin_value<H: std::hash::Hasher>(
     value: &renzora_shader::material::graph::PinValue,
     state: &mut H,
 ) {
-    use std::hash::Hash;
     use renzora_shader::material::graph::PinValue;
+    use std::hash::Hash;
     match value {
-        PinValue::Float(f) => { 0u8.hash(state); f.to_bits().hash(state); }
-        PinValue::Vec2(v) => { 1u8.hash(state); for x in v { x.to_bits().hash(state); } }
-        PinValue::Vec3(v) => { 2u8.hash(state); for x in v { x.to_bits().hash(state); } }
-        PinValue::Vec4(v) => { 3u8.hash(state); for x in v { x.to_bits().hash(state); } }
-        PinValue::Color(c) => { 4u8.hash(state); for x in c { x.to_bits().hash(state); } }
-        PinValue::Int(i) => { 5u8.hash(state); i.hash(state); }
-        PinValue::Bool(b) => { 6u8.hash(state); b.hash(state); }
-        PinValue::TexturePath(s) | PinValue::String(s) => { 7u8.hash(state); s.hash(state); }
-        PinValue::None => { 8u8.hash(state); }
+        PinValue::Float(f) => {
+            0u8.hash(state);
+            f.to_bits().hash(state);
+        }
+        PinValue::Vec2(v) => {
+            1u8.hash(state);
+            for x in v {
+                x.to_bits().hash(state);
+            }
+        }
+        PinValue::Vec3(v) => {
+            2u8.hash(state);
+            for x in v {
+                x.to_bits().hash(state);
+            }
+        }
+        PinValue::Vec4(v) => {
+            3u8.hash(state);
+            for x in v {
+                x.to_bits().hash(state);
+            }
+        }
+        PinValue::Color(c) => {
+            4u8.hash(state);
+            for x in c {
+                x.to_bits().hash(state);
+            }
+        }
+        PinValue::Int(i) => {
+            5u8.hash(state);
+            i.hash(state);
+        }
+        PinValue::Bool(b) => {
+            6u8.hash(state);
+            b.hash(state);
+        }
+        PinValue::TexturePath(s) | PinValue::String(s) => {
+            7u8.hash(state);
+            s.hash(state);
+        }
+        PinValue::None => {
+            8u8.hash(state);
+        }
     }
 }
 
@@ -358,8 +394,8 @@ fn update_preview_material(
     // hashing them, editing a Color Parameter's default in the graph
     // would silently no-op the preview until the user disconnected
     // and reconnected the cable to force a WGSL hash flip.
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     result.fragment_shader.hash(&mut hasher);
     for tb in &result.texture_bindings {
@@ -380,8 +416,11 @@ fn update_preview_material(
     }
     tracker.last_wgsl_hash = Some(hash);
 
-    info!("[material_preview] Compiling graph: {} nodes, {} connections",
-        editor_state.graph.nodes.len(), editor_state.graph.connections.len());
+    info!(
+        "[material_preview] Compiling graph: {} nodes, {} connections",
+        editor_state.graph.nodes.len(),
+        editor_state.graph.connections.len()
+    );
 
     // Assign textures — unused slots get fallback (never None)
     let fb = &fallback.0;
@@ -417,7 +456,10 @@ fn update_preview_material(
                 (TextureKind::Cube, 0) => material.extension.cube_0 = Some(handle),
                 (TextureKind::D2Array, 0) => material.extension.array_0 = Some(handle),
                 (TextureKind::D3, 0) => material.extension.volume_0 = Some(handle),
-                _ => warn!("[material_preview] Texture binding slot {:?}/{} not routed!", tb.kind, tb.binding),
+                _ => warn!(
+                    "[material_preview] Texture binding slot {:?}/{} not routed!",
+                    tb.kind, tb.binding
+                ),
             }
         }
     }
@@ -427,10 +469,7 @@ fn update_preview_material(
     // reconstructs the `Handle::Uuid` and plugs it into the fragment stage.
     let preview_uuid = Uuid::new_v4();
     let preview_handle: Handle<Shader> = Handle::Uuid(preview_uuid, PhantomData);
-    let shader = Shader::from_wgsl(
-        result.fragment_shader.clone(),
-        "graph_material://preview",
-    );
+    let shader = Shader::from_wgsl(result.fragment_shader.clone(), "graph_material://preview");
     let _ = shaders.insert(&preview_handle, shader);
 
     // Set the per-material shader uuid on the preview sphere AND seed
@@ -463,12 +502,15 @@ impl Plugin for MaterialPreviewPlugin {
             .init_resource::<MaterialPreviewImage>()
             .init_resource::<MaterialPreviewTracker>()
             .add_systems(PostStartup, setup_material_preview)
-            .add_systems(Update, (
-                sync_preview_camera_active,
-                update_preview_camera_orbit,
-                swap_preview_shape,
-                update_preview_material,
-            ));
+            .add_systems(
+                Update,
+                (
+                    sync_preview_camera_active,
+                    update_preview_camera_orbit,
+                    swap_preview_shape,
+                    update_preview_material,
+                ),
+            );
     }
 }
 
@@ -515,7 +557,11 @@ impl EditorPanel for MaterialPreviewPanel {
 
         if !has_material {
             ui.centered_and_justified(|ui| {
-                ui.label(RichText::new("No material compiled").size(12.0).color(text_muted));
+                ui.label(
+                    RichText::new("No material compiled")
+                        .size(12.0)
+                        .color(text_muted),
+                );
             });
             return;
         }
@@ -537,18 +583,26 @@ impl EditorPanel for MaterialPreviewPanel {
                 if shape_btn.clicked() {
                     ui.memory_mut(|m| m.toggle_popup(shape_id));
                 }
-                egui::popup_below_widget(ui, shape_id, &shape_btn, egui::PopupCloseBehavior::CloseOnClick, |ui| {
-                    for &s in PreviewShape::ALL {
-                        if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
-                            let shape = s;
-                            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                                cmds.push(move |world: &mut World| {
-                                    world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
-                                });
+                egui::popup_below_widget(
+                    ui,
+                    shape_id,
+                    &shape_btn,
+                    egui::PopupCloseBehavior::CloseOnClick,
+                    |ui| {
+                        for &s in PreviewShape::ALL {
+                            if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
+                                let shape = s;
+                                if let Some(cmds) =
+                                    world.get_resource::<renzora_editor::EditorCommands>()
+                                {
+                                    cmds.push(move |world: &mut World| {
+                                        world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
+                                    });
+                                }
                             }
                         }
-                    }
-                });
+                    },
+                );
 
                 ui.separator();
 
@@ -563,7 +617,10 @@ impl EditorPanel for MaterialPreviewPanel {
                 } else {
                     text_muted
                 };
-                if ui.add(egui::Button::new(RichText::new(rotate_icon).size(11.0).color(rotate_color)))
+                if ui
+                    .add(egui::Button::new(
+                        RichText::new(rotate_icon).size(11.0).color(rotate_color),
+                    ))
                     .on_hover_text("Auto-rotate")
                     .clicked()
                 {
@@ -581,7 +638,10 @@ impl EditorPanel for MaterialPreviewPanel {
                 } else {
                     egui_phosphor::regular::SUN
                 };
-                if ui.add(egui::Button::new(RichText::new(bg_icon).size(11.0).color(text_muted)))
+                if ui
+                    .add(egui::Button::new(
+                        RichText::new(bg_icon).size(11.0).color(text_muted),
+                    ))
                     .on_hover_text("Toggle background")
                     .clicked()
                 {

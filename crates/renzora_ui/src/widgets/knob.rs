@@ -62,12 +62,7 @@ fn arc_points(center: Pos2, radius: f32, from_t: f32, to_t: f32, segments: usize
 /// - Hold Shift for fine control (10× slower)
 /// - Double-click to reset to midpoint
 /// - Hover shows tooltip with current value
-pub fn rotary_knob(
-    ui: &mut egui::Ui,
-    _id: egui::Id,
-    value: &mut f32,
-    config: &KnobConfig,
-) -> bool {
+pub fn rotary_knob(ui: &mut egui::Ui, _id: egui::Id, value: &mut f32, config: &KnobConfig) -> bool {
     let total_height = if config.label.is_some() {
         config.size + 14.0
     } else {
@@ -125,10 +120,7 @@ pub fn rotary_knob(
         // Value arc
         if t > 0.005 {
             let val_pts = arc_points(center, arc_r, 0.0, t, (40.0 * t) as usize + 2);
-            painter.add(egui::Shape::line(
-                val_pts,
-                Stroke::new(3.0, config.color),
-            ));
+            painter.add(egui::Shape::line(val_pts, Stroke::new(3.0, config.color)));
         }
 
         // Knob body
@@ -139,7 +131,11 @@ pub fn rotary_knob(
             Color32::from_rgb(45, 48, 55)
         };
         painter.circle_filled(center, body_r, body_color);
-        painter.circle_stroke(center, body_r, Stroke::new(1.0, Color32::from_rgb(30, 30, 35)));
+        painter.circle_stroke(
+            center,
+            body_r,
+            Stroke::new(1.0, Color32::from_rgb(30, 30, 35)),
+        );
 
         // Indicator dot
         let dot_pos = knob_point(center, body_r - 4.0, t);

@@ -18,7 +18,9 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
-use renzora_editor::{AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation};
+use renzora_editor::{
+    AppEditorExt, AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation,
+};
 use renzora_scripting::ScriptComponent;
 use renzora_theme::ThemeManager;
 
@@ -122,12 +124,28 @@ impl EditorPanel for CodeEditorPanel {
         if let Some(payload) = world.get_resource::<AssetDragPayload>() {
             if payload.is_detached {
                 let ext = payload.extension();
-                let is_script = matches!(ext.as_str(),
-                    "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "json" | "toml" | "yaml" | "yml" | "txt" | "md"
+                let is_script = matches!(
+                    ext.as_str(),
+                    "lua"
+                        | "rhai"
+                        | "rs"
+                        | "py"
+                        | "js"
+                        | "ts"
+                        | "wgsl"
+                        | "glsl"
+                        | "json"
+                        | "toml"
+                        | "yaml"
+                        | "yml"
+                        | "txt"
+                        | "md"
                 );
                 if is_script {
                     let panel_rect = ui.min_rect();
-                    let hovering = ui.ctx().pointer_hover_pos()
+                    let hovering = ui
+                        .ctx()
+                        .pointer_hover_pos()
                         .map_or(false, |p| panel_rect.contains(p));
                     if hovering && !ui.ctx().input(|i| i.pointer.any_down()) {
                         let path = payload.path.clone();
@@ -187,8 +205,12 @@ fn sync_selection_scripts(
     project: Option<Res<CurrentProject>>,
     script_query: Query<&ScriptComponent>,
 ) {
-    let Some(entity) = selection.get() else { return };
-    let Ok(sc) = script_query.get(entity) else { return };
+    let Some(entity) = selection.get() else {
+        return;
+    };
+    let Ok(sc) = script_query.get(entity) else {
+        return;
+    };
     let Some(project) = project else { return };
 
     for entry in &sc.scripts {
@@ -233,7 +255,8 @@ impl Plugin for CodeEditorPlugin {
                 consume_open_code_editor_file,
                 sync_asset_filter_for_scripting,
                 sync_code_editor_prefs_to_settings,
-            ).run_if(in_state(SplashState::Editor)),
+            )
+                .run_if(in_state(SplashState::Editor)),
         );
 
         app.register_panel(CodeEditorPanel::new(arc));
@@ -291,10 +314,12 @@ fn sync_asset_filter_for_scripting(
     let is_scripting = layout_mgr.active_name() == "Scripting";
     let desired: Option<Vec<String>> = if is_scripting {
         Some(
-            ["lua", "rhai", "wgsl", "glsl", "json", "ron", "toml", "txt", "md"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            [
+                "lua", "rhai", "wgsl", "glsl", "json", "ron", "toml", "txt", "md",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         )
     } else {
         None
@@ -304,3 +329,4 @@ fn sync_asset_filter_for_scripting(
     }
 }
 
+renzora::add!(CodeEditorPlugin, Editor);

@@ -453,10 +453,26 @@ impl Default for CompassData {
             heading: 0.0,
             fov: 180.0,
             markers: vec![
-                CompassMarker { label: "N".into(), angle: 0.0, color: Color::srgba(1.0, 0.3, 0.3, 1.0) },
-                CompassMarker { label: "E".into(), angle: 90.0, color: Color::WHITE },
-                CompassMarker { label: "S".into(), angle: 180.0, color: Color::WHITE },
-                CompassMarker { label: "W".into(), angle: 270.0, color: Color::WHITE },
+                CompassMarker {
+                    label: "N".into(),
+                    angle: 0.0,
+                    color: Color::srgba(1.0, 0.3, 0.3, 1.0),
+                },
+                CompassMarker {
+                    label: "E".into(),
+                    angle: 90.0,
+                    color: Color::WHITE,
+                },
+                CompassMarker {
+                    label: "S".into(),
+                    angle: 180.0,
+                    color: Color::WHITE,
+                },
+                CompassMarker {
+                    label: "W".into(),
+                    angle: 270.0,
+                    color: Color::WHITE,
+                },
             ],
             text_color: Color::WHITE,
             tick_color: Color::srgba(0.6, 0.6, 0.6, 1.0),
@@ -558,10 +574,22 @@ impl Default for RadialMenuData {
     fn default() -> Self {
         Self {
             items: vec![
-                RadialMenuItem { label: "Item 1".into(), color: Color::srgba(0.3, 0.5, 0.9, 0.8) },
-                RadialMenuItem { label: "Item 2".into(), color: Color::srgba(0.3, 0.5, 0.9, 0.8) },
-                RadialMenuItem { label: "Item 3".into(), color: Color::srgba(0.3, 0.5, 0.9, 0.8) },
-                RadialMenuItem { label: "Item 4".into(), color: Color::srgba(0.3, 0.5, 0.9, 0.8) },
+                RadialMenuItem {
+                    label: "Item 1".into(),
+                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
+                },
+                RadialMenuItem {
+                    label: "Item 2".into(),
+                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
+                },
+                RadialMenuItem {
+                    label: "Item 3".into(),
+                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
+                },
+                RadialMenuItem {
+                    label: "Item 4".into(),
+                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
+                },
             ],
             open: false,
             selected: -1,
@@ -980,9 +1008,18 @@ impl Default for ListData {
     fn default() -> Self {
         Self {
             items: vec![
-                ListItem { label: "Item 1".into(), selected: false },
-                ListItem { label: "Item 2".into(), selected: false },
-                ListItem { label: "Item 3".into(), selected: false },
+                ListItem {
+                    label: "Item 1".into(),
+                    selected: false,
+                },
+                ListItem {
+                    label: "Item 2".into(),
+                    selected: false,
+                },
+                ListItem {
+                    label: "Item 3".into(),
+                    selected: false,
+                },
             ],
             multi_select: false,
             item_height: 28.0,

@@ -44,3 +44,4 @@ impl Plugin for BlueprintEditorPlugin {
     }
 }
 
+renzora::add!(BlueprintEditorPlugin, Editor);

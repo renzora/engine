@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use renzora::{AnimClip, BoneTrack};
 use renzora::write_anim_file;
+use renzora::{AnimClip, BoneTrack};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::fbx_legacy::{
@@ -43,14 +43,13 @@ fn parse_connections(nodes: &[FbxNode]) -> Vec<Connection> {
             let src_id = get_i64_prop(child, 1);
             let dst_id = get_i64_prop(child, 2);
             if let (Some(src), Some(dst)) = (src_id, dst_id) {
-                let property = get_string_prop(child, 0)
-                    .and_then(|conn_type| {
-                        if conn_type == "OP" {
-                            get_string_prop(child, 3).map(|s| s.to_string())
-                        } else {
-                            None
-                        }
-                    });
+                let property = get_string_prop(child, 0).and_then(|conn_type| {
+                    if conn_type == "OP" {
+                        get_string_prop(child, 3).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                });
                 conns.push(Connection {
                     src_id: src,
                     dst_id: dst,
@@ -202,10 +201,9 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
         }
 
         if curve_node_ids.is_empty() {
-            result.warnings.push(format!(
-                "{}: no animation curve nodes found",
-                clip_name
-            ));
+            result
+                .warnings
+                .push(format!("{}: no animation curve nodes found", clip_name));
             continue;
         }
 
@@ -219,10 +217,8 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
             values: Vec<f32>,
         }
 
-        let mut bone_curves: HashMap<
-            i64,
-            (String, HashMap<String, HashMap<String, CurveData>>),
-        > = HashMap::new();
+        let mut bone_curves: HashMap<i64, (String, HashMap<String, HashMap<String, CurveData>>)> =
+            HashMap::new();
 
         let mut duration: f32 = 0.0;
 
@@ -310,10 +306,13 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
                         .entry(bone_id)
                         .or_insert_with(|| (bone_name.clone(), HashMap::new()));
                     let axis_map = entry.1.entry(prop_key.clone()).or_default();
-                    axis_map.insert(axis.to_string(), CurveData {
-                        times,
-                        values: key_values[..count].to_vec(),
-                    });
+                    axis_map.insert(
+                        axis.to_string(),
+                        CurveData {
+                            times,
+                            values: key_values[..count].to_vec(),
+                        },
+                    );
                 }
             }
         }
@@ -437,11 +436,10 @@ pub fn extract_animations_from_fbx(
     path: &Path,
     output_dir: &Path,
 ) -> Result<AnimExtractResult, String> {
-    let data =
-        std::fs::read(path).map_err(|e| format!("failed to read FBX file: {}", e))?;
+    let data = std::fs::read(path).map_err(|e| format!("failed to read FBX file: {}", e))?;
 
-    let (_version, nodes) = crate::fbx_legacy::parse_document(&data)
-        .map_err(|e| format!("FBX parse error: {}", e))?;
+    let (_version, nodes) =
+        crate::fbx_legacy::parse_document(&data).map_err(|e| format!("FBX parse error: {}", e))?;
 
     extract(&nodes, output_dir)
 }

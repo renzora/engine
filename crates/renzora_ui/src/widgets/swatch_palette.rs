@@ -21,8 +21,10 @@ pub fn swatch_palette(
     let total_w = cols as f32 * (swatch_size + spacing) - spacing;
     let total_h = rows as f32 * (swatch_size + spacing) - spacing;
 
-    let (rect, _response) =
-        ui.allocate_exact_size(Vec2::new(total_w.max(swatch_size), total_h.max(swatch_size)), Sense::hover());
+    let (rect, _response) = ui.allocate_exact_size(
+        Vec2::new(total_w.max(swatch_size), total_h.max(swatch_size)),
+        Sense::hover(),
+    );
     let painter = ui.painter_at(rect);
     let mut picked = None;
     let mut to_remove: Option<usize> = None;

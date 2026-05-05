@@ -29,9 +29,12 @@ toml = "0.8"
 bevy_egui = { version = "0.39", optional = true }
 avian3d = { version = "0.6", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
 
-[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))'.dependencies]
 arboard = "3"
 rfd = "0.15"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 dirs = "6"
+
+[lints]
+workspace = true

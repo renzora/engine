@@ -22,9 +22,18 @@ pub fn render_arena_presets_content(
     // Header
     ui.horizontal(|ui| {
         ui.add_space(padding);
-        ui.label(RichText::new("Arenas").size(13.0).color(text_primary).strong());
+        ui.label(
+            RichText::new("Arenas")
+                .size(13.0)
+                .color(text_primary)
+                .strong(),
+        );
         if state.has_active_arena {
-            ui.label(RichText::new(format!("({} entities)", state.arena_entity_count)).size(10.0).color(text_muted));
+            ui.label(
+                RichText::new(format!("({} entities)", state.arena_entity_count))
+                    .size(10.0)
+                    .color(text_muted),
+            );
         }
     });
 
@@ -36,8 +45,12 @@ pub fn render_arena_presets_content(
         ui.label(RichText::new("Scale").size(10.0).color(text_muted));
         ui.add(egui::Slider::new(&mut state.scale, 0.5..=5.0));
         if state.has_active_arena {
-            if ui.add(egui::Button::new(RichText::new("Clear").size(10.0))
-                .fill(theme.semantic.error.to_color32())).clicked()
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("Clear").size(10.0))
+                        .fill(theme.semantic.error.to_color32()),
+                )
+                .clicked()
             {
                 state.commands.push(ArenaCommand::Clear);
             }
@@ -51,7 +64,9 @@ pub fn render_arena_presets_content(
         let available_width = ui.available_width() - padding * 2.0;
         let min_tile = 72.0;
         let max_tile = 100.0;
-        let cols = ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
+        let cols = ((available_width + spacing) / (min_tile + spacing))
+            .floor()
+            .max(1.0) as usize;
         let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
             .clamp(min_tile, max_tile);
         let label_height = 16.0;
@@ -92,13 +107,15 @@ pub fn render_arena_presets_content(
 
                         if selected {
                             ui.painter().rect_stroke(
-                                rect, 6.0,
+                                rect,
+                                6.0,
                                 egui::Stroke::new(1.5, accent),
                                 egui::StrokeKind::Outside,
                             );
                         } else if hovered {
                             ui.painter().rect_stroke(
-                                rect, 6.0,
+                                rect,
+                                6.0,
                                 egui::Stroke::new(1.0, accent.linear_multiply(0.6)),
                                 egui::StrokeKind::Outside,
                             );
@@ -109,16 +126,18 @@ pub fn render_arena_presets_content(
                         }
 
                         // Icon
-                        let icon_rect = egui::Rect::from_min_size(
-                            rect.min,
-                            Vec2::new(tile_size, tile_size),
-                        );
+                        let icon_rect =
+                            egui::Rect::from_min_size(rect.min, Vec2::new(tile_size, tile_size));
                         ui.painter().text(
                             icon_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             arena.icon(),
                             egui::FontId::proportional(28.0),
-                            if selected || hovered { accent } else { text_primary },
+                            if selected || hovered {
+                                accent
+                            } else {
+                                text_primary
+                            },
                         );
 
                         // Label

@@ -15,3 +15,6 @@ crossbeam-channel = "0.5"
 tiny_http = "0.12"
 
 [workspace]
+
+[lints]
+workspace = true

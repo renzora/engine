@@ -148,8 +148,7 @@ impl EditorPanel for AnimatorParamsPanel {
                         *name = String::new();
                         if let Some(cmds) = world.get_resource::<EditorCommands>() {
                             cmds.push(move |world: &mut World| {
-                                let Some(mut s) = world.get_mut::<AnimatorState>(entity)
-                                else {
+                                let Some(mut s) = world.get_mut::<AnimatorState>(entity) else {
                                     return;
                                 };
                                 match k {
@@ -197,7 +196,11 @@ impl EditorPanel for AnimatorParamsPanel {
                             });
                         }
                         if ui
-                            .button(egui::RichText::new(egui_phosphor::regular::TRASH).size(10.0).color(muted))
+                            .button(
+                                egui::RichText::new(egui_phosphor::regular::TRASH)
+                                    .size(10.0)
+                                    .color(muted),
+                            )
                             .clicked()
                         {
                             if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -235,7 +238,11 @@ impl EditorPanel for AnimatorParamsPanel {
                             });
                         }
                         if ui
-                            .button(egui::RichText::new(egui_phosphor::regular::TRASH).size(10.0).color(muted))
+                            .button(
+                                egui::RichText::new(egui_phosphor::regular::TRASH)
+                                    .size(10.0)
+                                    .color(muted),
+                            )
                             .clicked()
                         {
                             if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -252,8 +259,7 @@ impl EditorPanel for AnimatorParamsPanel {
             }
 
             // ── Triggers ──
-            let triggers: Vec<String> =
-                state.params.triggers.keys().cloned().collect();
+            let triggers: Vec<String> = state.params.triggers.keys().cloned().collect();
             if !triggers.is_empty() {
                 ui.label(egui::RichText::new("TRIGGERS").size(10.0).color(muted));
                 for name in triggers {
@@ -270,10 +276,16 @@ impl EditorPanel for AnimatorParamsPanel {
                             .on_hover_text("Fire trigger")
                             .clicked()
                         {
-                            self.push(AnimEditorAction::FireTrigger { name: name_for_fire });
+                            self.push(AnimEditorAction::FireTrigger {
+                                name: name_for_fire,
+                            });
                         }
                         if ui
-                            .button(egui::RichText::new(egui_phosphor::regular::TRASH).size(10.0).color(muted))
+                            .button(
+                                egui::RichText::new(egui_phosphor::regular::TRASH)
+                                    .size(10.0)
+                                    .color(muted),
+                            )
                             .clicked()
                         {
                             if let Some(cmds) = world.get_resource::<EditorCommands>() {

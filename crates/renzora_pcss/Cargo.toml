@@ -14,3 +14,6 @@ bevy_light = "0.18"
 serde = { version = "1", features = ["derive"] }
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

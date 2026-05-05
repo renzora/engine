@@ -56,11 +56,13 @@ pub static UV: MaterialNodeDef = MaterialNodeDef {
     display_name: "UV",
     category: CAT_INPUT,
     description: "Texture coordinates (0-1)",
-    pins: || vec![
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-        PinTemplate::output("u", "U", PinType::Float),
-        PinTemplate::output("v", "V", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("uv", "UV", PinType::Vec2),
+            PinTemplate::output("u", "U", PinType::Float),
+            PinTemplate::output("v", "V", PinType::Float),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -69,12 +71,16 @@ pub static UV_SCALE: MaterialNodeDef = MaterialNodeDef {
     display_name: "UV Scale",
     category: CAT_INPUT,
     description: "Scale and offset UV coordinates for tiling",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Vec2).with_default(PinValue::Vec2([2.0, 2.0])),
-        PinTemplate::input("offset", "Offset", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Vec2)
+                .with_default(PinValue::Vec2([2.0, 2.0])),
+            PinTemplate::input("offset", "Offset", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("uv", "UV", PinType::Vec2),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -98,12 +104,15 @@ pub static UV_ROTATOR: MaterialNodeDef = MaterialNodeDef {
     display_name: "UV Rotator",
     category: CAT_INPUT,
     description: "Rotate UV coordinates around a center point (angle in radians)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("center", "Center", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("center", "Center", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::output("uv", "UV", PinType::Vec2),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -112,12 +121,16 @@ pub static UV_PANNER: MaterialNodeDef = MaterialNodeDef {
     display_name: "UV Panner",
     category: CAT_INPUT,
     description: "Time-driven UV pan with an arbitrary direction (matches Unreal's Panner node)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("speed", "Speed", PinType::Vec2).with_default(PinValue::Vec2([0.1, 0.0])),
-        PinTemplate::input("time_offset", "Time Offset", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("speed", "Speed", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.1, 0.0])),
+            PinTemplate::input("time_offset", "Time Offset", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("uv", "UV", PinType::Vec2),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -126,12 +139,14 @@ pub static WORLD_POSITION: MaterialNodeDef = MaterialNodeDef {
     display_name: "World Position",
     category: CAT_INPUT,
     description: "Fragment world-space position",
-    pins: || vec![
-        PinTemplate::output("position", "Position", PinType::Vec3),
-        PinTemplate::output("x", "X", PinType::Float),
-        PinTemplate::output("y", "Y", PinType::Float),
-        PinTemplate::output("z", "Z", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("position", "Position", PinType::Vec3),
+            PinTemplate::output("x", "X", PinType::Float),
+            PinTemplate::output("y", "Y", PinType::Float),
+            PinTemplate::output("z", "Z", PinType::Float),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -140,12 +155,14 @@ pub static WORLD_NORMAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "World Normal",
     category: CAT_INPUT,
     description: "Fragment world-space normal",
-    pins: || vec![
-        PinTemplate::output("normal", "Normal", PinType::Vec3),
-        PinTemplate::output("x", "X", PinType::Float),
-        PinTemplate::output("y", "Y", PinType::Float),
-        PinTemplate::output("z", "Z", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("normal", "Normal", PinType::Vec3),
+            PinTemplate::output("x", "X", PinType::Float),
+            PinTemplate::output("y", "Y", PinType::Float),
+            PinTemplate::output("z", "Z", PinType::Float),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -163,11 +180,13 @@ pub static TIME: MaterialNodeDef = MaterialNodeDef {
     display_name: "Time",
     category: CAT_INPUT,
     description: "Time values for animation",
-    pins: || vec![
-        PinTemplate::output("time", "Time", PinType::Float),
-        PinTemplate::output("sin_time", "Sin(Time)", PinType::Float),
-        PinTemplate::output("cos_time", "Cos(Time)", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("time", "Time", PinType::Float),
+            PinTemplate::output("sin_time", "Sin(Time)", PinType::Float),
+            PinTemplate::output("cos_time", "Cos(Time)", PinType::Float),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -176,13 +195,15 @@ pub static VERTEX_COLOR: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vertex Color",
     category: CAT_INPUT,
     description: "Per-vertex color attribute",
-    pins: || vec![
-        PinTemplate::output("color", "Color", PinType::Color),
-        PinTemplate::output("r", "R", PinType::Float),
-        PinTemplate::output("g", "G", PinType::Float),
-        PinTemplate::output("b", "B", PinType::Float),
-        PinTemplate::output("a", "A", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("r", "R", PinType::Float),
+            PinTemplate::output("g", "G", PinType::Float),
+            PinTemplate::output("b", "B", PinType::Float),
+            PinTemplate::output("a", "A", PinType::Float),
+        ]
+    },
     color: CLR_INPUT,
 };
 
@@ -217,13 +238,15 @@ pub static PARAM_FLOAT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Float Parameter",
     category: CAT_PARAMETER,
     description: "Named float parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("FloatParam".to_string())),
-        PinTemplate::input("default", "Default", PinType::Float)
-            .with_default(PinValue::Float(0.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("FloatParam".to_string())),
+            PinTemplate::input("default", "Default", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -232,13 +255,15 @@ pub static PARAM_COLOR: MaterialNodeDef = MaterialNodeDef {
     display_name: "Color Parameter",
     category: CAT_PARAMETER,
     description: "Named color parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("ColorParam".to_string())),
-        PinTemplate::input("default", "Default", PinType::Color)
-            .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::output("value", "Value", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("ColorParam".to_string())),
+            PinTemplate::input("default", "Default", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::output("value", "Value", PinType::Color),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -247,13 +272,15 @@ pub static PARAM_VEC2: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vec2 Parameter",
     category: CAT_PARAMETER,
     description: "Named vec2 parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("Vec2Param".to_string())),
-        PinTemplate::input("default", "Default", PinType::Vec2)
-            .with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("value", "Value", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("Vec2Param".to_string())),
+            PinTemplate::input("default", "Default", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("value", "Value", PinType::Vec2),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -262,13 +289,15 @@ pub static PARAM_VEC3: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vec3 Parameter",
     category: CAT_PARAMETER,
     description: "Named vec3 parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("Vec3Param".to_string())),
-        PinTemplate::input("default", "Default", PinType::Vec3)
-            .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::output("value", "Value", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("Vec3Param".to_string())),
+            PinTemplate::input("default", "Default", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::output("value", "Value", PinType::Vec3),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -277,13 +306,15 @@ pub static PARAM_VEC4: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vec4 Parameter",
     category: CAT_PARAMETER,
     description: "Named vec4 parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("Vec4Param".to_string())),
-        PinTemplate::input("default", "Default", PinType::Vec4)
-            .with_default(PinValue::Vec4([0.0, 0.0, 0.0, 0.0])),
-        PinTemplate::output("value", "Value", PinType::Vec4),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("Vec4Param".to_string())),
+            PinTemplate::input("default", "Default", PinType::Vec4)
+                .with_default(PinValue::Vec4([0.0, 0.0, 0.0, 0.0])),
+            PinTemplate::output("value", "Value", PinType::Vec4),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -292,13 +323,15 @@ pub static PARAM_BOOL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Bool Parameter",
     category: CAT_PARAMETER,
     description: "Named bool parameter — material instances can override its value.",
-    pins: || vec![
-        PinTemplate::input("name", "Name", PinType::String)
-            .with_default(PinValue::String("BoolParam".to_string())),
-        PinTemplate::input("default", "Default", PinType::Bool)
-            .with_default(PinValue::Bool(false)),
-        PinTemplate::output("value", "Value", PinType::Bool),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("BoolParam".to_string())),
+            PinTemplate::input("default", "Default", PinType::Bool)
+                .with_default(PinValue::Bool(false)),
+            PinTemplate::output("value", "Value", PinType::Bool),
+        ]
+    },
     color: CLR_PARAMETER,
 };
 
@@ -311,15 +344,17 @@ pub static SAMPLE_TEXTURE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sample Texture",
     category: CAT_TEXTURE,
     description: "Sample a 2D texture at UV coordinates",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("color", "Color", PinType::Color),
-        PinTemplate::output("rgb", "RGB", PinType::Vec3),
-        PinTemplate::output("r", "R", PinType::Float),
-        PinTemplate::output("g", "G", PinType::Float),
-        PinTemplate::output("b", "B", PinType::Float),
-        PinTemplate::output("a", "Alpha", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+            PinTemplate::output("r", "R", PinType::Float),
+            PinTemplate::output("g", "G", PinType::Float),
+            PinTemplate::output("b", "B", PinType::Float),
+            PinTemplate::output("a", "Alpha", PinType::Float),
+        ]
+    },
     color: CLR_TEXTURE,
 };
 
@@ -328,11 +363,14 @@ pub static SAMPLE_NORMAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sample Normal Map",
     category: CAT_TEXTURE,
     description: "Sample and decode a normal map texture",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("strength", "Strength", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("normal", "Normal", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("strength", "Strength", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("normal", "Normal", PinType::Vec3),
+        ]
+    },
     color: [120, 120, 200],
 };
 
@@ -341,12 +379,15 @@ pub static TRIPLANAR_SAMPLE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Triplanar Sample",
     category: CAT_TEXTURE,
     description: "Sample texture using triplanar projection (no UV seams)",
-    pins: || vec![
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("sharpness", "Sharpness", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::output("color", "Color", PinType::Color),
-        PinTemplate::output("rgb", "RGB", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("sharpness", "Sharpness", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+        ]
+    },
     color: CLR_TEXTURE,
 };
 
@@ -446,11 +487,13 @@ pub static ADD: MaterialNodeDef = MaterialNodeDef {
     display_name: "Add",
     category: CAT_MATH,
     description: "A + B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -459,11 +502,13 @@ pub static SUBTRACT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Subtract",
     category: CAT_MATH,
     description: "A - B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -472,11 +517,13 @@ pub static MULTIPLY: MaterialNodeDef = MaterialNodeDef {
     display_name: "Multiply",
     category: CAT_MATH,
     description: "A * B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -485,11 +532,13 @@ pub static DIVIDE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Divide",
     category: CAT_MATH,
     description: "A / B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -498,11 +547,14 @@ pub static POWER: MaterialNodeDef = MaterialNodeDef {
     display_name: "Power",
     category: CAT_MATH,
     description: "Base ^ Exponent",
-    pins: || vec![
-        PinTemplate::input("base", "Base", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("exp", "Exponent", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("base", "Base", PinType::Float).with_default(PinValue::Float(2.0)),
+            PinTemplate::input("exp", "Exponent", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -511,10 +563,12 @@ pub static ABS: MaterialNodeDef = MaterialNodeDef {
     display_name: "Abs",
     category: CAT_MATH,
     description: "Absolute value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -523,10 +577,12 @@ pub static NEGATE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Negate",
     category: CAT_MATH,
     description: "-Value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -535,10 +591,12 @@ pub static ONE_MINUS: MaterialNodeDef = MaterialNodeDef {
     display_name: "One Minus",
     category: CAT_MATH,
     description: "1.0 - Value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -547,10 +605,12 @@ pub static FRACT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Fract",
     category: CAT_MATH,
     description: "Fractional part",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -559,10 +619,12 @@ pub static FLOOR: MaterialNodeDef = MaterialNodeDef {
     display_name: "Floor",
     category: CAT_MATH,
     description: "Round down to integer",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -571,10 +633,12 @@ pub static CEIL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Ceil",
     category: CAT_MATH,
     description: "Round up to integer",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -583,11 +647,13 @@ pub static MIN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Min",
     category: CAT_MATH,
     description: "Minimum of A and B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -596,11 +662,13 @@ pub static MAX: MaterialNodeDef = MaterialNodeDef {
     display_name: "Max",
     category: CAT_MATH,
     description: "Maximum of A and B",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -609,12 +677,14 @@ pub static CLAMP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Clamp",
     category: CAT_MATH,
     description: "Clamp value between min and max",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("min", "Min", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("max", "Max", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::input("min", "Min", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("max", "Max", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -623,12 +693,14 @@ pub static LERP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Lerp",
     category: CAT_MATH,
     description: "Linear interpolation: mix(A, B, T)",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -637,12 +709,16 @@ pub static SMOOTHSTEP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Smoothstep",
     category: CAT_MATH,
     description: "Hermite interpolation between edge0 and edge1",
-    pins: || vec![
-        PinTemplate::input("edge0", "Edge 0", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("edge1", "Edge 1", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("edge0", "Edge 0", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("edge1", "Edge 1", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -651,11 +727,13 @@ pub static STEP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Step",
     category: CAT_MATH,
     description: "0.0 if value < edge, 1.0 otherwise",
-    pins: || vec![
-        PinTemplate::input("edge", "Edge", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("edge", "Edge", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -664,14 +742,20 @@ pub static REMAP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Remap",
     category: CAT_MATH,
     description: "Remap value from [in_min, in_max] to [out_min, out_max]",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("in_min", "In Min", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("in_max", "In Max", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("out_min", "Out Min", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("out_max", "Out Max", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::input("in_min", "In Min", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("in_max", "In Max", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::input("out_min", "Out Min", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("out_max", "Out Max", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -680,10 +764,12 @@ pub static SIN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sin",
     category: CAT_MATH,
     description: "Sine function",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -692,10 +778,12 @@ pub static COS: MaterialNodeDef = MaterialNodeDef {
     display_name: "Cos",
     category: CAT_MATH,
     description: "Cosine function",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -704,10 +792,12 @@ pub static SATURATE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Saturate",
     category: CAT_MATH,
     description: "Clamp to 0.0 - 1.0",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -716,11 +806,13 @@ pub static MODULO: MaterialNodeDef = MaterialNodeDef {
     display_name: "Modulo",
     category: CAT_MATH,
     description: "A mod B (floating-point remainder)",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -729,10 +821,12 @@ pub static SIGN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sign",
     category: CAT_MATH,
     description: "-1 / 0 / +1 based on sign of value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -741,11 +835,13 @@ pub static ATAN2: MaterialNodeDef = MaterialNodeDef {
     display_name: "Atan2",
     category: CAT_MATH,
     description: "Two-argument arctangent: atan2(y, x) in radians",
-    pins: || vec![
-        PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -754,10 +850,12 @@ pub static TRUNC: MaterialNodeDef = MaterialNodeDef {
     display_name: "Trunc",
     category: CAT_MATH,
     description: "Truncate toward zero",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -766,10 +864,12 @@ pub static ROUND: MaterialNodeDef = MaterialNodeDef {
     display_name: "Round",
     category: CAT_MATH,
     description: "Round to nearest integer",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -778,10 +878,12 @@ pub static EXP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Exp",
     category: CAT_MATH,
     description: "Natural exponential: e^x",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -790,10 +892,12 @@ pub static LOG: MaterialNodeDef = MaterialNodeDef {
     display_name: "Log",
     category: CAT_MATH,
     description: "Natural logarithm: ln(x)",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -802,10 +906,12 @@ pub static SQRT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sqrt",
     category: CAT_MATH,
     description: "Square root",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -814,10 +920,12 @@ pub static RECIPROCAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Reciprocal",
     category: CAT_MATH,
     description: "1 / value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -826,10 +934,12 @@ pub static TAN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Tan",
     category: CAT_MATH,
     description: "Tangent",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -838,10 +948,12 @@ pub static ASIN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Asin",
     category: CAT_MATH,
     description: "Arcsine in radians",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -850,10 +962,12 @@ pub static ACOS: MaterialNodeDef = MaterialNodeDef {
     display_name: "Acos",
     category: CAT_MATH,
     description: "Arccosine in radians",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -862,10 +976,13 @@ pub static RADIANS: MaterialNodeDef = MaterialNodeDef {
     display_name: "To Radians",
     category: CAT_MATH,
     description: "Convert degrees → radians",
-    pins: || vec![
-        PinTemplate::input("value", "Degrees", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Radians", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Degrees", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Radians", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -874,10 +991,13 @@ pub static DEGREES: MaterialNodeDef = MaterialNodeDef {
     display_name: "To Degrees",
     category: CAT_MATH,
     description: "Convert radians → degrees",
-    pins: || vec![
-        PinTemplate::input("value", "Radians", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Degrees", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Radians", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Degrees", PinType::Float),
+        ]
+    },
     color: CLR_MATH,
 };
 
@@ -890,11 +1010,14 @@ pub static SPLIT_VEC2: MaterialNodeDef = MaterialNodeDef {
     display_name: "Split Vec2",
     category: CAT_VECTOR,
     description: "Split Vec2 into components",
-    pins: || vec![
-        PinTemplate::input("vector", "Vector", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("x", "X", PinType::Float),
-        PinTemplate::output("y", "Y", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("vector", "Vector", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("x", "X", PinType::Float),
+            PinTemplate::output("y", "Y", PinType::Float),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -903,12 +1026,15 @@ pub static SPLIT_VEC3: MaterialNodeDef = MaterialNodeDef {
     display_name: "Split Vec3",
     category: CAT_VECTOR,
     description: "Split Vec3 into components",
-    pins: || vec![
-        PinTemplate::input("vector", "Vector", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::output("x", "X", PinType::Float),
-        PinTemplate::output("y", "Y", PinType::Float),
-        PinTemplate::output("z", "Z", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("vector", "Vector", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::output("x", "X", PinType::Float),
+            PinTemplate::output("y", "Y", PinType::Float),
+            PinTemplate::output("z", "Z", PinType::Float),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -917,11 +1043,13 @@ pub static COMBINE_VEC2: MaterialNodeDef = MaterialNodeDef {
     display_name: "Combine Vec2",
     category: CAT_VECTOR,
     description: "Create Vec2 from components",
-    pins: || vec![
-        PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("vector", "Vector", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("vector", "Vector", PinType::Vec2),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -930,12 +1058,14 @@ pub static COMBINE_VEC3: MaterialNodeDef = MaterialNodeDef {
     display_name: "Combine Vec3",
     category: CAT_VECTOR,
     description: "Create Vec3 from components",
-    pins: || vec![
-        PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("vector", "Vector", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("vector", "Vector", PinType::Vec3),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -944,13 +1074,15 @@ pub static COMBINE_VEC4: MaterialNodeDef = MaterialNodeDef {
     display_name: "Combine Vec4",
     category: CAT_VECTOR,
     description: "Create Vec4 from components",
-    pins: || vec![
-        PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("w", "W", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("vector", "Vector", PinType::Vec4),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("x", "X", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("y", "Y", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("z", "Z", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("w", "W", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("vector", "Vector", PinType::Vec4),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -959,11 +1091,15 @@ pub static DOT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Dot Product",
     category: CAT_VECTOR,
     description: "Dot product of two vectors",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::input("b", "B", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -972,11 +1108,15 @@ pub static CROSS: MaterialNodeDef = MaterialNodeDef {
     display_name: "Cross Product",
     category: CAT_VECTOR,
     description: "Cross product of two Vec3",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
-        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 1.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
+            PinTemplate::input("b", "B", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 1.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Vec3),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -985,10 +1125,13 @@ pub static NORMALIZE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Normalize",
     category: CAT_VECTOR,
     description: "Normalize vector to unit length",
-    pins: || vec![
-        PinTemplate::input("vector", "Vector", PinType::Vec3).with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("vector", "Vector", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Vec3),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -997,11 +1140,15 @@ pub static DISTANCE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Distance",
     category: CAT_VECTOR,
     description: "Distance between two points",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::input("b", "B", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::input("b", "B", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -1010,10 +1157,13 @@ pub static LENGTH: MaterialNodeDef = MaterialNodeDef {
     display_name: "Length",
     category: CAT_VECTOR,
     description: "Vector magnitude",
-    pins: || vec![
-        PinTemplate::input("vector", "Vector", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("vector", "Vector", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -1022,11 +1172,13 @@ pub static REFLECT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Reflect",
     category: CAT_VECTOR,
     description: "Reflect vector about normal",
-    pins: || vec![
-        PinTemplate::input("incident", "Incident", PinType::Vec3),
-        PinTemplate::input("normal", "Normal", PinType::Vec3),
-        PinTemplate::output("result", "Result", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("incident", "Incident", PinType::Vec3),
+            PinTemplate::input("normal", "Normal", PinType::Vec3),
+            PinTemplate::output("result", "Result", PinType::Vec3),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -1035,12 +1187,16 @@ pub static REFRACT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Refract",
     category: CAT_VECTOR,
     description: "Refract incident vector through surface with index-of-refraction ratio",
-    pins: || vec![
-        PinTemplate::input("incident", "Incident", PinType::Vec3),
-        PinTemplate::input("normal", "Normal", PinType::Vec3).with_default(PinValue::Vec3([0.0, 1.0, 0.0])),
-        PinTemplate::input("eta", "IOR Ratio", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("incident", "Incident", PinType::Vec3),
+            PinTemplate::input("normal", "Normal", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 1.0, 0.0])),
+            PinTemplate::input("eta", "IOR Ratio", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Vec3),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -1048,15 +1204,19 @@ pub static SWIZZLE: MaterialNodeDef = MaterialNodeDef {
     node_type: "vector/swizzle",
     display_name: "Swizzle",
     category: CAT_VECTOR,
-    description: "Rearrange vec4 components. Pick 0=X, 1=Y, 2=Z, 3=W, 4=zero, 5=one for each output channel.",
-    pins: || vec![
-        PinTemplate::input("vector", "Vector", PinType::Vec4).with_default(PinValue::Vec4([0.0, 0.0, 0.0, 1.0])),
-        PinTemplate::input("out_x", "Out X", PinType::Float).with_default(PinValue::Int(0)),
-        PinTemplate::input("out_y", "Out Y", PinType::Float).with_default(PinValue::Int(1)),
-        PinTemplate::input("out_z", "Out Z", PinType::Float).with_default(PinValue::Int(2)),
-        PinTemplate::input("out_w", "Out W", PinType::Float).with_default(PinValue::Int(3)),
-        PinTemplate::output("vector", "Vector", PinType::Vec4),
-    ],
+    description:
+        "Rearrange vec4 components. Pick 0=X, 1=Y, 2=Z, 3=W, 4=zero, 5=one for each output channel.",
+    pins: || {
+        vec![
+            PinTemplate::input("vector", "Vector", PinType::Vec4)
+                .with_default(PinValue::Vec4([0.0, 0.0, 0.0, 1.0])),
+            PinTemplate::input("out_x", "Out X", PinType::Float).with_default(PinValue::Int(0)),
+            PinTemplate::input("out_y", "Out Y", PinType::Float).with_default(PinValue::Int(1)),
+            PinTemplate::input("out_z", "Out Z", PinType::Float).with_default(PinValue::Int(2)),
+            PinTemplate::input("out_w", "Out W", PinType::Float).with_default(PinValue::Int(3)),
+            PinTemplate::output("vector", "Vector", PinType::Vec4),
+        ]
+    },
     color: CLR_VECTOR,
 };
 
@@ -1069,14 +1229,16 @@ pub static COLOR_CONSTANT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Color",
     category: CAT_COLOR,
     description: "Constant color value",
-    pins: || vec![
-        PinTemplate::output("color", "Color", PinType::Color),
-        PinTemplate::output("rgb", "RGB", PinType::Vec3),
-        PinTemplate::output("r", "R", PinType::Float),
-        PinTemplate::output("g", "G", PinType::Float),
-        PinTemplate::output("b", "B", PinType::Float),
-        PinTemplate::output("a", "A", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+            PinTemplate::output("r", "R", PinType::Float),
+            PinTemplate::output("g", "G", PinType::Float),
+            PinTemplate::output("b", "B", PinType::Float),
+            PinTemplate::output("a", "A", PinType::Float),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1085,9 +1247,7 @@ pub static FLOAT_CONSTANT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Float",
     category: CAT_COLOR,
     description: "Constant float value",
-    pins: || vec![
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || vec![PinTemplate::output("value", "Value", PinType::Float)],
     color: CLR_COLOR,
 };
 
@@ -1096,9 +1256,7 @@ pub static VEC2_CONSTANT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vec2",
     category: CAT_COLOR,
     description: "Constant Vec2 value",
-    pins: || vec![
-        PinTemplate::output("value", "Value", PinType::Vec2),
-    ],
+    pins: || vec![PinTemplate::output("value", "Value", PinType::Vec2)],
     color: CLR_COLOR,
 };
 
@@ -1107,9 +1265,7 @@ pub static VEC3_CONSTANT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vec3",
     category: CAT_COLOR,
     description: "Constant Vec3 value",
-    pins: || vec![
-        PinTemplate::output("value", "Value", PinType::Vec3),
-    ],
+    pins: || vec![PinTemplate::output("value", "Value", PinType::Vec3)],
     color: CLR_COLOR,
 };
 
@@ -1118,12 +1274,16 @@ pub static COLOR_LERP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Color Lerp",
     category: CAT_COLOR,
     description: "Blend between two colors",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Color).with_default(PinValue::Color([0.0, 0.0, 0.0, 1.0])),
-        PinTemplate::input("b", "B", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("color", "Color", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Color)
+                .with_default(PinValue::Color([0.0, 0.0, 0.0, 1.0])),
+            PinTemplate::input("b", "B", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::output("color", "Color", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1132,14 +1292,20 @@ pub static COSINE_PALETTE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Cosine Palette",
     category: CAT_COLOR,
     description: "IQ cosine color palette: a + b * cos(2π(c*t + d))",
-    pins: || vec![
-        PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("a", "Bias", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
-        PinTemplate::input("b", "Amplitude", PinType::Vec3).with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
-        PinTemplate::input("c", "Frequency", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
-        PinTemplate::input("d", "Phase", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.33, 0.67])),
-        PinTemplate::output("color", "Color", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("t", "T", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("a", "Bias", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+            PinTemplate::input("b", "Amplitude", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.5, 0.5, 0.5])),
+            PinTemplate::input("c", "Frequency", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+            PinTemplate::input("d", "Phase", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.33, 0.67])),
+            PinTemplate::output("color", "Color", PinType::Vec3),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1148,10 +1314,12 @@ pub static FRESNEL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Fresnel",
     category: CAT_COLOR,
     description: "View-angle dependent effect (water edges, rim light)",
-    pins: || vec![
-        PinTemplate::input("power", "Power", PinType::Float).with_default(PinValue::Float(5.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("power", "Power", PinType::Float).with_default(PinValue::Float(5.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1160,10 +1328,13 @@ pub static SRGB_TO_LINEAR: MaterialNodeDef = MaterialNodeDef {
     display_name: "sRGB → Linear",
     category: CAT_COLOR,
     description: "Convert sRGB-encoded color to linear (piecewise)",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::output("result", "Result", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::output("result", "Result", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1172,10 +1343,13 @@ pub static LINEAR_TO_SRGB: MaterialNodeDef = MaterialNodeDef {
     display_name: "Linear → sRGB",
     category: CAT_COLOR,
     description: "Convert linear color to sRGB (piecewise)",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::output("result", "Result", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::output("result", "Result", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1184,13 +1358,16 @@ pub static RGB_TO_HSV: MaterialNodeDef = MaterialNodeDef {
     display_name: "RGB → HSV",
     category: CAT_COLOR,
     description: "Convert RGB to HSV (hue/saturation/value)",
-    pins: || vec![
-        PinTemplate::input("rgb", "RGB", PinType::Vec3).with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
-        PinTemplate::output("hsv", "HSV", PinType::Vec3),
-        PinTemplate::output("h", "H", PinType::Float),
-        PinTemplate::output("s", "S", PinType::Float),
-        PinTemplate::output("v", "V", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("rgb", "RGB", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
+            PinTemplate::output("hsv", "HSV", PinType::Vec3),
+            PinTemplate::output("h", "H", PinType::Float),
+            PinTemplate::output("s", "S", PinType::Float),
+            PinTemplate::output("v", "V", PinType::Float),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1199,10 +1376,13 @@ pub static HSV_TO_RGB: MaterialNodeDef = MaterialNodeDef {
     display_name: "HSV → RGB",
     category: CAT_COLOR,
     description: "Convert HSV to RGB",
-    pins: || vec![
-        PinTemplate::input("hsv", "HSV", PinType::Vec3).with_default(PinValue::Vec3([0.0, 1.0, 1.0])),
-        PinTemplate::output("rgb", "RGB", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("hsv", "HSV", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 1.0, 1.0])),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1211,11 +1391,14 @@ pub static HUE_SHIFT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Hue Shift",
     category: CAT_COLOR,
     description: "Rotate the hue of an RGB color by a given amount (0-1)",
-    pins: || vec![
-        PinTemplate::input("rgb", "RGB", PinType::Vec3).with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
-        PinTemplate::input("shift", "Shift", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("rgb", "RGB", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("rgb", "RGB", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 0.0, 0.0])),
+            PinTemplate::input("shift", "Shift", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1224,10 +1407,13 @@ pub static LUMINANCE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Luminance",
     category: CAT_COLOR,
     description: "Rec.709 luminance of an RGB color",
-    pins: || vec![
-        PinTemplate::input("rgb", "RGB", PinType::Vec3).with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("rgb", "RGB", PinType::Vec3)
+                .with_default(PinValue::Vec3([1.0, 1.0, 1.0])),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1236,11 +1422,14 @@ pub static GAMMA: MaterialNodeDef = MaterialNodeDef {
     display_name: "Gamma",
     category: CAT_COLOR,
     description: "Apply pow(color, gamma) per channel",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::input("gamma", "Gamma", PinType::Float).with_default(PinValue::Float(2.2)),
-        PinTemplate::output("result", "Result", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::input("gamma", "Gamma", PinType::Float).with_default(PinValue::Float(2.2)),
+            PinTemplate::output("result", "Result", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1249,12 +1438,17 @@ pub static BRIGHTNESS_CONTRAST: MaterialNodeDef = MaterialNodeDef {
     display_name: "Brightness / Contrast",
     category: CAT_COLOR,
     description: "Adjust brightness (additive) and contrast (around 0.5 gray)",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([0.5, 0.5, 0.5, 1.0])),
-        PinTemplate::input("brightness", "Brightness", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("contrast", "Contrast", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([0.5, 0.5, 0.5, 1.0])),
+            PinTemplate::input("brightness", "Brightness", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("contrast", "Contrast", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1263,11 +1457,15 @@ pub static SATURATION: MaterialNodeDef = MaterialNodeDef {
     display_name: "Saturation",
     category: CAT_COLOR,
     description: "Adjust saturation (0 = greyscale, 1 = original, >1 = supersaturated)",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::input("saturation", "Saturation", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Color),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::input("saturation", "Saturation", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Color),
+        ]
+    },
     color: CLR_COLOR,
 };
 
@@ -1295,11 +1493,14 @@ pub static NOISE_PERLIN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Perlin Noise",
     category: CAT_PROCEDURAL,
     description: "Smooth gradient noise",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(10.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float)
+                .with_default(PinValue::Float(10.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1308,11 +1509,14 @@ pub static NOISE_SIMPLEX: MaterialNodeDef = MaterialNodeDef {
     display_name: "Simplex Noise",
     category: CAT_PROCEDURAL,
     description: "Fast gradient noise with fewer directional artifacts",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(10.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float)
+                .with_default(PinValue::Float(10.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1321,14 +1525,16 @@ pub static NOISE_VORONOI: MaterialNodeDef = MaterialNodeDef {
     display_name: "Voronoi",
     category: CAT_PROCEDURAL,
     description: "Cell/Worley noise with F1, F2, edge-distance and cell-id outputs",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(5.0)),
-        PinTemplate::output("distance", "F1 (nearest)", PinType::Float),
-        PinTemplate::output("f2", "F2 (2nd nearest)", PinType::Float),
-        PinTemplate::output("edge", "Edge Distance", PinType::Float),
-        PinTemplate::output("cell_id", "Cell ID", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(5.0)),
+            PinTemplate::output("distance", "F1 (nearest)", PinType::Float),
+            PinTemplate::output("f2", "F2 (2nd nearest)", PinType::Float),
+            PinTemplate::output("edge", "Edge Distance", PinType::Float),
+            PinTemplate::output("cell_id", "Cell ID", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1337,14 +1543,19 @@ pub static NOISE_FBM: MaterialNodeDef = MaterialNodeDef {
     display_name: "FBM Noise",
     category: CAT_PROCEDURAL,
     description: "Fractal Brownian Motion (layered noise)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(5.0)),
-        PinTemplate::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("lacunarity", "Lacunarity", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(5.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1353,11 +1564,13 @@ pub static CHECKERBOARD: MaterialNodeDef = MaterialNodeDef {
     display_name: "Checkerboard",
     category: CAT_PROCEDURAL,
     description: "Alternating pattern",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(8.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(8.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1366,11 +1579,13 @@ pub static GRADIENT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Gradient",
     category: CAT_PROCEDURAL,
     description: "Linear gradient (0-1) along U or V",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("u", "U", PinType::Float),
-        PinTemplate::output("v", "V", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("u", "U", PinType::Float),
+            PinTemplate::output("v", "V", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1379,12 +1594,16 @@ pub static BRICK: MaterialNodeDef = MaterialNodeDef {
     display_name: "Brick",
     category: CAT_PROCEDURAL,
     description: "Brick/tile pattern with mortar",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Vec2).with_default(PinValue::Vec2([4.0, 8.0])),
-        PinTemplate::input("mortar", "Mortar Width", PinType::Float).with_default(PinValue::Float(0.05)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Vec2)
+                .with_default(PinValue::Vec2([4.0, 8.0])),
+            PinTemplate::input("mortar", "Mortar Width", PinType::Float)
+                .with_default(PinValue::Float(0.05)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1434,14 +1653,19 @@ pub static NOISE_RIDGED: MaterialNodeDef = MaterialNodeDef {
     display_name: "Ridged FBM",
     category: CAT_PROCEDURAL,
     description: "Ridged multifractal — sharp crests for cumulus billows, mountain ridges, cracks",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("lacunarity", "Lacunarity", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1450,14 +1674,19 @@ pub static NOISE_TURBULENCE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Turbulence",
     category: CAT_PROCEDURAL,
     description: "Fire / smoke / turbulent flow (|noise| accumulated across octaves)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(5.0)),
-        PinTemplate::input("lacunarity", "Lacunarity", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(5.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1465,15 +1694,21 @@ pub static NOISE_BILLOW: MaterialNodeDef = MaterialNodeDef {
     node_type: "procedural/noise_billow",
     display_name: "Billow Noise",
     category: CAT_PROCEDURAL,
-    description: "Puffy, rounded shapes (|noise|² accumulated) — great for cumulus clouds and stone pores",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("octaves", "Octaves", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("lacunarity", "Lacunarity", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    description:
+        "Puffy, rounded shapes (|noise|² accumulated) — great for cumulus clouds and stone pores",
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(4.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1482,11 +1717,14 @@ pub static NOISE_WHITE: MaterialNodeDef = MaterialNodeDef {
     display_name: "White Noise",
     category: CAT_PROCEDURAL,
     description: "Uncorrelated random values at every UV coordinate (grain, sparkle)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(50.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float)
+                .with_default(PinValue::Float(50.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1494,13 +1732,17 @@ pub static NOISE_CURL: MaterialNodeDef = MaterialNodeDef {
     node_type: "procedural/noise_curl",
     display_name: "Curl Noise",
     category: CAT_PROCEDURAL,
-    description: "Divergence-free 2D flow field — ideal for fluid-like advection and swirly UV distortion",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(3.0)),
-        PinTemplate::input("epsilon", "Epsilon", PinType::Float).with_default(PinValue::Float(0.01)),
-        PinTemplate::output("flow", "Flow", PinType::Vec2),
-    ],
+    description:
+        "Divergence-free 2D flow field — ideal for fluid-like advection and swirly UV distortion",
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(3.0)),
+            PinTemplate::input("epsilon", "Epsilon", PinType::Float)
+                .with_default(PinValue::Float(0.01)),
+            PinTemplate::output("flow", "Flow", PinType::Vec2),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1509,13 +1751,18 @@ pub static GRADIENT_RADIAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Radial Gradient",
     category: CAT_PROCEDURAL,
     description: "0 at center → 1 at `radius`, with soft falloff",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("center", "Center", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("radius", "Radius", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("softness", "Softness", PinType::Float).with_default(PinValue::Float(0.3)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("center", "Center", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("radius", "Radius", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("softness", "Softness", PinType::Float)
+                .with_default(PinValue::Float(0.3)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1524,12 +1771,15 @@ pub static GRADIENT_LINEAR: MaterialNodeDef = MaterialNodeDef {
     display_name: "Linear Gradient",
     category: CAT_PROCEDURAL,
     description: "Gradient along a direction (angle in radians, 0 = +x)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("center", "Center", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("angle", "Angle", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("center", "Center", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1538,12 +1788,16 @@ pub static GRADIENT_ANGULAR: MaterialNodeDef = MaterialNodeDef {
     display_name: "Angular Gradient",
     category: CAT_PROCEDURAL,
     description: "0-1 sweeping around a center point (for pie / compass / clock effects)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("center", "Center", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("offset", "Start Offset", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("center", "Center", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("offset", "Start Offset", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1552,12 +1806,15 @@ pub static GRADIENT_DIAMOND: MaterialNodeDef = MaterialNodeDef {
     display_name: "Diamond Gradient",
     category: CAT_PROCEDURAL,
     description: "Diamond-shaped falloff (L1 / Manhattan distance) around a center",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("center", "Center", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
-        PinTemplate::input("size", "Size", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("center", "Center", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.5, 0.5])),
+            PinTemplate::input("size", "Size", PinType::Float).with_default(PinValue::Float(0.5)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1565,14 +1822,20 @@ pub static BUMP_OFFSET: MaterialNodeDef = MaterialNodeDef {
     node_type: "procedural/bump_offset",
     display_name: "Bump Offset",
     category: CAT_PROCEDURAL,
-    description: "Simple parallax: displace UVs along view vector by a height value. Cheap fake depth.",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("height", "Height", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("reference", "Reference", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("strength", "Strength", PinType::Float).with_default(PinValue::Float(0.05)),
-        PinTemplate::output("uv", "Offset UV", PinType::Vec2),
-    ],
+    description:
+        "Simple parallax: displace UVs along view vector by a height value. Cheap fake depth.",
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("height", "Height", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("reference", "Reference", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("strength", "Strength", PinType::Float)
+                .with_default(PinValue::Float(0.05)),
+            PinTemplate::output("uv", "Offset UV", PinType::Vec2),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1597,14 +1860,20 @@ pub static NOISE_TRIPLANAR_RIDGED: MaterialNodeDef = MaterialNodeDef {
     display_name: "Triplanar Ridged",
     category: CAT_PROCEDURAL,
     description: "Ridged FBM sampled triplanar — seamless mountain/cumulus ridges on any topology.",
-    pins: || vec![
-        PinTemplate::input("scale",       "Scale",       PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("octaves",     "Octaves",     PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::input("lacunarity",  "Lacunarity",  PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("sharpness",   "Sharpness",   PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("sharpness", "Sharpness", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1613,14 +1882,20 @@ pub static NOISE_TRIPLANAR_TURBULENCE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Triplanar Turbulence",
     category: CAT_PROCEDURAL,
     description: "Turbulence noise sampled triplanar — seamless fire/smoke/flow on any topology.",
-    pins: || vec![
-        PinTemplate::input("scale",       "Scale",       PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("octaves",     "Octaves",     PinType::Float).with_default(PinValue::Float(5.0)),
-        PinTemplate::input("lacunarity",  "Lacunarity",  PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::input("persistence", "Persistence", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("sharpness",   "Sharpness",   PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("octaves", "Octaves", PinType::Float)
+                .with_default(PinValue::Float(5.0)),
+            PinTemplate::input("lacunarity", "Lacunarity", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::input("persistence", "Persistence", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("sharpness", "Sharpness", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1644,13 +1919,17 @@ pub static NOISE_TRIPLANAR_VORONOI: MaterialNodeDef = MaterialNodeDef {
     node_type: "procedural/noise_triplanar_voronoi",
     display_name: "Triplanar Voronoi",
     category: CAT_PROCEDURAL,
-    description: "Voronoi cells sampled triplanar — seamless cracked-surface / cell pattern on any mesh.",
-    pins: || vec![
-        PinTemplate::input("scale",     "Scale",     PinType::Float).with_default(PinValue::Float(3.0)),
-        PinTemplate::input("sharpness", "Sharpness", PinType::Float).with_default(PinValue::Float(4.0)),
-        PinTemplate::output("distance", "F1", PinType::Float),
-        PinTemplate::output("cell_id", "Cell ID", PinType::Float),
-    ],
+    description:
+        "Voronoi cells sampled triplanar — seamless cracked-surface / cell pattern on any mesh.",
+    pins: || {
+        vec![
+            PinTemplate::input("scale", "Scale", PinType::Float).with_default(PinValue::Float(3.0)),
+            PinTemplate::input("sharpness", "Sharpness", PinType::Float)
+                .with_default(PinValue::Float(4.0)),
+            PinTemplate::output("distance", "F1", PinType::Float),
+            PinTemplate::output("cell_id", "Cell ID", PinType::Float),
+        ]
+    },
     color: CLR_PROCEDURAL,
 };
 
@@ -1682,11 +1961,14 @@ pub static UV_SCROLL: MaterialNodeDef = MaterialNodeDef {
     display_name: "UV Scroll",
     category: CAT_ANIMATION,
     description: "Scroll UV coordinates over time",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("speed", "Speed", PinType::Vec2).with_default(PinValue::Vec2([0.1, 0.0])),
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("speed", "Speed", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.1, 0.0])),
+            PinTemplate::output("uv", "UV", PinType::Vec2),
+        ]
+    },
     color: CLR_ANIMATION,
 };
 
@@ -1695,15 +1977,19 @@ pub static FLOW_MAP: MaterialNodeDef = MaterialNodeDef {
     display_name: "Flow Map",
     category: CAT_ANIMATION,
     description: "Two-phase UV distortion with crossfade (realistic water flow)",
-    pins: || vec![
-        PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::input("flow", "Flow Direction", PinType::Vec2).with_default(PinValue::Vec2([0.1, 0.0])),
-        PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("strength", "Strength", PinType::Float).with_default(PinValue::Float(0.1)),
-        PinTemplate::output("uv1", "UV Phase 1", PinType::Vec2),
-        PinTemplate::output("uv2", "UV Phase 2", PinType::Vec2),
-        PinTemplate::output("blend", "Blend", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("uv", "UV", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::input("flow", "Flow Direction", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.1, 0.0])),
+            PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("strength", "Strength", PinType::Float)
+                .with_default(PinValue::Float(0.1)),
+            PinTemplate::output("uv1", "UV Phase 1", PinType::Vec2),
+            PinTemplate::output("uv2", "UV Phase 2", PinType::Vec2),
+            PinTemplate::output("blend", "Blend", PinType::Float),
+        ]
+    },
     color: CLR_ANIMATION,
 };
 
@@ -1712,12 +1998,17 @@ pub static SINE_WAVE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Sine Wave",
     category: CAT_ANIMATION,
     description: "Animated sine oscillation",
-    pins: || vec![
-        PinTemplate::input("frequency", "Frequency", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("amplitude", "Amplitude", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("offset", "Offset", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("frequency", "Frequency", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::input("amplitude", "Amplitude", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::input("offset", "Offset", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_ANIMATION,
 };
 
@@ -1726,10 +2017,12 @@ pub static PING_PONG: MaterialNodeDef = MaterialNodeDef {
     display_name: "Ping Pong",
     category: CAT_ANIMATION,
     description: "Triangular wave (0→1→0 repeat)",
-    pins: || vec![
-        PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("value", "Value", PinType::Float),
+        ]
+    },
     color: CLR_ANIMATION,
 };
 
@@ -1738,14 +2031,19 @@ pub static WIND: MaterialNodeDef = MaterialNodeDef {
     display_name: "Wind",
     category: CAT_ANIMATION,
     description: "Wind displacement for vegetation (vertex domain)",
-    pins: || vec![
-        PinTemplate::input("strength", "Strength", PinType::Float).with_default(PinValue::Float(0.3)),
-        PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("direction", "Direction", PinType::Vec2).with_default(PinValue::Vec2([1.0, 0.0])),
-        PinTemplate::input("turbulence", "Turbulence", PinType::Float).with_default(PinValue::Float(0.2)),
-        PinTemplate::input("mask", "Mask", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("displacement", "Displacement", PinType::Vec3),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("strength", "Strength", PinType::Float)
+                .with_default(PinValue::Float(0.3)),
+            PinTemplate::input("speed", "Speed", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("direction", "Direction", PinType::Vec2)
+                .with_default(PinValue::Vec2([1.0, 0.0])),
+            PinTemplate::input("turbulence", "Turbulence", PinType::Float)
+                .with_default(PinValue::Float(0.2)),
+            PinTemplate::input("mask", "Mask", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("displacement", "Displacement", PinType::Vec3),
+        ]
+    },
     color: CLR_ANIMATION,
 };
 
@@ -1773,11 +2071,15 @@ pub static WORLD_POSITION_MASK: MaterialNodeDef = MaterialNodeDef {
     display_name: "World Position Mask",
     category: CAT_UTILITY,
     description: "Mask by world Y height (snow on peaks, etc.)",
-    pins: || vec![
-        PinTemplate::input("height", "Height", PinType::Float).with_default(PinValue::Float(10.0)),
-        PinTemplate::input("falloff", "Falloff", PinType::Float).with_default(PinValue::Float(2.0)),
-        PinTemplate::output("mask", "Mask", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("height", "Height", PinType::Float)
+                .with_default(PinValue::Float(10.0)),
+            PinTemplate::input("falloff", "Falloff", PinType::Float)
+                .with_default(PinValue::Float(2.0)),
+            PinTemplate::output("mask", "Mask", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1786,11 +2088,15 @@ pub static SLOPE_MASK: MaterialNodeDef = MaterialNodeDef {
     display_name: "Slope Mask",
     category: CAT_UTILITY,
     description: "Mask by surface slope angle (cliffs vs flat ground)",
-    pins: || vec![
-        PinTemplate::input("threshold", "Threshold", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("falloff", "Falloff", PinType::Float).with_default(PinValue::Float(0.2)),
-        PinTemplate::output("mask", "Mask", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("threshold", "Threshold", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("falloff", "Falloff", PinType::Float)
+                .with_default(PinValue::Float(0.2)),
+            PinTemplate::output("mask", "Mask", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1799,10 +2105,13 @@ pub static DEPTH_FADE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Depth Fade",
     category: CAT_UTILITY,
     description: "Fade based on scene depth difference (water shore foam)",
-    pins: || vec![
-        PinTemplate::input("distance", "Distance", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("fade", "Fade", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("distance", "Distance", PinType::Float)
+                .with_default(PinValue::Float(1.0)),
+            PinTemplate::output("fade", "Fade", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1811,10 +2120,12 @@ pub static DPDX: MaterialNodeDef = MaterialNodeDef {
     display_name: "DDX",
     category: CAT_UTILITY,
     description: "Screen-space derivative along X (rate of change horizontally)",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1823,10 +2134,12 @@ pub static DPDY: MaterialNodeDef = MaterialNodeDef {
     display_name: "DDY",
     category: CAT_UTILITY,
     description: "Screen-space derivative along Y (rate of change vertically)",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1835,10 +2148,12 @@ pub static FWIDTH: MaterialNodeDef = MaterialNodeDef {
     display_name: "FWidth",
     category: CAT_UTILITY,
     description: "abs(dpdx) + abs(dpdy) — pixel footprint for anti-aliasing",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1847,9 +2162,7 @@ pub static DITHER: MaterialNodeDef = MaterialNodeDef {
     display_name: "Dither",
     category: CAT_UTILITY,
     description: "Screen-space Bayer dither (4x4) for transparency-to-coverage",
-    pins: || vec![
-        PinTemplate::output("value", "Value", PinType::Float),
-    ],
+    pins: || vec![PinTemplate::output("value", "Value", PinType::Float)],
     color: CLR_UTILITY,
 };
 
@@ -1858,10 +2171,13 @@ pub static HASH: MaterialNodeDef = MaterialNodeDef {
     display_name: "Hash",
     category: CAT_UTILITY,
     description: "Deterministic 0-1 hash of a vec2 input (white-noise style)",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Vec2).with_default(PinValue::Vec2([0.0, 0.0])),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Vec2)
+                .with_default(PinValue::Vec2([0.0, 0.0])),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_UTILITY,
 };
 
@@ -1919,11 +2235,13 @@ pub static GREATER_THAN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Greater Than",
     category: CAT_CONTROL,
     description: "Returns 1.0 if A > B, else 0.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1932,11 +2250,13 @@ pub static LESS_THAN: MaterialNodeDef = MaterialNodeDef {
     display_name: "Less Than",
     category: CAT_CONTROL,
     description: "Returns 1.0 if A < B, else 0.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1945,12 +2265,15 @@ pub static EQUAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Equal",
     category: CAT_CONTROL,
     description: "Returns 1.0 if |A - B| < epsilon, else 0.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("epsilon", "Epsilon", PinType::Float).with_default(PinValue::Float(0.001)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("epsilon", "Epsilon", PinType::Float)
+                .with_default(PinValue::Float(0.001)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1959,12 +2282,15 @@ pub static NOT_EQUAL: MaterialNodeDef = MaterialNodeDef {
     display_name: "Not Equal",
     category: CAT_CONTROL,
     description: "Returns 1.0 if |A - B| >= epsilon, else 0.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("epsilon", "Epsilon", PinType::Float).with_default(PinValue::Float(0.001)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("epsilon", "Epsilon", PinType::Float)
+                .with_default(PinValue::Float(0.001)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1972,12 +2298,15 @@ pub static AND_NODE: MaterialNodeDef = MaterialNodeDef {
     node_type: "control/and",
     display_name: "And",
     category: CAT_CONTROL,
-    description: "Logical AND on float booleans: min(A, B) — returns 1.0 only if both A and B are 1.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    description:
+        "Logical AND on float booleans: min(A, B) — returns 1.0 only if both A and B are 1.0",
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1986,11 +2315,13 @@ pub static OR_NODE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Or",
     category: CAT_CONTROL,
     description: "Logical OR on float booleans: max(A, B) — returns 1.0 if either A or B is 1.0",
-    pins: || vec![
-        PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("a", "A", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::input("b", "B", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -1999,10 +2330,12 @@ pub static NOT_NODE: MaterialNodeDef = MaterialNodeDef {
     display_name: "Not",
     category: CAT_CONTROL,
     description: "Logical NOT on float boolean: 1 - value",
-    pins: || vec![
-        PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::output("result", "Result", PinType::Float),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("value", "Value", PinType::Float).with_default(PinValue::Float(0.0)),
+            PinTemplate::output("result", "Result", PinType::Float),
+        ]
+    },
     color: CLR_CONTROL,
 };
 
@@ -2065,9 +2398,7 @@ pub static PIXEL_DEPTH: MaterialNodeDef = MaterialNodeDef {
     display_name: "Pixel Depth",
     category: CAT_SCENE,
     description: "Linear view-space depth of this fragment (distance from camera in scene units).",
-    pins: || vec![
-        PinTemplate::output("depth", "Depth", PinType::Float),
-    ],
+    pins: || vec![PinTemplate::output("depth", "Depth", PinType::Float)],
     color: CLR_SCENE,
 };
 
@@ -2134,10 +2465,9 @@ pub static SCREEN_UV: MaterialNodeDef = MaterialNodeDef {
     node_type: "scene/screen_uv",
     display_name: "Screen UV",
     category: CAT_SCENE,
-    description: "Fragment's screen-space UV (0,0 top-left → 1,1 bottom-right). For screen-space effects.",
-    pins: || vec![
-        PinTemplate::output("uv", "UV", PinType::Vec2),
-    ],
+    description:
+        "Fragment's screen-space UV (0,0 top-left → 1,1 bottom-right). For screen-space effects.",
+    pins: || vec![PinTemplate::output("uv", "UV", PinType::Vec2)],
     color: CLR_SCENE,
 };
 
@@ -2225,13 +2555,19 @@ pub static OUTPUT_TERRAIN_LAYER: MaterialNodeDef = MaterialNodeDef {
     display_name: "Terrain Layer Output",
     category: CAT_OUTPUT,
     description: "Terrain layer material (blended via splatmap)",
-    pins: || vec![
-        PinTemplate::input("base_color", "Base Color", PinType::Color).with_default(PinValue::Color([0.5, 0.5, 0.5, 1.0])),
-        PinTemplate::input("metallic", "Metallic", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("roughness", "Roughness", PinType::Float).with_default(PinValue::Float(0.5)),
-        PinTemplate::input("normal", "Normal", PinType::Vec3),
-        PinTemplate::input("height", "Height", PinType::Float).with_default(PinValue::Float(0.5)),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("base_color", "Base Color", PinType::Color)
+                .with_default(PinValue::Color([0.5, 0.5, 0.5, 1.0])),
+            PinTemplate::input("metallic", "Metallic", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("roughness", "Roughness", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+            PinTemplate::input("normal", "Normal", PinType::Vec3),
+            PinTemplate::input("height", "Height", PinType::Float)
+                .with_default(PinValue::Float(0.5)),
+        ]
+    },
     color: CLR_OUTPUT,
 };
 
@@ -2240,16 +2576,23 @@ pub static OUTPUT_VEGETATION: MaterialNodeDef = MaterialNodeDef {
     display_name: "Vegetation Output",
     category: CAT_OUTPUT,
     description: "PBR surface + vertex displacement",
-    pins: || vec![
-        PinTemplate::input("base_color", "Base Color", PinType::Color).with_default(PinValue::Color([0.2, 0.5, 0.1, 1.0])),
-        PinTemplate::input("metallic", "Metallic", PinType::Float).with_default(PinValue::Float(0.0)),
-        PinTemplate::input("roughness", "Roughness", PinType::Float).with_default(PinValue::Float(0.7)),
-        PinTemplate::input("normal", "Normal", PinType::Vec3),
-        PinTemplate::input("emissive", "Emissive", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-        PinTemplate::input("ao", "AO", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
-        PinTemplate::input("vertex_offset", "Vertex Offset", PinType::Vec3).with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("base_color", "Base Color", PinType::Color)
+                .with_default(PinValue::Color([0.2, 0.5, 0.1, 1.0])),
+            PinTemplate::input("metallic", "Metallic", PinType::Float)
+                .with_default(PinValue::Float(0.0)),
+            PinTemplate::input("roughness", "Roughness", PinType::Float)
+                .with_default(PinValue::Float(0.7)),
+            PinTemplate::input("normal", "Normal", PinType::Vec3),
+            PinTemplate::input("emissive", "Emissive", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+            PinTemplate::input("ao", "AO", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
+            PinTemplate::input("vertex_offset", "Vertex Offset", PinType::Vec3)
+                .with_default(PinValue::Vec3([0.0, 0.0, 0.0])),
+        ]
+    },
     color: CLR_OUTPUT,
 };
 
@@ -2258,10 +2601,13 @@ pub static OUTPUT_UNLIT: MaterialNodeDef = MaterialNodeDef {
     display_name: "Unlit Output",
     category: CAT_OUTPUT,
     description: "Unlit color output (no lighting)",
-    pins: || vec![
-        PinTemplate::input("color", "Color", PinType::Color).with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
-        PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
-    ],
+    pins: || {
+        vec![
+            PinTemplate::input("color", "Color", PinType::Color)
+                .with_default(PinValue::Color([1.0, 1.0, 1.0, 1.0])),
+            PinTemplate::input("alpha", "Alpha", PinType::Float).with_default(PinValue::Float(1.0)),
+        ]
+    },
     color: CLR_OUTPUT,
 };
 
@@ -2272,64 +2618,193 @@ pub static OUTPUT_UNLIT: MaterialNodeDef = MaterialNodeDef {
 /// All available material node types.
 pub static ALL_NODES: &[&MaterialNodeDef] = &[
     // Input
-    &UV, &UV_SCALE, &UV_POLAR, &UV_ROTATOR, &UV_PANNER,
-    &WORLD_POSITION, &WORLD_NORMAL, &VIEW_DIRECTION, &TIME, &VERTEX_COLOR,
-    &CAMERA_POSITION, &OBJECT_POSITION,
+    &UV,
+    &UV_SCALE,
+    &UV_POLAR,
+    &UV_ROTATOR,
+    &UV_PANNER,
+    &WORLD_POSITION,
+    &WORLD_NORMAL,
+    &VIEW_DIRECTION,
+    &TIME,
+    &VERTEX_COLOR,
+    &CAMERA_POSITION,
+    &OBJECT_POSITION,
     // Parameter
-    &PARAM_FLOAT, &PARAM_COLOR, &PARAM_VEC2, &PARAM_VEC3, &PARAM_VEC4, &PARAM_BOOL,
+    &PARAM_FLOAT,
+    &PARAM_COLOR,
+    &PARAM_VEC2,
+    &PARAM_VEC3,
+    &PARAM_VEC4,
+    &PARAM_BOOL,
     // Texture
-    &SAMPLE_TEXTURE, &SAMPLE_NORMAL, &TRIPLANAR_SAMPLE,
-    &SAMPLE_TEXTURE_LOD, &SAMPLE_TEXTURE_GRAD,
-    &SAMPLE_CUBEMAP, &SAMPLE_2D_ARRAY, &SAMPLE_3D,
+    &SAMPLE_TEXTURE,
+    &SAMPLE_NORMAL,
+    &TRIPLANAR_SAMPLE,
+    &SAMPLE_TEXTURE_LOD,
+    &SAMPLE_TEXTURE_GRAD,
+    &SAMPLE_CUBEMAP,
+    &SAMPLE_2D_ARRAY,
+    &SAMPLE_3D,
     // Math
-    &ADD, &SUBTRACT, &MULTIPLY, &DIVIDE, &POWER, &ABS, &NEGATE, &ONE_MINUS,
-    &FRACT, &FLOOR, &CEIL, &MIN, &MAX, &CLAMP, &LERP, &SMOOTHSTEP, &STEP,
-    &REMAP, &SIN, &COS, &SATURATE,
-    &MODULO, &SIGN, &ATAN2, &TRUNC, &ROUND, &EXP, &LOG, &SQRT, &RECIPROCAL,
-    &TAN, &ASIN, &ACOS, &RADIANS, &DEGREES,
+    &ADD,
+    &SUBTRACT,
+    &MULTIPLY,
+    &DIVIDE,
+    &POWER,
+    &ABS,
+    &NEGATE,
+    &ONE_MINUS,
+    &FRACT,
+    &FLOOR,
+    &CEIL,
+    &MIN,
+    &MAX,
+    &CLAMP,
+    &LERP,
+    &SMOOTHSTEP,
+    &STEP,
+    &REMAP,
+    &SIN,
+    &COS,
+    &SATURATE,
+    &MODULO,
+    &SIGN,
+    &ATAN2,
+    &TRUNC,
+    &ROUND,
+    &EXP,
+    &LOG,
+    &SQRT,
+    &RECIPROCAL,
+    &TAN,
+    &ASIN,
+    &ACOS,
+    &RADIANS,
+    &DEGREES,
     // Vector
-    &SPLIT_VEC2, &SPLIT_VEC3, &COMBINE_VEC2, &COMBINE_VEC3, &COMBINE_VEC4,
-    &DOT, &CROSS, &NORMALIZE, &DISTANCE, &LENGTH, &REFLECT, &REFRACT, &SWIZZLE,
+    &SPLIT_VEC2,
+    &SPLIT_VEC3,
+    &COMBINE_VEC2,
+    &COMBINE_VEC3,
+    &COMBINE_VEC4,
+    &DOT,
+    &CROSS,
+    &NORMALIZE,
+    &DISTANCE,
+    &LENGTH,
+    &REFLECT,
+    &REFRACT,
+    &SWIZZLE,
     // Color
-    &COLOR_CONSTANT, &FLOAT_CONSTANT, &VEC2_CONSTANT, &VEC3_CONSTANT,
-    &COLOR_LERP, &COSINE_PALETTE, &FRESNEL,
-    &SRGB_TO_LINEAR, &LINEAR_TO_SRGB, &RGB_TO_HSV, &HSV_TO_RGB, &HUE_SHIFT,
-    &LUMINANCE, &GAMMA, &BRIGHTNESS_CONTRAST, &SATURATION, &BLEND,
+    &COLOR_CONSTANT,
+    &FLOAT_CONSTANT,
+    &VEC2_CONSTANT,
+    &VEC3_CONSTANT,
+    &COLOR_LERP,
+    &COSINE_PALETTE,
+    &FRESNEL,
+    &SRGB_TO_LINEAR,
+    &LINEAR_TO_SRGB,
+    &RGB_TO_HSV,
+    &HSV_TO_RGB,
+    &HUE_SHIFT,
+    &LUMINANCE,
+    &GAMMA,
+    &BRIGHTNESS_CONTRAST,
+    &SATURATION,
+    &BLEND,
     // Procedural
-    &NOISE_PERLIN, &NOISE_SIMPLEX, &NOISE_VORONOI, &NOISE_FBM,
-    &CHECKERBOARD, &GRADIENT, &BRICK, &NORMAL_FROM_HEIGHT, &WORLD_NORMAL_FROM_HEIGHT,
-    &DOMAIN_WARP, &NOISE_RIDGED, &NOISE_TURBULENCE, &NOISE_BILLOW,
-    &NOISE_WHITE, &NOISE_CURL,
-    &GRADIENT_RADIAL, &GRADIENT_LINEAR, &GRADIENT_ANGULAR, &GRADIENT_DIAMOND,
+    &NOISE_PERLIN,
+    &NOISE_SIMPLEX,
+    &NOISE_VORONOI,
+    &NOISE_FBM,
+    &CHECKERBOARD,
+    &GRADIENT,
+    &BRICK,
+    &NORMAL_FROM_HEIGHT,
+    &WORLD_NORMAL_FROM_HEIGHT,
+    &DOMAIN_WARP,
+    &NOISE_RIDGED,
+    &NOISE_TURBULENCE,
+    &NOISE_BILLOW,
+    &NOISE_WHITE,
+    &NOISE_CURL,
+    &GRADIENT_RADIAL,
+    &GRADIENT_LINEAR,
+    &GRADIENT_ANGULAR,
+    &GRADIENT_DIAMOND,
     &BUMP_OFFSET,
-    &NOISE_TRIPLANAR_FBM, &NOISE_TRIPLANAR_RIDGED, &NOISE_TRIPLANAR_TURBULENCE,
-    &NOISE_TRIPLANAR_BILLOW, &NOISE_TRIPLANAR_VORONOI,
+    &NOISE_TRIPLANAR_FBM,
+    &NOISE_TRIPLANAR_RIDGED,
+    &NOISE_TRIPLANAR_TURBULENCE,
+    &NOISE_TRIPLANAR_BILLOW,
+    &NOISE_TRIPLANAR_VORONOI,
     &HEX_TILE,
     // Animation
-    &UV_SCROLL, &FLOW_MAP, &SINE_WAVE, &PING_PONG, &WIND, &FLIPBOOK_UV,
+    &UV_SCROLL,
+    &FLOW_MAP,
+    &SINE_WAVE,
+    &PING_PONG,
+    &WIND,
+    &FLIPBOOK_UV,
     // Utility
-    &WORLD_POSITION_MASK, &SLOPE_MASK, &DEPTH_FADE,
-    &DPDX, &DPDY, &FWIDTH, &DITHER, &HASH,
+    &WORLD_POSITION_MASK,
+    &SLOPE_MASK,
+    &DEPTH_FADE,
+    &DPDX,
+    &DPDY,
+    &FWIDTH,
+    &DITHER,
+    &HASH,
     // Control
-    &IF_NODE, &STATIC_SWITCH, &COMPONENT_MASK,
-    &GREATER_THAN, &LESS_THAN, &EQUAL, &NOT_EQUAL,
-    &AND_NODE, &OR_NODE, &NOT_NODE,
+    &IF_NODE,
+    &STATIC_SWITCH,
+    &COMPONENT_MASK,
+    &GREATER_THAN,
+    &LESS_THAN,
+    &EQUAL,
+    &NOT_EQUAL,
+    &AND_NODE,
+    &OR_NODE,
+    &NOT_NODE,
     // Functions
-    &FUNCTION_INPUT_POINT, &FUNCTION_OUTPUT_POINT, &FUNCTION_CALL,
+    &FUNCTION_INPUT_POINT,
+    &FUNCTION_OUTPUT_POINT,
+    &FUNCTION_CALL,
     // Scene
-    &PIXEL_DEPTH, &SCENE_DEPTH, &SCENE_DEPTH_FADE,
-    &SCENE_NORMAL, &MOTION_VECTOR,
-    &REFRACTION_UV_OFFSET, &SCREEN_UV, &SCENE_COLOR_STUB,
-    &ENV_MAP_SAMPLE, &ENV_MAP_REFLECT,
+    &PIXEL_DEPTH,
+    &SCENE_DEPTH,
+    &SCENE_DEPTH_FADE,
+    &SCENE_NORMAL,
+    &MOTION_VECTOR,
+    &REFRACTION_UV_OFFSET,
+    &SCREEN_UV,
+    &SCENE_COLOR_STUB,
+    &ENV_MAP_SAMPLE,
+    &ENV_MAP_REFLECT,
     // Output
-    &OUTPUT_SURFACE, &OUTPUT_TERRAIN_LAYER, &OUTPUT_VEGETATION, &OUTPUT_UNLIT,
+    &OUTPUT_SURFACE,
+    &OUTPUT_TERRAIN_LAYER,
+    &OUTPUT_VEGETATION,
+    &OUTPUT_UNLIT,
 ];
 
 /// Get all unique categories in display order.
 pub fn categories() -> Vec<&'static str> {
     vec![
-        CAT_INPUT, CAT_PARAMETER, CAT_TEXTURE, CAT_MATH, CAT_VECTOR, CAT_COLOR,
-        CAT_PROCEDURAL, CAT_ANIMATION, CAT_UTILITY, CAT_CONTROL, CAT_SCENE, CAT_OUTPUT,
+        CAT_INPUT,
+        CAT_PARAMETER,
+        CAT_TEXTURE,
+        CAT_MATH,
+        CAT_VECTOR,
+        CAT_COLOR,
+        CAT_PROCEDURAL,
+        CAT_ANIMATION,
+        CAT_UTILITY,
+        CAT_CONTROL,
+        CAT_SCENE,
+        CAT_OUTPUT,
     ]
 }
 

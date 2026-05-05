@@ -31,15 +31,14 @@ pub fn draggable_window_system(
     parts: Query<(&UiWidgetPart, &Interaction)>,
     window_query: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    let cursor_pos = window_query
-        .single()
-        .ok()
-        .and_then(|w| w.cursor_position());
+    let cursor_pos = window_query.single().ok().and_then(|w| w.cursor_position());
 
     for (entity, data, mut node, mut vis, children, drag_state) in &mut windows {
         // Ensure drag state component exists
         let Some(mut drag) = drag_state else {
-            commands.entity(entity).try_insert(WindowDragState::default());
+            commands
+                .entity(entity)
+                .try_insert(WindowDragState::default());
             continue;
         };
 
@@ -49,22 +48,20 @@ pub fn draggable_window_system(
             };
 
             match part.role.as_str() {
-                "title_bar" => {
-                    match interaction {
-                        Interaction::Pressed => {
-                            if !drag.dragging {
-                                drag.dragging = true;
-                                drag.last_cursor = cursor_pos;
-                            }
-                        }
-                        _ => {
-                            if drag.dragging {
-                                drag.dragging = false;
-                                drag.last_cursor = None;
-                            }
+                "title_bar" => match interaction {
+                    Interaction::Pressed => {
+                        if !drag.dragging {
+                            drag.dragging = true;
+                            drag.last_cursor = cursor_pos;
                         }
                     }
-                }
+                    _ => {
+                        if drag.dragging {
+                            drag.dragging = false;
+                            drag.last_cursor = None;
+                        }
+                    }
+                },
                 "close_button" if data.closable => {
                     if *interaction == Interaction::Pressed {
                         *vis = Visibility::Hidden;

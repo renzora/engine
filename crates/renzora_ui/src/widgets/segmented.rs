@@ -21,13 +21,20 @@ pub fn segmented_control(
     let mut widths = Vec::with_capacity(options.len());
     for opt in options {
         let w = ui.fonts_mut(|f| {
-            f.layout_no_wrap(opt.to_string(), font.clone(), theme.text.primary.to_color32()).rect.width()
+            f.layout_no_wrap(
+                opt.to_string(),
+                font.clone(),
+                theme.text.primary.to_color32(),
+            )
+            .rect
+            .width()
         }) + padding * 2.0;
         widths.push(w);
     }
     let total_w: f32 = widths.iter().sum::<f32>();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(total_w, h), Sense::hover());
-    ui.painter().rect_filled(rect, h * 0.5, theme.surfaces.faint.to_color32());
+    ui.painter()
+        .rect_filled(rect, h * 0.5, theme.surfaces.faint.to_color32());
     ui.painter().rect_stroke(
         rect,
         h * 0.5,
@@ -41,11 +48,23 @@ pub fn segmented_control(
         let active = i == selected;
         let resp = ui.interact(cell, ui.id().with(("seg", i)), Sense::click());
         if active {
-            ui.painter().rect_filled(cell.shrink(2.0), (h - 4.0) * 0.5, theme.widgets.active_bg.to_color32());
+            ui.painter().rect_filled(
+                cell.shrink(2.0),
+                (h - 4.0) * 0.5,
+                theme.widgets.active_bg.to_color32(),
+            );
         } else if resp.hovered() {
-            ui.painter().rect_filled(cell.shrink(2.0), (h - 4.0) * 0.5, theme.widgets.hovered_bg.to_color32());
+            ui.painter().rect_filled(
+                cell.shrink(2.0),
+                (h - 4.0) * 0.5,
+                theme.widgets.hovered_bg.to_color32(),
+            );
         }
-        let text_color = if active { Color32::WHITE } else { theme.text.primary.to_color32() };
+        let text_color = if active {
+            Color32::WHITE
+        } else {
+            theme.text.primary.to_color32()
+        };
         ui.painter().text(
             cell.center(),
             egui::Align2::CENTER_CENTER,

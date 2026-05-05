@@ -51,30 +51,48 @@ pub fn render_gamepad_content(
 }
 
 fn render_gamepad(ui: &mut egui::Ui, index: usize, gamepad: &GamepadInfo) {
-    ui.label(RichText::new(format!("Gamepad {}", index + 1)).size(13.0).strong());
+    ui.label(
+        RichText::new(format!("Gamepad {}", index + 1))
+            .size(13.0)
+            .strong(),
+    );
     ui.add_space(8.0);
 
     // Sticks
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new("Left Stick").size(11.0).color(Color32::from_gray(150)));
+            ui.label(
+                RichText::new("Left Stick")
+                    .size(11.0)
+                    .color(Color32::from_gray(150)),
+            );
             render_stick(ui, gamepad.left_stick.x, gamepad.left_stick.y);
             ui.label(
-                RichText::new(format!("X: {:.2}  Y: {:.2}", gamepad.left_stick.x, gamepad.left_stick.y))
-                    .size(10.0)
-                    .color(Color32::from_gray(120)),
+                RichText::new(format!(
+                    "X: {:.2}  Y: {:.2}",
+                    gamepad.left_stick.x, gamepad.left_stick.y
+                ))
+                .size(10.0)
+                .color(Color32::from_gray(120)),
             );
         });
 
         ui.add_space(20.0);
 
         ui.vertical(|ui| {
-            ui.label(RichText::new("Right Stick").size(11.0).color(Color32::from_gray(150)));
+            ui.label(
+                RichText::new("Right Stick")
+                    .size(11.0)
+                    .color(Color32::from_gray(150)),
+            );
             render_stick(ui, gamepad.right_stick.x, gamepad.right_stick.y);
             ui.label(
-                RichText::new(format!("X: {:.2}  Y: {:.2}", gamepad.right_stick.x, gamepad.right_stick.y))
-                    .size(10.0)
-                    .color(Color32::from_gray(120)),
+                RichText::new(format!(
+                    "X: {:.2}  Y: {:.2}",
+                    gamepad.right_stick.x, gamepad.right_stick.y
+                ))
+                .size(10.0)
+                .color(Color32::from_gray(120)),
             );
         });
     });
@@ -82,7 +100,11 @@ fn render_gamepad(ui: &mut egui::Ui, index: usize, gamepad: &GamepadInfo) {
     ui.add_space(12.0);
 
     // Triggers
-    ui.label(RichText::new("Triggers").size(11.0).color(Color32::from_gray(150)));
+    ui.label(
+        RichText::new("Triggers")
+            .size(11.0)
+            .color(Color32::from_gray(150)),
+    );
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.label(RichText::new("LT").size(10.0));
@@ -110,7 +132,11 @@ fn render_gamepad(ui: &mut egui::Ui, index: usize, gamepad: &GamepadInfo) {
     ui.add_space(12.0);
 
     // Buttons
-    ui.label(RichText::new("Buttons").size(11.0).color(Color32::from_gray(150)));
+    ui.label(
+        RichText::new("Buttons")
+            .size(11.0)
+            .color(Color32::from_gray(150)),
+    );
 
     // Face buttons
     ui.horizontal(|ui| {
@@ -147,7 +173,11 @@ fn render_gamepad(ui: &mut egui::Ui, index: usize, gamepad: &GamepadInfo) {
     // Raw axes
     if !gamepad.raw_axes.is_empty() {
         ui.add_space(12.0);
-        ui.label(RichText::new("Raw Axes (non-zero)").size(11.0).color(Color32::from_gray(150)));
+        ui.label(
+            RichText::new("Raw Axes (non-zero)")
+                .size(11.0)
+                .color(Color32::from_gray(150)),
+        );
         for (name, value) in &gamepad.raw_axes {
             ui.horizontal(|ui| {
                 ui.label(
@@ -172,16 +202,26 @@ fn render_stick(ui: &mut egui::Ui, x: f32, y: f32) {
 
     // Cross hairs
     painter.line_segment(
-        [egui::pos2(center.x - radius, center.y), egui::pos2(center.x + radius, center.y)],
+        [
+            egui::pos2(center.x - radius, center.y),
+            egui::pos2(center.x + radius, center.y),
+        ],
         Stroke::new(1.0, Color32::from_gray(40)),
     );
     painter.line_segment(
-        [egui::pos2(center.x, center.y - radius), egui::pos2(center.x, center.y + radius)],
+        [
+            egui::pos2(center.x, center.y - radius),
+            egui::pos2(center.x, center.y + radius),
+        ],
         Stroke::new(1.0, Color32::from_gray(40)),
     );
 
     // Deadzone circle (10%)
-    painter.circle_stroke(center, radius * 0.1, Stroke::new(1.0, Color32::from_gray(50)));
+    painter.circle_stroke(
+        center,
+        radius * 0.1,
+        Stroke::new(1.0, Color32::from_gray(50)),
+    );
 
     // Stick position (Y inverted so up is up)
     let stick_x = center.x + x * radius;
@@ -198,7 +238,11 @@ fn render_stick(ui: &mut egui::Ui, x: f32, y: f32) {
         Color32::from_rgb(150, 150, 150)
     };
     painter.circle_filled(egui::pos2(stick_x, stick_y), 6.0, stick_color);
-    painter.circle_stroke(egui::pos2(stick_x, stick_y), 6.0, Stroke::new(1.0, Color32::WHITE));
+    painter.circle_stroke(
+        egui::pos2(stick_x, stick_y),
+        6.0,
+        Stroke::new(1.0, Color32::WHITE),
+    );
 }
 
 fn render_trigger(ui: &mut egui::Ui, value: f32) {
@@ -207,7 +251,12 @@ fn render_trigger(ui: &mut egui::Ui, value: f32) {
 
     let painter = ui.painter();
 
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, Color32::from_gray(60)), StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(1.0, Color32::from_gray(60)),
+        StrokeKind::Outside,
+    );
 
     let fill_height = rect.height() * value.clamp(0.0, 1.0);
     let fill_rect = egui::Rect::from_min_max(
@@ -236,7 +285,12 @@ fn render_button(ui: &mut egui::Ui, label: &str, pressed: bool) {
     };
 
     painter.rect_filled(rect, 4.0, bg_color);
-    painter.rect_stroke(rect, 4.0, Stroke::new(1.0, Color32::from_gray(70)), StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        4.0,
+        Stroke::new(1.0, Color32::from_gray(70)),
+        StrokeKind::Outside,
+    );
 
     painter.text(
         rect.center(),

@@ -14,7 +14,9 @@ use egui_phosphor::regular as icons;
 
 use renzora_editor::{EditorCamera, EditorSelection};
 
-use crate::light_gizmo::{icons_enabled, project_world_to_rect, SceneIconCache, ICON_FONT_SIZE, ICON_SHADOW};
+use crate::light_gizmo::{
+    icons_enabled, project_world_to_rect, SceneIconCache, ICON_FONT_SIZE, ICON_SHADOW,
+};
 use crate::OverlayGizmoGroup;
 
 const ICON_COLOR: egui::Color32 = egui::Color32::from_rgba_premultiplied(200, 220, 255, 235);
@@ -24,10 +26,17 @@ const ICON_COLOR: egui::Color32 = egui::Color32::from_rgba_premultiplied(200, 22
 pub fn draw_camera_gizmo(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
-    transform_q: Query<(&GlobalTransform, Option<&Projection>), (With<Camera3d>, Without<EditorCamera>)>,
+    transform_q: Query<
+        (&GlobalTransform, Option<&Projection>),
+        (With<Camera3d>, Without<EditorCamera>),
+    >,
 ) {
-    let Some(selected) = selection.get() else { return };
-    let Ok((gt, projection)) = transform_q.get(selected) else { return };
+    let Some(selected) = selection.get() else {
+        return;
+    };
+    let Ok((gt, projection)) = transform_q.get(selected) else {
+        return;
+    };
 
     let pos = gt.translation();
     let rotation = gt.rotation();
@@ -72,8 +81,16 @@ pub fn draw_camera_gizmo(
     let arrow_start = pos + forward * 0.3;
     let arrow_end = pos + forward * 0.8;
     gizmos.line(arrow_start, arrow_end, arrow_color);
-    gizmos.line(arrow_end, arrow_end - forward * 0.1 + right * 0.05, arrow_color);
-    gizmos.line(arrow_end, arrow_end - forward * 0.1 - right * 0.05, arrow_color);
+    gizmos.line(
+        arrow_end,
+        arrow_end - forward * 0.1 + right * 0.05,
+        arrow_color,
+    );
+    gizmos.line(
+        arrow_end,
+        arrow_end - forward * 0.1 - right * 0.05,
+        arrow_color,
+    );
 }
 
 fn extract_projection_params(projection: Option<&Projection>) -> (f32, f32, f32, f32) {
@@ -90,10 +107,18 @@ pub fn draw_camera_icon_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Re
     if !icons_enabled(world) {
         return;
     }
-    let Some(cache) = world.get_resource::<SceneIconCache>() else { return };
-    let Some(cam_entity) = cache.editor_camera else { return };
-    let Some(camera) = world.get::<Camera>(cam_entity) else { return };
-    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else { return };
+    let Some(cache) = world.get_resource::<SceneIconCache>() else {
+        return;
+    };
+    let Some(cam_entity) = cache.editor_camera else {
+        return;
+    };
+    let Some(camera) = world.get::<Camera>(cam_entity) else {
+        return;
+    };
+    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else {
+        return;
+    };
     let painter = ui.painter_at(rect);
     let font = egui::FontId::proportional(ICON_FONT_SIZE);
 

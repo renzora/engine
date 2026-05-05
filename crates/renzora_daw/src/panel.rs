@@ -10,7 +10,9 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use egui_phosphor::regular as ph;
 
-use renzora_audio::{ClipId, MixerState, TimelineClip, TimelineState, TimelineTrack, TrackId, TransportState};
+use renzora_audio::{
+    ClipId, MixerState, TimelineClip, TimelineState, TimelineTrack, TrackId, TransportState,
+};
 use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
 use renzora_ui::asset_drag::AssetDragPayload;
@@ -35,7 +37,9 @@ pub enum DawIntent {
     Play,
     Stop,
     SeekTo(f64),
-    AddTrack { bus: String },
+    AddTrack {
+        bus: String,
+    },
     RemoveTrack(TrackId),
     SetTrackName(TrackId, String),
     SetTrackBus(TrackId, String),
@@ -47,10 +51,18 @@ pub enum DawIntent {
     ResizeClipRight(ClipId, f64),
     SetClipName(ClipId, String),
     RemoveClip(ClipId),
-    AddClip { track: TrackId, source: PathBuf, start: f64 },
+    AddClip {
+        track: TrackId,
+        source: PathBuf,
+        start: f64,
+    },
     /// Drop an audio file onto an empty timeline — create a track on the
     /// given bus and place the clip on it in one step.
-    AddTrackWithClip { bus: String, source: PathBuf, start: f64 },
+    AddTrackWithClip {
+        bus: String,
+        source: PathBuf,
+        start: f64,
+    },
     SetBpm(f32),
     SetSnapDiv(u32),
     SetPixelsPerSecond(f32),
@@ -70,7 +82,10 @@ impl DawIntentBuffer {
         }
     }
     pub fn drain(&self) -> Vec<DawIntent> {
-        self.inner.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+        self.inner
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default()
     }
 }
 
@@ -105,12 +120,24 @@ impl Default for DawPanel {
 }
 
 impl EditorPanel for DawPanel {
-    fn id(&self) -> &str { "daw" }
-    fn title(&self) -> &str { "Audio" }
-    fn icon(&self) -> Option<&str> { Some(ph::WAVEFORM) }
-    fn category(&self) -> &str { "Audio" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Center }
-    fn min_size(&self) -> [f32; 2] { [520.0, 240.0] }
+    fn id(&self) -> &str {
+        "daw"
+    }
+    fn title(&self) -> &str {
+        "Audio"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(ph::WAVEFORM)
+    }
+    fn category(&self) -> &str {
+        "Audio"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Center
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [520.0, 240.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = world
@@ -210,8 +237,8 @@ impl DawPanel {
         // whole area, not just the bit under the centered label.
         let drop_rect = ui.available_rect_before_wrap();
         let pp = ui.ctx().pointer_latest_pos();
-        let audio_drag = payload
-            .filter(|p| p.is_detached && p.matches_extensions(AUDIO_EXTENSIONS));
+        let audio_drag =
+            payload.filter(|p| p.is_detached && p.matches_extensions(AUDIO_EXTENSIONS));
         let pointer_in_rect = pp.map_or(false, |p| drop_rect.contains(p));
         let is_hovering = audio_drag.is_some() && pointer_in_rect;
 
@@ -230,9 +257,15 @@ impl DawPanel {
         }
 
         let (title, body) = if is_hovering {
-            ("Drop to create track", "An audio track will be added on the default bus.")
+            (
+                "Drop to create track",
+                "An audio track will be added on the default bus.",
+            )
         } else {
-            ("No tracks yet", "Drop an audio file here, or add a track to get started.")
+            (
+                "No tracks yet",
+                "Drop an audio file here, or add a track to get started.",
+            )
         };
         empty_state(ui, ph::WAVEFORM, title, body, theme);
 
@@ -286,10 +319,8 @@ impl DawPanel {
 
         let row_h = TRACK_H;
         for track in &timeline.tracks {
-            let (rect, _resp) = ui.allocate_exact_size(
-                Vec2::new(HEADER_W - 4.0, row_h),
-                Sense::click(),
-            );
+            let (rect, _resp) =
+                ui.allocate_exact_size(Vec2::new(HEADER_W - 4.0, row_h), Sense::click());
             let bg = if track.id == timeline.tracks[0].id {
                 theme.panels.inspector_row_even.to_color32()
             } else {
@@ -297,12 +328,16 @@ impl DawPanel {
             };
             ui.painter().rect_filled(rect, 3.0, bg);
             let accent = Color32::from_rgba_unmultiplied(
-                track.color[0], track.color[1], track.color[2], track.color[3],
+                track.color[0],
+                track.color[1],
+                track.color[2],
+                track.color[3],
             );
             // Left accent stripe
             ui.painter().rect_filled(
                 Rect::from_min_size(rect.min, Vec2::new(3.0, rect.height())),
-                0.0, accent,
+                0.0,
+                accent,
             );
 
             let mut child = ui.new_child(
@@ -341,7 +376,10 @@ impl DawPanel {
         // routing while the mixer carries gain.
         ui.horizontal(|ui| {
             let mut renaming = self.renaming_track.lock().unwrap();
-            let is_renaming = renaming.as_ref().map(|(t, _)| *t == track.id).unwrap_or(false);
+            let is_renaming = renaming
+                .as_ref()
+                .map(|(t, _)| *t == track.id)
+                .unwrap_or(false);
             if is_renaming {
                 let buf = renaming.as_mut().map(|(_, s)| s).unwrap();
                 let resp = ui.add(
@@ -349,10 +387,8 @@ impl DawPanel {
                         .desired_width(90.0)
                         .font(egui::FontId::proportional(11.0)),
                 );
-                let commit = resp.lost_focus()
-                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let cancel = resp.lost_focus()
-                    && ui.input(|i| i.key_pressed(egui::Key::Escape));
+                let commit = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let cancel = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape));
                 if commit {
                     let new_name = buf.trim().to_string();
                     if !new_name.is_empty() {
@@ -436,7 +472,9 @@ impl DawPanel {
             .stroke(Stroke::new(0.5, theme.widgets.border.to_color32()))
             .corner_radius(2.0)
             .min_size(Vec2::new(0.0, 16.0));
-            let resp = ui.add(chip).on_hover_text("Mixer bus this track plays into");
+            let resp = ui
+                .add(chip)
+                .on_hover_text("Mixer bus this track plays into");
             let popup_id = chip_id.with("popup");
             if resp.clicked() {
                 ui.memory_mut(|m| m.toggle_popup(popup_id));
@@ -473,8 +511,7 @@ impl DawPanel {
         waveforms: Option<&WaveformCache>,
     ) {
         let pps = timeline.pixels_per_second.max(20.0);
-        let content_w =
-            (timeline.view_duration as f32 * pps).max(ui.available_width().max(200.0));
+        let content_w = (timeline.view_duration as f32 * pps).max(ui.available_width().max(200.0));
         let track_count = timeline.tracks.len() as f32;
         let content_h = RULER_H + track_count * TRACK_H + 4.0;
 
@@ -519,7 +556,11 @@ impl DawPanel {
 
         // Ruler
         let ruler_rect = Rect::from_min_size(origin, Vec2::new(content_w, RULER_H));
-        painter.rect_filled(ruler_rect, 0.0, theme.surfaces.faint.to_color32().gamma_multiply(0.6));
+        painter.rect_filled(
+            ruler_rect,
+            0.0,
+            theme.surfaces.faint.to_color32().gamma_multiply(0.6),
+        );
         let bpm = timeline.transport.bpm.max(1.0);
         let beat_secs = 60.0 / bpm as f64;
         // Choose major step so we get <~6 labels per 200px to avoid clutter
@@ -589,7 +630,10 @@ impl DawPanel {
                                 lane_rect,
                                 0.0,
                                 Color32::from_rgba_unmultiplied(
-                                    p.color.r(), p.color.g(), p.color.b(), 30,
+                                    p.color.r(),
+                                    p.color.g(),
+                                    p.color.b(),
+                                    30,
                                 ),
                             );
                             painter.rect_stroke(
@@ -612,10 +656,8 @@ impl DawPanel {
                 let visible_left = ui.clip_rect().min.x.max(lane_rect.min.x);
                 let visible_right = ui.clip_rect().max.x.min(lane_rect.max.x);
                 if visible_right > visible_left + 80.0 {
-                    let center = Pos2::new(
-                        (visible_left + visible_right) * 0.5,
-                        lane_rect.center().y,
-                    );
+                    let center =
+                        Pos2::new((visible_left + visible_right) * 0.5, lane_rect.center().y);
                     painter.text(
                         center,
                         egui::Align2::CENTER_CENTER,
@@ -672,15 +714,12 @@ impl DawPanel {
         buffer: &DawIntentBuffer,
         waveforms: Option<&WaveformCache>,
     ) {
-        let track_color = Color32::from_rgba_unmultiplied(
-            track.color[0], track.color[1], track.color[2], 255,
-        );
-        let track_color_fill = Color32::from_rgba_unmultiplied(
-            track.color[0], track.color[1], track.color[2], 110,
-        );
-        let track_color_dim = Color32::from_rgba_unmultiplied(
-            track.color[0], track.color[1], track.color[2], 45,
-        );
+        let track_color =
+            Color32::from_rgba_unmultiplied(track.color[0], track.color[1], track.color[2], 255);
+        let track_color_fill =
+            Color32::from_rgba_unmultiplied(track.color[0], track.color[1], track.color[2], 110);
+        let track_color_dim =
+            Color32::from_rgba_unmultiplied(track.color[0], track.color[1], track.color[2], 45);
 
         for clip in timeline.clips.iter().filter(|c| c.track == track.id) {
             let x0 = origin.x + (clip.start * pps as f64) as f32;
@@ -691,13 +730,21 @@ impl DawPanel {
             );
 
             // Body
-            let body_color = if clip.muted { track_color_dim } else { track_color_fill };
+            let body_color = if clip.muted {
+                track_color_dim
+            } else {
+                track_color_fill
+            };
             painter.rect_filled(clip_rect, 4.0, body_color);
             painter.rect_stroke(
                 clip_rect,
                 4.0,
                 Stroke::new(
-                    if Some(clip.id) == timeline.selected_clip { 2.0 } else { 1.0 },
+                    if Some(clip.id) == timeline.selected_clip {
+                        2.0
+                    } else {
+                        1.0
+                    },
                     track_color,
                 ),
                 egui::StrokeKind::Inside,
@@ -725,7 +772,10 @@ impl DawPanel {
 
             // Right-edge resize handle (last 6px)
             let handle_rect = Rect::from_min_max(
-                Pos2::new((clip_rect.max.x - 6.0).max(clip_rect.min.x + 4.0), clip_rect.min.y),
+                Pos2::new(
+                    (clip_rect.max.x - 6.0).max(clip_rect.min.x + 4.0),
+                    clip_rect.min.y,
+                ),
                 clip_rect.max,
             );
             let handle_id = id.with("rhandle");
@@ -766,9 +816,8 @@ impl DawPanel {
                     let dx_secs = ((pp.x - drag.origin_x) / pps) as f64;
                     if drag.resize {
                         let new_len = (drag.origin_length + dx_secs).max(0.05);
-                        let snapped_end = timeline
-                            .transport
-                            .snap_seconds(drag.origin_start + new_len);
+                        let snapped_end =
+                            timeline.transport.snap_seconds(drag.origin_start + new_len);
                         let new_len_snapped = (snapped_end - drag.origin_start).max(0.05);
                         buffer.push(DawIntent::ResizeClipRight(clip.id, new_len_snapped));
                     } else {
@@ -814,7 +863,9 @@ impl DawPanel {
         if !payload.is_detached || !payload.matches_extensions(AUDIO_EXTENSIONS) {
             return;
         }
-        let Some(pp) = ui.ctx().pointer_latest_pos() else { return };
+        let Some(pp) = ui.ctx().pointer_latest_pos() else {
+            return;
+        };
 
         // Determine which lane (if any) the cursor is over.
         let pps = timeline.pixels_per_second.max(20.0);
@@ -900,132 +951,130 @@ fn render_transport(
                 Vec2::new(ui.available_width(), BAR_ROW_H),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
-                ui.set_min_height(BAR_ROW_H);
-                ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.set_min_height(BAR_ROW_H);
+                    ui.spacing_mut().item_spacing.x = 8.0;
 
-                // ── Transport cluster ───────────────────────────────────
-                let is_playing = timeline.transport.is_playing();
-                cluster(ui, cluster_bg, border_light, |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    // ── Transport cluster ───────────────────────────────────
+                    let is_playing = timeline.transport.is_playing();
+                    cluster(ui, cluster_bg, border_light, |ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
 
-                    if icon_button(ui, ph::SKIP_BACK, "Return to start", primary) {
-                        buffer.push(DawIntent::SeekTo(0.0));
-                    }
-
-                    // Play pill — the visual anchor of the bar.
-                    let (play_icon, play_fill, play_fg, play_tip) = if is_playing {
-                        (ph::PAUSE, accent, Color32::WHITE, "Pause")
-                    } else {
-                        (
-                            ph::PLAY,
-                            Color32::from_rgb(220, 60, 60),
-                            Color32::WHITE,
-                            "Play",
-                        )
-                    };
-                    if play_pill(ui, play_icon, play_fill, play_fg)
-                        .on_hover_text(play_tip)
-                        .clicked()
-                    {
-                        if is_playing {
-                            buffer.push(DawIntent::Stop);
-                        } else {
-                            buffer.push(DawIntent::Play);
+                        if icon_button(ui, ph::SKIP_BACK, "Return to start", primary) {
+                            buffer.push(DawIntent::SeekTo(0.0));
                         }
-                    }
 
-                    if icon_button(ui, ph::STOP, "Stop", primary) {
-                        buffer.push(DawIntent::Stop);
-                    }
-                });
-
-                divider(ui, border);
-
-                // ── LCD time display ────────────────────────────────────
-                let secs = timeline.transport.position;
-                let beats = timeline.transport.seconds_to_beats(secs);
-                let bar_n = (beats / 4.0).floor() as i32 + 1;
-                let beat_in_bar = (beats % 4.0).floor() as i32 + 1;
-                let ticks = ((beats - beats.floor()) * 1000.0) as i32;
-                let mins = (secs / 60.0) as u32;
-                let sec_part = secs % 60.0;
-
-                lcd_panel(ui, lcd_bg, border, |ui| {
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{:>3}.{:>1}.{:03}",
-                                bar_n, beat_in_bar, ticks
-                            ))
-                            .monospace()
-                            .size(15.0)
-                            .strong()
-                            .color(accent),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!("{:02}:{:05.2}s", mins, sec_part))
-                                .monospace()
-                                .size(10.0)
-                                .color(secondary),
-                        );
-                    });
-                });
-
-                divider(ui, border);
-
-                // ── Tempo ───────────────────────────────────────────────
-                labelled_chip(ui, "TEMPO", muted, |ui| {
-                    let mut bpm = timeline.transport.bpm;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut bpm)
-                                .speed(0.5)
-                                .range(20.0..=999.0)
-                                .fixed_decimals(1)
-                                .suffix(" BPM"),
-                        )
-                        .changed()
-                    {
-                        buffer.push(DawIntent::SetBpm(bpm));
-                    }
-                });
-
-                divider(ui, border);
-
-                // ── Grid / snap ─────────────────────────────────────────
-                labelled_chip(ui, "GRID", muted, |ui| {
-                    let mut snap = timeline.transport.snap_div;
-                    let snap_label = match snap {
-                        0 => "off".to_string(),
-                        1 => "1/4".to_string(),
-                        2 => "1/8".to_string(),
-                        4 => "1/16".to_string(),
-                        8 => "1/32".to_string(),
-                        other => format!("1/{}", 4 * other),
-                    };
-                    egui::ComboBox::from_id_salt("daw_snap")
-                        .selected_text(snap_label)
-                        .width(60.0)
-                        .show_ui(ui, |ui| {
-                            for (label, value) in [
-                                ("off", 0u32),
-                                ("1/4", 1),
-                                ("1/8", 2),
-                                ("1/16", 4),
-                                ("1/32", 8),
-                            ] {
-                                if ui.selectable_value(&mut snap, value, label).clicked() {
-                                    buffer.push(DawIntent::SetSnapDiv(snap));
-                                }
+                        // Play pill — the visual anchor of the bar.
+                        let (play_icon, play_fill, play_fg, play_tip) = if is_playing {
+                            (ph::PAUSE, accent, Color32::WHITE, "Pause")
+                        } else {
+                            (
+                                ph::PLAY,
+                                Color32::from_rgb(220, 60, 60),
+                                Color32::WHITE,
+                                "Play",
+                            )
+                        };
+                        if play_pill(ui, play_icon, play_fill, play_fg)
+                            .on_hover_text(play_tip)
+                            .clicked()
+                        {
+                            if is_playing {
+                                buffer.push(DawIntent::Stop);
+                            } else {
+                                buffer.push(DawIntent::Play);
                             }
-                        });
-                });
+                        }
 
-                // Zoom on the right edge.
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
+                        if icon_button(ui, ph::STOP, "Stop", primary) {
+                            buffer.push(DawIntent::Stop);
+                        }
+                    });
+
+                    divider(ui, border);
+
+                    // ── LCD time display ────────────────────────────────────
+                    let secs = timeline.transport.position;
+                    let beats = timeline.transport.seconds_to_beats(secs);
+                    let bar_n = (beats / 4.0).floor() as i32 + 1;
+                    let beat_in_bar = (beats % 4.0).floor() as i32 + 1;
+                    let ticks = ((beats - beats.floor()) * 1000.0) as i32;
+                    let mins = (secs / 60.0) as u32;
+                    let sec_part = secs % 60.0;
+
+                    lcd_panel(ui, lcd_bg, border, |ui| {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{:>3}.{:>1}.{:03}",
+                                    bar_n, beat_in_bar, ticks
+                                ))
+                                .monospace()
+                                .size(15.0)
+                                .strong()
+                                .color(accent),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!("{:02}:{:05.2}s", mins, sec_part))
+                                    .monospace()
+                                    .size(10.0)
+                                    .color(secondary),
+                            );
+                        });
+                    });
+
+                    divider(ui, border);
+
+                    // ── Tempo ───────────────────────────────────────────────
+                    labelled_chip(ui, "TEMPO", muted, |ui| {
+                        let mut bpm = timeline.transport.bpm;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut bpm)
+                                    .speed(0.5)
+                                    .range(20.0..=999.0)
+                                    .fixed_decimals(1)
+                                    .suffix(" BPM"),
+                            )
+                            .changed()
+                        {
+                            buffer.push(DawIntent::SetBpm(bpm));
+                        }
+                    });
+
+                    divider(ui, border);
+
+                    // ── Grid / snap ─────────────────────────────────────────
+                    labelled_chip(ui, "GRID", muted, |ui| {
+                        let mut snap = timeline.transport.snap_div;
+                        let snap_label = match snap {
+                            0 => "off".to_string(),
+                            1 => "1/4".to_string(),
+                            2 => "1/8".to_string(),
+                            4 => "1/16".to_string(),
+                            8 => "1/32".to_string(),
+                            other => format!("1/{}", 4 * other),
+                        };
+                        egui::ComboBox::from_id_salt("daw_snap")
+                            .selected_text(snap_label)
+                            .width(60.0)
+                            .show_ui(ui, |ui| {
+                                for (label, value) in [
+                                    ("off", 0u32),
+                                    ("1/4", 1),
+                                    ("1/8", 2),
+                                    ("1/16", 4),
+                                    ("1/32", 8),
+                                ] {
+                                    if ui.selectable_value(&mut snap, value, label).clicked() {
+                                        buffer.push(DawIntent::SetSnapDiv(snap));
+                                    }
+                                }
+                            });
+                    });
+
+                    // Zoom on the right edge.
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         labelled_chip(ui, "ZOOM", muted, |ui| {
                             let mut pps = timeline.pixels_per_second;
                             if ui
@@ -1040,9 +1089,9 @@ fn render_transport(
                                 buffer.push(DawIntent::SetPixelsPerSecond(pps));
                             }
                         });
-                    },
-                );
-            });
+                    });
+                },
+            );
 
             // Hairline under the bar to separate it cleanly from the
             // arrangement / track header rows below.
@@ -1141,16 +1190,11 @@ fn divider(ui: &mut egui::Ui, color: Color32) {
 
 /// The big filled play / pause pill at the centre of the transport cluster.
 fn play_pill(ui: &mut egui::Ui, glyph: &str, fill: Color32, fg: Color32) -> egui::Response {
-    let btn = egui::Button::new(
-        egui::RichText::new(glyph)
-            .size(15.0)
-            .color(fg)
-            .strong(),
-    )
-    .min_size(Vec2::new(34.0, 24.0))
-    .fill(fill)
-    .stroke(Stroke::NONE)
-    .corner_radius(egui::CornerRadius::same(5));
+    let btn = egui::Button::new(egui::RichText::new(glyph).size(15.0).color(fg).strong())
+        .min_size(Vec2::new(34.0, 24.0))
+        .fill(fill)
+        .stroke(Stroke::NONE)
+        .corner_radius(egui::CornerRadius::same(5));
     let resp = ui.add(btn);
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -1242,10 +1286,7 @@ fn available_buses(mixer: Option<&MixerState>) -> Vec<String> {
 
 /// Apply intents queued during the last frame to `TimelineState`. Runs after
 /// panel rendering, before the scheduler.
-pub fn apply_intents(
-    buffer: Res<DawIntentBuffer>,
-    mut timeline: ResMut<TimelineState>,
-) {
+pub fn apply_intents(buffer: Res<DawIntentBuffer>, mut timeline: ResMut<TimelineState>) {
     let intents = buffer.drain();
     if intents.is_empty() {
         return;
@@ -1270,32 +1311,52 @@ fn apply_one_intent(timeline: &mut TimelineState, intent: DawIntent) {
         }
         DawIntent::RemoveTrack(id) => timeline.remove_track(id),
         DawIntent::SetTrackName(id, name) => {
-            if let Some(t) = timeline.track_mut(id) { t.name = name; }
+            if let Some(t) = timeline.track_mut(id) {
+                t.name = name;
+            }
         }
         DawIntent::SetTrackBus(id, bus) => {
-            if let Some(t) = timeline.track_mut(id) { t.bus_name = bus; }
+            if let Some(t) = timeline.track_mut(id) {
+                t.bus_name = bus;
+            }
         }
         DawIntent::SetTrackVolume(id, v) => {
-            if let Some(t) = timeline.track_mut(id) { t.volume = v.max(0.0); }
+            if let Some(t) = timeline.track_mut(id) {
+                t.volume = v.max(0.0);
+            }
         }
         DawIntent::SetTrackMute(id, m) => {
-            if let Some(t) = timeline.track_mut(id) { t.muted = m; }
+            if let Some(t) = timeline.track_mut(id) {
+                t.muted = m;
+            }
         }
         DawIntent::SetTrackSolo(id, s) => {
-            if let Some(t) = timeline.track_mut(id) { t.soloed = s; }
+            if let Some(t) = timeline.track_mut(id) {
+                t.soloed = s;
+            }
         }
         DawIntent::SelectClip(id) => timeline.selected_clip = id,
         DawIntent::MoveClip(id, t) => {
-            if let Some(c) = timeline.clip_mut(id) { c.start = t.max(0.0); }
+            if let Some(c) = timeline.clip_mut(id) {
+                c.start = t.max(0.0);
+            }
         }
         DawIntent::ResizeClipRight(id, len) => {
-            if let Some(c) = timeline.clip_mut(id) { c.length = len.max(0.05); }
+            if let Some(c) = timeline.clip_mut(id) {
+                c.length = len.max(0.05);
+            }
         }
         DawIntent::SetClipName(id, name) => {
-            if let Some(c) = timeline.clip_mut(id) { c.name = name; }
+            if let Some(c) = timeline.clip_mut(id) {
+                c.name = name;
+            }
         }
         DawIntent::RemoveClip(id) => timeline.remove_clip(id),
-        DawIntent::AddClip { track, source, start } => {
+        DawIntent::AddClip {
+            track,
+            source,
+            start,
+        } => {
             // Default placeholder length; the scheduler will trim to real
             // duration the first time the file gets loaded.
             timeline.add_clip(track, source, start, 600.0);
@@ -1361,10 +1422,7 @@ fn draw_clip_waveform(
 
 /// System: ensure every clip on the timeline has a peaks request in flight.
 /// Cheap to run every frame — `request` is idempotent and fingerprinted.
-pub fn request_clip_waveforms(
-    timeline: Res<TimelineState>,
-    cache: Res<WaveformCache>,
-) {
+pub fn request_clip_waveforms(timeline: Res<TimelineState>, cache: Res<WaveformCache>) {
     for clip in &timeline.clips {
         if cache.needs_request(&clip.source) {
             cache.request(clip.source.clone());

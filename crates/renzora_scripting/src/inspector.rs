@@ -54,10 +54,16 @@ fn scan_script_files_inner(
     root: &std::path::Path,
     out: &mut Vec<(String, std::path::PathBuf)>,
 ) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.starts_with('.')) {
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map_or(false, |n| n.starts_with('.'))
+        {
             continue;
         }
         if path.is_dir() {
@@ -69,7 +75,8 @@ fn scan_script_files_inner(
         } else {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if matches!(ext, "lua" | "rhai") {
-                let display = path.strip_prefix(root)
+                let display = path
+                    .strip_prefix(root)
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .to_string();
@@ -132,7 +139,10 @@ fn script_component_ui(
 
             let row_idx = i * 3;
 
-            let current_path = entry.script_path.as_ref().map(|p| p.to_string_lossy().to_string());
+            let current_path = entry
+                .script_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
             let current_str = current_path.as_deref();
 
             inline_property(ui, row_idx, "Script", theme, |ui| {
@@ -180,8 +190,14 @@ fn script_component_ui(
             //   - render them in a stable order instead of HashMap order
             // `get_script_props` is cached by the backend, so calling this each
             // frame is cheap.
-            let defs: Vec<ScriptVariableDefinition> = entry.script_path.as_ref()
-                .and_then(|p| world.get_resource::<ScriptEngine>().map(|e| e.get_script_props(p)))
+            let defs: Vec<ScriptVariableDefinition> = entry
+                .script_path
+                .as_ref()
+                .and_then(|p| {
+                    world
+                        .get_resource::<ScriptEngine>()
+                        .map(|e| e.get_script_props(p))
+                })
                 .unwrap_or_default();
 
             // Build (tab_name, Vec<(var_name, var_value)>) preserving the order
@@ -189,7 +205,9 @@ fn script_component_ui(
             let mut tab_groups: Vec<(String, Vec<(String, ScriptValue)>)> = Vec::new();
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
             for def in &defs {
-                let Some(val) = entry.variables.get(&def.name) else { continue };
+                let Some(val) = entry.variables.get(&def.name) else {
+                    continue;
+                };
                 let tab = def.tab.clone().unwrap_or_else(|| "General".to_string());
                 let pair = (def.name.clone(), val.clone());
                 match tab_groups.iter_mut().find(|(t, _)| *t == tab) {
@@ -201,7 +219,9 @@ fn script_component_ui(
             // Any variables that the script no longer declares (renamed /
             // removed in a rebuild) still deserve to be editable — drop them
             // in an "Other" group so the user can clean them up.
-            let orphans: Vec<(String, ScriptValue)> = entry.variables.iter_all()
+            let orphans: Vec<(String, ScriptValue)> = entry
+                .variables
+                .iter_all()
                 .filter(|(k, _)| !seen.contains(*k))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
@@ -220,158 +240,224 @@ fn script_component_ui(
 
             for (tab_idx, (tab_name, vars)) in tab_groups.into_iter().enumerate() {
                 let render = |ui: &mut egui::Ui, vars: &[(String, ScriptValue)]| {
-                for (var_name, var_value) in vars.iter() {
-                    let label = to_display_name(var_name);
-                    let script_idx = i;
-                    let vname = var_name.clone();
-                    match var_value.clone() {
-                        ScriptValue::Float(mut v) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = v;
-                                ui.add(egui::DragValue::new(&mut v).speed(0.1));
-                                if v != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Float(v));
+                    for (var_name, var_value) in vars.iter() {
+                        let label = to_display_name(var_name);
+                        let script_idx = i;
+                        let vname = var_name.clone();
+                        match var_value.clone() {
+                            ScriptValue::Float(mut v) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = v;
+                                    ui.add(egui::DragValue::new(&mut v).speed(0.1));
+                                    if v != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry
+                                                        .variables
+                                                        .set(vname, ScriptValue::Float(v));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::Int(mut v) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = v;
-                                ui.add(egui::DragValue::new(&mut v).speed(1.0));
-                                if v != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Int(v));
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::Int(mut v) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = v;
+                                    ui.add(egui::DragValue::new(&mut v).speed(1.0));
+                                    if v != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry.variables.set(vname, ScriptValue::Int(v));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::Bool(v) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let id = ui.id().with(("script_var_bool", script_idx, &vname));
-                                if toggle_switch(ui, id, v) {
-                                    let new_val = !v;
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Bool(new_val));
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::Bool(v) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let id = ui.id().with(("script_var_bool", script_idx, &vname));
+                                    if toggle_switch(ui, id, v) {
+                                        let new_val = !v;
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry
+                                                        .variables
+                                                        .set(vname, ScriptValue::Bool(new_val));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::String(mut s) | ScriptValue::Entity(mut s) => {
-                            let is_entity = matches!(var_value, ScriptValue::Entity(_));
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = s.clone();
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut s)
-                                        .desired_width(ui.available_width()),
-                                );
-                                if s != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                let val = if is_entity {
-                                                    ScriptValue::Entity(s)
-                                                } else {
-                                                    ScriptValue::String(s)
-                                                };
-                                                entry.variables.set(vname, val);
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::String(mut s) | ScriptValue::Entity(mut s) => {
+                                let is_entity = matches!(var_value, ScriptValue::Entity(_));
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = s.clone();
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut s)
+                                            .desired_width(ui.available_width()),
+                                    );
+                                    if s != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    let val = if is_entity {
+                                                        ScriptValue::Entity(s)
+                                                    } else {
+                                                        ScriptValue::String(s)
+                                                    };
+                                                    entry.variables.set(vname, val);
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::Vec2(mut v) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = v;
-                                let w = ((ui.available_width() - 32.0) / 2.0).max(30.0);
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                ui.label(egui::RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.x).speed(0.1));
-                                ui.label(egui::RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(130, 200, 90)));
-                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.y).speed(0.1));
-                                if v != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Vec2(v));
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::Vec2(mut v) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = v;
+                                    let w = ((ui.available_width() - 32.0) / 2.0).max(30.0);
+                                    ui.spacing_mut().item_spacing.x = 2.0;
+                                    ui.label(
+                                        egui::RichText::new("X")
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(230, 90, 90)),
+                                    );
+                                    ui.add_sized(
+                                        [w, 16.0],
+                                        egui::DragValue::new(&mut v.x).speed(0.1),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new("Y")
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(130, 200, 90)),
+                                    );
+                                    ui.add_sized(
+                                        [w, 16.0],
+                                        egui::DragValue::new(&mut v.y).speed(0.1),
+                                    );
+                                    if v != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry
+                                                        .variables
+                                                        .set(vname, ScriptValue::Vec2(v));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::Vec3(mut v) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = v;
-                                let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                ui.label(egui::RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.x).speed(0.1));
-                                ui.label(egui::RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(130, 200, 90)));
-                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.y).speed(0.1));
-                                ui.label(egui::RichText::new("Z").size(10.0).color(egui::Color32::from_rgb(90, 150, 230)));
-                                ui.add_sized([w, 16.0], egui::DragValue::new(&mut v.z).speed(0.1));
-                                if v != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Vec3(v));
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::Vec3(mut v) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = v;
+                                    let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
+                                    ui.spacing_mut().item_spacing.x = 2.0;
+                                    ui.label(
+                                        egui::RichText::new("X")
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(230, 90, 90)),
+                                    );
+                                    ui.add_sized(
+                                        [w, 16.0],
+                                        egui::DragValue::new(&mut v.x).speed(0.1),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new("Y")
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(130, 200, 90)),
+                                    );
+                                    ui.add_sized(
+                                        [w, 16.0],
+                                        egui::DragValue::new(&mut v.y).speed(0.1),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new("Z")
+                                            .size(10.0)
+                                            .color(egui::Color32::from_rgb(90, 150, 230)),
+                                    );
+                                    ui.add_sized(
+                                        [w, 16.0],
+                                        egui::DragValue::new(&mut v.z).speed(0.1),
+                                    );
+                                    if v != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry
+                                                        .variables
+                                                        .set(vname, ScriptValue::Vec3(v));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                        ScriptValue::Color(mut c) => {
-                            let vname = vname.clone();
-                            inline_property(ui, row_idx + 2, &label, theme, |ui| {
-                                let orig = c;
-                                let mut rgb = [c.x, c.y, c.z];
-                                if ui.color_edit_button_rgb(&mut rgb).changed() {
-                                    c.x = rgb[0];
-                                    c.y = rgb[1];
-                                    c.z = rgb[2];
-                                }
-                                if c != orig {
-                                    let vname = vname.clone();
-                                    cmds.push(move |w: &mut World| {
-                                        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                                            if let Some(entry) = sc.scripts.get_mut(script_idx) {
-                                                entry.variables.set(vname, ScriptValue::Color(c));
+                                        });
+                                    }
+                                });
+                            }
+                            ScriptValue::Color(mut c) => {
+                                let vname = vname.clone();
+                                inline_property(ui, row_idx + 2, &label, theme, |ui| {
+                                    let orig = c;
+                                    let mut rgb = [c.x, c.y, c.z];
+                                    if ui.color_edit_button_rgb(&mut rgb).changed() {
+                                        c.x = rgb[0];
+                                        c.y = rgb[1];
+                                        c.z = rgb[2];
+                                    }
+                                    if c != orig {
+                                        let vname = vname.clone();
+                                        cmds.push(move |w: &mut World| {
+                                            if let Some(mut sc) =
+                                                w.get_mut::<ScriptComponent>(entity)
+                                            {
+                                                if let Some(entry) = sc.scripts.get_mut(script_idx)
+                                                {
+                                                    entry
+                                                        .variables
+                                                        .set(vname, ScriptValue::Color(c));
+                                                }
                                             }
-                                        }
-                                    });
-                                }
-                            });
+                                        });
+                                    }
+                                });
+                            }
                         }
                     }
-                }
                 };
 
                 if show_headers {
@@ -426,9 +512,9 @@ fn script_component_ui(
 
     // Add Script button — opens search overlay
     let overlay_id = egui::Id::new("script_search_overlay_visible");
-    let show_overlay = ui.ctx().data_mut(|d| {
-        *d.get_persisted_mut_or_insert_with(overlay_id, || false)
-    });
+    let show_overlay = ui
+        .ctx()
+        .data_mut(|d| *d.get_persisted_mut_or_insert_with(overlay_id, || false));
 
     if show_overlay {
         let available = world
@@ -439,10 +525,7 @@ fn script_component_ui(
         let entry_data: Vec<(String, String, String, std::path::PathBuf)> = available
             .iter()
             .map(|(name, path)| {
-                let ext = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("");
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 let icon = match ext {
                     "lua" => regular::CODE,
                     "rhai" => regular::CODE,
@@ -459,17 +542,29 @@ fn script_component_ui(
                 id: name.as_str(),
                 label: name.as_str(),
                 icon: icon.as_str(),
-                category: if cat.is_empty() { "scripts" } else { cat.as_str() },
+                category: if cat.is_empty() {
+                    "scripts"
+                } else {
+                    cat.as_str()
+                },
             })
             .collect();
 
         let search_id = egui::Id::new("script_search_text");
         let mut search_text: String = ui.ctx().data_mut(|d| {
-            d.get_persisted_mut_or_insert_with(search_id, String::new).clone()
+            d.get_persisted_mut_or_insert_with(search_id, String::new)
+                .clone()
         });
 
         let ctx = ui.ctx().clone();
-        match search_overlay(&ctx, "add_script_overlay", "Add Script", &entries, &mut search_text, theme) {
+        match search_overlay(
+            &ctx,
+            "add_script_overlay",
+            "Add Script",
+            &entries,
+            &mut search_text,
+            theme,
+        ) {
             OverlayAction::Selected(name) => {
                 if let Some((_, _, _, path)) = entry_data.iter().find(|(n, _, _, _)| *n == name) {
                     let rel = make_relative(path.clone(), world);
@@ -480,14 +575,17 @@ fn script_component_ui(
                     });
                 }
                 ui.ctx().data_mut(|d| d.insert_persisted(overlay_id, false));
-                ui.ctx().data_mut(|d| d.insert_persisted(search_id, String::new()));
+                ui.ctx()
+                    .data_mut(|d| d.insert_persisted(search_id, String::new()));
             }
             OverlayAction::Closed => {
                 ui.ctx().data_mut(|d| d.insert_persisted(overlay_id, false));
-                ui.ctx().data_mut(|d| d.insert_persisted(search_id, String::new()));
+                ui.ctx()
+                    .data_mut(|d| d.insert_persisted(search_id, String::new()));
             }
             OverlayAction::None => {
-                ui.ctx().data_mut(|d| d.insert_persisted(search_id, search_text));
+                ui.ctx()
+                    .data_mut(|d| d.insert_persisted(search_id, search_text));
             }
         }
     }
@@ -496,8 +594,7 @@ fn script_component_ui(
     ui.horizontal(|ui| {
         if ui
             .add(egui::Button::new(
-                egui::RichText::new(format!("{} Add Script", regular::PLUS))
-                    .size(11.0),
+                egui::RichText::new(format!("{} Add Script", regular::PLUS)).size(11.0),
             ))
             .clicked()
         {

@@ -28,7 +28,11 @@ impl FloatingPanels {
         if self.panels.iter().any(|p| p.panel_id == panel_id) {
             return;
         }
-        self.panels.push(FloatingPanel { panel_id, pos, size });
+        self.panels.push(FloatingPanel {
+            panel_id,
+            pos,
+            size,
+        });
     }
 
     pub fn remove(&mut self, panel_id: &str) -> Option<FloatingPanel> {
@@ -85,8 +89,16 @@ pub fn render_floating_panels(
         let base_id = Id::new("floating_panel").with(&panel.panel_id);
 
         render_single(
-            ctx, panel, &title, icon.as_deref(), min_size,
-            registry, world, theme, &mut result, base_id,
+            ctx,
+            panel,
+            &title,
+            icon.as_deref(),
+            min_size,
+            registry,
+            world,
+            theme,
+            &mut result,
+            base_id,
         );
     }
 
@@ -156,7 +168,6 @@ impl ResizeEdge {
     }
 }
 
-
 fn render_single(
     ctx: &egui::Context,
     panel: &mut FloatingPanel,
@@ -199,44 +210,72 @@ fn render_single(
             // ── Edge resize interactions (register first for priority on edges) ──
             let edge_rects: [(ResizeEdge, Rect); 8] = [
                 // Corners first (highest priority)
-                (ResizeEdge::TopLeft, Rect::from_min_max(
-                    Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
-                    Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
-                )),
-                (ResizeEdge::TopRight, Rect::from_min_max(
-                    Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
-                    Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
-                )),
-                (ResizeEdge::BottomLeft, Rect::from_min_max(
-                    Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
-                    Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
-                )),
-                (ResizeEdge::BottomRight, Rect::from_min_max(
-                    Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
-                    Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
-                )),
+                (
+                    ResizeEdge::TopLeft,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
+                        Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::TopRight,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
+                        Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::BottomLeft,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
+                        Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::BottomRight,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
+                        Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
+                    ),
+                ),
                 // Edges
-                (ResizeEdge::Top, Rect::from_min_max(
-                    Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
-                    Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
-                )),
-                (ResizeEdge::Bottom, Rect::from_min_max(
-                    Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
-                    Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
-                )),
-                (ResizeEdge::Left, Rect::from_min_max(
-                    Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
-                    Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
-                )),
-                (ResizeEdge::Right, Rect::from_min_max(
-                    Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
-                    Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
-                )),
+                (
+                    ResizeEdge::Top,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.min.y - EDGE_GRAB),
+                        Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::Bottom,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
+                        Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.max.y + EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::Left,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.min.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
+                        Pos2::new(total_rect.min.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
+                    ),
+                ),
+                (
+                    ResizeEdge::Right,
+                    Rect::from_min_max(
+                        Pos2::new(total_rect.max.x - EDGE_GRAB, total_rect.min.y + EDGE_GRAB),
+                        Pos2::new(total_rect.max.x + EDGE_GRAB, total_rect.max.y - EDGE_GRAB),
+                    ),
+                ),
             ];
 
             let mut any_edge_active = false;
             for (edge, rect) in &edge_rects {
-                let resp = ui.interact(*rect, base_id.with(format!("edge_{:?}", edge)), Sense::drag());
+                let resp = ui.interact(
+                    *rect,
+                    base_id.with(format!("edge_{:?}", edge)),
+                    Sense::drag(),
+                );
                 if resp.hovered() || resp.dragged() {
                     ui.ctx().set_cursor_icon(edge.cursor());
                     any_edge_active = true;
@@ -283,7 +322,11 @@ fn render_single(
                 Pos2::new(grip_rect.max.x, header_rect.min.y),
                 Pos2::new(dock_rect.min.x - 4.0, header_rect.max.y),
             );
-            let header_resp = ui.interact(header_drag_rect, base_id.with("header"), Sense::click_and_drag());
+            let header_resp = ui.interact(
+                header_drag_rect,
+                base_id.with("header"),
+                Sense::click_and_drag(),
+            );
             if header_resp.dragged() {
                 panel.pos += header_resp.drag_delta();
             }
@@ -316,7 +359,12 @@ fn render_single(
 
             // Background + border
             painter.rect_filled(total_rect, rounding, panel_bg);
-            painter.rect_stroke(total_rect, rounding, Stroke::new(1.0, border_color), egui::StrokeKind::Inside);
+            painter.rect_stroke(
+                total_rect,
+                rounding,
+                Stroke::new(1.0, border_color),
+                egui::StrokeKind::Inside,
+            );
 
             // Header
             painter.rect_filled(header_rect, header_rounding, header_bg);
@@ -390,7 +438,12 @@ fn render_single(
             // Draw a small docking icon: outer frame + inner rect
             let dc = dock_rect.center();
             let frame_rect = Rect::from_center_size(dc, Vec2::new(10.0, 8.0));
-            painter.rect_stroke(frame_rect, egui::CornerRadius::same(1), Stroke::new(1.0, dock_color), egui::StrokeKind::Inside);
+            painter.rect_stroke(
+                frame_rect,
+                egui::CornerRadius::same(1),
+                Stroke::new(1.0, dock_color),
+                egui::StrokeKind::Inside,
+            );
             // Inner filled portion (right half = "docked")
             let inner = Rect::from_min_max(
                 Pos2::new(dc.x - 1.0, frame_rect.min.y + 1.5),

@@ -23,3 +23,6 @@ egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
+
+[lints]
+workspace = true

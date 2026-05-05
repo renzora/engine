@@ -50,14 +50,7 @@ fn value_noise(x: f32, y: f32, seed: u32) -> f32 {
 }
 
 /// Fractal Brownian Motion: layered value noise. Returns roughly [0, 1].
-pub fn fbm(
-    x: f32,
-    y: f32,
-    octaves: u32,
-    lacunarity: f32,
-    persistence: f32,
-    seed: u32,
-) -> f32 {
+pub fn fbm(x: f32, y: f32, octaves: u32, lacunarity: f32, persistence: f32, seed: u32) -> f32 {
     let mut value = 0.0f32;
     let mut amplitude = 1.0f32;
     let mut frequency = 1.0f32;
@@ -71,7 +64,11 @@ pub fn fbm(
         frequency *= lacunarity;
     }
 
-    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+    if max_amp > 0.0 {
+        value / max_amp
+    } else {
+        0.0
+    }
 }
 
 /// Ridge noise: sharp mountain ridges via `1 - |signed_noise|`.
@@ -97,7 +94,11 @@ pub fn ridge_noise(
         frequency *= lacunarity;
     }
 
-    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+    if max_amp > 0.0 {
+        value / max_amp
+    } else {
+        0.0
+    }
 }
 
 /// Billow noise: rounded puffy terrain via `|signed_noise|`.
@@ -123,7 +124,11 @@ pub fn billow_noise(
         frequency *= lacunarity;
     }
 
-    if max_amp > 0.0 { value / max_amp } else { 0.0 }
+    if max_amp > 0.0 {
+        value / max_amp
+    } else {
+        0.0
+    }
 }
 
 /// Domain-warped FBM: distort input coords by another noise field.
@@ -138,7 +143,15 @@ pub fn warped_fbm(
 ) -> f32 {
     let warp_seed = seed.wrapping_add(999);
     let wx = fbm(x, y, octaves.min(3), lacunarity, persistence, warp_seed) * 2.0 - 1.0;
-    let wy = fbm(x + 5.2, y + 1.3, octaves.min(3), lacunarity, persistence, warp_seed.wrapping_add(1)) * 2.0 - 1.0;
+    let wy = fbm(
+        x + 5.2,
+        y + 1.3,
+        octaves.min(3),
+        lacunarity,
+        persistence,
+        warp_seed.wrapping_add(1),
+    ) * 2.0
+        - 1.0;
     fbm(
         x + wx * warp_strength,
         y + wy * warp_strength,
@@ -179,7 +192,9 @@ pub fn eval_noise(
         NoiseMode::Fbm => fbm(x, y, octaves, lacunarity, persistence, seed),
         NoiseMode::Ridge => ridge_noise(x, y, octaves, lacunarity, persistence, seed),
         NoiseMode::Billow => billow_noise(x, y, octaves, lacunarity, persistence, seed),
-        NoiseMode::Warped => warped_fbm(x, y, octaves, lacunarity, persistence, seed, warp_strength),
+        NoiseMode::Warped => {
+            warped_fbm(x, y, octaves, lacunarity, persistence, seed, warp_strength)
+        }
         NoiseMode::Hybrid => hybrid_noise(x, y, octaves, lacunarity, persistence, seed),
     }
 }
@@ -306,12 +321,8 @@ pub fn apply_stamp(
             let edge_blend = compute_brush_falloff(t, settings.falloff, settings.falloff_type);
 
             let new_h = match settings.stamp_blend_mode {
-                StampBlendMode::Add => {
-                    current + stamp_value * edge_blend
-                }
-                StampBlendMode::Subtract => {
-                    current - stamp_value * edge_blend
-                }
+                StampBlendMode::Add => current + stamp_value * edge_blend,
+                StampBlendMode::Subtract => current - stamp_value * edge_blend,
                 StampBlendMode::Replace => {
                     let target = stamp_value;
                     current + (target - current) * edge_blend
@@ -448,9 +459,15 @@ fn apply_brush_at_vertex(
         TerrainBrushType::Smooth => {
             let current = chunk.get_height(vx, vz, resolution);
             const KERNEL: &[(i32, i32, f32)] = &[
-                (-1, -1, 0.0625), (0, -1, 0.125), (1, -1, 0.0625),
-                (-1,  0, 0.125),  (0,  0, 0.25),  (1,  0, 0.125),
-                (-1,  1, 0.0625), (0,  1, 0.125), (1,  1, 0.0625),
+                (-1, -1, 0.0625),
+                (0, -1, 0.125),
+                (1, -1, 0.0625),
+                (-1, 0, 0.125),
+                (0, 0, 0.25),
+                (1, 0, 0.125),
+                (-1, 1, 0.0625),
+                (0, 1, 0.125),
+                (1, 1, 0.0625),
             ];
             let mut weighted = 0.0f32;
             let mut total_w = 0.0f32;
@@ -600,10 +617,26 @@ fn apply_brush_at_vertex(
         TerrainBrushType::Pinch => {
             // Amplify deviation from local average (Shift = smooth towards average)
             let current = chunk.get_height(vx, vz, resolution);
-            let left = if vx > 0 { chunk.get_height(vx - 1, vz, resolution) } else { current };
-            let right = if vx < resolution - 1 { chunk.get_height(vx + 1, vz, resolution) } else { current };
-            let up = if vz < resolution - 1 { chunk.get_height(vx, vz + 1, resolution) } else { current };
-            let down = if vz > 0 { chunk.get_height(vx, vz - 1, resolution) } else { current };
+            let left = if vx > 0 {
+                chunk.get_height(vx - 1, vz, resolution)
+            } else {
+                current
+            };
+            let right = if vx < resolution - 1 {
+                chunk.get_height(vx + 1, vz, resolution)
+            } else {
+                current
+            };
+            let up = if vz < resolution - 1 {
+                chunk.get_height(vx, vz + 1, resolution)
+            } else {
+                current
+            };
+            let down = if vz > 0 {
+                chunk.get_height(vx, vz - 1, resolution)
+            } else {
+                current
+            };
             let avg = (left + right + up + down) * 0.25;
             let deviation = current - avg;
             let target = if shift {
@@ -616,10 +649,26 @@ fn apply_brush_at_vertex(
         TerrainBrushType::Relax => {
             // Laplacian relaxation
             let current = chunk.get_height(vx, vz, resolution);
-            let left = if vx > 0 { chunk.get_height(vx - 1, vz, resolution) } else { current };
-            let right = if vx < resolution - 1 { chunk.get_height(vx + 1, vz, resolution) } else { current };
-            let up = if vz < resolution - 1 { chunk.get_height(vx, vz + 1, resolution) } else { current };
-            let down = if vz > 0 { chunk.get_height(vx, vz - 1, resolution) } else { current };
+            let left = if vx > 0 {
+                chunk.get_height(vx - 1, vz, resolution)
+            } else {
+                current
+            };
+            let right = if vx < resolution - 1 {
+                chunk.get_height(vx + 1, vz, resolution)
+            } else {
+                current
+            };
+            let up = if vz < resolution - 1 {
+                chunk.get_height(vx, vz + 1, resolution)
+            } else {
+                current
+            };
+            let down = if vz > 0 {
+                chunk.get_height(vx, vz - 1, resolution)
+            } else {
+                current
+            };
             let laplacian = (left + right + up + down) * 0.25 - current;
             let new_h = current + laplacian * (effect * 2.5).min(1.0);
             chunk.set_height(vx, vz, resolution, new_h);
@@ -630,10 +679,26 @@ fn apply_brush_at_vertex(
         TerrainBrushType::Cliff => {
             // Amplify local slope gradient (Shift = soften)
             let current = chunk.get_height(vx, vz, resolution);
-            let left = if vx > 0 { chunk.get_height(vx - 1, vz, resolution) } else { current };
-            let right = if vx < resolution - 1 { chunk.get_height(vx + 1, vz, resolution) } else { current };
-            let up = if vz < resolution - 1 { chunk.get_height(vx, vz + 1, resolution) } else { current };
-            let down = if vz > 0 { chunk.get_height(vx, vz - 1, resolution) } else { current };
+            let left = if vx > 0 {
+                chunk.get_height(vx - 1, vz, resolution)
+            } else {
+                current
+            };
+            let right = if vx < resolution - 1 {
+                chunk.get_height(vx + 1, vz, resolution)
+            } else {
+                current
+            };
+            let up = if vz < resolution - 1 {
+                chunk.get_height(vx, vz + 1, resolution)
+            } else {
+                current
+            };
+            let down = if vz > 0 {
+                chunk.get_height(vx, vz - 1, resolution)
+            } else {
+                current
+            };
             let dh_dx = (right - left) * 0.5;
             let dh_dz = (up - down) * 0.5;
             let slope = (dh_dx * dh_dx + dh_dz * dh_dz).sqrt();

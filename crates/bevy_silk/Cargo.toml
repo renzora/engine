@@ -104,3 +104,6 @@ path = "examples/camera_plugin.rs"
 crate-type = ["staticlib"]
 
 
+
+[lints]
+workspace = true

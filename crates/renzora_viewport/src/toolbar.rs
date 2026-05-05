@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use renzora::core::viewport_types::ViewportSettings;
 use renzora_editor::EditorCommands;
 
-use crate::{NavOverlayState, AXIS_GIZMO_SIZE, AXIS_GIZMO_MARGIN};
+use crate::{NavOverlayState, AXIS_GIZMO_MARGIN, AXIS_GIZMO_SIZE};
 
 /// No-op stub — the viewport panel still calls this each frame, but tool
 /// buttons now render inline in the header bar so there's nothing to draw.
@@ -19,9 +19,13 @@ pub fn render_tool_overlay(_ctx: &egui::Context, _world: &World, _content_rect: 
 
 /// Nav overlay: pan/zoom drag-buttons on the right side, below the axis gizmo.
 pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect) {
-    let Some(theme_mgr) = world.get_resource::<renzora_theme::ThemeManager>() else { return };
+    let Some(theme_mgr) = world.get_resource::<renzora_theme::ThemeManager>() else {
+        return;
+    };
     let theme = &theme_mgr.active_theme;
-    let Some(nav) = world.get_resource::<NavOverlayState>() else { return };
+    let Some(nav) = world.get_resource::<NavOverlayState>() else {
+        return;
+    };
 
     let btn_size = Vec2::new(36.0, 36.0);
     let btn_gap = 1.0_f32;
@@ -99,7 +103,8 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
                 resting_color
             };
             let half_btn = (btn_size.x / 2.0) as u8;
-            ui.painter().rect_filled(pan_btn_rect, CornerRadius::same(half_btn), pan_bg);
+            ui.painter()
+                .rect_filled(pan_btn_rect, CornerRadius::same(half_btn), pan_bg);
             ui.painter().text(
                 pan_btn_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -109,7 +114,8 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             );
 
             // Zoom button — drag up/down to zoom
-            let zoom_resp = ui.interact(zoom_btn_rect, egui::Id::new("nav_zoom_btn"), Sense::drag());
+            let zoom_resp =
+                ui.interact(zoom_btn_rect, egui::Id::new("nav_zoom_btn"), Sense::drag());
             if zoom_resp.drag_started() {
                 nav.zoom_dragging.store(true, Ordering::Relaxed);
                 nav.pan_dragging.store(false, Ordering::Relaxed);
@@ -128,7 +134,8 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             } else {
                 resting_color
             };
-            ui.painter().rect_filled(zoom_btn_rect, CornerRadius::same(half_btn), zoom_bg);
+            ui.painter()
+                .rect_filled(zoom_btn_rect, CornerRadius::same(half_btn), zoom_bg);
             ui.painter().text(
                 zoom_btn_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -140,12 +147,15 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             // Write drag deltas for the camera system to consume
             if pan_resp.dragged() {
                 let d = pan_resp.drag_delta();
-                nav.pan_delta_x.fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
-                nav.pan_delta_y.fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
+                nav.pan_delta_x
+                    .fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
+                nav.pan_delta_y
+                    .fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
             }
             if zoom_resp.dragged() {
                 let d = zoom_resp.drag_delta();
-                nav.zoom_delta_y.fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
+                nav.zoom_delta_y
+                    .fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
             }
 
             // ── Toggle group: grid + scene icons ──────────────────────────
@@ -164,7 +174,8 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             } else {
                 resting_color
             };
-            ui.painter().rect_filled(grid_btn_rect, CornerRadius::same(half_btn), grid_bg);
+            ui.painter()
+                .rect_filled(grid_btn_rect, CornerRadius::same(half_btn), grid_bg);
             ui.painter().text(
                 grid_btn_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -172,7 +183,9 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
                 FontId::proportional(16.0),
                 Color32::WHITE,
             );
-            grid_resp.clone().on_hover_text(if show_grid { "Hide Grid" } else { "Show Grid" });
+            grid_resp
+                .clone()
+                .on_hover_text(if show_grid { "Hide Grid" } else { "Show Grid" });
             if grid_resp.clicked() {
                 if let Some(cmds) = cmds {
                     cmds.push(move |w: &mut World| {
@@ -184,8 +197,11 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             }
 
             // Scene icons toggle
-            let icons_resp =
-                ui.interact(icons_btn_rect, egui::Id::new("nav_icons_btn"), Sense::click());
+            let icons_resp = ui.interact(
+                icons_btn_rect,
+                egui::Id::new("nav_icons_btn"),
+                Sense::click(),
+            );
             if icons_resp.hovered() {
                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
             }
@@ -196,7 +212,8 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             } else {
                 resting_color
             };
-            ui.painter().rect_filled(icons_btn_rect, CornerRadius::same(half_btn), icons_bg);
+            ui.painter()
+                .rect_filled(icons_btn_rect, CornerRadius::same(half_btn), icons_bg);
             ui.painter().text(
                 icons_btn_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -204,9 +221,11 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
                 FontId::proportional(16.0),
                 Color32::WHITE,
             );
-            icons_resp
-                .clone()
-                .on_hover_text(if show_scene_icons { "Hide Scene Icons" } else { "Show Scene Icons" });
+            icons_resp.clone().on_hover_text(if show_scene_icons {
+                "Hide Scene Icons"
+            } else {
+                "Show Scene Icons"
+            });
             if icons_resp.clicked() {
                 if let Some(cmds) = cmds {
                     cmds.push(move |w: &mut World| {
@@ -218,4 +237,3 @@ pub fn render_nav_overlay(ctx: &egui::Context, world: &World, content_rect: Rect
             }
         });
 }
-

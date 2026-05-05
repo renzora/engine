@@ -225,7 +225,9 @@ impl Default for UiBoxShadow {
 // ── Cursor ──────────────────────────────────────────────────────────────────
 
 /// Cursor icon to show when hovering this widget.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[derive(
+    Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize,
+)]
 #[reflect(Component, Serialize, Deserialize)]
 pub enum UiCursor {
     #[default]
@@ -350,7 +352,18 @@ pub struct UiWidgetStyle {
 impl UiWidgetStyle {
     /// Convert into individual ECS components for entity insertion.
     /// Shadow is returned separately since it's optional.
-    pub fn into_components(self) -> (UiFill, UiStroke, UiBorderRadius, UiOpacity, UiClipContent, UiCursor, UiTextStyle, UiPadding) {
+    pub fn into_components(
+        self,
+    ) -> (
+        UiFill,
+        UiStroke,
+        UiBorderRadius,
+        UiOpacity,
+        UiClipContent,
+        UiCursor,
+        UiTextStyle,
+        UiPadding,
+    ) {
         (
             self.fill,
             self.stroke,

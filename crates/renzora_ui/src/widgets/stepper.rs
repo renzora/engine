@@ -10,7 +10,10 @@ pub struct StepperConfig {
 
 impl Default for StepperConfig {
     fn default() -> Self {
-        Self { height: 48.0, allow_navigation: true }
+        Self {
+            height: 48.0,
+            allow_navigation: true,
+        }
     }
 }
 

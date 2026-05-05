@@ -59,7 +59,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
     match format {
         // 16-bit single channel (unsigned int) — common for displacement/height maps
         TextureFormat::R16Uint | TextureFormat::R16Unorm => {
-            if data.len() < pixel_count * 2 { return None; }
+            if data.len() < pixel_count * 2 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = u16::from_le_bytes([data[i * 2], data[i * 2 + 1]]);
                 let byte = (val >> 8) as u8;
@@ -71,7 +73,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
         }
         // 16-bit single channel (signed int)
         TextureFormat::R16Sint | TextureFormat::R16Snorm => {
-            if data.len() < pixel_count * 2 { return None; }
+            if data.len() < pixel_count * 2 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = i16::from_le_bytes([data[i * 2], data[i * 2 + 1]]);
                 let byte = ((val as f32 / i16::MAX as f32).clamp(0.0, 1.0) * 255.0) as u8;
@@ -83,10 +87,15 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
         }
         // 32-bit single channel float — common for HDR height/displacement
         TextureFormat::R32Float => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = f32::from_le_bytes([
-                    data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3],
+                    data[i * 4],
+                    data[i * 4 + 1],
+                    data[i * 4 + 2],
+                    data[i * 4 + 3],
                 ]);
                 let byte = (val.clamp(0.0, 1.0) * 255.0) as u8;
                 rgba[i * 4] = byte;
@@ -97,10 +106,15 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
         }
         // 32-bit uint single channel
         TextureFormat::R32Uint => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let val = u32::from_le_bytes([
-                    data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3],
+                    data[i * 4],
+                    data[i * 4 + 1],
+                    data[i * 4 + 2],
+                    data[i * 4 + 3],
                 ]);
                 let byte = (val >> 24) as u8;
                 rgba[i * 4] = byte;
@@ -111,7 +125,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
         }
         // 16-bit RGBA float — HDR textures
         TextureFormat::Rgba16Unorm => {
-            if data.len() < pixel_count * 8 { return None; }
+            if data.len() < pixel_count * 8 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let off = i * 8;
                 rgba[i * 4] = (u16::from_le_bytes([data[off], data[off + 1]]) >> 8) as u8;
@@ -122,7 +138,9 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
         }
         // 16-bit RG (two channel)
         TextureFormat::Rg16Uint | TextureFormat::Rg16Unorm => {
-            if data.len() < pixel_count * 4 { return None; }
+            if data.len() < pixel_count * 4 {
+                return None;
+            }
             for i in 0..pixel_count {
                 let off = i * 4;
                 let r = (u16::from_le_bytes([data[off], data[off + 1]]) >> 8) as u8;
@@ -137,7 +155,11 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
     }
 
     Some(Image::new(
-        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: 1,
+        },
         TextureDimension::D2,
         rgba,
         TextureFormat::Rgba8UnormSrgb,
@@ -151,10 +173,7 @@ fn convert_to_rgba8(image: &Image) -> Option<Image> {
 /// Example: `<project>/assets/textures/wall.png` →
 /// `<project>/.cache/thumbnails/textures/wall.png`. Sources outside the
 /// project's `assets/` directory aren't cached (return `None`).
-pub fn texture_thumb_path(
-    source_abs: &Path,
-    project: &CurrentProject,
-) -> Option<PathBuf> {
+pub fn texture_thumb_path(source_abs: &Path, project: &CurrentProject) -> Option<PathBuf> {
     let rel = project.make_relative(source_abs)?;
     let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
     let mut out = thumbnail_cache_dir(project, "textures").join(rel);
@@ -175,8 +194,7 @@ fn cached_thumb_is_fresh(cache_path: &Path, source_path: &Path) -> bool {
         // the row anyway.
         return true;
     };
-    let (Ok(cache_mtime), Ok(source_mtime)) =
-        (cache_meta.modified(), source_meta.modified())
+    let (Ok(cache_mtime), Ok(source_mtime)) = (cache_meta.modified(), source_meta.modified())
     else {
         return false;
     };
@@ -230,8 +248,7 @@ fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
         );
         return;
     };
-    let Some(buf) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(w, h, rgba)
-    else {
+    let Some(buf) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(w, h, rgba) else {
         return;
     };
     // Lanczos3 to match `renzora_rmip`'s mipmap baker — high-quality
@@ -245,7 +262,12 @@ fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
         let th = CACHE_THUMB_SIZE.min(h);
         (((th as f32 * aspect).round() as u32).max(1), th)
     };
-    let resized = image::imageops::resize(&buf, target_w, target_h, image::imageops::FilterType::Lanczos3);
+    let resized = image::imageops::resize(
+        &buf,
+        target_w,
+        target_h,
+        image::imageops::FilterType::Lanczos3,
+    );
 
     if let Some(parent) = cache_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -464,7 +486,9 @@ pub fn update_thumbnail_cache(
                             }
                         }
                     }
-                    if let Some(id) = register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures) {
+                    if let Some(id) =
+                        register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures)
+                    {
                         cache.texture_ids.insert(path, id);
                     } else {
                         cache.failed.insert(path.clone());
@@ -486,7 +510,11 @@ pub fn update_thumbnail_cache(
     let unregistered: Vec<PathBuf> = cache
         .handles
         .iter()
-        .filter(|(p, _)| !cache.texture_ids.contains_key(*p) && !cache.loading.contains(*p) && !cache.failed.contains(*p))
+        .filter(|(p, _)| {
+            !cache.texture_ids.contains_key(*p)
+                && !cache.loading.contains(*p)
+                && !cache.failed.contains(*p)
+        })
         .map(|(p, _)| p.clone())
         .collect();
 
@@ -501,7 +529,9 @@ pub fn update_thumbnail_cache(
                         }
                     }
                 }
-                if let Some(id) = register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures) {
+                if let Some(id) =
+                    register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures)
+                {
                     cache.texture_ids.insert(path, id);
                 } else {
                     cache.failed.insert(path.clone());

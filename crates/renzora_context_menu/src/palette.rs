@@ -50,23 +50,39 @@ impl PalettePanel {
 }
 
 impl EditorPanel for PalettePanel {
-    fn id(&self) -> &str { "palette" }
-    fn title(&self) -> &str { "Palette" }
-    fn icon(&self) -> Option<&str> { Some(regular::SQUARES_FOUR) }
-    fn category(&self) -> &str { "Scene" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Left }
-    fn min_size(&self) -> [f32; 2] { [200.0, 200.0] }
+    fn id(&self) -> &str {
+        "palette"
+    }
+    fn title(&self) -> &str {
+        "Palette"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(regular::SQUARES_FOUR)
+    }
+    fn category(&self) -> &str {
+        "Scene"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Left
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 200.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = world.get_resource::<ThemeManager>().map(|m| m.active_theme.clone());
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|m| m.active_theme.clone());
         let (text_primary, text_muted, hover, header_bg) = theme
             .as_ref()
-            .map(|t| (
-                t.text.primary.to_color32(),
-                t.text.muted.to_color32(),
-                t.widgets.hovered_bg.to_color32(),
-                t.surfaces.panel.to_color32(),
-            ))
+            .map(|t| {
+                (
+                    t.text.primary.to_color32(),
+                    t.text.muted.to_color32(),
+                    t.widgets.hovered_bg.to_color32(),
+                    t.surfaces.panel.to_color32(),
+                )
+            })
             .unwrap_or((
                 Color32::WHITE,
                 Color32::from_gray(140),
@@ -74,26 +90,38 @@ impl EditorPanel for PalettePanel {
                 Color32::from_rgb(40, 40, 45),
             ));
 
-        let Ok(mut state) = self.state.write() else { return };
+        let Ok(mut state) = self.state.write() else {
+            return;
+        };
 
         // Tab bar
         ui.horizontal(|ui| {
             let entities_label = if state.tab == PaletteTab::Entities {
-                RichText::new(format!("{} Entities", regular::CUBE)).color(text_primary).strong()
+                RichText::new(format!("{} Entities", regular::CUBE))
+                    .color(text_primary)
+                    .strong()
             } else {
                 RichText::new(format!("{} Entities", regular::CUBE)).color(text_muted)
             };
-            if ui.selectable_label(state.tab == PaletteTab::Entities, entities_label).clicked() {
+            if ui
+                .selectable_label(state.tab == PaletteTab::Entities, entities_label)
+                .clicked()
+            {
                 state.tab = PaletteTab::Entities;
                 state.query.clear();
             }
 
             let components_label = if state.tab == PaletteTab::Components {
-                RichText::new(format!("{} Components", regular::PUZZLE_PIECE)).color(text_primary).strong()
+                RichText::new(format!("{} Components", regular::PUZZLE_PIECE))
+                    .color(text_primary)
+                    .strong()
             } else {
                 RichText::new(format!("{} Components", regular::PUZZLE_PIECE)).color(text_muted)
             };
-            if ui.selectable_label(state.tab == PaletteTab::Components, components_label).clicked() {
+            if ui
+                .selectable_label(state.tab == PaletteTab::Components, components_label)
+                .clicked()
+            {
                 state.tab = PaletteTab::Components;
                 state.query.clear();
             }
@@ -144,7 +172,9 @@ impl PalettePanel {
             let matches = q.is_empty()
                 || preset.display_name.to_lowercase().contains(q)
                 || preset.category.to_lowercase().contains(q);
-            if !matches { continue; }
+            if !matches {
+                continue;
+            }
 
             if let Some(bucket) = groups.iter_mut().find(|(c, _)| *c == preset.category) {
                 bucket.1.push(preset);
@@ -158,45 +188,54 @@ impl PalettePanel {
             return;
         }
 
-        egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-            for (category, entries) in &groups {
-                // Category header
-                let header_rect = ui.horizontal(|ui| {
-                    ui.label(RichText::new(*category).color(text_muted).size(11.0).strong());
-                }).response.rect;
-                ui.painter().rect_filled(
-                    header_rect.expand2(egui::vec2(4.0, 1.0)),
-                    egui::CornerRadius::same(2),
-                    header_bg.linear_multiply(0.3),
-                );
-
-                for preset in entries {
-                    let w = ui.available_width();
-                    let (rect, resp) = ui.allocate_exact_size(
-                        egui::Vec2::new(w, 22.0),
-                        egui::Sense::click(),
-                    );
-                    if resp.hovered() {
-                        ui.painter().rect_filled(rect, egui::CornerRadius::same(3), hover);
-                    }
-                    ui.painter().text(
-                        rect.left_center() + egui::Vec2::new(8.0, 0.0),
-                        egui::Align2::LEFT_CENTER,
-                        format!("{}  {}", preset.icon, preset.display_name),
-                        egui::FontId::proportional(13.0),
-                        text_primary,
-                    );
-                    if resp.clicked() {
-                        if let Some(q) = world.get_resource::<PaletteActionQueue>() {
-                            q.0.lock().unwrap().push(
-                                PendingPaletteAction::SpawnEntity(preset.id),
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for (category, entries) in &groups {
+                    // Category header
+                    let header_rect = ui
+                        .horizontal(|ui| {
+                            ui.label(
+                                RichText::new(*category)
+                                    .color(text_muted)
+                                    .size(11.0)
+                                    .strong(),
                             );
+                        })
+                        .response
+                        .rect;
+                    ui.painter().rect_filled(
+                        header_rect.expand2(egui::vec2(4.0, 1.0)),
+                        egui::CornerRadius::same(2),
+                        header_bg.linear_multiply(0.3),
+                    );
+
+                    for preset in entries {
+                        let w = ui.available_width();
+                        let (rect, resp) =
+                            ui.allocate_exact_size(egui::Vec2::new(w, 22.0), egui::Sense::click());
+                        if resp.hovered() {
+                            ui.painter()
+                                .rect_filled(rect, egui::CornerRadius::same(3), hover);
+                        }
+                        ui.painter().text(
+                            rect.left_center() + egui::Vec2::new(8.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{}  {}", preset.icon, preset.display_name),
+                            egui::FontId::proportional(13.0),
+                            text_primary,
+                        );
+                        if resp.clicked() {
+                            if let Some(q) = world.get_resource::<PaletteActionQueue>() {
+                                q.0.lock()
+                                    .unwrap()
+                                    .push(PendingPaletteAction::SpawnEntity(preset.id));
+                            }
                         }
                     }
+                    ui.add_space(2.0);
                 }
-                ui.add_space(2.0);
-            }
-        });
+            });
     }
 
     fn render_components(
@@ -219,7 +258,9 @@ impl PalettePanel {
 
         let mut groups: Vec<(&str, Vec<&renzora_editor::InspectorEntry>)> = Vec::new();
         for entry in registry.iter() {
-            if entry.add_fn.is_none() { continue; }
+            if entry.add_fn.is_none() {
+                continue;
+            }
             // Hide if ALL selected entities already have it
             if !targets.is_empty() && targets.iter().all(|e| (entry.has_fn)(world, *e)) {
                 continue;
@@ -227,7 +268,9 @@ impl PalettePanel {
             let matches = q.is_empty()
                 || entry.display_name.to_lowercase().contains(q)
                 || entry.category.to_lowercase().contains(q);
-            if !matches { continue; }
+            if !matches {
+                continue;
+            }
 
             if let Some(bucket) = groups.iter_mut().find(|(c, _)| *c == entry.category) {
                 bucket.1.push(entry);
@@ -255,51 +298,62 @@ impl PalettePanel {
             ui.add_space(2.0);
         }
 
-        egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-            for (category, entries) in &groups {
-                let header_rect = ui.horizontal(|ui| {
-                    ui.label(RichText::new(*category).color(text_muted).size(11.0).strong());
-                }).response.rect;
-                ui.painter().rect_filled(
-                    header_rect.expand2(egui::vec2(4.0, 1.0)),
-                    egui::CornerRadius::same(2),
-                    header_bg.linear_multiply(0.3),
-                );
-
-                for entry in entries {
-                    let w = ui.available_width();
-                    let (rect, resp) = ui.allocate_exact_size(
-                        egui::Vec2::new(w, 22.0),
-                        egui::Sense::click(),
-                    );
-                    if resp.hovered() {
-                        ui.painter().rect_filled(rect, egui::CornerRadius::same(3), hover);
-                    }
-                    ui.painter().text(
-                        rect.left_center() + egui::Vec2::new(8.0, 0.0),
-                        egui::Align2::LEFT_CENTER,
-                        format!("{}  {}", entry.icon, entry.display_name),
-                        egui::FontId::proportional(13.0),
-                        text_primary,
-                    );
-                    if resp.clicked() {
-                        if let Some(q) = world.get_resource::<PaletteActionQueue>() {
-                            q.0.lock().unwrap().push(
-                                PendingPaletteAction::AddComponent(entry.type_id),
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for (category, entries) in &groups {
+                    let header_rect = ui
+                        .horizontal(|ui| {
+                            ui.label(
+                                RichText::new(*category)
+                                    .color(text_muted)
+                                    .size(11.0)
+                                    .strong(),
                             );
+                        })
+                        .response
+                        .rect;
+                    ui.painter().rect_filled(
+                        header_rect.expand2(egui::vec2(4.0, 1.0)),
+                        egui::CornerRadius::same(2),
+                        header_bg.linear_multiply(0.3),
+                    );
+
+                    for entry in entries {
+                        let w = ui.available_width();
+                        let (rect, resp) =
+                            ui.allocate_exact_size(egui::Vec2::new(w, 22.0), egui::Sense::click());
+                        if resp.hovered() {
+                            ui.painter()
+                                .rect_filled(rect, egui::CornerRadius::same(3), hover);
+                        }
+                        ui.painter().text(
+                            rect.left_center() + egui::Vec2::new(8.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            format!("{}  {}", entry.icon, entry.display_name),
+                            egui::FontId::proportional(13.0),
+                            text_primary,
+                        );
+                        if resp.clicked() {
+                            if let Some(q) = world.get_resource::<PaletteActionQueue>() {
+                                q.0.lock()
+                                    .unwrap()
+                                    .push(PendingPaletteAction::AddComponent(entry.type_id));
+                            }
                         }
                     }
+                    ui.add_space(2.0);
                 }
-                ui.add_space(2.0);
-            }
-        });
+            });
     }
 }
 
 /// Drain pending palette actions each frame.
 pub fn drain_palette_actions(world: &mut World) {
     let actions: Vec<PendingPaletteAction> = {
-        let Some(queue) = world.get_resource::<PaletteActionQueue>() else { return };
+        let Some(queue) = world.get_resource::<PaletteActionQueue>() else {
+            return;
+        };
         let mut lock = queue.0.lock().unwrap();
         std::mem::take(&mut *lock)
     };

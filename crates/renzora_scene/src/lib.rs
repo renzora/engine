@@ -4,16 +4,20 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, MeshInstanceData, SaveSceneRequested, SaveAsSceneRequested, NewSceneRequested, OpenSceneRequested, ToggleSettingsRequested, HideInHierarchy, EditorCamera, SceneCamera, TabSwitchRequest, TabSceneSnapshot, SceneTabBuffers};
+use renzora::core::{
+    CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData, NewSceneRequested,
+    OpenSceneRequested, SaveAsSceneRequested, SaveSceneRequested, SceneCamera, SceneTabBuffers,
+    TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested,
+};
 use renzora_camera::OrbitCameraState;
-use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_engine::scene_io;
 use renzora_editor::SplashState;
+use renzora_engine::scene_io;
+use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_splash::{EditorLoadingOverlayActive, LoadingTaskHandle, LoadingTasks};
 use renzora_viewport::model_flatten::ImportedRoot;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
-pub use scene_io::{save_scene, load_scene, save_current_scene, load_current_scene};
+pub use scene_io::{load_current_scene, load_scene, save_current_scene, save_scene};
 
 mod panel;
 pub use panel::ScenesPanel;
@@ -107,19 +111,24 @@ fn handle_tab_switch(world: &mut World) {
     let new_id = request.new_tab_id;
 
     // 1. Serialize current scene entities into buffer for old tab
-    let scene_ron = scene_io::serialize_scene_to_string(world)
-        .unwrap_or_else(|e| {
-            warn!("Failed to serialize scene for tab {}: {}", old_id, e);
-            "(entities: {}, resources: {})".to_string()
-        });
+    let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
+        warn!("Failed to serialize scene for tab {}: {}", old_id, e);
+        "(entities: {}, resources: {})".to_string()
+    });
 
     // 2. Save camera state
-    let (focus, distance, yaw, pitch) = if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
-        (orbit.focus.to_array(), orbit.distance, orbit.yaw, orbit.pitch)
-    } else {
-        let def = OrbitCameraState::default();
-        (def.focus.to_array(), def.distance, def.yaw, def.pitch)
-    };
+    let (focus, distance, yaw, pitch) =
+        if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
+            (
+                orbit.focus.to_array(),
+                orbit.distance,
+                orbit.yaw,
+                orbit.pitch,
+            )
+        } else {
+            let def = OrbitCameraState::default();
+            (def.focus.to_array(), def.distance, def.yaw, def.pitch)
+        };
 
     let snapshot = TabSceneSnapshot {
         scene_ron,
@@ -190,10 +199,8 @@ fn stamp_orbit_on_scene_camera(world: &mut World) {
 /// apply it to the resource, and remove the component.
 pub(crate) fn extract_orbit_from_scene_camera(world: &mut World) {
     let mut query = world.query_filtered::<(Entity, &OrbitCameraState), With<SceneCamera>>();
-    let result: Option<(Entity, OrbitCameraState)> = query
-        .iter(world)
-        .next()
-        .map(|(e, o)| (e, o.clone()));
+    let result: Option<(Entity, OrbitCameraState)> =
+        query.iter(world).next().map(|(e, o)| (e, o.clone()));
     if let Some((entity, orbit)) = result {
         world.insert_resource(orbit);
         world.entity_mut(entity).remove::<OrbitCameraState>();
@@ -210,8 +217,12 @@ fn detect_file_keybindings(
     keybindings: Res<KeyBindings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
         commands.insert_resource(SaveSceneRequested);
@@ -239,7 +250,8 @@ fn save_scene_system(world: &mut World) {
     let tab_scene_path = world
         .get_resource::<renzora_ui::DocumentTabState>()
         .and_then(|tabs| {
-            tabs.tabs.get(tabs.active_tab)
+            tabs.tabs
+                .get(tabs.active_tab)
                 .and_then(|tab| tab.scene_path.clone())
         });
 
@@ -255,7 +267,11 @@ fn save_scene_system(world: &mut World) {
         return;
     };
     let save_path = project.resolve_path(&tab_scene_path);
-    info!("Save: active tab scene_path={:?}, resolved={}", tab_scene_path, save_path.display());
+    info!(
+        "Save: active tab scene_path={:?}, resolved={}",
+        tab_scene_path,
+        save_path.display()
+    );
 
     stamp_orbit_on_scene_camera(world);
 
@@ -340,7 +356,7 @@ fn save_as_scene_system(world: &mut World) {
         // Update active tab
         if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
             let active = tabs.active_tab;
-        if let Some(tab) = tabs.tabs.get_mut(active) {
+            if let Some(tab) = tabs.tabs.get_mut(active) {
                 tab.is_modified = false;
                 if let Some(ref rel) = relative {
                     tab.scene_path = Some(rel.clone());
@@ -440,7 +456,7 @@ fn open_scene_system(world: &mut World) {
         // Update active tab
         if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
             let active = tabs.active_tab;
-        if let Some(tab) = tabs.tabs.get_mut(active) {
+            if let Some(tab) = tabs.tabs.get_mut(active) {
                 tab.is_modified = false;
                 if let Some(ref rel) = relative {
                     tab.scene_path = Some(rel.clone());
@@ -583,7 +599,9 @@ fn load_scene_on_enter_loading(world: &mut World) {
     // in `renzora_hierarchy` — we can't do it here because entities have
     // only just been queued for spawn and the hierarchy tree won't be
     // built until the next frame.
-    if let Some(mut flag) = world.get_resource_mut::<renzora_editor::AutoSelectFirstHierarchyEntity>() {
+    if let Some(mut flag) =
+        world.get_resource_mut::<renzora_editor::AutoSelectFirstHierarchyEntity>()
+    {
         flag.0 = true;
     }
 }
@@ -626,10 +644,7 @@ fn tick_scene_load_progress(
     //    Gltf asset finished loading and `finish_mesh_instance_rehydrate`
     //    advanced it.
     let total = progress.total_instances;
-    let still_pending = pending
-        .iter()
-        .filter(|d| d.model_path.is_some())
-        .count() as u32;
+    let still_pending = pending.iter().filter(|d| d.model_path.is_some()).count() as u32;
     let loaded = total.saturating_sub(still_pending);
 
     let mut current_loading_name: Option<String> = None;
@@ -982,9 +997,12 @@ impl Plugin for ScenePlugin {
             // we left them, the editor overlay's first session would
             // aggregate them into its bar and start partway full. Drop
             // them so each editor overlay session starts at 0%.
-            .add_systems(OnEnter(SplashState::Editor), |mut tasks: ResMut<LoadingTasks>| {
-                tasks.clear();
-            })
+            .add_systems(
+                OnEnter(SplashState::Editor),
+                |mut tasks: ResMut<LoadingTasks>| {
+                    tasks.clear();
+                },
+            )
             // Rehydrate systems run during Loading too. They drive GLB
             // resolution + spawn while the loading screen ticks.
             .add_systems(
@@ -1028,3 +1046,5 @@ impl Plugin for ScenePlugin {
             );
     }
 }
+
+renzora::add!(ScenePlugin, Editor);

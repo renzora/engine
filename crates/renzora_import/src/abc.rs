@@ -25,8 +25,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     if data[..8] != OGAWA_MAGIC {
         return Err(ImportError::ParseError(
-            "Not an Ogawa-format Alembic file. HDF5-backed .abc files are not supported."
-                .into(),
+            "Not an Ogawa-format Alembic file. HDF5-backed .abc files are not supported.".into(),
         ));
     }
 
@@ -70,12 +69,19 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         all_texcoords = vec![0.0; vertex_count * 2];
     }
 
-    let glb_bytes =
-        crate::obj::build_glb(&all_positions, &all_normals, &all_texcoords, &all_indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = crate::obj::build_glb(
+        &all_positions,
+        &all_normals,
+        &all_texcoords,
+        &all_indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }
 
@@ -338,7 +344,8 @@ fn looks_like_indices(data: &[u8], vertex_count: usize) -> bool {
         return false;
     }
     // All indices should be valid vertex indices
-    ints.iter().all(|&v| v >= 0 && (v as usize) < vertex_count.max(1) * 2)
+    ints.iter()
+        .all(|&v| v >= 0 && (v as usize) < vertex_count.max(1) * 2)
 }
 
 fn read_f32_array(data: &[u8]) -> Vec<f32> {
@@ -394,9 +401,21 @@ fn generate_flat_normals(positions: &[f32], indices: &[u32], vertex_count: usize
             continue;
         }
 
-        let p0 = [positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]];
-        let p1 = [positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]];
-        let p2 = [positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]];
+        let p0 = [
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
+        ];
+        let p1 = [
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
+        ];
+        let p2 = [
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
+        ];
 
         let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
         let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];

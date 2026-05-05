@@ -109,8 +109,7 @@ impl HubLibraryPanel {
         self.state.write().unwrap().loading = true;
 
         std::thread::spawn(move || {
-            let result = renzora_auth::marketplace::get_my_assets(&session_clone)
-                .map(|r| r.assets);
+            let result = renzora_auth::marketplace::get_my_assets(&session_clone).map(|r| r.assets);
             let _ = tx.send(LibraryResult::Assets(result));
         });
     }
@@ -137,8 +136,7 @@ impl HubLibraryPanel {
 
         std::thread::spawn(move || {
             let result = (|| {
-                let dl_resp =
-                    renzora_auth::marketplace::download_asset(&session_clone, &asset_id)?;
+                let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)?;
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)?;
                 install::install_asset_with_filename(
                     &project_path,
@@ -262,9 +260,8 @@ impl EditorPanel for HubLibraryPanel {
                     )),
             );
 
-            let refresh_btn = ui.button(
-                RichText::new(egui_phosphor::regular::ARROW_CLOCKWISE).size(14.0),
-            );
+            let refresh_btn =
+                ui.button(RichText::new(egui_phosphor::regular::ARROW_CLOCKWISE).size(14.0));
             if refresh_btn.clicked() {
                 do_refresh = true;
             }
@@ -285,13 +282,9 @@ impl EditorPanel for HubLibraryPanel {
             if let Some(msg) = state.status.take() {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!(
-                            "{} {}",
-                            egui_phosphor::regular::CHECK_CIRCLE,
-                            msg
-                        ))
-                        .size(10.5)
-                        .color(Color32::from_rgb(34, 197, 94)),
+                        RichText::new(format!("{} {}", egui_phosphor::regular::CHECK_CIRCLE, msg))
+                            .size(10.5)
+                            .color(Color32::from_rgb(34, 197, 94)),
                     );
                 });
             }
@@ -384,7 +377,11 @@ impl EditorPanel for HubLibraryPanel {
                     );
 
                     let hovered = resp.hovered();
-                    let row_bg = if hovered { brighten(surface, 8) } else { surface };
+                    let row_bg = if hovered {
+                        brighten(surface, 8)
+                    } else {
+                        surface
+                    };
                     let row_border = if hovered { accent } else { border };
 
                     ui.painter().rect(
@@ -492,10 +489,7 @@ impl EditorPanel for HubLibraryPanel {
                     let btn_w = 68.0;
                     let btn_h = 24.0;
                     let btn_rect = egui::Rect::from_min_size(
-                        egui::Pos2::new(
-                            rect.right() - btn_w - 8.0,
-                            rect.center().y - btn_h / 2.0,
-                        ),
+                        egui::Pos2::new(rect.right() - btn_w - 8.0, rect.center().y - btn_h / 2.0),
                         Vec2::new(btn_w, btn_h),
                     );
                     let btn_id = ui.id().with(("lib_install", &asset.id));

@@ -38,7 +38,8 @@ pub fn spinner(ui: &mut egui::Ui, size: f32, theme: &Theme) -> egui::Response {
         let alpha = (i as f32 / seg as f32 * 255.0) as u8;
         let base = theme.widgets.active_bg.to_color32();
         let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha);
-        ui.painter_at(rect).line_segment([from, to], Stroke::new(2.0, color));
+        ui.painter_at(rect)
+            .line_segment([from, to], Stroke::new(2.0, color));
     }
     ui.ctx().request_repaint();
     resp

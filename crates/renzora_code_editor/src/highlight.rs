@@ -5,9 +5,7 @@
 //! keyword / type lists. No parser, no tree-sitter, no syntect — those are a
 //! follow-up if/when we need richer grammars.
 
-use bevy_egui::egui::{
-    text::LayoutJob, Color32, FontId, TextFormat,
-};
+use bevy_egui::egui::{text::LayoutJob, Color32, FontId, TextFormat};
 use renzora_theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,45 +112,40 @@ impl TokenStyle {
 fn keywords_for(lang: Language) -> &'static [&'static str] {
     match lang {
         Language::Lua => &[
-            "and", "break", "do", "else", "elseif", "end", "false", "for",
-            "function", "goto", "if", "in", "local", "nil", "not", "or",
-            "repeat", "return", "then", "true", "until", "while", "self",
+            "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto",
+            "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until",
+            "while", "self",
         ],
         Language::Rhai => &[
-            "let", "const", "fn", "if", "else", "while", "for", "in", "loop",
-            "break", "continue", "return", "throw", "try", "catch", "switch",
-            "import", "export", "as", "private", "this", "do", "until", "true",
-            "false",
+            "let", "const", "fn", "if", "else", "while", "for", "in", "loop", "break", "continue",
+            "return", "throw", "try", "catch", "switch", "import", "export", "as", "private",
+            "this", "do", "until", "true", "false",
         ],
         Language::Rust => &[
-            "as", "break", "const", "continue", "crate", "else", "enum",
-            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop",
-            "match", "mod", "move", "mut", "pub", "ref", "return", "self",
-            "Self", "static", "struct", "super", "trait", "true", "type",
-            "unsafe", "use", "where", "while", "async", "await", "dyn", "box",
-            "try",
+            "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",
+            "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
+            "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+            "unsafe", "use", "where", "while", "async", "await", "dyn", "box", "try",
         ],
         Language::Wgsl => &[
-            "fn", "let", "var", "const", "struct", "if", "else", "for",
-            "while", "loop", "return", "discard", "switch", "case", "default",
-            "break", "continue", "enable", "override", "alias", "true", "false",
+            "fn", "let", "var", "const", "struct", "if", "else", "for", "while", "loop", "return",
+            "discard", "switch", "case", "default", "break", "continue", "enable", "override",
+            "alias", "true", "false",
         ],
         Language::Python => &[
-            "def", "class", "if", "elif", "else", "for", "while", "return",
-            "True", "False", "None", "import", "from", "as", "try", "except",
-            "finally", "with", "yield", "lambda", "pass", "raise", "global",
-            "nonlocal", "and", "or", "not", "in", "is", "break", "continue",
-            "async", "await",
+            "def", "class", "if", "elif", "else", "for", "while", "return", "True", "False",
+            "None", "import", "from", "as", "try", "except", "finally", "with", "yield", "lambda",
+            "pass", "raise", "global", "nonlocal", "and", "or", "not", "in", "is", "break",
+            "continue", "async", "await",
         ],
         Language::Shell => &[
-            "if", "then", "else", "elif", "fi", "for", "while", "do", "done",
-            "case", "esac", "function", "return", "local", "export",
+            "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case", "esac",
+            "function", "return", "local", "export",
         ],
         Language::Sql => &[
-            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "UPDATE", "DELETE",
-            "CREATE", "TABLE", "DROP", "JOIN", "LEFT", "RIGHT", "INNER", "ON",
-            "AS", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "IN",
-            "NOT", "AND", "OR", "NULL", "IS", "LIKE", "VALUES",
+            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "UPDATE", "DELETE", "CREATE", "TABLE",
+            "DROP", "JOIN", "LEFT", "RIGHT", "INNER", "ON", "AS", "ORDER", "BY", "GROUP", "HAVING",
+            "LIMIT", "OFFSET", "IN", "NOT", "AND", "OR", "NULL", "IS", "LIKE", "VALUES",
         ],
         Language::Toml | Language::Json | Language::PlainText => &[],
     }
@@ -161,22 +154,49 @@ fn keywords_for(lang: Language) -> &'static [&'static str] {
 fn types_for(lang: Language) -> &'static [&'static str] {
     match lang {
         Language::Rust => &[
-            "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize",
-            "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64",
-            "str", "String", "Vec", "Option", "Result", "Box", "Rc", "Arc",
-            "HashMap", "HashSet", "BTreeMap", "BTreeSet",
+            "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64",
+            "i128", "isize", "f32", "f64", "str", "String", "Vec", "Option", "Result", "Box", "Rc",
+            "Arc", "HashMap", "HashSet", "BTreeMap", "BTreeSet",
         ],
         Language::Wgsl => &[
-            "bool", "i32", "u32", "f32", "f16",
-            "vec2", "vec3", "vec4",
-            "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u",
-            "vec2f", "vec3f", "vec4f",
-            "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4",
-            "mat4x2", "mat4x3", "mat4x4",
-            "texture_2d", "texture_3d", "texture_cube",
-            "sampler", "sampler_comparison", "array", "atomic", "ptr",
+            "bool",
+            "i32",
+            "u32",
+            "f32",
+            "f16",
+            "vec2",
+            "vec3",
+            "vec4",
+            "vec2i",
+            "vec3i",
+            "vec4i",
+            "vec2u",
+            "vec3u",
+            "vec4u",
+            "vec2f",
+            "vec3f",
+            "vec4f",
+            "mat2x2",
+            "mat2x3",
+            "mat2x4",
+            "mat3x2",
+            "mat3x3",
+            "mat3x4",
+            "mat4x2",
+            "mat4x3",
+            "mat4x4",
+            "texture_2d",
+            "texture_3d",
+            "texture_cube",
+            "sampler",
+            "sampler_comparison",
+            "array",
+            "atomic",
+            "ptr",
         ],
-        Language::Python => &["int", "float", "str", "bool", "list", "dict", "tuple", "set"],
+        Language::Python => &[
+            "int", "float", "str", "bool", "list", "dict", "tuple", "set",
+        ],
         _ => &[],
     }
 }
@@ -230,10 +250,7 @@ pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
         }
 
         // --- Lua long comment --[[ ... ]] ---
-        if matches!(lang, Language::Lua)
-            && i + 3 < len
-            && &bytes[i..i + 4] == b"--[["
-        {
+        if matches!(lang, Language::Lua) && i + 3 < len && &bytes[i..i + 4] == b"--[[" {
             let mut j = i + 4;
             while j + 1 < len && !(bytes[j] == b']' && bytes[j + 1] == b']') {
                 j += 1;

@@ -9,10 +9,10 @@
 use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
-use renzora_editor::{EditorSelection, EditorCamera, HideInHierarchy};
+use renzora::core::InputFocusState;
+use renzora_editor::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::OverlayGizmoGroup;
 
@@ -305,21 +305,20 @@ pub fn modal_transform_input_system(
 
     let viewport_hovered = viewport.as_ref().map_or(true, |v| v.hovered);
 
-    let pivot_screen_pos =
-        camera_query
-            .single()
-            .ok()
-            .and_then(|(camera, cam_transform)| {
-                let vp = viewport.as_ref()?;
-                let ndc = camera.world_to_ndc(cam_transform, avg_pos)?;
-                if ndc.z < 0.0 || ndc.z > 1.0 {
-                    return None;
-                }
-                Some(Vec2::new(
-                    vp.screen_position.x + (ndc.x + 1.0) * 0.5 * vp.screen_size.x,
-                    vp.screen_position.y + (1.0 - ndc.y) * 0.5 * vp.screen_size.y,
-                ))
-            });
+    let pivot_screen_pos = camera_query
+        .single()
+        .ok()
+        .and_then(|(camera, cam_transform)| {
+            let vp = viewport.as_ref()?;
+            let ndc = camera.world_to_ndc(cam_transform, avg_pos)?;
+            if ndc.z < 0.0 || ndc.z > 1.0 {
+                return None;
+            }
+            Some(Vec2::new(
+                vp.screen_position.x + (ndc.x + 1.0) * 0.5 * vp.screen_size.x,
+                vp.screen_position.y + (1.0 - ndc.y) * 0.5 * vp.screen_size.y,
+            ))
+        });
 
     let cursor_pos = if viewport_hovered {
         window.cursor_position().unwrap_or(Vec2::ZERO)
@@ -371,8 +370,7 @@ pub fn modal_transform_keyboard_system(
         return;
     }
 
-    let shift =
-        keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     // Axis constraints
     if keyboard.just_pressed(KeyCode::KeyX) {
@@ -449,19 +447,27 @@ pub fn modal_transform_keyboard_system(
         // Record a TransformCmd per changed entity for undo.
         let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
         for state in &modal.start_transforms {
-            let Ok(current) = transforms.get(state.entity) else { continue };
+            let Ok(current) = transforms.get(state.entity) else {
+                continue;
+            };
             let old = state.transform;
             let new = *current;
             if old.translation == new.translation
                 && old.rotation == new.rotation
-                && old.scale == new.scale { continue; }
+                && old.scale == new.scale
+            {
+                continue;
+            }
             records.push((state.entity, old, new));
         }
         if !records.is_empty() {
             commands.queue(move |world: &mut World| {
                 for (entity, old, new) in records {
-                    renzora_undo::record(world, renzora_undo::UndoContext::Scene,
-                        Box::new(renzora_undo::TransformCmd { entity, old, new }));
+                    renzora_undo::record(
+                        world,
+                        renzora_undo::UndoContext::Scene,
+                        Box::new(renzora_undo::TransformCmd { entity, old, new }),
+                    );
                 }
             });
         }

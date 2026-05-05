@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::pbr::ScreenSpaceReflections;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -35,7 +35,9 @@ fn sync_ssr(
                     break;
                 }
                 if settings.enabled {
-                    commands.entity(*target).insert(ScreenSpaceReflections::default());
+                    commands
+                        .entity(*target)
+                        .insert(ScreenSpaceReflections::default());
                 } else {
                     commands.entity(*target).remove::<ScreenSpaceReflections>();
                 }
@@ -77,19 +79,27 @@ fn ssr_entry() -> InspectorEntry {
             world.entity_mut(entity).insert(SsrSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(SsrSettings, ScreenSpaceReflections)>();
+            world
+                .entity_mut(entity)
+                .remove::<(SsrSettings, ScreenSpaceReflections)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<SsrSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<SsrSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SsrSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<SsrSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: None,
     }
 }
 
+#[derive(Default)]
 pub struct SsrPlugin;
 
 impl Plugin for SsrPlugin {
@@ -101,3 +111,5 @@ impl Plugin for SsrPlugin {
         app.register_inspector(ssr_entry());
     }
 }
+
+renzora::add!(SsrPlugin);

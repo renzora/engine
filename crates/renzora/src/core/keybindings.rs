@@ -224,11 +224,20 @@ impl EditorAction {
             | EditorAction::GizmoRotate
             | EditorAction::GizmoScale => "Tools",
 
-            EditorAction::ModalGrab
-            | EditorAction::ModalRotate
-            | EditorAction::ModalScale => "Transform",
+            EditorAction::ModalGrab | EditorAction::ModalRotate | EditorAction::ModalScale => {
+                "Transform"
+            }
 
-            EditorAction::SelectUnderCursor | EditorAction::Delete | EditorAction::Duplicate | EditorAction::DuplicateAndMove | EditorAction::Deselect | EditorAction::MoveSelectionToCursor | EditorAction::SelectAll | EditorAction::Rename | EditorAction::HideSelected | EditorAction::IsolateSelected => "Selection",
+            EditorAction::SelectUnderCursor
+            | EditorAction::Delete
+            | EditorAction::Duplicate
+            | EditorAction::DuplicateAndMove
+            | EditorAction::Deselect
+            | EditorAction::MoveSelectionToCursor
+            | EditorAction::SelectAll
+            | EditorAction::Rename
+            | EditorAction::HideSelected
+            | EditorAction::IsolateSelected => "Selection",
 
             EditorAction::Undo
             | EditorAction::Redo
@@ -454,13 +463,25 @@ impl Default for KeyBindings {
         let mut bindings = HashMap::new();
 
         // Camera defaults
-        bindings.insert(EditorAction::CameraMoveForward, KeyBinding::new(KeyCode::KeyW));
-        bindings.insert(EditorAction::CameraMoveBackward, KeyBinding::new(KeyCode::KeyS));
+        bindings.insert(
+            EditorAction::CameraMoveForward,
+            KeyBinding::new(KeyCode::KeyW),
+        );
+        bindings.insert(
+            EditorAction::CameraMoveBackward,
+            KeyBinding::new(KeyCode::KeyS),
+        );
         bindings.insert(EditorAction::CameraMoveLeft, KeyBinding::new(KeyCode::KeyA));
-        bindings.insert(EditorAction::CameraMoveRight, KeyBinding::new(KeyCode::KeyD));
+        bindings.insert(
+            EditorAction::CameraMoveRight,
+            KeyBinding::new(KeyCode::KeyD),
+        );
         bindings.insert(EditorAction::CameraMoveUp, KeyBinding::new(KeyCode::KeyE));
         bindings.insert(EditorAction::CameraMoveDown, KeyBinding::new(KeyCode::KeyQ));
-        bindings.insert(EditorAction::CameraMoveFaster, KeyBinding::new(KeyCode::ShiftLeft));
+        bindings.insert(
+            EditorAction::CameraMoveFaster,
+            KeyBinding::new(KeyCode::ShiftLeft),
+        );
         bindings.insert(EditorAction::FocusSelected, KeyBinding::new(KeyCode::KeyF));
 
         // Tool defaults
@@ -475,86 +496,236 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::ModalScale, KeyBinding::new(KeyCode::KeyS));
 
         // Selection defaults
-        bindings.insert(EditorAction::SelectUnderCursor, KeyBinding::new(KeyCode::KeyX));
+        bindings.insert(
+            EditorAction::SelectUnderCursor,
+            KeyBinding::new(KeyCode::KeyX),
+        );
         bindings.insert(EditorAction::Delete, KeyBinding::new(KeyCode::Delete));
-        bindings.insert(EditorAction::Duplicate, KeyBinding::new(KeyCode::KeyD).ctrl());
-        bindings.insert(EditorAction::DuplicateAndMove, KeyBinding::new(KeyCode::KeyD).alt());
+        bindings.insert(
+            EditorAction::Duplicate,
+            KeyBinding::new(KeyCode::KeyD).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::DuplicateAndMove,
+            KeyBinding::new(KeyCode::KeyD).alt(),
+        );
         bindings.insert(EditorAction::Deselect, KeyBinding::new(KeyCode::Escape));
 
         // Edit defaults
         bindings.insert(EditorAction::Undo, KeyBinding::new(KeyCode::KeyZ).ctrl());
         bindings.insert(EditorAction::Redo, KeyBinding::new(KeyCode::KeyY).ctrl());
-        bindings.insert(EditorAction::CreateNode, KeyBinding::new(KeyCode::KeyA).ctrl());
+        bindings.insert(
+            EditorAction::CreateNode,
+            KeyBinding::new(KeyCode::KeyA).ctrl(),
+        );
         bindings.insert(EditorAction::Copy, KeyBinding::new(KeyCode::KeyC).ctrl());
         bindings.insert(EditorAction::Paste, KeyBinding::new(KeyCode::KeyV).ctrl());
 
         // File defaults
-        bindings.insert(EditorAction::SaveScene, KeyBinding::new(KeyCode::KeyS).ctrl());
-        bindings.insert(EditorAction::SaveSceneAs, KeyBinding::new(KeyCode::KeyS).ctrl().shift());
-        bindings.insert(EditorAction::OpenScene, KeyBinding::new(KeyCode::KeyO).ctrl());
-        bindings.insert(EditorAction::NewScene, KeyBinding::new(KeyCode::KeyN).ctrl());
-        bindings.insert(EditorAction::OpenSettings, KeyBinding::new(KeyCode::Comma).ctrl());
+        bindings.insert(
+            EditorAction::SaveScene,
+            KeyBinding::new(KeyCode::KeyS).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::SaveSceneAs,
+            KeyBinding::new(KeyCode::KeyS).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::OpenScene,
+            KeyBinding::new(KeyCode::KeyO).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::NewScene,
+            KeyBinding::new(KeyCode::KeyN).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::OpenSettings,
+            KeyBinding::new(KeyCode::Comma).ctrl(),
+        );
 
         // View defaults
-        bindings.insert(EditorAction::ToggleBottomPanel, KeyBinding::new(KeyCode::Backquote).ctrl());
+        bindings.insert(
+            EditorAction::ToggleBottomPanel,
+            KeyBinding::new(KeyCode::Backquote).ctrl(),
+        );
         // Z alone used to toggle wireframe but clashed with stray Z presses
         // near Ctrl+Z (undo) and the gizmo tools. Use Alt-modified forms.
-        bindings.insert(EditorAction::ToggleWireframe, KeyBinding::new(KeyCode::KeyZ).alt());
-        bindings.insert(EditorAction::ToggleLighting, KeyBinding::new(KeyCode::KeyZ).alt().shift());
-        bindings.insert(EditorAction::ToggleGrid, KeyBinding::new(KeyCode::KeyG).ctrl());
+        bindings.insert(
+            EditorAction::ToggleWireframe,
+            KeyBinding::new(KeyCode::KeyZ).alt(),
+        );
+        bindings.insert(
+            EditorAction::ToggleLighting,
+            KeyBinding::new(KeyCode::KeyZ).alt().shift(),
+        );
+        bindings.insert(
+            EditorAction::ToggleGrid,
+            KeyBinding::new(KeyCode::KeyG).ctrl(),
+        );
 
         // Play mode
         bindings.insert(EditorAction::PlayStop, KeyBinding::new(KeyCode::F5));
-        bindings.insert(EditorAction::PlayScriptsOnly, KeyBinding::new(KeyCode::F5).shift());
+        bindings.insert(
+            EditorAction::PlayScriptsOnly,
+            KeyBinding::new(KeyCode::F5).shift(),
+        );
 
         // View angle defaults (Blender-style numpad)
         bindings.insert(EditorAction::ViewFront, KeyBinding::new(KeyCode::Numpad1));
-        bindings.insert(EditorAction::ViewBack, KeyBinding::new(KeyCode::Numpad1).ctrl());
+        bindings.insert(
+            EditorAction::ViewBack,
+            KeyBinding::new(KeyCode::Numpad1).ctrl(),
+        );
         bindings.insert(EditorAction::ViewRight, KeyBinding::new(KeyCode::Numpad3));
-        bindings.insert(EditorAction::ViewLeft, KeyBinding::new(KeyCode::Numpad3).ctrl());
+        bindings.insert(
+            EditorAction::ViewLeft,
+            KeyBinding::new(KeyCode::Numpad3).ctrl(),
+        );
         bindings.insert(EditorAction::ViewTop, KeyBinding::new(KeyCode::Numpad7));
-        bindings.insert(EditorAction::ViewBottom, KeyBinding::new(KeyCode::Numpad7).ctrl());
-        bindings.insert(EditorAction::ToggleProjection, KeyBinding::new(KeyCode::Numpad5));
-        bindings.insert(EditorAction::MoveSelectionToCursor, KeyBinding::new(KeyCode::KeyV));
+        bindings.insert(
+            EditorAction::ViewBottom,
+            KeyBinding::new(KeyCode::Numpad7).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::ToggleProjection,
+            KeyBinding::new(KeyCode::Numpad5),
+        );
+        bindings.insert(
+            EditorAction::MoveSelectionToCursor,
+            KeyBinding::new(KeyCode::KeyV),
+        );
         bindings.insert(EditorAction::ResetCamera, KeyBinding::new(KeyCode::Home));
         bindings.insert(EditorAction::FrameAll, KeyBinding::new(KeyCode::KeyA));
         bindings.insert(EditorAction::CameraToCursor, KeyBinding::new(KeyCode::End));
-        bindings.insert(EditorAction::SelectAll, KeyBinding::new(KeyCode::KeyA).ctrl());
+        bindings.insert(
+            EditorAction::SelectAll,
+            KeyBinding::new(KeyCode::KeyA).ctrl(),
+        );
         bindings.insert(EditorAction::Rename, KeyBinding::new(KeyCode::F2));
         bindings.insert(EditorAction::HideSelected, KeyBinding::new(KeyCode::KeyH));
-        bindings.insert(EditorAction::IsolateSelected, KeyBinding::new(KeyCode::KeyH).shift());
-        bindings.insert(EditorAction::CameraSpeedUp, KeyBinding::new(KeyCode::BracketRight));
-        bindings.insert(EditorAction::CameraSpeedDown, KeyBinding::new(KeyCode::BracketLeft));
+        bindings.insert(
+            EditorAction::IsolateSelected,
+            KeyBinding::new(KeyCode::KeyH).shift(),
+        );
+        bindings.insert(
+            EditorAction::CameraSpeedUp,
+            KeyBinding::new(KeyCode::BracketRight),
+        );
+        bindings.insert(
+            EditorAction::CameraSpeedDown,
+            KeyBinding::new(KeyCode::BracketLeft),
+        );
         bindings.insert(EditorAction::ToggleSnap, KeyBinding::new(KeyCode::KeyT));
-        bindings.insert(EditorAction::ToggleEdgeSnap, KeyBinding::new(KeyCode::KeyT).shift());
-        bindings.insert(EditorAction::ToggleScaleBottom, KeyBinding::new(KeyCode::KeyT).alt());
-        bindings.insert(EditorAction::TogglePivotLock, KeyBinding::new(KeyCode::KeyL));
+        bindings.insert(
+            EditorAction::ToggleEdgeSnap,
+            KeyBinding::new(KeyCode::KeyT).shift(),
+        );
+        bindings.insert(
+            EditorAction::ToggleScaleBottom,
+            KeyBinding::new(KeyCode::KeyT).alt(),
+        );
+        bindings.insert(
+            EditorAction::TogglePivotLock,
+            KeyBinding::new(KeyCode::KeyL),
+        );
 
         // Code editor defaults
-        bindings.insert(EditorAction::CodeSaveFile, KeyBinding::new(KeyCode::KeyS).ctrl());
-        bindings.insert(EditorAction::CodeSaveAll, KeyBinding::new(KeyCode::KeyS).ctrl().shift());
-        bindings.insert(EditorAction::CodeCloseTab, KeyBinding::new(KeyCode::KeyW).ctrl());
-        bindings.insert(EditorAction::CodeNextTab, KeyBinding::new(KeyCode::Tab).ctrl());
-        bindings.insert(EditorAction::CodePrevTab, KeyBinding::new(KeyCode::Tab).ctrl().shift());
-        bindings.insert(EditorAction::CodeFind, KeyBinding::new(KeyCode::KeyF).ctrl());
-        bindings.insert(EditorAction::CodeReplace, KeyBinding::new(KeyCode::KeyH).ctrl());
-        bindings.insert(EditorAction::CodeGotoLine, KeyBinding::new(KeyCode::KeyG).ctrl());
-        bindings.insert(EditorAction::CodeToggleLineComment, KeyBinding::new(KeyCode::Slash).ctrl());
-        bindings.insert(EditorAction::CodeToggleBlockComment, KeyBinding::new(KeyCode::Slash).ctrl().shift());
-        bindings.insert(EditorAction::CodeTriggerAutocomplete, KeyBinding::new(KeyCode::Space).ctrl());
-        bindings.insert(EditorAction::CodeSelectNextMatch, KeyBinding::new(KeyCode::KeyD).ctrl());
-        bindings.insert(EditorAction::CodeDuplicateLine, KeyBinding::new(KeyCode::KeyD).ctrl().shift());
-        bindings.insert(EditorAction::CodeDeleteLine, KeyBinding::new(KeyCode::KeyK).ctrl().shift());
-        bindings.insert(EditorAction::CodeMoveLineUp, KeyBinding::new(KeyCode::ArrowUp).alt());
-        bindings.insert(EditorAction::CodeMoveLineDown, KeyBinding::new(KeyCode::ArrowDown).alt());
-        bindings.insert(EditorAction::CodeGoToDefinition, KeyBinding::new(KeyCode::F12));
-        bindings.insert(EditorAction::CodeFormat, KeyBinding::new(KeyCode::KeyF).ctrl().shift());
-        bindings.insert(EditorAction::CodeShowDiff, KeyBinding::new(KeyCode::KeyD).ctrl().alt());
-        bindings.insert(EditorAction::CodeToggleFold, KeyBinding::new(KeyCode::BracketLeft).ctrl().shift());
-        bindings.insert(EditorAction::CodeAddCursorAbove, KeyBinding::new(KeyCode::ArrowUp).ctrl().alt());
-        bindings.insert(EditorAction::CodeAddCursorBelow, KeyBinding::new(KeyCode::ArrowDown).ctrl().alt());
-        bindings.insert(EditorAction::CodeClearExtraCursors, KeyBinding::new(KeyCode::Escape).shift());
-        bindings.insert(EditorAction::CodeSplitRight, KeyBinding::new(KeyCode::Backslash).ctrl());
+        bindings.insert(
+            EditorAction::CodeSaveFile,
+            KeyBinding::new(KeyCode::KeyS).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeSaveAll,
+            KeyBinding::new(KeyCode::KeyS).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeCloseTab,
+            KeyBinding::new(KeyCode::KeyW).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeNextTab,
+            KeyBinding::new(KeyCode::Tab).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodePrevTab,
+            KeyBinding::new(KeyCode::Tab).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeFind,
+            KeyBinding::new(KeyCode::KeyF).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeReplace,
+            KeyBinding::new(KeyCode::KeyH).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeGotoLine,
+            KeyBinding::new(KeyCode::KeyG).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeToggleLineComment,
+            KeyBinding::new(KeyCode::Slash).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeToggleBlockComment,
+            KeyBinding::new(KeyCode::Slash).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeTriggerAutocomplete,
+            KeyBinding::new(KeyCode::Space).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeSelectNextMatch,
+            KeyBinding::new(KeyCode::KeyD).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::CodeDuplicateLine,
+            KeyBinding::new(KeyCode::KeyD).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeDeleteLine,
+            KeyBinding::new(KeyCode::KeyK).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeMoveLineUp,
+            KeyBinding::new(KeyCode::ArrowUp).alt(),
+        );
+        bindings.insert(
+            EditorAction::CodeMoveLineDown,
+            KeyBinding::new(KeyCode::ArrowDown).alt(),
+        );
+        bindings.insert(
+            EditorAction::CodeGoToDefinition,
+            KeyBinding::new(KeyCode::F12),
+        );
+        bindings.insert(
+            EditorAction::CodeFormat,
+            KeyBinding::new(KeyCode::KeyF).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeShowDiff,
+            KeyBinding::new(KeyCode::KeyD).ctrl().alt(),
+        );
+        bindings.insert(
+            EditorAction::CodeToggleFold,
+            KeyBinding::new(KeyCode::BracketLeft).ctrl().shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeAddCursorAbove,
+            KeyBinding::new(KeyCode::ArrowUp).ctrl().alt(),
+        );
+        bindings.insert(
+            EditorAction::CodeAddCursorBelow,
+            KeyBinding::new(KeyCode::ArrowDown).ctrl().alt(),
+        );
+        bindings.insert(
+            EditorAction::CodeClearExtraCursors,
+            KeyBinding::new(KeyCode::Escape).shift(),
+        );
+        bindings.insert(
+            EditorAction::CodeSplitRight,
+            KeyBinding::new(KeyCode::Backslash).ctrl(),
+        );
 
         Self {
             bindings,
@@ -595,9 +766,12 @@ impl KeyBindings {
         }
         if let Some(binding) = self.bindings.get(&action) {
             let key_just_pressed = keyboard.just_pressed(binding.key);
-            let ctrl_pressed = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
-            let shift_pressed = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
-            let alt_pressed = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
+            let ctrl_pressed =
+                keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+            let shift_pressed =
+                keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+            let alt_pressed =
+                keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
 
             let ctrl_ok = binding.ctrl == ctrl_pressed;
             let shift_ok = binding.shift == shift_pressed;
@@ -771,28 +945,89 @@ pub fn key_name(key: KeyCode) -> &'static str {
 /// Get all available keys for binding
 pub fn bindable_keys() -> Vec<KeyCode> {
     vec![
-        KeyCode::KeyA, KeyCode::KeyB, KeyCode::KeyC, KeyCode::KeyD,
-        KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyG, KeyCode::KeyH,
-        KeyCode::KeyI, KeyCode::KeyJ, KeyCode::KeyK, KeyCode::KeyL,
-        KeyCode::KeyM, KeyCode::KeyN, KeyCode::KeyO, KeyCode::KeyP,
-        KeyCode::KeyQ, KeyCode::KeyR, KeyCode::KeyS, KeyCode::KeyT,
-        KeyCode::KeyU, KeyCode::KeyV, KeyCode::KeyW, KeyCode::KeyX,
-        KeyCode::KeyY, KeyCode::KeyZ,
-        KeyCode::Digit0, KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3,
-        KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7,
-        KeyCode::Digit8, KeyCode::Digit9,
-        KeyCode::F1, KeyCode::F2, KeyCode::F3, KeyCode::F4,
-        KeyCode::F5, KeyCode::F6, KeyCode::F7, KeyCode::F8,
-        KeyCode::F9, KeyCode::F10, KeyCode::F11, KeyCode::F12,
-        KeyCode::Space, KeyCode::Tab, KeyCode::Enter, KeyCode::Escape,
-        KeyCode::Backspace, KeyCode::Delete, KeyCode::Insert,
-        KeyCode::Home, KeyCode::End, KeyCode::PageUp, KeyCode::PageDown,
-        KeyCode::ArrowUp, KeyCode::ArrowDown, KeyCode::ArrowLeft, KeyCode::ArrowRight,
-        KeyCode::Comma, KeyCode::Period, KeyCode::Slash, KeyCode::Backslash,
-        KeyCode::BracketLeft, KeyCode::BracketRight, KeyCode::Semicolon,
-        KeyCode::Quote, KeyCode::Backquote, KeyCode::Minus, KeyCode::Equal,
-        KeyCode::Numpad0, KeyCode::Numpad1, KeyCode::Numpad2, KeyCode::Numpad3,
-        KeyCode::Numpad4, KeyCode::Numpad5, KeyCode::Numpad6, KeyCode::Numpad7,
-        KeyCode::Numpad8, KeyCode::Numpad9,
+        KeyCode::KeyA,
+        KeyCode::KeyB,
+        KeyCode::KeyC,
+        KeyCode::KeyD,
+        KeyCode::KeyE,
+        KeyCode::KeyF,
+        KeyCode::KeyG,
+        KeyCode::KeyH,
+        KeyCode::KeyI,
+        KeyCode::KeyJ,
+        KeyCode::KeyK,
+        KeyCode::KeyL,
+        KeyCode::KeyM,
+        KeyCode::KeyN,
+        KeyCode::KeyO,
+        KeyCode::KeyP,
+        KeyCode::KeyQ,
+        KeyCode::KeyR,
+        KeyCode::KeyS,
+        KeyCode::KeyT,
+        KeyCode::KeyU,
+        KeyCode::KeyV,
+        KeyCode::KeyW,
+        KeyCode::KeyX,
+        KeyCode::KeyY,
+        KeyCode::KeyZ,
+        KeyCode::Digit0,
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+        KeyCode::F1,
+        KeyCode::F2,
+        KeyCode::F3,
+        KeyCode::F4,
+        KeyCode::F5,
+        KeyCode::F6,
+        KeyCode::F7,
+        KeyCode::F8,
+        KeyCode::F9,
+        KeyCode::F10,
+        KeyCode::F11,
+        KeyCode::F12,
+        KeyCode::Space,
+        KeyCode::Tab,
+        KeyCode::Enter,
+        KeyCode::Escape,
+        KeyCode::Backspace,
+        KeyCode::Delete,
+        KeyCode::Insert,
+        KeyCode::Home,
+        KeyCode::End,
+        KeyCode::PageUp,
+        KeyCode::PageDown,
+        KeyCode::ArrowUp,
+        KeyCode::ArrowDown,
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowRight,
+        KeyCode::Comma,
+        KeyCode::Period,
+        KeyCode::Slash,
+        KeyCode::Backslash,
+        KeyCode::BracketLeft,
+        KeyCode::BracketRight,
+        KeyCode::Semicolon,
+        KeyCode::Quote,
+        KeyCode::Backquote,
+        KeyCode::Minus,
+        KeyCode::Equal,
+        KeyCode::Numpad0,
+        KeyCode::Numpad1,
+        KeyCode::Numpad2,
+        KeyCode::Numpad3,
+        KeyCode::Numpad4,
+        KeyCode::Numpad5,
+        KeyCode::Numpad6,
+        KeyCode::Numpad7,
+        KeyCode::Numpad8,
+        KeyCode::Numpad9,
     ]
 }

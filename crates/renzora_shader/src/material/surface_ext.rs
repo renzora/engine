@@ -22,13 +22,15 @@
 
 use std::marker::PhantomData;
 
-use bevy::prelude::*;
 use bevy::asset::uuid_handle;
+use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
     ExtendedMaterial, MaterialExtension, MaterialExtensionKey, MaterialExtensionPipeline,
 };
-use bevy::mesh::MeshVertexBufferLayoutRef;
-use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError};
+use bevy::prelude::*;
+use bevy::render::render_resource::{
+    AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
+};
 use bevy::shader::ShaderRef;
 use uuid::Uuid;
 
@@ -183,7 +185,9 @@ pub struct SurfaceGraphExtKey {
 
 impl From<&SurfaceGraphExt> for SurfaceGraphExtKey {
     fn from(ext: &SurfaceGraphExt) -> Self {
-        Self { shader_uuid: ext.shader_uuid }
+        Self {
+            shader_uuid: ext.shader_uuid,
+        }
     }
 }
 
@@ -208,8 +212,7 @@ impl MaterialExtension for SurfaceGraphExt {
         // StandardMaterial's prepass shader handles alpha cutout for `Mask`
         // materials and depth correctly.
         let label = descriptor.label.as_deref().unwrap_or("");
-        let is_prepass_or_shadow =
-            label.contains("prepass") || label.contains("shadow");
+        let is_prepass_or_shadow = label.contains("prepass") || label.contains("shadow");
         if is_prepass_or_shadow {
             return Ok(());
         }

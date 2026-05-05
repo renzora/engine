@@ -304,7 +304,11 @@ pub fn apply_painter_layer_materials_system(
     asset_server: Res<AssetServer>,
     vfs: Res<renzora::core::VirtualFileReader>,
     mut painter_query: Query<&mut Painter>,
-    mesh_query: Query<(Entity, &PainterLayerMesh, Option<&MeshMaterial3d<StandardMaterial>>)>,
+    mesh_query: Query<(
+        Entity,
+        &PainterLayerMesh,
+        Option<&MeshMaterial3d<StandardMaterial>>,
+    )>,
 ) {
     for (mesh_entity, marker, existing_mat) in mesh_query.iter() {
         let Ok(mut painter) = painter_query.get_mut(marker.painter) else {
@@ -342,8 +346,8 @@ fn build_material(
             ..Default::default()
         };
     };
-    let (albedo, normal, arm) = extract_layer_textures_from_json(&json)
-        .unwrap_or((None, None, None));
+    let (albedo, normal, arm) =
+        extract_layer_textures_from_json(&json).unwrap_or((None, None, None));
     let mut mat = StandardMaterial {
         base_color: Color::WHITE,
         perceptual_roughness: 0.85,
@@ -382,9 +386,9 @@ fn extract_layer_textures_from_json(
     };
     let output_id = output["id"].as_u64().unwrap_or(0);
     let trace = |pin: &str| -> Option<String> {
-        let conn = connections
-            .iter()
-            .find(|c| c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin))?;
+        let conn = connections.iter().find(|c| {
+            c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin)
+        })?;
         let from = conn["from_node"].as_u64()?;
         let src = nodes.iter().find(|n| n["id"].as_u64() == Some(from))?;
         let t = src["node_type"].as_str()?;
@@ -510,12 +514,10 @@ pub fn remove_layer(
         if old_idx == idx {
             commands.entity(entity).despawn();
         } else if old_idx > idx {
-            commands
-                .entity(entity)
-                .insert(PainterLayerMesh {
-                    painter: painter_entity,
-                    layer_index: old_idx - 1,
-                });
+            commands.entity(entity).insert(PainterLayerMesh {
+                painter: painter_entity,
+                layer_index: old_idx - 1,
+            });
         }
     }
     // Force mesh rebuild for the now-shifted layers.

@@ -167,9 +167,7 @@ impl PluginInstances {
             // captured at init time. Construct a `Gui` wrapper if we
             // haven't already.
             if slot.gui.is_none() {
-                let plugin_gui = loaded
-                    .instance
-                    .access_handler(|h| h.gui);
+                let plugin_gui = loaded.instance.access_handler(|h| h.gui);
                 let Some(plugin_gui) = plugin_gui else {
                     return HostOpOutcome::Failed("plugin has no gui extension".into());
                 };
@@ -245,7 +243,9 @@ impl PluginInstances {
         #[cfg(feature = "clap-host")]
         {
             for ((bus, local_id), slot) in self.slots.iter_mut() {
-                let Some(loaded) = slot.loaded.as_mut() else { continue };
+                let Some(loaded) = slot.loaded.as_mut() else {
+                    continue;
+                };
                 while let Ok(msg) = loaded.receiver.try_recv() {
                     match msg {
                         crate::host_impl::MainThreadMessage::RunOnMainThread => {

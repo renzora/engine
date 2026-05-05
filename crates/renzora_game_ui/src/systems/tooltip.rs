@@ -17,13 +17,20 @@ pub struct TooltipHoverTimer {
 pub fn tooltip_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut tooltips: Query<(Entity, &TooltipData, &Interaction, &Children, Option<&mut TooltipHoverTimer>)>,
+    mut tooltips: Query<(
+        Entity,
+        &TooltipData,
+        &Interaction,
+        &Children,
+        Option<&mut TooltipHoverTimer>,
+    )>,
     mut parts: Query<(&UiWidgetPart, &mut Visibility)>,
 ) {
     let dt_ms = time.delta_secs() * 1000.0;
 
     for (entity, data, interaction, children, timer) in &mut tooltips {
-        let is_hovered = *interaction == Interaction::Hovered || *interaction == Interaction::Pressed;
+        let is_hovered =
+            *interaction == Interaction::Hovered || *interaction == Interaction::Pressed;
 
         match timer {
             Some(mut timer) => {
@@ -43,7 +50,9 @@ pub fn tooltip_system(
             }
             None => {
                 // First time — insert timer component
-                commands.entity(entity).try_insert(TooltipHoverTimer::default());
+                commands
+                    .entity(entity)
+                    .try_insert(TooltipHoverTimer::default());
                 set_content_visibility(children, &mut parts, Visibility::Hidden);
             }
         }

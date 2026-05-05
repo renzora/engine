@@ -52,6 +52,7 @@ pub struct PendingNetworkDisconnect;
 pub struct ActiveClientEntity(pub Entity);
 
 /// Runtime networking plugin.
+#[derive(Default)]
 pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
@@ -105,8 +106,8 @@ impl Plugin for NetworkPlugin {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn process_pending_connect(world: &mut World) {
-    use lightyear::prelude::{Authentication, LocalAddr, UdpIo};
     use lightyear::prelude::client::{Connect, NetcodeClient, NetcodeConfig};
+    use lightyear::prelude::{Authentication, LocalAddr, UdpIo};
 
     let Some(pending) = world.remove_resource::<PendingNetworkConnect>() else {
         return;
@@ -178,9 +179,7 @@ fn process_pending_disconnect(world: &mut World) {
     if let Some(active) = world.remove_resource::<ActiveClientEntity>() {
         info!("[network] Disconnecting client entity {:?}", active.0);
         if world.get_entity(active.0).is_ok() {
-            world.trigger(Disconnect {
-                entity: active.0,
-            });
+            world.trigger(Disconnect { entity: active.0 });
         }
     }
 
@@ -191,11 +190,10 @@ fn process_pending_disconnect(world: &mut World) {
 
 /// Sync the lightweight `NetworkBridge` resource from the full `NetworkStatus`.
 #[cfg(not(target_arch = "wasm32"))]
-fn sync_network_bridge(
-    status: Res<NetworkStatus>,
-    mut bridge: ResMut<renzora::NetworkBridge>,
-) {
+fn sync_network_bridge(status: Res<NetworkStatus>, mut bridge: ResMut<renzora::NetworkBridge>) {
     bridge.is_server = status.is_server;
     bridge.is_connected = status.is_connected();
     bridge.player_count = status.connected_clients.len() as i32;
 }
+
+renzora::add!(NetworkPlugin);

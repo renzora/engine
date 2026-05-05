@@ -6,7 +6,9 @@
 use std::sync::{mpsc, Mutex, RwLock};
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{
+    self, Color32, CornerRadius, CursorIcon, RichText, Sense, Stroke, StrokeKind, Vec2,
+};
 use renzora_auth::marketplace::{AssetSummary, Category, MarketplaceListResponse};
 use renzora_auth::session::AuthSession;
 use renzora_editor::{EditorPanel, PanelLocation};
@@ -313,13 +315,9 @@ impl HubStorePanel {
             if let Some(msg) = state.status.take() {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!(
-                            "{} {}",
-                            egui_phosphor::regular::CHECK_CIRCLE,
-                            msg
-                        ))
-                        .size(11.0)
-                        .color(Color32::from_rgb(34, 197, 94)),
+                        RichText::new(format!("{} {}", egui_phosphor::regular::CHECK_CIRCLE, msg))
+                            .size(11.0)
+                            .color(Color32::from_rgb(34, 197, 94)),
                     );
                 });
             }
@@ -356,16 +354,14 @@ impl HubStorePanel {
 
         // Draggable splitter
         let splitter_id = ui.id().with("marketplace_splitter");
-        let splitter_resp =
-            ui.interact(splitter_rect, splitter_id, egui::Sense::click_and_drag());
+        let splitter_resp = ui.interact(splitter_rect, splitter_id, egui::Sense::click_and_drag());
         if splitter_resp.dragged() {
             let new_w = (sidebar_width + splitter_resp.drag_delta().x)
                 .clamp(100.0, (content_rect.width() - 200.0).max(100.0));
             self.state.write().unwrap().sidebar_width = new_w;
         }
         if splitter_resp.hovered() || splitter_resp.dragged() {
-            ui.ctx()
-                .set_cursor_icon(CursorIcon::ResizeHorizontal);
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
         }
         let splitter_color = if splitter_resp.hovered() || splitter_resp.dragged() {
             accent
@@ -387,11 +383,7 @@ impl HubStorePanel {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add_space(8.0);
-                    ui.label(
-                        RichText::new("Categories")
-                            .size(10.0)
-                            .color(text_muted),
-                    );
+                    ui.label(RichText::new("Categories").size(10.0).color(text_muted));
                 });
                 ui.add_space(4.0);
 
@@ -418,8 +410,7 @@ impl HubStorePanel {
                     } else {
                         Color32::TRANSPARENT
                     };
-                    ui.painter()
-                        .rect_filled(rect, CornerRadius::same(3), bg);
+                    ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
                     if selected {
                         ui.painter().rect_stroke(
                             rect,
@@ -460,8 +451,7 @@ impl HubStorePanel {
                     } else {
                         Color32::TRANSPARENT
                     };
-                    ui.painter()
-                        .rect_filled(rect, CornerRadius::same(3), bg);
+                    ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
                     if selected {
                         ui.painter().rect_stroke(
                             rect,
@@ -503,7 +493,9 @@ impl HubStorePanel {
                         ui.spinner();
                         ui.add_space(8.0);
                         ui.label(
-                            RichText::new("Loading assets...").size(12.0).color(text_muted),
+                            RichText::new("Loading assets...")
+                                .size(12.0)
+                                .color(text_muted),
                         );
                     });
                     return;
@@ -519,7 +511,9 @@ impl HubStorePanel {
                         );
                         ui.add_space(8.0);
                         ui.label(
-                            RichText::new("No assets found").size(13.0).color(text_muted),
+                            RichText::new("No assets found")
+                                .size(13.0)
+                                .color(text_muted),
                         );
                         ui.add_space(4.0);
                         ui.label(
@@ -572,16 +566,17 @@ impl HubStorePanel {
                             let hovered = response.hovered();
 
                             // Card background
-                            let card_bg = if hovered { brighten(surface, 10) } else { surface };
+                            let card_bg = if hovered {
+                                brighten(surface, 10)
+                            } else {
+                                surface
+                            };
                             let card_border = if hovered { accent } else { border };
                             ui.painter().rect(
                                 rect,
                                 CornerRadius::same(CARD_RADIUS as u8),
                                 card_bg,
-                                egui::Stroke::new(
-                                    if hovered { 1.5 } else { 1.0 },
-                                    card_border,
-                                ),
+                                egui::Stroke::new(if hovered { 1.5 } else { 1.0 }, card_border),
                                 StrokeKind::Outside,
                             );
 
@@ -707,8 +702,7 @@ impl HubStorePanel {
                 if total_pages > 1 {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        let pad =
-                            ((ui.available_width() - 200.0) / 2.0).max(0.0);
+                        let pad = ((ui.available_width() - 200.0) / 2.0).max(0.0);
                         ui.add_space(pad);
 
                         if page > 1 {

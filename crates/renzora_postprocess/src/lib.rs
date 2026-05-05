@@ -13,6 +13,8 @@ use bevy::core_pipeline::{
     core_3d::graph::{Core3d, Node3d},
     FullscreenShader,
 };
+use bevy::ecs::query::QueryItem;
+use bevy::image::BevyDefault;
 use bevy::prelude::*;
 use bevy::render::{
     extract_component::{
@@ -37,8 +39,6 @@ use bevy::render::{
     RenderApp, RenderStartup,
 };
 use bevy::shader::ShaderRef;
-use bevy::image::BevyDefault;
-use bevy::ecs::query::QueryItem;
 use bevy::utils::default;
 
 // ---------------------------------------------------------------------------
@@ -57,10 +57,14 @@ pub trait PostProcessEffect:
     /// When `true`, the pipeline adds two extra binding slots (texture_2d + sampler)
     /// after the uniform buffer. The effect must populate `ExtraTextureSource<Self>`
     /// so the handler can bind the texture at render time.
-    fn has_extra_texture() -> bool { false }
+    fn has_extra_texture() -> bool {
+        false
+    }
 
     /// No longer used — effect ordering is determined by plugin registration order.
-    fn node_edges() -> Vec<InternedRenderLabel> { vec![] }
+    fn node_edges() -> Vec<InternedRenderLabel> {
+        vec![]
+    }
 
     /// No longer used — all effects run in the Core3d sub-graph.
     fn sub_graph() -> Option<InternedRenderSubGraph> {
@@ -87,7 +91,10 @@ pub struct ExtraTextureSource<T: PostProcessEffect> {
 
 impl<T: PostProcessEffect> Default for ExtraTextureSource<T> {
     fn default() -> Self {
-        Self { handle: None, _marker: PhantomData }
+        Self {
+            handle: None,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -100,7 +107,10 @@ struct ExtractedExtraTexture<T: PostProcessEffect> {
 
 impl<T: PostProcessEffect> Default for ExtractedExtraTexture<T> {
     fn default() -> Self {
-        Self { id: None, _marker: PhantomData }
+        Self {
+            id: None,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -166,7 +176,9 @@ fn init_pipeline<T: PostProcessEffect>(
     let sampler = render_device.create_sampler(&SamplerDescriptor::default());
     let shader = match T::fragment_shader() {
         ShaderRef::Default => {
-            unimplemented!("PostProcessEffect::fragment_shader() must not return ShaderRef::Default")
+            unimplemented!(
+                "PostProcessEffect::fragment_shader() must not return ShaderRef::Default"
+            )
         }
         ShaderRef::Handle(handle) => handle,
         ShaderRef::Path(path) => asset_server.load(path),
@@ -343,20 +355,18 @@ impl Plugin for PostProcessCorePlugin {
 
         render_app.init_resource::<PostProcessRegistry>();
 
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<UnifiedPostProcessNode>>(
-                Core3d,
-                UnifiedPostProcess,
-            );
+        render_app.add_render_graph_node::<ViewNodeRunner<UnifiedPostProcessNode>>(
+            Core3d,
+            UnifiedPostProcess,
+        );
 
-        if let Some(mut render_graph) =
-            render_app.world_mut().get_resource_mut::<bevy::render::render_graph::RenderGraph>()
-        {
+        if let Some(mut render_graph) = render_app
+            .world_mut()
+            .get_resource_mut::<bevy::render::render_graph::RenderGraph>(
+        ) {
             if let Some(graph) = render_graph.get_sub_graph_mut(Core3d) {
-                let _ = graph.try_add_node_edge(
-                    Node3d::Tonemapping.intern(),
-                    UnifiedPostProcess.intern(),
-                );
+                let _ = graph
+                    .try_add_node_edge(Node3d::Tonemapping.intern(), UnifiedPostProcess.intern());
                 let _ = graph.try_add_node_edge(
                     UnifiedPostProcess.intern(),
                     Node3d::EndMainPassPostProcessing.intern(),
@@ -429,7 +439,10 @@ impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
         }
 
         // Proxy effects from any entity to the camera
-        app.add_systems(Update, (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>));
+        app.add_systems(
+            Update,
+            (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>),
+        );
 
         // Extract + uniform plugins handle moving data to the render world
         app.add_plugins((

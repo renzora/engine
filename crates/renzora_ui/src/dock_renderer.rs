@@ -73,7 +73,19 @@ pub fn render_dock_tree(
     drag: Option<&DragState>,
 ) -> DockRenderResult {
     let mut result = DockRenderResult::default();
-    render_node(ui, tree, rect, registry, world, base_id, &[], &mut result, theme, drag, None);
+    render_node(
+        ui,
+        tree,
+        rect,
+        registry,
+        world,
+        base_id,
+        &[],
+        &mut result,
+        theme,
+        drag,
+        None,
+    );
     result
 }
 
@@ -93,14 +105,36 @@ fn render_node(
     parent_split: Option<ParentSplitInfo>,
 ) {
     match node {
-        DockTree::Split { direction, ratio, first, second } => {
-            render_split(ui, *direction, *ratio, first, second, rect, registry, world, base_id, path, result, theme, drag);
+        DockTree::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } => {
+            render_split(
+                ui, *direction, *ratio, first, second, rect, registry, world, base_id, path,
+                result, theme, drag,
+            );
         }
         DockTree::Leaf { tabs, active_tab } => {
-            render_leaf(ui, tabs, *active_tab, rect, registry, world, base_id, path, result, theme, drag, parent_split);
+            render_leaf(
+                ui,
+                tabs,
+                *active_tab,
+                rect,
+                registry,
+                world,
+                base_id,
+                path,
+                result,
+                theme,
+                drag,
+                parent_split,
+            );
         }
         DockTree::Empty => {
-            ui.painter().rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
+            ui.painter()
+                .rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
 
             // Empty workspace prompt — center an "Add Panel" button.
             let btn_id = base_id.with("empty_add_panel");
@@ -123,7 +157,8 @@ fn render_node(
             } else {
                 theme.surfaces.panel.to_color32()
             };
-            ui.painter().rect_filled(btn_rect, egui::CornerRadius::same(4), bg);
+            ui.painter()
+                .rect_filled(btn_rect, egui::CornerRadius::same(4), bg);
             ui.painter().rect_stroke(
                 btn_rect,
                 egui::CornerRadius::same(4),
@@ -152,8 +187,7 @@ fn render_node(
                 #[allow(deprecated)]
                 ui.memory_mut(|m| m.toggle_popup(popup_id));
             }
-            let already_here: std::collections::HashSet<&str> =
-                std::collections::HashSet::new();
+            let already_here: std::collections::HashSet<&str> = std::collections::HashSet::new();
             if let Some(picked) =
                 render_panel_picker_popup(ui, popup_id, &resp, registry, theme, &already_here)
             {
@@ -182,10 +216,8 @@ fn calculate_split_rects(direction: SplitDirection, ratio: f32, rect: Rect) -> (
             let second_x = rect.min.x + first_w + RESIZE_HANDLE_VISUAL + inset;
             let second_visible_w = (second_w - inset).max(0.0);
 
-            let first_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(first_visible_w, rect.height()),
-            );
+            let first_rect =
+                Rect::from_min_size(rect.min, Vec2::new(first_visible_w, rect.height()));
             let handle_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x + first_w, rect.min.y),
                 Vec2::new(RESIZE_HANDLE_VISUAL, rect.height()),
@@ -205,10 +237,8 @@ fn calculate_split_rects(direction: SplitDirection, ratio: f32, rect: Rect) -> (
             let second_y = rect.min.y + first_h + RESIZE_HANDLE_VISUAL + inset;
             let second_visible_h = (second_h - inset).max(0.0);
 
-            let first_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(rect.width(), first_visible_h),
-            );
+            let first_rect =
+                Rect::from_min_size(rect.min, Vec2::new(rect.width(), first_visible_h));
             let handle_rect = Rect::from_min_size(
                 Pos2::new(rect.min.x, rect.min.y + first_h),
                 Vec2::new(rect.width(), RESIZE_HANDLE_VISUAL),
@@ -245,17 +275,51 @@ fn render_split(
         SplitDirection::Horizontal => rect.width() - RESIZE_HANDLE_VISUAL,
         SplitDirection::Vertical => rect.height() - RESIZE_HANDLE_VISUAL,
     };
-    let first_parent = ParentSplitInfo { direction, is_second: false, ratio, total };
-    let second_parent = ParentSplitInfo { direction, is_second: true, ratio, total };
+    let first_parent = ParentSplitInfo {
+        direction,
+        is_second: false,
+        ratio,
+        total,
+    };
+    let second_parent = ParentSplitInfo {
+        direction,
+        is_second: true,
+        ratio,
+        total,
+    };
 
     // Render children
     let mut first_path = path.to_vec();
     first_path.push(false);
-    render_node(ui, first, first_rect, registry, world, base_id, &first_path, result, theme, drag, Some(first_parent));
+    render_node(
+        ui,
+        first,
+        first_rect,
+        registry,
+        world,
+        base_id,
+        &first_path,
+        result,
+        theme,
+        drag,
+        Some(first_parent),
+    );
 
     let mut second_path = path.to_vec();
     second_path.push(true);
-    render_node(ui, second, second_rect, registry, world, base_id, &second_path, result, theme, drag, Some(second_parent));
+    render_node(
+        ui,
+        second,
+        second_rect,
+        registry,
+        world,
+        base_id,
+        &second_path,
+        result,
+        theme,
+        drag,
+        Some(second_parent),
+    );
 
     // Interactive resize area (wider than the visual line)
     let interact_rect = match direction {
@@ -305,24 +369,27 @@ fn render_split(
     // Fill the gap between children with the surface color so the inset
     // pixels around the handle don't show through to whatever was painted
     // last frame. Then draw the 1px visual separator line on top.
-    ui.painter().rect_filled(
-        interact_rect,
-        0.0,
-        theme.surfaces.extreme.to_color32(),
-    );
+    ui.painter()
+        .rect_filled(interact_rect, 0.0, theme.surfaces.extreme.to_color32());
     let line_color = theme.widgets.border.to_color32();
     match direction {
         SplitDirection::Horizontal => {
             let x = handle_rect.center().x;
             ui.painter().line_segment(
-                [Pos2::new(x, handle_rect.min.y), Pos2::new(x, handle_rect.max.y)],
+                [
+                    Pos2::new(x, handle_rect.min.y),
+                    Pos2::new(x, handle_rect.max.y),
+                ],
                 Stroke::new(1.0, line_color),
             );
         }
         SplitDirection::Vertical => {
             let y = handle_rect.center().y;
             ui.painter().line_segment(
-                [Pos2::new(handle_rect.min.x, y), Pos2::new(handle_rect.max.x, y)],
+                [
+                    Pos2::new(handle_rect.min.x, y),
+                    Pos2::new(handle_rect.max.x, y),
+                ],
                 Stroke::new(1.0, line_color),
             );
         }
@@ -353,7 +420,8 @@ fn render_leaf(
 
     // --- Tab bar background ---
     let tab_bar_rect = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TAB_BAR_HEIGHT));
-    ui.painter().rect_filled(tab_bar_rect, 0.0, theme.panels.tab_inactive.to_color32());
+    ui.painter()
+        .rect_filled(tab_bar_rect, 0.0, theme.panels.tab_inactive.to_color32());
 
     // --- Draw tabs ---
     let tab_height = TAB_BAR_HEIGHT - 4.0;
@@ -379,7 +447,8 @@ fn render_leaf(
         let icon_gap: f32 = if icon.is_some() { 4.0 } else { 0.0 };
         let text_width = title.len() as f32 * 7.0; // rough approximation
         let close_space = if can_close { close_button_width } else { 0.0 };
-        let tab_width = tab_padding + icon_width + icon_gap + text_width + close_space + tab_padding;
+        let tab_width =
+            tab_padding + icon_width + icon_gap + text_width + close_space + tab_padding;
 
         let tab_rect = Rect::from_min_size(
             Pos2::new(tab_x, rect.min.y + 2.0),
@@ -405,13 +474,18 @@ fn render_leaf(
         } else {
             theme.panels.tab_inactive.to_color32()
         };
-        ui.painter().rect_filled(tab_rect, egui::CornerRadius::ZERO, bg);
+        ui.painter()
+            .rect_filled(tab_rect, egui::CornerRadius::ZERO, bg);
 
         // Icon
         let text_alpha = if is_being_dragged { 100 } else { 255 };
         let mut text_x = tab_rect.min.x + tab_padding;
         if let Some(icon_str) = icon {
-            let ic = if is_active { theme.text.primary.to_color32() } else { theme.text.muted.to_color32() };
+            let ic = if is_active {
+                theme.text.primary.to_color32()
+            } else {
+                theme.text.muted.to_color32()
+            };
             let ic = Color32::from_rgba_unmultiplied(ic.r(), ic.g(), ic.b(), text_alpha);
             ui.painter().text(
                 Pos2::new(text_x, tab_rect.center().y),
@@ -424,7 +498,11 @@ fn render_leaf(
         }
 
         // Title
-        let tc = if is_active { Color32::WHITE } else { theme.text.secondary.to_color32() };
+        let tc = if is_active {
+            Color32::WHITE
+        } else {
+            theme.text.secondary.to_color32()
+        };
         let tc = Color32::from_rgba_unmultiplied(tc.r(), tc.g(), tc.b(), text_alpha);
         ui.painter().text(
             Pos2::new(text_x, tab_rect.center().y),
@@ -508,10 +586,7 @@ fn render_leaf(
     // "+" button to add a panel as a new tab
     if !is_dragging {
         let plus_size = Vec2::new(22.0, tab_height);
-        let plus_rect = Rect::from_min_size(
-            Pos2::new(tab_x + 2.0, rect.min.y + 2.0),
-            plus_size,
-        );
+        let plus_rect = Rect::from_min_size(Pos2::new(tab_x + 2.0, rect.min.y + 2.0), plus_size);
         let plus_id = base_id.with(("plus_tab", path));
         let plus_resp = ui.interact(plus_rect, plus_id, Sense::click());
 
@@ -526,7 +601,8 @@ fn render_leaf(
             } else {
                 Color32::TRANSPARENT
             };
-            ui.painter().rect_filled(plus_rect, egui::CornerRadius::ZERO, bg);
+            ui.painter()
+                .rect_filled(plus_rect, egui::CornerRadius::ZERO, bg);
             ui.painter().text(
                 plus_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -592,9 +668,7 @@ fn render_leaf(
                         SplitDirection::Vertical => delta.y / ps.total,
                     };
                     let new_ratio = (ps.ratio + delta_ratio).clamp(0.1, 0.9);
-                    if (new_ratio - ps.ratio).abs() > 0.001
-                        && result.ratio_update.is_none()
-                    {
+                    if (new_ratio - ps.ratio).abs() > 0.001 && result.ratio_update.is_none() {
                         let parent_path = path[..path.len() - 1].to_vec();
                         result.ratio_update = Some((parent_path, new_ratio));
                     }
@@ -636,13 +710,12 @@ fn render_leaf(
     }
 
     // --- Panel content area ---
-    let content_rect = Rect::from_min_max(
-        Pos2::new(rect.min.x, rect.min.y + TAB_BAR_HEIGHT),
-        rect.max,
-    );
+    let content_rect =
+        Rect::from_min_max(Pos2::new(rect.min.x, rect.min.y + TAB_BAR_HEIGHT), rect.max);
 
     // Background fill for content area
-    ui.painter().rect_filled(content_rect, 0.0, theme.surfaces.panel.to_color32());
+    ui.painter()
+        .rect_filled(content_rect, 0.0, theme.surfaces.panel.to_color32());
 
     let active_id = tabs.get(active_tab).cloned().unwrap_or_default();
     if let Some(panel) = registry.get(&active_id) {
@@ -713,11 +786,8 @@ fn render_panel_picker_popup(
             ui.style_mut().spacing.item_spacing.y = 2.0;
 
             let search_id = popup_id.with("search");
-            let mut search: String = ui.memory(|m| {
-                m.data
-                    .get_temp::<String>(search_id)
-                    .unwrap_or_default()
-            });
+            let mut search: String =
+                ui.memory(|m| m.data.get_temp::<String>(search_id).unwrap_or_default());
 
             let query = search.trim().to_lowercase();
             let matches = |panel: &dyn crate::EditorPanel| -> bool {
@@ -765,134 +835,135 @@ fn render_panel_picker_popup(
             ui.separator();
             ui.add_space(4.0);
 
-            egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-                if groups.is_empty() {
-                    ui.add_space(8.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new("No panels match")
-                                .color(theme.text.muted.to_color32()),
-                        );
-                    });
-                    return;
-                }
-
-                let num_columns = COLS_PER_ROW.min(groups.len()).max(1);
-                let mut columns: Vec<Vec<(&str, Vec<&dyn crate::EditorPanel>)>> =
-                    vec![Vec::new(); num_columns];
-                let mut column_heights: Vec<usize> = vec![0; num_columns];
-
-                let mut by_size: Vec<(&str, Vec<&dyn crate::EditorPanel>)> =
-                    groups.into_iter().collect();
-                by_size.sort_by_key(|(_, panels)| std::cmp::Reverse(panels.len()));
-
-                for (cat_name, panels) in by_size {
-                    let (idx, _) = column_heights
-                        .iter()
-                        .enumerate()
-                        .min_by_key(|(_, h)| **h)
-                        .unwrap();
-                    column_heights[idx] += panels.len() + 2;
-                    columns[idx].push((cat_name, panels));
-                }
-                for col in &mut columns {
-                    col.sort_by_key(|(name, _)| *name);
-                }
-
-                let hover_bg = theme.widgets.hovered_bg.to_color32();
-                let primary = theme.text.primary.to_color32();
-                let disabled = theme.text.disabled.to_color32();
-                let heading = theme.text.heading.to_color32();
-                const ITEM_HEIGHT: f32 = 22.0;
-                const ITEM_INDENT: f32 = 10.0;
-                const ITEM_FONT: f32 = 12.0;
-                const HEADER_FONT: f32 = 13.5;
-
-                ui.horizontal_top(|ui| {
-                    for (col_idx, col_cats) in columns.iter().enumerate() {
-                        if col_idx > 0 {
-                            ui.add_space(COL_GAP);
-                        }
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(COL_WIDTH, 0.0),
-                            egui::Layout::top_down(egui::Align::Min),
-                            |ui| {
-                                ui.set_width(COL_WIDTH);
-                                for (cat_idx, (category, panels)) in
-                                    col_cats.iter().enumerate()
-                                {
-                                    if cat_idx > 0 {
-                                        ui.add_space(10.0);
-                                    }
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(ITEM_INDENT);
-                                        ui.label(
-                                            egui::RichText::new(*category)
-                                                .size(HEADER_FONT)
-                                                .strong()
-                                                .color(heading),
-                                        );
-                                    });
-                                    ui.add_space(2.0);
-
-                                    let mut sorted: Vec<&dyn crate::EditorPanel> =
-                                        panels.clone();
-                                    sorted.sort_by_key(|p| p.title());
-                                    for panel in sorted {
-                                        let pid = panel.id();
-                                        let is_here = already_here.contains(pid);
-                                        let label = if let Some(icon) = panel.icon() {
-                                            format!("{}  {}", icon, panel.title())
-                                        } else {
-                                            panel.title().to_string()
-                                        };
-
-                                        let (rect, resp) = ui.allocate_exact_size(
-                                            Vec2::new(ui.available_width(), ITEM_HEIGHT),
-                                            if is_here {
-                                                Sense::hover()
-                                            } else {
-                                                Sense::click()
-                                            },
-                                        );
-
-                                        if resp.hovered() && !is_here {
-                                            ui.painter().rect_filled(
-                                                rect,
-                                                egui::CornerRadius::same(3),
-                                                hover_bg,
-                                            );
-                                            ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-                                        }
-
-                                        let text_color =
-                                            if is_here { disabled } else { primary };
-                                        ui.painter().text(
-                                            Pos2::new(
-                                                rect.left() + ITEM_INDENT,
-                                                rect.center().y,
-                                            ),
-                                            egui::Align2::LEFT_CENTER,
-                                            &label,
-                                            egui::FontId::proportional(ITEM_FONT),
-                                            text_color,
-                                        );
-
-                                        if resp.clicked() {
-                                            picked = Some(pid.to_string());
-                                            ui.memory_mut(|m| {
-                                                m.data.remove::<String>(search_id);
-                                                m.data.remove::<bool>(opened_id);
-                                            });
-                                            ui.close();
-                                        }
-                                    }
-                                }
-                            },
-                        );
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    if groups.is_empty() {
+                        ui.add_space(8.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                egui::RichText::new("No panels match")
+                                    .color(theme.text.muted.to_color32()),
+                            );
+                        });
+                        return;
                     }
+
+                    let num_columns = COLS_PER_ROW.min(groups.len()).max(1);
+                    let mut columns: Vec<Vec<(&str, Vec<&dyn crate::EditorPanel>)>> =
+                        vec![Vec::new(); num_columns];
+                    let mut column_heights: Vec<usize> = vec![0; num_columns];
+
+                    let mut by_size: Vec<(&str, Vec<&dyn crate::EditorPanel>)> =
+                        groups.into_iter().collect();
+                    by_size.sort_by_key(|(_, panels)| std::cmp::Reverse(panels.len()));
+
+                    for (cat_name, panels) in by_size {
+                        let (idx, _) = column_heights
+                            .iter()
+                            .enumerate()
+                            .min_by_key(|(_, h)| **h)
+                            .unwrap();
+                        column_heights[idx] += panels.len() + 2;
+                        columns[idx].push((cat_name, panels));
+                    }
+                    for col in &mut columns {
+                        col.sort_by_key(|(name, _)| *name);
+                    }
+
+                    let hover_bg = theme.widgets.hovered_bg.to_color32();
+                    let primary = theme.text.primary.to_color32();
+                    let disabled = theme.text.disabled.to_color32();
+                    let heading = theme.text.heading.to_color32();
+                    const ITEM_HEIGHT: f32 = 22.0;
+                    const ITEM_INDENT: f32 = 10.0;
+                    const ITEM_FONT: f32 = 12.0;
+                    const HEADER_FONT: f32 = 13.5;
+
+                    ui.horizontal_top(|ui| {
+                        for (col_idx, col_cats) in columns.iter().enumerate() {
+                            if col_idx > 0 {
+                                ui.add_space(COL_GAP);
+                            }
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(COL_WIDTH, 0.0),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.set_width(COL_WIDTH);
+                                    for (cat_idx, (category, panels)) in col_cats.iter().enumerate()
+                                    {
+                                        if cat_idx > 0 {
+                                            ui.add_space(10.0);
+                                        }
+                                        ui.horizontal(|ui| {
+                                            ui.add_space(ITEM_INDENT);
+                                            ui.label(
+                                                egui::RichText::new(*category)
+                                                    .size(HEADER_FONT)
+                                                    .strong()
+                                                    .color(heading),
+                                            );
+                                        });
+                                        ui.add_space(2.0);
+
+                                        let mut sorted: Vec<&dyn crate::EditorPanel> =
+                                            panels.clone();
+                                        sorted.sort_by_key(|p| p.title());
+                                        for panel in sorted {
+                                            let pid = panel.id();
+                                            let is_here = already_here.contains(pid);
+                                            let label = if let Some(icon) = panel.icon() {
+                                                format!("{}  {}", icon, panel.title())
+                                            } else {
+                                                panel.title().to_string()
+                                            };
+
+                                            let (rect, resp) = ui.allocate_exact_size(
+                                                Vec2::new(ui.available_width(), ITEM_HEIGHT),
+                                                if is_here {
+                                                    Sense::hover()
+                                                } else {
+                                                    Sense::click()
+                                                },
+                                            );
+
+                                            if resp.hovered() && !is_here {
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    egui::CornerRadius::same(3),
+                                                    hover_bg,
+                                                );
+                                                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                            }
+
+                                            let text_color =
+                                                if is_here { disabled } else { primary };
+                                            ui.painter().text(
+                                                Pos2::new(
+                                                    rect.left() + ITEM_INDENT,
+                                                    rect.center().y,
+                                                ),
+                                                egui::Align2::LEFT_CENTER,
+                                                &label,
+                                                egui::FontId::proportional(ITEM_FONT),
+                                                text_color,
+                                            );
+
+                                            if resp.clicked() {
+                                                picked = Some(pid.to_string());
+                                                ui.memory_mut(|m| {
+                                                    m.data.remove::<String>(search_id);
+                                                    m.data.remove::<bool>(opened_id);
+                                                });
+                                                ui.close();
+                                            }
+                                        }
+                                    }
+                                },
+                            );
+                        }
+                    });
                 });
-            });
         },
     );
 

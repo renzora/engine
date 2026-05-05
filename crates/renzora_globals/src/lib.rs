@@ -50,6 +50,7 @@ pub struct GlobalChanged {
     pub key: String,
 }
 
+#[derive(Default)]
 pub struct GlobalsPlugin;
 
 impl Plugin for GlobalsPlugin {
@@ -109,3 +110,4 @@ mod tests {
         assert!(store.drain_changed().contains("x"));
     }
 }
+

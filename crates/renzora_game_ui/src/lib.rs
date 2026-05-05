@@ -29,6 +29,7 @@ use bevy::prelude::*;
 
 pub use components::{UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
 
+#[derive(Default)]
 pub struct GameUiPlugin;
 
 impl Plugin for GameUiPlugin {
@@ -117,7 +118,10 @@ impl Plugin for GameUiPlugin {
         app.add_plugins(shapes::ShapesPlugin);
 
         // ── Canvas scaler ───────────────────────────────────────────────
-        app.add_systems(Update, (update_ui_scale, rehydrate_ui_images, sync_ui_zindex));
+        app.add_systems(
+            Update,
+            (update_ui_scale, rehydrate_ui_images, sync_ui_zindex),
+        );
 
         // ── Runtime widget systems ──────────────────────────────────────
         app.add_systems(
@@ -190,7 +194,8 @@ impl Plugin for GameUiPlugin {
                 color: [130, 200, 255],
                 priority: 60,
                 dynamic_icon_fn: Some(|world, entity| {
-                    world.get::<components::UiWidget>(entity)
+                    world
+                        .get::<components::UiWidget>(entity)
                         .map(|w| (w.widget_type.icon(), [130u8, 200, 255]))
                 }),
             });
@@ -279,7 +284,10 @@ fn update_ui_scale(
 /// has `UiImagePath` but no `ImageNode`.
 fn rehydrate_ui_images(
     mut commands: Commands,
-    query: Query<(Entity, &components::UiImagePath), (Without<ImageNode>, Added<components::UiImagePath>)>,
+    query: Query<
+        (Entity, &components::UiImagePath),
+        (Without<ImageNode>, Added<components::UiImagePath>),
+    >,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, img_path) in &query {
@@ -401,7 +409,10 @@ fn reset_ui_preview_on_layout_enter(
 /// must not be hijacked by selection changes.
 #[cfg(feature = "editor")]
 fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
-    let active = world.resource::<renzora_editor::LayoutManager>().active_name().to_string();
+    let active = world
+        .resource::<renzora_editor::LayoutManager>()
+        .active_name()
+        .to_string();
     if active != "Scene" && active != "UI" {
         return;
     }
@@ -449,10 +460,9 @@ fn ensure_ui_visibility_components(
     widgets_no_iv: Query<Entity, (With<UiWidget>, Without<InheritedVisibility>)>,
 ) {
     for entity in canvases_no_iv.iter().chain(widgets_no_iv.iter()) {
-        commands.entity(entity).try_insert((
-            InheritedVisibility::default(),
-            ViewVisibility::default(),
-        ));
+        commands
+            .entity(entity)
+            .try_insert((InheritedVisibility::default(), ViewVisibility::default()));
     }
 }
 
@@ -497,9 +507,7 @@ fn sync_ui_canvas_visibility(
                 }
             }
         } else if existing_target_cam.is_some() {
-            commands
-                .entity(entity)
-                .remove::<bevy::ui::UiTargetCamera>();
+            commands.entity(entity).remove::<bevy::ui::UiTargetCamera>();
         }
     }
 }
@@ -532,8 +540,7 @@ fn debug_ui_tree(
     >,
     cameras: Query<(Entity, &Camera, Option<&Name>)>,
 ) {
-    static LAST_PLAY: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static LAST_PLAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let in_play = play_mode.is_in_play_mode();
     let was_playing = LAST_PLAY.swap(in_play, std::sync::atomic::Ordering::Relaxed);
     if in_play == was_playing {
@@ -666,7 +673,11 @@ fn register_ui_presets(app: &mut App) {
     widget_preset!(Minimap, "ui_minimap", "Minimap");
     widget_preset!(InventoryGrid, "ui_inventory_grid", "Inventory Grid");
     widget_preset!(DialogBox, "ui_dialog_box", "Dialog Box");
-    widget_preset!(ObjectiveTracker, "ui_objective_tracker", "Objective Tracker");
+    widget_preset!(
+        ObjectiveTracker,
+        "ui_objective_tracker",
+        "Objective Tracker"
+    );
     widget_preset!(LoadingScreen, "ui_loading_screen", "Loading Screen");
     widget_preset!(KeybindRow, "ui_keybind_row", "Keybind Row");
     widget_preset!(SettingsRow, "ui_settings_row", "Settings Row");
@@ -700,3 +711,5 @@ fn register_ui_image_textures(
         }
     }
 }
+
+renzora::add!(GameUiPlugin);

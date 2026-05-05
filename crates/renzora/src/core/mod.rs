@@ -3,8 +3,8 @@ pub mod keybindings;
 pub mod reflection;
 pub mod viewport_types;
 
-use bevy::prelude::*;
 use bevy::input::gamepad::{GamepadAxis, GamepadButton};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,9 @@ impl Default for VirtualFileReader {
 impl VirtualFileReader {
     /// Create a reader backed by a custom function.
     pub fn new(f: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
-        Self { reader: Arc::new(f) }
+        Self {
+            reader: Arc::new(f),
+        }
     }
 
     /// Read a file to string. Tries the backing store (archive or disk).
@@ -79,11 +81,21 @@ pub struct NetworkProjectConfig {
     pub max_clients: u16,
 }
 
-fn default_server_addr() -> String { "127.0.0.1".to_string() }
-fn default_port() -> u16 { 7636 }
-fn default_transport() -> String { "udp".to_string() }
-fn default_tick_rate() -> u16 { 64 }
-fn default_max_clients() -> u16 { 32 }
+fn default_server_addr() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_port() -> u16 {
+    7636
+}
+fn default_transport() -> String {
+    "udp".to_string()
+}
+fn default_tick_rate() -> u16 {
+    64
+}
+fn default_max_clients() -> u16 {
+    32
+}
 
 impl Default for NetworkProjectConfig {
     fn default() -> Self {
@@ -194,9 +206,7 @@ impl CurrentProject {
         }
 
         // Try canonicalized paths
-        if let (Ok(canon_proj), Ok(canon_path)) =
-            (self.path.canonicalize(), path.canonicalize())
-        {
+        if let (Ok(canon_proj), Ok(canon_path)) = (self.path.canonicalize(), path.canonicalize()) {
             if let Ok(rel) = canon_path.strip_prefix(&canon_proj) {
                 return rel.to_string_lossy().replace('\\', "/");
             }
@@ -358,7 +368,9 @@ pub enum PbrAlphaMode {
 }
 
 impl Default for PbrAlphaMode {
-    fn default() -> Self { Self::Opaque }
+    fn default() -> Self {
+        Self::Opaque
+    }
 }
 
 /// Event fired when a file or folder is renamed/moved inside the project's
@@ -558,7 +570,9 @@ impl ActionState {
         self.actions.get(action).map_or(0.0, |a| a.axis_1d)
     }
     pub fn axis_2d(&self, action: &str) -> bevy::prelude::Vec2 {
-        self.actions.get(action).map_or(bevy::prelude::Vec2::ZERO, |a| a.axis_2d)
+        self.actions
+            .get(action)
+            .map_or(bevy::prelude::Vec2::ZERO, |a| a.axis_2d)
     }
 }
 
@@ -567,7 +581,14 @@ impl ActionState {
 // ============================================================================
 
 /// Reference to a material file. Add to any entity with `Mesh3d` to assign a material.
-#[derive(bevy::prelude::Component, serde::Serialize, serde::Deserialize, bevy::prelude::Reflect, Clone, Debug)]
+#[derive(
+    bevy::prelude::Component,
+    serde::Serialize,
+    serde::Deserialize,
+    bevy::prelude::Reflect,
+    Clone,
+    Debug,
+)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MaterialRef(pub String);
 
@@ -622,8 +643,7 @@ pub fn write_anim_file(clip: &AnimClip, path: &std::path::Path) -> Result<(), St
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
-    std::fs::write(path, ron_str)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    std::fs::write(path, ron_str).map_err(|e| format!("Failed to write file: {}", e))?;
     Ok(())
 }
 
@@ -704,7 +724,10 @@ impl PlayModeState {
     }
     /// Returns true if scripts are in scripts-only mode (running or paused).
     pub fn is_scripts_only(&self) -> bool {
-        matches!(self.state, PlayState::ScriptsOnly | PlayState::ScriptsPaused)
+        matches!(
+            self.state,
+            PlayState::ScriptsOnly | PlayState::ScriptsPaused
+        )
     }
     /// Returns true if scripts should be executing this frame.
     pub fn is_scripts_running(&self) -> bool {
@@ -892,7 +915,9 @@ pub struct ViewportRenderTarget {
 }
 
 /// Open an existing project from project.toml path
-pub fn open_project(project_toml_path: &Path) -> Result<CurrentProject, Box<dyn std::error::Error>> {
+pub fn open_project(
+    project_toml_path: &Path,
+) -> Result<CurrentProject, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(project_toml_path)?;
     let config: ProjectConfig = toml::from_str(&content)?;
 
@@ -976,16 +1001,31 @@ impl ScriptInput {
     pub fn get_movement_vector(&self) -> Vec2 {
         let mut x = 0.0f32;
         let mut y = 0.0f32;
-        if self.is_key_pressed(KeyCode::KeyA) || self.is_key_pressed(KeyCode::ArrowLeft) { x -= 1.0; }
-        if self.is_key_pressed(KeyCode::KeyD) || self.is_key_pressed(KeyCode::ArrowRight) { x += 1.0; }
-        if self.is_key_pressed(KeyCode::KeyS) || self.is_key_pressed(KeyCode::ArrowDown) { y -= 1.0; }
-        if self.is_key_pressed(KeyCode::KeyW) || self.is_key_pressed(KeyCode::ArrowUp) { y += 1.0; }
+        if self.is_key_pressed(KeyCode::KeyA) || self.is_key_pressed(KeyCode::ArrowLeft) {
+            x -= 1.0;
+        }
+        if self.is_key_pressed(KeyCode::KeyD) || self.is_key_pressed(KeyCode::ArrowRight) {
+            x += 1.0;
+        }
+        if self.is_key_pressed(KeyCode::KeyS) || self.is_key_pressed(KeyCode::ArrowDown) {
+            y -= 1.0;
+        }
+        if self.is_key_pressed(KeyCode::KeyW) || self.is_key_pressed(KeyCode::ArrowUp) {
+            y += 1.0;
+        }
         let v = Vec2::new(x, y);
-        if v.length_squared() > 0.0 { v.normalize() } else { v }
+        if v.length_squared() > 0.0 {
+            v.normalize()
+        } else {
+            v
+        }
     }
 
     pub fn get_gamepad_left_stick(&self, id: u32) -> Vec2 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
+        let axes = match self.gamepad_axes.get(&id) {
+            Some(a) => a,
+            None => return Vec2::ZERO,
+        };
         Vec2::new(
             axes.get(&GamepadAxis::LeftStickX).copied().unwrap_or(0.0),
             axes.get(&GamepadAxis::LeftStickY).copied().unwrap_or(0.0),
@@ -993,7 +1033,10 @@ impl ScriptInput {
     }
 
     pub fn get_gamepad_right_stick(&self, id: u32) -> Vec2 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return Vec2::ZERO };
+        let axes = match self.gamepad_axes.get(&id) {
+            Some(a) => a,
+            None => return Vec2::ZERO,
+        };
         Vec2::new(
             axes.get(&GamepadAxis::RightStickX).copied().unwrap_or(0.0),
             axes.get(&GamepadAxis::RightStickY).copied().unwrap_or(0.0),
@@ -1001,13 +1044,21 @@ impl ScriptInput {
     }
 
     pub fn get_gamepad_trigger(&self, id: u32, left: bool) -> f32 {
-        let axes = match self.gamepad_axes.get(&id) { Some(a) => a, None => return 0.0 };
-        let axis = if left { GamepadAxis::LeftZ } else { GamepadAxis::RightZ };
+        let axes = match self.gamepad_axes.get(&id) {
+            Some(a) => a,
+            None => return 0.0,
+        };
+        let axis = if left {
+            GamepadAxis::LeftZ
+        } else {
+            GamepadAxis::RightZ
+        };
         axes.get(&axis).copied().unwrap_or(0.0)
     }
 
     pub fn is_gamepad_button_pressed(&self, id: u32, button: GamepadButton) -> bool {
-        self.gamepad_buttons.get(&id)
+        self.gamepad_buttons
+            .get(&id)
             .and_then(|b| b.get(&button))
             .copied()
             .unwrap_or(false)
@@ -1053,10 +1104,13 @@ impl PinType {
         matches!(
             (from, to),
             (PinType::Int, PinType::Float)
-            | (PinType::Float, PinType::Vec2 | PinType::Vec3 | PinType::Color)
-            | (PinType::Vec3, PinType::Color)
-            | (PinType::Color, PinType::Vec3)
-            | (PinType::Bool, PinType::Int | PinType::Float)
+                | (
+                    PinType::Float,
+                    PinType::Vec2 | PinType::Vec3 | PinType::Color
+                )
+                | (PinType::Vec3, PinType::Color)
+                | (PinType::Color, PinType::Vec3)
+                | (PinType::Bool, PinType::Int | PinType::Float)
         )
     }
 }
@@ -1093,7 +1147,13 @@ impl PinValue {
         match self {
             Self::Float(v) => *v,
             Self::Int(v) => *v as f32,
-            Self::Bool(v) => if *v { 1.0 } else { 0.0 },
+            Self::Bool(v) => {
+                if *v {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             _ => 0.0,
         }
     }
@@ -1102,7 +1162,13 @@ impl PinValue {
         match self {
             Self::Int(v) => *v,
             Self::Float(v) => *v as i32,
-            Self::Bool(v) => if *v { 1 } else { 0 },
+            Self::Bool(v) => {
+                if *v {
+                    1
+                } else {
+                    0
+                }
+            }
             _ => 0,
         }
     }
@@ -1413,7 +1479,10 @@ mod tests {
             new: "geometry".into(),
             is_dir: true,
         };
-        assert_eq!(evt.rewrite("models/car.glb"), Some("geometry/car.glb".into()));
+        assert_eq!(
+            evt.rewrite("models/car.glb"),
+            Some("geometry/car.glb".into())
+        );
         assert_eq!(evt.rewrite("models"), Some("geometry".into()));
         // Different folder — must not rewrite.
         assert_eq!(evt.rewrite("modelsX/foo.glb"), None);
@@ -1453,7 +1522,10 @@ mod tests {
     fn resolve_path_joins_relative() {
         let proj = make_project("/projects/demo");
         let resolved = proj.resolve_path("scenes/main.ron");
-        assert_eq!(resolved, PathBuf::from("/projects/demo").join("scenes/main.ron"));
+        assert_eq!(
+            resolved,
+            PathBuf::from("/projects/demo").join("scenes/main.ron")
+        );
     }
 
     #[test]

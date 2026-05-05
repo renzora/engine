@@ -390,7 +390,7 @@ version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
 dependencies = [
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -694,9 +694,13 @@ dependencies = [
  "disqualified",
  "glam_matrix_extras",
  "itertools 0.13.0",
+ "nalgebra 0.34.2",
+ "parry3d 0.25.3",
+ "parry3d-f64",
  "slab",
  "smallvec",
  "thiserror 2.0.18",
+ "thread_local",
 ]
 
 [[package]]
@@ -804,6 +808,56 @@ checksum = "ec689b5a79452b6f777b889bbff22d3216b82a8d2ab7814d4a0eb571e9938d97"
 dependencies = [
  "bevy_dylib",
  "bevy_internal 0.18.0",
+]
+
+[[package]]
+name = "bevy-inspector-egui"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "265c78b2d2b770351e2eb90c5bc997c7036d453a4e2cd62e066561fefeecedec"
+dependencies = [
+ "bevy-inspector-egui-derive",
+ "bevy_app 0.18.0",
+ "bevy_asset",
+ "bevy_camera",
+ "bevy_color",
+ "bevy_core_pipeline",
+ "bevy_ecs 0.18.0",
+ "bevy_egui",
+ "bevy_gizmos",
+ "bevy_image",
+ "bevy_light",
+ "bevy_log 0.18.0",
+ "bevy_math 0.18.0",
+ "bevy_mesh",
+ "bevy_pbr",
+ "bevy_platform",
+ "bevy_reflect 0.18.0",
+ "bevy_render",
+ "bevy_state",
+ "bevy_time 0.18.0",
+ "bevy_utils 0.18.0",
+ "bevy_window",
+ "bytemuck",
+ "disqualified",
+ "egui",
+ "fuzzy-matcher",
+ "image",
+ "opener",
+ "smallvec",
+ "uuid",
+ "winit",
+]
+
+[[package]]
+name = "bevy-inspector-egui-derive"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8405b6aee62eebfc27a95c513e04398869fb7911ea8266ec91675994b11eb749"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1347,6 +1401,17 @@ dependencies = [
 
 [[package]]
 name = "bevy_gauge"
+version = "0.4.2"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_gauge_macros",
+ "criterion",
+ "inventory",
+ "lasso",
+]
+
+[[package]]
+name = "bevy_gauge"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d438d3b3064a7f798d25bdc87e7dba61e8f6b4d5edef16b2e3351dea847a7a80"
@@ -1827,6 +1892,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef8e4b7e61dfe7719bb03c884dc270cd46a82efb40f93e9933b990c5c190c59"
 
 [[package]]
+name = "bevy_mod_openxr"
+version = "0.5.0"
+dependencies = [
+ "android_system_properties",
+ "ash",
+ "bevy 0.18.0",
+ "bevy_app 0.18.0",
+ "bevy_camera",
+ "bevy_derive 0.18.0",
+ "bevy_ecs 0.18.0",
+ "bevy_log 0.18.0",
+ "bevy_math 0.18.0",
+ "bevy_mod_xr",
+ "bevy_platform",
+ "bevy_reflect 0.18.0",
+ "bevy_render",
+ "bevy_transform 0.18.0",
+ "bevy_window",
+ "bevy_winit",
+ "jni 0.20.0",
+ "ndk-context",
+ "openxr",
+ "thiserror 2.0.18",
+ "wgpu",
+ "wgpu-hal",
+ "winapi",
+]
+
+[[package]]
 name = "bevy_mod_outline"
 version = "0.10.3"
 dependencies = [
@@ -1835,6 +1929,23 @@ dependencies = [
  "nonmax",
  "thiserror 2.0.18",
  "wgpu-types",
+]
+
+[[package]]
+name = "bevy_mod_xr"
+version = "0.5.0"
+dependencies = [
+ "bevy_app 0.18.0",
+ "bevy_camera",
+ "bevy_color",
+ "bevy_derive 0.18.0",
+ "bevy_ecs 0.18.0",
+ "bevy_gizmos",
+ "bevy_log 0.18.0",
+ "bevy_math 0.18.0",
+ "bevy_reflect 0.18.0",
+ "bevy_render",
+ "bevy_transform 0.18.0",
 ]
 
 [[package]]
@@ -2148,6 +2259,17 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "wgpu-types",
+]
+
+[[package]]
+name = "bevy_silk"
+version = "0.10.0"
+dependencies = [
+ "avian3d 0.5.0",
+ "bevy 0.18.0",
+ "bevy-inspector-egui",
+ "rand 0.8.5",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2518,6 +2640,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_xr_utils"
+version = "0.5.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_app 0.18.0",
+ "bevy_color",
+ "bevy_derive 0.18.0",
+ "bevy_ecs 0.18.0",
+ "bevy_gizmos",
+ "bevy_log 0.18.0",
+ "bevy_math 0.18.0",
+ "bevy_mod_openxr",
+ "bevy_mod_xr",
+ "bevy_transform 0.18.0",
+ "openxr",
+ "openxr_mndx_xdev_space",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2685,6 +2826,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
 dependencies = [
  "memchr",
+ "regex-automata",
  "serde",
 ]
 
@@ -2984,7 +3126,7 @@ source = "git+https://github.com/prokopyl/clack#4541f03792635dfdc6be9441a01b786e
 dependencies = [
  "clack-common",
  "clap-sys",
- "libloading",
+ "libloading 0.8.9",
  "objc2-foundation 0.3.2",
 ]
 
@@ -2996,7 +3138,7 @@ checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
 dependencies = [
  "glob",
  "libc",
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -3781,7 +3923,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -3840,7 +3982,7 @@ name = "dynamic_plugin_loader"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "libloading",
+ "libloading 0.8.9",
  "renzora",
 ]
 
@@ -4456,6 +4598,15 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "slab",
+]
+
+[[package]]
+name = "fuzzy-matcher"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
+dependencies = [
+ "thread_local",
 ]
 
 [[package]]
@@ -5429,6 +5580,20 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "jni"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "039022cdf4d7b1cf548d31f60ae783138e5fd42013f6271049d7df7afadef96c"
+dependencies = [
+ "cesu8",
+ "combine",
+ "jni-sys 0.3.0",
+ "log",
+ "thiserror 1.0.69",
+ "walkdir",
+]
+
+[[package]]
+name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a87aa2bb7d2af34197c04845522473242e1aa17c12f4935d5856491a7fb8c97"
@@ -5525,7 +5690,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
 dependencies = [
  "libc",
- "libloading",
+ "libloading 0.8.9",
  "pkg-config",
 ]
 
@@ -5627,6 +5792,16 @@ name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
 dependencies = [
  "cfg-if",
  "windows-link 0.2.1",
@@ -6442,6 +6617,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6847,6 +7028,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38bf9645c8b145698bb0b18a4637dcacbc421ea49bef2317e4fd8065a387cf21"
 
 [[package]]
+name = "normpath"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf23ab2b905654b4cb177e30b629937b3868311d4e1cba859f899c041046e69b"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6959,7 +7149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9bff0aa1d48904a1385ea2a8b97576fbdcbc9a3cfccd0d31fe978e1c4038c5"
 dependencies = [
  "bitflags 2.11.1",
- "libloading",
+ "libloading 0.8.9",
  "nvml-wrapper-sys",
  "static_assertions",
  "thiserror 1.0.69",
@@ -6972,7 +7162,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "698d45156f28781a4e79652b6ebe2eaa0589057d588d3aec1333f6466f13fcb5"
 dependencies = [
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -7417,10 +7607,52 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "opener"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2fa337e0cf13357c13ef1dc108df1333eb192f75fc170bea03fcf1fd404c2ee"
+dependencies = [
+ "bstr",
+ "normpath",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "openxr"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c2f814a47d257c79c762bc64042859661b6aa2f57cfa1f0ad4d778f419aeb0e"
+dependencies = [
+ "libc",
+ "libloading 0.9.0",
+ "ndk-context",
+ "openxr-sys",
+]
+
+[[package]]
+name = "openxr-sys"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b8d66081de28c2fa40216182a37292fe38aeea20bc184612504d5e64daf5359"
+dependencies = [
+ "libc",
+ "mint",
+]
+
+[[package]]
+name = "openxr_mndx_xdev_space"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1b0e85e7ff61dcce98c9e1981f9181bc935242cb3239bd6ec6cad83aa0c2897"
+dependencies = [
+ "openxr",
+]
 
 [[package]]
 name = "option-ext"
@@ -7558,6 +7790,35 @@ dependencies = [
 
 [[package]]
 name = "parry3d"
+version = "0.25.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e99471b7b6870f7fe406d5611dd4b4c9b07aa3e5436b1d27e1515f9832bb0c6b"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bitflags 2.11.1",
+ "downcast-rs 2.0.2",
+ "either",
+ "ena",
+ "foldhash 0.2.0",
+ "hashbrown 0.16.1",
+ "log",
+ "nalgebra 0.34.2",
+ "num-derive",
+ "num-traits",
+ "ordered-float 5.1.0",
+ "rayon",
+ "rstar",
+ "simba",
+ "slab",
+ "smallvec",
+ "spade",
+ "static_assertions",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "parry3d"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e04d21bda5249438b5695e7f08f1655524a6025bcdb186c324b7a66562f2d61"
@@ -7581,6 +7842,34 @@ dependencies = [
  "smallvec",
  "spade",
  "static_assertions",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "parry3d-f64"
+version = "0.25.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38fe282b81b60a2aee7f24db25ea73b3c82f6451888eeb5936b621adb87aa653"
+dependencies = [
+ "approx",
+ "arrayvec",
+ "bitflags 2.11.1",
+ "downcast-rs 2.0.2",
+ "either",
+ "ena",
+ "foldhash 0.2.0",
+ "hashbrown 0.16.1",
+ "log",
+ "nalgebra 0.34.2",
+ "num-derive",
+ "num-traits",
+ "ordered-float 5.1.0",
+ "rayon",
+ "rstar",
+ "simba",
+ "slab",
+ "smallvec",
+ "spade",
  "thiserror 2.0.18",
 ]
 
@@ -8442,9 +8731,26 @@ name = "renzora"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "inventory",
  "ron 0.8.1",
  "serde",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora-android"
+version = "0.2.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora_runtime",
+]
+
+[[package]]
+name = "renzora-ios"
+version = "0.2.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora_runtime",
 ]
 
 [[package]]
@@ -8509,6 +8815,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_ascii"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_asset_browser"
 version = "0.1.0"
 dependencies = [
@@ -8553,6 +8871,7 @@ dependencies = [
  "cpal 0.17.1",
  "kira",
  "mint",
+ "renzora",
  "rtrb",
  "serde",
 ]
@@ -8598,6 +8917,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_bluenoise"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_light",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "serde",
+]
+
+[[package]]
 name = "renzora_blueprint"
 version = "0.1.0"
 dependencies = [
@@ -8635,6 +8966,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_chromatic_aberration"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_chromatic_ring"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_clouds"
 version = "0.1.0"
 dependencies = [
@@ -8658,6 +9013,30 @@ dependencies = [
  "renzora_editor",
  "renzora_scripting",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_color_grading"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_color_split"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8695,6 +9074,30 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_cross_hatch"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_crt"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8740,6 +9143,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_distortion"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_dithering"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_docker_builder"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "md5",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "renzora_ui",
+]
+
+[[package]]
 name = "renzora_dof"
 version = "0.1.0"
 dependencies = [
@@ -8750,6 +9191,31 @@ dependencies = [
  "renzora_editor",
  "renzora_macros",
  "renzora_theme",
+ "serde",
+]
+
+[[package]]
+name = "renzora_dream"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_edge_glow"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -8766,6 +9232,18 @@ dependencies = [
  "renzora_theme",
  "renzora_ui",
  "rfd",
+]
+
+[[package]]
+name = "renzora_emboss"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8832,6 +9310,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_film_grain"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_fog_overlay"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_foliage"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora_terrain",
+ "serde",
+]
+
+[[package]]
 name = "renzora_foliage_editor"
 version = "0.1.0"
 dependencies = [
@@ -8842,6 +9353,31 @@ dependencies = [
  "renzora_editor",
  "renzora_terrain",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_forward_decal"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "serde",
+]
+
+[[package]]
+name = "renzora_frosted_glass"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8876,11 +9412,24 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
- "bevy_gauge",
+ "bevy_gauge 0.4.5",
  "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_gaussian_blur"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8900,11 +9449,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_glitch"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_globals"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
+]
+
+[[package]]
+name = "renzora_god_rays"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_grayscale"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8914,6 +9500,18 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_editor",
+]
+
+[[package]]
+name = "renzora_halftone"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -8930,6 +9528,30 @@ dependencies = [
  "ron 0.8.1",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "renzora_heat_haze"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_hex_pixelate"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9045,11 +9667,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_invert"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_kaleidoscope"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_keybindings"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
+]
+
+[[package]]
+name = "renzora_kuwahara"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_letterbox"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9068,6 +9738,18 @@ dependencies = [
  "renzora_lighting",
  "renzora_terrain",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_light_streaks"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9114,6 +9796,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_matrix"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_mesh_draw"
 version = "0.1.0"
 dependencies = [
@@ -9149,6 +9843,18 @@ dependencies = [
  "renzora_audio",
  "renzora_editor",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_mosaic"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9222,6 +9928,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_night_vision"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_oil_painting"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_oit"
 version = "0.1.0"
 dependencies = [
@@ -9231,6 +9961,32 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_theme",
+ "serde",
+]
+
+[[package]]
+name = "renzora_outline"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_palette_quantization"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9249,6 +10005,18 @@ dependencies = [
  "renzora_ui",
  "rfd",
  "ron 0.8.1",
+]
+
+[[package]]
+name = "renzora_pcss"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_light",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "serde",
 ]
 
 [[package]]
@@ -9282,12 +10050,106 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_pillowbox"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_pixelation"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_pool_water"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "serde",
+]
+
+[[package]]
+name = "renzora_posterize"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_macros",
+]
+
+[[package]]
+name = "renzora_preview"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "js-sys",
+ "renzora",
+ "renzora_animation",
+ "renzora_hanabi",
+ "renzora_lighting",
+ "renzora_macros",
+ "renzora_shader",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "renzora_radial_blur"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_rain"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9319,7 +10181,6 @@ name = "renzora_rpak"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
- "renzora_editor",
  "toml 0.8.23",
  "zstd",
 ]
@@ -9412,6 +10273,19 @@ dependencies = [
  "renzora_vst",
  "renzora_water",
  "renzora_widget_gallery",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora_scanlines"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9460,6 +10334,18 @@ dependencies = [
  "renzora_editor",
  "renzora_theme",
  "rhai",
+ "serde",
+]
+
+[[package]]
+name = "renzora_sepia"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9540,6 +10426,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_sharpen"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_sketch"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_skybox"
 version = "0.1.0"
 dependencies = [
@@ -9551,6 +10461,18 @@ dependencies = [
  "renzora_theme",
  "renzora_ui",
  "rfd",
+ "serde",
+]
+
+[[package]]
+name = "renzora_sobel_edge"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9599,6 +10521,18 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_editor",
+ "serde",
+]
+
+[[package]]
+name = "renzora_swirl"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9683,6 +10617,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_thermal"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_threshold"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_tilt_shift"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_tonemapping"
 version = "0.1.0"
 dependencies = [
@@ -9692,6 +10662,18 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_theme",
+ "serde",
+]
+
+[[package]]
+name = "renzora_toon"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9722,6 +10704,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_underwater"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_undo"
 version = "0.1.0"
 dependencies = [
@@ -9730,6 +10725,32 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_ui",
+]
+
+[[package]]
+name = "renzora_usd"
+version = "0.1.0"
+dependencies = [
+ "gltf-json",
+ "half",
+ "log",
+ "lz4_flex",
+ "renzora_animation",
+ "serde_json",
+ "thiserror 2.0.18",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "renzora_vibrance"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
 ]
 
 [[package]]
@@ -9755,6 +10776,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_vignette"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_vst"
 version = "0.1.0"
 dependencies = [
@@ -9776,7 +10810,20 @@ dependencies = [
  "avian3d 0.5.0",
  "bevy 0.18.0",
  "egui-phosphor",
+ "renzora",
  "renzora_editor",
+ "serde",
+]
+
+[[package]]
+name = "renzora_wave"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_macros",
+ "renzora_postprocess",
  "serde",
 ]
 
@@ -9790,6 +10837,20 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_theme",
+]
+
+[[package]]
+name = "renzora_xr"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_mod_openxr",
+ "bevy_mod_xr",
+ "bevy_xr_utils",
+ "log",
+ "openxr",
+ "renzora",
+ "serde",
 ]
 
 [[package]]
@@ -10200,6 +11261,17 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -11902,6 +12974,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga",
+ "parking_lot",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
@@ -11941,6 +13014,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.18",
  "wgpu-core-deps-apple",
+ "wgpu-core-deps-emscripten",
  "wgpu-core-deps-wasm",
  "wgpu-core-deps-windows-linux-android",
  "wgpu-hal",
@@ -11952,6 +13026,15 @@ name = "wgpu-core-deps-apple"
 version = "27.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0772ae958e9be0c729561d5e3fd9a19679bcdfb945b8b1a1969d9bfe8056d233"
+dependencies = [
+ "wgpu-hal",
+]
+
+[[package]]
+name = "wgpu-core-deps-emscripten"
+version = "27.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b06ac3444a95b0813ecfd81ddb2774b66220b264b3e2031152a4a29fda4da6b5"
 dependencies = [
  "wgpu-hal",
 ]
@@ -11999,7 +13082,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading",
+ "libloading 0.8.9",
  "log",
  "metal",
  "naga",
@@ -12837,7 +13920,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
- "libloading",
+ "libloading 0.8.9",
  "once_cell",
  "rustix 1.1.3",
  "x11rb-protocol",

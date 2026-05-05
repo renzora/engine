@@ -126,7 +126,10 @@ impl ThemeManager {
     /// Returns the path if successful
     pub fn save_theme(&mut self, name: &str) -> Option<PathBuf> {
         #[cfg(target_arch = "wasm32")]
-        { let _ = name; return None; }
+        {
+            let _ = name;
+            return None;
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -173,7 +176,9 @@ impl ThemeManager {
         if self.is_builtin(name) {
             return None;
         }
-        self.themes_dir.as_ref().map(|dir| dir.join(format!("{}.toml", name)))
+        self.themes_dir
+            .as_ref()
+            .map(|dir| dir.join(format!("{}.toml", name)))
     }
 
     /// Delete a custom theme
@@ -203,7 +208,10 @@ impl ThemeManager {
     #[allow(dead_code)]
     pub fn duplicate_theme(&mut self, new_name: &str) -> bool {
         #[cfg(target_arch = "wasm32")]
-        { let _ = new_name; return false; }
+        {
+            let _ = new_name;
+            return false;
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {

@@ -212,3 +212,5 @@ impl Plugin for SplinePlugin {
         app.register_type::<SplinePath>();
     }
 }
+
+renzora::add!(SplinePlugin);

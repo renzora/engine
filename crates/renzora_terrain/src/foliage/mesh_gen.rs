@@ -5,9 +5,9 @@
 //! - `UV_1`: (phase, blade_height)
 //! - `COLOR`: (bend, lean_x, lean_z, color_variation)
 
-use bevy::prelude::*;
-use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
+use bevy::prelude::*;
 
 use super::data::{FoliageDensityMap, FoliageType};
 
@@ -154,8 +154,8 @@ pub fn generate_foliage_chunk_mesh(
             let blade_width = foliage_type.width_range.x
                 + (foliage_type.width_range.y - foliage_type.width_range.x) * w_rand;
 
-            let phase = hash_pos(gx * 37, gz * 41, seed_val.wrapping_add(4))
-                * std::f32::consts::TAU;
+            let phase =
+                hash_pos(gx * 37, gz * 41, seed_val.wrapping_add(4)) * std::f32::consts::TAU;
 
             let bend = ((blade_height - foliage_type.height_range.x)
                 / (foliage_type.height_range.y - foliage_type.height_range.x).max(0.01)
@@ -163,13 +163,10 @@ pub fn generate_foliage_chunk_mesh(
                 + hash_pos(gx * 47, gz * 53, seed_val.wrapping_add(6)).abs() * 0.3)
                 .clamp(0.0, 1.0);
 
-            let lean_x =
-                (hash_pos(gx * 59, gz * 61, seed_val.wrapping_add(7)) - 0.5) * 0.06;
-            let lean_z =
-                (hash_pos(gx * 67, gz * 71, seed_val.wrapping_add(8)) - 0.5) * 0.06;
+            let lean_x = (hash_pos(gx * 59, gz * 61, seed_val.wrapping_add(7)) - 0.5) * 0.06;
+            let lean_z = (hash_pos(gx * 67, gz * 71, seed_val.wrapping_add(8)) - 0.5) * 0.06;
 
-            let color_var =
-                (phase * 3.7).sin() * 0.12;
+            let color_var = (phase * 3.7).sin() * 0.12;
 
             // Y-axis rotation
             let angle = phase * 2.5;
@@ -194,7 +191,12 @@ pub fn generate_foliage_chunk_mesh(
                 normals.push([0.0, 1.0, 0.0]); // recomputed in vertex shader
                 uvs_0.push(template_uv[v]);
                 uvs_1.push([phase, blade_height]);
-                colors.push([bend, lean_x * 10.0 + 0.5, lean_z * 10.0 + 0.5, color_var + 0.5]);
+                colors.push([
+                    bend,
+                    lean_x * 10.0 + 0.5,
+                    lean_z * 10.0 + 0.5,
+                    color_var + 0.5,
+                ]);
             }
 
             // Emit indices (offset by base vertex)

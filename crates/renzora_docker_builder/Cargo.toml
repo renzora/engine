@@ -3,8 +3,17 @@ name = "renzora_docker_builder"
 version = "0.1.0"
 edition = "2021"
 
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/`
+# directory at startup. cdylib keeps the export surface to the
+# unmangled `extern "C"` symbols emitted by `renzora::add!` under
+# the `dlopen` feature.
+[features]
+default = ["dlopen"]
+dlopen = []
+
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -17,3 +26,6 @@ renzora_theme = { path = "../renzora_theme" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 md5 = "0.7"
+
+[lints]
+workspace = true

@@ -2,16 +2,14 @@
 
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
-use bevy_hanabi::Gradient as HanabiGradient;
 use bevy_hanabi::AlphaMode as HanabiAlphaMode;
+use bevy_hanabi::Gradient as HanabiGradient;
 
 use crate::data::{
-    HanabiEffectDefinition, HanabiEmitShape, SpawnMode, VelocityMode,
-    ShapeDimension as OurShapeDimension,
-    SimulationSpace as OurSimulationSpace,
-    SimulationCondition as OurSimulationCondition,
-    ParticleAlphaMode, ParticleOrientMode, ParticleColorBlendMode,
-    MotionIntegrationMode, KillZone,
+    HanabiEffectDefinition, HanabiEmitShape, KillZone, MotionIntegrationMode, ParticleAlphaMode,
+    ParticleColorBlendMode, ParticleOrientMode, ShapeDimension as OurShapeDimension,
+    SimulationCondition as OurSimulationCondition, SimulationSpace as OurSimulationSpace,
+    SpawnMode, VelocityMode,
 };
 
 fn map_dimension(dim: OurShapeDimension) -> ShapeDimension {
@@ -35,43 +33,57 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     };
 
     // Lifetime
-    let lifetime_expr = writer.lit(def.lifetime_min).uniform(writer.lit(def.lifetime_max)).expr();
+    let lifetime_expr = writer
+        .lit(def.lifetime_min)
+        .uniform(writer.lit(def.lifetime_max))
+        .expr();
 
     // Position
     enum PosModifier {
         Attribute(ExprHandle),
-        Circle { center: ExprHandle, axis: ExprHandle, radius: ExprHandle, dim: ShapeDimension },
-        Sphere { center: ExprHandle, radius: ExprHandle, dim: ShapeDimension },
-        Cone { height: ExprHandle, base_radius: ExprHandle, top_radius: ExprHandle, dim: ShapeDimension },
+        Circle {
+            center: ExprHandle,
+            axis: ExprHandle,
+            radius: ExprHandle,
+            dim: ShapeDimension,
+        },
+        Sphere {
+            center: ExprHandle,
+            radius: ExprHandle,
+            dim: ShapeDimension,
+        },
+        Cone {
+            height: ExprHandle,
+            base_radius: ExprHandle,
+            top_radius: ExprHandle,
+            dim: ShapeDimension,
+        },
     }
 
     let pos_modifier = match &def.emit_shape {
-        HanabiEmitShape::Point => {
-            PosModifier::Attribute(writer.lit(Vec3::ZERO).expr())
-        }
-        HanabiEmitShape::Circle { radius, dimension } => {
-            PosModifier::Circle {
-                center: writer.lit(Vec3::ZERO).expr(),
-                axis: writer.lit(Vec3::Y).expr(),
-                radius: writer.lit(*radius).expr(),
-                dim: map_dimension(*dimension),
-            }
-        }
-        HanabiEmitShape::Sphere { radius, dimension } => {
-            PosModifier::Sphere {
-                center: writer.lit(Vec3::ZERO).expr(),
-                radius: writer.lit(*radius).expr(),
-                dim: map_dimension(*dimension),
-            }
-        }
-        HanabiEmitShape::Cone { base_radius, top_radius, height, dimension } => {
-            PosModifier::Cone {
-                height: writer.lit(*height).expr(),
-                base_radius: writer.lit(*base_radius).expr(),
-                top_radius: writer.lit(*top_radius).expr(),
-                dim: map_dimension(*dimension),
-            }
-        }
+        HanabiEmitShape::Point => PosModifier::Attribute(writer.lit(Vec3::ZERO).expr()),
+        HanabiEmitShape::Circle { radius, dimension } => PosModifier::Circle {
+            center: writer.lit(Vec3::ZERO).expr(),
+            axis: writer.lit(Vec3::Y).expr(),
+            radius: writer.lit(*radius).expr(),
+            dim: map_dimension(*dimension),
+        },
+        HanabiEmitShape::Sphere { radius, dimension } => PosModifier::Sphere {
+            center: writer.lit(Vec3::ZERO).expr(),
+            radius: writer.lit(*radius).expr(),
+            dim: map_dimension(*dimension),
+        },
+        HanabiEmitShape::Cone {
+            base_radius,
+            top_radius,
+            height,
+            dimension,
+        } => PosModifier::Cone {
+            height: writer.lit(*height).expr(),
+            base_radius: writer.lit(*base_radius).expr(),
+            top_radius: writer.lit(*top_radius).expr(),
+            dim: map_dimension(*dimension),
+        },
         HanabiEmitShape::Rect { half_extents, .. } => {
             let half = Vec3::new(half_extents[0], half_extents[1], 0.0);
             PosModifier::Attribute(writer.lit(-half).uniform(writer.lit(half)).expr())
@@ -85,8 +97,15 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     // Velocity
     enum VelModifier {
         Attribute(ExprHandle),
-        Sphere { center: ExprHandle, speed: ExprHandle },
-        Tangent { origin: ExprHandle, axis: ExprHandle, speed: ExprHandle },
+        Sphere {
+            center: ExprHandle,
+            speed: ExprHandle,
+        },
+        Tangent {
+            origin: ExprHandle,
+            axis: ExprHandle,
+            speed: ExprHandle,
+        },
     }
 
     let vel_modifier = match def.velocity_mode {
@@ -100,7 +119,10 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
                 VelModifier::Attribute(writer.lit(vel_min).uniform(writer.lit(vel_max)).expr())
             } else if speed_min != speed_max {
                 VelModifier::Attribute(
-                    writer.lit(dir * speed_min).uniform(writer.lit(dir * speed_max)).expr()
+                    writer
+                        .lit(dir * speed_min)
+                        .uniform(writer.lit(dir * speed_max))
+                        .expr(),
                 )
             } else {
                 VelModifier::Attribute(writer.lit(dir * speed_min).expr())
@@ -132,7 +154,8 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     };
 
     // Size init
-    let size_init_expr = if def.size_start_min > 0.0 && def.size_start_max > 0.0
+    let size_init_expr = if def.size_start_min > 0.0
+        && def.size_start_max > 0.0
         && (def.size_start_min - def.size_start_max).abs() > 0.0001
     {
         let lo = def.size_start_min.min(def.size_start_max);
@@ -150,7 +173,10 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         None
     };
     let radial_accel_data = if def.radial_acceleration.abs() > 0.001 {
-        Some((writer.lit(Vec3::ZERO).expr(), writer.lit(def.radial_acceleration).expr()))
+        Some((
+            writer.lit(Vec3::ZERO).expr(),
+            writer.lit(def.radial_acceleration).expr(),
+        ))
     } else {
         None
     };
@@ -191,7 +217,9 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     let orbit_data = def.orbit.as_ref().map(|o| {
         (
             writer.lit(Vec3::from_array(o.center)).expr(),
-            writer.lit(Vec3::from_array(o.axis).normalize_or_zero()).expr(),
+            writer
+                .lit(Vec3::from_array(o.axis).normalize_or_zero())
+                .expr(),
             writer.lit(o.speed).expr(),
             writer.lit(o.radial_pull).expr(),
             writer.lit(o.orbit_radius).expr(),
@@ -206,18 +234,30 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     };
 
     // Kill zones
-    let kill_zone_data: Vec<_> = def.kill_zones.iter().map(|zone| match zone {
-        KillZone::Sphere { center, radius, kill_inside } => {
-            let c = writer.lit(Vec3::from_array(*center)).expr();
-            let sqr_r = writer.lit(radius * radius).expr();
-            (KillZoneType::Sphere(c, sqr_r), *kill_inside)
-        }
-        KillZone::Aabb { center, half_size, kill_inside } => {
-            let c = writer.lit(Vec3::from_array(*center)).expr();
-            let h = writer.lit(Vec3::from_array(*half_size)).expr();
-            (KillZoneType::Aabb(c, h), *kill_inside)
-        }
-    }).collect();
+    let kill_zone_data: Vec<_> = def
+        .kill_zones
+        .iter()
+        .map(|zone| match zone {
+            KillZone::Sphere {
+                center,
+                radius,
+                kill_inside,
+            } => {
+                let c = writer.lit(Vec3::from_array(*center)).expr();
+                let sqr_r = writer.lit(radius * radius).expr();
+                (KillZoneType::Sphere(c, sqr_r), *kill_inside)
+            }
+            KillZone::Aabb {
+                center,
+                half_size,
+                kill_inside,
+            } => {
+                let c = writer.lit(Vec3::from_array(*center)).expr();
+                let h = writer.lit(Vec3::from_array(*half_size)).expr();
+                (KillZoneType::Aabb(c, h), *kill_inside)
+            }
+        })
+        .collect();
 
     // Render expressions
     let mask_threshold_expr = if def.alpha_mode == ParticleAlphaMode::Mask {
@@ -257,24 +297,54 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     let spawner = build_spawner(def);
 
     // Assemble EffectAsset
-    let mut effect = EffectAsset::new(def.capacity, spawner, module)
-        .with_name(&def.name);
+    let mut effect = EffectAsset::new(def.capacity, spawner, module).with_name(&def.name);
 
     // Init modifiers
-    effect = effect.init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime_expr));
+    effect = effect.init(SetAttributeModifier::new(
+        Attribute::LIFETIME,
+        lifetime_expr,
+    ));
 
     match pos_modifier {
         PosModifier::Attribute(expr) => {
             effect = effect.init(SetAttributeModifier::new(Attribute::POSITION, expr));
         }
-        PosModifier::Circle { center, axis, radius, dim } => {
-            effect = effect.init(SetPositionCircleModifier { center, axis, radius, dimension: dim });
+        PosModifier::Circle {
+            center,
+            axis,
+            radius,
+            dim,
+        } => {
+            effect = effect.init(SetPositionCircleModifier {
+                center,
+                axis,
+                radius,
+                dimension: dim,
+            });
         }
-        PosModifier::Sphere { center, radius, dim } => {
-            effect = effect.init(SetPositionSphereModifier { center, radius, dimension: dim });
+        PosModifier::Sphere {
+            center,
+            radius,
+            dim,
+        } => {
+            effect = effect.init(SetPositionSphereModifier {
+                center,
+                radius,
+                dimension: dim,
+            });
         }
-        PosModifier::Cone { height, base_radius, top_radius, dim } => {
-            effect = effect.init(SetPositionCone3dModifier { height, base_radius, top_radius, dimension: dim });
+        PosModifier::Cone {
+            height,
+            base_radius,
+            top_radius,
+            dim,
+        } => {
+            effect = effect.init(SetPositionCone3dModifier {
+                height,
+                base_radius,
+                top_radius,
+                dimension: dim,
+            });
         }
     }
 
@@ -285,15 +355,26 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         VelModifier::Sphere { center, speed } => {
             effect = effect.init(SetVelocitySphereModifier { center, speed });
         }
-        VelModifier::Tangent { origin, axis, speed } => {
-            effect = effect.init(SetVelocityTangentModifier { origin, axis, speed });
+        VelModifier::Tangent {
+            origin,
+            axis,
+            speed,
+        } => {
+            effect = effect.init(SetVelocityTangentModifier {
+                origin,
+                axis,
+                speed,
+            });
         }
     }
 
     effect = effect.init(SetAttributeModifier::new(Attribute::SIZE, size_init_expr));
 
     if let Some(sprite_expr) = flipbook_sprite_init {
-        effect = effect.init(SetAttributeModifier::new(Attribute::SPRITE_INDEX, sprite_expr));
+        effect = effect.init(SetAttributeModifier::new(
+            Attribute::SPRITE_INDEX,
+            sprite_expr,
+        ));
     }
 
     // Update modifiers
@@ -317,10 +398,14 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     for (zone_type, kill_inside) in &kill_zone_data {
         match zone_type {
             KillZoneType::Sphere(center, sqr_radius) => {
-                effect = effect.update(KillSphereModifier::new(*center, *sqr_radius).with_kill_inside(*kill_inside));
+                effect = effect.update(
+                    KillSphereModifier::new(*center, *sqr_radius).with_kill_inside(*kill_inside),
+                );
             }
             KillZoneType::Aabb(center, half_size) => {
-                effect = effect.update(KillAabbModifier::new(*center, *half_size).with_kill_inside(*kill_inside));
+                effect = effect.update(
+                    KillAabbModifier::new(*center, *half_size).with_kill_inside(*kill_inside),
+                );
             }
         }
     }
@@ -369,12 +454,18 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         ParticleColorBlendMode::Overwrite => ColorBlendMode::Overwrite,
         ParticleColorBlendMode::Add => ColorBlendMode::Add,
     };
-    let hdr_mult = if def.use_hdr_color { def.hdr_intensity.max(1.0) } else { 1.0 };
+    let hdr_mult = if def.use_hdr_color {
+        def.hdr_intensity.max(1.0)
+    } else {
+        1.0
+    };
 
     if def.use_flat_color {
         let c = Vec4::new(
-            def.flat_color[0] * hdr_mult, def.flat_color[1] * hdr_mult,
-            def.flat_color[2] * hdr_mult, def.flat_color[3],
+            def.flat_color[0] * hdr_mult,
+            def.flat_color[1] * hdr_mult,
+            def.flat_color[2] * hdr_mult,
+            def.flat_color[3],
         );
         effect = effect.render(SetColorModifier {
             color: c.into(),
@@ -385,8 +476,10 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         let mut color_gradient: HanabiGradient<Vec4> = HanabiGradient::new();
         for stop in &def.color_gradient {
             let c = Vec4::new(
-                stop.color[0] * hdr_mult, stop.color[1] * hdr_mult,
-                stop.color[2] * hdr_mult, stop.color[3],
+                stop.color[0] * hdr_mult,
+                stop.color[1] * hdr_mult,
+                stop.color[2] * hdr_mult,
+                stop.color[3],
             );
             color_gradient.add_key(stop.position, c);
         }
@@ -462,9 +555,16 @@ fn build_spawner(def: &HanabiEffectDefinition) -> SpawnerSettings {
     let spawner = match def.spawn_mode {
         SpawnMode::Rate => {
             if has_custom_duration || has_custom_cycles {
-                let duration = if has_custom_duration { def.spawn_duration } else { f32::MAX };
+                let duration = if has_custom_duration {
+                    def.spawn_duration
+                } else {
+                    f32::MAX
+                };
                 SpawnerSettings::new(
-                    def.spawn_rate.into(), duration.into(), duration.into(), def.spawn_cycle_count,
+                    def.spawn_rate.into(),
+                    duration.into(),
+                    duration.into(),
+                    def.spawn_cycle_count,
                 )
             } else {
                 SpawnerSettings::rate(def.spawn_rate.into())
@@ -473,17 +573,27 @@ fn build_spawner(def: &HanabiEffectDefinition) -> SpawnerSettings {
         SpawnMode::Burst => {
             if has_custom_cycles && def.spawn_cycle_count != 1 {
                 SpawnerSettings::new(
-                    (def.spawn_count as f32).into(), 0.0.into(), 0.0.into(), def.spawn_cycle_count,
+                    (def.spawn_count as f32).into(),
+                    0.0.into(),
+                    0.0.into(),
+                    def.spawn_cycle_count,
                 )
             } else {
                 SpawnerSettings::once((def.spawn_count as f32).into())
             }
         }
         SpawnMode::BurstRate => {
-            let period = if def.spawn_rate > 0.0 { 1.0 / def.spawn_rate } else { 1.0 };
+            let period = if def.spawn_rate > 0.0 {
+                1.0 / def.spawn_rate
+            } else {
+                1.0
+            };
             if has_custom_cycles {
                 SpawnerSettings::new(
-                    (def.spawn_count as f32).into(), 0.0.into(), period.into(), def.spawn_cycle_count,
+                    (def.spawn_count as f32).into(),
+                    0.0.into(),
+                    period.into(),
+                    def.spawn_cycle_count,
                 )
             } else {
                 SpawnerSettings::burst((def.spawn_count as f32).into(), period.into())
@@ -491,7 +601,11 @@ fn build_spawner(def: &HanabiEffectDefinition) -> SpawnerSettings {
         }
     };
 
-    if def.spawn_starts_active { spawner } else { spawner.with_starts_active(false) }
+    if def.spawn_starts_active {
+        spawner
+    } else {
+        spawner.with_starts_active(false)
+    }
 }
 
 enum KillZoneType {

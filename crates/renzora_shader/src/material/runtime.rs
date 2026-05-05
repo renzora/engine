@@ -5,12 +5,12 @@
 //! This module only owns the plugin that registers it and the fallback-texture
 //! resource used for unused texture slots.
 
-use bevy::prelude::*;
 use bevy::pbr::MaterialPlugin as BevyMaterialPlugin;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+pub use super::surface_ext::{new_graph_material, GraphMaterial};
 use super::surface_ext::{DEFAULT_EXT_FRAG_SRC, SURFACE_GRAPH_EXT_DEFAULT_FRAG};
-pub use super::surface_ext::{GraphMaterial, new_graph_material};
 
 // ── Fallback texture resource ───────────────────────────────────────────────
 
@@ -35,13 +35,19 @@ pub struct GraphMaterialPlugin;
 
 impl Plugin for GraphMaterialPlugin {
     fn build(&self, app: &mut App) {
-        info!("[runtime] GraphMaterialPlugin (ExtendedMaterial<StandardMaterial, SurfaceGraphExt>)");
+        info!(
+            "[runtime] GraphMaterialPlugin (ExtendedMaterial<StandardMaterial, SurfaceGraphExt>)"
+        );
 
         // Create the fallback image up-front so it's available before any
         // material is created. 1x1 white is benign in a multiply chain and
         // makes alpha=1.0 fill naturally.
         let fallback_image = Image::new(
-            Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             TextureDimension::D2,
             vec![255, 255, 255, 255],
             TextureFormat::Rgba8UnormSrgb,
@@ -69,4 +75,3 @@ fn setup_default_shader(mut shaders: ResMut<Assets<Shader>>) {
     );
     let _ = shaders.insert(&SURFACE_GRAPH_EXT_DEFAULT_FRAG, shader);
 }
-

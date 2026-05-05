@@ -34,11 +34,17 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
             .size(11.0)
             .color(text_muted);
         ui.menu_button(add_label, |ui| {
-            if ui.button(format!("{} Material", regular::PALETTE)).clicked() {
+            if ui
+                .button(format!("{} Material", regular::PALETTE))
+                .clicked()
+            {
                 state.create_inline("NewMaterial.material", "{}");
                 ui.close();
             }
-            if ui.button(format!("{} Blueprint", regular::BLUEPRINT)).clicked() {
+            if ui
+                .button(format!("{} Blueprint", regular::BLUEPRINT))
+                .clicked()
+            {
                 state.create_inline("NewBlueprint.blueprint", "{}");
                 ui.close();
             }
@@ -46,11 +52,17 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                 state.create_inline("new_script.lua", "-- New Lua script\n");
                 ui.close();
             }
-            if ui.button(format!("{} Rhai Script", regular::CODE)).clicked() {
+            if ui
+                .button(format!("{} Rhai Script", regular::CODE))
+                .clicked()
+            {
                 state.create_inline("new_script.rhai", "// New Rhai script\n");
                 ui.close();
             }
-            if ui.button(format!("{} Particle", regular::SPARKLE)).clicked() {
+            if ui
+                .button(format!("{} Particle", regular::SPARKLE))
+                .clicked()
+            {
                 state.create_inline("NewParticle.particle", "(name: \"New Particle\")");
                 ui.close();
             }
@@ -94,7 +106,11 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                         accumulated = accumulated.join(component);
                         let target = accumulated.clone();
 
-                        ui.label(RichText::new(regular::CARET_RIGHT).size(10.0).color(text_muted));
+                        ui.label(
+                            RichText::new(regular::CARET_RIGHT)
+                                .size(10.0)
+                                .color(text_muted),
+                        );
 
                         let resp = ui.add(
                             egui::Label::new(
@@ -114,7 +130,11 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                     }
                 }
             } else {
-                ui.label(RichText::new("No folder selected").size(11.0).color(text_muted));
+                ui.label(
+                    RichText::new("No folder selected")
+                        .size(11.0)
+                        .color(text_muted),
+                );
             }
         }
 
@@ -160,8 +180,16 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                     );
                 }
 
-                let grid_color = if state.view_mode == ViewMode::Grid { text_primary } else { text_muted };
-                let list_color = if state.view_mode == ViewMode::List { text_primary } else { text_muted };
+                let grid_color = if state.view_mode == ViewMode::Grid {
+                    text_primary
+                } else {
+                    text_muted
+                };
+                let list_color = if state.view_mode == ViewMode::List {
+                    text_primary
+                } else {
+                    text_muted
+                };
                 if icon_button(ui, regular::LIST, "List view", list_color) {
                     state.view_mode = ViewMode::List;
                 }
@@ -198,11 +226,20 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                 }
 
                 egui::ComboBox::from_id_salt("sort_mode")
-                    .selected_text(RichText::new(state.sort_mode.label()).size(11.0).color(text_muted))
+                    .selected_text(
+                        RichText::new(state.sort_mode.label())
+                            .size(11.0)
+                            .color(text_muted),
+                    )
                     .width(55.0)
                     .height(120.0)
                     .show_ui(ui, |ui| {
-                        for mode in [SortMode::Name, SortMode::DateModified, SortMode::Type, SortMode::Size] {
+                        for mode in [
+                            SortMode::Name,
+                            SortMode::DateModified,
+                            SortMode::Type,
+                            SortMode::Size,
+                        ] {
                             ui.selectable_value(&mut state.sort_mode, mode, mode.label());
                         }
                     });

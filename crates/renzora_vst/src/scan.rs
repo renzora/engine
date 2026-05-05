@@ -31,7 +31,9 @@ pub struct ScanChannel {
 
 impl Default for ScanChannel {
     fn default() -> Self {
-        Self { rx: Mutex::new(None) }
+        Self {
+            rx: Mutex::new(None),
+        }
     }
 }
 
@@ -45,7 +47,12 @@ pub fn standard_clap_paths() -> Vec<PathBuf> {
             roots.push(PathBuf::from(p).join("CLAP"));
         }
         if let Some(p) = std::env::var_os("LOCALAPPDATA") {
-            roots.push(PathBuf::from(p).join("Programs").join("Common").join("CLAP"));
+            roots.push(
+                PathBuf::from(p)
+                    .join("Programs")
+                    .join("Common")
+                    .join("CLAP"),
+            );
         }
     } else if cfg!(target_os = "macos") {
         if let Some(home) = home_dir() {
@@ -73,7 +80,9 @@ fn home_dir() -> Option<PathBuf> {
 /// [`ScanResult`] back when done.
 pub fn start_initial_scan(mut commands: Commands, registry: ResMut<PluginRegistry>) {
     let (tx, rx) = std::sync::mpsc::channel::<ScanResult>();
-    commands.insert_resource(ScanChannel { rx: Mutex::new(Some(rx)) });
+    commands.insert_resource(ScanChannel {
+        rx: Mutex::new(Some(rx)),
+    });
 
     let flag = registry.scan_in_progress.clone();
     flag.store(true, Ordering::Relaxed);
@@ -86,26 +95,20 @@ pub fn start_initial_scan(mut commands: Commands, registry: ResMut<PluginRegistr
             for root in &roots {
                 walk(root, &mut found);
             }
-            let plugins: Vec<PluginDescriptor> = found
-                .into_iter()
-                .map(PluginDescriptor::from_path)
-                .collect();
-            let _ = tx.send(ScanResult {
-                plugins,
-                roots,
-            });
+            let plugins: Vec<PluginDescriptor> =
+                found.into_iter().map(PluginDescriptor::from_path).collect();
+            let _ = tx.send(ScanResult { plugins, roots });
             flag.store(false, Ordering::Relaxed);
         })
         .ok();
 }
 
 /// Drain any completed scan results into the registry.
-pub fn poll_scan_results(
-    channel: Option<Res<ScanChannel>>,
-    mut registry: ResMut<PluginRegistry>,
-) {
+pub fn poll_scan_results(channel: Option<Res<ScanChannel>>, mut registry: ResMut<PluginRegistry>) {
     let Some(channel) = channel else { return };
-    let Ok(mut slot) = channel.rx.lock() else { return };
+    let Ok(mut slot) = channel.rx.lock() else {
+        return;
+    };
     let Some(rx) = slot.as_ref() else { return };
 
     match rx.try_recv() {
@@ -131,7 +134,9 @@ pub fn poll_scan_results(
 /// On macOS a `.clap` is a directory bundle; on Windows / Linux it's a file.
 /// We treat both uniformly: anything whose basename ends with `.clap`.
 fn walk(root: &std::path::Path, out: &mut Vec<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(root) else { return };
+    let Ok(read) = std::fs::read_dir(root) else {
+        return;
+    };
     for entry in read.flatten() {
         let path = entry.path();
         let is_clap = path

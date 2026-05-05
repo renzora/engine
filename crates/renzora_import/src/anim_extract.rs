@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use renzora::{AnimClip, BoneTrack};
 use renzora::write_anim_file;
+use renzora::{AnimClip, BoneTrack};
 
 /// Result of animation extraction for a single GLB.
 #[derive(Debug)]
@@ -26,8 +26,8 @@ pub fn extract_animations_from_glb(
     glb_bytes: &[u8],
     output_dir: &Path,
 ) -> Result<AnimExtractResult, String> {
-    let glb = gltf::Gltf::from_slice(glb_bytes)
-        .map_err(|e| format!("Failed to parse GLB: {}", e))?;
+    let glb =
+        gltf::Gltf::from_slice(glb_bytes).map_err(|e| format!("Failed to parse GLB: {}", e))?;
 
     let blob = glb.blob.as_deref();
 
@@ -77,16 +77,16 @@ pub fn extract_animations_from_glb(
                 .cloned()
                 .unwrap_or_else(|| format!("node_{}", node_idx));
 
-            let reader = channel.reader(|buffer| {
-                buffers.get(&buffer.index()).map(|v| v.as_slice())
-            });
+            let reader =
+                channel.reader(|buffer| buffers.get(&buffer.index()).map(|v| v.as_slice()));
 
             let timestamps: Vec<f32> = match reader.read_inputs() {
                 Some(iter) => iter.collect(),
                 None => {
-                    result
-                        .warnings
-                        .push(format!("{}: missing timestamps for bone '{}'", clip_name, bone_name));
+                    result.warnings.push(format!(
+                        "{}: missing timestamps for bone '{}'",
+                        clip_name, bone_name
+                    ));
                     continue;
                 }
             };
@@ -125,14 +125,16 @@ pub fn extract_animations_from_glb(
                         .collect();
                 }
                 Some(gltf::animation::util::ReadOutputs::MorphTargetWeights(_)) => {
-                    result
-                        .warnings
-                        .push(format!("{}: morph target weights not supported, skipping", clip_name));
+                    result.warnings.push(format!(
+                        "{}: morph target weights not supported, skipping",
+                        clip_name
+                    ));
                 }
                 None => {
-                    result
-                        .warnings
-                        .push(format!("{}: missing output data for bone '{}'", clip_name, bone_name));
+                    result.warnings.push(format!(
+                        "{}: missing output data for bone '{}'",
+                        clip_name, bone_name
+                    ));
                 }
             }
         }
@@ -140,9 +142,10 @@ pub fn extract_animations_from_glb(
         // Skip clips with no usable tracks
         let tracks: Vec<BoneTrack> = bone_tracks.into_values().collect();
         if tracks.is_empty() {
-            result
-                .warnings
-                .push(format!("{}: no animation tracks found, skipping", clip_name));
+            result.warnings.push(format!(
+                "{}: no animation tracks found, skipping",
+                clip_name
+            ));
             continue;
         }
 
@@ -155,15 +158,19 @@ pub fn extract_animations_from_glb(
         // Sanitize filename
         let safe_name: String = clip_name
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         let file_path = output_dir.join(format!("{}.anim", safe_name));
 
         match write_anim_file(&clip, &file_path) {
             Ok(()) => {
-                result
-                    .written_files
-                    .push(file_path.display().to_string());
+                result.written_files.push(file_path.display().to_string());
             }
             Err(e) => {
                 result
@@ -177,10 +184,7 @@ pub fn extract_animations_from_glb(
 }
 
 /// Load all buffer data referenced by the GLTF document.
-fn load_buffers(
-    glb: &gltf::Gltf,
-    blob: Option<&[u8]>,
-) -> Result<HashMap<usize, Vec<u8>>, String> {
+fn load_buffers(glb: &gltf::Gltf, blob: Option<&[u8]>) -> Result<HashMap<usize, Vec<u8>>, String> {
     let mut buffers = HashMap::new();
     for buffer in glb.buffers() {
         match buffer.source() {

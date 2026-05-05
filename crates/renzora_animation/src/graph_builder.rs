@@ -63,10 +63,7 @@ pub fn build_graph_from_state_machine(
 
 /// Resolve which clip(s) a blend tree requires and their weights.
 /// Returns a list of (clip_name, weight) pairs.
-pub fn resolve_blend_tree_weights(
-    tree: &BlendTree,
-    params: &AnimParams,
-) -> Vec<(String, f32)> {
+pub fn resolve_blend_tree_weights(tree: &BlendTree, params: &AnimParams) -> Vec<(String, f32)> {
     match tree {
         BlendTree::Clip(name) => vec![(name.clone(), 1.0)],
         BlendTree::Lerp { a, b, param } => {
@@ -80,7 +77,11 @@ pub fn resolve_blend_tree_weights(
             }
             result
         }
-        BlendTree::BlendSpace2D { entries, param_x, param_y } => {
+        BlendTree::BlendSpace2D {
+            entries,
+            param_x,
+            param_y,
+        } => {
             if entries.is_empty() {
                 return Vec::new();
             }
@@ -110,7 +111,11 @@ pub fn resolve_blend_tree_weights(
 
             weights
         }
-        BlendTree::Additive { base, overlay, param } => {
+        BlendTree::Additive {
+            base,
+            overlay,
+            param,
+        } => {
             let overlay_weight = params.get_float(param).clamp(0.0, 1.0);
             let mut result = Vec::new();
             for (name, w) in resolve_blend_tree_weights(base, params) {

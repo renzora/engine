@@ -68,14 +68,10 @@ pub fn install_asset_with_filename(
         let filename = if !download_filename.is_empty() {
             download_filename
         } else {
-            file_url
-                .rsplit('/')
-                .next()
-                .unwrap_or(asset_name)
+            file_url.rsplit('/').next().unwrap_or(asset_name)
         };
         let file_path = dest.join(filename);
-        std::fs::write(&file_path, data)
-            .map_err(|e| format!("Failed to write file: {e}"))?;
+        std::fs::write(&file_path, data).map_err(|e| format!("Failed to write file: {e}"))?;
         Ok(file_path)
     }
 }
@@ -93,7 +89,13 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
     // Sanitize asset name for use as directory name
     let safe_name: String = asset_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let extract_dir = dest.join(&safe_name);
     std::fs::create_dir_all(&extract_dir)

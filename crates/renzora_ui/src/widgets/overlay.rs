@@ -48,10 +48,7 @@ pub fn modal<R>(
         .frame(
             egui::Frame::new()
                 .fill(theme.surfaces.panel.to_color32())
-                .stroke(egui::Stroke::new(
-                    1.0,
-                    theme.widgets.border.to_color32(),
-                ))
+                .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
                 .inner_margin(egui::Margin::same(12))
                 .corner_radius(6),
         )
@@ -86,10 +83,7 @@ pub fn popover<R>(
         .show(ui.ctx(), |ui| {
             egui::Frame::new()
                 .fill(theme.surfaces.panel.to_color32())
-                .stroke(egui::Stroke::new(
-                    1.0,
-                    theme.widgets.border.to_color32(),
-                ))
+                .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
                 .inner_margin(egui::Margin::same(8))
                 .corner_radius(4)
                 .show(ui, |ui| {
@@ -120,10 +114,7 @@ pub fn tooltip(response: &egui::Response, theme: &Theme, body: impl FnOnce(&mut 
     response.clone().on_hover_ui(|ui| {
         egui::Frame::new()
             .fill(theme.surfaces.panel.to_color32())
-            .stroke(egui::Stroke::new(
-                1.0,
-                theme.widgets.border.to_color32(),
-            ))
+            .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
             .inner_margin(egui::Margin::symmetric(8, 4))
             .corner_radius(4)
             .show(ui, |ui| body(ui));
@@ -148,7 +139,13 @@ pub fn confirm_modal(
         ui.horizontal(|ui| {
             let confirm = ui.button(confirm_label).clicked();
             let cancel = ui.button(cancel_label).clicked();
-            if confirm { Some(true) } else if cancel { Some(false) } else { None }
+            if confirm {
+                Some(true)
+            } else if cancel {
+                Some(false)
+            } else {
+                None
+            }
         })
         .inner
     })

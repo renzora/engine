@@ -84,7 +84,11 @@ pub fn lua_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash>
 
 /// Push a Rhai scope variable from a `HashMap<String, f32>`.
 #[cfg(feature = "rhai")]
-pub fn rhai_set_map(scope: &mut rhai::Scope, name: &str, map: &std::collections::HashMap<String, f32>) {
+pub fn rhai_set_map(
+    scope: &mut rhai::Scope,
+    name: &str,
+    map: &std::collections::HashMap<String, f32>,
+) {
     let mut rhai_map = rhai::Map::new();
     for (k, v) in map {
         rhai_map.insert(k.clone().into(), rhai::Dynamic::from(*v as f64));
@@ -201,35 +205,67 @@ macro_rules! dual_register {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __lua_param_type {
-    (String) => { String };
-    (f64) => { f64 };
-    (i64) => { i64 };
-    (bool) => { bool };
+    (String) => {
+        String
+    };
+    (f64) => {
+        f64
+    };
+    (i64) => {
+        i64
+    };
+    (bool) => {
+        bool
+    };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __rhai_param_type {
-    (String) => { rhai::ImmutableString };
-    (f64) => { f64 };
-    (i64) => { i64 };
-    (bool) => { bool };
+    (String) => {
+        rhai::ImmutableString
+    };
+    (f64) => {
+        f64
+    };
+    (i64) => {
+        i64
+    };
+    (bool) => {
+        bool
+    };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __from_lua_param {
-    ($name:ident, String) => { $name };
-    ($name:ident, f64) => { $name };
-    ($name:ident, i64) => { $name };
-    ($name:ident, bool) => { $name };
+    ($name:ident, String) => {
+        $name
+    };
+    ($name:ident, f64) => {
+        $name
+    };
+    ($name:ident, i64) => {
+        $name
+    };
+    ($name:ident, bool) => {
+        $name
+    };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __from_rhai_param {
-    ($name:ident, String) => { $name.to_string() };
-    ($name:ident, f64) => { $name };
-    ($name:ident, i64) => { $name };
-    ($name:ident, bool) => { $name };
+    ($name:ident, String) => {
+        $name.to_string()
+    };
+    ($name:ident, f64) => {
+        $name
+    };
+    ($name:ident, i64) => {
+        $name
+    };
+    ($name:ident, bool) => {
+        $name
+    };
 }

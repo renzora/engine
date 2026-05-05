@@ -4,10 +4,10 @@
 //! single custom `InspectorEntry` section. Replaces the former Tool Settings panel.
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, Rounding, CursorIcon, RichText};
+use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding};
 use egui_phosphor::regular::*;
 
-use renzora_editor::{ActiveTool, EditorCommands, EditorSelection, inline_property};
+use renzora_editor::{inline_property, ActiveTool, EditorCommands, EditorSelection};
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use renzora_theme::Theme;
 
@@ -37,7 +37,13 @@ impl TerrainInspectorTab {
     }
 
     fn all() -> [Self; 5] {
-        [Self::Size, Self::Sculpt, Self::Paint, Self::Foliage, Self::Heightmap]
+        [
+            Self::Size,
+            Self::Sculpt,
+            Self::Paint,
+            Self::Foliage,
+            Self::Heightmap,
+        ]
     }
 
     /// Which ActiveTool this tab drives when selected and a terrain is picked.
@@ -60,7 +66,9 @@ pub fn render_terrain_inspector(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(terrain) = world.get::<TerrainData>(entity).cloned() else { return };
+    let Some(terrain) = world.get::<TerrainData>(entity).cloned() else {
+        return;
+    };
     let active_tab = world
         .get_resource::<TerrainInspectorTab>()
         .copied()
@@ -74,9 +82,7 @@ pub fn render_terrain_inspector(
         TerrainInspectorTab::Sculpt => render_sculpt(ui, world, theme, cmds),
         TerrainInspectorTab::Paint => render_paint(ui, world, theme, cmds),
         TerrainInspectorTab::Foliage => render_foliage(ui, world, theme, cmds),
-        TerrainInspectorTab::Heightmap => {
-            render_heightmap_tab(ui, entity, &terrain, theme, cmds)
-        }
+        TerrainInspectorTab::Heightmap => render_heightmap_tab(ui, entity, &terrain, theme, cmds),
     }
 }
 
@@ -114,7 +120,11 @@ fn render_tab_bar(
                 } else {
                     inactive_bg
                 };
-                let fg = if is_active { Color32::WHITE } else { text_primary };
+                let fg = if is_active {
+                    Color32::WHITE
+                } else {
+                    text_primary
+                };
                 ui.painter().rect_filled(rect, Rounding::same(4), bg);
                 let icon_c = egui::pos2(rect.center().x, rect.center().y - 7.0);
                 ui.painter().text(
@@ -197,7 +207,9 @@ fn render_size_tab(
 
     // Advanced collapsible
     let id = egui::Id::new(("terrain_size_advanced", entity));
-    let mut open = ui.data_mut(|d| d.get_persisted::<bool>(id)).unwrap_or(false);
+    let mut open = ui
+        .data_mut(|d| d.get_persisted::<bool>(id))
+        .unwrap_or(false);
     let header = RichText::new(if open {
         format!("{}  Advanced", CARET_DOWN)
     } else {
@@ -205,10 +217,7 @@ fn render_size_tab(
     })
     .size(11.0)
     .color(text_secondary);
-    if ui
-        .add(egui::Button::new(header).frame(false))
-        .clicked()
-    {
+    if ui.add(egui::Button::new(header).frame(false)).clicked() {
         open = !open;
         ui.data_mut(|d| d.insert_persisted(id, open));
     }
@@ -236,27 +245,51 @@ fn render_advanced_fields(
 
     let mut row = 0;
     inline_property(ui, row, "Chunks X", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut chunks_x).speed(1.0).range(1.0..=32.0))
+        ui.add(
+            egui::DragValue::new(&mut chunks_x)
+                .speed(1.0)
+                .range(1.0..=32.0),
+        )
     });
     row += 1;
     inline_property(ui, row, "Chunks Z", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut chunks_z).speed(1.0).range(1.0..=32.0))
+        ui.add(
+            egui::DragValue::new(&mut chunks_z)
+                .speed(1.0)
+                .range(1.0..=32.0),
+        )
     });
     row += 1;
     inline_property(ui, row, "Chunk Size", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut chunk_size).speed(1.0).range(8.0..=256.0))
+        ui.add(
+            egui::DragValue::new(&mut chunk_size)
+                .speed(1.0)
+                .range(8.0..=256.0),
+        )
     });
     row += 1;
     inline_property(ui, row, "Resolution", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut chunk_res).speed(1.0).range(3.0..=257.0))
+        ui.add(
+            egui::DragValue::new(&mut chunk_res)
+                .speed(1.0)
+                .range(3.0..=257.0),
+        )
     });
     row += 1;
     inline_property(ui, row, "Max Height", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut max_h).speed(1.0).range(0.0..=1000.0))
+        ui.add(
+            egui::DragValue::new(&mut max_h)
+                .speed(1.0)
+                .range(0.0..=1000.0),
+        )
     });
     row += 1;
     inline_property(ui, row, "Min Height", theme, |ui| {
-        ui.add(egui::DragValue::new(&mut min_h).speed(1.0).range(-500.0..=0.0))
+        ui.add(
+            egui::DragValue::new(&mut min_h)
+                .speed(1.0)
+                .range(-500.0..=0.0),
+        )
     });
     let _ = row;
 
@@ -341,7 +374,9 @@ fn import_heightmap_action(world: &mut World) {
         let mut q = world.query::<&TerrainData>();
         q.iter(world).next().cloned()
     };
-    let Some(terrain_data) = terrain_data else { return };
+    let Some(terrain_data) = terrain_data else {
+        return;
+    };
     match renzora_terrain::heightmap_import::import_heightmap(&path, &settings, &terrain_data) {
         Ok(imported) => {
             let mut q = world.query::<&mut TerrainChunkData>();
@@ -364,14 +399,19 @@ fn import_heightmap_action(_world: &mut World) {}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn export_heightmap_action(world: &mut World) {
-    let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).save_file() else {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("PNG", &["png"])
+        .save_file()
+    else {
         return;
     };
     let terrain_data = {
         let mut q = world.query::<&TerrainData>();
         q.iter(world).next().cloned()
     };
-    let Some(terrain_data) = terrain_data else { return };
+    let Some(terrain_data) = terrain_data else {
+        return;
+    };
     let chunks: Vec<TerrainChunkData> = {
         let mut q = world.query::<&TerrainChunkData>();
         q.iter(world).cloned().collect()
@@ -420,14 +460,22 @@ fn expand_terrain(world: &mut World, entity: Entity, dir: ExpandDirection) {
             if let Some(mut t) = world.get_mut::<TerrainData>(entity) {
                 t.chunks_x = t.chunks_x.saturating_add(1).min(64);
             }
-            translate_root(world, entity, Vec3::new(-chunk_size(world, entity), 0.0, 0.0));
+            translate_root(
+                world,
+                entity,
+                Vec3::new(-chunk_size(world, entity), 0.0, 0.0),
+            );
         }
         ExpandDirection::North => {
             shift_chunks(world, entity, 0, 1);
             if let Some(mut t) = world.get_mut::<TerrainData>(entity) {
                 t.chunks_z = t.chunks_z.saturating_add(1).min(64);
             }
-            translate_root(world, entity, Vec3::new(0.0, 0.0, -chunk_size(world, entity)));
+            translate_root(
+                world,
+                entity,
+                Vec3::new(0.0, 0.0, -chunk_size(world, entity)),
+            );
         }
     }
 }

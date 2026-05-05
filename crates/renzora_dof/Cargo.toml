@@ -16,3 +16,6 @@ bevy_egui = { version = "0.39", optional = true }
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
 renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

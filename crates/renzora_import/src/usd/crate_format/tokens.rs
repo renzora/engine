@@ -45,10 +45,8 @@ pub fn read_tokens(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<String>>
 
     // Heuristic: if the next 8+8 bytes give plausible sizes, treat as compressed
     let token_bytes = if remaining.len() >= 16 {
-        let uncompressed_size =
-            u64::from_le_bytes(remaining[0..8].try_into().unwrap()) as usize;
-        let compressed_size =
-            u64::from_le_bytes(remaining[8..16].try_into().unwrap()) as usize;
+        let uncompressed_size = u64::from_le_bytes(remaining[0..8].try_into().unwrap()) as usize;
+        let compressed_size = u64::from_le_bytes(remaining[8..16].try_into().unwrap()) as usize;
 
         if compressed_size > 0
             && compressed_size < remaining.len()

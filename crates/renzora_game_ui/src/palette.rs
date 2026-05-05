@@ -83,69 +83,105 @@ impl Default for WidgetPalettePanel {
 
 /// All widget types available in the palette, grouped by category.
 const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
-    ("Layout", regular::LAYOUT, &[
-        UiWidgetType::Container,
-        UiWidgetType::Panel,
-        UiWidgetType::ScrollView,
-    ]),
-    ("Basic", regular::CUBE, &[
-        UiWidgetType::Text,
-        UiWidgetType::Image,
-        UiWidgetType::Button,
-    ]),
-    ("Input", regular::TEXTBOX, &[
-        UiWidgetType::Slider,
-        UiWidgetType::Checkbox,
-        UiWidgetType::Toggle,
-        UiWidgetType::RadioButton,
-        UiWidgetType::Dropdown,
-        UiWidgetType::TextInput,
-    ]),
-    ("Display", regular::CHART_BAR, &[
-        UiWidgetType::ProgressBar,
-        UiWidgetType::HealthBar,
-        UiWidgetType::Spinner,
-        UiWidgetType::TabBar,
-    ]),
-    ("Overlay", regular::STACK, &[
-        UiWidgetType::Tooltip,
-        UiWidgetType::Modal,
-        UiWidgetType::DraggableWindow,
-    ]),
-    ("HUD", regular::CROSSHAIR, &[
-        UiWidgetType::Crosshair,
-        UiWidgetType::AmmoCounter,
-        UiWidgetType::Compass,
-        UiWidgetType::StatusEffectBar,
-        UiWidgetType::NotificationFeed,
-        UiWidgetType::RadialMenu,
-        UiWidgetType::Minimap,
-    ]),
-    ("Menu", regular::LIST_BULLETS, &[
-        UiWidgetType::InventoryGrid,
-        UiWidgetType::DialogBox,
-        UiWidgetType::ObjectiveTracker,
-        UiWidgetType::LoadingScreen,
-        UiWidgetType::KeybindRow,
-        UiWidgetType::SettingsRow,
-    ]),
-    ("Extra", regular::PUZZLE_PIECE, &[
-        UiWidgetType::Separator,
-        UiWidgetType::NumberInput,
-        UiWidgetType::VerticalSlider,
-        UiWidgetType::Scrollbar,
-        UiWidgetType::List,
-    ]),
-    ("Shapes", regular::SHAPES, &[
-        UiWidgetType::Rectangle,
-        UiWidgetType::Circle,
-        UiWidgetType::Arc,
-        UiWidgetType::RadialProgress,
-        UiWidgetType::Line,
-        UiWidgetType::Triangle,
-        UiWidgetType::Polygon,
-        UiWidgetType::Wedge,
-    ]),
+    (
+        "Layout",
+        regular::LAYOUT,
+        &[
+            UiWidgetType::Container,
+            UiWidgetType::Panel,
+            UiWidgetType::ScrollView,
+        ],
+    ),
+    (
+        "Basic",
+        regular::CUBE,
+        &[
+            UiWidgetType::Text,
+            UiWidgetType::Image,
+            UiWidgetType::Button,
+        ],
+    ),
+    (
+        "Input",
+        regular::TEXTBOX,
+        &[
+            UiWidgetType::Slider,
+            UiWidgetType::Checkbox,
+            UiWidgetType::Toggle,
+            UiWidgetType::RadioButton,
+            UiWidgetType::Dropdown,
+            UiWidgetType::TextInput,
+        ],
+    ),
+    (
+        "Display",
+        regular::CHART_BAR,
+        &[
+            UiWidgetType::ProgressBar,
+            UiWidgetType::HealthBar,
+            UiWidgetType::Spinner,
+            UiWidgetType::TabBar,
+        ],
+    ),
+    (
+        "Overlay",
+        regular::STACK,
+        &[
+            UiWidgetType::Tooltip,
+            UiWidgetType::Modal,
+            UiWidgetType::DraggableWindow,
+        ],
+    ),
+    (
+        "HUD",
+        regular::CROSSHAIR,
+        &[
+            UiWidgetType::Crosshair,
+            UiWidgetType::AmmoCounter,
+            UiWidgetType::Compass,
+            UiWidgetType::StatusEffectBar,
+            UiWidgetType::NotificationFeed,
+            UiWidgetType::RadialMenu,
+            UiWidgetType::Minimap,
+        ],
+    ),
+    (
+        "Menu",
+        regular::LIST_BULLETS,
+        &[
+            UiWidgetType::InventoryGrid,
+            UiWidgetType::DialogBox,
+            UiWidgetType::ObjectiveTracker,
+            UiWidgetType::LoadingScreen,
+            UiWidgetType::KeybindRow,
+            UiWidgetType::SettingsRow,
+        ],
+    ),
+    (
+        "Extra",
+        regular::PUZZLE_PIECE,
+        &[
+            UiWidgetType::Separator,
+            UiWidgetType::NumberInput,
+            UiWidgetType::VerticalSlider,
+            UiWidgetType::Scrollbar,
+            UiWidgetType::List,
+        ],
+    ),
+    (
+        "Shapes",
+        regular::SHAPES,
+        &[
+            UiWidgetType::Rectangle,
+            UiWidgetType::Circle,
+            UiWidgetType::Arc,
+            UiWidgetType::RadialProgress,
+            UiWidgetType::Line,
+            UiWidgetType::Triangle,
+            UiWidgetType::Polygon,
+            UiWidgetType::Wedge,
+        ],
+    ),
 ];
 
 impl EditorPanel for WidgetPalettePanel {
@@ -325,8 +361,9 @@ impl EditorPanel for WidgetPalettePanel {
                 return;
             }
 
-            let cols =
-                ((available_width + spacing) / (min_tile + spacing)).floor().max(1.0) as usize;
+            let cols = ((available_width + spacing) / (min_tile + spacing))
+                .floor()
+                .max(1.0) as usize;
             let tile_size = ((available_width - spacing * (cols as f32 - 1.0)) / cols as f32)
                 .clamp(min_tile, max_tile);
             let label_height = 16.0;
@@ -392,9 +429,10 @@ impl EditorPanel for WidgetPalettePanel {
                                 text_muted,
                             );
 
-                            response
-                                .clone()
-                                .on_hover_text(format!("Drag onto canvas or click to add a {} widget", wtype.label()));
+                            response.clone().on_hover_text(format!(
+                                "Drag onto canvas or click to add a {} widget",
+                                wtype.label()
+                            ));
 
                             // Drag to canvas: start drag payload
                             if response.drag_started() {

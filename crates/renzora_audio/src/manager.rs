@@ -5,19 +5,21 @@
 
 use bevy::prelude::*;
 use kira::{
-    AudioManager, AudioManagerSettings, DefaultBackend,
+    effect::delay::DelayBuilder,
     effect::panning_control::{PanningControlBuilder, PanningControlHandle},
     effect::reverb::ReverbBuilder,
-    effect::delay::DelayBuilder,
     listener::{ListenerHandle, ListenerId},
     sound::static_sound::StaticSoundHandle,
     sound::streaming::StreamingSoundHandle,
     sound::FromFileError,
     sound::PlaybackState,
     sound::SoundData,
-    track::{TrackBuilder, TrackHandle, SendTrackBuilder, SendTrackHandle, SpatialTrackBuilder, SpatialTrackHandle, SpatialTrackDistances},
-    Decibels, Easing, Mix, Tween,
-    PlaySoundError,
+    track::{
+        SendTrackBuilder, SendTrackHandle, SpatialTrackBuilder, SpatialTrackDistances,
+        SpatialTrackHandle, TrackBuilder, TrackHandle,
+    },
+    AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Easing, Mix, PlaySoundError,
+    Tween,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -68,12 +70,23 @@ pub fn amplitude_to_db(amp: f64) -> f32 {
 
 /// Convert Bevy Vec3 (glam 0.30) to mint Vector3 for Kira (glam 0.32).
 pub fn vec3_to_mint(v: Vec3) -> mint::Vector3<f32> {
-    mint::Vector3 { x: v.x, y: v.y, z: v.z }
+    mint::Vector3 {
+        x: v.x,
+        y: v.y,
+        z: v.z,
+    }
 }
 
 /// Convert Bevy Quat (glam 0.30) to mint Quaternion for Kira (glam 0.32).
 pub fn quat_to_mint(q: Quat) -> mint::Quaternion<f32> {
-    mint::Quaternion { v: mint::Vector3 { x: q.x, y: q.y, z: q.z }, s: q.w }
+    mint::Quaternion {
+        v: mint::Vector3 {
+            x: q.x,
+            y: q.y,
+            z: q.z,
+        },
+        s: q.w,
+    }
 }
 
 /// NonSend resource wrapping the kira AudioManager and all mixer tracks.
@@ -150,15 +163,24 @@ impl KiraAudioManager {
         // Global send tracks: wet-only (mix=1.0) reverb and delay
         let reverb_send = manager
             .add_send_track(
-                SendTrackBuilder::new()
-                    .with_effect(ReverbBuilder::new().feedback(0.85).damping(0.3).stereo_width(1.0).mix(Mix(1.0)))
+                SendTrackBuilder::new().with_effect(
+                    ReverbBuilder::new()
+                        .feedback(0.85)
+                        .damping(0.3)
+                        .stereo_width(1.0)
+                        .mix(Mix(1.0)),
+                ),
             )
             .expect("[KiraAudio] Failed to create reverb send track");
 
         let delay_send = manager
             .add_send_track(
-                SendTrackBuilder::new()
-                    .with_effect(DelayBuilder::new().delay_time(std::time::Duration::from_millis(375)).feedback(Decibels(-6.0)).mix(Mix(1.0)))
+                SendTrackBuilder::new().with_effect(
+                    DelayBuilder::new()
+                        .delay_time(std::time::Duration::from_millis(375))
+                        .feedback(Decibels(-6.0))
+                        .mix(Mix(1.0)),
+                ),
             )
             .expect("[KiraAudio] Failed to create delay send track");
 
@@ -241,7 +263,9 @@ impl KiraAudioManager {
         }
         let origin = vec3_to_mint(Vec3::ZERO);
         let identity = quat_to_mint(Quat::IDENTITY);
-        let handle = self.manager.add_listener(origin, identity)
+        let handle = self
+            .manager
+            .add_listener(origin, identity)
             .expect("[KiraAudio] Failed to create listener");
         let id = handle.id();
         self.listener = Some(handle);
@@ -280,9 +304,15 @@ impl KiraAudioManager {
             .persist_until_sounds_finish(true);
 
         let result = match bus {
-            "Music" => self.music_track.add_spatial_sub_track(listener_id, mint_pos, builder),
-            "Ambient" => self.ambient_track.add_spatial_sub_track(listener_id, mint_pos, builder),
-            "Master" => self.sfx_track.add_spatial_sub_track(listener_id, mint_pos, builder),
+            "Music" => self
+                .music_track
+                .add_spatial_sub_track(listener_id, mint_pos, builder),
+            "Ambient" => self
+                .ambient_track
+                .add_spatial_sub_track(listener_id, mint_pos, builder),
+            "Master" => self
+                .sfx_track
+                .add_spatial_sub_track(listener_id, mint_pos, builder),
             name => {
                 if let Some(idx) = mixer.custom_buses.iter().position(|(n, _)| n == name) {
                     if let Some((track, _)) = self.custom_tracks.get_mut(idx) {
@@ -291,10 +321,12 @@ impl KiraAudioManager {
                             Err(e) => Err(e),
                         }
                     } else {
-                        self.sfx_track.add_spatial_sub_track(listener_id, mint_pos, builder)
+                        self.sfx_track
+                            .add_spatial_sub_track(listener_id, mint_pos, builder)
                     }
                 } else {
-                    self.sfx_track.add_spatial_sub_track(listener_id, mint_pos, builder)
+                    self.sfx_track
+                        .add_spatial_sub_track(listener_id, mint_pos, builder)
                 }
             }
         };
@@ -305,7 +337,10 @@ impl KiraAudioManager {
                 self.spatial_tracks.get_mut(&entity)
             }
             Err(e) => {
-                warn!("[KiraAudio] Failed to create spatial track for {:?}: {}", entity, e);
+                warn!(
+                    "[KiraAudio] Failed to create spatial track for {:?}: {}",
+                    entity, e
+                );
                 None
             }
         }
@@ -363,7 +398,10 @@ impl KiraAudioManager {
                 self.emitter_send_tracks.get_mut(&entity)
             }
             Err(e) => {
-                warn!("[KiraAudio] Failed to create emitter send track for {:?}: {}", entity, e);
+                warn!(
+                    "[KiraAudio] Failed to create emitter send track for {:?}: {}",
+                    entity, e
+                );
                 None
             }
         }

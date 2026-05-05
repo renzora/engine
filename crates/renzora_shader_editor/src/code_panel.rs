@@ -3,9 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
-use egui_phosphor::regular::{
-    FLOPPY_DISK, LIGHTNING, PLAY, FILE_PLUS, FOLDER_OPEN,
-};
+use egui_phosphor::regular::{FILE_PLUS, FLOPPY_DISK, FOLDER_OPEN, LIGHTNING, PLAY};
 
 use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::file::{ShaderFile, ShaderType};
@@ -43,49 +41,175 @@ impl ShaderCodePanel {
                     "enable", "override", "alias",
                 ])
                 .with_types([
-                    "bool", "i32", "u32", "f32", "f16",
-                    "vec2", "vec3", "vec4", "vec2i", "vec3i", "vec4i",
-                    "vec2u", "vec3u", "vec4u", "vec2f", "vec3f", "vec4f",
-                    "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4",
-                    "mat4x2", "mat4x3", "mat4x4",
-                    "mat2x2f", "mat3x3f", "mat4x4f",
-                    "texture_2d", "texture_3d", "texture_cube",
-                    "sampler", "sampler_comparison", "array", "atomic", "ptr",
+                    "bool",
+                    "i32",
+                    "u32",
+                    "f32",
+                    "f16",
+                    "vec2",
+                    "vec3",
+                    "vec4",
+                    "vec2i",
+                    "vec3i",
+                    "vec4i",
+                    "vec2u",
+                    "vec3u",
+                    "vec4u",
+                    "vec2f",
+                    "vec3f",
+                    "vec4f",
+                    "mat2x2",
+                    "mat2x3",
+                    "mat2x4",
+                    "mat3x2",
+                    "mat3x3",
+                    "mat3x4",
+                    "mat4x2",
+                    "mat4x3",
+                    "mat4x4",
+                    "mat2x2f",
+                    "mat3x3f",
+                    "mat4x4f",
+                    "texture_2d",
+                    "texture_3d",
+                    "texture_cube",
+                    "sampler",
+                    "sampler_comparison",
+                    "array",
+                    "atomic",
+                    "ptr",
                 ])
                 .with_special([
-                    "textureSample", "textureSampleLevel", "textureLoad", "textureStore",
-                    "dot", "cross", "normalize", "length", "distance",
-                    "mix", "clamp", "smoothstep", "step",
-                    "abs", "ceil", "floor", "round", "fract",
-                    "cos", "sin", "tan", "exp", "log", "pow", "sqrt",
-                    "min", "max", "saturate", "select",
-                    "transpose", "determinant",
+                    "textureSample",
+                    "textureSampleLevel",
+                    "textureLoad",
+                    "textureStore",
+                    "dot",
+                    "cross",
+                    "normalize",
+                    "length",
+                    "distance",
+                    "mix",
+                    "clamp",
+                    "smoothstep",
+                    "step",
+                    "abs",
+                    "ceil",
+                    "floor",
+                    "round",
+                    "fract",
+                    "cos",
+                    "sin",
+                    "tan",
+                    "exp",
+                    "log",
+                    "pow",
+                    "sqrt",
+                    "min",
+                    "max",
+                    "saturate",
+                    "select",
+                    "transpose",
+                    "determinant",
                 ]),
             "GLSL" | "SHADERTOY" => Syntax::new("glsl")
                 .with_comment("//")
                 .with_comment_multiline(["/*", "*/"])
                 .with_keywords([
-                    "void", "return", "if", "else", "for", "while", "do", "break", "continue",
-                    "discard", "switch", "case", "default", "struct", "in", "out", "inout",
-                    "uniform", "varying", "layout", "location", "binding", "set",
-                    "precision", "highp", "mediump", "lowp", "#version", "#define",
+                    "void",
+                    "return",
+                    "if",
+                    "else",
+                    "for",
+                    "while",
+                    "do",
+                    "break",
+                    "continue",
+                    "discard",
+                    "switch",
+                    "case",
+                    "default",
+                    "struct",
+                    "in",
+                    "out",
+                    "inout",
+                    "uniform",
+                    "varying",
+                    "layout",
+                    "location",
+                    "binding",
+                    "set",
+                    "precision",
+                    "highp",
+                    "mediump",
+                    "lowp",
+                    "#version",
+                    "#define",
                 ])
                 .with_types([
-                    "float", "int", "uint", "bool", "double",
-                    "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4",
-                    "uvec2", "uvec3", "uvec4", "bvec2", "bvec3", "bvec4",
-                    "mat2", "mat3", "mat4", "mat2x2", "mat3x3", "mat4x4",
-                    "sampler2D", "sampler3D", "samplerCube",
+                    "float",
+                    "int",
+                    "uint",
+                    "bool",
+                    "double",
+                    "vec2",
+                    "vec3",
+                    "vec4",
+                    "ivec2",
+                    "ivec3",
+                    "ivec4",
+                    "uvec2",
+                    "uvec3",
+                    "uvec4",
+                    "bvec2",
+                    "bvec3",
+                    "bvec4",
+                    "mat2",
+                    "mat3",
+                    "mat4",
+                    "mat2x2",
+                    "mat3x3",
+                    "mat4x4",
+                    "sampler2D",
+                    "sampler3D",
+                    "samplerCube",
                 ])
                 .with_special([
-                    "texture", "textureLod", "normalize", "length", "distance",
-                    "dot", "cross", "mix", "clamp", "smoothstep", "step",
-                    "abs", "ceil", "floor", "round", "fract",
-                    "cos", "sin", "tan", "atan", "exp", "log", "pow", "sqrt",
-                    "min", "max",
+                    "texture",
+                    "textureLod",
+                    "normalize",
+                    "length",
+                    "distance",
+                    "dot",
+                    "cross",
+                    "mix",
+                    "clamp",
+                    "smoothstep",
+                    "step",
+                    "abs",
+                    "ceil",
+                    "floor",
+                    "round",
+                    "fract",
+                    "cos",
+                    "sin",
+                    "tan",
+                    "atan",
+                    "exp",
+                    "log",
+                    "pow",
+                    "sqrt",
+                    "min",
+                    "max",
                     // ShaderToy builtins
-                    "mainImage", "fragColor", "fragCoord",
-                    "iTime", "iResolution", "iMouse", "iTimeDelta", "iFrame",
+                    "mainImage",
+                    "fragColor",
+                    "fragCoord",
+                    "iTime",
+                    "iResolution",
+                    "iMouse",
+                    "iTimeDelta",
+                    "iFrame",
                 ]),
             _ => Syntax::new("glsl"),
         }
@@ -119,7 +243,9 @@ impl EditorPanel for ShaderCodePanel {
         let _error_color = theme.semantic.error.to_color32();
         let success_color = theme.semantic.success.to_color32();
 
-        let Some(state) = world.get_resource::<ShaderEditorState>() else { return };
+        let Some(state) = world.get_resource::<ShaderEditorState>() else {
+            return;
+        };
 
         // Sync local source from state
         if let Ok(mut local) = self.local_source.write() {
@@ -146,21 +272,30 @@ impl EditorPanel for ShaderCodePanel {
                     ui.spacing_mut().item_spacing.x = 6.0;
 
                     // Language dropdown
-                    let current_lang = self.local_language.read().map(|l| l.clone()).unwrap_or("WGSL".into());
+                    let current_lang = self
+                        .local_language
+                        .read()
+                        .map(|l| l.clone())
+                        .unwrap_or("WGSL".into());
                     egui::ComboBox::from_id_salt("shader_lang")
                         .selected_text(&current_lang)
                         .width(100.0)
                         .show_ui(ui, |ui| {
                             for lang in &available_languages {
                                 let lang_str = lang.to_string();
-                                if ui.selectable_label(current_lang == lang_str, &lang_str).clicked() {
+                                if ui
+                                    .selectable_label(current_lang == lang_str, &lang_str)
+                                    .clicked()
+                                {
                                     if let Ok(mut local_lang) = self.local_language.write() {
                                         *local_lang = lang_str.clone();
                                     }
                                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                                         let l = lang_str;
                                         cmds.push(move |world: &mut World| {
-                                            if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                            if let Some(mut s) =
+                                                world.get_resource_mut::<ShaderEditorState>()
+                                            {
                                                 s.shader_file.language = l;
                                                 s.is_modified = true;
                                             }
@@ -177,11 +312,16 @@ impl EditorPanel for ShaderCodePanel {
                         .width(90.0)
                         .show_ui(ui, |ui| {
                             for st in ShaderType::ALL {
-                                if ui.selectable_label(current_type == *st, st.label()).clicked() {
+                                if ui
+                                    .selectable_label(current_type == *st, st.label())
+                                    .clicked()
+                                {
                                     let new_type = *st;
                                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                                         cmds.push(move |world: &mut World| {
-                                            if let Some(mut s) = world.get_resource_mut::<ShaderEditorState>() {
+                                            if let Some(mut s) =
+                                                world.get_resource_mut::<ShaderEditorState>()
+                                            {
                                                 s.shader_file.shader_type = new_type;
                                                 s.is_modified = true;
                                             }
@@ -196,7 +336,10 @@ impl EditorPanel for ShaderCodePanel {
                     ui.add_space(4.0);
 
                     // Compile button
-                    if ui.button(RichText::new(format!("{} Compile", PLAY)).size(12.0)).clicked() {
+                    if ui
+                        .button(RichText::new(format!("{} Compile", PLAY)).size(12.0))
+                        .clicked()
+                    {
                         if let Ok(source) = self.local_source.read() {
                             let src = source.clone();
                             let lang = current_lang.clone();
@@ -210,9 +353,13 @@ impl EditorPanel for ShaderCodePanel {
 
                     // Auto-compile toggle
                     let auto_label = if state.auto_compile {
-                        RichText::new(format!("{} Auto", LIGHTNING)).size(12.0).color(success_color)
+                        RichText::new(format!("{} Auto", LIGHTNING))
+                            .size(12.0)
+                            .color(success_color)
                     } else {
-                        RichText::new(format!("{} Auto", LIGHTNING)).size(12.0).color(muted)
+                        RichText::new(format!("{} Auto", LIGHTNING))
+                            .size(12.0)
+                            .color(muted)
                     };
                     if ui.button(auto_label).clicked() {
                         if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -230,7 +377,10 @@ impl EditorPanel for ShaderCodePanel {
                     ui.add_space(4.0);
 
                     // New — use type-specific template
-                    if ui.button(RichText::new(format!("{}", FILE_PLUS)).size(12.0)).clicked() {
+                    if ui
+                        .button(RichText::new(format!("{}", FILE_PLUS)).size(12.0))
+                        .clicked()
+                    {
                         let shader_type = state.shader_file.shader_type;
                         let template = renzora_shader::file::default_source_for_type(shader_type);
                         if let Ok(mut local) = self.local_source.write() {
@@ -242,14 +392,19 @@ impl EditorPanel for ShaderCodePanel {
                                     let st = s.shader_file.shader_type;
                                     *s = ShaderEditorState::default();
                                     s.shader_file.shader_type = st;
-                                    s.shader_file.shader_source = renzora_shader::file::default_source_for_type(st).to_string();
+                                    s.shader_file.shader_source =
+                                        renzora_shader::file::default_source_for_type(st)
+                                            .to_string();
                                 }
                             });
                         }
                     }
 
                     // Open
-                    if ui.button(RichText::new(format!("{}", FOLDER_OPEN)).size(12.0)).clicked() {
+                    if ui
+                        .button(RichText::new(format!("{}", FOLDER_OPEN)).size(12.0))
+                        .clicked()
+                    {
                         if let Some(cmds) = world.get_resource::<EditorCommands>() {
                             cmds.push(|world: &mut World| {
                                 open_shader_file(world);
@@ -259,9 +414,13 @@ impl EditorPanel for ShaderCodePanel {
 
                     // Save
                     let save_label = if state.is_modified {
-                        RichText::new(format!("{}", FLOPPY_DISK)).size(12.0).color(egui::Color32::from_rgb(255, 200, 80))
+                        RichText::new(format!("{}", FLOPPY_DISK))
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(255, 200, 80))
                     } else {
-                        RichText::new(format!("{}", FLOPPY_DISK)).size(12.0).color(muted)
+                        RichText::new(format!("{}", FLOPPY_DISK))
+                            .size(12.0)
+                            .color(muted)
                     };
                     if ui.button(save_label).clicked() {
                         if let Ok(source) = self.local_source.read() {
@@ -289,7 +448,11 @@ impl EditorPanel for ShaderCodePanel {
 
         // ── Code Editor ──
         let syntax = {
-            let lang = self.local_language.read().map(|l| l.clone()).unwrap_or("WGSL".into());
+            let lang = self
+                .local_language
+                .read()
+                .map(|l| l.clone())
+                .unwrap_or("WGSL".into());
             Self::syntax_for_language(&lang)
         };
 
@@ -315,7 +478,11 @@ impl EditorPanel for ShaderCodePanel {
             if let Ok(source) = self.local_source.read() {
                 let src = source.clone();
                 let auto_compile = state.auto_compile;
-                let lang = self.local_language.read().map(|l| l.clone()).unwrap_or("WGSL".into());
+                let lang = self
+                    .local_language
+                    .read()
+                    .map(|l| l.clone())
+                    .unwrap_or("WGSL".into());
 
                 if let Some(cmds) = world.get_resource::<EditorCommands>() {
                     cmds.push(move |world: &mut World| {
@@ -348,7 +515,10 @@ impl EditorPanel for ShaderCodePanel {
 // ── Helper functions ─────────────────────────────────────────────────────────
 
 fn compile_shader(world: &mut World, _language: &str, source: &str) {
-    let shader_type = world.resource::<ShaderEditorState>().shader_file.shader_type;
+    let shader_type = world
+        .resource::<ShaderEditorState>()
+        .shader_file
+        .shader_type;
 
     // Auto-detect language from source content
     let detected = renzora_shader::file::detect_language(source);
@@ -391,7 +561,9 @@ fn compile_shader(world: &mut World, _language: &str, source: &str) {
             let final_wgsl = inject_params_into_wgsl(&base_wgsl, &state.shader_file.params);
 
             let compatible = match shader_type {
-                ShaderType::Fragment => !renzora_shader::registry::has_custom_material_bindings(&final_wgsl),
+                ShaderType::Fragment => {
+                    !renzora_shader::registry::has_custom_material_bindings(&final_wgsl)
+                }
                 ShaderType::Material => false,
                 ShaderType::PostProcess => false,
             };
@@ -414,7 +586,9 @@ fn compile_shader(world: &mut World, _language: &str, source: &str) {
 /// Called when properties panel edits a value (avoids full re-transpilation).
 pub fn reapply_params(world: &mut World) {
     let mut state = world.resource_mut::<ShaderEditorState>();
-    let Some(ref base_wgsl) = state.base_wgsl else { return };
+    let Some(ref base_wgsl) = state.base_wgsl else {
+        return;
+    };
     let final_wgsl = inject_params_into_wgsl(base_wgsl, &state.shader_file.params);
     state.compiled_wgsl = Some(final_wgsl);
 }
@@ -441,22 +615,20 @@ fn open_shader_file(world: &mut World) {
 
     if let Some(path) = file {
         match std::fs::read_to_string(&path) {
-            Ok(content) => {
-                match serde_json::from_str::<ShaderFile>(&content) {
-                    Ok(shader_file) => {
-                        let mut state = world.resource_mut::<ShaderEditorState>();
-                        state.shader_file = shader_file;
-                        state.file_path = Some(path.display().to_string());
-                        state.is_modified = false;
-                        state.base_wgsl = None;
-                        state.compiled_wgsl = None;
-                        state.compile_errors.clear();
-                    }
-                    Err(e) => {
-                        bevy::log::error!("Failed to parse .shader file: {}", e);
-                    }
+            Ok(content) => match serde_json::from_str::<ShaderFile>(&content) {
+                Ok(shader_file) => {
+                    let mut state = world.resource_mut::<ShaderEditorState>();
+                    state.shader_file = shader_file;
+                    state.file_path = Some(path.display().to_string());
+                    state.is_modified = false;
+                    state.base_wgsl = None;
+                    state.compiled_wgsl = None;
+                    state.compile_errors.clear();
                 }
-            }
+                Err(e) => {
+                    bevy::log::error!("Failed to parse .shader file: {}", e);
+                }
+            },
             Err(e) => {
                 bevy::log::error!("Failed to read file: {}", e);
             }

@@ -70,13 +70,9 @@ fn axis_cell(
         egui::pos2(chip_rect.right(), rect.top()),
         rect.right_bottom(),
     );
-    let mut child = ui.new_child(
-        egui::UiBuilder::new()
-            .max_rect(drag_rect)
-            .layout(egui::Layout::centered_and_justified(
-                egui::Direction::LeftToRight,
-            )),
-    );
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(drag_rect).layout(
+        egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+    ));
     {
         let visuals = &mut child.style_mut().visuals.widgets;
         visuals.inactive.bg_fill = egui::Color32::TRANSPARENT;
@@ -101,9 +97,17 @@ fn push_field_change(
     set_fn: fn(&mut World, Entity, FieldValue),
 ) {
     cmds.push(move |world| {
-        renzora_undo::execute(world, UndoContext::Scene, Box::new(FieldChangeCmd {
-            entity, field_name, old, new, set_fn,
-        }));
+        renzora_undo::execute(
+            world,
+            UndoContext::Scene,
+            Box::new(FieldChangeCmd {
+                entity,
+                field_name,
+                old,
+                new,
+                set_fn,
+            }),
+        );
     });
 }
 
@@ -151,19 +155,27 @@ pub fn render_field(
 
             inline_property(ui, row_index, field.name, theme, |ui| {
                 let orig = v;
-                ui.add(
-                    egui::DragValue::new(&mut v)
-                        .speed(speed)
-                        .range(min..=max),
-                );
+                ui.add(egui::DragValue::new(&mut v).speed(speed).range(min..=max));
                 if v != orig {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Float(orig), FieldValue::Float(v), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Float(orig),
+                        FieldValue::Float(v),
+                        set_fn,
+                    );
                 }
                 if reset_button(ui, theme) {
                     let new = FieldValue::Float(orig).type_default();
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Float(orig), new, set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Float(orig),
+                        new,
+                        set_fn,
+                    );
                 }
             });
         }
@@ -190,21 +202,18 @@ pub fn render_field(
                     // Header row: name (left) + reset button (right).
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(field.name).size(11.0));
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                if reset_button(ui, theme) {
-                                    push_field_change(
-                                        cmds,
-                                        entity,
-                                        field.name,
-                                        FieldValue::Vec3(orig),
-                                        FieldValue::Vec3([0.0; 3]),
-                                        set_fn,
-                                    );
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if reset_button(ui, theme) {
+                                push_field_change(
+                                    cmds,
+                                    entity,
+                                    field.name,
+                                    FieldValue::Vec3(orig),
+                                    FieldValue::Vec3([0.0; 3]),
+                                    set_fn,
+                                );
+                            }
+                        });
                     });
 
                     // Cells row: three equal-width axis cells.
@@ -239,12 +248,24 @@ pub fn render_field(
                 let id = ui.id().with(field.name);
                 if toggle_switch(ui, id, v) {
                     let new_val = !v;
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Bool(v), FieldValue::Bool(new_val), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Bool(v),
+                        FieldValue::Bool(new_val),
+                        set_fn,
+                    );
                 }
                 if reset_button(ui, theme) {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Bool(v), FieldValue::Bool(false), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Bool(v),
+                        FieldValue::Bool(false),
+                        set_fn,
+                    );
                 }
             });
         }
@@ -255,12 +276,24 @@ pub fn render_field(
             inline_property(ui, row_index, field.name, theme, |ui| {
                 let orig = rgb;
                 if ui.color_edit_button_rgb(&mut rgb).changed() && rgb != orig {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Color(orig), FieldValue::Color(rgb), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Color(orig),
+                        FieldValue::Color(rgb),
+                        set_fn,
+                    );
                 }
                 if reset_button(ui, theme) {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::Color(orig), FieldValue::Color([1.0; 3]), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Color(orig),
+                        FieldValue::Color([1.0; 3]),
+                        set_fn,
+                    );
                 }
             });
         }
@@ -275,12 +308,24 @@ pub fn render_field(
                         .desired_width((ui.available_width() - 28.0).max(40.0)),
                 );
                 if s != orig {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::String(orig.clone()), FieldValue::String(s), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::String(orig.clone()),
+                        FieldValue::String(s),
+                        set_fn,
+                    );
                 }
                 if reset_button(ui, theme) {
-                    push_field_change(cmds, entity, field.name,
-                        FieldValue::String(orig), FieldValue::String(String::new()), set_fn);
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::String(orig),
+                        FieldValue::String(String::new()),
+                        set_fn,
+                    );
                 }
             });
         }
@@ -315,24 +360,41 @@ pub fn render_field(
                 );
 
                 if let Some(path) = drop_result.dropped_path {
-                    let path_str = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+                    let path_str = if let Some(project) =
+                        world.get_resource::<renzora::core::CurrentProject>()
+                    {
                         project.make_asset_relative(&path)
                     } else {
                         path.to_string_lossy().to_string()
                     };
-                    push_field_change(cmds, entity, field.name,
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
                         FieldValue::Asset(current.clone()),
-                        FieldValue::Asset(Some(path_str)), set_fn);
+                        FieldValue::Asset(Some(path_str)),
+                        set_fn,
+                    );
                 }
                 if drop_result.cleared {
-                    push_field_change(cmds, entity, field.name,
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
                         FieldValue::Asset(current.clone()),
-                        FieldValue::Asset(None), set_fn);
+                        FieldValue::Asset(None),
+                        set_fn,
+                    );
                 }
                 if reset_button(ui, theme) {
-                    push_field_change(cmds, entity, field.name,
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
                         FieldValue::Asset(current.clone()),
-                        FieldValue::Asset(None), set_fn);
+                        FieldValue::Asset(None),
+                        set_fn,
+                    );
                 }
             });
         }

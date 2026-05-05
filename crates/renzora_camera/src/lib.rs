@@ -9,17 +9,17 @@
 //! - Shift: move faster (2x)
 //! - Ctrl: move slower (0.25x)
 
-use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{
-    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode,
-    ViewportSettings, ViewportState,
+    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode, ViewportSettings,
+    ViewportState,
 };
-use renzora_editor::EditorSelection;
+use renzora::core::InputFocusState;
 use renzora::core::{EditorCamera, PlayModeCamera};
+use renzora_editor::EditorSelection;
 
 /// Orbit camera state for the editor viewport.
 ///
@@ -86,7 +86,9 @@ impl OrbitCameraState {
 }
 
 /// Camera projection mode.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Reflect, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, Debug, Default, Reflect, serde::Serialize, serde::Deserialize,
+)]
 pub enum ProjectionMode {
     #[default]
     Perspective,
@@ -165,21 +167,29 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraDragState>()
             .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
-            .add_systems(Update, toggle_pivot_lock.run_if(in_state(renzora_editor::SplashState::Editor)))
+            .add_systems(
+                Update,
+                toggle_pivot_lock.run_if(in_state(renzora_editor::SplashState::Editor)),
+            )
             .add_systems(PostStartup, apply_initial_orbit)
-            .add_systems(Update, (
-                sync_viewport_settings,
-                handle_view_angle_keys,
-                focus_selected,
-                frame_all,
-                handle_camera_view_request,
-                camera_to_cursor,
-                camera_controller,
-                apply_nav_overlay,
-                update_camera_projection,
-                sync_orbit_snapshot,
-                apply_orbit_on_change,
-            ).chain().run_if(in_state(renzora_editor::SplashState::Editor)));
+            .add_systems(
+                Update,
+                (
+                    sync_viewport_settings,
+                    handle_view_angle_keys,
+                    focus_selected,
+                    frame_all,
+                    handle_camera_view_request,
+                    camera_to_cursor,
+                    camera_controller,
+                    apply_nav_overlay,
+                    update_camera_projection,
+                    sync_orbit_snapshot,
+                    apply_orbit_on_change,
+                )
+                    .chain()
+                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+            );
     }
 }
 
@@ -190,10 +200,13 @@ fn apply_initial_orbit(
 ) {
     for (entity, mut transform) in &mut cameras {
         let t = orbit.calculate_transform();
-        renzora::core::console_log::console_info("Camera", format!(
+        renzora::core::console_log::console_info(
+            "Camera",
+            format!(
             "apply_initial_orbit: entity={:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3} pos={:?}",
             entity, orbit.focus, orbit.distance, orbit.yaw, orbit.pitch, t.translation
-        ));
+        ),
+        );
         *transform = t;
     }
 }
@@ -245,10 +258,18 @@ fn handle_view_angle_keys(
 ) {
     use std::f32::consts::{FRAC_PI_2, PI};
 
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::ViewFront, &keyboard) {
         orbit.yaw = 0.0;
@@ -303,10 +324,18 @@ fn focus_selected(
     transforms: Query<&Transform, Without<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
         if let Some(entity) = selection.get() {
@@ -327,13 +356,24 @@ fn toggle_pivot_lock(
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
     if keybindings.just_pressed(EditorAction::TogglePivotLock, &keyboard) {
         pivot_lock.0 = !pivot_lock.0;
-        info!("[camera] pivot lock {}", if pivot_lock.0 { "ON" } else { "OFF" });
+        info!(
+            "[camera] pivot lock {}",
+            if pivot_lock.0 { "ON" } else { "OFF" }
+        );
     }
 }
 
@@ -349,11 +389,21 @@ fn frame_all(
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
-    if !keybindings.just_pressed(EditorAction::FrameAll, &keyboard) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
+    if !keybindings.just_pressed(EditorAction::FrameAll, &keyboard) {
+        return;
+    }
 
     let mut count = 0u32;
     let mut centroid = Vec3::ZERO;
@@ -361,13 +411,17 @@ fn frame_all(
         centroid += gt.translation();
         count += 1;
     }
-    if count == 0 { return; }
+    if count == 0 {
+        return;
+    }
     centroid /= count as f32;
 
     let mut max_dist = 1.0f32;
     for gt in &meshes {
         let d = gt.translation().distance(centroid);
-        if d > max_dist { max_dist = d; }
+        if d > max_dist {
+            max_dist = d;
+        }
     }
 
     orbit.focus = centroid;
@@ -414,7 +468,9 @@ fn handle_camera_view_request(
                 let mut max_dist = 1.0f32;
                 for gt in &meshes {
                     let d = gt.translation().distance(centroid);
-                    if d > max_dist { max_dist = d; }
+                    if d > max_dist {
+                        max_dist = d;
+                    }
                 }
                 orbit.focus = centroid;
                 orbit.distance = (max_dist * 2.5).max(3.0);
@@ -440,30 +496,52 @@ fn camera_to_cursor(
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
-    if !keybindings.just_pressed(EditorAction::CameraToCursor, &keyboard) { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
+    if !keybindings.just_pressed(EditorAction::CameraToCursor, &keyboard) {
+        return;
+    }
 
     let Some(viewport) = viewport else { return };
-    let Ok(window) = window_q.single() else { return };
-    let Some(cursor) = window.cursor_position() else { return };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
     let vp_min = viewport.screen_position;
     let vp_max = vp_min + viewport.screen_size;
     if cursor.x < vp_min.x || cursor.y < vp_min.y || cursor.x > vp_max.x || cursor.y > vp_max.y {
         return;
     }
-    let Some((camera, cam_xform)) = camera_q.iter().next() else { return };
+    let Some((camera, cam_xform)) = camera_q.iter().next() else {
+        return;
+    };
     let viewport_pos = Vec2::new(
         (cursor.x - vp_min.x) / viewport.screen_size.x * viewport.current_size.x as f32,
         (cursor.y - vp_min.y) / viewport.screen_size.y * viewport.current_size.y as f32,
     );
-    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else { return };
+    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else {
+        return;
+    };
     let dir = ray.direction.as_vec3();
-    if dir.y.abs() <= 1e-6 { return; }
+    if dir.y.abs() <= 1e-6 {
+        return;
+    }
     let t = -ray.origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 { return; }
+    if t <= 0.0 || t > 10_000.0 {
+        return;
+    }
     let target = ray.origin + dir * t;
 
     let current_cam_pos = orbit.calculate_position();
@@ -477,7 +555,6 @@ fn camera_to_cursor(
     orbit.pitch = pitch;
     pivot_lock.0 = true;
 }
-
 
 fn camera_controller(
     mut orbit: ResMut<OrbitCameraState>,
@@ -521,7 +598,8 @@ fn camera_controller(
     let right_just_released = mouse_button.just_released(MouseButton::Right);
     let middle_just_released = mouse_button.just_released(MouseButton::Middle);
     let alt_held = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
-    let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let ctrl_held =
+        keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     let invert_y = if settings.invert_y { -1.0f32 } else { 1.0 };
@@ -553,12 +631,24 @@ fn camera_controller(
         let right_dir = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin()).normalize();
 
         let mut move_delta = Vec3::ZERO;
-        if keyboard.pressed(KeyCode::KeyW) { move_delta -= forward; }
-        if keyboard.pressed(KeyCode::KeyS) { move_delta += forward; }
-        if keyboard.pressed(KeyCode::KeyA) { move_delta -= right_dir; }
-        if keyboard.pressed(KeyCode::KeyD) { move_delta += right_dir; }
-        if keyboard.pressed(KeyCode::KeyE) { move_delta += Vec3::Y; }
-        if keyboard.pressed(KeyCode::KeyQ) { move_delta -= Vec3::Y; }
+        if keyboard.pressed(KeyCode::KeyW) {
+            move_delta -= forward;
+        }
+        if keyboard.pressed(KeyCode::KeyS) {
+            move_delta += forward;
+        }
+        if keyboard.pressed(KeyCode::KeyA) {
+            move_delta -= right_dir;
+        }
+        if keyboard.pressed(KeyCode::KeyD) {
+            move_delta += right_dir;
+        }
+        if keyboard.pressed(KeyCode::KeyE) {
+            move_delta += Vec3::Y;
+        }
+        if keyboard.pressed(KeyCode::KeyQ) {
+            move_delta -= Vec3::Y;
+        }
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;
         }
@@ -607,7 +697,9 @@ fn camera_controller(
     }
 
     // Skip scroll zoom when terrain/foliage tool is active — scroll controls brush radius instead
-    let tool_active = active_tool.as_ref().map_or(false, |t| t.is_terrain_or_foliage());
+    let tool_active = active_tool
+        .as_ref()
+        .map_or(false, |t| t.is_terrain_or_foliage());
 
     let mut scroll_changed = false;
     if !tool_active {
@@ -708,12 +800,27 @@ fn apply_nav_overlay(
 ) {
     let Some(nav) = nav else { return };
 
-    let pan_dx = nav.pan_delta_x.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
-    let pan_dy = nav.pan_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
-    let zoom_dy = nav.zoom_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let pan_dx = nav
+        .pan_delta_x
+        .swap(0, std::sync::atomic::Ordering::Relaxed) as f32
+        / 1000.0;
+    let pan_dy = nav
+        .pan_delta_y
+        .swap(0, std::sync::atomic::Ordering::Relaxed) as f32
+        / 1000.0;
+    let zoom_dy = nav
+        .zoom_delta_y
+        .swap(0, std::sync::atomic::Ordering::Relaxed) as f32
+        / 1000.0;
 
-    let orbit_dx = nav.orbit_delta_x.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
-    let orbit_dy = nav.orbit_delta_y.swap(0, std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+    let orbit_dx = nav
+        .orbit_delta_x
+        .swap(0, std::sync::atomic::Ordering::Relaxed) as f32
+        / 1000.0;
+    let orbit_dy = nav
+        .orbit_delta_y
+        .swap(0, std::sync::atomic::Ordering::Relaxed) as f32
+        / 1000.0;
 
     let has_pan = pan_dx != 0.0 || pan_dy != 0.0;
     let has_zoom = zoom_dy != 0.0;
@@ -806,19 +913,20 @@ fn apply_orbit_on_change(
     orbit: Res<OrbitCameraState>,
     mut cameras: Query<&mut Transform, (With<EditorCamera>, Without<PlayModeCamera>)>,
 ) {
-    if !orbit.is_changed() { return; }
+    if !orbit.is_changed() {
+        return;
+    }
     for mut transform in &mut cameras {
         *transform = orbit.calculate_transform();
     }
 }
 
 /// Copy orbit yaw/pitch into the shared snapshot so the viewport axis gizmo can read it.
-fn sync_orbit_snapshot(
-    orbit: Res<OrbitCameraState>,
-    mut snapshot: ResMut<CameraOrbitSnapshot>,
-) {
+fn sync_orbit_snapshot(orbit: Res<OrbitCameraState>, mut snapshot: ResMut<CameraOrbitSnapshot>) {
     if orbit.is_changed() {
         snapshot.yaw = orbit.yaw;
         snapshot.pitch = orbit.pitch;
     }
 }
+
+renzora::add!(CameraPlugin, Editor);

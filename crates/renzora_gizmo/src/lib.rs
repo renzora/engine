@@ -7,32 +7,34 @@
 //! and scale (lines + cube caps) modes.
 
 mod camera_gizmo;
-mod light_gizmo;
-mod plane_fill;
-mod rotation_pie;
-pub mod modal_transform;
-pub mod selection_visuals;
-pub mod skeleton_gizmo;
 pub mod collider_gizmo;
 pub mod collider_handles;
+mod light_gizmo;
+pub mod modal_transform;
+mod plane_fill;
+mod rotation_pie;
+pub mod selection_visuals;
+pub mod skeleton_gizmo;
 
 use bevy::camera::visibility::RenderLayers;
-use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
+use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
+use bevy::prelude::*;
 use bevy::render::render_resource::{
     AsBindGroup, CompareFunction, RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
-use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
-use renzora::core::InputFocusState;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::{NavOverlayState, SnapSettings, ViewportSettings, ViewportState};
+use renzora::core::viewport_types::{
+    NavOverlayState, SnapSettings, ViewportSettings, ViewportState,
+};
+use renzora::core::InputFocusState;
 use renzora::SelectionStop;
-use renzora_editor::{EditorSelection, EditorLocked, EditorCamera, HideInHierarchy};
+use renzora_editor::{EditorCamera, EditorLocked, EditorSelection, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -212,10 +214,15 @@ pub(crate) struct GizmoMesh;
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum GizmoPart {
-    XShaft, XHead,
-    YShaft, YHead,
-    ZShaft, ZHead,
-    XScaleCube, YScaleCube, ZScaleCube,
+    XShaft,
+    XHead,
+    YShaft,
+    YHead,
+    ZShaft,
+    ZHead,
+    XScaleCube,
+    YScaleCube,
+    ZScaleCube,
     Center,
 }
 
@@ -340,7 +347,10 @@ impl Plugin for GizmoPlugin {
                 OverlayGizmoGroup,
                 GizmoConfig {
                     depth_bias: -1.0,
-                    line: GizmoLineConfig { width: 3.0, ..default() },
+                    line: GizmoLineConfig {
+                        width: 3.0,
+                        ..default()
+                    },
                     render_layers: RenderLayers::layer(1),
                     ..default()
                 },
@@ -349,7 +359,10 @@ impl Plugin for GizmoPlugin {
                 TransformGizmoGroup,
                 GizmoConfig {
                     depth_bias: -1.0,
-                    line: GizmoLineConfig { width: 3.0, ..default() },
+                    line: GizmoLineConfig {
+                        width: 3.0,
+                        ..default()
+                    },
                     render_layers: RenderLayers::layer(1),
                     ..default()
                 },
@@ -439,7 +452,8 @@ impl Plugin for GizmoPlugin {
                 (
                     collider_handles::pick_and_drag_handles,
                     collider_handles::spawn_handle_meshes,
-                ).chain()
+                )
+                    .chain()
                     .run_if(in_state(renzora_editor::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             )
@@ -491,7 +505,10 @@ struct LastSelectionCount(usize);
 fn auto_switch_tool_on_selection(world: &mut World) {
     use renzora_editor::ActiveTool;
 
-    let current = world.resource::<renzora_editor::EditorSelection>().get_all().len();
+    let current = world
+        .resource::<renzora_editor::EditorSelection>()
+        .get_all()
+        .len();
     let prev = world.resource::<LastSelectionCount>().0;
     if current == prev {
         return;
@@ -561,18 +578,28 @@ fn setup_gizmo_meshes(
     };
 
     let shaft_mesh = meshes.add(Cylinder::new(0.05, GIZMO_SIZE - 0.4));
-    let cone_mesh = meshes.add(Cone { radius: 0.15, height: 0.4 });
+    let cone_mesh = meshes.add(Cone {
+        radius: 0.15,
+        height: 0.4,
+    });
     let cube_mesh = meshes.add(Cuboid::new(0.25, 0.25, 0.25));
 
-    let gizmo_root = commands.spawn((
-        Transform::default(),
-        Visibility::Hidden,
-        GizmoRoot,
-        HideInHierarchy,
-        RenderLayers::layer(1),
-    )).id();
+    let gizmo_root = commands
+        .spawn((
+            Transform::default(),
+            Visibility::Hidden,
+            GizmoRoot,
+            HideInHierarchy,
+            RenderLayers::layer(1),
+        ))
+        .id();
 
-    let spawn = |commands: &mut Commands, mesh: Handle<Mesh>, mat: Handle<GizmoMaterial>, transform: Transform, part: GizmoPart, root: Entity| {
+    let spawn = |commands: &mut Commands,
+                 mesh: Handle<Mesh>,
+                 mat: Handle<GizmoMaterial>,
+                 transform: Transform,
+                 part: GizmoPart,
+                 root: Entity| {
         commands.spawn((
             Mesh3d(mesh),
             MeshMaterial3d(mat),
@@ -589,49 +616,99 @@ fn setup_gizmo_meshes(
     let half_shaft = (GIZMO_SIZE - 0.4) / 2.0;
 
     // X axis (rotate cylinder to point along X)
-    spawn(&mut commands, shaft_mesh.clone(), gizmo_mats.x_normal.clone(),
+    spawn(
+        &mut commands,
+        shaft_mesh.clone(),
+        gizmo_mats.x_normal.clone(),
         Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
             .with_translation(Vec3::new(half_shaft, 0.0, 0.0)),
-        GizmoPart::XShaft, gizmo_root);
-    spawn(&mut commands, cone_mesh.clone(), gizmo_mats.x_normal.clone(),
+        GizmoPart::XShaft,
+        gizmo_root,
+    );
+    spawn(
+        &mut commands,
+        cone_mesh.clone(),
+        gizmo_mats.x_normal.clone(),
         Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
             .with_translation(Vec3::new(GIZMO_SIZE - 0.2, 0.0, 0.0)),
-        GizmoPart::XHead, gizmo_root);
+        GizmoPart::XHead,
+        gizmo_root,
+    );
 
     // Y axis (cylinder default is along Y)
-    spawn(&mut commands, shaft_mesh.clone(), gizmo_mats.y_normal.clone(),
+    spawn(
+        &mut commands,
+        shaft_mesh.clone(),
+        gizmo_mats.y_normal.clone(),
         Transform::from_translation(Vec3::new(0.0, half_shaft, 0.0)),
-        GizmoPart::YShaft, gizmo_root);
-    spawn(&mut commands, cone_mesh.clone(), gizmo_mats.y_normal.clone(),
+        GizmoPart::YShaft,
+        gizmo_root,
+    );
+    spawn(
+        &mut commands,
+        cone_mesh.clone(),
+        gizmo_mats.y_normal.clone(),
         Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE - 0.2, 0.0)),
-        GizmoPart::YHead, gizmo_root);
+        GizmoPart::YHead,
+        gizmo_root,
+    );
 
     // Z axis (rotate cylinder to point along Z)
-    spawn(&mut commands, shaft_mesh.clone(), gizmo_mats.z_normal.clone(),
+    spawn(
+        &mut commands,
+        shaft_mesh.clone(),
+        gizmo_mats.z_normal.clone(),
         Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
             .with_translation(Vec3::new(0.0, 0.0, half_shaft)),
-        GizmoPart::ZShaft, gizmo_root);
-    spawn(&mut commands, cone_mesh.clone(), gizmo_mats.z_normal.clone(),
+        GizmoPart::ZShaft,
+        gizmo_root,
+    );
+    spawn(
+        &mut commands,
+        cone_mesh.clone(),
+        gizmo_mats.z_normal.clone(),
         Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
             .with_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE - 0.2)),
-        GizmoPart::ZHead, gizmo_root);
+        GizmoPart::ZHead,
+        gizmo_root,
+    );
 
     // Scale cubes at axis tips (hidden by default, shown in Scale mode)
     let scale_cube_mesh = meshes.add(Cuboid::new(0.15, 0.15, 0.15));
-    spawn(&mut commands, scale_cube_mesh.clone(), gizmo_mats.x_normal.clone(),
+    spawn(
+        &mut commands,
+        scale_cube_mesh.clone(),
+        gizmo_mats.x_normal.clone(),
         Transform::from_translation(Vec3::new(GIZMO_SIZE, 0.0, 0.0)),
-        GizmoPart::XScaleCube, gizmo_root);
-    spawn(&mut commands, scale_cube_mesh.clone(), gizmo_mats.y_normal.clone(),
+        GizmoPart::XScaleCube,
+        gizmo_root,
+    );
+    spawn(
+        &mut commands,
+        scale_cube_mesh.clone(),
+        gizmo_mats.y_normal.clone(),
         Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE, 0.0)),
-        GizmoPart::YScaleCube, gizmo_root);
-    spawn(&mut commands, scale_cube_mesh.clone(), gizmo_mats.z_normal.clone(),
+        GizmoPart::YScaleCube,
+        gizmo_root,
+    );
+    spawn(
+        &mut commands,
+        scale_cube_mesh.clone(),
+        gizmo_mats.z_normal.clone(),
         Transform::from_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE)),
-        GizmoPart::ZScaleCube, gizmo_root);
+        GizmoPart::ZScaleCube,
+        gizmo_root,
+    );
 
     // Center cube
-    spawn(&mut commands, cube_mesh, gizmo_mats.center_normal.clone(),
+    spawn(
+        &mut commands,
+        cube_mesh,
+        gizmo_mats.center_normal.clone(),
         Transform::default(),
-        GizmoPart::Center, gizmo_root);
+        GizmoPart::Center,
+        gizmo_root,
+    );
 
     commands.insert_resource(gizmo_mats);
 }
@@ -651,7 +728,9 @@ fn update_gizmo_transforms(
     mut gizmo_parts: Query<(&GizmoPart, &mut Visibility), (With<GizmoMesh>, Without<GizmoRoot>)>,
     camera_query: Query<&GlobalTransform, With<EditorCamera>>,
 ) {
-    let Ok((mut root_transform, mut root_vis)) = gizmo_root.single_mut() else { return };
+    let Ok((mut root_transform, mut root_vis)) = gizmo_root.single_mut() else {
+        return;
+    };
 
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
     let selected = selection.get();
@@ -660,14 +739,26 @@ fn update_gizmo_transforms(
         && !modal.active
         && !editing_collider
         && matches!(*mode, GizmoMode::Translate);
-    *root_vis = if show_meshes { Visibility::Visible } else { Visibility::Hidden };
+    *root_vis = if show_meshes {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
 
     // Toggle cone heads vs scale cubes based on mode
     for (part, mut vis) in gizmo_parts.iter_mut() {
         if part.is_translate_only() {
-            *vis = if *mode == GizmoMode::Translate { Visibility::Inherited } else { Visibility::Hidden };
+            *vis = if *mode == GizmoMode::Translate {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
         } else if part.is_scale_only() {
-            *vis = if *mode == GizmoMode::Scale { Visibility::Inherited } else { Visibility::Hidden };
+            *vis = if *mode == GizmoMode::Scale {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
         }
     }
 
@@ -720,19 +811,32 @@ fn update_gizmo_materials(
     for (part, mut mat_handle) in query.iter_mut() {
         let (normal, highlight, highlighted) = match part {
             GizmoPart::XShaft | GizmoPart::XHead | GizmoPart::XScaleCube => (
-                mats.x_normal.clone(), mats.x_highlight.clone(),
-                matches!(active, Some(GizmoAxis::X) | Some(GizmoAxis::XY) | Some(GizmoAxis::XZ)),
+                mats.x_normal.clone(),
+                mats.x_highlight.clone(),
+                matches!(
+                    active,
+                    Some(GizmoAxis::X) | Some(GizmoAxis::XY) | Some(GizmoAxis::XZ)
+                ),
             ),
             GizmoPart::YShaft | GizmoPart::YHead | GizmoPart::YScaleCube => (
-                mats.y_normal.clone(), mats.y_highlight.clone(),
-                matches!(active, Some(GizmoAxis::Y) | Some(GizmoAxis::XY) | Some(GizmoAxis::YZ)),
+                mats.y_normal.clone(),
+                mats.y_highlight.clone(),
+                matches!(
+                    active,
+                    Some(GizmoAxis::Y) | Some(GizmoAxis::XY) | Some(GizmoAxis::YZ)
+                ),
             ),
             GizmoPart::ZShaft | GizmoPart::ZHead | GizmoPart::ZScaleCube => (
-                mats.z_normal.clone(), mats.z_highlight.clone(),
-                matches!(active, Some(GizmoAxis::Z) | Some(GizmoAxis::XZ) | Some(GizmoAxis::YZ)),
+                mats.z_normal.clone(),
+                mats.z_highlight.clone(),
+                matches!(
+                    active,
+                    Some(GizmoAxis::Z) | Some(GizmoAxis::XZ) | Some(GizmoAxis::YZ)
+                ),
             ),
             GizmoPart::Center => (
-                mats.center_normal.clone(), mats.center_highlight.clone(),
+                mats.center_normal.clone(),
+                mats.center_highlight.clone(),
                 false,
             ),
         };
@@ -766,22 +870,39 @@ fn draw_line_gizmos(
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
-    transform_q: Query<&GlobalTransform, (Without<EditorCamera>, Without<GizmoRoot>, Without<GizmoMesh>)>,
+    transform_q: Query<
+        &GlobalTransform,
+        (
+            Without<EditorCamera>,
+            Without<GizmoRoot>,
+            Without<GizmoMesh>,
+        ),
+    >,
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_q: Query<&Children>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the gizmo's
     // immediate-mode planes/axis lines so they don't sit under the modal
     // HUD while the user is dragging.
-    if modal.active { return; }
-    if collider_edit.map(|c| c.active).unwrap_or(false) { return; }
+    if modal.active {
+        return;
+    }
+    if collider_edit.map(|c| c.active).unwrap_or(false) {
+        return;
+    }
 
-    let Some(selected) = selection.get() else { return };
-    let Ok(sel_gt) = transform_q.get(selected) else { return };
+    let Some(selected) = selection.get() else {
+        return;
+    };
+    let Ok(sel_gt) = transform_q.get(selected) else {
+        return;
+    };
     let pos = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
     let gs = gizmo_state.gizmo_scale;
 
-    if matches!(*mode, GizmoMode::Select | GizmoMode::None) { return; }
+    if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
+        return;
+    }
 
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
     let highlight = Color::srgb(1.0, 1.0, 0.3);
@@ -798,12 +919,32 @@ fn draw_line_gizmos(
         }
         GizmoMode::Rotate => {
             let radius = GIZMO_SIZE * gs * 0.7;
-            let x_color = if matches!(active, Some(GizmoAxis::X)) { highlight } else { x_base };
-            let y_color = if matches!(active, Some(GizmoAxis::Y)) { highlight } else { y_base };
-            let z_color = if matches!(active, Some(GizmoAxis::Z)) { highlight } else { z_base };
+            let x_color = if matches!(active, Some(GizmoAxis::X)) {
+                highlight
+            } else {
+                x_base
+            };
+            let y_color = if matches!(active, Some(GizmoAxis::Y)) {
+                highlight
+            } else {
+                y_base
+            };
+            let z_color = if matches!(active, Some(GizmoAxis::Z)) {
+                highlight
+            } else {
+                z_base
+            };
 
-            gizmos.circle(Isometry3d::new(pos, Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)), radius, x_color);
-            gizmos.circle(Isometry3d::new(pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)), radius, y_color);
+            gizmos.circle(
+                Isometry3d::new(pos, Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                radius,
+                x_color,
+            );
+            gizmos.circle(
+                Isometry3d::new(pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                radius,
+                y_color,
+            );
             gizmos.circle(Isometry3d::new(pos, Quat::IDENTITY), radius, z_color);
             // Unity-style rotation pie is drawn as a filled egui polygon by
             // `rotation_pie::draw_pie_overlay` — line gizmos can't paint
@@ -811,9 +952,21 @@ fn draw_line_gizmos(
         }
         GizmoMode::Scale => {
             let scale_size = GIZMO_SIZE * gs;
-            let x_color = if matches!(active, Some(GizmoAxis::X)) { highlight } else { x_base };
-            let y_color = if matches!(active, Some(GizmoAxis::Y)) { highlight } else { y_base };
-            let z_color = if matches!(active, Some(GizmoAxis::Z)) { highlight } else { z_base };
+            let x_color = if matches!(active, Some(GizmoAxis::X)) {
+                highlight
+            } else {
+                x_base
+            };
+            let y_color = if matches!(active, Some(GizmoAxis::Y)) {
+                highlight
+            } else {
+                y_base
+            };
+            let z_color = if matches!(active, Some(GizmoAxis::Z)) {
+                highlight
+            } else {
+                z_base
+            };
 
             // Lines from center to cube tips
             gizmos.line(pos, pos + Vec3::X * scale_size, x_color);
@@ -862,10 +1015,18 @@ fn handle_selection_shortcuts(
     gizmo_state: Res<GizmoState>,
     modal: Res<modal_transform::ModalTransformState>,
 ) {
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if gizmo_state.active_axis.is_some() { return; }
-    if modal.active { return; }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if gizmo_state.active_axis.is_some() {
+        return;
+    }
+    if modal.active {
+        return;
+    }
 
     // Delete fires from any panel (e.g. selecting in the Hierarchy and
     // pressing Delete without moving the cursor into the viewport).
@@ -883,7 +1044,11 @@ fn handle_selection_shortcuts(
                         let transform = *e.get::<Transform>()?;
                         let color = e.get::<renzora::core::MeshColor>()?.0;
                         Some(renzora_undo::DeletedShape {
-                            entity: *entity, shape_id, name, transform, color,
+                            entity: *entity,
+                            shape_id,
+                            name,
+                            transform,
+                            color,
                         })
                     });
                     match shape {
@@ -892,17 +1057,28 @@ fn handle_selection_shortcuts(
                     }
                 }
                 for e in other {
-                    if let Ok(em) = world.get_entity_mut(e) { em.despawn(); }
+                    if let Ok(em) = world.get_entity_mut(e) {
+                        em.despawn();
+                    }
                 }
-                if items.is_empty() { return; }
-                renzora_undo::execute(world, renzora_undo::UndoContext::Scene,
-                    Box::new(renzora_undo::DeleteShapesCmd { items }));
+                if items.is_empty() {
+                    return;
+                }
+                renzora_undo::execute(
+                    world,
+                    renzora_undo::UndoContext::Scene,
+                    Box::new(renzora_undo::DeleteShapesCmd { items }),
+                );
             });
         }
     }
 
-    if input_focus.egui_has_pointer && !viewport_state.hovered { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
+    if input_focus.egui_has_pointer && !viewport_state.hovered {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
 
     if keybindings.just_pressed(EditorAction::Deselect, &keyboard) {
         selection.clear();
@@ -933,7 +1109,9 @@ fn handle_selection_shortcuts(
                 .get_resource::<EditorClipboard>()
                 .map(|c| c.entities.clone())
                 .unwrap_or_default();
-            if sources.is_empty() { return; }
+            if sources.is_empty() {
+                return;
+            }
 
             let paste_target = compute_paste_target(world);
             duplicate_entities(world, &sources);
@@ -943,7 +1121,9 @@ fn handle_selection_shortcuts(
                     .get_resource::<EditorSelection>()
                     .map(|s| s.get_all())
                     .unwrap_or_default();
-                if new_ids.is_empty() { return; }
+                if new_ids.is_empty() {
+                    return;
+                }
                 reposition_paste_group(world, &new_ids, target);
             }
         });
@@ -958,8 +1138,12 @@ fn handle_selection_shortcuts(
                 .get_resource::<EditorSelection>()
                 .map(|s| s.get_all())
                 .unwrap_or_default();
-            if selected.is_empty() { return; }
-            let Some(target) = compute_paste_target(world) else { return };
+            if selected.is_empty() {
+                return;
+            }
+            let Some(target) = compute_paste_target(world) else {
+                return;
+            };
             reposition_paste_group(world, &selected, target);
         });
     }
@@ -993,13 +1177,12 @@ fn handle_selection_shortcuts(
 fn duplicate_entities(world: &mut World, sources: &[Entity]) {
     let mut new_ids: Vec<Entity> = Vec::with_capacity(sources.len());
     for src in sources {
-        let Ok(mut src_mut) = world.get_entity_mut(*src) else { continue };
+        let Ok(mut src_mut) = world.get_entity_mut(*src) else {
+            continue;
+        };
         let new = src_mut.clone_and_spawn();
         // Append " (Copy)" to the cloned entity's Name.
-        if let Some(original) = world
-            .get::<Name>(new)
-            .map(|n| n.as_str().to_string())
-        {
+        if let Some(original) = world.get::<Name>(new).map(|n| n.as_str().to_string()) {
             if let Ok(mut ent) = world.get_entity_mut(new) {
                 ent.insert(Name::new(format!("{} (Copy)", original)));
             }
@@ -1046,7 +1229,9 @@ fn reposition_paste_group(world: &mut World, entities: &[Entity], target: Vec3) 
             count += 1;
         }
     }
-    if count == 0 { return; }
+    if count == 0 {
+        return;
+    }
     centroid_xz /= count as f32;
 
     // Lowest world-space AABB bottom across the group. Mesh entities
@@ -1055,10 +1240,9 @@ fn reposition_paste_group(world: &mut World, entities: &[Entity], target: Vec3) 
     let mut min_y = f32::INFINITY;
     for e in entities {
         let t_y = world.get::<Transform>(*e).map(|t| t.translation.y);
-        let bottom = if let (Some(aabb), Some(gt)) = (
-            world.get::<Aabb>(*e),
-            world.get::<GlobalTransform>(*e),
-        ) {
+        let bottom = if let (Some(aabb), Some(gt)) =
+            (world.get::<Aabb>(*e), world.get::<GlobalTransform>(*e))
+        {
             world_space_min_y(aabb, gt)
         } else {
             t_y.unwrap_or(f32::INFINITY)
@@ -1098,7 +1282,9 @@ fn world_space_min_y(aabb: &bevy::camera::primitives::Aabb, gt: &GlobalTransform
             for dz in [-1.0_f32, 1.0] {
                 let local = c + Vec3::new(dx * h.x, dy * h.y, dz * h.z);
                 let world = gt.transform_point(local);
-                if world.y < min_y { min_y = world.y; }
+                if world.y < min_y {
+                    min_y = world.y;
+                }
             }
         }
     }
@@ -1134,9 +1320,16 @@ fn compute_paste_target(world: &mut World) -> Option<Vec3> {
     // before we use `world.query_filtered` (which needs a mutable borrow).
     let (vp_min, vp_size, current_size, hovered) = {
         let vp = world.get_resource::<ViewportState>()?;
-        (vp.screen_position, vp.screen_size, vp.current_size, vp.hovered)
+        (
+            vp.screen_position,
+            vp.screen_size,
+            vp.current_size,
+            vp.hovered,
+        )
     };
-    if !hovered { return None; }
+    if !hovered {
+        return None;
+    }
 
     let cursor = {
         let mut window_q = world.query_filtered::<&Window, With<PrimaryWindow>>();
@@ -1144,14 +1337,16 @@ fn compute_paste_target(world: &mut World) -> Option<Vec3> {
         window.cursor_position()?
     };
 
-    if cursor.x < vp_min.x || cursor.y < vp_min.y
-        || cursor.x > vp_min.x + vp_size.x || cursor.y > vp_min.y + vp_size.y {
+    if cursor.x < vp_min.x
+        || cursor.y < vp_min.y
+        || cursor.x > vp_min.x + vp_size.x
+        || cursor.y > vp_min.y + vp_size.y
+    {
         return None;
     }
 
     let ray = {
-        let mut cam_q =
-            world.query_filtered::<(&Camera, &GlobalTransform), With<EditorCamera>>();
+        let mut cam_q = world.query_filtered::<(&Camera, &GlobalTransform), With<EditorCamera>>();
         let (camera, cam_xform) = cam_q.single(world).ok()?;
         let viewport_pos = Vec2::new(
             (cursor.x - vp_min.x) / vp_size.x * current_size.x as f32,
@@ -1161,9 +1356,13 @@ fn compute_paste_target(world: &mut World) -> Option<Vec3> {
     };
 
     let dir = ray.direction.as_vec3();
-    if dir.y.abs() <= 1e-6 { return None; }
+    if dir.y.abs() <= 1e-6 {
+        return None;
+    }
     let t = -ray.origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 { return None; }
+    if t <= 0.0 || t > 10_000.0 {
+        return None;
+    }
     let hit = ray.origin + dir * t;
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
@@ -1178,10 +1377,18 @@ fn handle_file_shortcuts(
     mut modal: ResMut<modal_transform::ModalTransformState>,
     pending_grab: Option<Res<PendingModalGrab>>,
 ) {
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
-    if modal.active { return; }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
+    if modal.active {
+        return;
+    }
 
     // Consume pending grab from duplicate-and-move
     if pending_grab.is_some() {
@@ -1226,10 +1433,18 @@ fn switch_gizmo_mode(
     mut mode: ResMut<GizmoMode>,
     mut active_tool: ResMut<renzora_editor::ActiveTool>,
 ) {
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
-    if mouse_button.pressed(MouseButton::Right) { return; }
-    if modal.active { return; }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) {
+        return;
+    }
+    if modal.active {
+        return;
+    }
     if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) {
         *mode = GizmoMode::Select;
         *active_tool = renzora_editor::ActiveTool::Select;
@@ -1258,9 +1473,13 @@ fn viewport_cursor_ray(
 ) -> Option<Ray3d> {
     let cursor = window.cursor_position()?;
     let vp_local = cursor - viewport.screen_position;
-    if vp_local.x < 0.0 || vp_local.y < 0.0
-        || vp_local.x > viewport.screen_size.x || vp_local.y > viewport.screen_size.y
-    { return None; }
+    if vp_local.x < 0.0
+        || vp_local.y < 0.0
+        || vp_local.x > viewport.screen_size.x
+        || vp_local.y > viewport.screen_size.y
+    {
+        return None;
+    }
 
     let ndc = Vec2::new(
         (vp_local.x / viewport.screen_size.x) * 2.0 - 1.0,
@@ -1273,14 +1492,28 @@ fn viewport_cursor_ray(
             let hh = (persp.fov * 0.5).tan();
             let hw = hh * persp.aspect_ratio;
             let local_dir = Vec3::new(ndc.x * hw, ndc.y * hh, -1.0).normalize();
-            let world_dir = camera_transform.affine().matrix3.mul_vec3(local_dir).normalize();
-            Some(Ray3d { origin: near.into(), direction: Dir3::new(world_dir).ok()? })
+            let world_dir = camera_transform
+                .affine()
+                .matrix3
+                .mul_vec3(local_dir)
+                .normalize();
+            Some(Ray3d {
+                origin: near.into(),
+                direction: Dir3::new(world_dir).ok()?,
+            })
         }
         Projection::Orthographic(ortho) => {
             let hw = ortho.area.width() * 0.5;
             let hh = ortho.area.height() * 0.5;
-            let offset = camera_transform.affine().matrix3.mul_vec3(Vec3::new(ndc.x * hw, ndc.y * hh, 0.0));
-            Some(Ray3d { origin: (near + offset).into(), direction: camera_transform.forward() })
+            let offset =
+                camera_transform
+                    .affine()
+                    .matrix3
+                    .mul_vec3(Vec3::new(ndc.x * hw, ndc.y * hh, 0.0));
+            Some(Ray3d {
+                origin: (near + offset).into(),
+                direction: camera_transform.forward(),
+            })
         }
         _ => None,
     }
@@ -1291,7 +1524,9 @@ fn closest_distance_ray_segment(ray: &Ray3d, seg_a: Vec3, seg_b: Vec3) -> Option
     let rd: Vec3 = ray.direction.as_vec3();
     let sd = seg_b - seg_a;
     let sl = sd.length();
-    if sl < 1e-6 { return None; }
+    if sl < 1e-6 {
+        return None;
+    }
     let su = sd / sl;
     let w0 = ro - seg_a;
     let a = rd.dot(rd);
@@ -1300,10 +1535,14 @@ fn closest_distance_ray_segment(ray: &Ray3d, seg_a: Vec3, seg_b: Vec3) -> Option
     let d = rd.dot(w0);
     let e = su.dot(w0);
     let denom = a * c - b * b;
-    if denom.abs() < 1e-8 { return None; }
+    if denom.abs() < 1e-8 {
+        return None;
+    }
     let t_ray = (b * e - c * d) / denom;
     let t_seg = (a * e - b * d) / denom;
-    if t_ray < 0.0 { return None; }
+    if t_ray < 0.0 {
+        return None;
+    }
     let tc = t_seg.clamp(0.0, sl);
     Some((ro + rd * t_ray - (seg_a + su * tc)).length())
 }
@@ -1318,7 +1557,9 @@ fn ray_circle_distance(ray: &Ray3d, center: Vec3, normal: Vec3, radius: f32) -> 
         let s0 = center + (p1 * a0.cos() + p2 * a0.sin()) * radius;
         let s1 = center + (p1 * a1.cos() + p2 * a1.sin()) * radius;
         if let Some(d) = closest_distance_ray_segment(ray, s0, s1) {
-            if best.map_or(true, |b| d < b) { best = Some(d); }
+            if best.map_or(true, |b| d < b) {
+                best = Some(d);
+            }
         }
     }
     best
@@ -1329,9 +1570,13 @@ fn ray_hits_plane_quad(ray: &Ray3d, corner: Vec3, axis_a: Vec3, axis_b: Vec3, si
     let ro: Vec3 = ray.origin.into();
     let rd: Vec3 = ray.direction.as_vec3();
     let denom = normal.dot(rd);
-    if denom.abs() < 1e-6 { return false; }
+    if denom.abs() < 1e-6 {
+        return false;
+    }
     let t = normal.dot(corner - ro) / denom;
-    if t < 0.0 { return false; }
+    if t < 0.0 {
+        return false;
+    }
     let hit = ro + rd * t;
     let local = hit - corner;
     let u = local.dot(axis_a);
@@ -1340,12 +1585,21 @@ fn ray_hits_plane_quad(ray: &Ray3d, corner: Vec3, axis_a: Vec3, axis_b: Vec3, si
 }
 
 fn perpendicular_pair(normal: Vec3) -> (Vec3, Vec3) {
-    let p1 = if normal.y.abs() > 0.9 { Vec3::X } else { normal.cross(Vec3::Y).normalize() };
+    let p1 = if normal.y.abs() > 0.9 {
+        Vec3::X
+    } else {
+        normal.cross(Vec3::Y).normalize()
+    };
     let p2 = normal.cross(p1).normalize();
     (p1, p2)
 }
 
-fn pick_threshold(cam_gt: &GlobalTransform, entity_pos: Vec3, projection: &Projection, vh: f32) -> f32 {
+fn pick_threshold(
+    cam_gt: &GlobalTransform,
+    entity_pos: Vec3,
+    projection: &Projection,
+    vh: f32,
+) -> f32 {
     let dist = (cam_gt.translation() - entity_pos).length();
     let px = 12.0;
     match projection {
@@ -1370,20 +1624,44 @@ fn gizmo_hover_detect(
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
 ) {
-    if modal.active { gizmo_state.hovered_axis = None; return; }
-    if matches!(*mode, GizmoMode::Select | GizmoMode::None) { gizmo_state.hovered_axis = None; return; }
-    if gizmo_state.active_axis.is_some() { return; }
+    if modal.active {
+        gizmo_state.hovered_axis = None;
+        return;
+    }
+    if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
+        gizmo_state.hovered_axis = None;
+        return;
+    }
+    if gizmo_state.active_axis.is_some() {
+        return;
+    }
     gizmo_state.hovered_axis = None;
 
-    let Some(selected) = selection.get() else { return };
-    let Some(viewport) = viewport.as_ref() else { return };
-    if !viewport.hovered { return; }
-    if mouse_button.pressed(MouseButton::Right) || mouse_button.pressed(MouseButton::Middle) { return; }
+    let Some(selected) = selection.get() else {
+        return;
+    };
+    let Some(viewport) = viewport.as_ref() else {
+        return;
+    };
+    if !viewport.hovered {
+        return;
+    }
+    if mouse_button.pressed(MouseButton::Right) || mouse_button.pressed(MouseButton::Middle) {
+        return;
+    }
 
-    let Ok((cam_gt, projection)) = camera_q.single() else { return };
-    let Ok(entity_gt) = transform_q.get(selected) else { return };
-    let Ok(window) = window_q.single() else { return };
-    let Some(ray) = viewport_cursor_ray(window, viewport, cam_gt, projection) else { return };
+    let Ok((cam_gt, projection)) = camera_q.single() else {
+        return;
+    };
+    let Ok(entity_gt) = transform_q.get(selected) else {
+        return;
+    };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Some(ray) = viewport_cursor_ray(window, viewport, cam_gt, projection) else {
+        return;
+    };
 
     let entity_pos = compute_gizmo_pivot(selected, &aabbs, &children_q, entity_gt);
     let gs = gizmo_state.gizmo_scale.max(0.01);
@@ -1414,7 +1692,11 @@ fn gizmo_hover_detect(
             if best.is_none() {
                 for axis in AXES {
                     let dir = axis.signed_direction(gizmo_state.axis_signs);
-                    if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size) {
+                    if let Some(dist) = closest_distance_ray_segment(
+                        &ray,
+                        entity_pos,
+                        entity_pos + dir * gizmo_size,
+                    ) {
                         if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
                             best = Some((axis, dist));
                         }
@@ -1425,7 +1707,9 @@ fn gizmo_hover_detect(
         GizmoMode::Scale => {
             for axis in AXES {
                 let dir = axis.signed_direction(gizmo_state.axis_signs);
-                if let Some(dist) = closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size) {
+                if let Some(dist) =
+                    closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size)
+                {
                     if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
                         best = Some((axis, dist));
                     }
@@ -1435,7 +1719,8 @@ fn gizmo_hover_detect(
         GizmoMode::Rotate => {
             let radius = gizmo_size * 0.7;
             for axis in AXES {
-                if let Some(dist) = ray_circle_distance(&ray, entity_pos, axis.direction(), radius) {
+                if let Some(dist) = ray_circle_distance(&ray, entity_pos, axis.direction(), radius)
+                {
                     if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
                         best = Some((axis, dist));
                     }
@@ -1471,7 +1756,15 @@ fn gizmo_drag(
     viewport: Option<Res<ViewportState>>,
     viewport_settings: Option<Res<ViewportSettings>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
-    mut transform_q: Query<&mut Transform, (Without<EditorCamera>, Without<EditorLocked>, Without<GizmoRoot>, Without<GizmoMesh>)>,
+    mut transform_q: Query<
+        &mut Transform,
+        (
+            Without<EditorCamera>,
+            Without<EditorLocked>,
+            Without<GizmoRoot>,
+            Without<GizmoMesh>,
+        ),
+    >,
     global_q: Query<&GlobalTransform, Without<EditorCamera>>,
     aabb_q: Query<&bevy::camera::primitives::Aabb>,
     pivot_aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
@@ -1481,7 +1774,10 @@ fn gizmo_drag(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut commands: Commands,
 ) {
-    let snap: SnapSettings = viewport_settings.as_deref().map(|s| s.snap).unwrap_or_default();
+    let snap: SnapSettings = viewport_settings
+        .as_deref()
+        .map(|s| s.snap)
+        .unwrap_or_default();
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
         mouse_motion.clear();
         return;
@@ -1539,19 +1835,31 @@ fn gizmo_drag(
     if mouse_button.just_released(MouseButton::Left) && gizmo_state.active_axis.is_some() {
         let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
         for (entity, old_t, old_r, old_s) in &gizmo_state.drag_starts {
-            let Ok(t) = transform_q.get(*entity) else { continue };
-            let old = Transform { translation: *old_t, rotation: *old_r, scale: *old_s };
+            let Ok(t) = transform_q.get(*entity) else {
+                continue;
+            };
+            let old = Transform {
+                translation: *old_t,
+                rotation: *old_r,
+                scale: *old_s,
+            };
             let new = *t;
             if old.translation == new.translation
                 && old.rotation == new.rotation
-                && old.scale == new.scale { continue; }
+                && old.scale == new.scale
+            {
+                continue;
+            }
             records.push((*entity, old, new));
         }
         if !records.is_empty() {
             commands.queue(move |world: &mut World| {
                 for (entity, old, new) in records {
-                    renzora_undo::record(world, renzora_undo::UndoContext::Scene,
-                        Box::new(renzora_undo::TransformCmd { entity, old, new }));
+                    renzora_undo::record(
+                        world,
+                        renzora_undo::UndoContext::Scene,
+                        Box::new(renzora_undo::TransformCmd { entity, old, new }),
+                    );
                 }
             });
         }
@@ -1575,21 +1883,35 @@ fn gizmo_drag(
         return;
     }
 
-    let Ok((cam_gt, projection)) = camera_q.single() else { mouse_motion.clear(); return; };
-    let Some(viewport) = viewport.as_ref() else { mouse_motion.clear(); return; };
+    let Ok((cam_gt, projection)) = camera_q.single() else {
+        mouse_motion.clear();
+        return;
+    };
+    let Some(viewport) = viewport.as_ref() else {
+        mouse_motion.clear();
+        return;
+    };
 
     let mut total_delta = Vec2::ZERO;
-    for ev in mouse_motion.read() { total_delta += ev.delta; }
-    if total_delta.length_squared() < 1e-6 { return; }
+    for ev in mouse_motion.read() {
+        total_delta += ev.delta;
+    }
+    if total_delta.length_squared() < 1e-6 {
+        return;
+    }
 
     // Drag-start positions are local-space (so writes go back into local
     // Transform). For camera-distance scaling we need the world-space pivot,
     // so average GlobalTransform translations of the selected entities.
-    let center = if gizmo_state.drag_starts.is_empty() { Vec3::ZERO } else {
+    let center = if gizmo_state.drag_starts.is_empty() {
+        Vec3::ZERO
+    } else {
         let sum: Vec3 = gizmo_state.drag_starts.iter().map(|(_, t, _, _)| *t).sum();
         sum / gizmo_state.drag_starts.len() as f32
     };
-    let world_center = if selected_entities.is_empty() { center } else {
+    let world_center = if selected_entities.is_empty() {
+        center
+    } else {
         let mut sum = Vec3::ZERO;
         let mut n = 0u32;
         for &e in &selected_entities {
@@ -1598,7 +1920,11 @@ fn gizmo_drag(
                 n += 1;
             }
         }
-        if n > 0 { sum / n as f32 } else { center }
+        if n > 0 {
+            sum / n as f32
+        } else {
+            center
+        }
     };
     let distance = (cam_gt.translation() - world_center).length();
 
@@ -1606,7 +1932,9 @@ fn gizmo_drag(
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
             let scale = match projection {
-                Projection::Perspective(persp) => distance * (persp.fov * 0.5).tan() * 2.0 / viewport.screen_size.y,
+                Projection::Perspective(persp) => {
+                    distance * (persp.fov * 0.5).tan() * 2.0 / viewport.screen_size.y
+                }
                 Projection::Orthographic(ortho) => ortho.area.height() / viewport.screen_size.y,
                 _ => return,
             };
@@ -1647,7 +1975,9 @@ fn gizmo_drag(
                 let cam_up = cam_gt.up().as_vec3();
                 let sa = Vec2::new(dir.dot(cam_right), -dir.dot(cam_up));
                 let len_sq = sa.length_squared();
-                if len_sq < 1e-6 { return; }
+                if len_sq < 1e-6 {
+                    return;
+                }
                 dir * total_delta.dot(sa) * scale / len_sq
             };
 
@@ -1655,7 +1985,9 @@ fn gizmo_drag(
             let total_offset = gizmo_state.drag_offset;
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let (start_t, start_r, start_s) = gizmo_state.drag_starts.get(i)
+                    let (start_t, start_r, start_s) = gizmo_state
+                        .drag_starts
+                        .get(i)
                         .map(|(_, p, r, s)| (*p, *r, *s))
                         .unwrap_or((t.translation, t.rotation, t.scale));
                     let mut new_pos = start_t + total_offset;
@@ -1669,7 +2001,9 @@ fn gizmo_drag(
                             aabb_q.get(entity).ok().map(|aabb| {
                                 world_aabb_min(aabb, start_t, start_r, start_s) - start_t
                             })
-                        } else { None };
+                        } else {
+                            None
+                        };
                         if let Some(off) = min_offset {
                             let target = new_pos + off;
                             let snapped = Vec3::new(
@@ -1705,7 +2039,9 @@ fn gizmo_drag(
             let rotation = Quat::from_axis_angle(axis.direction(), effective_angle);
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let start = gizmo_state.drag_starts.get(i)
+                    let start = gizmo_state
+                        .drag_starts
+                        .get(i)
                         .map(|(_, p, r, _)| (*p, *r))
                         .unwrap_or((t.translation, t.rotation));
                     if selected_entities.len() == 1 {
@@ -1722,7 +2058,9 @@ fn gizmo_drag(
             gizmo_state.drag_scale_factor += delta_scale;
             let snap_step = if snap.scale_enabled && snap.scale_snap > 0.0 {
                 Some(snap.scale_snap)
-            } else { None };
+            } else {
+                None
+            };
             let apply = |v: f32, step: Option<f32>| -> f32 {
                 let v = v.max(0.01);
                 match step {
@@ -1732,16 +2070,22 @@ fn gizmo_drag(
             };
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let (start_t, start_r, start_scale) = gizmo_state.drag_starts.get(i)
+                    let (start_t, start_r, start_scale) = gizmo_state
+                        .drag_starts
+                        .get(i)
                         .map(|(_, p, r, s)| (*p, *r, *s))
                         .unwrap_or((t.translation, t.rotation, t.scale));
                     // Capture original world-space bottom Y before mutating scale
                     // so we can shift the pivot to keep the bottom fixed.
-                    let start_bottom_y = if snap.scale_bottom_anchor && matches!(axis, GizmoAxis::Y) {
-                        aabb_q.get(entity).ok().map(|aabb| {
-                            world_aabb_min(aabb, start_t, start_r, start_scale).y
-                        })
-                    } else { None };
+                    let start_bottom_y = if snap.scale_bottom_anchor && matches!(axis, GizmoAxis::Y)
+                    {
+                        aabb_q
+                            .get(entity)
+                            .ok()
+                            .map(|aabb| world_aabb_min(aabb, start_t, start_r, start_scale).y)
+                    } else {
+                        None
+                    };
                     let f = gizmo_state.drag_scale_factor;
                     match axis {
                         GizmoAxis::X => t.scale.x = apply(start_scale.x + f, snap_step),
@@ -1771,7 +2115,11 @@ fn screen_delta_to_angle(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransf
         let sa = Vec2::new(axis_world.dot(cr), -axis_world.dot(cu));
         let sp = Vec2::new(-sa.y, sa.x);
         let len = sp.length();
-        if len < 1e-4 { 0.0 } else { mouse_delta.dot(sp / len) * sens }
+        if len < 1e-4 {
+            0.0
+        } else {
+            mouse_delta.dot(sp / len) * sens
+        }
     }
 }
 
@@ -1780,7 +2128,11 @@ fn screen_delta_to_scale(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransf
     let cu = cam.up().as_vec3();
     let sa = Vec2::new(axis_world.dot(cr), -axis_world.dot(cu));
     let len = sa.length();
-    if len < 1e-4 { 0.0 } else { mouse_delta.dot(sa / len) * 0.005 }
+    if len < 1e-4 {
+        0.0
+    } else {
+        mouse_delta.dot(sa / len) * 0.005
+    }
 }
 
 // ── Entity picking (click to select) ────────────────────────────────────────
@@ -1803,9 +2155,15 @@ fn entity_pick_system(
     hidden_entities: Query<(), With<HideInHierarchy>>,
     mut box_sel: ResMut<BoxSelectionState>,
 ) {
-    if !mouse_button.just_pressed(MouseButton::Left) { return; }
-    if modal.active { return; }
-    if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() { return; }
+    if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+    if modal.active {
+        return;
+    }
+    if gizmo_state.active_axis.is_some() || gizmo_state.hovered_axis.is_some() {
+        return;
+    }
     // Suspend picking while editing a collider — clicks drive handle drags instead.
     if collider_edit.map(|c| c.active).unwrap_or(false) {
         // If a handle is hovered or being dragged, fully consume the click.
@@ -1814,32 +2172,52 @@ fn entity_pick_system(
     }
     let _ = handle_state;
     // GizmoMode::None means a plugin tool is driving — skip picking.
-    if *mode == GizmoMode::None { return; }
+    if *mode == GizmoMode::None {
+        return;
+    }
     // Don't pick while nav overlay buttons (pan/zoom/orbit) are being dragged
     if let Some(ref nav) = nav_overlay {
         if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
             || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
-            || nav.orbit_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav
+                .orbit_dragging
+                .load(std::sync::atomic::Ordering::Relaxed)
         {
             return;
         }
     }
 
-    let Some(viewport) = viewport.as_ref() else { return };
-    if !viewport.hovered { return; }
+    let Some(viewport) = viewport.as_ref() else {
+        return;
+    };
+    if !viewport.hovered {
+        return;
+    }
 
-    let Ok(window) = window_q.single() else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
 
-    let Some(cursor) = window.cursor_position() else { return };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
     let vp_local = cursor - viewport.screen_position;
-    if vp_local.x < 0.0 || vp_local.y < 0.0
-        || vp_local.x > viewport.screen_size.x || vp_local.y > viewport.screen_size.y
-    { return; }
+    if vp_local.x < 0.0
+        || vp_local.y < 0.0
+        || vp_local.x > viewport.screen_size.x
+        || vp_local.y > viewport.screen_size.y
+    {
+        return;
+    }
 
     // Modifiers are read at release time in `box_selection_system` — on
     // press we just arm the gesture.
-    let Ok(ray) = camera.viewport_to_world(cam_gt, vp_local) else { return };
+    let Ok(ray) = camera.viewport_to_world(cam_gt, vp_local) else {
+        return;
+    };
 
     // Raycast and find the topmost selectable entity (if any). We do NOT
     // commit the selection yet — we arm `box_sel` with this entity as a
@@ -1847,11 +2225,17 @@ fn entity_pick_system(
     let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
     let mut pending: Option<Entity> = None;
     for (entity, _hit) in hits.iter() {
-        if gizmo_meshes.get(*entity).is_ok() { continue; }
-        if hidden_entities.get(*entity).is_ok() { continue; }
+        if gizmo_meshes.get(*entity).is_ok() {
+            continue;
+        }
+        if hidden_entities.get(*entity).is_ok() {
+            continue;
+        }
 
         if let Some(target) = find_named_ancestor(*entity, &named_entities, &parent_query) {
-            if hidden_entities.get(target).is_ok() { continue; }
+            if hidden_entities.get(target).is_ok() {
+                continue;
+            }
             pending = Some(target);
             break;
         }
@@ -1899,20 +2283,28 @@ fn box_selection_system(
         box_sel.active = false;
         return;
     }
-    if !box_sel.active { return; }
+    if !box_sel.active {
+        return;
+    }
     // Cancel box selection if nav overlay is being used
     if let Some(ref nav) = nav_overlay {
         if nav.pan_dragging.load(std::sync::atomic::Ordering::Relaxed)
             || nav.zoom_dragging.load(std::sync::atomic::Ordering::Relaxed)
-            || nav.orbit_dragging.load(std::sync::atomic::Ordering::Relaxed)
+            || nav
+                .orbit_dragging
+                .load(std::sync::atomic::Ordering::Relaxed)
         {
             box_sel.active = false;
             return;
         }
     }
 
-    let Ok(window) = window_q.single() else { return; };
-    let Some(cursor) = window.cursor_position() else { return; };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
 
     // Update current position while dragging
     if mouse_button.pressed(MouseButton::Left) {
@@ -1950,8 +2342,12 @@ fn box_selection_system(
         return;
     }
 
-    let Some(viewport) = viewport.as_ref() else { return; };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return; };
+    let Some(viewport) = viewport.as_ref() else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
 
     let (box_min, box_max) = box_sel.get_rect();
 
@@ -1959,22 +2355,34 @@ fn box_selection_system(
     let mut entities_in_box = Vec::new();
 
     for (entity, global_transform) in named_entities.iter() {
-        if hidden_entities.get(entity).is_ok() { continue; }
-        if gizmo_meshes.get(entity).is_ok() { continue; }
-        if box_select_excluded.get(entity).is_ok() { continue; }
+        if hidden_entities.get(entity).is_ok() {
+            continue;
+        }
+        if gizmo_meshes.get(entity).is_ok() {
+            continue;
+        }
+        if box_select_excluded.get(entity).is_ok() {
+            continue;
+        }
 
         let world_pos = global_transform.translation();
-        let Some(ndc) = camera.world_to_ndc(cam_gt, world_pos) else { continue; };
+        let Some(ndc) = camera.world_to_ndc(cam_gt, world_pos) else {
+            continue;
+        };
 
         // Must be in front of camera
-        if ndc.z < 0.0 || ndc.z > 1.0 { continue; }
+        if ndc.z < 0.0 || ndc.z > 1.0 {
+            continue;
+        }
 
         // Convert NDC to screen coordinates
         let screen_x = viewport.screen_position.x + (ndc.x + 1.0) * 0.5 * viewport.screen_size.x;
         let screen_y = viewport.screen_position.y + (1.0 - ndc.y) * 0.5 * viewport.screen_size.y;
 
-        if screen_x >= box_min.x && screen_x <= box_max.x
-            && screen_y >= box_min.y && screen_y <= box_max.y
+        if screen_x >= box_min.x
+            && screen_x <= box_max.x
+            && screen_y >= box_min.y
+            && screen_y <= box_max.y
         {
             entities_in_box.push(entity);
         }
@@ -2037,13 +2445,14 @@ fn find_named_ancestor(
 
 // ── Box selection overlay ────────────────────────────────────────────────────
 
-fn render_box_selection(
-    box_sel: Res<BoxSelectionState>,
-    mut ctx: bevy_egui::EguiContexts,
-) {
-    if !box_sel.active || !box_sel.is_drag() { return; }
+fn render_box_selection(box_sel: Res<BoxSelectionState>, mut ctx: bevy_egui::EguiContexts) {
+    if !box_sel.active || !box_sel.is_drag() {
+        return;
+    }
 
-    let Some(ctx) = ctx.ctx_mut().ok() else { return; };
+    let Some(ctx) = ctx.ctx_mut().ok() else {
+        return;
+    };
     let (min, max) = box_sel.get_rect();
 
     let rect = bevy_egui::egui::Rect::from_min_max(
@@ -2070,3 +2479,5 @@ fn render_box_selection(
             );
         });
 }
+
+renzora::add!(GizmoPlugin, Editor);

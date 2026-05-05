@@ -60,7 +60,10 @@ pub fn detect_format(path: &Path) -> Option<ModelFormat> {
 
 /// Returns the list of supported file extensions (without dots).
 pub fn supported_extensions() -> &'static [&'static str] {
-    &["gltf", "glb", "obj", "stl", "ply", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "bvh", "blend"]
+    &[
+        "gltf", "glb", "obj", "stl", "ply", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae",
+        "bvh", "blend",
+    ]
 }
 
 /// Check if a file path has a supported 3D model extension.

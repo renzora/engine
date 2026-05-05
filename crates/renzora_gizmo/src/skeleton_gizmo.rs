@@ -14,11 +14,11 @@
 //! and used to pick a tinted material. Hover/selected bones override the
 //! side tint with a distinct color.
 
+use bevy::animation::AnimationTargetId;
+use bevy::asset::RenderAssetUsages;
 use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::prelude::*;
-use bevy::animation::AnimationTargetId;
-use bevy::asset::RenderAssetUsages;
 
 use renzora_editor::{EditorSelection, HideInHierarchy};
 
@@ -203,7 +203,9 @@ pub fn draw_skeleton_gizmo(
         commands.entity(e).despawn();
     }
 
-    let Some(selected) = selection.get() else { return };
+    let Some(selected) = selection.get() else {
+        return;
+    };
 
     let a = ensure_assets(&mut commands, assets, &mut meshes, &mut materials);
 
@@ -211,7 +213,9 @@ pub fn draw_skeleton_gizmo(
     collect_bones(selected, &children_q, &target_q, &mut bones);
 
     for &bone in &bones {
-        let Ok(bone_gt) = global_transforms.get(bone) else { continue };
+        let Ok(bone_gt) = global_transforms.get(bone) else {
+            continue;
+        };
         let bone_pos = bone_gt.translation();
 
         // Pick material by hover/selection first, else side tint.

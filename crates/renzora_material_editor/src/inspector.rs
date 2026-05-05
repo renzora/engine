@@ -4,12 +4,11 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 use renzora_editor::{
-    collapsible_section, inline_property, empty_state,
-    EditorCommands, EditorPanel, PanelLocation,
+    collapsible_section, empty_state, inline_property, EditorCommands, EditorPanel, PanelLocation,
 };
-use renzora_theme::ThemeManager;
 use renzora_shader::material::graph::*;
 use renzora_shader::material::nodes;
+use renzora_theme::ThemeManager;
 use renzora_ui::asset_drag::{asset_drop_target, AssetDragPayload};
 
 use crate::MaterialEditorState;
@@ -81,7 +80,13 @@ impl EditorPanel for MaterialInspectorPanel {
 
         // ── Selected node properties ──
         let Some(selected_id) = editor_state.selected_node else {
-            empty_state(ui, egui_phosphor::regular::CURSOR_CLICK, "No node selected", "Select a node to edit its properties", &theme);
+            empty_state(
+                ui,
+                egui_phosphor::regular::CURSOR_CLICK,
+                "No node selected",
+                "Select a node to edit its properties",
+                &theme,
+            );
             return;
         };
 
@@ -115,7 +120,9 @@ impl EditorPanel for MaterialInspectorPanel {
         let mut any_changed = false;
 
         // Check which inputs are connected
-        let connected_pins: Vec<String> = editor_state.graph.connections
+        let connected_pins: Vec<String> = editor_state
+            .graph
+            .connections
             .iter()
             .filter(|c| c.to_node == selected_id)
             .map(|c| c.to_pin.clone())
@@ -131,12 +138,20 @@ impl EditorPanel for MaterialInspectorPanel {
             true,
             |ui| {
                 if !description.is_empty() {
-                    ui.label(RichText::new(description).size(10.0).color(theme.text.muted.to_color32()));
+                    ui.label(
+                        RichText::new(description)
+                            .size(10.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
                     ui.add_space(4.0);
                 }
 
                 if input_pins.is_empty() {
-                    ui.label(RichText::new("No editable properties").size(11.0).color(theme.text.muted.to_color32()));
+                    ui.label(
+                        RichText::new("No editable properties")
+                            .size(11.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
                     return;
                 }
 
@@ -145,9 +160,11 @@ impl EditorPanel for MaterialInspectorPanel {
 
                     if is_connected {
                         inline_property(ui, row, &pin.label, &theme, |ui| {
-                            ui.label(RichText::new("(connected)").size(10.0).color(
-                                egui::Color32::from_rgb(100, 150, 255),
-                            ));
+                            ui.label(
+                                RichText::new("(connected)")
+                                    .size(10.0)
+                                    .color(egui::Color32::from_rgb(100, 150, 255)),
+                            );
                             false
                         });
                         continue;
@@ -194,8 +211,17 @@ impl EditorPanel for MaterialInspectorPanel {
                                     PinValue::Float(f) => *f,
                                     _ => 0.0,
                                 };
-                                if ui.add(egui::DragValue::new(&mut val).speed(0.01).range(-1000.0..=1000.0)).changed() {
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::Float(val));
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut val)
+                                            .speed(0.01)
+                                            .range(-1000.0..=1000.0),
+                                    )
+                                    .changed()
+                                {
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::Float(val));
                                     any_changed = true;
                                     true
                                 } else {
@@ -212,11 +238,25 @@ impl EditorPanel for MaterialInspectorPanel {
                                 let mut changed = false;
                                 let text_muted = theme.text.muted.to_color32();
                                 ui.label(RichText::new("X").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.1).range(-10000.0..=10000.0)).changed();
+                                changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut v[0])
+                                            .speed(0.1)
+                                            .range(-10000.0..=10000.0),
+                                    )
+                                    .changed();
                                 ui.label(RichText::new("Y").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.1).range(-10000.0..=10000.0)).changed();
+                                changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut v[1])
+                                            .speed(0.1)
+                                            .range(-10000.0..=10000.0),
+                                    )
+                                    .changed();
                                 if changed {
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::Vec2(v));
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::Vec2(v));
                                     any_changed = true;
                                 }
                                 changed
@@ -231,13 +271,33 @@ impl EditorPanel for MaterialInspectorPanel {
                                 let mut changed = false;
                                 let text_muted = theme.text.muted.to_color32();
                                 ui.label(RichText::new("X").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.1).range(-10000.0..=10000.0)).changed();
+                                changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut v[0])
+                                            .speed(0.1)
+                                            .range(-10000.0..=10000.0),
+                                    )
+                                    .changed();
                                 ui.label(RichText::new("Y").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.1).range(-10000.0..=10000.0)).changed();
+                                changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut v[1])
+                                            .speed(0.1)
+                                            .range(-10000.0..=10000.0),
+                                    )
+                                    .changed();
                                 ui.label(RichText::new("Z").size(10.0).color(text_muted));
-                                changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.1).range(-10000.0..=10000.0)).changed();
+                                changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut v[2])
+                                            .speed(0.1)
+                                            .range(-10000.0..=10000.0),
+                                    )
+                                    .changed();
                                 if changed {
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::Vec3(v));
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::Vec3(v));
                                     any_changed = true;
                                 }
                                 changed
@@ -251,8 +311,12 @@ impl EditorPanel for MaterialInspectorPanel {
                                 };
                                 let mut color3 = [c[0], c[1], c[2]];
                                 if ui.color_edit_button_rgb(&mut color3).changed() {
-                                    c[0] = color3[0]; c[1] = color3[1]; c[2] = color3[2];
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::Color(c));
+                                    c[0] = color3[0];
+                                    c[1] = color3[1];
+                                    c[2] = color3[2];
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::Color(c));
                                     any_changed = true;
                                     true
                                 } else {
@@ -267,7 +331,9 @@ impl EditorPanel for MaterialInspectorPanel {
                                     _ => false,
                                 };
                                 if ui.checkbox(&mut val, "").changed() {
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::Bool(val));
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::Bool(val));
                                     any_changed = true;
                                     true
                                 } else {
@@ -285,46 +351,77 @@ impl EditorPanel for MaterialInspectorPanel {
                                 let drop_result = asset_drop_target(
                                     ui,
                                     egui::Id::new(("mat_tex_drop", selected_id, &pin.name)),
-                                    if path.is_empty() { None } else { Some(path.as_str()) },
-                                    &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"],
+                                    if path.is_empty() {
+                                        None
+                                    } else {
+                                        Some(path.as_str())
+                                    },
+                                    &[
+                                        "png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr",
+                                        "hdr", "webp",
+                                    ],
                                     "Drop texture or click to browse",
                                     &theme,
                                     drag_payload,
                                 );
                                 if let Some(ref dropped) = drop_result.dropped_path {
-                                    let new_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+                                    let new_path = if let Some(project) =
+                                        world.get_resource::<renzora::core::CurrentProject>()
+                                    {
                                         project.make_asset_relative(&dropped)
                                     } else {
                                         dropped.to_string_lossy().to_string()
                                     };
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::TexturePath(new_path));
+                                    node_mut
+                                        .input_values
+                                        .insert(pin.name.clone(), PinValue::TexturePath(new_path));
                                     any_changed = true;
                                 }
                                 if drop_result.cleared {
-                                    node_mut.input_values.insert(pin.name.clone(), PinValue::TexturePath(String::new()));
+                                    node_mut.input_values.insert(
+                                        pin.name.clone(),
+                                        PinValue::TexturePath(String::new()),
+                                    );
                                     any_changed = true;
                                 }
                                 if drop_result.browse_clicked {
                                     #[cfg(not(target_arch = "wasm32"))]
                                     if let Some(file) = rfd::FileDialog::new()
-                                        .add_filter("Image", &["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"])
+                                        .add_filter(
+                                            "Image",
+                                            &[
+                                                "png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds",
+                                                "exr", "hdr", "webp",
+                                            ],
+                                        )
                                         .pick_file()
                                     {
-                                        let new_path = if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+                                        let new_path = if let Some(project) =
+                                            world.get_resource::<renzora::core::CurrentProject>()
+                                        {
                                             project.make_asset_relative(&file)
                                         } else {
                                             file.to_string_lossy().to_string()
                                         };
-                                        node_mut.input_values.insert(pin.name.clone(), PinValue::TexturePath(new_path));
+                                        node_mut.input_values.insert(
+                                            pin.name.clone(),
+                                            PinValue::TexturePath(new_path),
+                                        );
                                         any_changed = true;
                                     }
                                 }
-                                drop_result.dropped_path.is_some() || drop_result.cleared || drop_result.browse_clicked
+                                drop_result.dropped_path.is_some()
+                                    || drop_result.cleared
+                                    || drop_result.browse_clicked
                             });
                         }
                         _ => {
                             inline_property(ui, row, &pin.label, &theme, |ui| {
-                                ui.label(RichText::new("(no editor)").size(10.0).color(theme.text.muted.to_color32()));
+                                ui.label(
+                                    RichText::new("(no editor)")
+                                        .size(10.0)
+                                        .color(theme.text.muted.to_color32()),
+                                );
                                 false
                             });
                         }

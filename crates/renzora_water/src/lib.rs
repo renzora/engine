@@ -4,13 +4,14 @@ pub mod material;
 pub mod mesh;
 pub mod systems;
 
-use bevy::prelude::*;
 use bevy::asset::embedded_asset;
+use bevy::prelude::*;
 
 pub use buoyancy::Buoyant;
-pub use component::{GerstnerWave, WaterSurface, WaterInteractor, WaterPreset};
+pub use component::{GerstnerWave, WaterInteractor, WaterPreset, WaterSurface};
 pub use material::WaterMaterial;
 
+#[derive(Default)]
 pub struct WaterPlugin;
 
 impl Plugin for WaterPlugin {
@@ -23,12 +24,15 @@ impl Plugin for WaterPlugin {
             .register_type::<component::WaterSurface>()
             .register_type::<component::WaterInteractor>()
             .register_type::<buoyancy::Buoyant>()
-            .add_systems(Update, (
-                systems::ensure_depth_prepass,
-                systems::setup_water_entities,
-                systems::update_water_uniforms,
-                buoyancy::apply_buoyancy,
-            ));
+            .add_systems(
+                Update,
+                (
+                    systems::ensure_depth_prepass,
+                    systems::setup_water_entities,
+                    systems::update_water_uniforms,
+                    buoyancy::apply_buoyancy,
+                ),
+            );
 
         #[cfg(feature = "editor")]
         {
@@ -39,3 +43,5 @@ impl Plugin for WaterPlugin {
         }
     }
 }
+
+renzora::add!(WaterPlugin);

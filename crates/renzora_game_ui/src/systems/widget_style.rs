@@ -38,7 +38,20 @@ pub fn apply_widget_style_system(
         ),
     >,
 ) {
-    for (fill, stroke, border_radius, opacity, clip_content, text, padding, mut node, bg, border, text_color) in &mut query {
+    for (
+        fill,
+        stroke,
+        border_radius,
+        opacity,
+        clip_content,
+        text,
+        padding,
+        mut node,
+        bg,
+        border,
+        text_color,
+    ) in &mut query
+    {
         let alpha = opacity.map(|o| o.0).unwrap_or(1.0);
 
         // ── Fill → BackgroundColor ───────────────────────────────────────
@@ -58,8 +71,16 @@ pub fn apply_widget_style_system(
                 let sides = &stroke.sides;
                 node.border = UiRect {
                     top: if sides.top { Val::Px(w) } else { Val::Px(0.0) },
-                    right: if sides.right { Val::Px(w) } else { Val::Px(0.0) },
-                    bottom: if sides.bottom { Val::Px(w) } else { Val::Px(0.0) },
+                    right: if sides.right {
+                        Val::Px(w)
+                    } else {
+                        Val::Px(0.0)
+                    },
+                    bottom: if sides.bottom {
+                        Val::Px(w)
+                    } else {
+                        Val::Px(0.0)
+                    },
                     left: if sides.left { Val::Px(w) } else { Val::Px(0.0) },
                 };
                 if let Some(mut bc) = border {

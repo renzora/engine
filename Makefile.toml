@@ -104,6 +104,20 @@ ARCH=$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')
 '''
 
 # =============================================================================
+# Plugin scaffolding
+# =============================================================================
+
+[tasks.add]
+description = "Create a new plugin crate. Usage: makers add <name> [--editor]"
+command = "bash"
+args = ["scripts/add-plugin.sh", "${@}"]
+
+[tasks.remove]
+description = "Delete a plugin crate. Usage: makers remove <name>"
+command = "bash"
+args = ["scripts/remove-plugin.sh", "${@}"]
+
+# =============================================================================
 # Docker — cross-platform release builds
 # =============================================================================
 
@@ -157,7 +171,7 @@ script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 
 [tasks.docker-run]
-description = "Build all platforms via persistent container"
+description = "Build via persistent container. Pass platforms after `--` to filter (e.g. `makers docker-run -- windows linux`); no args = build all."
 dependencies = ["docker-start"]
 [tasks.docker-run.windows]
 script_runner = "powershell.exe"
@@ -167,12 +181,19 @@ script = '''
 $md5 = [System.Security.Cryptography.MD5]::Create()
 $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
 $hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
-docker exec "renzora-$hash" /app/src/scripts/build-all.sh dist
+$platforms = if ($env:CARGO_MAKE_TASK_ARGS) { $env:CARGO_MAKE_TASK_ARGS -replace ';', ' ' } else { "" }
+docker exec "renzora-$hash" bash -c "/app/src/scripts/build-all.sh dist $platforms"
 '''
 [tasks.docker-run.linux]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
+script = '''
+PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
+docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/build-all.sh dist $PLATFORMS"
+'''
 [tasks.docker-run.mac]
-script = 'docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" /app/src/scripts/build-all.sh dist'
+script = '''
+PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
+docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/build-all.sh dist $PLATFORMS"
+'''
 
 [tasks.docker-clean]
 description = "Clean the container's build cache"
@@ -208,6 +229,35 @@ docker rm -f "renzora-$hash"
 script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 [tasks.docker-destroy.mac]
 script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
+
+# =============================================================================
+# UPX compression — `--brute` shrink of host binary, SDK dylibs, plugins
+# =============================================================================
+# Pass platform paths after `--` to scope it (e.g. `makers upx -- dist/windows-x64`).
+# No args = compress every platform under dist/. Requires `upx` on PATH;
+# install via `scoop install upx` (Windows), `apt install upx-ucl` (Linux),
+# or `brew install upx` (macOS).
+[tasks.upx]
+description = "UPX --brute compress host + SDK + plugins. Slow (minutes per file)."
+[tasks.upx.windows]
+script_runner = "powershell.exe"
+script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
+script_extension = "ps1"
+script = '''
+$platforms = if ($env:CARGO_MAKE_TASK_ARGS) { $env:CARGO_MAKE_TASK_ARGS -replace ';', ' ' } else { "" }
+bash -c "scripts/upx-compress.sh $platforms"
+'''
+[tasks.upx.linux]
+script = '''
+PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
+bash scripts/upx-compress.sh $PLATFORMS
+'''
+[tasks.upx.mac]
+script = '''
+PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
+bash scripts/upx-compress.sh $PLATFORMS
+'''
+
 
 # =============================================================================
 # Sync dist/ — copy build outputs to a clean distributable folder

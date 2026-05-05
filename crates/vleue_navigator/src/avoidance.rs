@@ -146,8 +146,7 @@ fn compute_avoidance(
                 let w_length_sq = w.length_squared();
                 let dot_product = w.dot(relative_pos);
 
-                if dot_product < 0.0
-                    && dot_product * dot_product > combined_radius_sq * w_length_sq
+                if dot_product < 0.0 && dot_product * dot_product > combined_radius_sq * w_length_sq
                 {
                     // Project on circle
                     let w_length = w_length_sq.sqrt();
@@ -171,7 +170,7 @@ fn compute_avoidance(
                             relative_pos.x * leg - relative_pos.y * combined_radius,
                             relative_pos.x * combined_radius + relative_pos.y * leg,
                         ) / dist_sq;
-                        let u_dot = relative_vel.dot(line_direction) ;
+                        let u_dot = relative_vel.dot(line_direction);
                         let u = u_dot * line_direction - relative_vel;
                         orca_lines.push(OrcaLine {
                             point: pref_vel_2d + 0.5 * u,
@@ -258,7 +257,8 @@ fn linear_program_1(
 ) -> bool {
     let line = &lines[line_no];
     let dot_product = line.point.dot(line.direction);
-    let discriminant = dot_product * dot_product + max_speed * max_speed - line.point.length_squared();
+    let discriminant =
+        dot_product * dot_product + max_speed * max_speed - line.point.length_squared();
 
     if discriminant < 0.0 {
         return false;
@@ -339,7 +339,13 @@ fn linear_program_3(lines: &[OrcaLine], begin_line: usize, max_speed: f32, resul
             // Optimize direction perpendicular to line i (pointing away from constraint)
             let opt_direction = Vec2::new(-lines[i].direction.y, lines[i].direction.x);
 
-            if linear_program_1(&proj_lines, proj_lines.len().saturating_sub(1), max_speed, opt_direction, result) {
+            if linear_program_1(
+                &proj_lines,
+                proj_lines.len().saturating_sub(1),
+                max_speed,
+                opt_direction,
+                result,
+            ) {
                 // Successfully found a feasible point; no action needed
             } else {
                 *result = temp;

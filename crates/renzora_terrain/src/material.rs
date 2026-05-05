@@ -1,7 +1,7 @@
 //! Terrain checkerboard material — procedural world-space checkerboard shader.
 
-use bevy::prelude::*;
 use bevy::pbr::{Material, MaterialPlugin};
+use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
 

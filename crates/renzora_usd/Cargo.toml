@@ -24,3 +24,6 @@ half = "2"
 thiserror = "2"
 log = "0.4"
 serde_json = "1"
+
+[lints]
+workspace = true

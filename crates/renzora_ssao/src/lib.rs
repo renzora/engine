@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -35,9 +35,13 @@ fn sync_ssao(
                     break;
                 }
                 if settings.enabled {
-                    commands.entity(*target).insert(ScreenSpaceAmbientOcclusion::default());
+                    commands
+                        .entity(*target)
+                        .insert(ScreenSpaceAmbientOcclusion::default());
                 } else {
-                    commands.entity(*target).remove::<ScreenSpaceAmbientOcclusion>();
+                    commands
+                        .entity(*target)
+                        .remove::<ScreenSpaceAmbientOcclusion>();
                 }
                 found = true;
                 break;
@@ -77,19 +81,27 @@ fn ssao_entry() -> InspectorEntry {
             world.entity_mut(entity).insert(SsaoSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(SsaoSettings, ScreenSpaceAmbientOcclusion)>();
+            world
+                .entity_mut(entity)
+                .remove::<(SsaoSettings, ScreenSpaceAmbientOcclusion)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<SsaoSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<SsaoSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SsaoSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<SsaoSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: None,
     }
 }
 
+#[derive(Default)]
 pub struct SsaoPlugin;
 
 impl Plugin for SsaoPlugin {
@@ -101,3 +113,5 @@ impl Plugin for SsaoPlugin {
         app.register_inspector(ssao_entry());
     }
 }
+
+renzora::add!(SsaoPlugin);

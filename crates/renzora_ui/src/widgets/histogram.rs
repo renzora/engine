@@ -18,7 +18,11 @@ pub struct HistogramConfig {
 
 impl Default for HistogramConfig {
     fn default() -> Self {
-        Self { height: 80.0, y_max: None, show_labels: false }
+        Self {
+            height: 80.0,
+            y_max: None,
+            show_labels: false,
+        }
     }
 }
 

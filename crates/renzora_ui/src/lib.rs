@@ -4,7 +4,6 @@
 //! title bar, status bar, theme application, and all reusable widgets.
 
 pub mod asset_drag;
-pub mod shape_drag;
 pub mod dock_renderer;
 pub mod dock_tree;
 pub mod document_tabs;
@@ -12,6 +11,7 @@ pub mod drag_drop;
 pub mod floating;
 pub mod layouts;
 pub mod panel;
+pub mod shape_drag;
 pub mod status_bar;
 pub mod theme;
 pub mod title_bar;
@@ -20,17 +20,17 @@ pub mod widgets;
 pub mod window_chrome;
 
 // Re-export key types at crate root
+pub use asset_drag::{asset_drop_target, draw_asset_drag_ghost, AssetDragPayload, AssetDropResult};
 pub use dock_tree::{
-    delete_saved_workspace, load_saved_workspace, save_workspace, DockTree, DockingState,
-    DropZone, SplitDirection,
+    delete_saved_workspace, load_saved_workspace, save_workspace, DockTree, DockingState, DropZone,
+    SplitDirection,
 };
 pub use document_tabs::{DocTabAction, DocTabKind, DocumentTab, DocumentTabState, EditorContext};
-pub use asset_drag::{AssetDragPayload, AssetDropResult, asset_drop_target, draw_asset_drag_ghost};
-pub use shape_drag::{ShapeDragState, ShapeDragPreview, ShapeDragPreviewState, PendingShapeDrop};
 pub use drag_drop::{DragState, DropTarget};
 pub use floating::{FloatingPanel, FloatingPanels, FloatingRenderResult};
 pub use layouts::{LayoutManager, WorkspaceLayout};
 pub use panel::{EditorPanel, PanelLocation, PanelRegistry};
+pub use shape_drag::{PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState};
 pub use status_bar::{StatusBarAlignment, StatusBarItem, StatusBarRegistry};
 pub use title_bar::TitleBarAction;
 pub use toast::Toasts;

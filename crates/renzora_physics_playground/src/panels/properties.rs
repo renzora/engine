@@ -18,13 +18,21 @@ pub fn render_properties_content(
                 if !state.physics_available {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
-                        ui.label(RichText::new("Physics not available").size(14.0).color(theme.text.muted.to_color32()));
+                        ui.label(
+                            RichText::new("Physics not available")
+                                .size(14.0)
+                                .color(theme.text.muted.to_color32()),
+                        );
                     });
                     return;
                 }
 
                 // Gravity
-                ui.label(RichText::new("Gravity").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Gravity")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
 
                 ui.horizontal_wrapped(|ui| {
@@ -37,7 +45,9 @@ pub fn render_properties_content(
                             egui::Button::new(label)
                         };
                         if ui.add(btn).clicked() {
-                            state.commands.push(PhysicsPropertyCommand::SetGravityPreset(*preset));
+                            state
+                                .commands
+                                .push(PhysicsPropertyCommand::SetGravityPreset(*preset));
                         }
                     }
                 });
@@ -45,37 +55,91 @@ pub fn render_properties_content(
                 ui.add_space(6.0);
 
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("X").size(10.0).color(theme.text.secondary.to_color32()));
+                    ui.label(
+                        RichText::new("X")
+                            .size(10.0)
+                            .color(theme.text.secondary.to_color32()),
+                    );
                     let mut gx = state.gravity.x;
-                    if ui.add(egui::DragValue::new(&mut gx).speed(0.1).range(-100.0..=100.0)).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut gx)
+                                .speed(0.1)
+                                .range(-100.0..=100.0),
+                        )
+                        .changed()
+                    {
                         state.gravity.x = gx;
-                        state.commands.push(PhysicsPropertyCommand::SetGravity(state.gravity));
+                        state
+                            .commands
+                            .push(PhysicsPropertyCommand::SetGravity(state.gravity));
                     }
-                    ui.label(RichText::new("Y").size(10.0).color(theme.text.secondary.to_color32()));
+                    ui.label(
+                        RichText::new("Y")
+                            .size(10.0)
+                            .color(theme.text.secondary.to_color32()),
+                    );
                     let mut gy = state.gravity.y;
-                    if ui.add(egui::DragValue::new(&mut gy).speed(0.1).range(-100.0..=100.0)).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut gy)
+                                .speed(0.1)
+                                .range(-100.0..=100.0),
+                        )
+                        .changed()
+                    {
                         state.gravity.y = gy;
-                        state.commands.push(PhysicsPropertyCommand::SetGravity(state.gravity));
+                        state
+                            .commands
+                            .push(PhysicsPropertyCommand::SetGravity(state.gravity));
                     }
-                    ui.label(RichText::new("Z").size(10.0).color(theme.text.secondary.to_color32()));
+                    ui.label(
+                        RichText::new("Z")
+                            .size(10.0)
+                            .color(theme.text.secondary.to_color32()),
+                    );
                     let mut gz = state.gravity.z;
-                    if ui.add(egui::DragValue::new(&mut gz).speed(0.1).range(-100.0..=100.0)).changed() {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut gz)
+                                .speed(0.1)
+                                .range(-100.0..=100.0),
+                        )
+                        .changed()
+                    {
                         state.gravity.z = gz;
-                        state.commands.push(PhysicsPropertyCommand::SetGravity(state.gravity));
+                        state
+                            .commands
+                            .push(PhysicsPropertyCommand::SetGravity(state.gravity));
                     }
                 });
 
                 let mag = state.gravity.length();
-                ui.label(RichText::new(format!("Magnitude: {:.2} m/s\u{00b2}", mag)).size(10.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new(format!("Magnitude: {:.2} m/s\u{00b2}", mag))
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
 
                 ui.add_space(16.0);
 
                 // Time scale
-                ui.label(RichText::new("Time Scale").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Time Scale")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
 
                 ui.horizontal(|ui| {
-                    for (label, value) in &[("0.1x", 0.1f32), ("0.25x", 0.25), ("0.5x", 0.5), ("1x", 1.0), ("2x", 2.0), ("4x", 4.0)] {
+                    for (label, value) in &[
+                        ("0.1x", 0.1f32),
+                        ("0.25x", 0.25),
+                        ("0.5x", 0.5),
+                        ("1x", 1.0),
+                        ("2x", 2.0),
+                        ("4x", 4.0),
+                    ] {
                         let selected = (state.time_scale - value).abs() < 0.01;
                         let text = RichText::new(*label).size(10.0);
                         let btn = if selected {
@@ -84,7 +148,9 @@ pub fn render_properties_content(
                             egui::Button::new(text)
                         };
                         if ui.add(btn).clicked() {
-                            state.commands.push(PhysicsPropertyCommand::SetTimeScale(*value));
+                            state
+                                .commands
+                                .push(PhysicsPropertyCommand::SetTimeScale(*value));
                         }
                     }
                 });
@@ -92,35 +158,56 @@ pub fn render_properties_content(
                 ui.add_space(4.0);
 
                 let mut ts = state.time_scale;
-                if ui.add(
-                    egui::Slider::new(&mut ts, 0.0..=10.0)
-                        .text("speed")
-                        .logarithmic(true)
-                        .clamping(egui::SliderClamping::Always),
-                ).changed() {
-                    state.commands.push(PhysicsPropertyCommand::SetTimeScale(ts));
+                if ui
+                    .add(
+                        egui::Slider::new(&mut ts, 0.0..=10.0)
+                            .text("speed")
+                            .logarithmic(true)
+                            .clamping(egui::SliderClamping::Always),
+                    )
+                    .changed()
+                {
+                    state
+                        .commands
+                        .push(PhysicsPropertyCommand::SetTimeScale(ts));
                 }
 
                 ui.add_space(16.0);
 
                 // Substeps
-                ui.label(RichText::new("Solver Substeps").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Solver Substeps")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
 
                 let mut sub = state.substeps;
-                if ui.add(
-                    egui::Slider::new(&mut sub, 1..=50)
-                        .text("substeps")
-                        .clamping(egui::SliderClamping::Always),
-                ).changed() {
-                    state.commands.push(PhysicsPropertyCommand::SetSubsteps(sub));
+                if ui
+                    .add(
+                        egui::Slider::new(&mut sub, 1..=50)
+                            .text("substeps")
+                            .clamping(egui::SliderClamping::Always),
+                    )
+                    .changed()
+                {
+                    state
+                        .commands
+                        .push(PhysicsPropertyCommand::SetSubsteps(sub));
                 }
 
-                ui.label(RichText::new("Higher = more accurate, slower").size(9.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Higher = more accurate, slower")
+                        .size(9.0)
+                        .color(theme.text.muted.to_color32()),
+                );
 
                 ui.add_space(16.0);
 
-                if ui.button(RichText::new("Reset All to Defaults").size(11.0)).clicked() {
+                if ui
+                    .button(RichText::new("Reset All to Defaults").size(11.0))
+                    .clicked()
+                {
                     state.commands.push(PhysicsPropertyCommand::ResetAll);
                 }
             });

@@ -18,13 +18,20 @@ pub struct RangeConfig {
 
 impl Default for RangeConfig {
     fn default() -> Self {
-        Self { speed: 0.1, hard_min: None, hard_max: None }
+        Self {
+            speed: 0.1,
+            hard_min: None,
+            hard_max: None,
+        }
     }
 }
 
 impl RangeConfig {
     pub fn new(speed: f32) -> Self {
-        Self { speed, ..Self::default() }
+        Self {
+            speed,
+            ..Self::default()
+        }
     }
     pub fn with_bounds(mut self, hard_min: f32, hard_max: f32) -> Self {
         self.hard_min = Some(hard_min);
@@ -48,16 +55,26 @@ pub fn range_edit(
         let muted = ui.style().visuals.weak_text_color();
         ui.label(egui::RichText::new("min").size(10.0).color(muted));
         let mut dmin = egui::DragValue::new(min).speed(cfg.speed);
-        if let Some(h) = cfg.hard_min { dmin = dmin.range(h..=*max); } else { dmin = dmin.range(f32::NEG_INFINITY..=*max); }
+        if let Some(h) = cfg.hard_min {
+            dmin = dmin.range(h..=*max);
+        } else {
+            dmin = dmin.range(f32::NEG_INFINITY..=*max);
+        }
         let r1 = ui.add_sized([w, 16.0], dmin);
 
         ui.label(egui::RichText::new("max").size(10.0).color(muted));
         let mut dmax = egui::DragValue::new(max).speed(cfg.speed);
-        if let Some(h) = cfg.hard_max { dmax = dmax.range(*min..=h); } else { dmax = dmax.range(*min..=f32::INFINITY); }
+        if let Some(h) = cfg.hard_max {
+            dmax = dmax.range(*min..=h);
+        } else {
+            dmax = dmax.range(*min..=f32::INFINITY);
+        }
         let r2 = ui.add_sized([w, 16.0], dmax);
 
         // Final clamp in case both were edited in the same frame.
-        if *min > *max { *min = *max; }
+        if *min > *max {
+            *min = *max;
+        }
 
         r1.union(r2)
     })

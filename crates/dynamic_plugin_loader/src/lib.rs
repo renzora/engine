@@ -8,8 +8,8 @@
 //! On platforms that don't support dynamic linking (WASM, mobile),
 //! all functions are no-ops.
 
-use std::path::{Path, PathBuf};
 use bevy::prelude::*;
+use std::path::{Path, PathBuf};
 
 pub use renzora::PluginScope;
 
@@ -31,8 +31,8 @@ pub struct FailedPlugin {
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 mod platform {
     use super::*;
-    use std::ffi::OsStr;
     use libloading::Library;
+    use std::ffi::OsStr;
 
     // `*mut dyn Plugin` is a fat pointer (data + vtable). Passing it across
     // an FFI boundary is technically not C-ABI-safe, but Renzora's plugin
@@ -95,7 +95,8 @@ mod platform {
         };
 
         for path in dll_paths {
-            let stem = path.file_stem()
+            let stem = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -117,7 +118,8 @@ mod platform {
             };
 
             let compatible = unsafe {
-                library.get::<BevyHashFn>(b"plugin_bevy_hash")
+                library
+                    .get::<BevyHashFn>(b"plugin_bevy_hash")
                     .ok()
                     .map(|f| (*f)() == engine_bevy_hash())
                     .unwrap_or(false)
@@ -126,7 +128,8 @@ mod platform {
             if !compatible {
                 let engine_hash = engine_bevy_hash();
                 let plugin_hash = unsafe {
-                    library.get::<BevyHashFn>(b"plugin_bevy_hash")
+                    library
+                        .get::<BevyHashFn>(b"plugin_bevy_hash")
                         .ok()
                         .map(|f| (*f)())
                 };
@@ -134,17 +137,21 @@ mod platform {
                     "[dynamic-plugin] Skipping '{}' — incompatible bevy version (engine: {:?}, plugin: {:?})",
                     stem, engine_hash, plugin_hash
                 );
-                if let Some(mut registry) = app.world_mut().get_resource_mut::<DynamicPluginRegistry>() {
+                if let Some(mut registry) =
+                    app.world_mut().get_resource_mut::<DynamicPluginRegistry>()
+                {
                     registry.failed.push(FailedPlugin {
                         id: stem,
-                        reason: "Incompatible bevy version — rebuild plugin with current engine".into(),
+                        reason: "Incompatible bevy version — rebuild plugin with current engine"
+                            .into(),
                     });
                 }
                 continue;
             }
 
             let scope = unsafe {
-                library.get::<ScopePluginFn>(b"plugin_scope")
+                library
+                    .get::<ScopePluginFn>(b"plugin_scope")
                     .ok()
                     .map(|f| match (*f)() {
                         0 => PluginScope::Editor,
@@ -161,21 +168,26 @@ mod platform {
             };
 
             if !should_load {
-                info!("[dynamic-plugin] Skipping '{}' ({:?}, editor={})", stem, scope, is_editor);
+                info!(
+                    "[dynamic-plugin] Skipping '{}' ({:?}, editor={})",
+                    stem, scope, is_editor
+                );
                 continue;
             }
 
             info!("[dynamic-plugin] Loading '{}' ({:?})", stem, scope);
 
-            let create_fn: CreatePluginFn = match unsafe {
-                library.get::<CreatePluginFn>(b"plugin_create")
-            } {
-                Ok(sym) => *sym,
-                Err(e) => {
-                    error!("[dynamic-plugin] Missing plugin_create in '{}': {e}", path.display());
-                    continue;
-                }
-            };
+            let create_fn: CreatePluginFn =
+                match unsafe { library.get::<CreatePluginFn>(b"plugin_create") } {
+                    Ok(sym) => *sym,
+                    Err(e) => {
+                        error!(
+                            "[dynamic-plugin] Missing plugin_create in '{}': {e}",
+                            path.display()
+                        );
+                        continue;
+                    }
+                };
 
             let plugin = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let raw = create_fn();
@@ -195,7 +207,10 @@ mod platform {
                     registry._libraries.push(library);
                 }
                 Err(_) => {
-                    error!("[dynamic-plugin] '{}' panicked during creation", path.display());
+                    error!(
+                        "[dynamic-plugin] '{}' panicked during creation",
+                        path.display()
+                    );
                 }
             }
         }
@@ -209,7 +224,8 @@ mod platform {
         let mut result = Vec::new();
 
         for path in discover_dlls(plugin_dir) {
-            let stem = path.file_stem()
+            let stem = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -220,7 +236,8 @@ mod platform {
             };
 
             let scope = unsafe {
-                library.get::<ScopePluginFn>(b"plugin_scope")
+                library
+                    .get::<ScopePluginFn>(b"plugin_scope")
                     .ok()
                     .map(|f| match (*f)() {
                         0 => PluginScope::Editor,
@@ -269,7 +286,9 @@ mod platform {
         let mut paths: Vec<PathBuf> = Vec::new();
         let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
         while let Some(current) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&current) else { continue };
+            let Ok(entries) = std::fs::read_dir(&current) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -293,7 +312,11 @@ mod platform {
     #[cfg(target_os = "windows")]
     fn add_dll_search_dir(dir: &Path) {
         use std::os::windows::ffi::OsStrExt;
-        let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = dir
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         unsafe {
             #[link(name = "kernel32")]
             extern "system" {
@@ -321,7 +344,9 @@ mod platform {
 
     pub fn load_plugins(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
     pub fn load_plugins_recursive(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
-    pub fn scan_plugins(_plugin_dir: &Path) -> Vec<DynamicPluginInfo> { Vec::new() }
+    pub fn scan_plugins(_plugin_dir: &Path) -> Vec<DynamicPluginInfo> {
+        Vec::new()
+    }
 }
 
 pub use platform::*;

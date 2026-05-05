@@ -1,7 +1,7 @@
 //! Splatmap terrain material — blends up to 8 procedural/textured layers via dual weight textures.
 
-use bevy::prelude::*;
 use bevy::pbr::{Material, MaterialPlugin};
+use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
@@ -15,7 +15,9 @@ impl Plugin for TerrainSplatmapMaterialPlugin {
 }
 
 /// Layer animation types (matches shader switch).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, serde::Serialize, serde::Deserialize,
+)]
 pub enum LayerAnimationType {
     #[default]
     Solid = 0,
@@ -33,10 +35,10 @@ impl LayerAnimationType {
             Self::Solid => "Solid",
             Self::Grass => "Grass",
             Self::Water => "Water",
-            Self::Rock  => "Rock",
-            Self::Sand  => "Sand",
-            Self::Snow  => "Snow",
-            Self::Dirt  => "Dirt",
+            Self::Rock => "Rock",
+            Self::Sand => "Sand",
+            Self::Snow => "Snow",
+            Self::Dirt => "Dirt",
         }
     }
 

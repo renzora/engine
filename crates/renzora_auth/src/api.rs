@@ -56,7 +56,10 @@ pub struct MessageResponse {
 // ── API calls (blocking, run on background thread) ──
 
 #[cfg(not(target_arch = "wasm32"))]
-fn post_json<T: serde::de::DeserializeOwned>(url: &str, body: &impl Serialize) -> Result<T, String> {
+fn post_json<T: serde::de::DeserializeOwned>(
+    url: &str,
+    body: &impl Serialize,
+) -> Result<T, String> {
     let json = serde_json::to_string(body).map_err(|e| e.to_string())?;
 
     let response = ureq::post(url)

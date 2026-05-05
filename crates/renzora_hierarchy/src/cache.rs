@@ -13,7 +13,9 @@
 //! only when dirty, and the panel reads from the cached `Vec<EntityNode>`.
 
 use bevy::prelude::*;
-use renzora_editor::{EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
+use renzora_editor::{
+    EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
+};
 
 use crate::state::{build_entity_tree, EntityNode};
 
@@ -34,7 +36,9 @@ pub struct HierarchyDirty(pub bool);
 
 impl Default for HierarchyDirty {
     // Default-dirty so the first frame populates the cache.
-    fn default() -> Self { Self(true) }
+    fn default() -> Self {
+        Self(true)
+    }
 }
 
 /// Observe ECS changes that affect the hierarchy tree and flip the dirty
@@ -54,7 +58,9 @@ pub fn mark_hierarchy_dirty(
     mut removed_hide: RemovedComponents<HideInHierarchy>,
     mut removed_label: RemovedComponents<EntityLabelColor>,
 ) {
-    if dirty.0 { return }
+    if dirty.0 {
+        return;
+    }
 
     if filter.as_ref().map_or(false, |f| f.is_changed()) {
         dirty.0 = true;
@@ -82,7 +88,9 @@ pub fn mark_hierarchy_dirty(
 pub fn update_hierarchy_cache(world: &mut World) {
     let dirty = world.resource::<HierarchyDirty>().0;
     let empty = world.resource::<HierarchyTreeCache>().nodes.is_empty();
-    if !dirty && !empty { return }
+    if !dirty && !empty {
+        return;
+    }
 
     let nodes = build_entity_tree(world);
     let mut cache = world.resource_mut::<HierarchyTreeCache>();

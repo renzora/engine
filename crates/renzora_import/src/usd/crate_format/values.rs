@@ -103,7 +103,11 @@ impl Value {
     pub fn as_vec3f_array(&self) -> Option<Vec<[f32; 3]>> {
         match self {
             Value::Vec3fArray(v) => Some(v.clone()),
-            Value::Vec3dArray(v) => Some(v.iter().map(|d| [d[0] as f32, d[1] as f32, d[2] as f32]).collect()),
+            Value::Vec3dArray(v) => Some(
+                v.iter()
+                    .map(|d| [d[0] as f32, d[1] as f32, d[2] as f32])
+                    .collect(),
+            ),
             _ => None,
         }
     }
@@ -114,8 +118,16 @@ impl Value {
             Value::Vec2dArray(v) => Some(v.iter().map(|d| [d[0] as f32, d[1] as f32]).collect()),
             Value::HalfArray(v) => {
                 // Pairs of f32 (already converted from half)
-                let pairs: Vec<[f32; 2]> = v.chunks(2).filter(|c| c.len() == 2).map(|c| [c[0], c[1]]).collect();
-                if pairs.is_empty() { None } else { Some(pairs) }
+                let pairs: Vec<[f32; 2]> = v
+                    .chunks(2)
+                    .filter(|c| c.len() == 2)
+                    .map(|c| [c[0], c[1]])
+                    .collect();
+                if pairs.is_empty() {
+                    None
+                } else {
+                    Some(pairs)
+                }
             }
             _ => None,
         }

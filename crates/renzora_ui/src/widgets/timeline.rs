@@ -53,10 +53,7 @@ pub fn timeline(
     let painter = ui.painter_at(rect);
 
     let track_start_x = rect.min.x + cfg.label_width;
-    let track_rect = egui::Rect::from_min_max(
-        Pos2::new(track_start_x, rect.min.y),
-        rect.max,
-    );
+    let track_rect = egui::Rect::from_min_max(Pos2::new(track_start_x, rect.min.y), rect.max);
     let to_x = |t: f32| track_rect.min.x + track_rect.width() * (t / cfg.duration);
     let to_t = |x: f32| ((x - track_rect.min.x) / track_rect.width()) * cfg.duration;
 
@@ -73,7 +70,10 @@ pub fn timeline(
     while t <= cfg.duration + 1e-4 {
         let x = to_x(t);
         painter.line_segment(
-            [Pos2::new(x, ruler_rect.max.y - 4.0), Pos2::new(x, ruler_rect.max.y)],
+            [
+                Pos2::new(x, ruler_rect.max.y - 4.0),
+                Pos2::new(x, ruler_rect.max.y),
+            ],
             Stroke::new(1.0, muted),
         );
         t += minor_step;
@@ -82,7 +82,10 @@ pub fn timeline(
     while t <= cfg.duration + 1e-4 {
         let x = to_x(t);
         painter.line_segment(
-            [Pos2::new(x, ruler_rect.min.y + 2.0), Pos2::new(x, ruler_rect.max.y)],
+            [
+                Pos2::new(x, ruler_rect.min.y + 2.0),
+                Pos2::new(x, ruler_rect.max.y),
+            ],
             Stroke::new(1.0, theme.text.primary.to_color32()),
         );
         painter.text(

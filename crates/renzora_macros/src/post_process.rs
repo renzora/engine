@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse::ParseStream, Fields, ItemStruct, Token, Lit};
+use syn::{parse::ParseStream, Fields, ItemStruct, Lit, Token};
 
 use crate::field_parse::{infer_field_type, title_case, FieldAttrs};
 
@@ -46,10 +46,19 @@ impl PostProcessAttrs {
         )?;
 
         if shader.is_empty() {
-            return Err(syn::Error::new_spanned(attr, "post_process requires `shader = \"...\"`"));
+            return Err(syn::Error::new_spanned(
+                attr,
+                "post_process requires `shader = \"...\"`",
+            ));
         }
 
-        Ok(Self { shader, name, icon, category, type_id })
+        Ok(Self {
+            shader,
+            name,
+            icon,
+            category,
+            type_id,
+        })
     }
 }
 
@@ -59,9 +68,13 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
     let struct_name = &input.ident;
     let vis = &input.vis;
 
-    let display_name = pp_attrs.name.unwrap_or_else(|| title_case(&struct_name.to_string()));
+    let display_name = pp_attrs
+        .name
+        .unwrap_or_else(|| title_case(&struct_name.to_string()));
     let type_id = pp_attrs.type_id.unwrap_or_else(|| {
-        struct_name.to_string().chars()
+        struct_name
+            .to_string()
+            .chars()
             .enumerate()
             .fold(String::new(), |mut acc, (i, c)| {
                 if c.is_uppercase() && i > 0 {
@@ -72,7 +85,10 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
             })
     });
     // Strip "Settings" suffix from type_id if present
-    let type_id = type_id.strip_suffix("_settings").unwrap_or(&type_id).to_string();
+    let type_id = type_id
+        .strip_suffix("_settings")
+        .unwrap_or(&type_id)
+        .to_string();
     let shader_path = &pp_attrs.shader;
     let icon = &pp_attrs.icon;
     let category = &pp_attrs.category;
@@ -80,7 +96,12 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
     // Collect user fields
     let user_fields = match &input.fields {
         Fields::Named(f) => f.named.iter().collect::<Vec<_>>(),
-        _ => return Err(syn::Error::new_spanned(&input.ident, "post_process only supports named fields")),
+        _ => {
+            return Err(syn::Error::new_spanned(
+                &input.ident,
+                "post_process only supports named fields",
+            ))
+        }
     };
 
     // Count user fields to determine padding needed.
@@ -98,39 +119,59 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
     let padding_count = target - total_with_enabled;
 
     // Generate user field declarations (with original attributes stripped of #[field(...)])
-    let user_field_decls: Vec<_> = user_fields.iter().map(|f| {
-        let ident = &f.ident;
-        let ty = &f.ty;
-        let vis = &f.vis;
-        // Keep non-field attributes
-        let attrs: Vec<_> = f.attrs.iter().filter(|a| !a.path().is_ident("field")).collect();
-        quote! { #(#attrs)* #vis #ident: #ty }
-    }).collect();
+    let user_field_decls: Vec<_> = user_fields
+        .iter()
+        .map(|f| {
+            let ident = &f.ident;
+            let ty = &f.ty;
+            let vis = &f.vis;
+            // Keep non-field attributes
+            let attrs: Vec<_> = f
+                .attrs
+                .iter()
+                .filter(|a| !a.path().is_ident("field"))
+                .collect();
+            quote! { #(#attrs)* #vis #ident: #ty }
+        })
+        .collect();
 
     // Generate padding fields (serde skip so scene files aren't affected by layout changes)
-    let padding_fields: Vec<_> = (0..padding_count).map(|i| {
-        let name = syn::Ident::new(&format!("_padding{}", i + 1), proc_macro2::Span::call_site());
-        quote! {
-            #[serde(skip, default)]
-            pub #name: f32
-        }
-    }).collect();
+    let padding_fields: Vec<_> = (0..padding_count)
+        .map(|i| {
+            let name = syn::Ident::new(
+                &format!("_padding{}", i + 1),
+                proc_macro2::Span::call_site(),
+            );
+            quote! {
+                #[serde(skip, default)]
+                pub #name: f32
+            }
+        })
+        .collect();
 
     // Generate Default impl (respects #[field(default = ...)])
-    let user_defaults: Vec<_> = user_fields.iter().map(|f| {
-        let ident = &f.ident;
-        let field_attrs = FieldAttrs::from_field(f).unwrap_or_default();
-        if let Some(val) = field_attrs.default {
-            let val = val as f32;
-            quote! { #ident: #val }
-        } else {
-            quote! { #ident: Default::default() }
-        }
-    }).collect();
-    let padding_defaults: Vec<_> = (0..padding_count).map(|i| {
-        let name = syn::Ident::new(&format!("_padding{}", i + 1), proc_macro2::Span::call_site());
-        quote! { #name: 0.0 }
-    }).collect();
+    let user_defaults: Vec<_> = user_fields
+        .iter()
+        .map(|f| {
+            let ident = &f.ident;
+            let field_attrs = FieldAttrs::from_field(f).unwrap_or_default();
+            if let Some(val) = field_attrs.default {
+                let val = val as f32;
+                quote! { #ident: #val }
+            } else {
+                quote! { #ident: Default::default() }
+            }
+        })
+        .collect();
+    let padding_defaults: Vec<_> = (0..padding_count)
+        .map(|i| {
+            let name = syn::Ident::new(
+                &format!("_padding{}", i + 1),
+                proc_macro2::Span::call_site(),
+            );
+            quote! { #name: 0.0 }
+        })
+        .collect();
 
     // Build the embedded shader path
     let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or_default();
@@ -146,7 +187,9 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
         }
 
         let field_name_str = field_ident.to_string();
-        let display = field_attrs.name.unwrap_or_else(|| title_case(&field_name_str));
+        let display = field_attrs
+            .name
+            .unwrap_or_else(|| title_case(&field_name_str));
 
         if field_attrs.readonly {
             inspector_field_defs.push(quote! {
@@ -224,9 +267,11 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
     let icon_ident = syn::Ident::new(icon, proc_macro2::Span::call_site());
 
     // Keep any non-post_process attributes from the original struct
-    let kept_attrs: Vec<_> = input.attrs.iter().filter(|a| {
-        !a.path().is_ident("post_process")
-    }).collect();
+    let kept_attrs: Vec<_> = input
+        .attrs
+        .iter()
+        .filter(|a| !a.path().is_ident("post_process"))
+        .collect();
 
     Ok(quote! {
         #(#kept_attrs)*
@@ -262,7 +307,7 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
                 renzora_editor::InspectorEntry {
                     type_id: #type_id,
                     display_name: #display_name,
-                    icon: egui_phosphor::regular::#icon_ident,
+                    icon: renzora_editor::egui_phosphor::regular::#icon_ident,
                     category: #category,
                     has_fn: |world, entity| world.get::<#struct_name>(entity).is_some(),
                     add_fn: Some(|world, entity| { world.entity_mut(entity).insert(#struct_name::default()); }),

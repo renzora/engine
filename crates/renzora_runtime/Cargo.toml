@@ -3,6 +3,10 @@ name = "renzora_runtime"
 version = "0.1.0"
 edition = "2021"
 description = "Shared engine library for the Renzora binary. The `editor` feature pulls in editor-only crates and panels on top of the runtime."
+build = "build.rs"
+
+[build-dependencies]
+toml = "0.8"
 
 
 [features]
@@ -184,3 +188,7 @@ renzora_theme_status = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial = { path = "../renzora_tutorial", optional = true }
 renzora_vst = { path = "../renzora_vst", optional = true }
 renzora_widget_gallery = { path = "../renzora_widget_gallery", optional = true }
+
+
+[lints]
+workspace = true

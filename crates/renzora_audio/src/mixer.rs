@@ -97,10 +97,7 @@ impl Default for MixerState {
 }
 
 /// System: sync MixerState to Kira TrackHandles every frame when changed
-pub fn sync_mixer_to_kira(
-    mixer: Res<MixerState>,
-    audio: Option<NonSendMut<KiraAudioManager>>,
-) {
+pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraAudioManager>>) {
     let Some(mut audio) = audio else { return };
     if !mixer.is_changed() {
         return;

@@ -19,13 +19,17 @@ pub fn tag_input(
         for (i, tag) in tags.iter().enumerate() {
             let font = egui::FontId::proportional(11.0);
             let text_w = ui.fonts_mut(|f| {
-                f.layout_no_wrap(tag.clone(), font.clone(), Color32::WHITE).rect.width()
+                f.layout_no_wrap(tag.clone(), font.clone(), Color32::WHITE)
+                    .rect
+                    .width()
             });
-            let (rect, resp) = ui.allocate_exact_size(
-                egui::Vec2::new(text_w + 28.0, 20.0),
-                Sense::click(),
+            let (rect, resp) =
+                ui.allocate_exact_size(egui::Vec2::new(text_w + 28.0, 20.0), Sense::click());
+            ui.painter().rect_filled(
+                rect,
+                10.0,
+                theme.widgets.active_bg.to_color32().gamma_multiply(0.6),
             );
-            ui.painter().rect_filled(rect, 10.0, theme.widgets.active_bg.to_color32().gamma_multiply(0.6));
             ui.painter().text(
                 egui::pos2(rect.min.x + 8.0, rect.center().y),
                 egui::Align2::LEFT_CENTER,

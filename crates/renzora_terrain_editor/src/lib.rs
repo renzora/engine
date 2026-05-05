@@ -18,9 +18,7 @@ use renzora_editor::{
 use renzora_spline::SplinePath;
 use renzora_terrain::data::TerrainData;
 
-use terrain_inspector::{
-    render_terrain_inspector, sync_active_tool_system, TerrainInspectorTab,
-};
+use terrain_inspector::{render_terrain_inspector, sync_active_tool_system, TerrainInspectorTab};
 
 #[derive(Default)]
 pub struct TerrainEditorPlugin;
@@ -39,7 +37,7 @@ impl Plugin for TerrainEditorPlugin {
         {
             let mut reg = app.world_mut().resource_mut::<ToolOptionsRegistry>();
             reg.register(ActiveTool::TerrainSculpt, tool_options::draw_sculpt_options);
-            reg.register(ActiveTool::TerrainPaint,  tool_options::draw_paint_options);
+            reg.register(ActiveTool::TerrainPaint, tool_options::draw_paint_options);
         }
 
         // Terrain toolbar buttons — visible whenever a terrain exists in the
@@ -60,7 +58,9 @@ impl Plugin for TerrainEditorPlugin {
                     .copied()
                     .map_or(false, |t| t == ActiveTool::TerrainSculpt)
             })
-            .on_activate(|w| activate_terrain_tool(w, TerrainInspectorTab::Sculpt, ActiveTool::TerrainSculpt)),
+            .on_activate(|w| {
+                activate_terrain_tool(w, TerrainInspectorTab::Sculpt, ActiveTool::TerrainSculpt)
+            }),
         );
         app.register_tool(
             ToolEntry::new(
@@ -76,7 +76,9 @@ impl Plugin for TerrainEditorPlugin {
                     .copied()
                     .map_or(false, |t| t == ActiveTool::TerrainPaint)
             })
-            .on_activate(|w| activate_terrain_tool(w, TerrainInspectorTab::Paint, ActiveTool::TerrainPaint)),
+            .on_activate(|w| {
+                activate_terrain_tool(w, TerrainInspectorTab::Paint, ActiveTool::TerrainPaint)
+            }),
         );
         app.register_tool(
             ToolEntry::new(
@@ -92,7 +94,9 @@ impl Plugin for TerrainEditorPlugin {
                     .copied()
                     .map_or(false, |t| t == ActiveTool::FoliagePaint)
             })
-            .on_activate(|w| activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)),
+            .on_activate(|w| {
+                activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)
+            }),
         );
 
         app
@@ -132,23 +136,19 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_stroke_end_system,
                     systems::terrain_undo_redo_system,
                 )
-                    .run_if(|tool: Option<Res<ActiveTool>>| {
-                        tool.map_or(false, |t| t.is_terrain())
-                    })
+                    .run_if(|tool: Option<Res<ActiveTool>>| tool.map_or(false, |t| t.is_terrain()))
                     .run_if(renzora::core::not_in_play_mode),
             )
             // Keep the layer preview cache in sync so the terrain inspector
             // always shows current layer state.
             .add_systems(
                 Update,
-                systems::sync_layer_preview_system
-                    .run_if(renzora::core::not_in_play_mode),
+                systems::sync_layer_preview_system.run_if(renzora::core::not_in_play_mode),
             )
             // Spline gizmos — always drawn in the editor (not in play mode).
             .add_systems(
                 Update,
-                spline_gizmos::draw_spline_gizmos_system
-                    .run_if(renzora::core::not_in_play_mode),
+                spline_gizmos::draw_spline_gizmos_system.run_if(renzora::core::not_in_play_mode),
             );
 
         app.register_entity_preset(EntityPreset {
@@ -176,9 +176,7 @@ impl Plugin for TerrainEditorPlugin {
 }
 
 fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -> bool {
-    move |tool: Option<Res<ActiveTool>>| {
-        tool.map_or(false, |t| *t == expected)
-    }
+    move |tool: Option<Res<ActiveTool>>| tool.map_or(false, |t| *t == expected)
 }
 
 /// Toolbar visibility predicate: true if any entity in the world has `TerrainData`.
@@ -205,7 +203,10 @@ fn first_terrain_entity(world: &World) -> Option<Entity> {
 /// toggles back to Select; otherwise selects the first terrain entity, switches
 /// the inspector tab, and activates the brush tool.
 fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: ActiveTool) {
-    let cur = world.get_resource::<ActiveTool>().copied().unwrap_or_default();
+    let cur = world
+        .get_resource::<ActiveTool>()
+        .copied()
+        .unwrap_or_default();
     if cur == tool {
         world.insert_resource(ActiveTool::Select);
         return;
@@ -242,4 +243,4 @@ fn terrain_data_entry() -> InspectorEntry {
     }
 }
 
-
+renzora::add!(TerrainEditorPlugin, Editor);

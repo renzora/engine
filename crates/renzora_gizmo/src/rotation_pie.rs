@@ -116,7 +116,9 @@ pub fn update_rotation_pie_state(
         let Some(axis) = gizmo_axis_to_pie(gizmo_state.active_axis.unwrap()) else {
             return;
         };
-        let Ok(root_gt) = gizmo_root.single() else { return };
+        let Ok(root_gt) = gizmo_root.single() else {
+            return;
+        };
         let radius = (GIZMO_SIZE * gizmo_state.gizmo_scale * 0.7).max(0.05);
         state.active = true;
         state.world_center = root_gt.translation();
@@ -160,13 +162,21 @@ pub fn update_rotation_pie_state(
 /// Egui overlay drawer registered with `ViewportOverlayRegistry`. Reads
 /// [`RotationPieState`] and projects the wedge onto the viewport rect.
 pub fn draw_pie_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    let Some(state) = world.get_resource::<RotationPieState>() else { return };
+    let Some(state) = world.get_resource::<RotationPieState>() else {
+        return;
+    };
     if !state.active {
         return;
     }
-    let Some(cam_entity) = find_editor_camera(world) else { return };
-    let Some(camera) = world.get::<Camera>(cam_entity) else { return };
-    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else { return };
+    let Some(cam_entity) = find_editor_camera(world) else {
+        return;
+    };
+    let Some(camera) = world.get::<Camera>(cam_entity) else {
+        return;
+    };
+    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else {
+        return;
+    };
 
     let painter = ui.painter_at(rect);
 
@@ -237,9 +247,17 @@ pub fn draw_pie_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     // they've swept. Background pill so it stays legible over any scene.
     let label = format!("{:.1}°", total.to_degrees());
     let text_pos = end_pt + egui::vec2(8.0, -8.0);
-    let galley = painter.layout_no_wrap(label, egui::FontId::proportional(13.0), egui::Color32::WHITE);
+    let galley = painter.layout_no_wrap(
+        label,
+        egui::FontId::proportional(13.0),
+        egui::Color32::WHITE,
+    );
     let bg = egui::Rect::from_min_size(text_pos, galley.size()).expand2(egui::vec2(4.0, 2.0));
-    painter.rect_filled(bg, 3.0, egui::Color32::from_rgba_premultiplied(20, 20, 25, 200));
+    painter.rect_filled(
+        bg,
+        3.0,
+        egui::Color32::from_rgba_premultiplied(20, 20, 25, 200),
+    );
     painter.galley(text_pos, galley, egui::Color32::WHITE);
 }
 

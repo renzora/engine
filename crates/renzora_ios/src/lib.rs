@@ -6,6 +6,6 @@ use bevy::prelude::*;
 /// Bevy's winit backend handles the Metal surface via the existing UIWindow.
 #[unsafe(no_mangle)]
 pub extern "C" fn renzora_main() {
-    let mut app = renzora::build_runtime_app();
+    let mut app = renzora_runtime::build_runtime_app();
     app.run();
 }

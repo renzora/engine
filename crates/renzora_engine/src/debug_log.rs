@@ -83,7 +83,9 @@ pub fn debug_log_cameras(
                 };
                 CamSnap {
                     entity,
-                    name: name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into()),
+                    name: name
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unnamed".into()),
                     active: cam.is_active,
                     order: cam.order as isize,
                     has_cam3d: cam3d.is_some(),
@@ -128,7 +130,12 @@ pub fn debug_log_cameras(
 /// Logs whenever the EffectRouting resource changes.
 pub fn debug_log_effect_routing(
     routing: Res<EffectRouting>,
-    cameras: Query<(Option<&Name>, Option<&EditorCamera>, Option<&SceneCamera>, Option<&PlayModeCamera>)>,
+    cameras: Query<(
+        Option<&Name>,
+        Option<&EditorCamera>,
+        Option<&SceneCamera>,
+        Option<&PlayModeCamera>,
+    )>,
     mut prev_len: Local<usize>,
     debug: Option<Res<RenderingDebugLog>>,
 ) {
@@ -150,7 +157,9 @@ pub fn debug_log_effect_routing(
             } else {
                 "Other"
             };
-            let n = name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
+            let n = name
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "unnamed".into());
             format!("{:?} \"{}\" ({})", entity, n, role)
         } else {
             format!("{:?}", entity)
@@ -324,10 +333,20 @@ pub fn debug_log_post_processing(world: &mut World) {
 
     // Also find known native Bevy effect components (non-Settings)
     let native_effect_names: &[&str] = &[
-        "Bloom", "Atmosphere", "DistanceFog", "DepthOfField", "MotionBlur",
-        "Fxaa", "Smaa", "TemporalAntiAliasing", "ContrastAdaptiveSharpening",
-        "ScreenSpaceAmbientOcclusion", "ScreenSpaceReflections",
-        "Tonemapping", "DebandDither", "AutoExposure",
+        "Bloom",
+        "Atmosphere",
+        "DistanceFog",
+        "DepthOfField",
+        "MotionBlur",
+        "Fxaa",
+        "Smaa",
+        "TemporalAntiAliasing",
+        "ContrastAdaptiveSharpening",
+        "ScreenSpaceAmbientOcclusion",
+        "ScreenSpaceReflections",
+        "Tonemapping",
+        "DebandDither",
+        "AutoExposure",
     ];
     let native_types: Vec<_> = registry
         .iter()
@@ -348,7 +367,9 @@ pub fn debug_log_post_processing(world: &mut World) {
 
     // Check camera entities
     for &entity in &camera_entities {
-        let Ok(entity_ref) = world.get_entity(entity) else { continue };
+        let Ok(entity_ref) = world.get_entity(entity) else {
+            continue;
+        };
         let mut effects: Vec<&str> = Vec::new();
 
         for (type_path, reflect_component) in &settings_types {
@@ -367,7 +388,9 @@ pub fn debug_log_post_processing(world: &mut World) {
         if camera_entities.contains(&entity) {
             continue;
         }
-        let Ok(entity_ref) = world.get_entity(entity) else { continue };
+        let Ok(entity_ref) = world.get_entity(entity) else {
+            continue;
+        };
         let mut effects: Vec<&str> = Vec::new();
         for (type_path, reflect_component) in &settings_types {
             if reflect_component.contains(FilteredEntityRef::from(entity_ref)) {
@@ -387,7 +410,9 @@ pub fn debug_log_post_processing(world: &mut World) {
         if camera_entities.contains(entity) || isolated_entities.contains(entity) {
             continue;
         }
-        let Ok(entity_ref) = world.get_entity(*entity) else { continue };
+        let Ok(entity_ref) = world.get_entity(*entity) else {
+            continue;
+        };
         let mut effects: Vec<&str> = Vec::new();
         for (type_path, reflect_component) in &settings_types {
             if reflect_component.contains(FilteredEntityRef::from(entity_ref)) {
@@ -425,13 +450,13 @@ pub fn debug_log_post_processing(world: &mut World) {
                 .unwrap_or_else(|| "unnamed".into());
 
             // Check which native Bevy effect components are present on the route target
-            let Ok(rt_ref) = world.get_entity(rt) else { continue };
+            let Ok(rt_ref) = world.get_entity(rt) else {
+                continue;
+            };
             let mut active_native: Vec<&str> = Vec::new();
             for (type_path, reflect_component) in &native_types {
                 if reflect_component.contains(FilteredEntityRef::from(rt_ref)) {
-                    active_native.push(
-                        type_path.rsplit("::").next().unwrap_or(type_path),
-                    );
+                    active_native.push(type_path.rsplit("::").next().unwrap_or(type_path));
                 }
             }
 
@@ -448,13 +473,18 @@ pub fn debug_log_post_processing(world: &mut World) {
                     "PostProcess",
                     format!(
                         "  Route target: {:?} \"{}\" native=[{}]",
-                        rt, rt_name, active_native.join(", ")
+                        rt,
+                        rt_name,
+                        active_native.join(", ")
                     ),
                 );
             }
         }
         if route_targets.is_empty() {
-            console_warn("PostProcess", "  No routing targets — no camera will receive native effects!");
+            console_warn(
+                "PostProcess",
+                "  No routing targets — no camera will receive native effects!",
+            );
         }
 
         // Track effect types seen on non-isolated source entities to detect duplicates
@@ -482,12 +512,7 @@ pub fn debug_log_post_processing(world: &mut World) {
             // Shorten type paths for readability
             let short_effects: Vec<String> = effects
                 .iter()
-                .map(|e| {
-                    e.rsplit("::")
-                        .next()
-                        .unwrap_or(e.as_str())
-                        .to_string()
-                })
+                .map(|e| e.rsplit("::").next().unwrap_or(e.as_str()).to_string())
                 .collect();
 
             console_info(
@@ -515,8 +540,14 @@ pub fn debug_log_post_processing(world: &mut World) {
             if let Some((_, prev_entity)) = seen_effects.iter().find(|(e, _)| e == effect) {
                 if prev_entity != entity {
                     let short = effect.rsplit("::").next().unwrap_or(effect);
-                    let name_a = world.get::<Name>(*prev_entity).map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
-                    let name_b = world.get::<Name>(*entity).map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
+                    let name_a = world
+                        .get::<Name>(*prev_entity)
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unnamed".into());
+                    let name_b = world
+                        .get::<Name>(*entity)
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unnamed".into());
                     console_warn(
                         "PostProcess",
                         format!(
@@ -554,7 +585,9 @@ pub fn debug_log_rehydrate_meshes(
         return;
     }
     for (entity, primitive, name) in &query {
-        let n = name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
+        let n = name
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "unnamed".into());
         console_info(
             "Rehydration",
             format!(
@@ -567,7 +600,10 @@ pub fn debug_log_rehydrate_meshes(
 
 /// Logs when cameras are rehydrated (SceneCamera without Camera3d).
 pub fn debug_log_rehydrate_cameras(
-    query: Query<(Entity, Option<&Name>, Option<&DefaultCamera>), (With<SceneCamera>, Without<Camera3d>)>,
+    query: Query<
+        (Entity, Option<&Name>, Option<&DefaultCamera>),
+        (With<SceneCamera>, Without<Camera3d>),
+    >,
     editor_camera: Query<(), With<EditorCamera>>,
     debug: Option<Res<RenderingDebugLog>>,
 ) {
@@ -588,7 +624,9 @@ pub fn debug_log_rehydrate_cameras(
         ),
     );
     for (entity, name, default_cam) in &query {
-        let n = name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
+        let n = name
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "unnamed".into());
         console_info(
             "Rehydration",
             format!(
@@ -611,7 +649,9 @@ pub fn debug_log_rehydrate_visibility(
         return;
     }
     for (entity, name) in &query {
-        let n = name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
+        let n = name
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "unnamed".into());
         console_info(
             "Rehydration",
             format!("Visibility rehydration: {:?} \"{}\"", entity, n),
@@ -672,7 +712,12 @@ pub fn log_scene_camera_sync(
 
 /// Logs when a native Bevy effect is synced to the render target.
 /// Call from individual sync systems (bloom, atmosphere, etc.) when they actually do work.
-pub fn log_effect_sync(effect_name: &str, source_entity: Entity, target_entity: Entity, enabled: bool) {
+pub fn log_effect_sync(
+    effect_name: &str,
+    source_entity: Entity,
+    target_entity: Entity,
+    enabled: bool,
+) {
     if enabled {
         console_info(
             "PostProcess",

@@ -97,7 +97,9 @@ pub fn handle_ui_script_actions(
         }
         "ui_set_progress" => {
             let Some(name) = get_str("name") else { return };
-            let Some(value) = get_f32("value") else { return };
+            let Some(value) = get_f32("value") else {
+                return;
+            };
             for (n, mut data) in &mut progress_bars {
                 if n.as_str() == name {
                     data.value = value;
@@ -117,7 +119,9 @@ pub fn handle_ui_script_actions(
         }
         "ui_set_slider" => {
             let Some(name) = get_str("name") else { return };
-            let Some(value) = get_f32("value") else { return };
+            let Some(value) = get_f32("value") else {
+                return;
+            };
             for (n, mut data) in &mut sliders {
                 if n.as_str() == name {
                     data.value = value;
@@ -126,7 +130,9 @@ pub fn handle_ui_script_actions(
         }
         "ui_set_checkbox" => {
             let Some(name) = get_str("name") else { return };
-            let Some(checked) = get_bool("checked") else { return };
+            let Some(checked) = get_bool("checked") else {
+                return;
+            };
             for (n, mut data) in &mut checkboxes {
                 if n.as_str() == name {
                     data.checked = checked;
@@ -144,7 +150,9 @@ pub fn handle_ui_script_actions(
         }
         "ui_set_visible" => {
             let Some(name) = get_str("name") else { return };
-            let Some(visible) = get_bool("visible") else { return };
+            let Some(visible) = get_bool("visible") else {
+                return;
+            };
             for (n, mut vis) in &mut widgets_vis {
                 if n.as_str() == name {
                     *vis = if visible {
@@ -156,7 +164,9 @@ pub fn handle_ui_script_actions(
             }
         }
         "ui_set_theme" => {
-            let Some(theme_name) = get_str("theme") else { return };
+            let Some(theme_name) = get_str("theme") else {
+                return;
+            };
             let theme = match theme_name {
                 "light" => UiTheme::light(),
                 "high_contrast" => UiTheme::high_contrast(),

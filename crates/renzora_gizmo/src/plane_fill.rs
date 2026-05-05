@@ -13,8 +13,8 @@ use bevy_egui::egui;
 use renzora_editor::EditorSelection;
 
 use crate::{
-    compute_gizmo_pivot, GizmoAxis, GizmoMode, GizmoRoot, GizmoState,
-    GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE,
+    compute_gizmo_pivot, GizmoAxis, GizmoMode, GizmoRoot, GizmoState, GIZMO_PLANE_OFFSET,
+    GIZMO_PLANE_SIZE,
 };
 
 /// Per-plane fill data. Corners are in world space.
@@ -56,8 +56,12 @@ pub fn update_plane_fill_state(
     if collider_edit.map(|c| c.active).unwrap_or(false) {
         return;
     }
-    let Some(selected) = selection.get() else { return };
-    let Ok(sel_gt) = transforms.get(selected) else { return };
+    let Some(selected) = selection.get() else {
+        return;
+    };
+    let Ok(sel_gt) = transforms.get(selected) else {
+        return;
+    };
     let pivot = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
 
     // Match the picking layout exactly: planes always sit in the +a+b
@@ -100,7 +104,9 @@ pub fn update_plane_fill_state(
 }
 
 pub fn draw_plane_fill_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    let Some(state) = world.get_resource::<PlaneFillState>() else { return };
+    let Some(state) = world.get_resource::<PlaneFillState>() else {
+        return;
+    };
     if !state.active {
         return;
     }
@@ -110,9 +116,15 @@ pub fn draw_plane_fill_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rec
     else {
         return;
     };
-    let Some(camera) = world.get::<Camera>(cam_entity) else { return };
-    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else { return };
-    let Some(gizmo_state) = world.get_resource::<GizmoState>() else { return };
+    let Some(camera) = world.get::<Camera>(cam_entity) else {
+        return;
+    };
+    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else {
+        return;
+    };
+    let Some(gizmo_state) = world.get_resource::<GizmoState>() else {
+        return;
+    };
 
     let painter = ui.painter_at(rect);
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
@@ -155,9 +167,9 @@ fn plane_colors(axis: GizmoAxis, is_active: bool) -> (egui::Color32, egui::Strok
     // same as before. Yellow/active highlight matches the single-axis
     // active color.
     let (r, g, b) = match axis {
-        GizmoAxis::XY => (230, 230, 50),  // X+Y → yellow
-        GizmoAxis::XZ => (230, 50, 230),  // X+Z → magenta
-        GizmoAxis::YZ => (50, 230, 230),  // Y+Z → cyan
+        GizmoAxis::XY => (230, 230, 50), // X+Y → yellow
+        GizmoAxis::XZ => (230, 50, 230), // X+Z → magenta
+        GizmoAxis::YZ => (50, 230, 230), // Y+Z → cyan
         _ => (200, 200, 200),
     };
     let (fill_a, stroke_a) = if is_active { (180, 255) } else { (90, 200) };

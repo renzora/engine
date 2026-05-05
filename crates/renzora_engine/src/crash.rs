@@ -4,9 +4,9 @@
 //! and shows a native dialog. On next startup, the editor displays the
 //! previous crash report in an egui window.
 
+use std::backtrace::Backtrace;
 use std::panic;
 use std::sync::Mutex;
-use std::backtrace::Backtrace;
 
 use bevy::prelude::*;
 
@@ -33,10 +33,7 @@ impl CrashReport {
              === BACKTRACE ===\n\
              {}\n\
              === END CRASH REPORT ===",
-            self.timestamp,
-            self.message,
-            self.location,
-            self.backtrace
+            self.timestamp, self.message, self.location, self.backtrace
         )
     }
 }
@@ -78,7 +75,7 @@ pub fn install_panic_hook() {
 
         let _ = save_crash_report(&report);
 
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
         show_crash_dialog(&report);
 
         default_hook(panic_info);
@@ -109,7 +106,12 @@ fn chrono_lite_timestamp() -> String {
 
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
-        year, month.min(12), day.min(31), hours, minutes, seconds
+        year,
+        month.min(12),
+        day.min(31),
+        hours,
+        minutes,
+        seconds
     )
 }
 
@@ -182,7 +184,7 @@ pub fn check_previous_crash() -> Option<CrashReport> {
 }
 
 /// Show a native crash dialog using rfd, with option to copy to clipboard
-#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
 fn show_crash_dialog(report: &CrashReport) {
     let short_message = format!(
         "The application has crashed.\n\n\
@@ -234,7 +236,10 @@ impl Plugin for CrashReportPlugin {
 
         #[cfg(feature = "editor")]
         {
-            app.add_systems(bevy_egui::EguiPrimaryContextPass, render_crash_report_window);
+            app.add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                render_crash_report_window,
+            );
         }
     }
 }

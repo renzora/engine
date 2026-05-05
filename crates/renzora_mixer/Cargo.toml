@@ -11,3 +11,6 @@ renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_audio = { path = "../renzora_audio" }
+
+[lints]
+workspace = true

@@ -3,9 +3,11 @@
 //! Walks the graph from the output node backwards, generating WGSL code for
 //! each node encountered. Produces a complete Bevy-compatible material shader.
 
-use std::collections::{HashMap, HashSet};
-use super::graph::{self, MaterialFunction, MaterialGraph, MaterialNode, MaterialDomain, NodeId, PinValue};
+use super::graph::{
+    self, MaterialDomain, MaterialFunction, MaterialGraph, MaterialNode, NodeId, PinValue,
+};
 use super::nodes;
+use std::collections::{HashMap, HashSet};
 
 /// Registry of loaded material functions, keyed by function name.
 /// Populated from disk by the resolver and passed to `compile()`.
@@ -168,7 +170,10 @@ impl<'a> Ctx<'a> {
         Self::new_with_functions(graph, None)
     }
 
-    fn new_with_functions(graph: &'a MaterialGraph, functions: Option<&'a FunctionRegistry>) -> Self {
+    fn new_with_functions(
+        graph: &'a MaterialGraph,
+        functions: Option<&'a FunctionRegistry>,
+    ) -> Self {
         Self {
             graph,
             output_vars: HashMap::new(),
@@ -244,7 +249,11 @@ impl<'a> Ctx<'a> {
     }
 
     /// Look up the PinType for a given pin on a node definition.
-    fn pin_type_for(node_type: &str, pin_name: &str, direction: graph::PinDir) -> Option<graph::PinType> {
+    fn pin_type_for(
+        node_type: &str,
+        pin_name: &str,
+        direction: graph::PinDir,
+    ) -> Option<graph::PinType> {
         let def = nodes::node_def(node_type)?;
         let pins = (def.pins)();
         pins.iter()
@@ -268,10 +277,16 @@ impl<'a> Ctx<'a> {
                     self.gen_node(&src);
                 }
             }
-            if let Some(expr) = self.output_vars.get(&(from_node, from_pin.clone())).cloned() {
+            if let Some(expr) = self
+                .output_vars
+                .get(&(from_node, from_pin.clone()))
+                .cloned()
+            {
                 // Apply type coercion if source and dest types differ
                 if let (Some(dt), Some(src_node)) = (dest_type, self.graph.get_node(from_node)) {
-                    if let Some(st) = Self::pin_type_for(&src_node.node_type, &from_pin, graph::PinDir::Output) {
+                    if let Some(st) =
+                        Self::pin_type_for(&src_node.node_type, &from_pin, graph::PinDir::Output)
+                    {
                         return graph::PinType::cast_expr(st, dt, &expr);
                     }
                 }
@@ -332,12 +347,24 @@ impl<'a> Ctx<'a> {
         let sharp = self.input(node, "sharpness");
         let v = self.next_var(prefix);
         self.emit(format!("    let {v}_p = in.world_position.xyz * {scale};"));
-        self.emit(format!("    let {v}_wa = pow(abs(in.world_normal), vec3<f32>({sharp}));"));
-        self.emit(format!("    let {v}_w = {v}_wa / ({v}_wa.x + {v}_wa.y + {v}_wa.z + 0.000001);"));
-        self.emit(format!("    let {v}_x = {fbm_fn}({v}_p.yz, i32({octaves}), {lac}, {pers});"));
-        self.emit(format!("    let {v}_y = {fbm_fn}({v}_p.xz, i32({octaves}), {lac}, {pers});"));
-        self.emit(format!("    let {v}_z = {fbm_fn}({v}_p.xy, i32({octaves}), {lac}, {pers});"));
-        self.emit(format!("    let {v} = {v}_x * {v}_w.x + {v}_y * {v}_w.y + {v}_z * {v}_w.z;"));
+        self.emit(format!(
+            "    let {v}_wa = pow(abs(in.world_normal), vec3<f32>({sharp}));"
+        ));
+        self.emit(format!(
+            "    let {v}_w = {v}_wa / ({v}_wa.x + {v}_wa.y + {v}_wa.z + 0.000001);"
+        ));
+        self.emit(format!(
+            "    let {v}_x = {fbm_fn}({v}_p.yz, i32({octaves}), {lac}, {pers});"
+        ));
+        self.emit(format!(
+            "    let {v}_y = {fbm_fn}({v}_p.xz, i32({octaves}), {lac}, {pers});"
+        ));
+        self.emit(format!(
+            "    let {v}_z = {fbm_fn}({v}_p.xy, i32({octaves}), {lac}, {pers});"
+        ));
+        self.emit(format!(
+            "    let {v} = {v}_x * {v}_w.x + {v}_y * {v}_w.y + {v}_z * {v}_w.z;"
+        ));
         self.set_out(id, "value", v);
     }
 
@@ -434,7 +461,9 @@ impl<'a> Ctx<'a> {
             }
             "input/view_direction" => {
                 let v = self.next_var("view_dir");
-                self.emit(format!("    let {v} = normalize(view.world_position.xyz - in.world_position.xyz);"));
+                self.emit(format!(
+                    "    let {v} = normalize(view.world_position.xyz - in.world_position.xyz);"
+                ));
                 self.set_out(id, "direction", v);
             }
             "input/time" => {
@@ -466,18 +495,12 @@ impl<'a> Ctx<'a> {
                 };
                 let center = self.input(node, "center");
                 let v = self.next_var("polar");
-                self.emit(format!(
-                    "    let {v}_d = {uv} - {center};"
-                ));
+                self.emit(format!("    let {v}_d = {uv} - {center};"));
                 self.emit(format!(
                     "    let {v}_angle = fract(atan2({v}_d.y, {v}_d.x) / 6.2831853 + 1.0);"
                 ));
-                self.emit(format!(
-                    "    let {v}_radius = length({v}_d);"
-                ));
-                self.emit(format!(
-                    "    let {v} = vec2<f32>({v}_angle, {v}_radius);"
-                ));
+                self.emit(format!("    let {v}_radius = length({v}_d);"));
+                self.emit(format!("    let {v} = vec2<f32>({v}_angle, {v}_radius);"));
                 self.set_out(id, "uv", v.clone());
                 self.set_out(id, "angle", format!("{v}_angle"));
                 self.set_out(id, "radius", format!("{v}_radius"));
@@ -494,9 +517,7 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v}_cs = vec2<f32>(cos({angle}), sin({angle}));"
                 ));
-                self.emit(format!(
-                    "    let {v}_d = {uv} - {center};"
-                ));
+                self.emit(format!("    let {v}_d = {uv} - {center};"));
                 self.emit(format!(
                     "    let {v} = {center} + vec2<f32>({v}_d.x * {v}_cs.x - {v}_d.y * {v}_cs.y, {v}_d.x * {v}_cs.y + {v}_d.y * {v}_cs.x);"
                 ));
@@ -530,7 +551,11 @@ impl<'a> Ctx<'a> {
             }
             "input/object_position" => {
                 // mesh_functions provides mesh[in.instance_index]
-                self.set_out(id, "position", "mesh_functions::get_world_from_local(in.instance_index)[3].xyz".into());
+                self.set_out(
+                    id,
+                    "position",
+                    "mesh_functions::get_world_from_local(in.instance_index)[3].xyz".into(),
+                );
             }
 
             // ── Parameters ──────────────────────────────────────────
@@ -549,9 +574,7 @@ impl<'a> Ctx<'a> {
                 };
                 let slot = self.intern_parameter(&name, ParamKind::Float, PinValue::Float(default));
                 let v = self.next_var("param_f");
-                self.emit(format!(
-                    "    let {v} = material_params.slots[{slot}].x;"
-                ));
+                self.emit(format!("    let {v} = material_params.slots[{slot}].x;"));
                 self.set_out(id, "value", v);
             }
             "param/color" => {
@@ -573,9 +596,7 @@ impl<'a> Ctx<'a> {
                 };
                 let slot = self.intern_parameter(&name, ParamKind::Vec2, PinValue::Vec2(default));
                 let v = self.next_var("param_v2");
-                self.emit(format!(
-                    "    let {v} = material_params.slots[{slot}].xy;"
-                ));
+                self.emit(format!("    let {v} = material_params.slots[{slot}].xy;"));
                 self.set_out(id, "value", v);
             }
             "param/vec3" => {
@@ -586,9 +607,7 @@ impl<'a> Ctx<'a> {
                 };
                 let slot = self.intern_parameter(&name, ParamKind::Vec3, PinValue::Vec3(default));
                 let v = self.next_var("param_v3");
-                self.emit(format!(
-                    "    let {v} = material_params.slots[{slot}].xyz;"
-                ));
+                self.emit(format!("    let {v} = material_params.slots[{slot}].xyz;"));
                 self.set_out(id, "value", v);
             }
             "param/vec4" => {
@@ -624,8 +643,16 @@ impl<'a> Ctx<'a> {
                 } else {
                     "mat_uv".to_string()
                 };
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 let slot = self.next_texture_binding;
@@ -642,7 +669,9 @@ impl<'a> Ctx<'a> {
 
                 let uv_expr = uv;
                 let v = self.next_var("tex");
-                self.emit(format!("    let {v} = textureSample({tex_name}, {samp_name}, {uv_expr});"));
+                self.emit(format!(
+                    "    let {v} = textureSample({tex_name}, {samp_name}, {uv_expr});"
+                ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -658,8 +687,16 @@ impl<'a> Ctx<'a> {
                     "mat_uv".to_string()
                 };
                 let strength = self.input(node, "strength");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 let slot = self.next_texture_binding;
@@ -676,8 +713,12 @@ impl<'a> Ctx<'a> {
 
                 let raw = self.next_var("nraw");
                 let n = self.next_var("nmap");
-                self.emit(format!("    let {raw} = textureSample({tex_name}, {samp_name}, {uv}).rgb * 2.0 - 1.0;"));
-                self.emit(format!("    let {n} = normalize(vec3<f32>({raw}.xy * {strength}, {raw}.z));"));
+                self.emit(format!(
+                    "    let {raw} = textureSample({tex_name}, {samp_name}, {uv}).rgb * 2.0 - 1.0;"
+                ));
+                self.emit(format!(
+                    "    let {n} = normalize(vec3<f32>({raw}.xy * {strength}, {raw}.z));"
+                ));
                 self.set_out(id, "normal", n);
             }
 
@@ -688,8 +729,16 @@ impl<'a> Ctx<'a> {
                     "mat_uv".to_string()
                 };
                 let lod = self.input(node, "lod");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 let slot = self.next_texture_binding;
@@ -705,7 +754,9 @@ impl<'a> Ctx<'a> {
                 });
 
                 let v = self.next_var("texl");
-                self.emit(format!("    let {v} = textureSampleLevel({tex_name}, {samp_name}, {uv}, {lod});"));
+                self.emit(format!(
+                    "    let {v} = textureSampleLevel({tex_name}, {samp_name}, {uv}, {lod});"
+                ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -722,8 +773,16 @@ impl<'a> Ctx<'a> {
                 };
                 let ddx = self.input(node, "ddx");
                 let ddy = self.input(node, "ddy");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 let slot = self.next_texture_binding;
@@ -739,7 +798,9 @@ impl<'a> Ctx<'a> {
                 });
 
                 let v = self.next_var("texg");
-                self.emit(format!("    let {v} = textureSampleGrad({tex_name}, {samp_name}, {uv}, {ddx}, {ddy});"));
+                self.emit(format!(
+                    "    let {v} = textureSampleGrad({tex_name}, {samp_name}, {uv}, {ddx}, {ddy});"
+                ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -752,8 +813,16 @@ impl<'a> Ctx<'a> {
                 self.uses_cube_0 = true;
                 let dir = self.input(node, "direction");
                 let lod = self.input(node, "lod");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
@@ -778,8 +847,16 @@ impl<'a> Ctx<'a> {
                     "mat_uv".to_string()
                 };
                 let layer = self.input(node, "layer");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
@@ -802,8 +879,16 @@ impl<'a> Ctx<'a> {
             "texture/sample_3d" => {
                 self.uses_volume_0 = true;
                 let uvw = self.input(node, "uvw");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
@@ -814,7 +899,9 @@ impl<'a> Ctx<'a> {
                     });
                 }
                 let v = self.next_var("t3d");
-                self.emit(format!("    let {v} = textureSample(volume_0, volume_0_sampler, {uvw});"));
+                self.emit(format!(
+                    "    let {v} = textureSample(volume_0, volume_0_sampler, {uvw});"
+                ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -826,8 +913,16 @@ impl<'a> Ctx<'a> {
             "texture/triplanar" => {
                 let scale = self.input(node, "scale");
                 let sharpness = self.input(node, "sharpness");
-                let path = node.input_values.get("texture")
-                    .and_then(|v| if let PinValue::TexturePath(s) = v { Some(s.clone()) } else { None })
+                let path = node
+                    .input_values
+                    .get("texture")
+                    .and_then(|v| {
+                        if let PinValue::TexturePath(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 let slot = self.next_texture_binding;
@@ -844,7 +939,9 @@ impl<'a> Ctx<'a> {
 
                 let w = self.next_var("tri_w");
                 let v = self.next_var("tri");
-                self.emit(format!("    let {w} = pow(abs(in.world_normal), vec3<f32>({sharpness}));"));
+                self.emit(format!(
+                    "    let {w} = pow(abs(in.world_normal), vec3<f32>({sharpness}));"
+                ));
                 self.emit(format!("    let {w} = {w} / ({w}.x + {w}.y + {w}.z);"));
                 let p = format!("in.world_position.xyz * {scale}");
                 self.emit(format!("    let {v} = textureSample({tex_name}, {samp_name}, {p}.yz) * {w}.x + textureSample({tex_name}, {samp_name}, {p}.xz) * {w}.y + textureSample({tex_name}, {samp_name}, {p}.xy) * {w}.z;"));
@@ -1001,7 +1098,9 @@ impl<'a> Ctx<'a> {
                 let a = self.input(node, "a");
                 let b = self.input(node, "b");
                 let v = self.next_var("mod");
-                self.emit(format!("    let {v} = {a} - {b} * floor({a} / max({b}, 0.000001));"));
+                self.emit(format!(
+                    "    let {v} = {a} - {b} * floor({a} / max({b}, 0.000001));"
+                ));
                 self.set_out(id, "result", v);
             }
             "math/sign" => {
@@ -1173,8 +1272,16 @@ impl<'a> Ctx<'a> {
                 let choices = ["out_x", "out_y", "out_z", "out_w"];
                 let mut parts = Vec::with_capacity(4);
                 for pin in &choices {
-                    let sel = node.input_values.get(*pin)
-                        .and_then(|v| if let PinValue::Int(i) = v { Some(*i) } else { None })
+                    let sel = node
+                        .input_values
+                        .get(*pin)
+                        .and_then(|v| {
+                            if let PinValue::Int(i) = v {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or(match *pin {
                             "out_x" => 0,
                             "out_y" => 1,
@@ -1201,7 +1308,9 @@ impl<'a> Ctx<'a> {
 
             // ── Color ───────────────────────────────────────────────
             "color/constant" => {
-                let val = node.input_values.get("color")
+                let val = node
+                    .input_values
+                    .get("color")
                     .map(|v| v.to_wgsl())
                     .unwrap_or_else(|| "vec4<f32>(1.0, 1.0, 1.0, 1.0)".to_string());
                 self.set_out(id, "color", val.clone());
@@ -1212,19 +1321,25 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "a", format!("{val}.a"));
             }
             "color/float" => {
-                let val = node.input_values.get("value")
+                let val = node
+                    .input_values
+                    .get("value")
                     .map(|v| v.to_wgsl())
                     .unwrap_or_else(|| "0.0".to_string());
                 self.set_out(id, "value", val);
             }
             "color/vec2" => {
-                let val = node.input_values.get("value")
+                let val = node
+                    .input_values
+                    .get("value")
                     .map(|v| v.to_wgsl())
                     .unwrap_or_else(|| "vec2<f32>(0.0, 0.0)".to_string());
                 self.set_out(id, "value", val);
             }
             "color/vec3" => {
-                let val = node.input_values.get("value")
+                let val = node
+                    .input_values
+                    .get("value")
                     .map(|v| v.to_wgsl())
                     .unwrap_or_else(|| "vec3<f32>(0.0, 0.0, 0.0)".to_string());
                 self.set_out(id, "value", val);
@@ -1244,7 +1359,9 @@ impl<'a> Ctx<'a> {
                 let c = self.input(node, "c");
                 let d = self.input(node, "d");
                 let v = self.next_var("pal");
-                self.emit(format!("    let {v} = {a} + {b} * cos(6.2831853 * ({c} * {t} + {d}));"));
+                self.emit(format!(
+                    "    let {v} = {a} + {b} * cos(6.2831853 * ({c} * {t} + {d}));"
+                ));
                 self.set_out(id, "color", v);
             }
             "color/fresnel" => {
@@ -1257,14 +1374,18 @@ impl<'a> Ctx<'a> {
                 self.uses_srgb = true;
                 let c = self.input(node, "color");
                 let v = self.next_var("s2l");
-                self.emit(format!("    let {v} = vec4<f32>(mat_srgb_to_linear(({c}).rgb), ({c}).a);"));
+                self.emit(format!(
+                    "    let {v} = vec4<f32>(mat_srgb_to_linear(({c}).rgb), ({c}).a);"
+                ));
                 self.set_out(id, "result", v);
             }
             "color/linear_to_srgb" => {
                 self.uses_srgb = true;
                 let c = self.input(node, "color");
                 let v = self.next_var("l2s");
-                self.emit(format!("    let {v} = vec4<f32>(mat_linear_to_srgb(({c}).rgb), ({c}).a);"));
+                self.emit(format!(
+                    "    let {v} = vec4<f32>(mat_linear_to_srgb(({c}).rgb), ({c}).a);"
+                ));
                 self.set_out(id, "result", v);
             }
             "color/rgb_to_hsv" => {
@@ -1297,7 +1418,9 @@ impl<'a> Ctx<'a> {
             "color/luminance" => {
                 let rgb = self.input(node, "rgb");
                 let v = self.next_var("lum");
-                self.emit(format!("    let {v} = dot({rgb}, vec3<f32>(0.2126, 0.7152, 0.0722));"));
+                self.emit(format!(
+                    "    let {v} = dot({rgb}, vec3<f32>(0.2126, 0.7152, 0.0722));"
+                ));
                 self.set_out(id, "value", v);
             }
             "color/gamma" => {
@@ -1334,8 +1457,16 @@ impl<'a> Ctx<'a> {
                 let base = self.input(node, "base");
                 let blnd = self.input(node, "blend");
                 let op = self.input(node, "opacity");
-                let mode = node.input_values.get("mode")
-                    .and_then(|v| if let PinValue::Int(i) = v { Some(*i) } else { None })
+                let mode = node
+                    .input_values
+                    .get("mode")
+                    .and_then(|v| {
+                        if let PinValue::Int(i) = v {
+                            Some(*i)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(0);
                 let v = self.next_var("blend");
                 self.emit(format!(
@@ -1361,9 +1492,9 @@ impl<'a> Ctx<'a> {
                 let v = self.next_var("vor");
                 self.emit(format!("    let {v} = mat_voronoi_full({uv} * {scale});"));
                 self.set_out(id, "distance", format!("{v}.x"));
-                self.set_out(id, "f2",       format!("{v}.y"));
-                self.set_out(id, "edge",     format!("{v}.z"));
-                self.set_out(id, "cell_id",  format!("{v}.w"));
+                self.set_out(id, "f2", format!("{v}.y"));
+                self.set_out(id, "edge", format!("{v}.z"));
+                self.set_out(id, "cell_id", format!("{v}.w"));
             }
             "procedural/noise_fbm" => {
                 self.uses_noise = true;
@@ -1374,7 +1505,9 @@ impl<'a> Ctx<'a> {
                 let lac = self.input(node, "lacunarity");
                 let pers = self.input(node, "persistence");
                 let v = self.next_var("fbm");
-                self.emit(format!("    let {v} = mat_fbm({uv} * {scale}, i32({octaves}), {lac}, {pers});"));
+                self.emit(format!(
+                    "    let {v} = mat_fbm({uv} * {scale}, i32({octaves}), {lac}, {pers});"
+                ));
                 self.set_out(id, "value", v);
             }
             "procedural/checkerboard" => {
@@ -1396,7 +1529,9 @@ impl<'a> Ctx<'a> {
                 let v = self.next_var("brick");
                 let buv = self.next_var("buv");
                 self.emit(format!("    var {buv} = {uv} * {scale};"));
-                self.emit(format!("    {buv}.x = {buv}.x + step(1.0, fract({buv}.y * 0.5)) * 0.5;"));
+                self.emit(format!(
+                    "    {buv}.x = {buv}.x + step(1.0, fract({buv}.y * 0.5)) * 0.5;"
+                ));
                 self.emit(format!("    let {v} = step({mortar}, fract({buv}.x)) * step({mortar}, fract({buv}.y));"));
                 self.set_out(id, "value", v);
             }
@@ -1458,7 +1593,9 @@ impl<'a> Ctx<'a> {
                 let lac = self.input(node, "lacunarity");
                 let pers = self.input(node, "persistence");
                 let v = self.next_var("ridged");
-                self.emit(format!("    let {v} = mat_fbm_ridged({uv} * {scale}, i32({octaves}), {lac}, {pers});"));
+                self.emit(format!(
+                    "    let {v} = mat_fbm_ridged({uv} * {scale}, i32({octaves}), {lac}, {pers});"
+                ));
                 self.set_out(id, "value", v);
             }
             "procedural/noise_turbulence" => {
@@ -1482,7 +1619,9 @@ impl<'a> Ctx<'a> {
                 let lac = self.input(node, "lacunarity");
                 let pers = self.input(node, "persistence");
                 let v = self.next_var("billow");
-                self.emit(format!("    let {v} = mat_fbm_billow({uv} * {scale}, i32({octaves}), {lac}, {pers});"));
+                self.emit(format!(
+                    "    let {v} = mat_fbm_billow({uv} * {scale}, i32({octaves}), {lac}, {pers});"
+                ));
                 self.set_out(id, "value", v);
             }
             "procedural/noise_white" => {
@@ -1500,7 +1639,9 @@ impl<'a> Ctx<'a> {
                 let scale = self.input(node, "scale");
                 let eps = self.input(node, "epsilon");
                 let v = self.next_var("curl");
-                self.emit(format!("    let {v} = mat_curl_noise({uv} * {scale}, {eps});"));
+                self.emit(format!(
+                    "    let {v} = mat_curl_noise({uv} * {scale}, {eps});"
+                ));
                 self.set_out(id, "flow", v);
             }
             "procedural/gradient_radial" => {
@@ -1558,7 +1699,9 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "uv", v);
             }
             "procedural/noise_triplanar_fbm" => {
-                self.emit_triplanar_noise(node, id, "mat_fbm", "tri_fbm", /*extra_arg_arity=*/3);
+                self.emit_triplanar_noise(
+                    node, id, "mat_fbm", "tri_fbm", /*extra_arg_arity=*/ 3,
+                );
                 self.uses_noise = true;
                 self.uses_fbm = true;
             }
@@ -1586,12 +1729,18 @@ impl<'a> Ctx<'a> {
                 let sharp = self.input(node, "sharpness");
                 let v = self.next_var("tri_vor");
                 self.emit(format!("    let {v}_p = in.world_position.xyz * {scale};"));
-                self.emit(format!("    let {v}_wa = pow(abs(in.world_normal), vec3<f32>({sharp}));"));
-                self.emit(format!("    let {v}_w = {v}_wa / ({v}_wa.x + {v}_wa.y + {v}_wa.z + 0.000001);"));
+                self.emit(format!(
+                    "    let {v}_wa = pow(abs(in.world_normal), vec3<f32>({sharp}));"
+                ));
+                self.emit(format!(
+                    "    let {v}_w = {v}_wa / ({v}_wa.x + {v}_wa.y + {v}_wa.z + 0.000001);"
+                ));
                 self.emit(format!("    let {v}_x = mat_voronoi_full({v}_p.yz);"));
                 self.emit(format!("    let {v}_y = mat_voronoi_full({v}_p.xz);"));
                 self.emit(format!("    let {v}_z = mat_voronoi_full({v}_p.xy);"));
-                self.emit(format!("    let {v} = {v}_x * {v}_w.x + {v}_y * {v}_w.y + {v}_z * {v}_w.z;"));
+                self.emit(format!(
+                    "    let {v} = {v}_x * {v}_w.x + {v}_y * {v}_w.y + {v}_z * {v}_w.z;"
+                ));
                 self.set_out(id, "distance", format!("{v}.x"));
                 self.set_out(id, "cell_id", format!("{v}.w"));
             }
@@ -1607,7 +1756,9 @@ impl<'a> Ctx<'a> {
                 let scale = self.input(node, "scale");
                 let variation = self.input(node, "variation");
                 let v = self.next_var("hex");
-                self.emit(format!("    let {v} = mat_hex_tile({uv} * {scale}, {variation});"));
+                self.emit(format!(
+                    "    let {v} = mat_hex_tile({uv} * {scale}, {variation});"
+                ));
                 self.set_out(id, "uv1", format!("{v}.uv_a"));
                 self.set_out(id, "uv2", format!("{v}.uv_b"));
                 self.set_out(id, "uv3", format!("{v}.uv_c"));
@@ -1634,8 +1785,12 @@ impl<'a> Ctx<'a> {
                 let v2 = self.next_var("flow_uv2");
                 let blend = self.next_var("flow_blend");
                 self.emit(format!("    let {phase} = fract(globals.time * {speed});"));
-                self.emit(format!("    let {v1} = {uv} + {flow} * {strength} * {phase};"));
-                self.emit(format!("    let {v2} = {uv} + {flow} * {strength} * fract({phase} + 0.5);"));
+                self.emit(format!(
+                    "    let {v1} = {uv} + {flow} * {strength} * {phase};"
+                ));
+                self.emit(format!(
+                    "    let {v2} = {uv} + {flow} * {strength} * fract({phase} + 0.5);"
+                ));
                 self.emit(format!("    let {blend} = abs(2.0 * {phase} - 1.0);"));
                 self.set_out(id, "uv1", v1);
                 self.set_out(id, "uv2", v2);
@@ -1646,13 +1801,17 @@ impl<'a> Ctx<'a> {
                 let amp = self.input(node, "amplitude");
                 let offset = self.input(node, "offset");
                 let v = self.next_var("swave");
-                self.emit(format!("    let {v} = sin(globals.time * {freq} + {offset}) * {amp};"));
+                self.emit(format!(
+                    "    let {v} = sin(globals.time * {freq} + {offset}) * {amp};"
+                ));
                 self.set_out(id, "value", v);
             }
             "animation/ping_pong" => {
                 let speed = self.input(node, "speed");
                 let v = self.next_var("pp");
-                self.emit(format!("    let {v} = abs(fract(globals.time * {speed}) * 2.0 - 1.0);"));
+                self.emit(format!(
+                    "    let {v} = abs(fract(globals.time * {speed}) * 2.0 - 1.0);"
+                ));
                 self.set_out(id, "value", v);
             }
             "animation/flipbook_uv" => {
@@ -1669,9 +1828,13 @@ impl<'a> Ctx<'a> {
                 self.emit(format!("    let {v}_rows = max({rows}, 1.0);"));
                 self.emit(format!("    let {v}_total = {v}_cols * {v}_rows;"));
                 self.emit(format!("    let {v}_idx = floor(({frame}) - floor(({frame}) / {v}_total) * {v}_total);"));
-                self.emit(format!("    let {v}_col = floor({v}_idx - floor({v}_idx / {v}_cols) * {v}_cols);"));
+                self.emit(format!(
+                    "    let {v}_col = floor({v}_idx - floor({v}_idx / {v}_cols) * {v}_cols);"
+                ));
                 self.emit(format!("    let {v}_row = floor({v}_idx / {v}_cols);"));
-                self.emit(format!("    let {v}_tile = vec2<f32>(1.0 / {v}_cols, 1.0 / {v}_rows);"));
+                self.emit(format!(
+                    "    let {v}_tile = vec2<f32>(1.0 / {v}_cols, 1.0 / {v}_rows);"
+                ));
                 self.emit(format!("    let {v} = fract({uv}) * {v}_tile + vec2<f32>({v}_col, {v}_row) * {v}_tile;"));
                 self.set_out(id, "uv", v);
             }
@@ -1706,7 +1869,9 @@ impl<'a> Ctx<'a> {
                 let dist = self.input(node, "distance");
                 let v = self.next_var("dfade");
                 // Simplified — actual depth fade needs scene depth texture
-                self.emit(format!("    let {v} = saturate(in.world_position.y / max({dist}, 0.001));"));
+                self.emit(format!(
+                    "    let {v} = saturate(in.world_position.y / max({dist}, 0.001));"
+                ));
                 self.set_out(id, "fade", v);
             }
             "utility/dpdx" => {
@@ -1765,8 +1930,16 @@ impl<'a> Ctx<'a> {
                 // Compile-time: only emit the selected branch. `input()` on the
                 // unselected pin is never called, so its upstream subgraph is not
                 // walked — that chain stays out of the shader entirely.
-                let use_a = node.input_values.get("use_a")
-                    .and_then(|v| if let PinValue::Bool(b) = v { Some(*b) } else { None })
+                let use_a = node
+                    .input_values
+                    .get("use_a")
+                    .and_then(|v| {
+                        if let PinValue::Bool(b) = v {
+                            Some(*b)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(true);
                 let selected = if use_a {
                     self.input(node, "a")
@@ -1778,18 +1951,39 @@ impl<'a> Ctx<'a> {
             "control/component_mask" => {
                 let vec = self.input(node, "vector");
                 let get_bool = |name: &str, default: bool| {
-                    node.input_values.get(name)
-                        .and_then(|v| if let PinValue::Bool(b) = v { Some(*b) } else { None })
+                    node.input_values
+                        .get(name)
+                        .and_then(|v| {
+                            if let PinValue::Bool(b) = v {
+                                Some(*b)
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or(default)
                 };
-                let kr = if get_bool("keep_r", true)  { format!("({vec}).x") } else { "0.0".to_string() };
-                let kg = if get_bool("keep_g", true)  { format!("({vec}).y") } else { "0.0".to_string() };
-                let kb = if get_bool("keep_b", true)  { format!("({vec}).z") } else { "0.0".to_string() };
-                let ka = if get_bool("keep_a", false) { format!("({vec}).w") } else { "0.0".to_string() };
+                let kr = if get_bool("keep_r", true) {
+                    format!("({vec}).x")
+                } else {
+                    "0.0".to_string()
+                };
+                let kg = if get_bool("keep_g", true) {
+                    format!("({vec}).y")
+                } else {
+                    "0.0".to_string()
+                };
+                let kb = if get_bool("keep_b", true) {
+                    format!("({vec}).z")
+                } else {
+                    "0.0".to_string()
+                };
+                let ka = if get_bool("keep_a", false) {
+                    format!("({vec}).w")
+                } else {
+                    "0.0".to_string()
+                };
                 let v = self.next_var("mask");
-                self.emit(format!(
-                    "    let {v} = vec4<f32>({kr}, {kg}, {kb}, {ka});"
-                ));
+                self.emit(format!("    let {v} = vec4<f32>({kr}, {kg}, {kb}, {ka});"));
                 self.set_out(id, "vector", v);
             }
             "control/greater_than" => {
@@ -1916,9 +2110,7 @@ impl<'a> Ctx<'a> {
                 let n = self.input(node, "normal");
                 let s = self.input(node, "strength");
                 let v = self.next_var("refuv");
-                self.emit(format!(
-                    "    let {v} = ({n}).xy * {s};"
-                ));
+                self.emit(format!("    let {v} = ({n}).xy * {s};"));
                 self.set_out(id, "offset", v);
             }
             "scene/screen_uv" => {
@@ -2014,13 +2206,22 @@ impl<'a> Ctx<'a> {
                 // In a top-level graph it's inert (no outputs pins to wire).
             }
             "function/call" => {
-                let fn_name = node.input_values.get("function")
-                    .and_then(|v| if let PinValue::String(s) = v { Some(s.clone()) } else { None })
+                let fn_name = node
+                    .input_values
+                    .get("function")
+                    .and_then(|v| {
+                        if let PinValue::String(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_default();
 
                 if fn_name.is_empty() || self.functions.is_none() {
                     // No registry or empty reference — degrade to pass-through.
-                    self.lines.push(format!("    // function/call: empty reference (id={id})"));
+                    self.lines
+                        .push(format!("    // function/call: empty reference (id={id})"));
                     self.set_out(id, "out_0", "vec4<f32>(0.0)".to_string());
                     self.set_out(id, "out_1", "vec4<f32>(0.0)".to_string());
                     self.set_out(id, "out_2", "vec4<f32>(0.0)".to_string());
@@ -2079,7 +2280,8 @@ impl<'a> Ctx<'a> {
             t if t.starts_with("output/") => {}
 
             unknown => {
-                self.lines.push(format!("    // Unknown node type: {unknown}"));
+                self.lines
+                    .push(format!("    // Unknown node type: {unknown}"));
             }
         }
     }
@@ -2148,7 +2350,10 @@ pub fn compile_with_functions(
             .map(|p| p.name.clone())
             .collect()
     } else {
-        errors.push(format!("Unknown output node type: {}", output_node.node_type));
+        errors.push(format!(
+            "Unknown output node type: {}",
+            output_node.node_type
+        ));
         Vec::new()
     };
 
@@ -2164,12 +2369,8 @@ pub fn compile_with_functions(
         MaterialDomain::Surface | MaterialDomain::Vegetation => {
             build_pbr_shader(&ctx, &resolved, graph.domain)
         }
-        MaterialDomain::TerrainLayer => {
-            build_terrain_layer_shader(&ctx, &resolved)
-        }
-        MaterialDomain::Unlit => {
-            build_unlit_shader(&ctx, &resolved)
-        }
+        MaterialDomain::TerrainLayer => build_terrain_layer_shader(&ctx, &resolved),
+        MaterialDomain::Unlit => build_unlit_shader(&ctx, &resolved),
     };
 
     let vertex_shader = if graph.domain == MaterialDomain::Vegetation {
@@ -2199,15 +2400,18 @@ pub fn compile_with_functions(
 fn noise_helpers(ctx: &Ctx) -> String {
     let mut s = String::new();
     if ctx.uses_noise || ctx.uses_hash {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_hash(p: vec2<f32>) -> f32 {
     let h = dot(p, vec2<f32>(127.1, 311.7));
     return fract(sin(h) * 43758.5453123);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_noise {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 // Random gradient for Perlin-style noise
 fn mat_hash_grad(p: vec2<f32>) -> vec2<f32> {
     let k = vec2<f32>(
@@ -2231,10 +2435,12 @@ fn mat_noise(p: vec2<f32>) -> f32 {
 
     return mix(mix(g00, g10, u.x), mix(g01, g11, u.x), u.y) * 0.5 + 0.5;
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_fbm {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 // FBM with inter-octave rotation — breaks grid-aligned artifacts of basic noise
 fn mat_fbm(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {
     var p = uv;
@@ -2249,10 +2455,12 @@ fn mat_fbm(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f3
     }
     return value;
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_fbm_ridged {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_fbm_ridged(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {
     var p = uv;
     var value = 0.0;
@@ -2269,10 +2477,12 @@ fn mat_fbm_ridged(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32
     }
     return value / max(total, 0.000001);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_fbm_turbulence {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_fbm_turbulence(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {
     var p = uv;
     var value = 0.0;
@@ -2288,10 +2498,12 @@ fn mat_fbm_turbulence(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence:
     }
     return value / max(total, 0.000001);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_fbm_billow {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_fbm_billow(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {
     var p = uv;
     var value = 0.0;
@@ -2308,10 +2520,12 @@ fn mat_fbm_billow(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32
     }
     return value / max(total, 0.000001);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_curl {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_curl_noise(uv: vec2<f32>, eps: f32) -> vec2<f32> {
     let e = max(eps, 0.0001);
     let n1 = mat_noise(uv + vec2<f32>(0.0, e));
@@ -2321,10 +2535,12 @@ fn mat_curl_noise(uv: vec2<f32>, eps: f32) -> vec2<f32> {
     // 2D curl: (∂n/∂y, -∂n/∂x)
     return vec2<f32>((n1 - n2) / (2.0 * e), -(n3 - n4) / (2.0 * e));
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_voronoi {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_voronoi(p: vec2<f32>) -> vec2<f32> {
     let n = floor(p);
     let f = fract(p);
@@ -2343,10 +2559,12 @@ fn mat_voronoi(p: vec2<f32>) -> vec2<f32> {
     }
     return vec2<f32>(min_dist, cell);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_voronoi_full {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 // Extended Voronoi — returns (F1, F2, edge_dist, cell_id).
 // Edge distance uses a second pass that compares F1 neighbors as in IQ's article.
 fn mat_voronoi_full(p: vec2<f32>) -> vec4<f32> {
@@ -2392,10 +2610,12 @@ fn mat_voronoi_full(p: vec2<f32>) -> vec4<f32> {
 
     return vec4<f32>(sqrt(f1), sqrt(f2), edge, cell);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_srgb {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let cutoff = vec3<f32>(0.04045);
     let lo = c / 12.92;
@@ -2409,7 +2629,8 @@ fn mat_linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
     let hi = 1.055 * pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
     return select(hi, lo, c <= cutoff);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_hsv {
         s.push_str(r#"
@@ -2434,13 +2655,15 @@ fn mat_hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
 "#);
     }
     if ctx.uses_scene_depth {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_linearize_depth(ndc_depth: f32) -> f32 {
     let near = view.clip_from_view[3][2];
     let far_factor = view.clip_from_view[2][2];
     return near / (far_factor + ndc_depth);
 }
-"#);
+"#,
+        );
     }
     if ctx.uses_hex_tile {
         // Hex anti-tiling (Heitz & Neyret 2018 / "Hex Tiling" by Jasper Flick).
@@ -2509,7 +2732,8 @@ fn mat_hex_tile(uv: vec2<f32>, variation: f32) -> HexTile {
 "#);
     }
     if ctx.uses_blend {
-        s.push_str(r#"
+        s.push_str(
+            r#"
 fn mat_blend(base: vec4<f32>, blnd: vec4<f32>, opacity: f32, mode: i32) -> vec4<f32> {
     let b = base.rgb;
     let t = blnd.rgb;
@@ -2538,7 +2762,8 @@ fn mat_blend(base: vec4<f32>, blnd: vec4<f32>, opacity: f32, mode: i32) -> vec4<
     }
     return vec4<f32>(mix(b, r, opacity), base.a);
 }
-"#);
+"#,
+        );
     }
     s
 }
@@ -2564,7 +2789,8 @@ fn fragment_input_aliases() -> String {
 #else
     let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 #endif
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn texture_bindings_wgsl(ctx: &Ctx) -> String {
@@ -2663,7 +2889,11 @@ fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
 ///      `pbr_input.material` / `pbr_input.N` / etc. based on which output pins
 ///      the user has either connected OR overridden via input_values.
 ///   3. `apply_pbr_lighting` + `main_pass_post_lighting_processing` do the rest.
-fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: MaterialDomain) -> String {
+fn build_pbr_shader(
+    ctx: &Ctx,
+    resolved: &HashMap<String, String>,
+    _domain: MaterialDomain,
+) -> String {
     let output_node = ctx.graph.output_node().unwrap();
     let output_id = output_node.id;
     // A pin is considered "set" when the user either connected a graph to it
@@ -2712,15 +2942,21 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     }
     if is_connected("roughness") {
         let e = resolved.get("roughness").unwrap();
-        shader.push_str(&format!("    pbr_input.material.perceptual_roughness = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.perceptual_roughness = {e};\n"
+        ));
     }
     if is_connected("emissive") {
         let e = resolved.get("emissive").unwrap();
-        shader.push_str(&format!("    pbr_input.material.emissive = vec4<f32>({e}, 1.0);\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.emissive = vec4<f32>({e}, 1.0);\n"
+        ));
     }
     if is_connected("ao") {
         let e = resolved.get("ao").unwrap();
-        shader.push_str(&format!("    pbr_input.diffuse_occlusion = vec3<f32>({e});\n"));
+        shader.push_str(&format!(
+            "    pbr_input.diffuse_occlusion = vec3<f32>({e});\n"
+        ));
     }
     if is_connected("normal") {
         let e = resolved.get("normal").unwrap();
@@ -2742,11 +2978,15 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     // care of setting the CPU-side flag (see `requires_transmission`).
     if is_connected("specular_transmission") {
         let e = resolved.get("specular_transmission").unwrap();
-        shader.push_str(&format!("    pbr_input.material.specular_transmission = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.specular_transmission = {e};\n"
+        ));
     }
     if is_connected("diffuse_transmission") {
         let e = resolved.get("diffuse_transmission").unwrap();
-        shader.push_str(&format!("    pbr_input.material.diffuse_transmission = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.diffuse_transmission = {e};\n"
+        ));
     }
     if is_connected("thickness") {
         let e = resolved.get("thickness").unwrap();
@@ -2758,7 +2998,9 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     }
     if is_connected("attenuation_distance") {
         let e = resolved.get("attenuation_distance").unwrap();
-        shader.push_str(&format!("    pbr_input.material.attenuation_distance = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.attenuation_distance = {e};\n"
+        ));
     }
 
     // ── Clearcoat (car paint, lacquer) ────────────────────────────────
@@ -2768,7 +3010,9 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     }
     if is_connected("clearcoat_roughness") {
         let e = resolved.get("clearcoat_roughness").unwrap();
-        shader.push_str(&format!("    pbr_input.material.clearcoat_perceptual_roughness = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.clearcoat_perceptual_roughness = {e};\n"
+        ));
     }
 
     // ── Anisotropy (brushed metal, hair) ──────────────────────────────
@@ -2776,7 +3020,9 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
     // takes the rotation angle as a scalar (radians), so we build the vec2.
     if is_connected("anisotropy_strength") {
         let e = resolved.get("anisotropy_strength").unwrap();
-        shader.push_str(&format!("    pbr_input.material.anisotropy_strength = {e};\n"));
+        shader.push_str(&format!(
+            "    pbr_input.material.anisotropy_strength = {e};\n"
+        ));
     }
     if is_connected("anisotropy_rotation") {
         let e = resolved.get("anisotropy_rotation").unwrap();
@@ -2804,7 +3050,10 @@ fn build_pbr_shader(ctx: &Ctx, resolved: &HashMap<String, String>, _domain: Mate
 }
 
 fn build_terrain_layer_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
-    let base_color = resolved.get("base_color").cloned().unwrap_or("vec4<f32>(0.5, 0.5, 0.5, 1.0)".into());
+    let base_color = resolved
+        .get("base_color")
+        .cloned()
+        .unwrap_or("vec4<f32>(0.5, 0.5, 0.5, 1.0)".into());
     let metallic = resolved.get("metallic").cloned().unwrap_or("0.0".into());
     let roughness = resolved.get("roughness").cloned().unwrap_or("0.5".into());
     let _height = resolved.get("height").cloned().unwrap_or("0.5".into());
@@ -2896,7 +3145,10 @@ fn build_unlit_shader(ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
 }
 
 fn build_vegetation_vertex_shader(_ctx: &Ctx, resolved: &HashMap<String, String>) -> String {
-    let vertex_offset = resolved.get("vertex_offset").cloned().unwrap_or("vec3<f32>(0.0, 0.0, 0.0)".into());
+    let vertex_offset = resolved
+        .get("vertex_offset")
+        .cloned()
+        .unwrap_or("vec3<f32>(0.0, 0.0, 0.0)".into());
 
     let mut shader = String::new();
     shader.push_str("#import bevy_pbr::mesh_functions\n");
@@ -2913,7 +3165,9 @@ fn build_vegetation_vertex_shader(_ctx: &Ctx, resolved: &HashMap<String, String>
 
     // Wind vertex displacement — the resolved expression references globals.time
     // which is available since we imported Globals
-    shader.push_str(&format!("    world_pos = vec4<f32>(world_pos.xyz + {vertex_offset}, world_pos.w);\n"));
+    shader.push_str(&format!(
+        "    world_pos = vec4<f32>(world_pos.xyz + {vertex_offset}, world_pos.w);\n"
+    ));
 
     shader.push_str("    out.world_position = world_pos;\n");
     shader.push_str("    out.position = mesh_functions::mesh_position_world_to_clip(world_pos);\n");

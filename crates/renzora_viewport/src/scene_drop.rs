@@ -4,10 +4,10 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
+use renzora::core::{CurrentProject, EditorCamera};
 use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 use renzora_ui::{DocumentTabState, Toasts};
-use renzora::core::{CurrentProject, EditorCamera};
 
 use crate::ViewportState;
 
@@ -43,22 +43,30 @@ pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect
     if let Some(commands) = world.get_resource::<EditorCommands>() {
         commands.push(move |world: &mut World| {
             // Reject dropping a scene into itself.
-            let host_abs = world
-                .get_resource::<CurrentProject>()
-                .and_then(|p| {
-                    world.get_resource::<DocumentTabState>()
-                        .and_then(|t| t.tabs.get(t.active_tab).and_then(|tab| tab.scene_path.clone()))
-                        .map(|rel| p.resolve_path(&rel))
-                });
+            let host_abs = world.get_resource::<CurrentProject>().and_then(|p| {
+                world
+                    .get_resource::<DocumentTabState>()
+                    .and_then(|t| {
+                        t.tabs
+                            .get(t.active_tab)
+                            .and_then(|tab| tab.scene_path.clone())
+                    })
+                    .map(|rel| p.resolve_path(&rel))
+            });
             if let (Some(host_abs), Some(project_root)) = (
                 host_abs,
-                world.get_resource::<CurrentProject>().map(|p| p.path.clone()),
+                world
+                    .get_resource::<CurrentProject>()
+                    .map(|p| p.path.clone()),
             ) {
                 let mut cache = world
                     .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
                     .unwrap_or_default();
                 let cycle = renzora_engine::scene_io::would_create_reference_cycle(
-                    &mut cache, &project_root, &host_abs, &path,
+                    &mut cache,
+                    &project_root,
+                    &host_abs,
+                    &path,
                 );
                 world.insert_resource(cache);
                 if cycle {
@@ -70,12 +78,9 @@ pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect
             }
             let pos = compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO);
             let transform = Transform::from_translation(pos);
-            if let Some(entity) = renzora_engine::scene_io::spawn_scene_instance(
-                world,
-                &path,
-                None,
-                transform,
-            ) {
+            if let Some(entity) =
+                renzora_engine::scene_io::spawn_scene_instance(world, &path, None, transform)
+            {
                 if let Some(sel) = world.get_resource::<EditorSelection>() {
                     sel.set(Some(entity));
                 }

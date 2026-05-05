@@ -39,7 +39,9 @@ pub fn ui_theme_system(
     }
 
     // ── Only update style components that already exist on the entity ──
-    for (widget, fill, stroke, border_radius, opacity, clip_content, cursor, text, padding, is) in &mut styled_widgets {
+    for (widget, fill, stroke, border_radius, opacity, clip_content, cursor, text, padding, is) in
+        &mut styled_widgets
+    {
         let style = theme.widget_style(&widget.widget_type);
 
         if let Some(mut fill) = fill {

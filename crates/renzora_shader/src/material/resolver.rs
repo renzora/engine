@@ -11,7 +11,9 @@ use uuid::Uuid;
 use super::codegen::{self, FunctionRegistry, MaterialParam};
 use super::graph::{MaterialDomain, MaterialFunction, MaterialGraph};
 use super::material_ref::MaterialRef;
-use super::runtime::{FallbackTexture, GraphMaterial, GraphMaterialShaderState, new_graph_material};
+use super::runtime::{
+    new_graph_material, FallbackTexture, GraphMaterial, GraphMaterialShaderState,
+};
 use crate::runtime::{CodeShaderMaterial, ShaderCache};
 
 /// Scan the directory containing a material file for sibling
@@ -29,13 +31,19 @@ fn load_sibling_functions(material_path: &str) -> FunctionRegistry {
         if path.extension().and_then(|e| e.to_str()) != Some("material_function") {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(&path) else { continue; };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         match serde_json::from_str::<MaterialFunction>(&content) {
             Ok(mat_fn) => {
                 registry.insert(mat_fn.name.clone(), mat_fn);
             }
             Err(e) => {
-                warn!("Failed to parse material function '{}': {}", path.display(), e);
+                warn!(
+                    "Failed to parse material function '{}': {}",
+                    path.display(),
+                    e
+                );
             }
         }
     }
@@ -146,13 +154,27 @@ fn resolve_material_refs(
     file_reader: Option<Res<renzora::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
-    let Some(mut standard_materials) = standard_materials else { return; };
-    let Some(mut graph_materials) = graph_materials else { return; };
-    let Some(mut code_materials) = code_materials else { return; };
-    let Some(mut shaders) = shaders else { return; };
-    let Some(mut shader_state) = shader_state else { return; };
-    let Some(mut shader_cache) = shader_cache else { return; };
-    let Some(shader_registry) = shader_registry else { return; };
+    let Some(mut standard_materials) = standard_materials else {
+        return;
+    };
+    let Some(mut graph_materials) = graph_materials else {
+        return;
+    };
+    let Some(mut code_materials) = code_materials else {
+        return;
+    };
+    let Some(mut shaders) = shaders else {
+        return;
+    };
+    let Some(mut shader_state) = shader_state else {
+        return;
+    };
+    let Some(mut shader_cache) = shader_cache else {
+        return;
+    };
+    let Some(shader_registry) = shader_registry else {
+        return;
+    };
     let default_reader = renzora::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
     for (entity, mat_ref) in query.iter() {
@@ -163,20 +185,28 @@ fn resolve_material_refs(
         if let Some(handle) = cache.standard_materials.get(path) {
             // Strip any leftover GraphMaterial from a prior render frame so
             // the entity ends up with exactly one MeshMaterial3d component.
-            commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
+            commands
+                .entity(entity)
+                .remove::<MeshMaterial3d<GraphMaterial>>();
             commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
-                MaterialResolved { source_path: path.clone() },
+                MaterialResolved {
+                    source_path: path.clone(),
+                },
             ));
             continue;
         }
 
         // Check graph material cache (procedural path)
         if let Some(handle) = cache.graph_materials.get(path) {
-            commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+            commands
+                .entity(entity)
+                .remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
             commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
-                MaterialResolved { source_path: path.clone() },
+                MaterialResolved {
+                    source_path: path.clone(),
+                },
             ));
             continue;
         }
@@ -185,7 +215,9 @@ fn resolve_material_refs(
         if let Some(handle) = cache.code_materials.get(path) {
             commands.entity(entity).try_insert((
                 MeshMaterial3d(handle.clone()),
-                MaterialResolved { source_path: path.clone() },
+                MaterialResolved {
+                    source_path: path.clone(),
+                },
             ));
             continue;
         }
@@ -197,7 +229,10 @@ fn resolve_material_refs(
         } else if let Some(ref proj) = project {
             let raw = proj.resolve_path(path).to_string_lossy().to_string();
             let normalized = raw.replace('\\', "/");
-            normalized.strip_prefix("./").unwrap_or(&normalized).to_string()
+            normalized
+                .strip_prefix("./")
+                .unwrap_or(&normalized)
+                .to_string()
         } else {
             path.clone()
         };
@@ -237,11 +272,17 @@ fn resolve_material_refs(
             };
             match result {
                 Some(CompiledMaterial::Standard(handle)) => {
-                    cache.standard_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).remove::<MeshMaterial3d<GraphMaterial>>();
+                    cache
+                        .standard_materials
+                        .insert(path.clone(), handle.clone());
+                    commands
+                        .entity(entity)
+                        .remove::<MeshMaterial3d<GraphMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
+                        MaterialResolved {
+                            source_path: path.clone(),
+                        },
                     ));
                 }
                 Some(CompiledMaterial::Graph { handle, parameters }) => {
@@ -254,10 +295,14 @@ fn resolve_material_refs(
                             .master_meta
                             .insert(path.clone(), MasterMeta { parameters });
                     }
-                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands
+                        .entity(entity)
+                        .remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
+                        MaterialResolved {
+                            source_path: path.clone(),
+                        },
                     ));
                 }
                 None => {
@@ -265,9 +310,9 @@ fn resolve_material_refs(
                         "Failed to resolve material file: {} (derived={})",
                         path, is_derived
                     );
-                    commands.entity(entity).try_insert(
-                        MaterialResolved { source_path: path.clone() },
-                    );
+                    commands.entity(entity).try_insert(MaterialResolved {
+                        source_path: path.clone(),
+                    });
                 }
             }
         } else if path.ends_with(".shader") {
@@ -281,20 +326,28 @@ fn resolve_material_refs(
             ) {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands
+                        .entity(entity)
+                        .remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
+                        MaterialResolved {
+                            source_path: path.clone(),
+                        },
                     ));
                 }
                 None => {
                     warn!("Failed to resolve .shader: {}", path);
-                    commands.entity(entity).try_insert(
-                        MaterialResolved { source_path: path.clone() },
-                    );
+                    commands.entity(entity).try_insert(MaterialResolved {
+                        source_path: path.clone(),
+                    });
                 }
             }
-        } else if path.ends_with(".wgsl") || path.ends_with(".glsl") || path.ends_with(".frag") || path.ends_with(".vert") {
+        } else if path.ends_with(".wgsl")
+            || path.ends_with(".glsl")
+            || path.ends_with(".frag")
+            || path.ends_with(".vert")
+        {
             match resolve_raw_shader(
                 &fs_path,
                 &mut code_materials,
@@ -305,24 +358,28 @@ fn resolve_material_refs(
             ) {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
-                    commands.entity(entity).remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands
+                        .entity(entity)
+                        .remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
                     commands.entity(entity).try_insert((
                         MeshMaterial3d(handle),
-                        MaterialResolved { source_path: path.clone() },
+                        MaterialResolved {
+                            source_path: path.clone(),
+                        },
                     ));
                 }
                 None => {
                     warn!("Failed to resolve raw shader: {}", path);
-                    commands.entity(entity).try_insert(
-                        MaterialResolved { source_path: path.clone() },
-                    );
+                    commands.entity(entity).try_insert(MaterialResolved {
+                        source_path: path.clone(),
+                    });
                 }
             }
         } else {
             warn!("MaterialRef has unsupported extension: {}", path);
-            commands.entity(entity).try_insert(
-                MaterialResolved { source_path: path.clone() },
-            );
+            commands.entity(entity).try_insert(MaterialResolved {
+                source_path: path.clone(),
+            });
         }
     }
 }
@@ -431,10 +488,7 @@ fn resolve_raw_shader(
 /// Returns `false` on read errors / parse failures so missing or
 /// malformed files fall through to the master-resolver path, which
 /// already handles those cases gracefully.
-fn is_derived_material_file(
-    path: &str,
-    reader: &renzora::VirtualFileReader,
-) -> bool {
+fn is_derived_material_file(path: &str, reader: &renzora::VirtualFileReader) -> bool {
     use super::instance::MaterialInstance;
     let Some(content) = reader.read_string(path) else {
         return false;
@@ -479,9 +533,7 @@ fn resolve_material_file(
     // Trivial fast path: graph is just textures + factors → PBR pins.
     // Compiles directly to StandardMaterial; no shader codegen, shared with
     // Bevy's stock PBR pipeline. Imported glTF materials all land here.
-    if let Some(mat) =
-        super::standard_build::try_build_standard_material(&graph, asset_server)
-    {
+    if let Some(mat) = super::standard_build::try_build_standard_material(&graph, asset_server) {
         return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
     }
 
@@ -595,9 +647,7 @@ fn resolve_material_instance_file(
     // handles reflect the overrides. No shader compilation, no uniform
     // plumbing — just a different StandardMaterial asset.
     let patched = graph_with_overrides_applied(&master_graph, &instance.overrides);
-    if let Some(mat) =
-        super::standard_build::try_build_standard_material(&patched, asset_server)
-    {
+    if let Some(mat) = super::standard_build::try_build_standard_material(&patched, asset_server) {
         return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
     }
 
@@ -669,11 +719,14 @@ fn resolve_graph_material_from_graph(
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
 ) -> Option<(Handle<GraphMaterial>, Vec<MaterialParam>)> {
-
     // Load any sibling `.material_function` files in the same directory so the
     // graph can reference them via function/call nodes.
     let functions = load_sibling_functions(path);
-    let registry = if functions.is_empty() { None } else { Some(&functions) };
+    let registry = if functions.is_empty() {
+        None
+    } else {
+        Some(&functions)
+    };
 
     // Compile graph → WGSL
     let result = codegen::compile_with_functions(&graph, registry);
@@ -691,10 +744,7 @@ fn resolve_graph_material_from_graph(
     // `Handle<Shader>` directly (packed-struct + non-Copy).
     let shader_uuid = Uuid::new_v4();
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
-    let shader = Shader::from_wgsl(
-        result.fragment_shader,
-        format!("material://{}", path),
-    );
+    let shader = Shader::from_wgsl(result.fragment_shader, format!("material://{}", path));
     let _ = shaders.insert(&shader_handle, shader);
 
     // Build the ExtendedMaterial<StandardMaterial, SurfaceGraphExt>. The base
@@ -734,7 +784,9 @@ fn resolve_graph_material_from_graph(
     // decals) render as opaque garbage even when the alpha pin is wired up.
     mat.base.alpha_mode = match graph.alpha_mode {
         crate::material::graph::AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
-        crate::material::graph::AlphaMode::Mask { cutoff } => bevy::prelude::AlphaMode::Mask(cutoff),
+        crate::material::graph::AlphaMode::Mask { cutoff } => {
+            bevy::prelude::AlphaMode::Mask(cutoff)
+        }
         crate::material::graph::AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
     };
     mat.base.cull_mode = if graph.double_sided {
@@ -768,8 +820,7 @@ fn resolve_graph_material_from_graph(
     // Seed the parameter UBO from the master's authored defaults so the
     // master renders correctly out of the gate. Material instances will
     // overlay their per-instance values on top of this seed.
-    mat.extension.params.slots =
-        super::instance::build_default_param_slots(&result.parameters);
+    mat.extension.params.slots = super::instance::build_default_param_slots(&result.parameters);
 
     Some((materials.add(mat), result.parameters))
 }

@@ -44,9 +44,8 @@ impl EditorPanel for StudioPreviewPanel {
         let settings = world.get_resource::<StudioPreviewSettings>();
 
         let texture_id = preview.and_then(|p| {
-            p.texture_id.or_else(|| {
-                user_textures.and_then(|ut| ut.image_id(p.handle.id()))
-            })
+            p.texture_id
+                .or_else(|| user_textures.and_then(|ut| ut.image_id(p.handle.id())))
         });
 
         let (text_primary, text_muted, surface, accent) = world
@@ -104,10 +103,30 @@ impl EditorPanel for StudioPreviewPanel {
             }
 
             let tools = [
-                ToolBtn { icon: regular::BONE, tooltip: "Skeleton", active: show_skeleton, action: 0 },
-                ToolBtn { icon: regular::GRID_FOUR, tooltip: "Floor", active: show_floor, action: 1 },
-                ToolBtn { icon: regular::CUBE, tooltip: "Wireframe", active: show_wireframe, action: 2 },
-                ToolBtn { icon: regular::CROSSHAIR, tooltip: "Reset Camera", active: false, action: 3 },
+                ToolBtn {
+                    icon: regular::BONE,
+                    tooltip: "Skeleton",
+                    active: show_skeleton,
+                    action: 0,
+                },
+                ToolBtn {
+                    icon: regular::GRID_FOUR,
+                    tooltip: "Floor",
+                    active: show_floor,
+                    action: 1,
+                },
+                ToolBtn {
+                    icon: regular::CUBE,
+                    tooltip: "Wireframe",
+                    active: show_wireframe,
+                    action: 2,
+                },
+                ToolBtn {
+                    icon: regular::CROSSHAIR,
+                    tooltip: "Reset Camera",
+                    active: false,
+                    action: 3,
+                },
             ];
 
             const ICON_SIZE: f32 = 16.0;
@@ -117,13 +136,14 @@ impl EditorPanel for StudioPreviewPanel {
             let mut y_offset = toolbar_rect.min.y + BTN_PAD;
 
             for tool in &tools {
-                let btn_rect = Rect::from_min_size(
-                    Pos2::new(btn_x, y_offset),
-                    Vec2::new(BTN_SIZE, BTN_SIZE),
-                );
+                let btn_rect =
+                    Rect::from_min_size(Pos2::new(btn_x, y_offset), Vec2::new(BTN_SIZE, BTN_SIZE));
 
                 let hovered = tb_response.hovered()
-                    && ui.ctx().pointer_latest_pos().map_or(false, |p| btn_rect.contains(p));
+                    && ui
+                        .ctx()
+                        .pointer_latest_pos()
+                        .map_or(false, |p| btn_rect.contains(p));
 
                 // Background
                 let bg = if tool.active {
@@ -136,7 +156,13 @@ impl EditorPanel for StudioPreviewPanel {
                 tb_painter.rect_filled(btn_rect, 3.0, bg);
 
                 // Icon
-                let icon_color = if tool.active { accent } else if hovered { text_primary } else { text_muted };
+                let icon_color = if tool.active {
+                    accent
+                } else if hovered {
+                    text_primary
+                } else {
+                    text_muted
+                };
                 tb_painter.text(
                     btn_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -263,7 +289,8 @@ impl EditorPanel for StudioPreviewPanel {
                     let right = bevy::math::Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin());
                     let up = bevy::math::Vec3::Y;
                     let pan_speed = orbit.distance * 0.003;
-                    let new_target = orbit.target - right * delta.x * pan_speed + up * delta.y * pan_speed;
+                    let new_target =
+                        orbit.target - right * delta.x * pan_speed + up * delta.y * pan_speed;
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
                         cmds.push(move |world: &mut World| {
                             world.resource_mut::<StudioPreviewOrbit>().target = new_target;

@@ -54,7 +54,10 @@ pub struct ScriptComponent {
 
 impl ScriptComponent {
     pub fn new() -> Self {
-        Self { scripts: Vec::new(), next_id: 1 }
+        Self {
+            scripts: Vec::new(),
+            next_id: 1,
+        }
     }
 
     pub fn with_script(script_id: impl Into<String>) -> Self {

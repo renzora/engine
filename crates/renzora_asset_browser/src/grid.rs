@@ -7,7 +7,10 @@ use egui_phosphor::regular;
 use renzora_editor::{split_label_two_lines, AssetDragPayload, TileGrid, TileState};
 use renzora_theme::Theme;
 
-use crate::state::{file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection, SortMode};
+use crate::state::{
+    file_icon, folder_icon_color, format_file_size, is_hidden, AssetBrowserState, SortDirection,
+    SortMode,
+};
 use crate::thumbnails::{
     supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail,
 };
@@ -76,9 +79,7 @@ pub(crate) fn collect_entries(state: &AssetBrowserState) -> Option<Vec<GridEntry
     entries.sort_by(|a, b| {
         b.is_dir.cmp(&a.is_dir).then_with(|| {
             let cmp = match sort_mode {
-                SortMode::Name => {
-                    a.name.to_lowercase().cmp(&b.name.to_lowercase())
-                }
+                SortMode::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
                 SortMode::DateModified => {
                     let time_a = std::fs::metadata(&a.path)
                         .and_then(|m| m.modified())
@@ -89,9 +90,21 @@ pub(crate) fn collect_entries(state: &AssetBrowserState) -> Option<Vec<GridEntry
                     time_a.cmp(&time_b)
                 }
                 SortMode::Type => {
-                    let ext_a = a.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    let ext_b = b.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    ext_a.cmp(&ext_b).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+                    let ext_a = a
+                        .path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    let ext_b = b
+                        .path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    ext_a
+                        .cmp(&ext_b)
+                        .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
                 }
                 SortMode::Size => {
                     let size_a = std::fs::metadata(&a.path).map(|m| m.len()).unwrap_or(0);
@@ -193,12 +206,17 @@ pub fn grid_ui_interactive(
     }
 
     // Delete key — only when this panel area has focus
-    if ui.ui_contains_pointer() && ui.input(|i| i.key_pressed(egui::Key::Delete)) && !state.selected_assets.is_empty() {
+    if ui.ui_contains_pointer()
+        && ui.input(|i| i.key_pressed(egui::Key::Delete))
+        && !state.selected_assets.is_empty()
+    {
         state.pending_delete = state.selected_assets.iter().cloned().collect();
     }
 
     // Ctrl+D to duplicate
-    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D)) && !state.selected_assets.is_empty() {
+    if ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::D))
+        && !state.selected_assets.is_empty()
+    {
         ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::D));
         ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::D));
         state.duplicate_selected();
@@ -277,8 +295,12 @@ pub fn grid_ui_interactive(
 
                 // Drop target: folder tiles under the pointer during an active drag
                 // Can't use response.hovered() because egui gives hover to the drag source
-                if entry.is_dir && !state.drag_moving.is_empty() && !state.drag_moving.contains(&entry.path) {
-                    let pointer_over = ctx.input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                if entry.is_dir
+                    && !state.drag_moving.is_empty()
+                    && !state.drag_moving.contains(&entry.path)
+                {
+                    let pointer_over = ctx
+                        .input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
                         .map(|p| tile.rect.contains(p))
                         .unwrap_or(false);
                     if pointer_over {
@@ -324,16 +346,10 @@ pub fn grid_ui_interactive(
                         || supports_model_thumbnail(&entry.name));
                 if supports_any_thumb {
                     if let Some(tex_id) = thumbnails.get(&entry.path) {
-                        let uv = egui::Rect::from_min_max(
-                            egui::pos2(0.0, 0.0),
-                            egui::pos2(1.0, 1.0),
-                        );
-                        ui.painter().image(
-                            tex_id,
-                            tile.thumbnail_rect,
-                            uv,
-                            egui::Color32::WHITE,
-                        );
+                        let uv =
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                        ui.painter()
+                            .image(tex_id, tile.thumbnail_rect, uv, egui::Color32::WHITE);
                         drew_thumbnail = true;
                     } else if supports_material_thumbnail(&entry.name) {
                         material_thumbnail_requests.push(entry.path.clone());
@@ -618,7 +634,10 @@ pub fn grid_ui_interactive(
 
 /// Render a tooltip with file info (name, type, size, date modified).
 pub(crate) fn file_hover_tooltip(ui: &mut egui::Ui, path: &std::path::Path) {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
     ui.label(egui::RichText::new(name).strong());
 
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -638,7 +657,10 @@ pub(crate) fn file_hover_tooltip(ui: &mut egui::Ui, path: &std::path::Path) {
 
                 // Approximate date from days since epoch
                 let (year, month, day) = days_to_date(days);
-                ui.label(format!("Modified: {}-{:02}-{:02} {:02}:{:02}", year, month, day, hours, minutes));
+                ui.label(format!(
+                    "Modified: {}-{:02}-{:02} {:02}:{:02}",
+                    year, month, day, hours, minutes
+                ));
             }
         }
     }

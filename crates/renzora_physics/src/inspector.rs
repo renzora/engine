@@ -6,15 +6,13 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    inline_property, toggle_switch, EditorCommands, EditorSelection, InspectorEntry,
-    ToolEntry, ToolSection,
+    inline_property, toggle_switch, EditorCommands, EditorSelection, InspectorEntry, ToolEntry,
+    ToolSection,
 };
 use renzora_theme::Theme;
 
 use crate::{
-    CollisionShapeData, CollisionShapeType,
-    ColliderEditMode,
-    PhysicsBodyData, PhysicsBodyType,
+    ColliderEditMode, CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
 };
 
 /// Register all physics inspector entries, spawn presets, icons, and observers via `AppEditorExt`.
@@ -38,10 +36,7 @@ fn stamp_mesh_colliders_on_descendants(world: &mut World, root: Entity) {
     }
     let total = targets.len();
     if total == 0 {
-        renzora::console_log::console_warn(
-            "Physics",
-            "No descendant mesh entities found to stamp",
-        );
+        renzora::console_log::console_warn("Physics", "No descendant mesh entities found to stamp");
         return;
     }
     if let Some(mut queue) = world.get_resource_mut::<crate::ColliderStampQueue>() {
@@ -75,7 +70,8 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
     }
     let count = targets.len();
     for e in &targets {
-        world.entity_mut(*e)
+        world
+            .entity_mut(*e)
             .remove::<PhysicsBodyData>()
             .remove::<CollisionShapeData>()
             .remove::<crate::data::RuntimePhysics>();
@@ -103,7 +99,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     use renzora_editor::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
-       .register_inspector(collision_shape_entry());
+        .register_inspector(collision_shape_entry());
 
     app.register_tool(
         ToolEntry::new(
@@ -113,11 +109,16 @@ pub fn register_physics_inspectors(app: &mut App) {
             ToolSection::Custom("physics"),
         )
         .visible_if(|world| {
-            let Some(sel) = world.resource::<EditorSelection>().get() else { return false };
+            let Some(sel) = world.resource::<EditorSelection>().get() else {
+                return false;
+            };
             world.get::<CollisionShapeData>(sel).is_some()
         })
         .active_if(|world| {
-            world.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false)
+            world
+                .get_resource::<ColliderEditMode>()
+                .map(|c| c.active)
+                .unwrap_or(false)
         })
         .on_activate(|world| {
             if let Some(mut m) = world.get_resource_mut::<ColliderEditMode>() {
@@ -244,34 +245,34 @@ pub fn register_physics_inspectors(app: &mut App) {
 /// Map a shape ID to a default collision shape for auto-physics on spawned meshes.
 pub fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
     Some(match id {
-        "cube"       => CollisionShapeData::cuboid(Vec3::splat(0.5)),
-        "sphere"     => CollisionShapeData::sphere(0.5),
-        "cylinder"   => CollisionShapeData::cylinder(0.5, 0.5),
-        "capsule"    => CollisionShapeData::capsule(0.5, 0.25),
-        "cone"       => CollisionShapeData::cylinder(0.5, 0.5),
+        "cube" => CollisionShapeData::cuboid(Vec3::splat(0.5)),
+        "sphere" => CollisionShapeData::sphere(0.5),
+        "cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
+        "capsule" => CollisionShapeData::capsule(0.5, 0.25),
+        "cone" => CollisionShapeData::cylinder(0.5, 0.5),
         "hemisphere" => CollisionShapeData::sphere(0.5),
-        "plane"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.001, 0.5)),
-        "wedge"       => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "wall"        => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "ramp"        => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 1.0)),
-        "doorway"     => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
+        "plane" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.001, 0.5)),
+        "wedge" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
+        "ramp" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 1.0)),
+        "doorway" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
         "window_wall" => CollisionShapeData::cuboid(Vec3::new(0.5, 1.0, 0.05)),
-        "pillar"      => CollisionShapeData::cylinder(0.15, 1.0),
-        "l_shape"     => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "t_shape"     => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.5)),
+        "pillar" => CollisionShapeData::cylinder(0.15, 1.0),
+        "l_shape" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "t_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.5)),
         "cross_shape" => CollisionShapeData::cuboid(Vec3::new(0.75, 0.5, 0.75)),
-        "corner"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "stairs"      => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "corner" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "stairs" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
         "half_cylinder" => CollisionShapeData::cylinder(0.5, 0.5),
-        "quarter_pipe"  => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
-        "curved_wall"   => CollisionShapeData::cylinder(0.5, 1.0),
+        "quarter_pipe" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "curved_wall" => CollisionShapeData::cylinder(0.5, 1.0),
         "spiral_stairs" => CollisionShapeData::cylinder(0.5, 1.0),
-        "pipe"   => CollisionShapeData::cylinder(0.5, 0.5),
-        "ring"   => CollisionShapeData::cylinder(0.5, 0.1),
+        "pipe" => CollisionShapeData::cylinder(0.5, 0.5),
+        "ring" => CollisionShapeData::cylinder(0.5, 0.1),
         "funnel" => CollisionShapeData::cylinder(0.5, 0.5),
         "gutter" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.25, 0.5)),
-        "torus"  => CollisionShapeData::cylinder(0.5, 0.15),
-        "prism"   => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
+        "torus" => CollisionShapeData::cylinder(0.5, 0.15),
+        "prism" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
         "pyramid" => CollisionShapeData::cuboid(Vec3::new(0.5, 0.5, 0.5)),
         _ => return None,
     })
@@ -306,7 +307,9 @@ fn physics_body_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(body) = world.get::<PhysicsBodyData>(entity) else { return };
+    let Some(body) = world.get::<PhysicsBodyData>(entity) else {
+        return;
+    };
     let body = body.clone();
 
     // Body type combo
@@ -339,9 +342,18 @@ fn physics_body_ui(
     // Mass
     inline_property(ui, 1, "Mass", theme, |ui| {
         let mut v = body.mass;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.1).range(0.001..=f32::MAX)).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut v)
+                    .speed(0.1)
+                    .range(0.001..=f32::MAX),
+            )
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.mass = v; }
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.mass = v;
+                }
             });
         }
     });
@@ -349,9 +361,14 @@ fn physics_body_ui(
     // Gravity Scale
     inline_property(ui, 0, "Gravity Scale", theme, |ui| {
         let mut v = body.gravity_scale;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.05).range(-10.0..=10.0)).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(0.05).range(-10.0..=10.0))
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.gravity_scale = v; }
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.gravity_scale = v;
+                }
             });
         }
     });
@@ -359,9 +376,14 @@ fn physics_body_ui(
     // Linear Damping
     inline_property(ui, 1, "Linear Damping", theme, |ui| {
         let mut v = body.linear_damping;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0)).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0))
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.linear_damping = v; }
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.linear_damping = v;
+                }
             });
         }
     });
@@ -369,16 +391,25 @@ fn physics_body_ui(
     // Angular Damping
     inline_property(ui, 0, "Angular Damping", theme, |ui| {
         let mut v = body.angular_damping;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0)).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=100.0))
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) { b.angular_damping = v; }
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.angular_damping = v;
+                }
             });
         }
     });
 
     // Lock axes
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Lock Axes").size(11.0).color(theme.text.secondary.to_color32()));
+    ui.label(
+        egui::RichText::new("Lock Axes")
+            .size(11.0)
+            .color(theme.text.secondary.to_color32()),
+    );
 
     inline_property(ui, 1, "Translation", theme, |ui| {
         ui.horizontal(|ui| {
@@ -443,7 +474,9 @@ fn collision_shape_entry() -> InspectorEntry {
         category: "physics",
         has_fn: |world, entity| world.get::<CollisionShapeData>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(CollisionShapeData::default());
+            world
+                .entity_mut(entity)
+                .insert(CollisionShapeData::default());
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<CollisionShapeData>();
@@ -462,14 +495,22 @@ fn collision_shape_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(shape) = world.get::<CollisionShapeData>(entity) else { return };
+    let Some(shape) = world.get::<CollisionShapeData>(entity) else {
+        return;
+    };
     let shape = shape.clone();
 
     // Edit Collider toggle
-    let edit_active = world.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false);
+    let edit_active = world
+        .get_resource::<ColliderEditMode>()
+        .map(|c| c.active)
+        .unwrap_or(false);
     inline_property(ui, 0, "Edit Collider", theme, |ui| {
         let label = if edit_active { "Editing…" } else { "Edit" };
-        if ui.button(format!("{} {}", regular::PENCIL_SIMPLE, label)).clicked() {
+        if ui
+            .button(format!("{} {}", regular::PENCIL_SIMPLE, label))
+            .clicked()
+        {
             cmds.push(move |w: &mut World| {
                 if let Some(mut m) = w.get_resource_mut::<ColliderEditMode>() {
                     m.active = !m.active;
@@ -482,7 +523,10 @@ fn collision_shape_ui(
     // imported scenes (GLB/GLTF) where each mesh is a child entity.
     inline_property(ui, 1, "Apply to children", theme, |ui| {
         ui.horizontal(|ui| {
-            if ui.button(format!("{} Stamp", regular::TREE_STRUCTURE)).clicked() {
+            if ui
+                .button(format!("{} Stamp", regular::TREE_STRUCTURE))
+                .clicked()
+            {
                 cmds.push(move |w: &mut World| {
                     stamp_mesh_colliders_on_descendants(w, entity);
                 });
@@ -530,12 +574,27 @@ fn collision_shape_ui(
     match shape.shape_type {
         CollisionShapeType::Box => {
             inline_property(ui, 1, "Half Extents", theme, |ui| {
-                let mut v = [shape.half_extents.x, shape.half_extents.y, shape.half_extents.z];
+                let mut v = [
+                    shape.half_extents.x,
+                    shape.half_extents.y,
+                    shape.half_extents.z,
+                ];
                 let mut changed = false;
                 ui.horizontal(|ui| {
                     for (i, label) in ["X", "Y", "Z"].iter().enumerate() {
-                        ui.label(egui::RichText::new(*label).size(10.0).color(theme.text.muted.to_color32()));
-                        if ui.add(egui::DragValue::new(&mut v[i]).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                        ui.label(
+                            egui::RichText::new(*label)
+                                .size(10.0)
+                                .color(theme.text.muted.to_color32()),
+                        );
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut v[i])
+                                    .speed(0.01)
+                                    .range(0.001..=f32::MAX),
+                            )
+                            .changed()
+                        {
                             changed = true;
                         }
                     }
@@ -552,9 +611,18 @@ fn collision_shape_ui(
         CollisionShapeType::Sphere => {
             inline_property(ui, 1, "Radius", theme, |ui| {
                 let mut v = shape.radius;
-                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut v)
+                            .speed(0.01)
+                            .range(0.001..=f32::MAX),
+                    )
+                    .changed()
+                {
                     cmds.push(move |w: &mut World| {
-                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.radius = v; }
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                            s.radius = v;
+                        }
                     });
                 }
             });
@@ -562,17 +630,35 @@ fn collision_shape_ui(
         CollisionShapeType::Capsule | CollisionShapeType::Cylinder => {
             inline_property(ui, 1, "Radius", theme, |ui| {
                 let mut v = shape.radius;
-                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut v)
+                            .speed(0.01)
+                            .range(0.001..=f32::MAX),
+                    )
+                    .changed()
+                {
                     cmds.push(move |w: &mut World| {
-                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.radius = v; }
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                            s.radius = v;
+                        }
                     });
                 }
             });
             inline_property(ui, 0, "Half Height", theme, |ui| {
                 let mut v = shape.half_height;
-                if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.001..=f32::MAX)).changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut v)
+                            .speed(0.01)
+                            .range(0.001..=f32::MAX),
+                    )
+                    .changed()
+                {
                     cmds.push(move |w: &mut World| {
-                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.half_height = v; }
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                            s.half_height = v;
+                        }
                     });
                 }
             });
@@ -593,8 +679,15 @@ fn collision_shape_ui(
         let mut changed = false;
         ui.horizontal(|ui| {
             for (i, label) in ["X", "Y", "Z"].iter().enumerate() {
-                ui.label(egui::RichText::new(*label).size(10.0).color(theme.text.muted.to_color32()));
-                if ui.add(egui::DragValue::new(&mut v[i]).speed(0.01)).changed() {
+                ui.label(
+                    egui::RichText::new(*label)
+                        .size(10.0)
+                        .color(theme.text.muted.to_color32()),
+                );
+                if ui
+                    .add(egui::DragValue::new(&mut v[i]).speed(0.01))
+                    .changed()
+                {
                     changed = true;
                 }
             }
@@ -611,9 +704,14 @@ fn collision_shape_ui(
     // Friction
     inline_property(ui, 0, "Friction", theme, |ui| {
         let mut v = shape.friction;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0)).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0))
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.friction = v; }
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.friction = v;
+                }
             });
         }
     });
@@ -621,9 +719,14 @@ fn collision_shape_ui(
     // Restitution
     inline_property(ui, 1, "Restitution", theme, |ui| {
         let mut v = shape.restitution;
-        if ui.add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0)).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=2.0))
+            .changed()
+        {
             cmds.push(move |w: &mut World| {
-                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.restitution = v; }
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.restitution = v;
+                }
             });
         }
     });
@@ -634,13 +737,13 @@ fn collision_shape_ui(
         if toggle_switch(ui, id, shape.is_sensor) {
             let val = !shape.is_sensor;
             cmds.push(move |w: &mut World| {
-                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) { s.is_sensor = val; }
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.is_sensor = val;
+                }
             });
         }
     });
 }
-
-
 
 /// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
 fn auto_insert_collider_for_shape(
@@ -651,10 +754,9 @@ fn auto_insert_collider_for_shape(
     let entity = trigger.entity;
     if let Ok(prim) = query.get(entity) {
         if let Some(collider) = default_collider_for_shape(&prim.0) {
-            commands.entity(entity).insert((
-                PhysicsBodyData::static_body(),
-                collider,
-            ));
+            commands
+                .entity(entity)
+                .insert((PhysicsBodyData::static_body(), collider));
         }
     }
 }

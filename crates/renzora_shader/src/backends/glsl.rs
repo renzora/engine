@@ -47,12 +47,15 @@ pub fn glsl_to_wgsl(source: &str) -> Result<String, ShaderCompileError> {
 
     // Write WGSL
     let mut wgsl = String::new();
-    let mut writer = naga::back::wgsl::Writer::new(&mut wgsl, naga::back::wgsl::WriterFlags::empty());
-    writer.write(&module, &info).map_err(|err| ShaderCompileError {
-        message: format!("WGSL write error: {}", err),
-        line: None,
-        column: None,
-    })?;
+    let mut writer =
+        naga::back::wgsl::Writer::new(&mut wgsl, naga::back::wgsl::WriterFlags::empty());
+    writer
+        .write(&module, &info)
+        .map_err(|err| ShaderCompileError {
+            message: format!("WGSL write error: {}", err),
+            line: None,
+            column: None,
+        })?;
 
     Ok(wgsl)
 }

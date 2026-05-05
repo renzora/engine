@@ -29,9 +29,11 @@ pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
 
     // Locate ZIP structures
     let eocd_offset = find_eocd(&apk_data)?;
-    let cd_offset =
-        u32::from_le_bytes(apk_data[eocd_offset + 16..eocd_offset + 20].try_into().unwrap())
-            as usize;
+    let cd_offset = u32::from_le_bytes(
+        apk_data[eocd_offset + 16..eocd_offset + 20]
+            .try_into()
+            .unwrap(),
+    ) as usize;
 
     // Compute content digest over the three APK sections.
     // Per spec, EOCD's CD offset field is treated as pointing to the signing block
@@ -148,7 +150,10 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
 fn find_eocd(data: &[u8]) -> io::Result<usize> {
     let min = 22;
     if data.len() < min {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Not a valid ZIP"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Not a valid ZIP",
+        ));
     }
     let start = data.len().saturating_sub(65535 + min);
     for i in (start..=data.len() - min).rev() {
@@ -156,7 +161,10 @@ fn find_eocd(data: &[u8]) -> io::Result<usize> {
             return Ok(i);
         }
     }
-    Err(io::Error::new(io::ErrorKind::InvalidData, "ZIP EOCD not found"))
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "ZIP EOCD not found",
+    ))
 }
 
 // ---------------------------------------------------------------------------

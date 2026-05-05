@@ -3,9 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense};
 use egui_phosphor::regular;
-use renzora_editor::{
-    empty_state, AppEditorExt, EditorCommands, EditorPanel, PanelLocation,
-};
+use renzora_editor::{empty_state, AppEditorExt, EditorCommands, EditorPanel, PanelLocation};
 use renzora_theme::{Theme, ThemeManager};
 use renzora_undo::UndoStacks;
 
@@ -92,10 +90,7 @@ impl EditorPanel for HistoryPanel {
                 }
 
                 section_header(ui, &theme, "Current State");
-                let current_label = undo
-                    .last()
-                    .map(|s| s.as_str())
-                    .unwrap_or("Initial state");
+                let current_label = undo.last().map(|s| s.as_str()).unwrap_or("Initial state");
                 history_row(
                     ui,
                     &theme,
@@ -170,12 +165,7 @@ fn section_header(ui: &mut egui::Ui, theme: &Theme, label: &str) {
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(label)
-                        .size(11.0)
-                        .strong()
-                        .color(text_muted),
-                );
+                ui.label(RichText::new(label).size(11.0).strong().color(text_muted));
             });
         });
 }
@@ -201,7 +191,11 @@ fn history_row(ui: &mut egui::Ui, theme: &Theme, icon: &str, label: &str, kind: 
         RowKind::Future => (text_muted, text_muted, false),
     };
 
-    let sense = if is_current { Sense::hover() } else { Sense::click() };
+    let sense = if is_current {
+        Sense::hover()
+    } else {
+        Sense::click()
+    };
     let row_height = 22.0;
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), row_height), sense);
@@ -210,12 +204,7 @@ fn history_row(ui: &mut egui::Ui, theme: &Theme, icon: &str, label: &str, kind: 
         ui.painter().rect_filled(
             rect,
             CornerRadius::ZERO,
-            Color32::from_rgba_premultiplied(
-                highlight.r(),
-                highlight.g(),
-                highlight.b(),
-                40,
-            ),
+            Color32::from_rgba_premultiplied(highlight.r(), highlight.g(), highlight.b(), 40),
         );
     } else if response.hovered() {
         ui.painter().rect_filled(
@@ -260,3 +249,4 @@ impl Plugin for HistoryPanelPlugin {
     }
 }
 
+renzora::add!(HistoryPanelPlugin, Editor);

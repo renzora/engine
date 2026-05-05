@@ -3,8 +3,10 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_audio::{AudioPlayer, AudioListener, MixerState};
-use renzora_editor::{EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+use renzora_audio::{AudioListener, AudioPlayer, MixerState};
+use renzora_editor::{
+    EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
+};
 use renzora_theme::Theme;
 
 pub fn register_audio_inspectors(registry: &mut InspectorRegistry) {
@@ -67,7 +69,10 @@ fn audio_player_custom_ui(
     let mut panning = data.panning;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Panning").size(11.0));
-        if ui.add(egui::Slider::new(&mut panning, -1.0..=1.0)).changed() {
+        if ui
+            .add(egui::Slider::new(&mut panning, -1.0..=1.0))
+            .changed()
+        {
             commands.push(move |w| {
                 if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.panning = panning;
@@ -96,7 +101,10 @@ fn audio_player_custom_ui(
             .selected_text(&current_bus)
             .show_ui(ui, |ui| {
                 for bus_name in &buses {
-                    if ui.selectable_label(*bus_name == current_bus, bus_name).clicked() {
+                    if ui
+                        .selectable_label(*bus_name == current_bus, bus_name)
+                        .clicked()
+                    {
                         let v = bus_name.clone();
                         commands.push(move |w| {
                             if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
@@ -138,7 +146,15 @@ fn audio_player_custom_ui(
     let mut fade_in = data.fade_in;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Fade In").size(11.0));
-        if ui.add(egui::DragValue::new(&mut fade_in).speed(0.05).range(0.0..=10.0).suffix("s")).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut fade_in)
+                    .speed(0.05)
+                    .range(0.0..=10.0)
+                    .suffix("s"),
+            )
+            .changed()
+        {
             commands.push(move |w| {
                 if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                     d.fade_in = fade_in;
@@ -164,7 +180,14 @@ fn audio_player_custom_ui(
         let mut min_dist = data.spatial_min_distance;
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("  Min Distance").size(11.0));
-            if ui.add(egui::DragValue::new(&mut min_dist).speed(0.1).range(0.01..=1000.0)).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut min_dist)
+                        .speed(0.1)
+                        .range(0.01..=1000.0),
+                )
+                .changed()
+            {
                 commands.push(move |w| {
                     if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                         d.spatial_min_distance = min_dist;
@@ -176,7 +199,14 @@ fn audio_player_custom_ui(
         let mut max_dist = data.spatial_max_distance;
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("  Max Distance").size(11.0));
-            if ui.add(egui::DragValue::new(&mut max_dist).speed(0.5).range(0.1..=10000.0)).changed() {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut max_dist)
+                        .speed(0.5)
+                        .range(0.1..=10000.0),
+                )
+                .changed()
+            {
                 commands.push(move |w| {
                     if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
                         d.spatial_max_distance = max_dist;
@@ -241,13 +271,16 @@ fn audio_listener_entry() -> InspectorEntry {
         category: "Audio",
         has_fn: |world, entity| world.get::<AudioListener>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(AudioListener { active: true });
+            world
+                .entity_mut(entity)
+                .insert(AudioListener { active: true });
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<AudioListener>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<AudioListener>(entity)
+            world
+                .get::<AudioListener>(entity)
                 .map(|l| l.active)
                 .unwrap_or(false)
         }),
@@ -256,23 +289,22 @@ fn audio_listener_entry() -> InspectorEntry {
                 l.active = enabled;
             }
         }),
-        fields: vec![
-            FieldDef {
-                name: "Active",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world.get::<AudioListener>(entity)
-                        .map(|l| FieldValue::Bool(l.active))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(v) = val {
-                        if let Some(mut l) = world.get_mut::<AudioListener>(entity) {
-                            l.active = v;
-                        }
-                    }
-                },
+        fields: vec![FieldDef {
+            name: "Active",
+            field_type: FieldType::Bool,
+            get_fn: |world, entity| {
+                world
+                    .get::<AudioListener>(entity)
+                    .map(|l| FieldValue::Bool(l.active))
             },
-        ],
+            set_fn: |world, entity, val| {
+                if let FieldValue::Bool(v) = val {
+                    if let Some(mut l) = world.get_mut::<AudioListener>(entity) {
+                        l.active = v;
+                    }
+                }
+            },
+        }],
         custom_ui_fn: None,
     }
 }

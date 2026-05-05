@@ -24,7 +24,9 @@ pub fn interaction_style_system(
         Changed<Interaction>,
     >,
 ) {
-    for (interaction, istyle, fill, stroke, opacity, border_radius, cursor, text, padding) in &mut widgets {
+    for (interaction, istyle, fill, stroke, opacity, border_radius, cursor, text, padding) in
+        &mut widgets
+    {
         let overrides = match interaction {
             Interaction::None => &istyle.normal,
             Interaction::Hovered => &istyle.hovered,

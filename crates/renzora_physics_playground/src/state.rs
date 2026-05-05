@@ -165,7 +165,12 @@ impl SpawnPattern {
         }
     }
     pub const ALL: &'static [Self] = &[
-        Self::Single, Self::Stack, Self::Wall, Self::Rain, Self::Pyramid, Self::Explosion,
+        Self::Single,
+        Self::Stack,
+        Self::Wall,
+        Self::Rain,
+        Self::Pyramid,
+        Self::Explosion,
     ];
 }
 
@@ -371,15 +376,41 @@ impl ScenarioType {
         }
     }
     pub const ALL: &'static [Self] = &[
-        Self::NewtonsCradle, Self::DominoChain, Self::WreckingBall, Self::StackTest,
-        Self::BilliardBreak, Self::InclinedPlane, Self::Pendulum, Self::ProjectileLaunch,
-        Self::Gauntlet, Self::Avalanche, Self::WedgeStress, Self::BowlingAlley,
-        Self::Catapult, Self::BalancingAct, Self::Marbles, Self::Jenga,
-        Self::Plinko, Self::Conveyor, Self::Trebuchet, Self::RubeGoldberg,
-        Self::Waterfall, Self::Cannon, Self::Bridge, Self::Elevator,
-        Self::Pinball, Self::Spinner, Self::Hourglass, Self::MassComparison,
-        Self::Ricochet, Self::BoxFort, Self::Spiral, Self::Trampoline,
-        Self::ChainReaction, Self::Freefall, Self::Slingshot,
+        Self::NewtonsCradle,
+        Self::DominoChain,
+        Self::WreckingBall,
+        Self::StackTest,
+        Self::BilliardBreak,
+        Self::InclinedPlane,
+        Self::Pendulum,
+        Self::ProjectileLaunch,
+        Self::Gauntlet,
+        Self::Avalanche,
+        Self::WedgeStress,
+        Self::BowlingAlley,
+        Self::Catapult,
+        Self::BalancingAct,
+        Self::Marbles,
+        Self::Jenga,
+        Self::Plinko,
+        Self::Conveyor,
+        Self::Trebuchet,
+        Self::RubeGoldberg,
+        Self::Waterfall,
+        Self::Cannon,
+        Self::Bridge,
+        Self::Elevator,
+        Self::Pinball,
+        Self::Spinner,
+        Self::Hourglass,
+        Self::MassComparison,
+        Self::Ricochet,
+        Self::BoxFort,
+        Self::Spiral,
+        Self::Trampoline,
+        Self::ChainReaction,
+        Self::Freefall,
+        Self::Slingshot,
     ];
 }
 
@@ -433,7 +464,12 @@ impl ForceMode {
             Self::VelocityOverride => "Velocity",
         }
     }
-    pub const ALL: &'static [Self] = &[Self::Force, Self::Impulse, Self::Torque, Self::VelocityOverride];
+    pub const ALL: &'static [Self] = &[
+        Self::Force,
+        Self::Impulse,
+        Self::Torque,
+        Self::VelocityOverride,
+    ];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -685,11 +721,25 @@ impl ArenaType {
     }
 
     pub const ALL: &'static [Self] = &[
-        Self::Walled, Self::StairFall, Self::MovingPlatforms,
-        Self::HillSlide, Self::Pinball, Self::GolfCourse, Self::Funnel,
-        Self::Colosseum, Self::Maze, Self::Halfpipe, Self::TieredPlatforms,
-        Self::Canyon, Self::Fortress, Self::Spiral, Self::Bowl,
-        Self::Pillars, Self::IceRink, Self::Volcano, Self::Labyrinth,
+        Self::Walled,
+        Self::StairFall,
+        Self::MovingPlatforms,
+        Self::HillSlide,
+        Self::Pinball,
+        Self::GolfCourse,
+        Self::Funnel,
+        Self::Colosseum,
+        Self::Maze,
+        Self::Halfpipe,
+        Self::TieredPlatforms,
+        Self::Canyon,
+        Self::Fortress,
+        Self::Spiral,
+        Self::Bowl,
+        Self::Pillars,
+        Self::IceRink,
+        Self::Volcano,
+        Self::Labyrinth,
     ];
 }
 
@@ -725,15 +775,21 @@ impl Default for ArenaPresetsState {
 
 impl MetricsState {
     pub fn push_energy(&mut self, value: f64) {
-        if self.energy_history.len() >= MAX_HISTORY { self.energy_history.pop_front(); }
+        if self.energy_history.len() >= MAX_HISTORY {
+            self.energy_history.pop_front();
+        }
         self.energy_history.push_back(value);
     }
     pub fn push_physics_time(&mut self, value: f32) {
-        if self.physics_time_history.len() >= MAX_HISTORY { self.physics_time_history.pop_front(); }
+        if self.physics_time_history.len() >= MAX_HISTORY {
+            self.physics_time_history.pop_front();
+        }
         self.physics_time_history.push_back(value);
     }
     pub fn push_collisions(&mut self, value: usize) {
-        if self.collision_pairs_history.len() >= MAX_HISTORY { self.collision_pairs_history.pop_front(); }
+        if self.collision_pairs_history.len() >= MAX_HISTORY {
+            self.collision_pairs_history.pop_front();
+        }
         self.collision_pairs_history.push_back(value);
     }
 }

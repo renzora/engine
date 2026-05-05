@@ -19,11 +19,19 @@ pub struct WorkspaceLayout {
 
 impl WorkspaceLayout {
     fn scene(name: &str, tree: DockTree) -> Self {
-        Self { name: name.into(), tree, hidden: false }
+        Self {
+            name: name.into(),
+            tree,
+            hidden: false,
+        }
     }
 
     fn asset(name: &str, tree: DockTree) -> Self {
-        Self { name: name.into(), tree, hidden: true }
+        Self {
+            name: name.into(),
+            tree,
+            hidden: true,
+        }
     }
 }
 
@@ -62,7 +70,6 @@ impl Default for LayoutManager {
             WorkspaceLayout::asset("Blueprints-Asset", layout_blueprints_asset()),
             WorkspaceLayout::asset("Particles-Asset", layout_particles_asset()),
         ];
-
 
         Self {
             layouts,
@@ -104,7 +111,11 @@ impl LayoutManager {
             let exists = self.layouts.iter().any(|l| l.name == default_layout.name);
             if !exists {
                 self.layouts.push(default_layout.clone());
-            } else if let Some(existing) = self.layouts.iter_mut().find(|l| l.name == default_layout.name) {
+            } else if let Some(existing) = self
+                .layouts
+                .iter_mut()
+                .find(|l| l.name == default_layout.name)
+            {
                 // Always re-stamp the hidden flag from the factory definition
                 // so a workspace saved before `hidden` existed still hides
                 // the asset-mode variants from the title bar.
@@ -115,10 +126,7 @@ impl LayoutManager {
 
     /// Iterate visible (title-bar-eligible) layouts with their original index.
     pub fn visible_layouts(&self) -> impl Iterator<Item = (usize, &WorkspaceLayout)> {
-        self.layouts
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| !l.hidden)
+        self.layouts.iter().enumerate().filter(|(_, l)| !l.hidden)
     }
 
     /// Add a new user-created visible layout and switch to it. The new
@@ -192,7 +200,11 @@ impl LayoutManager {
 
         // Re-target indices that pointed at or past the removed slot.
         let remap = |idx: usize| -> usize {
-            if idx > index { idx - 1 } else { idx }
+            if idx > index {
+                idx - 1
+            } else {
+                idx
+            }
         };
         if self.active_index == index {
             // Pick the nearest remaining visible layout.
@@ -249,7 +261,9 @@ impl LayoutManager {
     /// Other layouts are untouched.
     pub fn reset_active(&mut self, docking: &mut DockingState) {
         let defaults = Self::default();
-        let Some(active) = self.layouts.get(self.active_index) else { return };
+        let Some(active) = self.layouts.get(self.active_index) else {
+            return;
+        };
         let Some(default) = defaults
             .layouts
             .iter()
@@ -281,7 +295,11 @@ pub fn scene_layout() -> DockTree {
             // Center: viewport on top, assets/console/properties/mixer tabbed below
             DockTree::vertical(
                 DockTree::Leaf {
-                    tabs: vec!["viewport".into(), "code_editor".into(), "node_explorer".into()],
+                    tabs: vec![
+                        "viewport".into(),
+                        "code_editor".into(),
+                        "node_explorer".into(),
+                    ],
                     active_tab: 0,
                 },
                 DockTree::Leaf {
@@ -480,11 +498,7 @@ pub fn layout_particles_advanced() -> DockTree {
 fn layout_ui() -> DockTree {
     DockTree::horizontal(
         // Left: hierarchy on top, assets below. Width matches Scene layout.
-        DockTree::vertical(
-            DockTree::leaf("hierarchy"),
-            DockTree::leaf("assets"),
-            0.6,
-        ),
+        DockTree::vertical(DockTree::leaf("hierarchy"), DockTree::leaf("assets"), 0.6),
         DockTree::horizontal(
             // Center: UI canvas fills the full column.
             DockTree::leaf("ui_canvas"),
@@ -588,11 +602,7 @@ fn layout_audio() -> DockTree {
         // Top: hierarchy | DAW timeline | inspector
         DockTree::horizontal(
             DockTree::leaf("hierarchy"),
-            DockTree::horizontal(
-                DockTree::leaf("daw"),
-                DockTree::leaf("inspector"),
-                0.78,
-            ),
+            DockTree::horizontal(DockTree::leaf("daw"), DockTree::leaf("inspector"), 0.78),
             0.15,
         ),
         // Bottom: mixer | assets + console
@@ -607,4 +617,3 @@ fn layout_audio() -> DockTree {
         0.6,
     )
 }
-

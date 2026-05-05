@@ -17,3 +17,6 @@ renzora_ui = { path = "../renzora_ui", optional = true }
 serde = { version = "1", features = ["derive"] }
 renzora_theme = { path = "../renzora_theme", optional = true }
 rfd = { version = "0.15", optional = true }
+
+[lints]
+workspace = true

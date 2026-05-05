@@ -4,8 +4,8 @@
 //! Uses the same `OverlayGizmoGroup` config as the other line-based gizmos so it
 //! respects depth bias and render layer 1.
 
-use bevy::prelude::*;
 use bevy::camera::primitives::Aabb;
+use bevy::prelude::*;
 
 use renzora_editor::EditorSelection;
 use renzora_physics::{CollisionShapeData, CollisionShapeType};
@@ -72,7 +72,14 @@ pub fn draw_collider_gizmos(
                 if let Some(aabb) = aabb {
                     let size = Vec3::from(aabb.half_extents) * 2.0 * scale;
                     let aabb_center = trans + rot * (scale * Vec3::from(aabb.center));
-                    gizmos.cube(Transform { translation: aabb_center, rotation: rot, scale: size }, color);
+                    gizmos.cube(
+                        Transform {
+                            translation: aabb_center,
+                            rotation: rot,
+                            scale: size,
+                        },
+                        color,
+                    );
                 }
             }
         }
@@ -94,8 +101,22 @@ fn draw_capsule(
     let bot = center - up * half_height;
 
     // Equator circles at the cap joins.
-    gizmos.circle(Isometry3d::new(top, rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), radius, color);
-    gizmos.circle(Isometry3d::new(bot, rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), radius, color);
+    gizmos.circle(
+        Isometry3d::new(
+            top,
+            rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        ),
+        radius,
+        color,
+    );
+    gizmos.circle(
+        Isometry3d::new(
+            bot,
+            rot * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        ),
+        radius,
+        color,
+    );
 
     // Vertical connecting lines between the cap joins.
     gizmos.line(top + right * radius, bot + right * radius, color);

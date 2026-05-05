@@ -1,13 +1,13 @@
 //! Foliage painting systems — hover, brush, scroll, gizmo.
 
-use bevy::prelude::*;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
+use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use renzora_terrain::data::{
-    BrushShape, TerrainChunkData, TerrainData, compute_brush_falloff,
+use renzora_terrain::data::{compute_brush_falloff, BrushShape, TerrainChunkData, TerrainData};
+use renzora_terrain::foliage::{
+    FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, MAX_FOLIAGE_TYPES,
 };
-use renzora_terrain::foliage::{FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, MAX_FOLIAGE_TYPES};
 
 // ── Resources ──────────────────────────────────────────────────────────────
 
@@ -57,8 +57,12 @@ pub fn foliage_paint_hover_system(
         return;
     };
 
-    let Ok((camera, camera_transform)) = camera_query.single() else { return };
-    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else { return };
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else {
+        return;
+    };
 
     // Find closest terrain chunk intersection
     let hits = ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
@@ -94,8 +98,8 @@ pub fn foliage_paint_hover_system(
         paint_state.active_chunk = None;
     }
 
-    paint_state.is_painting = mouse.pressed(MouseButton::Left)
-        && paint_state.active_chunk.is_some();
+    paint_state.is_painting =
+        mouse.pressed(MouseButton::Left) && paint_state.active_chunk.is_some();
 }
 
 /// Apply brush strokes to the density map.
@@ -108,9 +112,15 @@ pub fn foliage_paint_system(
     if !paint_state.is_painting {
         return;
     }
-    let Some(entity) = paint_state.active_chunk else { return };
-    let Some(uv) = paint_state.hover_uv else { return };
-    let Ok(mut density_map) = density_query.get_mut(entity) else { return };
+    let Some(entity) = paint_state.active_chunk else {
+        return;
+    };
+    let Some(uv) = paint_state.hover_uv else {
+        return;
+    };
+    let Ok(mut density_map) = density_query.get_mut(entity) else {
+        return;
+    };
 
     // Track this chunk for deferred rebuild
     if !paint_state.dirty_chunks.contains(&entity) {
@@ -200,7 +210,9 @@ pub fn foliage_brush_gizmo_system(
     terrain_query: Query<&TerrainData>,
     mut gizmos: Gizmos,
 ) {
-    let Some(pos) = paint_state.hover_position else { return };
+    let Some(pos) = paint_state.hover_position else {
+        return;
+    };
 
     // Convert UV radius to world radius
     let world_radius = if let Some(terrain) = terrain_query.iter().next() {

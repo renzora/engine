@@ -12,17 +12,15 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use vleue_navigator::{
-    NavMesh,
     prelude::{
         ManagedNavMesh, NavMeshAgentExclusion, NavMeshDebug, NavMeshSettings, NavMeshUpdateMode,
         NavmeshUpdaterPlugin, Triangulation, VleueNavigatorPlugin,
     },
+    NavMesh,
 };
 
 #[cfg(feature = "editor")]
-use renzora_editor::{
-    AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
-};
+use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 pub mod persistence;
 pub mod script_extension;
@@ -108,10 +106,7 @@ fn debug_color() -> Color {
 
 fn on_volume_added(
     mut commands: Commands,
-    mut volumes: Query<
-        (Entity, &NavMeshVolume, Option<&mut Transform>),
-        Added<NavMeshVolume>,
-    >,
+    mut volumes: Query<(Entity, &NavMeshVolume, Option<&mut Transform>), Added<NavMeshVolume>>,
 ) {
     for (entity, volume, transform) in &mut volumes {
         if let Some(mut t) = transform {
@@ -201,7 +196,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Agent Radius",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -217,7 +216,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Upward Shift",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 5.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 5.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -233,7 +236,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Simplify",
-                field_type: FieldType::Float { speed: 0.001, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.001,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -249,7 +256,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Merge Steps",
-                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -281,7 +292,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Max Slope (degrees)",
-                field_type: FieldType::Float { speed: 1.0, min: 5.0, max: 89.0 },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 5.0,
+                    max: 89.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -297,7 +312,11 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Terrain Sample Step",
-                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 32.0 },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 1.0,
+                    max: 32.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavMeshVolume>(entity)
@@ -440,7 +459,12 @@ fn terrain_slope_obstacles(
 /// volume or terrain data changes.
 fn sync_terrain_obstacles(
     mut volumes: Query<
-        (Entity, &NavMeshVolume, &GlobalTransform, &mut NavMeshSettings),
+        (
+            Entity,
+            &NavMeshVolume,
+            &GlobalTransform,
+            &mut NavMeshSettings,
+        ),
         Changed<NavMeshVolume>,
     >,
     terrain_data_q: Query<&TerrainData>,
@@ -464,7 +488,9 @@ fn sync_terrain_obstacles(
 
         let mut obstacle_count = 0usize;
         for (chunk_of, chunk_data) in &chunks {
-            let Ok(terrain) = terrain_data_q.get(chunk_of.0) else { continue };
+            let Ok(terrain) = terrain_data_q.get(chunk_of.0) else {
+                continue;
+            };
             let obs = terrain_slope_obstacles(volume, vol_pos, terrain, chunk_data);
             obstacle_count += obs.len();
             tri.add_obstacles(obs);
@@ -545,8 +571,12 @@ fn update_agent_paths(
     navmeshes: Res<Assets<NavMesh>>,
     mut last_target: Local<EntityHashMap<Option<Vec3>>>,
 ) {
-    let Some(managed) = navmesh_q.iter().next() else { return };
-    let Some(navmesh) = navmeshes.get(managed) else { return };
+    let Some(managed) = navmesh_q.iter().next() else {
+        return;
+    };
+    let Some(navmesh) = navmeshes.get(managed) else {
+        return;
+    };
 
     for (entity, agent, gt, mut path) in &mut agents {
         let prev = last_target.get(&entity).copied().flatten();
@@ -586,7 +616,10 @@ fn update_agent_paths(
                         renzora::clog_info!(
                             "NavMesh",
                             "Agent {entity:?} heading to ({:.1}, {:.1}, {:.1}) — {} waypoints",
-                            dest.x, dest.y, dest.z, wps.len()
+                            dest.x,
+                            dest.y,
+                            dest.z,
+                            wps.len()
                         );
                         path.waypoints = wps;
                     }
@@ -626,18 +659,27 @@ fn advance_agents(
         let dist = delta.length();
 
         let is_final = path.waypoints.len() == 1;
-        let threshold = if is_final { agent.stopping_distance.max(0.01) } else { 0.15 };
+        let threshold = if is_final {
+            agent.stopping_distance.max(0.01)
+        } else {
+            0.15
+        };
 
         if dist < threshold {
             path.waypoints.remove(0);
             if path.waypoints.is_empty() {
                 let dest = agent.target.unwrap_or(wp);
                 agent.target = None;
-                info!("[nav] Agent {entity:?} arrived at ({:.1}, {:.1}, {:.1})", dest.x, dest.y, dest.z);
+                info!(
+                    "[nav] Agent {entity:?} arrived at ({:.1}, {:.1}, {:.1})",
+                    dest.x, dest.y, dest.z
+                );
                 renzora::clog_success!(
                     "NavMesh",
                     "Agent {entity:?} arrived at ({:.1}, {:.1}, {:.1})",
-                    dest.x, dest.y, dest.z
+                    dest.x,
+                    dest.y,
+                    dest.z
                 );
                 arrived.write(NavAgentArrived { entity });
             }
@@ -720,9 +762,7 @@ fn auto_init_nav_read_state(
     }
 }
 
-fn update_nav_read_state(
-    mut q: Query<(&NavAgent, &NavPath, &GlobalTransform, &mut NavReadState)>,
-) {
+fn update_nav_read_state(mut q: Query<(&NavAgent, &NavPath, &GlobalTransform, &mut NavReadState)>) {
     for (agent, path, gt, mut read) in &mut q {
         read.has_target = agent.target.is_some();
         read.has_path = !path.waypoints.is_empty();
@@ -738,10 +778,7 @@ fn update_nav_read_state(
     }
 }
 
-fn handle_nav_script_actions(
-    trigger: On<renzora::ScriptAction>,
-    mut agents: Query<&mut NavAgent>,
-) {
+fn handle_nav_script_actions(trigger: On<renzora::ScriptAction>, mut agents: Query<&mut NavAgent>) {
     use renzora::ScriptActionValue;
     let action = trigger.event();
     match action.name.as_str() {
@@ -804,16 +841,26 @@ fn agent_inspector_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(b) = val {
                         if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.target = if b { Some(a.target.unwrap_or(Vec3::ZERO)) } else { None };
+                            a.target = if b {
+                                Some(a.target.unwrap_or(Vec3::ZERO))
+                            } else {
+                                None
+                            };
                         }
                     }
                 },
             },
             FieldDef {
                 name: "Speed",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 100.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 100.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<NavAgent>(entity).map(|a| FieldValue::Float(a.speed))
+                    world
+                        .get::<NavAgent>(entity)
+                        .map(|a| FieldValue::Float(a.speed))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(x) = val {
@@ -825,9 +872,15 @@ fn agent_inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Turn Speed",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 50.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 50.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<NavAgent>(entity).map(|a| FieldValue::Float(a.turn_speed))
+                    world
+                        .get::<NavAgent>(entity)
+                        .map(|a| FieldValue::Float(a.turn_speed))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(x) = val {
@@ -839,7 +892,11 @@ fn agent_inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Stopping Distance",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 10.0,
+                },
                 get_fn: |world, entity| {
                     world
                         .get::<NavAgent>(entity)
@@ -906,11 +963,9 @@ impl Plugin for NavMeshPlugin {
             .add_observer(handle_nav_script_actions);
 
         {
-            let mut extensions = app
-                .world_mut()
-                .get_resource_or_insert_with(
-                    renzora_scripting::extension::ScriptExtensions::default,
-                );
+            let mut extensions = app.world_mut().get_resource_or_insert_with(
+                renzora_scripting::extension::ScriptExtensions::default,
+            );
             extensions.register(NavScriptExtension);
         }
 

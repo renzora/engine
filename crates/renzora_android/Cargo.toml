@@ -9,7 +9,10 @@ name = "main"
 crate-type = ["cdylib"]
 
 [dependencies]
-renzora = { path = "../..", default-features = false }
+renzora_runtime = { path = "../renzora_runtime" }
 bevy = { workspace = true }
 
 
+
+[lints]
+workspace = true

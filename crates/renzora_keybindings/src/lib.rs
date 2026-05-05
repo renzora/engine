@@ -48,7 +48,11 @@ mod tests {
     #[test]
     fn test_editor_action_count() {
         let all = EditorAction::all();
-        assert!(all.len() >= 30, "Expected at least 30 actions, got {}", all.len());
+        assert!(
+            all.len() >= 30,
+            "Expected at least 30 actions, got {}",
+            all.len()
+        );
     }
 
     #[test]
@@ -58,12 +62,24 @@ mod tests {
         // editor shortcuts. Catches typos in new categories without
         // forbidding the addition itself.
         let valid = [
-            "Camera", "Tools", "Transform", "Selection", "Edit", "File",
-            "View", "Play", "Code Editor",
+            "Camera",
+            "Tools",
+            "Transform",
+            "Selection",
+            "Edit",
+            "File",
+            "View",
+            "Play",
+            "Code Editor",
         ];
         for action in EditorAction::all() {
             let cat = action.category();
-            assert!(valid.contains(&cat), "{:?} has unexpected category '{}'", action, cat);
+            assert!(
+                valid.contains(&cat),
+                "{:?} has unexpected category '{}'",
+                action,
+                cat
+            );
         }
     }
 
@@ -147,7 +163,11 @@ mod tests {
                 missing.push(format!("{:?}", action));
             }
         }
-        assert!(missing.is_empty(), "Actions missing default bindings: {}", missing.join(", "));
+        assert!(
+            missing.is_empty(),
+            "Actions missing default bindings: {}",
+            missing.join(", ")
+        );
     }
 
     #[test]
@@ -214,3 +234,4 @@ mod tests {
         assert!(bindings.rebinding.is_none());
     }
 }
+

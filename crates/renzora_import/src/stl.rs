@@ -7,15 +7,15 @@ use crate::obj::build_glb;
 use crate::settings::{ImportSettings, UpAxis};
 
 pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)?;
+    let mut file = std::fs::OpenOptions::new().read(true).open(path)?;
 
     let mesh = stl_io::read_stl(&mut file)
         .map_err(|e| ImportError::ParseError(format!("STL parse error: {}", e)))?;
 
     if mesh.faces.is_empty() {
-        return Err(ImportError::ParseError("STL file contains no triangles".into()));
+        return Err(ImportError::ParseError(
+            "STL file contains no triangles".into(),
+        ));
     }
 
     let warnings = Vec::new();
@@ -82,10 +82,18 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     // STL has no UVs
     let texcoords = vec![0.0f32; vertex_count * 2];
 
-    let glb_bytes = build_glb(&positions, &vert_normals, &texcoords, &indices, &crate::obj::MaterialBundle::default())?;
+    let glb_bytes = build_glb(
+        &positions,
+        &vert_normals,
+        &texcoords,
+        &indices,
+        &crate::obj::MaterialBundle::default(),
+    )?;
 
     Ok(ImportResult {
         glb_bytes,
-        warnings, extracted_textures: Vec::new(), extracted_materials: Vec::new(),
+        warnings,
+        extracted_textures: Vec::new(),
+        extracted_materials: Vec::new(),
     })
 }

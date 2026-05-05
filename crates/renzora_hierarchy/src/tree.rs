@@ -4,7 +4,10 @@ use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
 use renzora_editor::{DockingState, EditorCommands, EditorSelection, TreeRowConfig};
 use renzora_theme::Theme;
-use renzora_undo::{self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, LockToggleCmd, RenameCmd, UndoContext, VisibilityToggleCmd};
+use renzora_undo::{
+    self, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, LockToggleCmd, RenameCmd, UndoContext,
+    VisibilityToggleCmd,
+};
 
 use crate::state::{EntityNode, HierarchyState};
 use crate::LABEL_COLORS;
@@ -118,11 +121,7 @@ fn render_node(
     // clicks on visible entries never cause a jump. Use `ScrollAnimation::none()`
     // so the scroll snaps instantly instead of animating.
     if state.pending_reveal == Some(node.entity) {
-        ui.scroll_to_rect_animation(
-            result.rect,
-            None,
-            egui::style::ScrollAnimation::none(),
-        );
+        ui.scroll_to_rect_animation(result.rect, None, egui::style::ScrollAnimation::none());
         state.pending_reveal = None;
     }
 
@@ -130,9 +129,17 @@ fn render_node(
 
     // === Dim dragged / hidden entities (overlay rect, matching legacy) ===
     if is_dragged {
-        painter.rect_filled(result.rect, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+        painter.rect_filled(
+            result.rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 120),
+        );
     } else if !node.is_visible {
-        painter.rect_filled(result.rect, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 60));
+        painter.rect_filled(
+            result.rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(0, 0, 0, 60),
+        );
     }
 
     // === Suffix strip background — mirrors the row's odd/even tone (and
@@ -171,7 +178,11 @@ fn render_node(
 
     // === Visibility icon (right side, leftmost of the suffix pair) ===
     {
-        let vis_icon = if node.is_visible { regular::EYE } else { regular::EYE_SLASH };
+        let vis_icon = if node.is_visible {
+            regular::EYE
+        } else {
+            regular::EYE_SLASH
+        };
         let vis_color = if node.is_visible {
             Color32::from_rgb(140, 180, 220)
         } else {
@@ -200,9 +211,14 @@ fn render_node(
             let entity = node.entity;
             let currently_visible = node.is_visible;
             commands.push(move |world: &mut World| {
-                renzora_undo::execute(world, UndoContext::Scene, Box::new(VisibilityToggleCmd {
-                    entity, was_visible: currently_visible,
-                }));
+                renzora_undo::execute(
+                    world,
+                    UndoContext::Scene,
+                    Box::new(VisibilityToggleCmd {
+                        entity,
+                        was_visible: currently_visible,
+                    }),
+                );
             });
         }
         vis_resp.on_hover_text(if node.is_visible { "Hide" } else { "Show" });
@@ -210,17 +226,18 @@ fn render_node(
 
     // === Lock icon (right side, rightmost slot) ===
     {
-        let lock_icon = if node.is_locked { regular::LOCK_SIMPLE } else { regular::LOCK_SIMPLE_OPEN };
+        let lock_icon = if node.is_locked {
+            regular::LOCK_SIMPLE
+        } else {
+            regular::LOCK_SIMPLE_OPEN
+        };
         let lock_color = if node.is_locked {
             Color32::from_rgb(220, 80, 80)
         } else {
             Color32::from_rgb(90, 90, 100)
         };
         let lock_rect = egui::Rect::from_min_size(
-            Pos2::new(
-                result.rect.max.x - ICON_W - SUFFIX_PAD,
-                result.rect.min.y,
-            ),
+            Pos2::new(result.rect.max.x - ICON_W - SUFFIX_PAD, result.rect.min.y),
             Vec2::new(ICON_W, 20.0),
         );
         let lock_id = ui.id().with(("lock_btn", *row_index));
@@ -239,9 +256,14 @@ fn render_node(
             let entity = node.entity;
             let currently_locked = node.is_locked;
             commands.push(move |world: &mut World| {
-                renzora_undo::execute(world, UndoContext::Scene, Box::new(LockToggleCmd {
-                    entity, was_locked: currently_locked,
-                }));
+                renzora_undo::execute(
+                    world,
+                    UndoContext::Scene,
+                    Box::new(LockToggleCmd {
+                        entity,
+                        was_locked: currently_locked,
+                    }),
+                );
             });
         }
         lock_resp.on_hover_text(if node.is_locked { "Unlock" } else { "Lock" });
@@ -253,9 +275,18 @@ fn render_node(
         let label_x = result.prefix_rect.max.x + 20.0 + 4.0;
         // Measure the label width to position the star after it
         let font_id = egui::FontId::proportional(13.0);
-        let label_width = painter.layout_no_wrap(node.name.clone(), font_id, Color32::WHITE).rect.width();
+        let label_width = painter
+            .layout_no_wrap(node.name.clone(), font_id, Color32::WHITE)
+            .rect
+            .width();
         let star_pos = Pos2::new(label_x + label_width + 4.0, result.rect.center().y);
-        painter.text(star_pos, egui::Align2::LEFT_CENTER, regular::STAR, egui::FontId::proportional(10.0), star_color);
+        painter.text(
+            star_pos,
+            egui::Align2::LEFT_CENTER,
+            regular::STAR,
+            egui::FontId::proportional(10.0),
+            star_color,
+        );
     }
 
     // === Inline rename (replaces label area) ===
@@ -306,12 +337,22 @@ fn render_node(
             let new_name = state.rename_buffer.clone();
             if !new_name.is_empty() {
                 commands.push(move |world: &mut World| {
-                    let old = world.get::<Name>(entity).map(|n| n.as_str().to_string())
+                    let old = world
+                        .get::<Name>(entity)
+                        .map(|n| n.as_str().to_string())
                         .unwrap_or_default();
-                    if old == new_name { return; }
-                    renzora_undo::execute(world, UndoContext::Scene, Box::new(RenameCmd {
-                        entity, old, new: new_name,
-                    }));
+                    if old == new_name {
+                        return;
+                    }
+                    renzora_undo::execute(
+                        world,
+                        UndoContext::Scene,
+                        Box::new(RenameCmd {
+                            entity,
+                            old,
+                            new: new_name,
+                        }),
+                    );
                 });
             }
             state.renaming_entity = None;
@@ -407,14 +448,20 @@ fn render_node(
                     renzora_editor::TreeDropZone::Before => {
                         let y = result.rect.min.y + 1.0;
                         fg.line_segment(
-                            [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
+                            [
+                                Pos2::new(result.rect.min.x, y),
+                                Pos2::new(result.rect.max.x, y),
+                            ],
                             Stroke::new(3.0, accent),
                         );
                     }
                     renzora_editor::TreeDropZone::After => {
                         let y = result.rect.max.y - 1.0;
                         fg.line_segment(
-                            [Pos2::new(result.rect.min.x, y), Pos2::new(result.rect.max.x, y)],
+                            [
+                                Pos2::new(result.rect.min.x, y),
+                                Pos2::new(result.rect.max.x, y),
+                            ],
                             Stroke::new(3.0, accent),
                         );
                     }
@@ -477,7 +524,12 @@ fn render_node(
             Pos2::new(result.rect.min.x, top),
             Pos2::new(result.rect.max.x, bottom),
         );
-        fg.rect_stroke(group_rect, 2.0, Stroke::new(2.0, accent), egui::StrokeKind::Inside);
+        fg.rect_stroke(
+            group_rect,
+            2.0,
+            Stroke::new(2.0, accent),
+            egui::StrokeKind::Inside,
+        );
     }
 }
 
@@ -492,7 +544,10 @@ fn context_menu(
     ui.set_min_width(180.0);
 
     // Rename
-    if ui.button(format!("{} Rename", regular::PENCIL_SIMPLE)).clicked() {
+    if ui
+        .button(format!("{} Rename", regular::PENCIL_SIMPLE))
+        .clicked()
+    {
         state.renaming_entity = Some(node.entity);
         state.rename_buffer = node.name.clone();
         state.rename_focus_set = false;
@@ -502,10 +557,15 @@ fn context_menu(
     ui.separator();
 
     // Add Child Entity
-    if ui.button(format!("{} Add Child Entity", regular::PLUS)).clicked() {
+    if ui
+        .button(format!("{} Add Child Entity", regular::PLUS))
+        .clicked()
+    {
         let parent = node.entity;
         commands.push(move |world: &mut World| {
-            let child = world.spawn((Name::new("New Entity"), Transform::default())).id();
+            let child = world
+                .spawn((Name::new("New Entity"), Transform::default()))
+                .id();
             world.entity_mut(child).set_parent_in_place(parent);
             if let Some(sel) = world.get_resource::<EditorSelection>() {
                 sel.set(Some(child));
@@ -516,7 +576,10 @@ fn context_menu(
 
     // Add Component — selects this entity and asks the context-menu plugin
     // to open its component picker overlay at the cursor.
-    if ui.button(format!("{} Add Component…", regular::PLUS_CIRCLE)).clicked() {
+    if ui
+        .button(format!("{} Add Component…", regular::PLUS_CIRCLE))
+        .clicked()
+    {
         let entity = node.entity;
         let pos = ui
             .ctx()
@@ -527,9 +590,7 @@ fn context_menu(
             if let Some(sel) = world.get_resource::<EditorSelection>() {
                 sel.set(Some(entity));
             }
-            world.insert_resource(
-                renzora_editor::OpenAddComponentMenuRequest { screen_pos },
-            );
+            world.insert_resource(renzora_editor::OpenAddComponentMenuRequest { screen_pos });
         });
         ui.close();
     }
@@ -537,7 +598,10 @@ fn context_menu(
     // ── Blueprint ──
     ui.separator();
     if node.has_blueprint {
-        if ui.button(format!("{} Edit Blueprint", regular::FLOW_ARROW)).clicked() {
+        if ui
+            .button(format!("{} Edit Blueprint", regular::FLOW_ARROW))
+            .clicked()
+        {
             let entity = node.entity;
             commands.push(move |world: &mut World| {
                 if let Some(sel) = world.get_resource::<EditorSelection>() {
@@ -550,7 +614,10 @@ fn context_menu(
             ui.close();
         }
     } else {
-        if ui.button(format!("{} Add Blueprint", regular::FLOW_ARROW)).clicked() {
+        if ui
+            .button(format!("{} Add Blueprint", regular::FLOW_ARROW))
+            .clicked()
+        {
             let entity = node.entity;
             commands.push(move |world: &mut World| {
                 let mut graph = BlueprintGraph::new();
@@ -587,7 +654,10 @@ fn context_menu(
     }
 
     // Unparent
-    if ui.button(format!("{} Unparent", regular::ARROW_SQUARE_OUT)).clicked() {
+    if ui
+        .button(format!("{} Unparent", regular::ARROW_SQUARE_OUT))
+        .clicked()
+    {
         let entity = node.entity;
         commands.push(move |world: &mut World| {
             world.entity_mut(entity).remove::<ChildOf>();
@@ -597,22 +667,33 @@ fn context_menu(
 
     // Multi-selection actions
     if selection.has_multi_selection() {
-        if ui.button(format!("{} Group as Children", regular::FOLDER_SIMPLE)).clicked() {
+        if ui
+            .button(format!("{} Group as Children", regular::FOLDER_SIMPLE))
+            .clicked()
+        {
             let selected = selection.get_all();
             commands.push(move |world: &mut World| {
-                let members: Vec<(Entity, Option<Entity>)> = selected.iter()
+                let members: Vec<(Entity, Option<Entity>)> = selected
+                    .iter()
                     .map(|e| (*e, world.get::<ChildOf>(*e).map(|c| c.parent())))
                     .collect();
-                renzora_undo::execute(world, UndoContext::Scene, Box::new(GroupAsChildrenCmd {
-                    parent: Entity::PLACEHOLDER,
-                    group_name: "Group".to_string(),
-                    members,
-                }));
+                renzora_undo::execute(
+                    world,
+                    UndoContext::Scene,
+                    Box::new(GroupAsChildrenCmd {
+                        parent: Entity::PLACEHOLDER,
+                        group_name: "Group".to_string(),
+                        members,
+                    }),
+                );
             });
             ui.close();
         }
 
-        if ui.button(format!("{} Batch Rename…", regular::TEXT_AA)).clicked() {
+        if ui
+            .button(format!("{} Batch Rename…", regular::TEXT_AA))
+            .clicked()
+        {
             state.batch_rename_active = true;
             state.batch_rename_base = node.name.clone();
             state.batch_rename_start = 1;
@@ -640,7 +721,9 @@ fn context_menu(
             if clear_resp.on_hover_text("Clear").clicked() {
                 let entity = node.entity;
                 commands.push(move |world: &mut World| {
-                    world.entity_mut(entity).remove::<renzora_editor::EntityLabelColor>();
+                    world
+                        .entity_mut(entity)
+                        .remove::<renzora_editor::EntityLabelColor>();
                 });
                 ui.close();
             }
@@ -654,17 +737,30 @@ fn context_menu(
             for &(color, name) in row {
                 let c32 = Color32::from_rgb(color[0], color[1], color[2]);
                 let is_current = current_label_color == Some(color);
-                let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), Sense::click());
+                let (swatch_rect, swatch_resp) =
+                    ui.allocate_exact_size(Vec2::new(14.0, 14.0), Sense::click());
                 ui.painter().rect_filled(swatch_rect.shrink(1.0), 2.0, c32);
                 if is_current {
-                    ui.painter().rect_stroke(swatch_rect, 2.0, Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Outside);
+                    ui.painter().rect_stroke(
+                        swatch_rect,
+                        2.0,
+                        Stroke::new(1.5, Color32::WHITE),
+                        egui::StrokeKind::Outside,
+                    );
                 } else if swatch_resp.hovered() {
-                    ui.painter().rect_stroke(swatch_rect, 2.0, Stroke::new(1.0, Color32::from_rgb(200, 200, 200)), egui::StrokeKind::Outside);
+                    ui.painter().rect_stroke(
+                        swatch_rect,
+                        2.0,
+                        Stroke::new(1.0, Color32::from_rgb(200, 200, 200)),
+                        egui::StrokeKind::Outside,
+                    );
                 }
                 if swatch_resp.on_hover_text(name).clicked() {
                     let entity = node.entity;
                     commands.push(move |world: &mut World| {
-                        world.entity_mut(entity).insert(renzora_editor::EntityLabelColor(color));
+                        world
+                            .entity_mut(entity)
+                            .insert(renzora_editor::EntityLabelColor(color));
                     });
                     ui.close();
                 }
@@ -697,18 +793,24 @@ fn context_menu(
                 for e in to_remove {
                     world.entity_mut(e).remove::<renzora::core::DefaultCamera>();
                 }
-                world.entity_mut(entity).insert(renzora::core::DefaultCamera);
+                world
+                    .entity_mut(entity)
+                    .insert(renzora::core::DefaultCamera);
             });
             ui.close();
         }
 
         // Snap to Viewport — copy editor camera transform to this scene camera
-        if ui.button(format!("{} Snap to Viewport", regular::FRAME_CORNERS)).clicked() {
+        if ui
+            .button(format!("{} Snap to Viewport", regular::FRAME_CORNERS))
+            .clicked()
+        {
             let entity = node.entity;
             commands.push(move |world: &mut World| {
                 // Read the editor camera's transform
                 let editor_transform = {
-                    let mut q = world.query_filtered::<&Transform, With<renzora::core::EditorCamera>>();
+                    let mut q =
+                        world.query_filtered::<&Transform, With<renzora::core::EditorCamera>>();
                     q.iter(world).next().copied()
                 };
                 if let Some(t) = editor_transform {
@@ -725,7 +827,10 @@ fn context_menu(
 
     // Instance Scene… — pick a .ron scene file and spawn it as a nested
     // scene instance under this entity.
-    if ui.button(format!("{} Instance Scene…", regular::FILM_STRIP)).clicked() {
+    if ui
+        .button(format!("{} Instance Scene…", regular::FILM_STRIP))
+        .clicked()
+    {
         let parent_entity = node.entity;
         commands.push(move |world: &mut World| {
             let scenes_dir = world
@@ -749,21 +854,29 @@ fn context_menu(
             let host_abs = world
                 .get_resource::<renzora::core::CurrentProject>()
                 .and_then(|p| {
-                    world.get_resource::<renzora_ui::DocumentTabState>()
-                        .and_then(|t| t.tabs.get(t.active_tab)
-                            .and_then(|tab| tab.scene_path.clone()))
+                    world
+                        .get_resource::<renzora_ui::DocumentTabState>()
+                        .and_then(|t| {
+                            t.tabs
+                                .get(t.active_tab)
+                                .and_then(|tab| tab.scene_path.clone())
+                        })
                         .map(|rel| p.resolve_path(&rel))
                 });
             if let (Some(host_abs), Some(project_root)) = (
                 host_abs,
-                world.get_resource::<renzora::core::CurrentProject>()
+                world
+                    .get_resource::<renzora::core::CurrentProject>()
                     .map(|p| p.path.clone()),
             ) {
                 let mut cache = world
                     .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
                     .unwrap_or_default();
                 let cycle = renzora_engine::scene_io::would_create_reference_cycle(
-                    &mut cache, &project_root, &host_abs, &path,
+                    &mut cache,
+                    &project_root,
+                    &host_abs,
+                    &path,
                 );
                 world.insert_resource(cache);
                 if cycle {
@@ -793,7 +906,10 @@ fn context_menu(
     // and become scene-owned entities (saved directly in the host scene from
     // then on, no longer pulled from the source file).
     if node.is_scene_instance {
-        if ui.button(format!("{} Unpack Scene Instance", regular::LINK_BREAK)).clicked() {
+        if ui
+            .button(format!("{} Unpack Scene Instance", regular::LINK_BREAK))
+            .clicked()
+        {
             let entity = node.entity;
             commands.push(move |world: &mut World| {
                 world.entity_mut(entity).remove::<renzora::SceneInstance>();
@@ -809,9 +925,13 @@ fn context_menu(
     ui.separator();
 
     // Delete
-    if ui.button(egui::RichText::new(format!("{} Delete", regular::TRASH)).color(
-        theme.semantic.error.to_color32(),
-    )).clicked() {
+    if ui
+        .button(
+            egui::RichText::new(format!("{} Delete", regular::TRASH))
+                .color(theme.semantic.error.to_color32()),
+        )
+        .clicked()
+    {
         let entities: Vec<Entity> = if selection.is_selected(node.entity) {
             selection.get_all()
         } else {
@@ -830,7 +950,13 @@ fn context_menu(
                     let name = e.get::<Name>()?.as_str().to_string();
                     let transform = *e.get::<Transform>()?;
                     let color = e.get::<renzora::core::MeshColor>()?.0;
-                    Some(DeletedShape { entity: *entity, shape_id, name, transform, color })
+                    Some(DeletedShape {
+                        entity: *entity,
+                        shape_id,
+                        name,
+                        transform,
+                        color,
+                    })
                 });
                 match shape {
                     Some(item) => items.push(item),
@@ -839,11 +965,21 @@ fn context_menu(
             }
             // Non-shape entities: despawn directly, not undoable for now.
             for e in other {
-                if let Ok(em) = world.get_entity_mut(e) { em.despawn(); }
+                if let Ok(em) = world.get_entity_mut(e) {
+                    em.despawn();
+                }
             }
-            if let Some(sel) = world.get_resource::<EditorSelection>() { sel.clear(); }
-            if items.is_empty() { return; }
-            renzora_undo::execute(world, UndoContext::Scene, Box::new(DeleteShapesCmd { items }));
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.clear();
+            }
+            if items.is_empty() {
+                return;
+            }
+            renzora_undo::execute(
+                world,
+                UndoContext::Scene,
+                Box::new(DeleteShapesCmd { items }),
+            );
         });
         ui.close();
     }

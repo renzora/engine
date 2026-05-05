@@ -10,3 +10,6 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 bevy = { workspace = true }
 bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
+
+[lints]
+workspace = true

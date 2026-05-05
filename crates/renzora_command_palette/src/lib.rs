@@ -1,5 +1,4 @@
 #![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
-
 #![allow(dead_code)] // Public surface area kept for upcoming features.
 
 //! Command Palette — fuzzy-searchable modal listing every registered tool
@@ -17,8 +16,8 @@ use bevy_egui::egui::{self, Align, Color32, Layout, RichText};
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora_editor::{
-    AppEditorExt, EditorCommands, ShortcutEntry, ShortcutRegistry, SplashState,
-    ToolEntry, ToolbarRegistry,
+    AppEditorExt, EditorCommands, ShortcutEntry, ShortcutRegistry, SplashState, ToolEntry,
+    ToolbarRegistry,
 };
 use renzora_theme::ThemeManager;
 
@@ -73,7 +72,6 @@ fn consume_toggle_request(world: &mut World) {
     }
 }
 
-
 fn toggle_palette(world: &mut World) {
     let mut state = world.resource_mut::<CommandPaletteState>();
     state.open = !state.open;
@@ -109,7 +107,9 @@ fn collect_items(
     // palette reflects context (e.g. "Paint Foliage" only when a terrain is
     // selected, "Join Selected" only when ≥2 meshes are selected).
     for entry in toolbar.entries() {
-        if !(entry.visible)(world) { continue; }
+        if !(entry.visible)(world) {
+            continue;
+        }
         out.push(tool_item(entry));
     }
 
@@ -134,7 +134,9 @@ fn collect_items(
     // for a real key press. Skip hold-based camera movement actions —
     // they're not sensible as one-shot palette commands.
     for action in EditorAction::all() {
-        if is_hold_action(action) { continue; }
+        if is_hold_action(action) {
+            continue;
+        }
         let binding = keybindings
             .get(action)
             .map(|b| b.display())
@@ -191,8 +193,7 @@ fn collect_items(
                 label,
                 detail: None,
                 handler: Arc::new(move |w: &mut World| {
-                    if let Some(mut docking) =
-                        w.get_resource_mut::<renzora_editor::DockingState>()
+                    if let Some(mut docking) = w.get_resource_mut::<renzora_editor::DockingState>()
                     {
                         docking.tree.focus_or_add_panel(&id);
                     }
@@ -271,7 +272,10 @@ fn collect_items(
     // Docs — open external documentation URLs in the user's browser.
     let docs: &[(&str, &str)] = &[
         ("Documentation: Home", "https://renzora.com/docs"),
-        ("Documentation: YouTube Channel", "https://youtube.com/@renzoragame"),
+        (
+            "Documentation: YouTube Channel",
+            "https://youtube.com/@renzoragame",
+        ),
         ("Documentation: Discord", "https://discord.gg/9UHUGUyDJv"),
         ("Documentation: GitHub", "https://github.com/renzora/engine"),
     ];
@@ -294,7 +298,9 @@ fn open_url(url: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(url).spawn();
         #[cfg(all(unix, not(target_os = "macos")))]
@@ -328,13 +334,13 @@ fn tool_item(entry: &ToolEntry) -> PaletteItem {
 }
 
 fn filter_items(items: Vec<PaletteItem>, query: &str) -> Vec<PaletteItem> {
-    if query.is_empty() { return items; }
+    if query.is_empty() {
+        return items;
+    }
     let q = query.to_lowercase();
     items
         .into_iter()
-        .filter(|i| {
-            i.label.to_lowercase().contains(&q) || i.kind.to_lowercase().contains(&q)
-        })
+        .filter(|i| i.label.to_lowercase().contains(&q) || i.kind.to_lowercase().contains(&q))
         .collect()
 }
 
@@ -402,7 +408,11 @@ fn render_palette(world: &mut World) {
     }
 
     if up_pressed && !items.is_empty() {
-        selected = if selected == 0 { items.len() - 1 } else { selected - 1 };
+        selected = if selected == 0 {
+            items.len() - 1
+        } else {
+            selected - 1
+        };
     }
     if down_pressed && !items.is_empty() {
         selected = (selected + 1) % items.len();
@@ -411,12 +421,10 @@ fn render_palette(world: &mut World) {
     // Render the modal.
     let screen = ctx.input(|i| i.screen_rect());
     let panel_w = 560.0_f32.min(screen.width() - 40.0);
-    let panel_pos = egui::Pos2::new(
-        (screen.width() - panel_w) * 0.5,
-        screen.height() * 0.22,
-    );
+    let panel_pos = egui::Pos2::new((screen.width() - panel_w) * 0.5, screen.height() * 0.22);
 
-    let (bg, border, row_hover, text_primary, text_muted, accent) = if let Some(t) = &theme_snapshot {
+    let (bg, border, row_hover, text_primary, text_muted, accent) = if let Some(t) = &theme_snapshot
+    {
         (
             t.surfaces.panel.to_color32(),
             t.widgets.border.to_color32(),
@@ -443,11 +451,8 @@ fn render_palette(world: &mut World) {
         .fixed_pos(egui::Pos2::ZERO)
         .show(&ctx, |ui| {
             let resp = ui.allocate_rect(screen, egui::Sense::click());
-            ui.painter().rect_filled(
-                screen,
-                0.0,
-                Color32::from_rgba_unmultiplied(0, 0, 0, 120),
-            );
+            ui.painter()
+                .rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
             if resp.clicked() {
                 close_requested = true;
             }
@@ -484,66 +489,70 @@ fn render_palette(world: &mut World) {
                 ui.add_space(4.0);
 
                 // Results
-                egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                    if items.is_empty() {
-                        ui.add_space(20.0);
-                        ui.vertical_centered(|ui| {
-                            ui.label(RichText::new("No matches").color(text_muted).size(13.0));
-                        });
-                        return;
-                    }
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        if items.is_empty() {
+                            ui.add_space(20.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(RichText::new("No matches").color(text_muted).size(13.0));
+                            });
+                            return;
+                        }
 
-                    for (i, item) in items.iter().enumerate() {
-                        let is_sel = i == selected;
-                        let row_rect = ui.allocate_response(
-                            egui::Vec2::new(panel_w - 16.0, 24.0),
-                            egui::Sense::click(),
-                        );
-
-                        if is_sel || row_rect.hovered() {
-                            ui.painter().rect_filled(
-                                row_rect.rect,
-                                egui::CornerRadius::same(4),
-                                row_hover,
+                        for (i, item) in items.iter().enumerate() {
+                            let is_sel = i == selected;
+                            let row_rect = ui.allocate_response(
+                                egui::Vec2::new(panel_w - 16.0, 24.0),
+                                egui::Sense::click(),
                             );
-                        }
 
-                        let row_inner = row_rect.rect.shrink2(egui::Vec2::new(6.0, 2.0));
-                        ui.scope_builder(
-                            egui::UiBuilder::new().max_rect(row_inner).layout(
-                                Layout::left_to_right(Align::Center),
-                            ),
-                            |ui| {
-                                ui.label(
-                                    RichText::new(item.kind)
-                                        .color(accent)
-                                        .size(10.0)
-                                        .monospace(),
+                            if is_sel || row_rect.hovered() {
+                                ui.painter().rect_filled(
+                                    row_rect.rect,
+                                    egui::CornerRadius::same(4),
+                                    row_hover,
                                 );
-                                ui.add_space(8.0);
-                                ui.label(RichText::new(&item.label).color(text_primary).size(12.0));
-                                if let Some(detail) = &item.detail {
-                                    ui.with_layout(
-                                        Layout::right_to_left(Align::Center),
-                                        |ui| {
-                                            ui.label(
-                                                RichText::new(detail)
-                                                    .color(text_muted)
-                                                    .monospace()
-                                                    .size(11.0),
-                                            );
-                                        },
-                                    );
-                                }
-                            },
-                        );
+                            }
 
-                        if row_rect.clicked() {
-                            selected = i;
-                            run_selected = true;
+                            let row_inner = row_rect.rect.shrink2(egui::Vec2::new(6.0, 2.0));
+                            ui.scope_builder(
+                                egui::UiBuilder::new()
+                                    .max_rect(row_inner)
+                                    .layout(Layout::left_to_right(Align::Center)),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new(item.kind)
+                                            .color(accent)
+                                            .size(10.0)
+                                            .monospace(),
+                                    );
+                                    ui.add_space(8.0);
+                                    ui.label(
+                                        RichText::new(&item.label).color(text_primary).size(12.0),
+                                    );
+                                    if let Some(detail) = &item.detail {
+                                        ui.with_layout(
+                                            Layout::right_to_left(Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(detail)
+                                                        .color(text_muted)
+                                                        .monospace()
+                                                        .size(11.0),
+                                                );
+                                            },
+                                        );
+                                    }
+                                },
+                            );
+
+                            if row_rect.clicked() {
+                                selected = i;
+                                run_selected = true;
+                            }
                         }
-                    }
-                });
+                    });
             });
         });
 
@@ -579,3 +588,5 @@ fn render_palette(world: &mut World) {
         }
     }
 }
+
+renzora::add!(CommandPalettePlugin, Editor);

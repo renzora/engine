@@ -3,13 +3,15 @@
 use bevy::prelude::*;
 use std::path::PathBuf;
 
+use crate::command::CharacterCommandQueue;
 use crate::component::ScriptComponent;
 use crate::engine::ScriptEngine;
-use crate::input::{ScriptInput, update_script_input};
-use crate::resources::ScriptTimers;
+use crate::input::{update_script_input, ScriptInput};
 use crate::resources::update_script_timers;
-use crate::command::CharacterCommandQueue;
-use crate::systems::execution::{ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptReflectionQueue};
+use crate::resources::ScriptTimers;
+use crate::systems::execution::{
+    ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptReflectionQueue,
+};
 
 /// Events emitted when scripts are hot-reloaded.
 #[derive(Resource, Default)]
@@ -41,7 +43,9 @@ pub struct ScriptingPlugin {
 
 impl ScriptingPlugin {
     pub fn new() -> Self {
-        Self { scripts_folder: None }
+        Self {
+            scripts_folder: None,
+        }
     }
 
     pub fn with_scripts_folder(mut self, path: impl Into<PathBuf>) -> Self {
@@ -93,15 +97,13 @@ impl Plugin for ScriptingPlugin {
                     ScriptingSet::CommandProcessing,
                     ScriptingSet::DebugDraw,
                     ScriptingSet::Cleanup,
-                ).chain(),
+                )
+                    .chain(),
             )
             // Pre-script systems (always run — input collection is cheap)
             .add_systems(
                 Update,
-                (
-                    update_script_input,
-                    update_script_timers,
-                ).in_set(ScriptingSet::PreScript),
+                (update_script_input, update_script_timers).in_set(ScriptingSet::PreScript),
             )
             // Script execution — only when scripts should run
             .add_systems(
@@ -125,10 +127,7 @@ impl Plugin for ScriptingPlugin {
                     .run_if(scripts_should_run),
             )
             // Sync scripts folder from CurrentProject
-            .add_systems(
-                Update,
-                sync_scripts_folder.in_set(ScriptingSet::PreScript),
-            )
+            .add_systems(Update, sync_scripts_folder.in_set(ScriptingSet::PreScript))
             // Hot-reload: check for modified script files
             .add_systems(
                 Update,
@@ -163,9 +162,7 @@ fn handle_reset_script_states(
 ///
 /// In editor: only when PlayModeState says scripts are running.
 /// In standalone runtime (no PlayModeState): always run.
-fn scripts_should_run(
-    play_mode: Option<Res<renzora::PlayModeState>>,
-) -> bool {
+fn scripts_should_run(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
     match play_mode {
         Some(pm) => pm.is_scripts_running(),
         None => true, // standalone runtime — always run
@@ -192,11 +189,16 @@ fn check_script_hot_reload(
 
     for mut sc in scripts.iter_mut() {
         for entry in sc.scripts.iter_mut() {
-            let Some(ref path) = entry.script_path else { continue };
-            if !entry.enabled { continue; }
+            let Some(ref path) = entry.script_path else {
+                continue;
+            };
+            if !entry.enabled {
+                continue;
+            }
 
             if engine.needs_reload(path) {
-                let display_name = path.file_name()
+                let display_name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -209,7 +211,11 @@ fn check_script_hot_reload(
                         info!("[Scripting] Hot-reloaded: {}", path.display());
                     }
                     Err(e) => {
-                        warn!("[Scripting] Hot-reload failed for {}: {}", path.display(), e);
+                        warn!(
+                            "[Scripting] Hot-reload failed for {}: {}",
+                            path.display(),
+                            e
+                        );
                     }
                 }
             }

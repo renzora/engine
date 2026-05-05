@@ -5,8 +5,8 @@ pub mod systems;
 
 use bevy::prelude::*;
 use renzora_editor::ActiveTool;
-use renzora_terrain::foliage::{FoliageDensityMap, FoliagePaintSettings};
 use renzora_terrain::data::TerrainChunkData;
+use renzora_terrain::foliage::{FoliageDensityMap, FoliagePaintSettings};
 
 #[derive(Default)]
 pub struct FoliageEditorPlugin;
@@ -44,3 +44,4 @@ fn ensure_density_maps(
     }
 }
 
+renzora::add!(FoliageEditorPlugin, Editor);

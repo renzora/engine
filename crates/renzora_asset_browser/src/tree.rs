@@ -49,16 +49,15 @@ pub fn tree_ui(
                 let star_color = Color32::from_rgb(255, 200, 60);
 
                 // Section header — doubles as drop target for adding favorites
-                let (header_rect, _) = ui.allocate_exact_size(
-                    Vec2::new(ui.available_width(), 18.0),
-                    Sense::hover(),
-                );
+                let (header_rect, _) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
 
                 // Drag-to-favorite: highlight header when dragging a folder over it
-                let dragging_folders = !state.drag_moving.is_empty()
-                    && state.drag_moving.iter().any(|p| p.is_dir());
+                let dragging_folders =
+                    !state.drag_moving.is_empty() && state.drag_moving.iter().any(|p| p.is_dir());
                 let pointer_over_header = if dragging_folders {
-                    ui.ctx().input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
+                    ui.ctx()
+                        .input(|i| i.pointer.hover_pos().or(i.pointer.latest_pos()))
                         .map(|p| header_rect.contains(p))
                         .unwrap_or(false)
                 } else {
@@ -93,7 +92,11 @@ pub fn tree_ui(
                         "Favorites".to_string()
                     },
                     FontId::proportional(12.0),
-                    if pointer_over_header { star_color } else { text_muted },
+                    if pointer_over_header {
+                        star_color
+                    } else {
+                        text_muted
+                    },
                 );
 
                 // Render each favorite (only if there are any)
@@ -149,7 +152,14 @@ pub fn tree_ui(
                     let fav_text_x = rect.min.x + 42.0;
                     let fav_max_w = (rect.max.x - fav_text_x - 4.0).max(0.0);
                     let fav_text_y = rect.center().y - 13.0 * 0.5;
-                    paint_truncated_text(ui.painter(), Pos2::new(fav_text_x, fav_text_y), &fav_name, FontId::proportional(13.0), text_secondary, fav_max_w);
+                    paint_truncated_text(
+                        ui.painter(),
+                        Pos2::new(fav_text_x, fav_text_y),
+                        &fav_name,
+                        FontId::proportional(13.0),
+                        text_secondary,
+                        fav_max_w,
+                    );
 
                     if response.clicked() {
                         state.current_folder = Some(fav_path.clone());
@@ -158,7 +168,10 @@ pub fn tree_ui(
                     // Right-click context menu
                     let fav_path_clone = fav_path.clone();
                     response.context_menu(|ui| {
-                        if ui.button(format!("{} Remove from Favorites", regular::STAR)).clicked() {
+                        if ui
+                            .button(format!("{} Remove from Favorites", regular::STAR))
+                            .clicked()
+                        {
                             fav_to_remove = Some(fav_path_clone.clone());
                             ui.close();
                         }
@@ -208,15 +221,17 @@ pub fn tree_ui(
                     let item_hover = theme.panels.item_hover.to_color32();
 
                     // Collapsible header with caret + badge
-                    let (header_rect, header_resp) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), 18.0),
-                        Sense::click(),
-                    );
+                    let (header_rect, header_resp) = ui
+                        .allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());
                     if header_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
 
-                    let caret = if state.recent_expanded { CARET_DOWN } else { CARET_RIGHT };
+                    let caret = if state.recent_expanded {
+                        CARET_DOWN
+                    } else {
+                        CARET_RIGHT
+                    };
                     ui.painter().text(
                         Pos2::new(header_rect.min.x + 4.0, header_rect.center().y),
                         Align2::LEFT_CENTER,
@@ -235,14 +250,22 @@ pub fn tree_ui(
                     // Badge with count
                     let badge_text = format!("{}", recent_count);
                     let badge_font = FontId::proportional(11.0);
-                    let badge_galley = ui.painter().layout_no_wrap(badge_text.clone(), badge_font.clone(), text_muted);
+                    let badge_galley = ui.painter().layout_no_wrap(
+                        badge_text.clone(),
+                        badge_font.clone(),
+                        text_muted,
+                    );
                     let badge_w = badge_galley.size().x + 8.0;
                     let badge_h = 14.0;
                     let badge_rect = egui::Rect::from_center_size(
-                        Pos2::new(header_rect.min.x + 52.0 + badge_w * 0.5, header_rect.center().y),
+                        Pos2::new(
+                            header_rect.min.x + 52.0 + badge_w * 0.5,
+                            header_rect.center().y,
+                        ),
                         Vec2::new(badge_w, badge_h),
                     );
-                    ui.painter().rect_filled(badge_rect, 3.0, theme.widgets.border.to_color32());
+                    ui.painter()
+                        .rect_filled(badge_rect, 3.0, theme.widgets.border.to_color32());
                     ui.painter().text(
                         badge_rect.center(),
                         Align2::CENTER_CENTER,
@@ -298,7 +321,11 @@ pub fn tree_ui(
                             // Delete button (right side, only on hover)
                             let delete_w = 16.0;
                             let has_delete = hovered;
-                            let text_right = if has_delete { rect.max.x - delete_w - 4.0 } else { rect.max.x - 4.0 };
+                            let text_right = if has_delete {
+                                rect.max.x - delete_w - 4.0
+                            } else {
+                                rect.max.x - 4.0
+                            };
 
                             if has_delete {
                                 let del_rect = egui::Rect::from_min_size(
@@ -311,7 +338,11 @@ pub fn tree_ui(
                                     Align2::CENTER_CENTER,
                                     regular::X,
                                     FontId::proportional(11.0),
-                                    if del_resp.hovered() { text_secondary } else { text_muted },
+                                    if del_resp.hovered() {
+                                        text_secondary
+                                    } else {
+                                        text_muted
+                                    },
                                 );
                                 if del_resp.clicked() {
                                     to_remove = Some(recent_path.clone());
@@ -322,16 +353,29 @@ pub fn tree_ui(
                             let text_x = rect.min.x + 30.0;
                             let max_w = (text_right - text_x).max(0.0);
                             let text_y = rect.center().y - 13.0 * 0.5;
-                            paint_truncated_text(ui.painter(), Pos2::new(text_x, text_y), &name, FontId::proportional(13.0), text_secondary, max_w);
+                            paint_truncated_text(
+                                ui.painter(),
+                                Pos2::new(text_x, text_y),
+                                &name,
+                                FontId::proportional(13.0),
+                                text_secondary,
+                                max_w,
+                            );
 
                             // Hover tooltip with folder path
                             let response = if let Some(parent) = recent_path.parent() {
                                 if let Some(ref root) = state.project_root {
                                     if let Ok(rel) = parent.strip_prefix(root) {
                                         response.on_hover_text(rel.to_string_lossy().to_string())
-                                    } else { response }
-                                } else { response }
-                            } else { response };
+                                    } else {
+                                        response
+                                    }
+                                } else {
+                                    response
+                                }
+                            } else {
+                                response
+                            };
 
                             if response.clicked() {
                                 if let Some(parent) = recent_path.parent() {
@@ -349,16 +393,17 @@ pub fn tree_ui(
                             if response.drag_started() {
                                 state.drag_moving = vec![recent_path.clone()];
                                 let origin = ui.ctx().pointer_latest_pos().unwrap_or_default();
-                                state.pending_drag_payload = Some(renzora_editor::AssetDragPayload {
-                                    path: recent_path.clone(),
-                                    paths: vec![recent_path.clone()],
-                                    name: name.clone(),
-                                    icon: icon.to_string(),
-                                    color: icon_color,
-                                    origin,
-                                    is_detached: false,
-                                    drag_count: 1,
-                                });
+                                state.pending_drag_payload =
+                                    Some(renzora_editor::AssetDragPayload {
+                                        path: recent_path.clone(),
+                                        paths: vec![recent_path.clone()],
+                                        name: name.clone(),
+                                        icon: icon.to_string(),
+                                        color: icon_color,
+                                        origin,
+                                        is_detached: false,
+                                        drag_count: 1,
+                                    });
                             }
                         }
 
@@ -523,8 +568,8 @@ fn render_folder_children(
         }
 
         let is_expanded = state.expanded_folders.contains(folder);
-        let is_current = state.current_folder.as_ref() == Some(folder)
-            || state.selected_assets.contains(folder);
+        let is_current =
+            state.current_folder.as_ref() == Some(folder) || state.selected_assets.contains(folder);
         let is_drop_target = state.drop_target_folder.as_ref() == Some(folder);
         let (icon, color) = get_folder_icon(is_expanded, &name);
         state.visible_item_order.push(folder.clone());
@@ -544,8 +589,7 @@ fn render_folder_children(
 
         state.tree_folder_rects.push((folder.clone(), row_rect));
 
-        let (ctrl_held, shift_held) =
-            ui.ctx().input(|i| (i.modifiers.ctrl, i.modifiers.shift));
+        let (ctrl_held, shift_held) = ui.ctx().input(|i| (i.modifiers.ctrl, i.modifiers.shift));
 
         if clicked {
             if shift_held {
@@ -648,9 +692,7 @@ fn render_folder_files(
             .unwrap_or("???")
             .to_string();
 
-        if !state.search.is_empty()
-            && !name.to_lowercase().contains(&state.search.to_lowercase())
-        {
+        if !state.search.is_empty() && !name.to_lowercase().contains(&state.search.to_lowercase()) {
             continue;
         }
 
@@ -709,7 +751,8 @@ fn render_folder_files(
     _parent: &PathBuf,
     _depth: usize,
     _theme: &Theme,
-) {}
+) {
+}
 
 /// Render a single file row — no expand arrow, file-type icon. Returns
 /// `(clicked, drag_started, right_clicked)` so the caller can wire
@@ -770,7 +813,11 @@ fn render_file_row(
         max_text_width,
     );
 
-    (response.clicked(), response.drag_started(), response.secondary_clicked())
+    (
+        response.clicked(),
+        response.drag_started(),
+        response.secondary_clicked(),
+    )
 }
 
 /// Render a single folder row. Returns
@@ -809,9 +856,16 @@ fn render_folder_row(
 
     // Background — drop target highlight, selection, hover, or transparent
     if is_drop_target {
-        painter.rect_filled(rect, 2.0, Color32::from_rgba_unmultiplied(
-            accent_color.r(), accent_color.g(), accent_color.b(), 60,
-        ));
+        painter.rect_filled(
+            rect,
+            2.0,
+            Color32::from_rgba_unmultiplied(
+                accent_color.r(),
+                accent_color.g(),
+                accent_color.b(),
+                60,
+            ),
+        );
         painter.rect_stroke(
             rect,
             2.0,
@@ -828,10 +882,8 @@ fn render_folder_row(
     let arrow_x = rect.min.x + indent + 8.0;
     let arrow_icon = if is_expanded { CARET_DOWN } else { CARET_RIGHT };
 
-    let arrow_rect = egui::Rect::from_center_size(
-        Pos2::new(arrow_x, rect.center().y),
-        Vec2::splat(14.0),
-    );
+    let arrow_rect =
+        egui::Rect::from_center_size(Pos2::new(arrow_x, rect.center().y), Vec2::splat(14.0));
     let arrow_id = ui.id().with(("nav_arrow", path.as_os_str()));
     let arrow_resp = ui.interact(arrow_rect, arrow_id, Sense::click());
     if arrow_resp.hovered() {
@@ -843,7 +895,11 @@ fn render_folder_row(
         Align2::CENTER_CENTER,
         arrow_icon,
         FontId::proportional(11.0),
-        if arrow_resp.hovered() { text_secondary } else { text_muted },
+        if arrow_resp.hovered() {
+            text_secondary
+        } else {
+            text_muted
+        },
     );
 
     // Folder icon
@@ -860,7 +916,14 @@ fn render_folder_row(
     let text_x = icon_x + 16.0;
     let max_text_width = (rect.max.x - text_x - 4.0).max(0.0);
     let text_y = rect.center().y - 13.0 * 0.5; // vertically center for proportional 13
-    paint_truncated_text(painter, Pos2::new(text_x, text_y), name, FontId::proportional(13.0), text_secondary, max_text_width);
+    paint_truncated_text(
+        painter,
+        Pos2::new(text_x, text_y),
+        name,
+        FontId::proportional(13.0),
+        text_secondary,
+        max_text_width,
+    );
 
     (
         arrow_resp.clicked() || response.clicked(),
@@ -872,10 +935,7 @@ fn render_folder_row(
 
 /// Recursively add every file and subfolder under `root` to `out`. Used by
 /// shift-click on a folder so the user can select a whole branch at once.
-fn collect_descendants_into(
-    root: &PathBuf,
-    out: &mut std::collections::HashSet<PathBuf>,
-) {
+fn collect_descendants_into(root: &PathBuf, out: &mut std::collections::HashSet<PathBuf>) {
     let entries = match std::fs::read_dir(root) {
         Ok(e) => e,
         Err(_) => return,
@@ -917,11 +977,14 @@ fn paint_truncated_text(
     color: Color32,
     max_width: f32,
 ) {
-    let mut job = egui::text::LayoutJob::single_section(text.to_string(), egui::TextFormat {
-        font_id: font,
-        color,
-        ..Default::default()
-    });
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_string(),
+        egui::TextFormat {
+            font_id: font,
+            color,
+            ..Default::default()
+        },
+    );
     job.wrap = egui::text::TextWrapping {
         max_width,
         max_rows: 1,
@@ -935,7 +998,10 @@ fn paint_truncated_text(
 /// Check recursively if any file/folder within `dir` matches the search.
 fn folder_contains_match(dir: &PathBuf, search: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
-    { let _ = (dir, search); return false; }
+    {
+        let _ = (dir, search);
+        return false;
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     {

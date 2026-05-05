@@ -28,3 +28,6 @@ reflect = []
 # (we don't enable them, the gated branches stay inactive).
 interpolation = []
 flood = []
+
+[lints]
+workspace = true

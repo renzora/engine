@@ -64,11 +64,9 @@ pub fn save_session(session: &AuthSession) {
     let Some(path) = auth_file() else { return };
     let Some(dir) = auth_dir() else { return };
 
-    if let (Some(access), Some(refresh), Some(user)) = (
-        &session.access_token,
-        &session.refresh_token,
-        &session.user,
-    ) {
+    if let (Some(access), Some(refresh), Some(user)) =
+        (&session.access_token, &session.refresh_token, &session.user)
+    {
         let stored = StoredSession {
             access_token: access.clone(),
             refresh_token: refresh.clone(),

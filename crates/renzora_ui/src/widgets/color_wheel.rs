@@ -4,7 +4,12 @@ use bevy_egui::egui::{self, Color32, Pos2, Sense, Stroke, Vec2};
 use renzora_theme::Theme;
 
 /// Interactive HSV color wheel. Mutates `rgb` in-place when user picks.
-pub fn color_wheel(ui: &mut egui::Ui, rgb: &mut [f32; 3], size: f32, _theme: &Theme) -> egui::Response {
+pub fn color_wheel(
+    ui: &mut egui::Ui,
+    rgb: &mut [f32; 3],
+    size: f32,
+    _theme: &Theme,
+) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     let center = rect.center();
@@ -27,7 +32,11 @@ pub fn color_wheel(ui: &mut egui::Ui, rgb: &mut [f32; 3], size: f32, _theme: &Th
         let p1 = center + Vec2::angled(a0) * outer;
         let p2 = center + Vec2::angled(a1) * outer;
         let p3 = center + Vec2::angled(a1) * inner;
-        painter.add(egui::Shape::convex_polygon(vec![p0, p1, p2, p3], color, Stroke::NONE));
+        painter.add(egui::Shape::convex_polygon(
+            vec![p0, p1, p2, p3],
+            color,
+            Stroke::NONE,
+        ));
     }
 
     // SV square inside the ring
@@ -47,8 +56,15 @@ pub fn color_wheel(ui: &mut egui::Ui, rgb: &mut [f32; 3], size: f32, _theme: &Th
             );
             let px = square.min.x + square.width() * sx;
             let py = square.min.y + square.height() * sy;
-            let cell = Vec2::new(square.width() / steps as f32, square.height() / steps as f32);
-            painter.rect_filled(egui::Rect::from_min_size(Pos2::new(px, py), cell), 0.0, color);
+            let cell = Vec2::new(
+                square.width() / steps as f32,
+                square.height() / steps as f32,
+            );
+            painter.rect_filled(
+                egui::Rect::from_min_size(Pos2::new(px, py), cell),
+                0.0,
+                color,
+            );
         }
     }
 

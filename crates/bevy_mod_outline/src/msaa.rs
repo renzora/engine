@@ -65,10 +65,8 @@ impl ViewNode for MsaaExtraWritebackNode {
 
         // Create bind group layout from the blit pipeline's descriptor
         let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(
-            "blit_bind_group_layout",
-            &blit_pipeline.layout.entries,
-        );
+        let layout = render_device
+            .create_bind_group_layout("blit_bind_group_layout", &blit_pipeline.layout.entries);
         let bind_group = render_context.render_device().create_bind_group(
             None,
             &layout,

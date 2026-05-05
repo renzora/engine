@@ -7,15 +7,15 @@
 //! Terrain types are detected via reflection (component name checks) so this
 //! crate does not depend on renzora_terrain.
 
-use bevy::prelude::*;
 use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::gizmos::config::GizmoConfigStore;
-use bevy_mod_outline::{OutlineVolume, OutlineStencil, OutlineMode};
+use bevy::prelude::*;
+use bevy_mod_outline::{OutlineMode, OutlineStencil, OutlineVolume};
 
-use renzora_editor::{EditorSelection, EditorSettings, SelectionHighlightMode, HideInHierarchy};
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
+use renzora_editor::{EditorSelection, EditorSettings, HideInHierarchy, SelectionHighlightMode};
 
 /// Marker component for entities that currently have a selection outline.
 #[derive(Component)]
@@ -23,7 +23,9 @@ pub struct SelectionOutline;
 
 /// Check if an entity has a component whose type name contains the given substring.
 fn has_component_by_name(world: &World, entity: Entity, name: &str) -> bool {
-    let Ok(er) = world.get_entity(entity) else { return false };
+    let Ok(er) = world.get_entity(entity) else {
+        return false;
+    };
     for &component_id in er.archetype().components() {
         if let Some(info) = world.components().get_info(component_id) {
             if info.name().contains(name) {
@@ -82,9 +84,7 @@ pub fn update_selection_outlines(
     let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8);
     let outline_width = 3.0;
 
-    let in_play = play_mode
-        .as_ref()
-        .map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
 
     let should_show = !modal.active
@@ -123,7 +123,11 @@ pub fn update_selection_outlines(
         }
 
         let is_primary = primary == Some(entity);
-        let color = if is_primary { primary_color } else { secondary_color };
+        let color = if is_primary {
+            primary_color
+        } else {
+            secondary_color
+        };
 
         // Add outline to the entity itself if it has a mesh
         if mesh_entities.get(entity).is_ok() {
@@ -163,7 +167,9 @@ fn add_outline_to_children(
     mesh_entities: &Query<Entity, With<Mesh3d>>,
     children_query: &Query<&Children>,
 ) {
-    let Ok(children) = children_query.get(entity) else { return };
+    let Ok(children) = children_query.get(entity) else {
+        return;
+    };
     for child in children.iter() {
         if mesh_entities.get(child).is_ok() {
             if let Ok(mut ec) = commands.get_entity(child) {
@@ -179,7 +185,15 @@ fn add_outline_to_children(
                 ));
             }
         }
-        add_outline_to_children(commands, child, color, width, outline_mode.clone(), mesh_entities, children_query);
+        add_outline_to_children(
+            commands,
+            child,
+            color,
+            width,
+            outline_mode.clone(),
+            mesh_entities,
+            children_query,
+        );
     }
 }
 
@@ -203,9 +217,7 @@ pub fn draw_selection_bounding_box(
         return;
     }
 
-    let in_play = play_mode
-        .as_ref()
-        .map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
     if in_play {
         return;
     }
@@ -231,7 +243,11 @@ pub fn draw_selection_bounding_box(
         }
 
         let is_primary = primary == Some(entity);
-        let color = if is_primary { primary_color } else { secondary_color };
+        let color = if is_primary {
+            primary_color
+        } else {
+            secondary_color
+        };
 
         let mut min = Vec3::splat(f32::MAX);
         let mut max = Vec3::splat(f32::MIN);
@@ -274,18 +290,23 @@ fn collect_world_aabb(
 }
 
 /// Draw a wireframe box from center + size using 12 edge lines.
-fn draw_wireframe_box(gizmos: &mut Gizmos<OverlayGizmoGroup>, center: Vec3, size: Vec3, color: Color) {
+fn draw_wireframe_box(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    size: Vec3,
+    color: Color,
+) {
     let h = size * 0.5;
 
     let corners = [
         center + Vec3::new(-h.x, -h.y, -h.z),
-        center + Vec3::new( h.x, -h.y, -h.z),
-        center + Vec3::new( h.x,  h.y, -h.z),
-        center + Vec3::new(-h.x,  h.y, -h.z),
-        center + Vec3::new(-h.x, -h.y,  h.z),
-        center + Vec3::new( h.x, -h.y,  h.z),
-        center + Vec3::new( h.x,  h.y,  h.z),
-        center + Vec3::new(-h.x,  h.y,  h.z),
+        center + Vec3::new(h.x, -h.y, -h.z),
+        center + Vec3::new(h.x, h.y, -h.z),
+        center + Vec3::new(-h.x, h.y, -h.z),
+        center + Vec3::new(-h.x, -h.y, h.z),
+        center + Vec3::new(h.x, -h.y, h.z),
+        center + Vec3::new(h.x, h.y, h.z),
+        center + Vec3::new(-h.x, h.y, h.z),
     ];
 
     // Bottom face
@@ -320,9 +341,7 @@ pub fn terrain_chunk_selection_system(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     world: &World,
 ) {
-    let in_play = play_mode
-        .as_ref()
-        .map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
     if modal.active || in_play {
         return;
     }
@@ -344,12 +363,34 @@ pub fn terrain_chunk_selection_system(
         };
 
         // Read terrain data fields via reflection
-        let Some(chunk_resolution) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunk_resolution") else { continue };
-        let Some(chunks_x) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunks_x") else { continue };
-        let Some(chunks_z) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunks_z") else { continue };
-        let Some(chunk_size) = get_reflected_f32(world, terrain_entity, "TerrainData", "chunk_size") else { continue };
-        let Some(max_height) = get_reflected_f32(world, terrain_entity, "TerrainData", "max_height") else { continue };
-        let Some(min_height) = get_reflected_f32(world, terrain_entity, "TerrainData", "min_height") else { continue };
+        let Some(chunk_resolution) =
+            get_reflected_u32(world, terrain_entity, "TerrainData", "chunk_resolution")
+        else {
+            continue;
+        };
+        let Some(chunks_x) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunks_x")
+        else {
+            continue;
+        };
+        let Some(chunks_z) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunks_z")
+        else {
+            continue;
+        };
+        let Some(chunk_size) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "chunk_size")
+        else {
+            continue;
+        };
+        let Some(max_height) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "max_height")
+        else {
+            continue;
+        };
+        let Some(min_height) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "min_height")
+        else {
+            continue;
+        };
 
         let height_range = max_height - min_height;
         let spacing = chunk_size / (chunk_resolution - 1).max(1) as f32;
@@ -357,35 +398,88 @@ pub fn terrain_chunk_selection_system(
         // Find all chunk children
         if let Ok(children) = children_query.get(terrain_entity) {
             for child in children.iter() {
-                if !is_terrain_chunk(world, child) { continue; }
+                if !is_terrain_chunk(world, child) {
+                    continue;
+                }
 
-                let Some(cx) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_x") else { continue };
-                let Some(cz) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_z") else { continue };
-                let Ok(chunk_gt) = global_transforms.get(child) else { continue };
+                let Some(cx) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_x")
+                else {
+                    continue;
+                };
+                let Some(cz) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_z")
+                else {
+                    continue;
+                };
+                let Ok(chunk_gt) = global_transforms.get(child) else {
+                    continue;
+                };
                 let pos = chunk_gt.translation();
                 let y_offset = 0.15;
 
                 // Pull the heightmap so we can trace the real silhouette.
                 let heights = renzora::core::reflection::get_reflected_f32_vec(
-                    world, child, "TerrainChunkData", "heights",
+                    world,
+                    child,
+                    "TerrainChunkData",
+                    "heights",
                 );
 
                 // Draw outer border edges
                 if cz == 0 {
-                    draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-                        min_height, height_range, heights.as_deref(), 0, color);
+                    draw_edge_along_x(
+                        &mut gizmos,
+                        pos,
+                        chunk_resolution,
+                        spacing,
+                        y_offset,
+                        min_height,
+                        height_range,
+                        heights.as_deref(),
+                        0,
+                        color,
+                    );
                 }
                 if cz == chunks_z - 1 {
-                    draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-                        min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
+                    draw_edge_along_x(
+                        &mut gizmos,
+                        pos,
+                        chunk_resolution,
+                        spacing,
+                        y_offset,
+                        min_height,
+                        height_range,
+                        heights.as_deref(),
+                        chunk_resolution - 1,
+                        color,
+                    );
                 }
                 if cx == 0 {
-                    draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-                        min_height, height_range, heights.as_deref(), 0, color);
+                    draw_edge_along_z(
+                        &mut gizmos,
+                        pos,
+                        chunk_resolution,
+                        spacing,
+                        y_offset,
+                        min_height,
+                        height_range,
+                        heights.as_deref(),
+                        0,
+                        color,
+                    );
                 }
                 if cx == chunks_x - 1 {
-                    draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-                        min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
+                    draw_edge_along_z(
+                        &mut gizmos,
+                        pos,
+                        chunk_resolution,
+                        spacing,
+                        y_offset,
+                        min_height,
+                        height_range,
+                        heights.as_deref(),
+                        chunk_resolution - 1,
+                        color,
+                    );
                 }
             }
         }
@@ -398,7 +492,9 @@ pub fn terrain_chunk_selection_system(
         }
 
         // Find parent terrain
-        let Ok(child_of) = child_of_query.get(entity) else { continue };
+        let Ok(child_of) = child_of_query.get(entity) else {
+            continue;
+        };
         let terrain_entity = child_of.parent();
 
         // Skip if the parent terrain is already selected
@@ -410,15 +506,33 @@ pub fn terrain_chunk_selection_system(
             continue;
         }
 
-        let Some(chunk_resolution) = get_reflected_u32(world, terrain_entity, "TerrainData", "chunk_resolution") else { continue };
-        let Some(chunk_size) = get_reflected_f32(world, terrain_entity, "TerrainData", "chunk_size") else { continue };
-        let Some(max_height) = get_reflected_f32(world, terrain_entity, "TerrainData", "max_height") else { continue };
-        let Some(min_height) = get_reflected_f32(world, terrain_entity, "TerrainData", "min_height") else { continue };
+        let Some(chunk_resolution) =
+            get_reflected_u32(world, terrain_entity, "TerrainData", "chunk_resolution")
+        else {
+            continue;
+        };
+        let Some(chunk_size) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "chunk_size")
+        else {
+            continue;
+        };
+        let Some(max_height) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "max_height")
+        else {
+            continue;
+        };
+        let Some(min_height) =
+            get_reflected_f32(world, terrain_entity, "TerrainData", "min_height")
+        else {
+            continue;
+        };
 
         let height_range = max_height - min_height;
         let spacing = chunk_size / (chunk_resolution - 1).max(1) as f32;
 
-        let Ok(chunk_gt) = global_transforms.get(entity) else { continue };
+        let Ok(chunk_gt) = global_transforms.get(entity) else {
+            continue;
+        };
         let pos = chunk_gt.translation();
         let y_offset = 0.15;
 
@@ -430,17 +544,60 @@ pub fn terrain_chunk_selection_system(
         };
 
         let heights = renzora::core::reflection::get_reflected_f32_vec(
-            world, entity, "TerrainChunkData", "heights",
+            world,
+            entity,
+            "TerrainChunkData",
+            "heights",
         );
         // Draw all 4 edges of the chunk border, tracing the heightmap silhouette.
-        draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-            min_height, height_range, heights.as_deref(), 0, color);
-        draw_edge_along_x(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-            min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
-        draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-            min_height, height_range, heights.as_deref(), 0, color);
-        draw_edge_along_z(&mut gizmos, pos, chunk_resolution, spacing, y_offset,
-            min_height, height_range, heights.as_deref(), chunk_resolution - 1, color);
+        draw_edge_along_x(
+            &mut gizmos,
+            pos,
+            chunk_resolution,
+            spacing,
+            y_offset,
+            min_height,
+            height_range,
+            heights.as_deref(),
+            0,
+            color,
+        );
+        draw_edge_along_x(
+            &mut gizmos,
+            pos,
+            chunk_resolution,
+            spacing,
+            y_offset,
+            min_height,
+            height_range,
+            heights.as_deref(),
+            chunk_resolution - 1,
+            color,
+        );
+        draw_edge_along_z(
+            &mut gizmos,
+            pos,
+            chunk_resolution,
+            spacing,
+            y_offset,
+            min_height,
+            height_range,
+            heights.as_deref(),
+            0,
+            color,
+        );
+        draw_edge_along_z(
+            &mut gizmos,
+            pos,
+            chunk_resolution,
+            spacing,
+            y_offset,
+            min_height,
+            height_range,
+            heights.as_deref(),
+            chunk_resolution - 1,
+            color,
+        );
     }
 }
 

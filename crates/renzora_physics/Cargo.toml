@@ -36,3 +36,6 @@ version = "0.29"
 optional = true
 default-features = false
 features = ["dim3"]
+
+[lints]
+workspace = true

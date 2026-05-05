@@ -4,8 +4,7 @@
 
 use bevy::prelude::*;
 use renzora_audio::{
-    BusInsertsSummary, FxSlotSummary, MixerFxCommand, MixerFxOp, PluginCatalog,
-    PluginCatalogEntry,
+    BusInsertsSummary, FxSlotSummary, MixerFxCommand, MixerFxOp, PluginCatalog, PluginCatalogEntry,
 };
 
 use crate::host::PluginInstances;
@@ -99,17 +98,14 @@ pub fn apply_fx_commands(
 /// Copy the current `PluginRegistry` into the public `PluginCatalog` mirror
 /// any time the registry changes. Cheap: only runs on Changed, and the
 /// data is small (path strings, not plugin handles).
-pub fn mirror_plugin_catalog(
-    registry: Res<PluginRegistry>,
-    mut catalog: ResMut<PluginCatalog>,
-) {
+pub fn mirror_plugin_catalog(registry: Res<PluginRegistry>, mut catalog: ResMut<PluginCatalog>) {
     let scanning = registry.is_scanning();
     let root_count = registry.last_scan_roots.len();
 
     // Track scanning-flag changes too so the panel updates while the
     // background worker is still running.
-    let scanning_changed = catalog.scanning != scanning
-        || catalog.last_scan_root_count != root_count;
+    let scanning_changed =
+        catalog.scanning != scanning || catalog.last_scan_root_count != root_count;
     if !registry.is_changed() && !scanning_changed {
         return;
     }

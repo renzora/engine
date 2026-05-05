@@ -1,7 +1,7 @@
 //! `.shader` file format — JSON-serialized code shader definition.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// The type of shader being authored — affects compilation and preview behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -128,51 +128,126 @@ pub fn extract_params(source: &str) -> HashMap<String, ShaderParam> {
             continue;
         };
 
-        let Some(rest) = content.strip_prefix("@param") else { continue };
+        let Some(rest) = content.strip_prefix("@param") else {
+            continue;
+        };
         let rest = rest.trim();
-        if rest.is_empty() { continue; }
+        if rest.is_empty() {
+            continue;
+        }
 
         let tokens: Vec<&str> = rest.split_whitespace().collect();
-        if tokens.len() < 2 { continue; }
+        if tokens.len() < 2 {
+            continue;
+        }
 
         let name = tokens[0].to_string();
         let type_str = tokens[1].to_lowercase();
 
         let (param_type, default_value, min, max, desc_start) = match type_str.as_str() {
             "float" | "f32" => {
-                let default = tokens.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let default = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 let min = tokens.get(3).and_then(|s| s.parse::<f32>().ok());
                 let max = tokens.get(4).and_then(|s| s.parse::<f32>().ok());
-                let desc_idx = if max.is_some() { 5 } else if min.is_some() { 4 } else { 3 };
-                (ParamType::Float, ParamValue::Float(default), min, max, desc_idx)
+                let desc_idx = if max.is_some() {
+                    5
+                } else if min.is_some() {
+                    4
+                } else {
+                    3
+                };
+                (
+                    ParamType::Float,
+                    ParamValue::Float(default),
+                    min,
+                    max,
+                    desc_idx,
+                )
             }
             "vec2" => {
-                let x = tokens.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let y = tokens.get(3).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let x = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let y = tokens
+                    .get(3)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 (ParamType::Vec2, ParamValue::Vec2([x, y]), None, None, 4)
             }
             "vec3" => {
-                let x = tokens.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let y = tokens.get(3).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let z = tokens.get(4).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let x = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let y = tokens
+                    .get(3)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let z = tokens
+                    .get(4)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 (ParamType::Vec3, ParamValue::Vec3([x, y, z]), None, None, 5)
             }
             "vec4" => {
-                let x = tokens.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let y = tokens.get(3).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let z = tokens.get(4).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let w = tokens.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                (ParamType::Vec4, ParamValue::Vec4([x, y, z, w]), None, None, 6)
+                let x = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let y = tokens
+                    .get(3)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let z = tokens
+                    .get(4)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let w = tokens
+                    .get(5)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                (
+                    ParamType::Vec4,
+                    ParamValue::Vec4([x, y, z, w]),
+                    None,
+                    None,
+                    6,
+                )
             }
             "color" | "colour" => {
-                let r = tokens.get(2).and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
-                let g = tokens.get(3).and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
-                let b = tokens.get(4).and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
-                let a = tokens.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(1.0);
-                (ParamType::Color, ParamValue::Color([r, g, b, a]), None, None, 6)
+                let r = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(1.0);
+                let g = tokens
+                    .get(3)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(1.0);
+                let b = tokens
+                    .get(4)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(1.0);
+                let a = tokens
+                    .get(5)
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(1.0);
+                (
+                    ParamType::Color,
+                    ParamValue::Color([r, g, b, a]),
+                    None,
+                    None,
+                    6,
+                )
             }
             "int" | "i32" => {
-                let default = tokens.get(2).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let default = tokens
+                    .get(2)
+                    .and_then(|s| s.parse::<i32>().ok())
+                    .unwrap_or(0);
                 (ParamType::Int, ParamValue::Int(default), None, None, 3)
             }
             "bool" => {
@@ -188,13 +263,16 @@ pub fn extract_params(source: &str) -> HashMap<String, ShaderParam> {
             String::new()
         };
 
-        params.insert(name, ShaderParam {
-            param_type,
-            default_value,
-            min,
-            max,
-            description,
-        });
+        params.insert(
+            name,
+            ShaderParam {
+                param_type,
+                default_value,
+                min,
+                max,
+                description,
+            },
+        );
     }
 
     params
@@ -217,10 +295,22 @@ pub fn params_to_wgsl(params: &HashMap<String, ShaderParam>) -> String {
     for (name, param) in sorted {
         let decl = match &param.default_value {
             ParamValue::Float(v) => format!("const {}: f32 = {:.6};", name, v),
-            ParamValue::Vec2(v) => format!("const {}: vec2<f32> = vec2<f32>({:.6}, {:.6});", name, v[0], v[1]),
-            ParamValue::Vec3(v) => format!("const {}: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});", name, v[0], v[1], v[2]),
-            ParamValue::Vec4(v) => format!("const {}: vec4<f32> = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});", name, v[0], v[1], v[2], v[3]),
-            ParamValue::Color(v) => format!("const {}: vec4<f32> = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});", name, v[0], v[1], v[2], v[3]),
+            ParamValue::Vec2(v) => format!(
+                "const {}: vec2<f32> = vec2<f32>({:.6}, {:.6});",
+                name, v[0], v[1]
+            ),
+            ParamValue::Vec3(v) => format!(
+                "const {}: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});",
+                name, v[0], v[1], v[2]
+            ),
+            ParamValue::Vec4(v) => format!(
+                "const {}: vec4<f32> = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
+                name, v[0], v[1], v[2], v[3]
+            ),
+            ParamValue::Color(v) => format!(
+                "const {}: vec4<f32> = vec4<f32>({:.6}, {:.6}, {:.6}, {:.6});",
+                name, v[0], v[1], v[2], v[3]
+            ),
             ParamValue::Int(v) => format!("const {}: i32 = {};", name, v),
             ParamValue::Bool(v) => format!("const {}: bool = {};", name, v),
         };

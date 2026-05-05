@@ -26,9 +26,7 @@ pub fn default_actions() -> Vec<InputAction> {
         // Look — right stick (mouse look handled separately via delta)
         InputAction::axis_2d(
             "look",
-            vec![
-                InputBinding::GamepadAxis("RightStickX".into()),
-            ],
+            vec![InputBinding::GamepadAxis("RightStickX".into())],
             0.15,
         ),
         // Jump

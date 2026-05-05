@@ -25,9 +25,9 @@ pub mod bridge;
 pub mod host;
 #[cfg(feature = "clap-host")]
 pub mod host_impl;
+pub mod insert;
 pub mod registry;
 pub mod scan;
-pub mod insert;
 
 pub use insert::{BusInserts, PluginInsertChain, PluginInstanceSlot};
 pub use registry::{PluginDescriptor, PluginId, PluginRegistry};
@@ -55,9 +55,9 @@ impl Plugin for PluginHostPlugin {
 
         // Mark the host as present in the catalog so panels can show
         // "scanning…" instead of "no plugin host" when nothing is found yet.
-        if let Some(mut catalog) =
-            app.world_mut()
-                .get_resource_mut::<renzora_audio::PluginCatalog>()
+        if let Some(mut catalog) = app
+            .world_mut()
+            .get_resource_mut::<renzora_audio::PluginCatalog>()
         {
             catalog.host_present = true;
         }
@@ -85,3 +85,4 @@ impl Plugin for PluginHostPlugin {
     }
 }
 
+renzora::add!(PluginHostPlugin, Editor);

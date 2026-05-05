@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
-use crate::edit_mesh::{EditMesh, EdgeId, Face, FaceId, VertexId};
+use crate::edit_mesh::{EdgeId, EditMesh, Face, FaceId, VertexId};
 use crate::selection::{MeshSelection, SelectMode};
 
 /// Output of an extrude op. The caller uses these to:
@@ -36,7 +36,9 @@ pub fn extrude(edit: &mut EditMesh, sel: &MeshSelection) -> Option<ExtrudeResult
 // ── Face extrude ───────────────────────────────────────────────────────────
 
 fn extrude_faces(edit: &mut EditMesh, selected: &HashSet<FaceId>) -> Option<ExtrudeResult> {
-    if selected.is_empty() { return None; }
+    if selected.is_empty() {
+        return None;
+    }
 
     // 1. Collect every vertex touched by any selected face.
     let mut ref_verts: HashSet<u32> = HashSet::new();
@@ -64,7 +66,9 @@ fn extrude_faces(edit: &mut EditMesh, selected: &HashSet<FaceId>) -> Option<Extr
     let canon = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
     let mut edge_occurrences: HashMap<(u32, u32), Vec<(u32, u32)>> = HashMap::new();
     for fid in selected {
-        let Some(f) = edit.faces.get(fid.0 as usize) else { continue };
+        let Some(f) = edit.faces.get(fid.0 as usize) else {
+            continue;
+        };
         let n = f.verts.len();
         for i in 0..n {
             let a = f.verts[i].0;
@@ -88,7 +92,9 @@ fn extrude_faces(edit: &mut EditMesh, selected: &HashSet<FaceId>) -> Option<Extr
 
     // 5. Emit the side quads for boundary edges.
     for (_key, occurrences) in &edge_occurrences {
-        if occurrences.len() != 1 { continue; }
+        if occurrences.len() != 1 {
+            continue;
+        }
         let (a, b) = occurrences[0];
         let new_a = dup[&a];
         let new_b = dup[&b];
@@ -128,7 +134,9 @@ fn extrude_faces(edit: &mut EditMesh, selected: &HashSet<FaceId>) -> Option<Extr
 // ── Edge extrude ───────────────────────────────────────────────────────────
 
 fn extrude_edges(edit: &mut EditMesh, selected: &HashSet<EdgeId>) -> Option<ExtrudeResult> {
-    if selected.is_empty() { return None; }
+    if selected.is_empty() {
+        return None;
+    }
 
     // Duplicate every vertex referenced by a selected edge.
     let mut ref_verts: HashSet<u32> = HashSet::new();
@@ -149,7 +157,9 @@ fn extrude_edges(edit: &mut EditMesh, selected: &HashSet<EdgeId>) -> Option<Extr
     // Bridge each selected edge with a quad.
     let mut new_edge_keys: Vec<(u32, u32)> = Vec::new();
     for eid in selected {
-        let Some(e) = edit.edges.get(eid.0 as usize) else { continue };
+        let Some(e) = edit.edges.get(eid.0 as usize) else {
+            continue;
+        };
         let a = e.verts[0].0;
         let b = e.verts[1].0;
         let new_a = dup[&a];
@@ -158,7 +168,11 @@ fn extrude_edges(edit: &mut EditMesh, selected: &HashSet<EdgeId>) -> Option<Extr
             verts: vec![VertexId(a), VertexId(b), VertexId(new_b), VertexId(new_a)],
             edges: Vec::new(),
         });
-        new_edge_keys.push(if new_a < new_b { (new_a, new_b) } else { (new_b, new_a) });
+        new_edge_keys.push(if new_a < new_b {
+            (new_a, new_b)
+        } else {
+            (new_b, new_a)
+        });
     }
 
     edit.rebuild_edges();
@@ -189,7 +203,9 @@ fn extrude_edges(edit: &mut EditMesh, selected: &HashSet<EdgeId>) -> Option<Extr
 // ── Vertex extrude ─────────────────────────────────────────────────────────
 
 fn extrude_verts(edit: &mut EditMesh, selected: &HashSet<VertexId>) -> Option<ExtrudeResult> {
-    if selected.is_empty() { return None; }
+    if selected.is_empty() {
+        return None;
+    }
 
     // Duplicate each selected vertex and add an edge from original to dup.
     // Vertex extrude doesn't create faces — it creates a line strip geometry.
@@ -197,7 +213,9 @@ fn extrude_verts(edit: &mut EditMesh, selected: &HashSet<VertexId>) -> Option<Ex
     let mut post_verts: HashSet<VertexId> = HashSet::new();
     for vid in selected {
         let idx = vid.0 as usize;
-        if idx >= edit.vertices.len() { continue; }
+        if idx >= edit.vertices.len() {
+            continue;
+        }
         let clone = edit.vertices[idx].clone();
         let new_id = edit.vertices.len() as u32;
         edit.vertices.push(clone);

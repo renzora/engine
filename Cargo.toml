@@ -1,14 +1,49 @@
 [workspace]
+resolver = "2"
+# Glob auto-includes every crate under `crates/` so adding a new plugin
+# only requires creating its directory — no manual workspace.members
+# update. `cargo check -p renzora_<name>` works from the root, and
+# `[workspace.lints]` / `[workspace.dependencies]` propagate cleanly.
 members = [
     ".",
+    # Engine crate + every plugin (`renzora` + `renzora_*`).
     "crates/renzora",
-    "crates/renzora_runtime",
-    "crates/renzora_editor",
-    "crates/renzora_record",
+    "crates/renzora_*",
+    # Non-plugin engine support crate.
+    "crates/dynamic_plugin_loader",
+    # Vendored Bevy ecosystem crates. Listed explicitly (not via a
+    # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
+    # is its own vendored workspace.
+    "crates/bevy_gauge",
+    "crates/bevy_hanabi",
+    "crates/bevy_mod_outline",
+    "crates/bevy_silk",
+    "crates/vleue_navigator",
 ]
+# Crates parked under `disabled/` are intentionally outside the `crates/*`
+# glob so they don't enter the workspace. `disabled/renzora_vr_editor`
+# references items in `renzora_xr` that no longer exist
+# (`VrControllerState`, `VrHand`, `reexports::*`); resurrect it once the
+# renzora_xr API has stabilised, then move it back under `crates/`.
+
+[workspace.lints.rust]
+# `renzora::add!` uses `#[cfg(feature = "dlopen")]` to gate FFI exports.
+# The cfg is evaluated in the calling crate's context, so plugin crates
+# without a `dlopen` feature get warnings on every macro invocation.
+# Tell the compiler this is an expected-but-unset feature.
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen"))'] }
 
 [workspace.dependencies]
-bevy = { version = "0.18", features = ["dynamic_linking", "bluenoise_texture", "experimental_pbr_pcss", "jpeg"] }
+# `dynamic_linking` is intentionally NOT in workspace defaults — it pulls
+# in `bevy_dylib` (dylib-only), which can't link into iOS staticlib or
+# Android cdylib builds. The desktop binary (`renzora_app`) opts in via
+# its own `[dependencies]` entry; cargo's feature unification under
+# `--workspace` propagates it to plugin crates so they end up with the
+# same bevy compilation as the host (and the same `bevy::World` TypeId,
+# which `plugin_bevy_hash()` checks at dlopen time). Mobile/wasm builds
+# under `cargo build -p <mobile_crate>` only see their own dep tree
+# (resolver = "2") and stay clean of dynamic_linking.
+bevy = { version = "0.18", features = ["bluenoise_texture", "experimental_pbr_pcss", "jpeg"] }
 # Shared external deps. Plugins opt in by name (`bevy_egui = { workspace = true }`)
 # so versions stay locked across the workspace.
 bevy_egui = "0.39"
@@ -64,7 +99,13 @@ wasm = [
 ]
 
 [dependencies]
-bevy = { workspace = true }
+# Desktop binary opts into `dynamic_linking` here. Feature unification
+# under `--workspace` propagates this to every plugin crate's bevy dep
+# so they share one `bevy_dylib` instance and matching TypeIds. Mobile
+# builds (`-p renzora-ios` / `-p renzora-android`) don't see this dep
+# and compile bevy without dynamic_linking — bevy_dylib stays out of
+# their staticlib/cdylib link.
+bevy = { workspace = true, features = ["dynamic_linking"] }
 
 # Single shared library — `editor` feature on this crate adds editor extras.
 renzora_runtime = { path = "crates/renzora_runtime", optional = true }
@@ -89,3 +130,6 @@ inherits = "release"
 opt-level = 2
 strip = "symbols"
 
+
+[lints]
+workspace = true

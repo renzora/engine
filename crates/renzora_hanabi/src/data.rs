@@ -277,7 +277,10 @@ pub struct CurvePoint {
 
 impl Default for CurvePoint {
     fn default() -> Self {
-        Self { time: 0.0, value: 1.0 }
+        Self {
+            time: 0.0,
+            value: 1.0,
+        }
     }
 }
 
@@ -311,7 +314,11 @@ pub enum EffectVariable {
 
 impl Default for EffectVariable {
     fn default() -> Self {
-        Self::Float { value: 1.0, min: 0.0, max: 1.0 }
+        Self::Float {
+            value: 1.0,
+            min: 0.0,
+            max: 1.0,
+        }
     }
 }
 
@@ -450,14 +457,30 @@ pub struct HanabiEffectDefinition {
     pub variables: HashMap<String, EffectVariable>,
 }
 
-fn default_noise_octaves() -> u32 { 3 }
-fn default_noise_lacunarity() -> f32 { 2.0 }
-fn default_true() -> bool { true }
-fn default_y_axis() -> [f32; 3] { [0.0, 1.0, 0.0] }
-fn default_size() -> f32 { 0.1 }
-fn default_white() -> [f32; 4] { [1.0, 1.0, 1.0, 1.0] }
-fn default_one() -> f32 { 1.0 }
-fn default_half() -> f32 { 0.5 }
+fn default_noise_octaves() -> u32 {
+    3
+}
+fn default_noise_lacunarity() -> f32 {
+    2.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_y_axis() -> [f32; 3] {
+    [0.0, 1.0, 0.0]
+}
+fn default_size() -> f32 {
+    0.1
+}
+fn default_white() -> [f32; 4] {
+    [1.0, 1.0, 1.0, 1.0]
+}
+fn default_one() -> f32 {
+    1.0
+}
+fn default_half() -> f32 {
+    0.5
+}
 
 impl Default for HanabiEffectDefinition {
     fn default() -> Self {
@@ -505,8 +528,14 @@ impl Default for HanabiEffectDefinition {
             screen_space_size: false,
             roundness: 0.0,
             color_gradient: vec![
-                GradientStop { position: 0.0, color: [1.0, 1.0, 1.0, 1.0] },
-                GradientStop { position: 1.0, color: [1.0, 1.0, 1.0, 0.0] },
+                GradientStop {
+                    position: 0.0,
+                    color: [1.0, 1.0, 1.0, 1.0],
+                },
+                GradientStop {
+                    position: 1.0,
+                    color: [1.0, 1.0, 1.0, 0.0],
+                },
             ],
             use_flat_color: false,
             flat_color: [1.0, 1.0, 1.0, 1.0],
@@ -624,20 +653,19 @@ pub struct ParticlePreviewState {
 /// Load a particle effect definition from a .particle file (RON format).
 pub fn load_effect_from_file(path: &std::path::Path) -> Option<HanabiEffectDefinition> {
     match std::fs::read_to_string(path) {
-        Ok(contents) => {
-            match ron::from_str::<HanabiEffectDefinition>(&contents) {
-                Ok(effect) => Some(effect),
-                Err(e) => {
-                    bevy::log::error!("Failed to parse particle effect {:?}: {}", path, e);
-                    let mut effect = HanabiEffectDefinition::default();
-                    effect.name = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Untitled")
-                        .to_string();
-                    Some(effect)
-                }
+        Ok(contents) => match ron::from_str::<HanabiEffectDefinition>(&contents) {
+            Ok(effect) => Some(effect),
+            Err(e) => {
+                bevy::log::error!("Failed to parse particle effect {:?}: {}", path, e);
+                let mut effect = HanabiEffectDefinition::default();
+                effect.name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string();
+                Some(effect)
             }
-        }
+        },
         Err(e) => {
             bevy::log::error!("Failed to read particle effect {:?}: {}", path, e);
             None

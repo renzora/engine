@@ -1,14 +1,14 @@
 //! Runtime camera spawning and render target syncing.
 
-use bevy::prelude::*;
-use bevy::camera::{Camera, RenderTarget};
+use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{Camera, RenderTarget};
 use bevy::core_pipeline::prepass::NormalPrepass;
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use renzora::viewport_types::EditorCameraMatrix;
-use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 
 /// Spawns the editor's 3D scene-navigation camera.
 ///
@@ -104,7 +104,9 @@ pub fn sync_camera_render_target(
     }
 
     if let Some(ref image) = render_target.image {
-        info!("[camera] ViewportRenderTarget changed — redirecting editor camera to offscreen image");
+        info!(
+            "[camera] ViewportRenderTarget changed — redirecting editor camera to offscreen image"
+        );
         for entity in &cameras {
             commands
                 .entity(entity)

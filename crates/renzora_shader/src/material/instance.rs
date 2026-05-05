@@ -101,9 +101,7 @@ pub fn pin_value_to_vec4(value: &PinValue) -> Vec4 {
         PinValue::Float(f) => Vec4::new(*f, 0.0, 0.0, 0.0),
         PinValue::Vec2([x, y]) => Vec4::new(*x, *y, 0.0, 0.0),
         PinValue::Vec3([x, y, z]) => Vec4::new(*x, *y, *z, 0.0),
-        PinValue::Vec4([x, y, z, w]) | PinValue::Color([x, y, z, w]) => {
-            Vec4::new(*x, *y, *z, *w)
-        }
+        PinValue::Vec4([x, y, z, w]) | PinValue::Color([x, y, z, w]) => Vec4::new(*x, *y, *z, *w),
         PinValue::Bool(b) => Vec4::new(if *b { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0),
         PinValue::Int(i) => Vec4::new(*i as f32, 0.0, 0.0, 0.0),
         PinValue::TexturePath(_) | PinValue::String(_) | PinValue::None => Vec4::ZERO,
@@ -130,7 +128,9 @@ pub fn param_value_to_vec4(value: &ParamValue) -> Vec4 {
 /// parameter list. Each parameter writes its authored default into the slot
 /// matching its position in the list — same indexing the WGSL uses for
 /// `material_params.slots[i]`.
-pub fn build_default_param_slots(parameters: &[MaterialParam]) -> [Vec4; SURFACE_GRAPH_PARAM_SLOTS] {
+pub fn build_default_param_slots(
+    parameters: &[MaterialParam],
+) -> [Vec4; SURFACE_GRAPH_PARAM_SLOTS] {
     let mut slots = [Vec4::ZERO; SURFACE_GRAPH_PARAM_SLOTS];
     for (i, p) in parameters.iter().enumerate() {
         if i >= SURFACE_GRAPH_PARAM_SLOTS {
@@ -337,7 +337,8 @@ mod tests {
         let mut graph = MaterialGraph::new("Test", MaterialDomain::Surface);
         let p = graph.add_node("param/color", [0.0, 0.0]);
         if let Some(node) = graph.get_node_mut(p) {
-            node.input_values.insert("name".into(), PinValue::String("BaseColor".into()));
+            node.input_values
+                .insert("name".into(), PinValue::String("BaseColor".into()));
             node.input_values
                 .insert("default".into(), PinValue::Color([1.0, 1.0, 1.0, 1.0]));
         }
@@ -365,8 +366,10 @@ mod tests {
         let mut graph = MaterialGraph::new("Test", MaterialDomain::Surface);
         let p = graph.add_node("param/float", [0.0, 0.0]);
         if let Some(node) = graph.get_node_mut(p) {
-            node.input_values.insert("name".into(), PinValue::String("Metallic".into()));
-            node.input_values.insert("default".into(), PinValue::Float(0.0));
+            node.input_values
+                .insert("name".into(), PinValue::String("Metallic".into()));
+            node.input_values
+                .insert("default".into(), PinValue::Float(0.0));
         }
 
         let mut overrides = HashMap::new();

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton};
+use bevy::prelude::*;
 use std::collections::HashMap;
 
 // Re-export ScriptInput from renzora
@@ -76,19 +76,34 @@ pub fn update_script_input(
         axes.insert(GamepadAxis::LeftStickY, ls.y);
         axes.insert(GamepadAxis::RightStickX, rs.x);
         axes.insert(GamepadAxis::RightStickY, rs.y);
-        axes.insert(GamepadAxis::LeftZ, gamepad.get(GamepadAxis::LeftZ).unwrap_or(0.0));
-        axes.insert(GamepadAxis::RightZ, gamepad.get(GamepadAxis::RightZ).unwrap_or(0.0));
+        axes.insert(
+            GamepadAxis::LeftZ,
+            gamepad.get(GamepadAxis::LeftZ).unwrap_or(0.0),
+        );
+        axes.insert(
+            GamepadAxis::RightZ,
+            gamepad.get(GamepadAxis::RightZ).unwrap_or(0.0),
+        );
         script_input.gamepad_axes.insert(id, axes);
 
         let mut buttons = HashMap::new();
         for btn in [
-            GamepadButton::South, GamepadButton::East, GamepadButton::West, GamepadButton::North,
-            GamepadButton::LeftTrigger, GamepadButton::RightTrigger,
-            GamepadButton::LeftTrigger2, GamepadButton::RightTrigger2,
-            GamepadButton::Select, GamepadButton::Start,
-            GamepadButton::LeftThumb, GamepadButton::RightThumb,
-            GamepadButton::DPadUp, GamepadButton::DPadDown,
-            GamepadButton::DPadLeft, GamepadButton::DPadRight,
+            GamepadButton::South,
+            GamepadButton::East,
+            GamepadButton::West,
+            GamepadButton::North,
+            GamepadButton::LeftTrigger,
+            GamepadButton::RightTrigger,
+            GamepadButton::LeftTrigger2,
+            GamepadButton::RightTrigger2,
+            GamepadButton::Select,
+            GamepadButton::Start,
+            GamepadButton::LeftThumb,
+            GamepadButton::RightThumb,
+            GamepadButton::DPadUp,
+            GamepadButton::DPadDown,
+            GamepadButton::DPadLeft,
+            GamepadButton::DPadRight,
         ] {
             buttons.insert(btn, gamepad.pressed(btn));
         }

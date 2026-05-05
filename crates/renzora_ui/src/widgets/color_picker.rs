@@ -24,7 +24,10 @@ pub struct ColorPickerConfig {
 
 impl Default for ColorPickerConfig {
     fn default() -> Self {
-        Self { mode: ColorMode::Rgb, hex_width: 72.0 }
+        Self {
+            mode: ColorMode::Rgb,
+            hex_width: 72.0,
+        }
     }
 }
 
@@ -42,7 +45,9 @@ pub fn color_picker_with_hex(
             ColorMode::Rgb => {
                 let mut rgb = [rgba[0], rgba[1], rgba[2]];
                 let r = ui.color_edit_button_rgb(&mut rgb);
-                rgba[0] = rgb[0]; rgba[1] = rgb[1]; rgba[2] = rgb[2];
+                rgba[0] = rgb[0];
+                rgba[1] = rgb[1];
+                rgba[2] = rgb[2];
                 r
             }
             ColorMode::Rgba => ui.color_edit_button_rgba_unmultiplied(rgba),
@@ -129,6 +134,11 @@ fn parse_hex(s: &str, mode: ColorMode) -> Option<[f32; 4]> {
     let to_f = |b: u8| b as f32 / 255.0;
     Some(match mode {
         ColorMode::Rgb => [to_f(bytes[0]), to_f(bytes[1]), to_f(bytes[2]), 1.0],
-        ColorMode::Rgba => [to_f(bytes[0]), to_f(bytes[1]), to_f(bytes[2]), to_f(bytes[3])],
+        ColorMode::Rgba => [
+            to_f(bytes[0]),
+            to_f(bytes[1]),
+            to_f(bytes[2]),
+            to_f(bytes[3]),
+        ],
     })
 }

@@ -4,8 +4,8 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Key, RichText, Sc
 use renzora_theme::Theme;
 
 use egui_phosphor::regular::{
-    ARROW_ELBOW_DOWN_LEFT, CARET_RIGHT, CHECK_CIRCLE, CLIPBOARD, CLOCK, FUNNEL,
-    HASH, INFO, MAGNIFYING_GLASS, TAG, TRASH, WARNING, X_CIRCLE,
+    ARROW_ELBOW_DOWN_LEFT, CARET_RIGHT, CHECK_CIRCLE, CLIPBOARD, CLOCK, FUNNEL, HASH, INFO,
+    MAGNIFYING_GLASS, TAG, TRASH, WARNING, X_CIRCLE,
 };
 
 use crate::state::{ConsoleState, LogEntry, LogLevel};
@@ -167,7 +167,11 @@ fn render_toolbar(
         let toggles: Vec<bool> = filters
             .iter()
             .map(|(active, icon, active_color)| {
-                let color = if *active { *active_color } else { disabled_color };
+                let color = if *active {
+                    *active_color
+                } else {
+                    disabled_color
+                };
                 let btn = ui.add(
                     egui::Button::new(RichText::new(*icon).color(color).size(14.0))
                         .fill(Color32::TRANSPARENT),
@@ -197,7 +201,11 @@ fn render_toolbar(
         // Search box
         let search_width = if is_narrow { 80.0 } else { 150.0 };
         ui.add_space(4.0);
-        ui.label(RichText::new(MAGNIFYING_GLASS).size(12.0).color(muted_color));
+        ui.label(
+            RichText::new(MAGNIFYING_GLASS)
+                .size(12.0)
+                .color(muted_color),
+        );
         ui.add(
             egui::TextEdit::singleline(&mut console.search_filter)
                 .hint_text("Search...")
@@ -223,23 +231,35 @@ fn render_toolbar(
             }
 
             // Timestamp toggle
-            let ts_color = if console.show_timestamps { info_active } else { disabled_color };
+            let ts_color = if console.show_timestamps {
+                info_active
+            } else {
+                disabled_color
+            };
             let ts_btn = ui.add(
                 egui::Button::new(RichText::new(CLOCK).color(ts_color).size(13.0))
                     .fill(Color32::TRANSPARENT),
             );
-            if ts_btn.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+            if ts_btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
             if ts_btn.on_hover_text("Show timestamps").clicked() {
                 console.show_timestamps = !console.show_timestamps;
             }
 
             // Frame toggle
-            let fr_color = if console.show_frame { info_active } else { disabled_color };
+            let fr_color = if console.show_frame {
+                info_active
+            } else {
+                disabled_color
+            };
             let fr_btn = ui.add(
                 egui::Button::new(RichText::new(HASH).color(fr_color).size(13.0))
                     .fill(Color32::TRANSPARENT),
             );
-            if fr_btn.hovered() { ui.ctx().set_cursor_icon(CursorIcon::PointingHand); }
+            if fr_btn.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+            }
             if fr_btn.on_hover_text("Show frame number").clicked() {
                 console.show_frame = !console.show_frame;
             }
@@ -284,7 +304,14 @@ fn render_category_chips(
             if btn.hovered() {
                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
             }
-            if btn.on_hover_text(if is_hidden { "Show category" } else { "Hide category" }).clicked() {
+            if btn
+                .on_hover_text(if is_hidden {
+                    "Show category"
+                } else {
+                    "Hide category"
+                })
+                .clicked()
+            {
                 if is_hidden {
                     console.hidden_categories.remove(cat);
                 } else {
@@ -369,16 +396,19 @@ fn render_input_bar(ui: &mut egui::Ui, console: &mut ConsoleState, theme: &Theme
         }
 
         // Submit hint icon
-        ui.label(RichText::new(ARROW_ELBOW_DOWN_LEFT).size(12.0).color(muted_color));
+        ui.label(
+            RichText::new(ARROW_ELBOW_DOWN_LEFT)
+                .size(12.0)
+                .color(muted_color),
+        );
 
         // Handle keyboard
         let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
         let has_focus = response.has_focus();
 
         if has_focus || submitted {
-            let (up, down) = ui.input(|i| {
-                (i.key_pressed(Key::ArrowUp), i.key_pressed(Key::ArrowDown))
-            });
+            let (up, down) =
+                ui.input(|i| (i.key_pressed(Key::ArrowUp), i.key_pressed(Key::ArrowDown)));
 
             if submitted && !console.input_buffer.trim().is_empty() {
                 let command = console.input_buffer.trim().to_string();

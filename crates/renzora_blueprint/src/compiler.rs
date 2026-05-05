@@ -4,8 +4,8 @@
 //! The generated script uses the same API functions available to hand-written
 //! Lua scripts, so it runs at full VM speed through the normal script pipeline.
 
-use std::collections::{HashMap, HashSet};
 use crate::graph::{BlueprintGraph, BlueprintNode, NodeId, PinValue};
+use std::collections::{HashMap, HashSet};
 
 /// Compile a blueprint graph to Lua source code.
 pub fn compile_to_lua(graph: &BlueprintGraph) -> String {
@@ -47,7 +47,9 @@ impl<'a> LuaCompiler<'a> {
         // Pre-scan to find multi-referenced outputs.
         self.scan_multi_refs();
 
-        let event_nodes: Vec<(NodeId, String)> = self.graph.event_nodes()
+        let event_nodes: Vec<(NodeId, String)> = self
+            .graph
+            .event_nodes()
             .iter()
             .map(|n| (n.id, n.node_type.clone()))
             .collect();
@@ -69,7 +71,10 @@ impl<'a> LuaCompiler<'a> {
         }
 
         // Declare counter variables.
-        let counter_nodes: Vec<u64> = self.graph.nodes.iter()
+        let counter_nodes: Vec<u64> = self
+            .graph
+            .nodes
+            .iter()
             .filter(|n| n.node_type == "flow/counter")
             .map(|n| n.id)
             .collect();
@@ -118,7 +123,9 @@ impl<'a> LuaCompiler<'a> {
     fn scan_multi_refs(&mut self) {
         let mut ref_count: HashMap<(NodeId, String), usize> = HashMap::new();
         for conn in &self.graph.connections {
-            *ref_count.entry((conn.from_node, conn.from_pin.clone())).or_default() += 1;
+            *ref_count
+                .entry((conn.from_node, conn.from_pin.clone()))
+                .or_default() += 1;
         }
         for (key, count) in ref_count {
             if count > 1 {
@@ -129,7 +136,8 @@ impl<'a> LuaCompiler<'a> {
 
     /// Follow an exec chain from a node's output exec pin.
     fn compile_exec_chain(&mut self, from_node: NodeId, from_pin: &str) {
-        let targets: Vec<(NodeId, String)> = self.graph
+        let targets: Vec<(NodeId, String)> = self
+            .graph
             .connections_from(from_node, from_pin)
             .iter()
             .map(|c| (c.to_node, c.to_pin.clone()))
@@ -191,10 +199,16 @@ impl<'a> LuaCompiler<'a> {
                 let min = self.compile_data_expr(node_id, "min");
                 let max = self.compile_data_expr(node_id, "max");
                 let do_loop = self.compile_data_expr(node_id, "loop");
-                self.emit(&format!("{} = ({} or {}) + ({}) * delta", var, var, min, step));
+                self.emit(&format!(
+                    "{} = ({} or {}) + ({}) * delta",
+                    var, var, min, step
+                ));
                 self.emit(&format!("if {} > {} then", var, max));
                 self.indent += 1;
-                self.emit(&format!("if {} then {} = {} + ({} - {}) else {} = {} end", do_loop, var, min, var, max, var, max));
+                self.emit(&format!(
+                    "if {} then {} = {} + ({} - {}) else {} = {} end",
+                    do_loop, var, min, var, max, var, max
+                ));
                 self.indent -= 1;
                 self.emit("end");
                 self.compile_exec_chain(node_id, "then");
@@ -213,32 +227,50 @@ impl<'a> LuaCompiler<'a> {
             // ── Transform ───────────────────────────────────────────
             "transform/set_position" => {
                 let pos = self.compile_data_expr(node_id, "position");
-                self.emit(&format!("set_position(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", pos));
+                self.emit(&format!(
+                    "set_position(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    pos
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "transform/translate" => {
                 let v = self.compile_data_expr(node_id, "offset");
-                self.emit(&format!("translate(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", v));
+                self.emit(&format!(
+                    "translate(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    v
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "transform/set_rotation" => {
                 let r = self.compile_data_expr(node_id, "rotation");
-                self.emit(&format!("set_rotation(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", r));
+                self.emit(&format!(
+                    "set_rotation(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    r
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "transform/rotate" => {
                 let r = self.compile_data_expr(node_id, "rotation");
-                self.emit(&format!("rotate(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", r));
+                self.emit(&format!(
+                    "rotate(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    r
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "transform/look_at" => {
                 let t = self.compile_data_expr(node_id, "target");
-                self.emit(&format!("look_at(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", t));
+                self.emit(&format!(
+                    "look_at(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    t
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "transform/set_scale" => {
                 let s = self.compile_data_expr(node_id, "scale");
-                self.emit(&format!("set_scale(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", s));
+                self.emit(&format!(
+                    "set_scale(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    s
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
 
@@ -255,7 +287,10 @@ impl<'a> LuaCompiler<'a> {
                 if entity_str.is_empty() {
                     self.emit(&format!("set(\"{}\", {})", path, value));
                 } else {
-                    self.emit(&format!("set_on(\"{}\", \"{}\", {})", entity_str, path, value));
+                    self.emit(&format!(
+                        "set_on(\"{}\", \"{}\", {})",
+                        entity_str, path, value
+                    ));
                 }
                 self.compile_exec_chain(node_id, "then");
             }
@@ -263,17 +298,26 @@ impl<'a> LuaCompiler<'a> {
             // ── Physics ─────────────────────────────────────────────
             "physics/apply_force" => {
                 let f = self.compile_data_expr(node_id, "force");
-                self.emit(&format!("apply_force(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", f));
+                self.emit(&format!(
+                    "apply_force(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    f
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "physics/apply_impulse" => {
                 let f = self.compile_data_expr(node_id, "impulse");
-                self.emit(&format!("apply_impulse(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", f));
+                self.emit(&format!(
+                    "apply_impulse(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    f
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
             "physics/set_velocity" => {
                 let v = self.compile_data_expr(node_id, "velocity");
-                self.emit(&format!("set_velocity(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])", v));
+                self.emit(&format!(
+                    "set_velocity(({}).x or {0}[1], ({0}).y or {0}[2], ({0}).z or {0}[3])",
+                    v
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
 
@@ -394,7 +438,10 @@ impl<'a> LuaCompiler<'a> {
                 let g = self.compile_data_expr(node_id, "g");
                 let b = self.compile_data_expr(node_id, "b");
                 let a = self.compile_data_expr(node_id, "a");
-                self.emit(&format!("ui_set_color({}, {}, {}, {}, {})", name, r, g, b, a));
+                self.emit(&format!(
+                    "ui_set_color({}, {}, {}, {}, {})",
+                    name, r, g, b, a
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
 
@@ -427,7 +474,10 @@ impl<'a> LuaCompiler<'a> {
                 let name = self.compile_data_expr(node_id, "clip");
                 let dur = self.compile_data_expr(node_id, "duration");
                 let looping = self.compile_data_expr(node_id, "looping");
-                self.emit(&format!("crossfade_animation({}, {}, {})", name, dur, looping));
+                self.emit(&format!(
+                    "crossfade_animation({}, {}, {})",
+                    name, dur, looping
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
 
@@ -466,7 +516,10 @@ impl<'a> LuaCompiler<'a> {
 
             _ => {
                 // Unknown exec node — emit comment and continue.
-                self.emit(&format!("-- TODO: unhandled node type '{}'", node.node_type));
+                self.emit(&format!(
+                    "-- TODO: unhandled node type '{}'",
+                    node.node_type
+                ));
                 self.compile_exec_chain(node_id, "then");
             }
         }
@@ -868,7 +921,16 @@ fn pin_value_to_lua(val: &PinValue) -> String {
 
 /// Sanitize a variable name for Lua (replace spaces, ensure not a keyword).
 fn sanitize_var(name: &str) -> String {
-    let s: String = name.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    let s: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     if s.is_empty() {
         "_var".to_string()
     } else if s.starts_with(|c: char| c.is_ascii_digit()) {
@@ -881,7 +943,7 @@ fn sanitize_var(name: &str) -> String {
 /// Strip surrounding quotes from a string literal.
 fn strip_quotes(s: &str) -> String {
     if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
-        s[1..s.len()-1].to_string()
+        s[1..s.len() - 1].to_string()
     } else {
         s.to_string()
     }

@@ -8,9 +8,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2};
 use egui_phosphor::regular as icons;
 use renzora::core::CurrentProject;
-use renzora_editor::{
-    asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry,
-};
+use renzora_editor::{asset_drop_target, AssetDragPayload, EditorCommands, InspectorEntry};
 use renzora_terrain::data::TerrainData;
 use renzora_terrain::painter::{
     LayerPreview, PaintLayer, Painter, PainterLayerMesh, PainterPreview, PainterRegistry,
@@ -177,7 +175,11 @@ fn render_layer_row(
     } else {
         theme.widgets.inactive_bg.to_color32()
     };
-    let fg = if is_active { Color32::WHITE } else { text_primary };
+    let fg = if is_active {
+        Color32::WHITE
+    } else {
+        text_primary
+    };
 
     let start_y = ui.cursor().min.y;
     let mut drag_handle_clicked_down = false;
@@ -198,7 +200,11 @@ fn render_layer_row(
         }
 
         // Enable toggle
-        let enabled_icon = if layer.enabled { icons::EYE } else { icons::EYE_SLASH };
+        let enabled_icon = if layer.enabled {
+            icons::EYE
+        } else {
+            icons::EYE_SLASH
+        };
         if ui
             .add(
                 egui::Button::new(RichText::new(enabled_icon).size(12.0).color(text_secondary))

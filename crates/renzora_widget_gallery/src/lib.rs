@@ -15,12 +15,10 @@ use renzora_editor::{
 use renzora_theme::ThemeManager;
 // Widget re-exports come through renzora::editor (via renzora_ui)
 use renzora_editor::{
-    section_header, inline_property, property_row, toggle_switch,
-    icon_button, empty_state, checkerboard, dim_color,
-    TileGrid, TileState, split_label_two_lines,
-    tree_row, TreeRowConfig,
-    collapsible_section, collapsible_section_removable,
-    node_graph, NodeGraphState, NodeGraphConfig, NodeDef, PinDef, PinDirection, PinShape, ConnectionDef,
+    checkerboard, collapsible_section, collapsible_section_removable, dim_color, empty_state,
+    icon_button, inline_property, node_graph, property_row, section_header, split_label_two_lines,
+    toggle_switch, tree_row, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState, PinDef,
+    PinDirection, PinShape, TileGrid, TileState, TreeRowConfig,
 };
 
 // ── Shared gallery state ────────────────────────────────────────────────────
@@ -157,7 +155,14 @@ impl Default for ControlsGallery {
     }
 }
 
-const BLEND_MODES: &[&str] = &["Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Hard Light"];
+const BLEND_MODES: &[&str] = &[
+    "Normal",
+    "Multiply",
+    "Screen",
+    "Overlay",
+    "Soft Light",
+    "Hard Light",
+];
 const LAYER_NAMES: &[&str] = &["Default", "UI", "Transparent", "Terrain", "Water", "Skybox"];
 const QUALITY_LEVELS: &[&str] = &["Low", "Medium", "High", "Ultra"];
 const RENDER_MODES: &[&str] = &["Forward", "Deferred", "Ray Traced"];
@@ -196,16 +201,22 @@ impl EditorPanel for ControlsGallery {
                 if ui.button("Default").clicked() {
                     state.click_count += 1;
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Save", regular::FLOPPY_DISK))
-                        .color(theme.text.primary.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Save", regular::FLOPPY_DISK))
+                            .color(theme.text.primary.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.click_count += 1;
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Delete", regular::TRASH))
-                        .color(theme.semantic.error.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Delete", regular::TRASH))
+                            .color(theme.semantic.error.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.click_count += 1;
                 }
             });
@@ -217,16 +228,28 @@ impl EditorPanel for ControlsGallery {
                 ui.add_space(4.0);
                 ui.add_enabled(false, egui::Button::new("Disabled"));
                 ui.add_space(4.0);
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Build", regular::HAMMER))
-                        .color(Color32::WHITE),
-                ).fill(theme.semantic.accent.to_color32())).clicked() {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("{} Build", regular::HAMMER))
+                                .color(Color32::WHITE),
+                        )
+                        .fill(theme.semantic.accent.to_color32()),
+                    )
+                    .clicked()
+                {
                     state.click_count += 1;
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Run", regular::PLAY))
-                        .color(Color32::WHITE),
-                ).fill(theme.semantic.success.to_color32())).clicked() {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("{} Run", regular::PLAY))
+                                .color(Color32::WHITE),
+                        )
+                        .fill(theme.semantic.success.to_color32()),
+                    )
+                    .clicked()
+                {
                     state.click_count += 1;
                 }
             });
@@ -340,17 +363,45 @@ impl EditorPanel for ControlsGallery {
 
             inline_property(ui, 0, "Position", &theme, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("X").size(11.0).color(Color32::from_rgb(230, 89, 89)));
-                    ui.add(egui::DragValue::new(&mut state.drag_x).speed(0.1).range(-100.0..=100.0));
-                    ui.label(egui::RichText::new("Y").size(11.0).color(Color32::from_rgb(89, 191, 115)));
-                    ui.add(egui::DragValue::new(&mut state.drag_y).speed(0.1).range(-100.0..=100.0));
-                    ui.label(egui::RichText::new("Z").size(11.0).color(Color32::from_rgb(99, 178, 238)));
-                    ui.add(egui::DragValue::new(&mut state.drag_z).speed(0.1).range(-100.0..=100.0));
+                    ui.label(
+                        egui::RichText::new("X")
+                            .size(11.0)
+                            .color(Color32::from_rgb(230, 89, 89)),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut state.drag_x)
+                            .speed(0.1)
+                            .range(-100.0..=100.0),
+                    );
+                    ui.label(
+                        egui::RichText::new("Y")
+                            .size(11.0)
+                            .color(Color32::from_rgb(89, 191, 115)),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut state.drag_y)
+                            .speed(0.1)
+                            .range(-100.0..=100.0),
+                    );
+                    ui.label(
+                        egui::RichText::new("Z")
+                            .size(11.0)
+                            .color(Color32::from_rgb(99, 178, 238)),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut state.drag_z)
+                            .speed(0.1)
+                            .range(-100.0..=100.0),
+                    );
                 });
             });
 
             inline_property(ui, 1, "Integer", &theme, |ui| {
-                ui.add(egui::DragValue::new(&mut state.int_val).speed(1).range(0..=100));
+                ui.add(
+                    egui::DragValue::new(&mut state.int_val)
+                        .speed(1)
+                        .range(0..=100),
+                );
             });
 
             inline_property(ui, 2, "Range", &theme, |ui| {
@@ -408,7 +459,10 @@ impl EditorPanel for ControlsGallery {
             section_header(ui, "Progress Bars", &theme);
 
             inline_property(ui, 0, "Loading", &theme, |ui| {
-                ui.add(egui::ProgressBar::new(state.progress).text(format!("{:.0}%", state.progress * 100.0)));
+                ui.add(
+                    egui::ProgressBar::new(state.progress)
+                        .text(format!("{:.0}%", state.progress * 100.0)),
+                );
             });
 
             // Animated progress
@@ -448,12 +502,14 @@ impl EditorPanel for ControlsGallery {
             section_header(ui, "Tooltips & Links", &theme);
 
             ui.horizontal(|ui| {
-                ui.label("Hover me:").on_hover_text("This is a tooltip with extra info.");
+                ui.label("Hover me:")
+                    .on_hover_text("This is a tooltip with extra info.");
                 ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new(format!("{} Info", regular::INFO))
                         .color(theme.semantic.accent.to_color32()),
-                ).on_hover_ui(|ui| {
+                )
+                .on_hover_ui(|ui| {
                     ui.label("Rich tooltip with custom content");
                     ui.horizontal(|ui| {
                         ui.label(
@@ -479,43 +535,83 @@ impl EditorPanel for ControlsGallery {
             ui.horizontal(|ui| {
                 egui::MenuBar::new().ui(ui, |ui: &mut egui::Ui| {
                     ui.menu_button(format!("{} File", regular::FILE), |ui| {
-                        if ui.button(format!("{} New Scene", regular::FILE_PLUS)).clicked() {
+                        if ui
+                            .button(format!("{} New Scene", regular::FILE_PLUS))
+                            .clicked()
+                        {
                             ui.close();
                         }
-                        if ui.button(format!("{} Open...", regular::FOLDER_OPEN)).clicked() {
+                        if ui
+                            .button(format!("{} Open...", regular::FOLDER_OPEN))
+                            .clicked()
+                        {
                             ui.close();
                         }
 
-                        egui::containers::menu::SubMenuButton::new(format!("{} Open Recent", regular::CLOCK_COUNTER_CLOCKWISE))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("main_scene.scn").clicked() { ui.close(); }
-                                if ui.button("test_level.scn").clicked() { ui.close(); }
-                                if ui.button("prototype.scn").clicked() { ui.close(); }
-                                ui.separator();
-                                if ui.button("Clear Recent").clicked() { ui.close(); }
-                            });
+                        egui::containers::menu::SubMenuButton::new(format!(
+                            "{} Open Recent",
+                            regular::CLOCK_COUNTER_CLOCKWISE
+                        ))
+                        .ui(ui, |ui: &mut egui::Ui| {
+                            if ui.button("main_scene.scn").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("test_level.scn").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("prototype.scn").clicked() {
+                                ui.close();
+                            }
+                            ui.separator();
+                            if ui.button("Clear Recent").clicked() {
+                                ui.close();
+                            }
+                        });
 
                         ui.separator();
-                        if ui.button(format!("{} Save", regular::FLOPPY_DISK)).clicked() {
+                        if ui
+                            .button(format!("{} Save", regular::FLOPPY_DISK))
+                            .clicked()
+                        {
                             ui.close();
                         }
-                        if ui.button(format!("{} Save As...", regular::FLOPPY_DISK)).clicked() {
+                        if ui
+                            .button(format!("{} Save As...", regular::FLOPPY_DISK))
+                            .clicked()
+                        {
                             ui.close();
                         }
 
-                        egui::containers::menu::SubMenuButton::new(format!("{} Export", regular::EXPORT))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("glTF (.glb)").clicked() { ui.close(); }
-                                if ui.button("FBX (.fbx)").clicked() { ui.close(); }
-                                if ui.button("OBJ (.obj)").clicked() { ui.close(); }
+                        egui::containers::menu::SubMenuButton::new(format!(
+                            "{} Export",
+                            regular::EXPORT
+                        ))
+                        .ui(ui, |ui: &mut egui::Ui| {
+                            if ui.button("glTF (.glb)").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("FBX (.fbx)").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("OBJ (.obj)").clicked() {
+                                ui.close();
+                            }
 
-                                egui::containers::menu::SubMenuButton::new("Image Formats")
-                                    .ui(ui, |ui: &mut egui::Ui| {
-                                        if ui.button("PNG").clicked() { ui.close(); }
-                                        if ui.button("JPEG").clicked() { ui.close(); }
-                                        if ui.button("EXR (HDR)").clicked() { ui.close(); }
-                                    });
-                            });
+                            egui::containers::menu::SubMenuButton::new("Image Formats").ui(
+                                ui,
+                                |ui: &mut egui::Ui| {
+                                    if ui.button("PNG").clicked() {
+                                        ui.close();
+                                    }
+                                    if ui.button("JPEG").clicked() {
+                                        ui.close();
+                                    }
+                                    if ui.button("EXR (HDR)").clicked() {
+                                        ui.close();
+                                    }
+                                },
+                            );
+                        });
 
                         ui.separator();
                         if ui.button(format!("{} Quit", regular::SIGN_OUT)).clicked() {
@@ -524,10 +620,16 @@ impl EditorPanel for ControlsGallery {
                     });
 
                     ui.menu_button(format!("{} Edit", regular::PENCIL), |ui| {
-                        if ui.button(format!("{} Undo", regular::ARROW_COUNTER_CLOCKWISE)).clicked() {
+                        if ui
+                            .button(format!("{} Undo", regular::ARROW_COUNTER_CLOCKWISE))
+                            .clicked()
+                        {
                             ui.close();
                         }
-                        if ui.button(format!("{} Redo", regular::ARROW_CLOCKWISE)).clicked() {
+                        if ui
+                            .button(format!("{} Redo", regular::ARROW_CLOCKWISE))
+                            .clicked()
+                        {
                             ui.close();
                         }
                         ui.separator();
@@ -543,33 +645,66 @@ impl EditorPanel for ControlsGallery {
 
                         ui.separator();
 
-                        egui::containers::menu::SubMenuButton::new(format!("{} Preferences", regular::GEAR))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("General").clicked() { ui.close(); }
-                                if ui.button("Keybindings").clicked() { ui.close(); }
-                                if ui.button("Theme").clicked() { ui.close(); }
-                            });
+                        egui::containers::menu::SubMenuButton::new(format!(
+                            "{} Preferences",
+                            regular::GEAR
+                        ))
+                        .ui(ui, |ui: &mut egui::Ui| {
+                            if ui.button("General").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Keybindings").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Theme").clicked() {
+                                ui.close();
+                            }
+                        });
                     });
 
                     ui.menu_button(format!("{} View", regular::EYE), |ui| {
-                        egui::containers::menu::SubMenuButton::new(format!("{} Panels", regular::SQUARES_FOUR))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("Hierarchy").clicked() { ui.close(); }
-                                if ui.button("Inspector").clicked() { ui.close(); }
-                                if ui.button("Console").clicked() { ui.close(); }
-                                if ui.button("Assets").clicked() { ui.close(); }
-                            });
+                        egui::containers::menu::SubMenuButton::new(format!(
+                            "{} Panels",
+                            regular::SQUARES_FOUR
+                        ))
+                        .ui(ui, |ui: &mut egui::Ui| {
+                            if ui.button("Hierarchy").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Inspector").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Console").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Assets").clicked() {
+                                ui.close();
+                            }
+                        });
 
-                        egui::containers::menu::SubMenuButton::new(format!("{} Layout", regular::LAYOUT))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("Default").clicked() { ui.close(); }
-                                if ui.button("Scripting").clicked() { ui.close(); }
-                                if ui.button("Debug").clicked() { ui.close(); }
-                                if ui.button("Minimal").clicked() { ui.close(); }
-                            });
+                        egui::containers::menu::SubMenuButton::new(format!(
+                            "{} Layout",
+                            regular::LAYOUT
+                        ))
+                        .ui(ui, |ui: &mut egui::Ui| {
+                            if ui.button("Default").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Scripting").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Debug").clicked() {
+                                ui.close();
+                            }
+                            if ui.button("Minimal").clicked() {
+                                ui.close();
+                            }
+                        });
 
                         ui.separator();
-                        if ui.button("Toggle Fullscreen").clicked() { ui.close(); }
+                        if ui.button("Toggle Fullscreen").clicked() {
+                            ui.close();
+                        }
                     });
                 });
             });
@@ -596,7 +731,10 @@ impl EditorPanel for ControlsGallery {
             ui.painter().text(
                 menu_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                format!("{} Right-click for context menu with submenus", regular::CURSOR_CLICK),
+                format!(
+                    "{} Right-click for context menu with submenus",
+                    regular::CURSOR_CLICK
+                ),
                 egui::FontId::proportional(11.0),
                 theme.text.secondary.to_color32(),
             );
@@ -613,40 +751,82 @@ impl EditorPanel for ControlsGallery {
                 }
                 ui.separator();
 
-                egui::containers::menu::SubMenuButton::new(format!("{} Transform", regular::ARROWS_OUT_CARDINAL))
+                egui::containers::menu::SubMenuButton::new(format!(
+                    "{} Transform",
+                    regular::ARROWS_OUT_CARDINAL
+                ))
+                .ui(ui, |ui: &mut egui::Ui| {
+                    if ui.button("Reset Position").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("Reset Rotation").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("Reset Scale").clicked() {
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Snap to Grid").clicked() {
+                        ui.close();
+                    }
+                });
+
+                egui::containers::menu::SubMenuButton::new(format!(
+                    "{} Add Component",
+                    regular::PLUS_CIRCLE
+                ))
+                .ui(ui, |ui: &mut egui::Ui| {
+                    egui::containers::menu::SubMenuButton::new(format!(
+                        "{} Physics",
+                        regular::ATOM
+                    ))
                     .ui(ui, |ui: &mut egui::Ui| {
-                        if ui.button("Reset Position").clicked() { ui.close(); }
-                        if ui.button("Reset Rotation").clicked() { ui.close(); }
-                        if ui.button("Reset Scale").clicked() { ui.close(); }
-                        ui.separator();
-                        if ui.button("Snap to Grid").clicked() { ui.close(); }
+                        if ui.button("Rigid Body").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("Collider").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("Joint").clicked() {
+                            ui.close();
+                        }
                     });
 
-                egui::containers::menu::SubMenuButton::new(format!("{} Add Component", regular::PLUS_CIRCLE))
+                    egui::containers::menu::SubMenuButton::new(format!(
+                        "{} Rendering",
+                        regular::CUBE
+                    ))
                     .ui(ui, |ui: &mut egui::Ui| {
-                        egui::containers::menu::SubMenuButton::new(format!("{} Physics", regular::ATOM))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("Rigid Body").clicked() { ui.close(); }
-                                if ui.button("Collider").clicked() { ui.close(); }
-                                if ui.button("Joint").clicked() { ui.close(); }
-                            });
-
-                        egui::containers::menu::SubMenuButton::new(format!("{} Rendering", regular::CUBE))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("Mesh Renderer").clicked() { ui.close(); }
-                                if ui.button("Light").clicked() { ui.close(); }
-                                if ui.button("Camera").clicked() { ui.close(); }
-                            });
-
-                        egui::containers::menu::SubMenuButton::new(format!("{} Audio", regular::SPEAKER_HIGH))
-                            .ui(ui, |ui: &mut egui::Ui| {
-                                if ui.button("Audio Source").clicked() { ui.close(); }
-                                if ui.button("Audio Listener").clicked() { ui.close(); }
-                            });
+                        if ui.button("Mesh Renderer").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("Light").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("Camera").clicked() {
+                            ui.close();
+                        }
                     });
+
+                    egui::containers::menu::SubMenuButton::new(format!(
+                        "{} Audio",
+                        regular::SPEAKER_HIGH
+                    ))
+                    .ui(ui, |ui: &mut egui::Ui| {
+                        if ui.button("Audio Source").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("Audio Listener").clicked() {
+                            ui.close();
+                        }
+                    });
+                });
 
                 ui.separator();
-                if ui.button(format!("{} Duplicate", regular::COPY_SIMPLE)).clicked() {
+                if ui
+                    .button(format!("{} Duplicate", regular::COPY_SIMPLE))
+                    .clicked()
+                {
                     ui.close();
                 }
                 if ui.button(format!("{} Delete", regular::TRASH)).clicked() {
@@ -663,18 +843,26 @@ impl EditorPanel for ControlsGallery {
                 if ui.button(format!("{} Info Modal", regular::INFO)).clicked() {
                     state.show_modal = true;
                 }
-                if ui.button(format!("{} Confirm Dialog", regular::WARNING)).clicked() {
+                if ui
+                    .button(format!("{} Confirm Dialog", regular::WARNING))
+                    .clicked()
+                {
                     state.show_confirm = true;
                 }
-                if ui.button(format!("{} Floating Window", regular::BROWSER)).clicked() {
+                if ui
+                    .button(format!("{} Floating Window", regular::BROWSER))
+                    .clicked()
+                {
                     state.show_window = !state.show_window;
                 }
             });
 
             ui.label(
-                egui::RichText::new("Modals block background input. Floating windows are draggable overlays.")
-                    .size(11.0)
-                    .color(theme.text.muted.to_color32()),
+                egui::RichText::new(
+                    "Modals block background input. Floating windows are draggable overlays.",
+                )
+                .size(11.0)
+                .color(theme.text.muted.to_color32()),
             );
 
             ui.add_space(12.0);
@@ -683,10 +871,13 @@ impl EditorPanel for ControlsGallery {
             section_header(ui, "Toast Notifications", &theme);
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Info", regular::INFO))
-                        .color(theme.semantic.accent.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Info", regular::INFO))
+                            .color(theme.semantic.accent.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.toast_counter += 1;
                     let tid = state.toast_counter;
                     state.toasts.push(Toast {
@@ -697,10 +888,13 @@ impl EditorPanel for ControlsGallery {
                         duration: 3.0,
                     });
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Success", regular::CHECK_CIRCLE))
-                        .color(theme.semantic.success.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Success", regular::CHECK_CIRCLE))
+                            .color(theme.semantic.success.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.toast_counter += 1;
                     let tid = state.toast_counter;
                     state.toasts.push(Toast {
@@ -711,10 +905,13 @@ impl EditorPanel for ControlsGallery {
                         duration: 3.0,
                     });
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Warning", regular::WARNING))
-                        .color(theme.semantic.warning.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Warning", regular::WARNING))
+                            .color(theme.semantic.warning.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.toast_counter += 1;
                     let tid = state.toast_counter;
                     state.toasts.push(Toast {
@@ -725,10 +922,13 @@ impl EditorPanel for ControlsGallery {
                         duration: 4.0,
                     });
                 }
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(format!("{} Error", regular::X_CIRCLE))
-                        .color(theme.semantic.error.to_color32()),
-                )).clicked() {
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new(format!("{} Error", regular::X_CIRCLE))
+                            .color(theme.semantic.error.to_color32()),
+                    ))
+                    .clicked()
+                {
                     state.toast_counter += 1;
                     let tid = state.toast_counter;
                     state.toasts.push(Toast {
@@ -743,7 +943,11 @@ impl EditorPanel for ControlsGallery {
 
             let active_count = {
                 let now = ui.ctx().input(|i| i.time);
-                state.toasts.iter().filter(|t| now - t.created_at < t.duration).count()
+                state
+                    .toasts
+                    .iter()
+                    .filter(|t| now - t.created_at < t.duration)
+                    .count()
             };
             ui.label(
                 egui::RichText::new(format!("{} active toast(s)", active_count))
@@ -804,9 +1008,15 @@ impl EditorPanel for ControlsGallery {
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(
-                            egui::RichText::new("Save").color(Color32::WHITE),
-                        ).fill(theme.semantic.accent.to_color32())).clicked() {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new("Save").color(Color32::WHITE),
+                                )
+                                .fill(theme.semantic.accent.to_color32()),
+                            )
+                            .clicked()
+                        {
                             state.show_confirm = false;
                             state.toast_counter += 1;
                             let tid = state.toast_counter;
@@ -860,7 +1070,11 @@ impl EditorPanel for ControlsGallery {
                     ui.checkbox(&mut false.clone(), "Snap to grid");
                     ui.horizontal(|ui| {
                         ui.label("Grid size:");
-                        ui.add(egui::DragValue::new(&mut 1.0_f32.clone()).speed(0.1).range(0.1..=10.0));
+                        ui.add(
+                            egui::DragValue::new(&mut 1.0_f32.clone())
+                                .speed(0.1)
+                                .range(0.1..=10.0),
+                        );
                     });
                 });
             state.show_window = open;
@@ -907,7 +1121,9 @@ impl EditorPanel for ControlsGallery {
                 .show(&ctx, |ui| {
                     let bg = Color32::from_rgba_unmultiplied(35, 35, 45, alpha_u8);
                     let border = Color32::from_rgba_unmultiplied(
-                        icon_color.r(), icon_color.g(), icon_color.b(),
+                        icon_color.r(),
+                        icon_color.g(),
+                        icon_color.b(),
                         (alpha * 120.0) as u8,
                     );
 
@@ -918,21 +1134,17 @@ impl EditorPanel for ControlsGallery {
                         .corner_radius(egui::CornerRadius::same(6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(icon)
-                                        .size(14.0)
-                                        .color(Color32::from_rgba_unmultiplied(
-                                            icon_color.r(), icon_color.g(), icon_color.b(),
-                                            alpha_u8,
-                                        )),
-                                );
-                                ui.label(
-                                    egui::RichText::new(&toast.message)
-                                        .size(12.0)
-                                        .color(Color32::from_rgba_unmultiplied(
-                                            220, 220, 220, alpha_u8,
-                                        )),
-                                );
+                                ui.label(egui::RichText::new(icon).size(14.0).color(
+                                    Color32::from_rgba_unmultiplied(
+                                        icon_color.r(),
+                                        icon_color.g(),
+                                        icon_color.b(),
+                                        alpha_u8,
+                                    ),
+                                ));
+                                ui.label(egui::RichText::new(&toast.message).size(12.0).color(
+                                    Color32::from_rgba_unmultiplied(220, 220, 220, alpha_u8),
+                                ));
                             });
                         });
                 });
@@ -1066,13 +1278,28 @@ impl EditorPanel for PropertiesGallery {
             section_header(ui, "icon_button", &theme);
 
             ui.horizontal(|ui| {
-                icon_button(ui, regular::PLAY, "Play", theme.semantic.success.to_color32());
+                icon_button(
+                    ui,
+                    regular::PLAY,
+                    "Play",
+                    theme.semantic.success.to_color32(),
+                );
                 ui.add_space(4.0);
-                icon_button(ui, regular::PAUSE, "Pause", theme.semantic.warning.to_color32());
+                icon_button(
+                    ui,
+                    regular::PAUSE,
+                    "Pause",
+                    theme.semantic.warning.to_color32(),
+                );
                 ui.add_space(4.0);
                 icon_button(ui, regular::STOP, "Stop", theme.semantic.error.to_color32());
                 ui.add_space(4.0);
-                icon_button(ui, regular::ARROW_CLOCKWISE, "Refresh", theme.semantic.accent.to_color32());
+                icon_button(
+                    ui,
+                    regular::ARROW_CLOCKWISE,
+                    "Refresh",
+                    theme.semantic.accent.to_color32(),
+                );
                 ui.add_space(4.0);
                 icon_button(ui, regular::TRASH, "Delete", theme.text.muted.to_color32());
                 ui.add_space(4.0);
@@ -1091,7 +1318,13 @@ impl EditorPanel for PropertiesGallery {
                 .corner_radius(egui::CornerRadius::same(6))
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
-                    empty_state(ui, regular::FOLDER_OPEN, "No assets", "Drag files here to import.", &theme);
+                    empty_state(
+                        ui,
+                        regular::FOLDER_OPEN,
+                        "No assets",
+                        "Drag files here to import.",
+                        &theme,
+                    );
                 });
 
             ui.add_space(12.0);
@@ -1099,7 +1332,8 @@ impl EditorPanel for PropertiesGallery {
             // ── checkerboard ─────────────────────────────────────
             section_header(ui, "checkerboard", &theme);
 
-            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(200.0, 60.0), egui::Sense::hover());
+            let (rect, _) =
+                ui.allocate_exact_size(egui::Vec2::new(200.0, 60.0), egui::Sense::hover());
             checkerboard(ui.painter(), rect);
             ui.painter().text(
                 rect.center(),
@@ -1119,7 +1353,8 @@ impl EditorPanel for PropertiesGallery {
                 let factors = [1.0, 0.8, 0.6, 0.4, 0.2];
                 for f in factors {
                     let c = dim_color(base, f);
-                    let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(30.0, 20.0), egui::Sense::hover());
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::Vec2::new(30.0, 20.0), egui::Sense::hover());
                     ui.painter().rect_filled(rect, 3.0, c);
                     ui.painter().text(
                         rect.center(),
@@ -1190,34 +1425,107 @@ impl EditorPanel for CategoriesGallery {
             // ── collapsible_section ──────────────────────────────
             section_header(ui, "collapsible_section", &theme);
 
-            collapsible_section(ui, regular::CUBE, "Transform", "transform", &theme, "cs_transform", true, |ui| {
-                inline_property(ui, 0, "Position", &theme, |ui| { ui.label("0.0, 0.0, 0.0"); });
-                inline_property(ui, 1, "Rotation", &theme, |ui| { ui.label("0.0, 0.0, 0.0"); });
-                inline_property(ui, 2, "Scale", &theme, |ui| { ui.label("1.0, 1.0, 1.0"); });
-            });
+            collapsible_section(
+                ui,
+                regular::CUBE,
+                "Transform",
+                "transform",
+                &theme,
+                "cs_transform",
+                true,
+                |ui| {
+                    inline_property(ui, 0, "Position", &theme, |ui| {
+                        ui.label("0.0, 0.0, 0.0");
+                    });
+                    inline_property(ui, 1, "Rotation", &theme, |ui| {
+                        ui.label("0.0, 0.0, 0.0");
+                    });
+                    inline_property(ui, 2, "Scale", &theme, |ui| {
+                        ui.label("1.0, 1.0, 1.0");
+                    });
+                },
+            );
 
-            collapsible_section(ui, regular::SUN, "Lighting", "lighting", &theme, "cs_lighting", true, |ui| {
-                inline_property(ui, 0, "Intensity", &theme, |ui| { ui.label("1000.0"); });
-                inline_property(ui, 1, "Color", &theme, |ui| { ui.label("#FFFFFF"); });
-                inline_property(ui, 2, "Shadows", &theme, |ui| { ui.label("Enabled"); });
-            });
+            collapsible_section(
+                ui,
+                regular::SUN,
+                "Lighting",
+                "lighting",
+                &theme,
+                "cs_lighting",
+                true,
+                |ui| {
+                    inline_property(ui, 0, "Intensity", &theme, |ui| {
+                        ui.label("1000.0");
+                    });
+                    inline_property(ui, 1, "Color", &theme, |ui| {
+                        ui.label("#FFFFFF");
+                    });
+                    inline_property(ui, 2, "Shadows", &theme, |ui| {
+                        ui.label("Enabled");
+                    });
+                },
+            );
 
-            collapsible_section(ui, regular::CAMERA, "Camera", "camera", &theme, "cs_camera", false, |ui| {
-                inline_property(ui, 0, "FOV", &theme, |ui| { ui.label("60.0"); });
-                inline_property(ui, 1, "Near", &theme, |ui| { ui.label("0.1"); });
-                inline_property(ui, 2, "Far", &theme, |ui| { ui.label("1000.0"); });
-            });
+            collapsible_section(
+                ui,
+                regular::CAMERA,
+                "Camera",
+                "camera",
+                &theme,
+                "cs_camera",
+                false,
+                |ui| {
+                    inline_property(ui, 0, "FOV", &theme, |ui| {
+                        ui.label("60.0");
+                    });
+                    inline_property(ui, 1, "Near", &theme, |ui| {
+                        ui.label("0.1");
+                    });
+                    inline_property(ui, 2, "Far", &theme, |ui| {
+                        ui.label("1000.0");
+                    });
+                },
+            );
 
-            collapsible_section(ui, regular::SCROLL, "Script", "scripting", &theme, "cs_script", false, |ui| {
-                inline_property(ui, 0, "File", &theme, |ui| { ui.label("player.rhai"); });
-                inline_property(ui, 1, "Active", &theme, |ui| { ui.label("true"); });
-            });
+            collapsible_section(
+                ui,
+                regular::SCROLL,
+                "Script",
+                "scripting",
+                &theme,
+                "cs_script",
+                false,
+                |ui| {
+                    inline_property(ui, 0, "File", &theme, |ui| {
+                        ui.label("player.rhai");
+                    });
+                    inline_property(ui, 1, "Active", &theme, |ui| {
+                        ui.label("true");
+                    });
+                },
+            );
 
-            collapsible_section(ui, regular::ATOM, "Physics", "physics", &theme, "cs_physics", false, |ui| {
-                inline_property(ui, 0, "Mass", &theme, |ui| { ui.label("1.0 kg"); });
-                inline_property(ui, 1, "Drag", &theme, |ui| { ui.label("0.1"); });
-                inline_property(ui, 2, "Gravity", &theme, |ui| { ui.label("Enabled"); });
-            });
+            collapsible_section(
+                ui,
+                regular::ATOM,
+                "Physics",
+                "physics",
+                &theme,
+                "cs_physics",
+                false,
+                |ui| {
+                    inline_property(ui, 0, "Mass", &theme, |ui| {
+                        ui.label("1.0 kg");
+                    });
+                    inline_property(ui, 1, "Drag", &theme, |ui| {
+                        ui.label("0.1");
+                    });
+                    inline_property(ui, 2, "Gravity", &theme, |ui| {
+                        ui.label("Enabled");
+                    });
+                },
+            );
 
             ui.add_space(12.0);
 
@@ -1235,10 +1543,22 @@ impl EditorPanel for CategoriesGallery {
                 let is_disabled = state.disabled_sections.get(i).copied().unwrap_or(false);
                 let id_src = format!("csr_{}", i);
                 let action = collapsible_section_removable(
-                    ui, icon, label, cat, &theme, &id_src, i < 2, true, is_disabled,
+                    ui,
+                    icon,
+                    label,
+                    cat,
+                    &theme,
+                    &id_src,
+                    i < 2,
+                    true,
+                    is_disabled,
                     |ui| {
-                        inline_property(ui, 0, "Setting A", &theme, |ui| { ui.label("value"); });
-                        inline_property(ui, 1, "Setting B", &theme, |ui| { ui.label("value"); });
+                        inline_property(ui, 0, "Setting A", &theme, |ui| {
+                            ui.label("value");
+                        });
+                        inline_property(ui, 1, "Setting B", &theme, |ui| {
+                            ui.label("value");
+                        });
                     },
                 );
 
@@ -1287,18 +1607,66 @@ struct TileItem {
 }
 
 const TILE_ITEMS: &[TileItem] = &[
-    TileItem { name: "player.glb", icon: regular::CUBE, color: Color32::from_rgb(99, 178, 238) },
-    TileItem { name: "enemy.glb", icon: regular::CUBE, color: Color32::from_rgb(230, 89, 89) },
-    TileItem { name: "tree.glb", icon: regular::TREE, color: Color32::from_rgb(89, 191, 115) },
-    TileItem { name: "stone_wall.png", icon: regular::IMAGE, color: Color32::from_rgb(180, 160, 120) },
-    TileItem { name: "grass.png", icon: regular::IMAGE, color: Color32::from_rgb(120, 200, 120) },
-    TileItem { name: "metal.png", icon: regular::IMAGE, color: Color32::from_rgb(160, 170, 190) },
-    TileItem { name: "footstep.wav", icon: regular::SPEAKER_HIGH, color: Color32::from_rgb(180, 100, 220) },
-    TileItem { name: "ambient.ogg", icon: regular::MUSIC_NOTES, color: Color32::from_rgb(100, 180, 220) },
-    TileItem { name: "explosion_fx.ron", icon: regular::SPARKLE, color: Color32::from_rgb(255, 180, 50) },
-    TileItem { name: "main_scene.scn", icon: regular::FILM_SCRIPT, color: Color32::from_rgb(69, 101, 151) },
-    TileItem { name: "player_ctrl.rhai", icon: regular::SCROLL, color: Color32::from_rgb(236, 154, 120) },
-    TileItem { name: "water_shader.wgsl", icon: regular::MONITOR, color: Color32::from_rgb(180, 130, 255) },
+    TileItem {
+        name: "player.glb",
+        icon: regular::CUBE,
+        color: Color32::from_rgb(99, 178, 238),
+    },
+    TileItem {
+        name: "enemy.glb",
+        icon: regular::CUBE,
+        color: Color32::from_rgb(230, 89, 89),
+    },
+    TileItem {
+        name: "tree.glb",
+        icon: regular::TREE,
+        color: Color32::from_rgb(89, 191, 115),
+    },
+    TileItem {
+        name: "stone_wall.png",
+        icon: regular::IMAGE,
+        color: Color32::from_rgb(180, 160, 120),
+    },
+    TileItem {
+        name: "grass.png",
+        icon: regular::IMAGE,
+        color: Color32::from_rgb(120, 200, 120),
+    },
+    TileItem {
+        name: "metal.png",
+        icon: regular::IMAGE,
+        color: Color32::from_rgb(160, 170, 190),
+    },
+    TileItem {
+        name: "footstep.wav",
+        icon: regular::SPEAKER_HIGH,
+        color: Color32::from_rgb(180, 100, 220),
+    },
+    TileItem {
+        name: "ambient.ogg",
+        icon: regular::MUSIC_NOTES,
+        color: Color32::from_rgb(100, 180, 220),
+    },
+    TileItem {
+        name: "explosion_fx.ron",
+        icon: regular::SPARKLE,
+        color: Color32::from_rgb(255, 180, 50),
+    },
+    TileItem {
+        name: "main_scene.scn",
+        icon: regular::FILM_SCRIPT,
+        color: Color32::from_rgb(69, 101, 151),
+    },
+    TileItem {
+        name: "player_ctrl.rhai",
+        icon: regular::SCROLL,
+        color: Color32::from_rgb(236, 154, 120),
+    },
+    TileItem {
+        name: "water_shader.wgsl",
+        icon: regular::MONITOR,
+        color: Color32::from_rgb(180, 130, 255),
+    },
 ];
 
 impl EditorPanel for TileGridGallery {
@@ -1367,7 +1735,8 @@ impl EditorPanel for TileGridGallery {
                 );
 
                 // Draw label
-                let (line1, line2) = split_label_two_lines(item.name, tile.tile_size, tile.font_size);
+                let (line1, line2) =
+                    split_label_two_lines(item.name, tile.tile_size, tile.font_size);
                 let label_color = if is_selected {
                     Color32::WHITE
                 } else {
@@ -1440,57 +1809,109 @@ struct TreeNode {
     children: &'static [TreeNode],
 }
 
-const SCENE_TREE: &[TreeNode] = &[
-    TreeNode {
-        label: "World",
-        icon: regular::GLOBE,
-        icon_color: Color32::from_rgb(100, 180, 220),
-        label_color: None,
-        children: &[
-            TreeNode {
-                label: "Environment",
-                icon: regular::SUN,
-                icon_color: Color32::from_rgb(247, 207, 100),
-                label_color: Some([134, 188, 126]),
-                children: &[
-                    TreeNode { label: "Directional Light", icon: regular::SUN, icon_color: Color32::from_rgb(247, 207, 100), label_color: Some([247, 207, 100]), children: &[] },
-                    TreeNode { label: "Skybox", icon: regular::CLOUD, icon_color: Color32::from_rgb(150, 180, 220), label_color: Some([134, 188, 126]), children: &[] },
-                ],
-            },
-            TreeNode {
-                label: "Player",
-                icon: regular::USER,
-                icon_color: Color32::from_rgb(99, 178, 238),
-                label_color: Some([99, 178, 238]),
-                children: &[
-                    TreeNode { label: "Camera", icon: regular::CAMERA, icon_color: Color32::from_rgb(178, 132, 209), label_color: Some([178, 132, 209]), children: &[] },
-                    TreeNode { label: "Mesh", icon: regular::CUBE, icon_color: Color32::from_rgb(99, 178, 238), label_color: None, children: &[] },
-                    TreeNode { label: "Collider", icon: regular::BOUNDING_BOX, icon_color: Color32::from_rgb(120, 200, 200), label_color: Some([120, 200, 200]), children: &[] },
-                ],
-            },
-            TreeNode {
-                label: "Enemies",
-                icon: regular::SKULL,
-                icon_color: Color32::from_rgb(230, 89, 89),
-                label_color: Some([230, 89, 89]),
-                children: &[
-                    TreeNode { label: "Zombie_01", icon: regular::CUBE, icon_color: Color32::from_rgb(230, 89, 89), label_color: None, children: &[] },
-                    TreeNode { label: "Zombie_02", icon: regular::CUBE, icon_color: Color32::from_rgb(230, 89, 89), label_color: None, children: &[] },
-                ],
-            },
-            TreeNode {
-                label: "Props",
-                icon: regular::PACKAGE,
-                icon_color: Color32::from_rgb(180, 160, 120),
-                label_color: None,
-                children: &[
-                    TreeNode { label: "Barrel", icon: regular::CYLINDER, icon_color: Color32::from_rgb(180, 140, 100), label_color: None, children: &[] },
-                    TreeNode { label: "Crate", icon: regular::CUBE, icon_color: Color32::from_rgb(160, 140, 100), label_color: None, children: &[] },
-                ],
-            },
-        ],
-    },
-];
+const SCENE_TREE: &[TreeNode] = &[TreeNode {
+    label: "World",
+    icon: regular::GLOBE,
+    icon_color: Color32::from_rgb(100, 180, 220),
+    label_color: None,
+    children: &[
+        TreeNode {
+            label: "Environment",
+            icon: regular::SUN,
+            icon_color: Color32::from_rgb(247, 207, 100),
+            label_color: Some([134, 188, 126]),
+            children: &[
+                TreeNode {
+                    label: "Directional Light",
+                    icon: regular::SUN,
+                    icon_color: Color32::from_rgb(247, 207, 100),
+                    label_color: Some([247, 207, 100]),
+                    children: &[],
+                },
+                TreeNode {
+                    label: "Skybox",
+                    icon: regular::CLOUD,
+                    icon_color: Color32::from_rgb(150, 180, 220),
+                    label_color: Some([134, 188, 126]),
+                    children: &[],
+                },
+            ],
+        },
+        TreeNode {
+            label: "Player",
+            icon: regular::USER,
+            icon_color: Color32::from_rgb(99, 178, 238),
+            label_color: Some([99, 178, 238]),
+            children: &[
+                TreeNode {
+                    label: "Camera",
+                    icon: regular::CAMERA,
+                    icon_color: Color32::from_rgb(178, 132, 209),
+                    label_color: Some([178, 132, 209]),
+                    children: &[],
+                },
+                TreeNode {
+                    label: "Mesh",
+                    icon: regular::CUBE,
+                    icon_color: Color32::from_rgb(99, 178, 238),
+                    label_color: None,
+                    children: &[],
+                },
+                TreeNode {
+                    label: "Collider",
+                    icon: regular::BOUNDING_BOX,
+                    icon_color: Color32::from_rgb(120, 200, 200),
+                    label_color: Some([120, 200, 200]),
+                    children: &[],
+                },
+            ],
+        },
+        TreeNode {
+            label: "Enemies",
+            icon: regular::SKULL,
+            icon_color: Color32::from_rgb(230, 89, 89),
+            label_color: Some([230, 89, 89]),
+            children: &[
+                TreeNode {
+                    label: "Zombie_01",
+                    icon: regular::CUBE,
+                    icon_color: Color32::from_rgb(230, 89, 89),
+                    label_color: None,
+                    children: &[],
+                },
+                TreeNode {
+                    label: "Zombie_02",
+                    icon: regular::CUBE,
+                    icon_color: Color32::from_rgb(230, 89, 89),
+                    label_color: None,
+                    children: &[],
+                },
+            ],
+        },
+        TreeNode {
+            label: "Props",
+            icon: regular::PACKAGE,
+            icon_color: Color32::from_rgb(180, 160, 120),
+            label_color: None,
+            children: &[
+                TreeNode {
+                    label: "Barrel",
+                    icon: regular::CYLINDER,
+                    icon_color: Color32::from_rgb(180, 140, 100),
+                    label_color: None,
+                    children: &[],
+                },
+                TreeNode {
+                    label: "Crate",
+                    icon: regular::CUBE,
+                    icon_color: Color32::from_rgb(160, 140, 100),
+                    label_color: None,
+                    children: &[],
+                },
+            ],
+        },
+    ],
+}];
 
 impl EditorPanel for TreeGallery {
     fn id(&self) -> &str {
@@ -1538,11 +1959,7 @@ impl EditorPanel for TreeGallery {
                     let is_last = i == nodes.len() - 1;
                     let my_index = *node_index;
                     let has_children = !node.children.is_empty();
-                    let is_expanded = state
-                        .expanded
-                        .get(my_index)
-                        .copied()
-                        .unwrap_or(false);
+                    let is_expanded = state.expanded.get(my_index).copied().unwrap_or(false);
 
                     let result = tree_row(
                         ui,
@@ -1614,10 +2031,8 @@ impl EditorPanel for TreeGallery {
 // ── Mixer gallery ───────────────────────────────────────────────────────────
 
 use renzora_editor::{
-    rotary_knob, KnobConfig,
-    vertical_fader, FaderConfig,
-    vu_meter, VuMeterConfig, VuMeterValue,
-    mixer_channel_strip, MixerStripConfig, MixerStripState,
+    mixer_channel_strip, rotary_knob, vertical_fader, vu_meter, FaderConfig, KnobConfig,
+    MixerStripConfig, MixerStripState, VuMeterConfig, VuMeterValue,
 };
 
 struct MixerGalleryState {
@@ -1720,8 +2135,10 @@ impl EditorPanel for MixerGallery {
         let t = state.time;
 
         // Animated levels for standalone VU demos
-        state.vu_level = (0.5 + 0.4 * (t * 3.0).sin() as f32 + 0.1 * (t * 7.3).sin() as f32).clamp(0.0, 1.0);
-        state.vu_level_r = (0.45 + 0.35 * (t * 2.7).sin() as f32 + 0.15 * (t * 5.9).sin() as f32).clamp(0.0, 1.0);
+        state.vu_level =
+            (0.5 + 0.4 * (t * 3.0).sin() as f32 + 0.1 * (t * 7.3).sin() as f32).clamp(0.0, 1.0);
+        state.vu_level_r =
+            (0.45 + 0.35 * (t * 2.7).sin() as f32 + 0.15 * (t * 5.9).sin() as f32).clamp(0.0, 1.0);
         // Peak decay
         if state.vu_level > state.vu_peak {
             state.vu_peak = state.vu_level;
@@ -1739,8 +2156,13 @@ impl EditorPanel for MixerGallery {
         for (i, (_cfg, strip)) in state.strips.iter_mut().enumerate() {
             let freq = freqs.get(i).copied().unwrap_or(3.0);
             let base = strip.volume * 0.8;
-            strip.level_l = (base + 0.2 * (t * freq).sin() as f32 + 0.05 * (t * freq * 2.1).sin() as f32).clamp(0.0, 1.0);
-            strip.level_r = (base + 0.18 * (t * freq * 0.9).sin() as f32 + 0.06 * (t * freq * 1.7).sin() as f32).clamp(0.0, 1.0);
+            strip.level_l =
+                (base + 0.2 * (t * freq).sin() as f32 + 0.05 * (t * freq * 2.1).sin() as f32)
+                    .clamp(0.0, 1.0);
+            strip.level_r = (base
+                + 0.18 * (t * freq * 0.9).sin() as f32
+                + 0.06 * (t * freq * 1.7).sin() as f32)
+                .clamp(0.0, 1.0);
             if strip.level_l > strip.peak_l {
                 strip.peak_l = strip.level_l;
             } else {
@@ -1774,18 +2196,35 @@ impl EditorPanel for MixerGallery {
                 };
 
                 ui.add_space(8.0);
-                rotary_knob(ui, egui::Id::new("mixer_knob_a"), &mut state.knob_a, &knob_cfg("Gain"));
+                rotary_knob(
+                    ui,
+                    egui::Id::new("mixer_knob_a"),
+                    &mut state.knob_a,
+                    &knob_cfg("Gain"),
+                );
                 ui.add_space(12.0);
-                rotary_knob(ui, egui::Id::new("mixer_knob_b"), &mut state.knob_b, &knob_cfg("Freq"));
+                rotary_knob(
+                    ui,
+                    egui::Id::new("mixer_knob_b"),
+                    &mut state.knob_b,
+                    &knob_cfg("Freq"),
+                );
                 ui.add_space(12.0);
-                rotary_knob(ui, egui::Id::new("mixer_knob_c"), &mut state.knob_c, &knob_cfg("Res"));
+                rotary_knob(
+                    ui,
+                    egui::Id::new("mixer_knob_c"),
+                    &mut state.knob_c,
+                    &knob_cfg("Res"),
+                );
             });
 
             ui.add_space(4.0);
             ui.label(
-                egui::RichText::new("Drag up/down to change. Shift for fine control. Double-click to reset.")
-                    .size(10.0)
-                    .color(theme.text.muted.to_color32()),
+                egui::RichText::new(
+                    "Drag up/down to change. Shift for fine control. Double-click to reset.",
+                )
+                .size(10.0)
+                .color(theme.text.muted.to_color32()),
             );
 
             ui.add_space(12.0);
@@ -1840,12 +2279,17 @@ impl EditorPanel for MixerGallery {
                         level: state.vu_level,
                         peak: state.vu_peak,
                     };
-                    vu_meter(ui, &val, None, &VuMeterConfig {
-                        width: 12.0,
-                        height: 100.0,
-                        stereo: false,
-                        gap: 2.0,
-                    });
+                    vu_meter(
+                        ui,
+                        &val,
+                        None,
+                        &VuMeterConfig {
+                            width: 12.0,
+                            height: 100.0,
+                            stereo: false,
+                            gap: 2.0,
+                        },
+                    );
                     ui.label(
                         egui::RichText::new("Mono")
                             .size(9.0)
@@ -1865,12 +2309,17 @@ impl EditorPanel for MixerGallery {
                         level: state.vu_level_r,
                         peak: state.vu_peak_r,
                     };
-                    vu_meter(ui, &left, Some(&right), &VuMeterConfig {
-                        width: 10.0,
-                        height: 100.0,
-                        stereo: true,
-                        gap: 2.0,
-                    });
+                    vu_meter(
+                        ui,
+                        &left,
+                        Some(&right),
+                        &VuMeterConfig {
+                            width: 10.0,
+                            height: 100.0,
+                            stereo: true,
+                            gap: 2.0,
+                        },
+                    );
                     ui.label(
                         egui::RichText::new("Stereo")
                             .size(9.0)
@@ -1910,18 +2359,18 @@ impl EditorPanel for MixerGallery {
 
 fn build_demo_graph() -> NodeGraphState {
     // Pin colors
-    let flow   = Color32::from_rgb(220, 220, 220); // white-ish
-    let float  = Color32::from_rgb(100, 200, 100); // green
-    let vec3   = Color32::from_rgb(230, 160, 60);  // orange
-    let bool_c = Color32::from_rgb(200, 60, 60);   // red
-    let color  = Color32::from_rgb(160, 100, 220);  // purple
+    let flow = Color32::from_rgb(220, 220, 220); // white-ish
+    let float = Color32::from_rgb(100, 200, 100); // green
+    let vec3 = Color32::from_rgb(230, 160, 60); // orange
+    let bool_c = Color32::from_rgb(200, 60, 60); // red
+    let color = Color32::from_rgb(160, 100, 220); // purple
 
     // Header colors by category
-    let event_hdr     = Color32::from_rgb(180, 60, 60);
-    let math_hdr      = Color32::from_rgb(60, 140, 100);
-    let logic_hdr     = Color32::from_rgb(140, 100, 180);
+    let event_hdr = Color32::from_rgb(180, 60, 60);
+    let math_hdr = Color32::from_rgb(60, 140, 100);
+    let logic_hdr = Color32::from_rgb(140, 100, 180);
     let transform_hdr = Color32::from_rgb(100, 150, 220);
-    let render_hdr    = Color32::from_rgb(200, 150, 120);
+    let render_hdr = Color32::from_rgb(200, 150, 120);
 
     let nodes = vec![
         // 1: Event / OnUpdate
@@ -1931,8 +2380,20 @@ fn build_demo_graph() -> NodeGraphState {
             header_color: event_hdr,
             position: [-350.0, -120.0],
             pins: vec![
-                PinDef { name: "flow_out".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
-                PinDef { name: "delta".into(), label: "Delta".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
+                PinDef {
+                    name: "flow_out".into(),
+                    label: "Exec".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Output,
+                },
+                PinDef {
+                    name: "delta".into(),
+                    label: "Delta".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Output,
+                },
             ],
             thumbnail: None,
         },
@@ -1943,10 +2404,34 @@ fn build_demo_graph() -> NodeGraphState {
             header_color: logic_hdr,
             position: [-100.0, -120.0],
             pins: vec![
-                PinDef { name: "flow_in".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Input },
-                PinDef { name: "condition".into(), label: "Condition".into(), color: bool_c, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "true_out".into(), label: "True".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
-                PinDef { name: "false_out".into(), label: "False".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
+                PinDef {
+                    name: "flow_in".into(),
+                    label: "Exec".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "condition".into(),
+                    label: "Condition".into(),
+                    color: bool_c,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "true_out".into(),
+                    label: "True".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Output,
+                },
+                PinDef {
+                    name: "false_out".into(),
+                    label: "False".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Output,
+                },
             ],
             thumbnail: None,
         },
@@ -1956,9 +2441,13 @@ fn build_demo_graph() -> NodeGraphState {
             title: "Float".into(),
             header_color: math_hdr,
             position: [-350.0, 80.0],
-            pins: vec![
-                PinDef { name: "value".into(), label: "3.14".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
-            ],
+            pins: vec![PinDef {
+                name: "value".into(),
+                label: "3.14".into(),
+                color: float,
+                shape: PinShape::Circle,
+                direction: PinDirection::Output,
+            }],
             thumbnail: None,
         },
         // 4: Float constant B
@@ -1967,9 +2456,13 @@ fn build_demo_graph() -> NodeGraphState {
             title: "Float".into(),
             header_color: math_hdr,
             position: [-350.0, 180.0],
-            pins: vec![
-                PinDef { name: "value".into(), label: "2.0".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
-            ],
+            pins: vec![PinDef {
+                name: "value".into(),
+                label: "2.0".into(),
+                color: float,
+                shape: PinShape::Circle,
+                direction: PinDirection::Output,
+            }],
             thumbnail: None,
         },
         // 5: Add
@@ -1979,9 +2472,27 @@ fn build_demo_graph() -> NodeGraphState {
             header_color: math_hdr,
             position: [-100.0, 100.0],
             pins: vec![
-                PinDef { name: "a".into(), label: "A".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "b".into(), label: "B".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "result".into(), label: "Result".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
+                PinDef {
+                    name: "a".into(),
+                    label: "A".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "b".into(),
+                    label: "B".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "result".into(),
+                    label: "Result".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Output,
+                },
             ],
             thumbnail: None,
         },
@@ -1992,9 +2503,27 @@ fn build_demo_graph() -> NodeGraphState {
             header_color: math_hdr,
             position: [150.0, 100.0],
             pins: vec![
-                PinDef { name: "a".into(), label: "A".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "b".into(), label: "B".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "result".into(), label: "Result".into(), color: float, shape: PinShape::Circle, direction: PinDirection::Output },
+                PinDef {
+                    name: "a".into(),
+                    label: "A".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "b".into(),
+                    label: "B".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "result".into(),
+                    label: "Result".into(),
+                    color: float,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Output,
+                },
             ],
             thumbnail: None,
         },
@@ -2004,9 +2533,13 @@ fn build_demo_graph() -> NodeGraphState {
             title: "GetPosition".into(),
             header_color: transform_hdr,
             position: [-100.0, 280.0],
-            pins: vec![
-                PinDef { name: "position".into(), label: "XYZ".into(), color: vec3, shape: PinShape::Circle, direction: PinDirection::Output },
-            ],
+            pins: vec![PinDef {
+                name: "position".into(),
+                label: "XYZ".into(),
+                color: vec3,
+                shape: PinShape::Circle,
+                direction: PinDirection::Output,
+            }],
             thumbnail: None,
         },
         // 8: SetColor
@@ -2016,10 +2549,34 @@ fn build_demo_graph() -> NodeGraphState {
             header_color: render_hdr,
             position: [150.0, 260.0],
             pins: vec![
-                PinDef { name: "flow_in".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Input },
-                PinDef { name: "color_in".into(), label: "Color".into(), color: color, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "position".into(), label: "Pos".into(), color: vec3, shape: PinShape::Circle, direction: PinDirection::Input },
-                PinDef { name: "flow_out".into(), label: "Exec".into(), color: flow, shape: PinShape::Triangle, direction: PinDirection::Output },
+                PinDef {
+                    name: "flow_in".into(),
+                    label: "Exec".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "color_in".into(),
+                    label: "Color".into(),
+                    color: color,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "position".into(),
+                    label: "Pos".into(),
+                    color: vec3,
+                    shape: PinShape::Circle,
+                    direction: PinDirection::Input,
+                },
+                PinDef {
+                    name: "flow_out".into(),
+                    label: "Exec".into(),
+                    color: flow,
+                    shape: PinShape::Triangle,
+                    direction: PinDirection::Output,
+                },
             ],
             thumbnail: None,
         },
@@ -2027,17 +2584,53 @@ fn build_demo_graph() -> NodeGraphState {
 
     let connections = vec![
         // OnUpdate → Branch (flow)
-        ConnectionDef { from_node: 1, from_pin: "flow_out".into(), to_node: 2, to_pin: "flow_in".into(), color: None },
+        ConnectionDef {
+            from_node: 1,
+            from_pin: "flow_out".into(),
+            to_node: 2,
+            to_pin: "flow_in".into(),
+            color: None,
+        },
         // Branch true → SetColor (flow)
-        ConnectionDef { from_node: 2, from_pin: "true_out".into(), to_node: 8, to_pin: "flow_in".into(), color: None },
+        ConnectionDef {
+            from_node: 2,
+            from_pin: "true_out".into(),
+            to_node: 8,
+            to_pin: "flow_in".into(),
+            color: None,
+        },
         // Float A → Add.a
-        ConnectionDef { from_node: 3, from_pin: "value".into(), to_node: 5, to_pin: "a".into(), color: None },
+        ConnectionDef {
+            from_node: 3,
+            from_pin: "value".into(),
+            to_node: 5,
+            to_pin: "a".into(),
+            color: None,
+        },
         // Float B → Add.b
-        ConnectionDef { from_node: 4, from_pin: "value".into(), to_node: 5, to_pin: "b".into(), color: None },
+        ConnectionDef {
+            from_node: 4,
+            from_pin: "value".into(),
+            to_node: 5,
+            to_pin: "b".into(),
+            color: None,
+        },
         // Add → Multiply.a
-        ConnectionDef { from_node: 5, from_pin: "result".into(), to_node: 6, to_pin: "a".into(), color: None },
+        ConnectionDef {
+            from_node: 5,
+            from_pin: "result".into(),
+            to_node: 6,
+            to_pin: "a".into(),
+            color: None,
+        },
         // GetPosition → SetColor.position
-        ConnectionDef { from_node: 7, from_pin: "position".into(), to_node: 8, to_pin: "position".into(), color: None },
+        ConnectionDef {
+            from_node: 7,
+            from_pin: "position".into(),
+            to_node: 8,
+            to_pin: "position".into(),
+            color: None,
+        },
     ];
 
     NodeGraphState {
@@ -2058,7 +2651,9 @@ struct NodeGraphGalleryState {
 
 impl Default for NodeGraphGalleryState {
     fn default() -> Self {
-        Self { graph: build_demo_graph() }
+        Self {
+            graph: build_demo_graph(),
+        }
     }
 }
 
@@ -2068,7 +2663,9 @@ pub struct NodeGraphGallery {
 
 impl Default for NodeGraphGallery {
     fn default() -> Self {
-        Self { state: RwLock::new(NodeGraphGalleryState::default()) }
+        Self {
+            state: RwLock::new(NodeGraphGalleryState::default()),
+        }
     }
 }
 
@@ -2109,7 +2706,12 @@ impl EditorPanel for NodeGraphGallery {
         };
 
         let mut state = self.state.write().unwrap();
-        node_graph(ui, egui::Id::new("gallery_node_graph_widget"), &mut state.graph, &config);
+        node_graph(
+            ui,
+            egui::Id::new("gallery_node_graph_widget"),
+            &mut state.graph,
+            &config,
+        );
     }
 
     fn default_location(&self) -> PanelLocation {
@@ -2170,11 +2772,10 @@ impl Plugin for WidgetGalleryPlugin {
 
         // Add gallery layout
         let world = app.world_mut();
-        let layouts = world
-            .remove_resource::<LayoutManager>()
-            .unwrap_or_default();
+        let layouts = world.remove_resource::<LayoutManager>().unwrap_or_default();
 
         world.insert_resource(layouts);
     }
 }
 
+renzora::add!(WidgetGalleryPlugin, Editor);

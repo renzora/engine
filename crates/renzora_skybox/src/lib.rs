@@ -1,11 +1,11 @@
 //! Renzora Skybox — sky rendering with Color, Procedural, and Panorama modes.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use bevy::core_pipeline::Skybox;
 use bevy::prelude::*;
 use bevy::render::render_resource::{TextureViewDescriptor, TextureViewDimension};
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[cfg(feature = "editor")]
 use bevy_egui::egui;
@@ -13,12 +13,11 @@ use bevy_egui::egui;
 use egui_phosphor::regular::SUN;
 #[cfg(feature = "editor")]
 use renzora_editor::{
-    file_drop_zone, get_theme_colors, inline_property, sanitize_f32, AppEditorExt,
-    EditorCommands, InspectorEntry,
+    file_drop_zone, get_theme_colors, inline_property, sanitize_f32, AppEditorExt, EditorCommands,
+    InspectorEntry,
 };
 #[cfg(feature = "editor")]
 use renzora_theme::Theme;
-
 
 // ============================================================================
 // Data types
@@ -176,11 +175,7 @@ pub struct SkyboxState {
 
 #[cfg(feature = "editor")]
 fn rgb_to_color32(r: f32, g: f32, b: f32) -> egui::Color32 {
-    egui::Color32::from_rgb(
-        (r * 255.0) as u8,
-        (g * 255.0) as u8,
-        (b * 255.0) as u8,
-    )
+    egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
 #[cfg(feature = "editor")]
@@ -567,8 +562,7 @@ fn sync_skybox(
             let pano = &skybox.panorama_sky;
 
             if !pano.panorama_path.is_empty() {
-                let needs_load =
-                    skybox_state.current_path.as_ref() != Some(&pano.panorama_path);
+                let needs_load = skybox_state.current_path.as_ref() != Some(&pano.panorama_path);
 
                 if needs_load {
                     let resolved_path = std::path::PathBuf::from(&pano.panorama_path);
@@ -593,8 +587,7 @@ fn sync_skybox(
                     }
                 } else {
                     for mut camera in camera_query.iter_mut() {
-                        camera.clear_color =
-                            ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.15));
+                        camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.15));
                     }
                 }
             } else {
@@ -602,8 +595,7 @@ fn sync_skybox(
                     commands.entity(cam).remove::<Skybox>();
                 }
                 for mut camera in camera_query.iter_mut() {
-                    camera.clear_color =
-                        ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
+                    camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.3, 0.3, 0.35));
                 }
                 *skybox_state = SkyboxState::default();
             }
@@ -680,10 +672,7 @@ fn skybox_custom_ui(
             .selected_text(sky_options[sky_index])
             .show_ui(ui, |ui| {
                 for (i, option) in sky_options.iter().enumerate() {
-                    if ui
-                        .selectable_value(&mut sky_index, i, *option)
-                        .changed()
-                    {
+                    if ui.selectable_value(&mut sky_index, i, *option).changed() {
                         data.sky_mode = match sky_index {
                             0 => SkyMode::Color,
                             1 => SkyMode::Procedural,
@@ -701,11 +690,8 @@ fn skybox_custom_ui(
     match data.sky_mode {
         SkyMode::Color => {
             changed |= inline_property(ui, row, "Background", theme, |ui| {
-                let mut color = rgb_to_color32(
-                    data.clear_color.0,
-                    data.clear_color.1,
-                    data.clear_color.2,
-                );
+                let mut color =
+                    rgb_to_color32(data.clear_color.0, data.clear_color.1, data.clear_color.2);
                 let resp = ui.color_edit_button_srgba(&mut color).changed();
                 if resp {
                     data.clear_color = color32_to_rgb(color);
@@ -824,11 +810,12 @@ fn skybox_custom_ui(
             }
 
             if let Some(dropped_path) = drop_result.dropped_path {
-                pano.panorama_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
-                    project.make_asset_relative(&dropped_path)
-                } else {
-                    dropped_path.to_string_lossy().to_string()
-                };
+                pano.panorama_path =
+                    if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+                        project.make_asset_relative(&dropped_path)
+                    } else {
+                        dropped_path.to_string_lossy().to_string()
+                    };
                 changed = true;
             }
 
@@ -839,11 +826,12 @@ fn skybox_custom_ui(
                     .set_title("Select Sky Texture")
                     .pick_file()
                 {
-                    pano.panorama_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
-                        project.make_asset_relative(&texture_path)
-                    } else {
-                        texture_path.to_string_lossy().to_string()
-                    };
+                    pano.panorama_path =
+                        if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+                            project.make_asset_relative(&texture_path)
+                        } else {
+                            texture_path.to_string_lossy().to_string()
+                        };
                     changed = true;
                 }
             }
@@ -903,11 +891,8 @@ fn skybox_custom_ui(
             row += 1;
 
             changed |= inline_property(ui, row, "Line Color", theme, |ui| {
-                let mut color = rgb_to_color32(
-                    tiled.line_color.0,
-                    tiled.line_color.1,
-                    tiled.line_color.2,
-                );
+                let mut color =
+                    rgb_to_color32(tiled.line_color.0, tiled.line_color.1, tiled.line_color.2);
                 let resp = ui.color_edit_button_srgba(&mut color).changed();
                 if resp {
                     tiled.line_color = color32_to_rgb(color);
@@ -919,11 +904,7 @@ fn skybox_custom_ui(
             changed |= inline_property(ui, row, "Tile Count", theme, |ui| {
                 let mut count = tiled.tile_count as i32;
                 let resp = ui
-                    .add(
-                        egui::DragValue::new(&mut count)
-                            .speed(1)
-                            .range(2..=32),
-                    )
+                    .add(egui::DragValue::new(&mut count).speed(1).range(2..=32))
                     .changed();
                 if resp {
                     tiled.tile_count = count as u32;
@@ -982,6 +963,7 @@ fn inspector_entry() -> InspectorEntry {
 // Plugin
 // ============================================================================
 
+#[derive(Default)]
 pub struct SkyboxPlugin;
 
 impl Plugin for SkyboxPlugin {
@@ -999,3 +981,5 @@ impl Plugin for SkyboxPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(SkyboxPlugin);

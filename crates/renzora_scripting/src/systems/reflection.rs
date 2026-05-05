@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy::reflect::ReflectRef;
 
-use super::execution::{ScriptReflectionQueue};
+use super::execution::ScriptReflectionQueue;
 use crate::command::PropertyValue;
 
 /// Exclusive system that drains the ScriptReflectionQueue and applies
@@ -105,7 +105,8 @@ pub fn apply_reflection_sets(world: &mut World) {
         } else {
             warn!(
                 "[Script] set: failed to set field '{}.{}' on '{}'",
-                set_op.component_type, set_op.field_path,
+                set_op.component_type,
+                set_op.field_path,
                 set_op.entity_name.as_deref().unwrap_or("self")
             );
         }
@@ -297,10 +298,7 @@ fn collect_struct_fields(
 }
 
 /// Get the names of all reflected components on an entity.
-pub fn get_entity_component_names(
-    world: &World,
-    entity: Entity,
-) -> Vec<String> {
+pub fn get_entity_component_names(world: &World, entity: Entity) -> Vec<String> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
     let mut names = Vec::new();
@@ -309,7 +307,9 @@ pub fn get_entity_component_names(
     let archetype = entity_ref.archetype();
 
     for &component_id in archetype.components() {
-        let Some(info) = world.components().get_info(component_id) else { continue };
+        let Some(info) = world.components().get_info(component_id) else {
+            continue;
+        };
         let type_id = match info.type_id() {
             Some(id) => id,
             None => continue,

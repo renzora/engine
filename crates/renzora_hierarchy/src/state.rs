@@ -4,8 +4,11 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::{ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder};
 use renzora_editor::TreeDropZone;
+use renzora_editor::{
+    ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter,
+    HierarchyOrder,
+};
 
 /// Persistent UI state for the hierarchy panel.
 pub struct HierarchyState {
@@ -147,7 +150,9 @@ pub struct EntityNode {
 pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     // Resolve hierarchy filter — map component type names to ComponentIds.
     let resolve_ids = |names: &Vec<&'static str>| -> Vec<bevy::ecs::component::ComponentId> {
-        let Some(registry) = world.get_resource::<AppTypeRegistry>() else { return Vec::new(); };
+        let Some(registry) = world.get_resource::<AppTypeRegistry>() else {
+            return Vec::new();
+        };
         let registry = registry.read();
         names
             .iter()
@@ -160,7 +165,8 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             })
             .collect()
     };
-    let (include_ids, exclude_ids): (Vec<_>, Vec<_>) = match world.get_resource::<HierarchyFilter>() {
+    let (include_ids, exclude_ids): (Vec<_>, Vec<_>) = match world.get_resource::<HierarchyFilter>()
+    {
         Some(HierarchyFilter::OnlyWithComponents(names)) => (resolve_ids(names), Vec::new()),
         Some(HierarchyFilter::ExcludeDescendantsOf(names)) => (Vec::new(), resolve_ids(names)),
         _ => (Vec::new(), Vec::new()),
@@ -240,7 +246,10 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             // Also skip children of gamepad entities (axis/button sub-entities)
             // and any entity whose name indicates it's a system gamepad device.
             if let Some(child_of) = world.get::<ChildOf>(entity) {
-                if world.get::<bevy::input::gamepad::Gamepad>(child_of.parent()).is_some() {
+                if world
+                    .get::<bevy::input::gamepad::Gamepad>(child_of.parent())
+                    .is_some()
+                {
                     continue;
                 }
             }
@@ -321,7 +330,10 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     // order shifts (e.g. after component additions from selection changes).
     root_indices.sort_by_key(|&idx| {
         let entity = entries[idx].entity;
-        let order = world.get::<HierarchyOrder>(entity).map(|h| h.0).unwrap_or(u32::MAX);
+        let order = world
+            .get::<HierarchyOrder>(entity)
+            .map(|h| h.0)
+            .unwrap_or(u32::MAX);
         (order, entity)
     });
 

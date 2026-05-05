@@ -59,50 +59,86 @@ impl EditorPanel for TimelinePanel {
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let theme = world.get_resource::<ThemeManager>();
-        let (text_color, muted_color, accent_color, surface_color, border_color, _bg_color,
-             row_even, row_odd) =
-            if let Some(tm) = theme {
-                let t = &tm.active_theme;
-                (
-                    t.text.primary.to_color32(),
-                    t.text.muted.to_color32(),
-                    t.semantic.accent.to_color32(),
-                    t.surfaces.faint.to_color32(),
-                    t.widgets.border.to_color32(),
-                    t.surfaces.panel.to_color32(),
-                    t.panels.inspector_row_even.to_color32(),
-                    t.panels.inspector_row_odd.to_color32(),
-                )
-            } else {
-                (
-                    egui::Color32::WHITE,
-                    egui::Color32::GRAY,
-                    egui::Color32::from_rgb(100, 149, 237),
-                    egui::Color32::from_rgb(30, 31, 36),
-                    egui::Color32::from_rgb(50, 51, 56),
-                    egui::Color32::from_rgb(24, 25, 28),
-                    egui::Color32::from_rgb(30, 31, 36),
-                    egui::Color32::from_rgb(34, 35, 40),
-                )
-            };
+        let (
+            text_color,
+            muted_color,
+            accent_color,
+            surface_color,
+            border_color,
+            _bg_color,
+            row_even,
+            row_odd,
+        ) = if let Some(tm) = theme {
+            let t = &tm.active_theme;
+            (
+                t.text.primary.to_color32(),
+                t.text.muted.to_color32(),
+                t.semantic.accent.to_color32(),
+                t.surfaces.faint.to_color32(),
+                t.widgets.border.to_color32(),
+                t.surfaces.panel.to_color32(),
+                t.panels.inspector_row_even.to_color32(),
+                t.panels.inspector_row_odd.to_color32(),
+            )
+        } else {
+            (
+                egui::Color32::WHITE,
+                egui::Color32::GRAY,
+                egui::Color32::from_rgb(100, 149, 237),
+                egui::Color32::from_rgb(30, 31, 36),
+                egui::Color32::from_rgb(50, 51, 56),
+                egui::Color32::from_rgb(24, 25, 28),
+                egui::Color32::from_rgb(30, 31, 36),
+                egui::Color32::from_rgb(34, 35, 40),
+            )
+        };
 
         let editor_state = world.get_resource::<AnimationEditorState>();
-        let (scrub_time, is_previewing, preview_speed, preview_looping, selected_entity,
-             selected_clip, timeline_zoom, timeline_scroll, snap_enabled, track_height) =
-            if let Some(s) = editor_state {
-                (s.scrub_time, s.is_previewing, s.preview_speed, s.preview_looping,
-                 s.selected_entity, s.selected_clip.clone(), s.timeline_zoom,
-                 s.timeline_scroll, s.snap_enabled, s.track_height)
-            } else {
-                (0.0, false, 1.0, true, None, None, 100.0, 0.0, true, 22.0)
-            };
+        let (
+            scrub_time,
+            is_previewing,
+            preview_speed,
+            preview_looping,
+            selected_entity,
+            selected_clip,
+            timeline_zoom,
+            timeline_scroll,
+            snap_enabled,
+            track_height,
+        ) = if let Some(s) = editor_state {
+            (
+                s.scrub_time,
+                s.is_previewing,
+                s.preview_speed,
+                s.preview_looping,
+                s.selected_entity,
+                s.selected_clip.clone(),
+                s.timeline_zoom,
+                s.timeline_scroll,
+                s.snap_enabled,
+                s.track_height,
+            )
+        } else {
+            (0.0, false, 1.0, true, None, None, 100.0, 0.0, true, 22.0)
+        };
 
         // ── Toolbar ──
         self.render_toolbar(
-            ui, text_color, muted_color, accent_color, border_color,
-            is_previewing, preview_speed, preview_looping, scrub_time,
-            snap_enabled, timeline_zoom, track_height, selected_entity,
-            selected_clip.as_deref(), world,
+            ui,
+            text_color,
+            muted_color,
+            accent_color,
+            border_color,
+            is_previewing,
+            preview_speed,
+            preview_looping,
+            scrub_time,
+            snap_enabled,
+            timeline_zoom,
+            track_height,
+            selected_entity,
+            selected_clip.as_deref(),
+            world,
         );
 
         ui.add_space(1.0);
@@ -195,43 +231,80 @@ impl EditorPanel for TimelinePanel {
                                         ui.set_width(HEADER_WIDTH - 14.0);
                                         ui.set_height((track_height - 4.0).max(10.0));
                                         ui.horizontal_centered(|ui| {
-                                            ui.label(egui::RichText::new(egui_phosphor::regular::BONE)
-                                                .size(10.0).color(muted_color));
-                                            ui.add(egui::Label::new(
-                                                egui::RichText::new(&track.bone_name)
-                                                    .size(11.0).color(text_color)
-                                            ).truncate());
+                                            ui.label(
+                                                egui::RichText::new(egui_phosphor::regular::BONE)
+                                                    .size(10.0)
+                                                    .color(muted_color),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&track.bone_name)
+                                                        .size(11.0)
+                                                        .color(text_color),
+                                                )
+                                                .truncate(),
+                                            );
 
-                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                // Channel indicators
-                                                let has_s = !track.scales.is_empty();
-                                                let has_r = !track.rotations.is_empty();
-                                                let has_t = !track.translations.is_empty();
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    // Channel indicators
+                                                    let has_s = !track.scales.is_empty();
+                                                    let has_r = !track.rotations.is_empty();
+                                                    let has_t = !track.translations.is_empty();
 
-                                                let s_color = if has_s { COLOR_SCALE } else { muted_color };
-                                                let r_color = if has_r { COLOR_ROTATION } else { muted_color };
-                                                let t_color = if has_t { COLOR_TRANSLATION } else { muted_color };
+                                                    let s_color = if has_s {
+                                                        COLOR_SCALE
+                                                    } else {
+                                                        muted_color
+                                                    };
+                                                    let r_color = if has_r {
+                                                        COLOR_ROTATION
+                                                    } else {
+                                                        muted_color
+                                                    };
+                                                    let t_color = if has_t {
+                                                        COLOR_TRANSLATION
+                                                    } else {
+                                                        muted_color
+                                                    };
 
-                                                ui.label(egui::RichText::new("S").size(9.0).color(s_color));
-                                                ui.label(egui::RichText::new("R").size(9.0).color(r_color));
-                                                ui.label(egui::RichText::new("T").size(9.0).color(t_color));
-                                            });
+                                                    ui.label(
+                                                        egui::RichText::new("S")
+                                                            .size(9.0)
+                                                            .color(s_color),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("R")
+                                                            .size(9.0)
+                                                            .color(r_color),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("T")
+                                                            .size(9.0)
+                                                            .color(t_color),
+                                                    );
+                                                },
+                                            );
                                         });
                                     });
                             }
                         } else {
                             ui.centered_and_justified(|ui| {
-                                ui.label(egui::RichText::new("No clip selected")
-                                    .size(11.0).color(muted_color));
+                                ui.label(
+                                    egui::RichText::new("No clip selected")
+                                        .size(11.0)
+                                        .color(muted_color),
+                                );
                             });
                         }
                     });
             });
 
             // ── Vertical separator ──
-            let sep_rect = ui.allocate_exact_size(
-                egui::vec2(1.0, available.y - 4.0), egui::Sense::hover()
-            ).0;
+            let sep_rect = ui
+                .allocate_exact_size(egui::vec2(1.0, available.y - 4.0), egui::Sense::hover())
+                .0;
             ui.painter().rect_filled(sep_rect, 0.0, border_color);
 
             // ── Right: ruler + keyframe lanes ──
@@ -245,8 +318,15 @@ impl EditorPanel for TimelinePanel {
                 );
 
                 self.paint_ruler(
-                    ui.painter(), ruler_rect, clip_duration, timeline_zoom,
-                    timeline_scroll, text_color, muted_color, border_color, surface_color,
+                    ui.painter(),
+                    ruler_rect,
+                    clip_duration,
+                    timeline_zoom,
+                    timeline_scroll,
+                    text_color,
+                    muted_color,
+                    border_color,
+                    surface_color,
                 );
 
                 // Scrub on ruler click/drag
@@ -279,8 +359,12 @@ impl EditorPanel for TimelinePanel {
 
                                 // Draw keyframe diamonds
                                 self.paint_keyframes(
-                                    &painter, track_rect, track, clip_duration,
-                                    timeline_zoom, timeline_scroll,
+                                    &painter,
+                                    track_rect,
+                                    track,
+                                    clip_duration,
+                                    timeline_zoom,
+                                    timeline_scroll,
                                 );
 
                                 // Click on track to scrub
@@ -299,8 +383,7 @@ impl EditorPanel for TimelinePanel {
                 // ── Playhead overlay (drawn over everything) ──
                 let timeline_top = ruler_rect.top();
                 let timeline_bottom = ui.min_rect().bottom();
-                let playhead_x = ruler_rect.left()
-                    + (scrub_time - timeline_scroll) * timeline_zoom;
+                let playhead_x = ruler_rect.left() + (scrub_time - timeline_scroll) * timeline_zoom;
 
                 if playhead_x >= ruler_rect.left() && playhead_x <= ruler_rect.right() {
                     let painter = ui.painter();
@@ -319,8 +402,14 @@ impl EditorPanel for TimelinePanel {
                     painter.add(egui::Shape::convex_polygon(
                         vec![
                             egui::pos2(playhead_x, timeline_top + RULER_HEIGHT - 2.0),
-                            egui::pos2(playhead_x - tri_size, timeline_top + RULER_HEIGHT - tri_size - 2.0),
-                            egui::pos2(playhead_x + tri_size, timeline_top + RULER_HEIGHT - tri_size - 2.0),
+                            egui::pos2(
+                                playhead_x - tri_size,
+                                timeline_top + RULER_HEIGHT - tri_size - 2.0,
+                            ),
+                            egui::pos2(
+                                playhead_x + tri_size,
+                                timeline_top + RULER_HEIGHT - tri_size - 2.0,
+                            ),
                         ],
                         COLOR_PLAYHEAD,
                         egui::Stroke::NONE,
@@ -383,8 +472,11 @@ impl TimelinePanel {
     fn empty_state(&self, ui: &mut egui::Ui, color: egui::Color32, msg: &str) {
         ui.vertical_centered(|ui| {
             ui.add_space(ui.available_height() * 0.3);
-            ui.label(egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
-                .size(24.0).color(color));
+            ui.label(
+                egui::RichText::new(egui_phosphor::regular::FILM_STRIP)
+                    .size(24.0)
+                    .color(color),
+            );
             ui.add_space(4.0);
             ui.label(egui::RichText::new(msg).size(12.0).color(color));
         });
@@ -700,8 +792,14 @@ impl TimelinePanel {
         let end_x = rect.left() + (duration - scroll) * zoom;
         if end_x >= rect.left() && end_x <= rect.right() {
             painter.line_segment(
-                [egui::pos2(end_x, rect.top()), egui::pos2(end_x, rect.bottom())],
-                egui::Stroke::new(1.0, egui::Color32::from_rgba_premultiplied(255, 255, 255, 40)),
+                [
+                    egui::pos2(end_x, rect.top()),
+                    egui::pos2(end_x, rect.bottom()),
+                ],
+                egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgba_premultiplied(255, 255, 255, 40),
+                ),
             );
         }
     }
@@ -734,16 +832,19 @@ impl TimelinePanel {
         }
 
         let avail = ui.available_width();
-        let (rect, _bg_response) = ui.allocate_exact_size(
-            egui::vec2(avail, OVERVIEW_HEIGHT),
-            egui::Sense::hover(),
-        );
+        let (rect, _bg_response) =
+            ui.allocate_exact_size(egui::vec2(avail, OVERVIEW_HEIGHT), egui::Sense::hover());
 
         let painter = ui.painter_at(rect);
 
         // Background
         painter.rect_filled(rect, 3.0, surface_color);
-        painter.rect_stroke(rect, 3.0, egui::Stroke::new(0.5, border_color), egui::StrokeKind::Inside);
+        painter.rect_stroke(
+            rect,
+            3.0,
+            egui::Stroke::new(0.5, border_color),
+            egui::StrokeKind::Inside,
+        );
 
         // Inner rect used for time → pixel math (insets keep handles clear of
         // the panel's edge resize gutter).
@@ -756,13 +857,19 @@ impl TimelinePanel {
         // Faint keyframe ticks across the full clip.
         if let Some(clip) = clip_data {
             let tick_color = egui::Color32::from_rgba_unmultiplied(
-                muted_color.r(), muted_color.g(), muted_color.b(), 80,
+                muted_color.r(),
+                muted_color.g(),
+                muted_color.b(),
+                80,
             );
             for track in &clip.tracks {
                 for (t, _) in &track.translations {
                     let x = inner.left() + *t * pps_overview;
                     painter.line_segment(
-                        [egui::pos2(x, inner.top() + 2.0), egui::pos2(x, inner.bottom() - 2.0)],
+                        [
+                            egui::pos2(x, inner.top() + 2.0),
+                            egui::pos2(x, inner.bottom() - 2.0),
+                        ],
                         egui::Stroke::new(0.5, tick_color),
                     );
                 }
@@ -787,13 +894,19 @@ impl TimelinePanel {
         // Playhead line (behind the window).
         let ph_x = inner.left() + scrub_time.clamp(0.0, clip_duration) * pps_overview;
         painter.line_segment(
-            [egui::pos2(ph_x, rect.top() + 2.0), egui::pos2(ph_x, rect.bottom() - 2.0)],
+            [
+                egui::pos2(ph_x, rect.top() + 2.0),
+                egui::pos2(ph_x, rect.bottom() - 2.0),
+            ],
             egui::Stroke::new(1.0, COLOR_PLAYHEAD),
         );
 
         // Window body.
         let fill = egui::Color32::from_rgba_unmultiplied(
-            accent_color.r(), accent_color.g(), accent_color.b(), 48,
+            accent_color.r(),
+            accent_color.g(),
+            accent_color.b(),
+            48,
         );
         painter.rect_filled(window_rect, 2.0, fill);
         painter.rect_stroke(
@@ -806,11 +919,17 @@ impl TimelinePanel {
         // Three separate interactable rects: left handle, right handle, center.
         let left_handle = egui::Rect::from_min_max(
             egui::pos2(window_rect.left() - HANDLE_WIDTH * 0.5, window_rect.top()),
-            egui::pos2(window_rect.left() + HANDLE_WIDTH * 0.5, window_rect.bottom()),
+            egui::pos2(
+                window_rect.left() + HANDLE_WIDTH * 0.5,
+                window_rect.bottom(),
+            ),
         );
         let right_handle = egui::Rect::from_min_max(
             egui::pos2(window_rect.right() - HANDLE_WIDTH * 0.5, window_rect.top()),
-            egui::pos2(window_rect.right() + HANDLE_WIDTH * 0.5, window_rect.bottom()),
+            egui::pos2(
+                window_rect.right() + HANDLE_WIDTH * 0.5,
+                window_rect.bottom(),
+            ),
         );
         let center_rect = egui::Rect::from_min_max(
             egui::pos2(left_handle.right(), window_rect.top()),
@@ -866,8 +985,8 @@ impl TimelinePanel {
         }
         if center_resp.dragged() {
             let ds = center_resp.drag_delta().x / pps_overview;
-            let new_start = (visible_start_s + ds)
-                .clamp(0.0, (clip_duration - visible_duration_s).max(0.0));
+            let new_start =
+                (visible_start_s + ds).clamp(0.0, (clip_duration - visible_duration_s).max(0.0));
             self.push_action(AnimEditorAction::SetTimelineScroll(new_start));
         }
 
@@ -908,13 +1027,40 @@ impl TimelinePanel {
         let row_offset = (rect.height() * 0.26).min(14.0);
 
         for &(time, _) in &track.translations {
-            self.paint_diamond(painter, rect, time, cy - row_offset, zoom, scroll, kf_size, COLOR_TRANSLATION);
+            self.paint_diamond(
+                painter,
+                rect,
+                time,
+                cy - row_offset,
+                zoom,
+                scroll,
+                kf_size,
+                COLOR_TRANSLATION,
+            );
         }
         for &(time, _) in &track.rotations {
-            self.paint_diamond(painter, rect, time, cy, zoom, scroll, kf_size, COLOR_ROTATION);
+            self.paint_diamond(
+                painter,
+                rect,
+                time,
+                cy,
+                zoom,
+                scroll,
+                kf_size,
+                COLOR_ROTATION,
+            );
         }
         for &(time, _) in &track.scales {
-            self.paint_diamond(painter, rect, time, cy + row_offset, zoom, scroll, kf_size, COLOR_SCALE);
+            self.paint_diamond(
+                painter,
+                rect,
+                time,
+                cy + row_offset,
+                zoom,
+                scroll,
+                kf_size,
+                COLOR_SCALE,
+            );
         }
     }
 

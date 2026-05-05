@@ -12,3 +12,6 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 sysinfo = "0.35"
 nvml-wrapper = "0.10"
+
+[lints]
+workspace = true

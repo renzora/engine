@@ -34,17 +34,45 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # [target.x86_64-pc-windows-msvc]
 # rustflags = ["-C", "target-feature=+crt-static"]
 
-# macOS: embed @loader_path so binaries find dylibs next to themselves
+# Workspace plugin crates are rlib-only and get statically linked into
+# the host binary. Distribution plugins (e.g. `renzora_record`) are
+# `cdylib` and get loaded at runtime by `dynamic_plugin_loader`. The
+# `prefer-dynamic` flag below applies to crates that emit BOTH rlib +
+# dylib — currently bevy (via `bevy/dynamic_linking`), `renzora`,
+# `renzora_editor`, `renzora_postprocess`. They each ship as a single
+# `.dll`/`.so`/`.dylib` next to the host so workspace plugins (linked
+# statically into the host) AND distribution plugins (loaded at runtime)
+# share one compiled copy of the SDK contracts and matching `TypeId`s.
+
+# Windows: use rust-lld. MSVC link.exe hits LNK1189 (65535-object limit) on
+# bevy_dylib with dynamic_linking enabled. `rust-lld` (no .exe) is a special
+# value rustc resolves to its bundled lld from the sysroot — works on
+# Windows host AND inside the Linux Docker cross-compile, so the container's
+# rustflags (xwin lib paths) still merge in correctly.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-C", "prefer-dynamic"]
+
+# macOS: embed @loader_path so the binary finds bevy_dylib, renzora.dylib,
+# and any dlopen'd distribution plugin next to itself.
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,@loader_path",
+    "-C", "prefer-dynamic",
+]
 
 [target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-Wl,-rpath,@loader_path"]
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,@loader_path",
+    "-C", "prefer-dynamic",
+]
 
-# Linux: mold linker + $ORIGIN rpath so binaries find dylibs next to themselves
+# Linux: mold linker + $ORIGIN rpath so the binary finds bevy_dylib,
+# renzora.so, and any dlopen'd distribution plugin next to itself.
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = [
     "-C", "link-arg=-fuse-ld=/usr/bin/mold",
     "-C", "link-arg=-Wl,-rpath,$ORIGIN",
+    "-C", "prefer-dynamic",
 ]

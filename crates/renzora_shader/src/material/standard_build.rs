@@ -429,10 +429,12 @@ mod tests {
         let tex_m = graph.add_node("texture/sample", [-200.0, -100.0]);
         let tex_r = graph.add_node("texture/sample", [-200.0, 100.0]);
         if let Some(n) = graph.get_node_mut(tex_m) {
-            n.input_values.insert("texture".into(), PinValue::TexturePath("a.rmip".into()));
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("a.rmip".into()));
         }
         if let Some(n) = graph.get_node_mut(tex_r) {
-            n.input_values.insert("texture".into(), PinValue::TexturePath("b.rmip".into()));
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("b.rmip".into()));
         }
         graph.connect(tex_m, "b", output_id, "metallic");
         graph.connect(tex_r, "g", output_id, "roughness");
@@ -451,31 +453,39 @@ mod tests {
 
         let bc = graph.add_node("texture/sample", [-200.0, -200.0]);
         if let Some(n) = graph.get_node_mut(bc) {
-            n.input_values.insert("texture".into(), PinValue::TexturePath("bc.rmip".into()));
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("bc.rmip".into()));
         }
         graph.connect(bc, "color", output_id, "base_color");
         graph.connect(bc, "a", output_id, "alpha");
 
         let mr = graph.add_node("texture/sample", [-200.0, -50.0]);
         if let Some(n) = graph.get_node_mut(mr) {
-            n.input_values.insert("texture".into(), PinValue::TexturePath("mr.rmip".into()));
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("mr.rmip".into()));
         }
         graph.connect(mr, "g", output_id, "roughness");
         graph.connect(mr, "b", output_id, "metallic");
 
         let n = graph.add_node("texture/sample_normal", [-200.0, 100.0]);
         if let Some(node) = graph.get_node_mut(n) {
-            node.input_values.insert("texture".into(), PinValue::TexturePath("n.rmip".into()));
+            node.input_values
+                .insert("texture".into(), PinValue::TexturePath("n.rmip".into()));
         }
         graph.connect(n, "normal", output_id, "normal");
 
         // Constants on the factor pins, as importer emits.
         if let Some(out) = graph.get_node_mut(output_id) {
-            out.input_values.insert("base_color".into(), PinValue::Color([1.0, 1.0, 1.0, 1.0]));
-            out.input_values.insert("metallic".into(), PinValue::Float(1.0));
-            out.input_values.insert("roughness".into(), PinValue::Float(1.0));
-            out.input_values.insert("emissive".into(), PinValue::Vec3([8.0, 0.0, 0.0]));
-            out.input_values.insert("alpha".into(), PinValue::Float(1.0));
+            out.input_values
+                .insert("base_color".into(), PinValue::Color([1.0, 1.0, 1.0, 1.0]));
+            out.input_values
+                .insert("metallic".into(), PinValue::Float(1.0));
+            out.input_values
+                .insert("roughness".into(), PinValue::Float(1.0));
+            out.input_values
+                .insert("emissive".into(), PinValue::Vec3([8.0, 0.0, 0.0]));
+            out.input_values
+                .insert("alpha".into(), PinValue::Float(1.0));
         }
 
         let app = App::new();
@@ -497,8 +507,10 @@ mod tests {
         let output_id = graph.output_node().unwrap().id;
         let p = graph.add_node("param/color", [-200.0, 0.0]);
         if let Some(n) = graph.get_node_mut(p) {
-            n.input_values.insert("name".into(), PinValue::String("BaseColor".into()));
-            n.input_values.insert("default".into(), PinValue::Color([0.25, 0.5, 0.75, 1.0]));
+            n.input_values
+                .insert("name".into(), PinValue::String("BaseColor".into()));
+            n.input_values
+                .insert("default".into(), PinValue::Color([0.25, 0.5, 0.75, 1.0]));
         }
         graph.connect(p, "value", output_id, "base_color");
 
@@ -517,8 +529,10 @@ mod tests {
         let output_id = graph.output_node().unwrap().id;
         let p = graph.add_node("param/float", [-200.0, 0.0]);
         if let Some(n) = graph.get_node_mut(p) {
-            n.input_values.insert("name".into(), PinValue::String("Metallic".into()));
-            n.input_values.insert("default".into(), PinValue::Float(0.7));
+            n.input_values
+                .insert("name".into(), PinValue::String("Metallic".into()));
+            n.input_values
+                .insert("default".into(), PinValue::Float(0.7));
         }
         graph.connect(p, "value", output_id, "metallic");
 

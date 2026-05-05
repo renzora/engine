@@ -27,7 +27,13 @@ pub fn screen_to_canvas(screen: Pos2, offset: [f32; 2], zoom: f32, rect: Rect) -
 // ── Grid ───────────────────────────────────────────────────────────────────
 
 /// Draw a dot grid on the canvas background.
-pub fn draw_grid(painter: &egui::Painter, rect: Rect, offset: [f32; 2], zoom: f32, config: &NodeGraphConfig) {
+pub fn draw_grid(
+    painter: &egui::Painter,
+    rect: Rect,
+    offset: [f32; 2],
+    zoom: f32,
+    config: &NodeGraphConfig,
+) {
     let spacing = config.grid_spacing * zoom;
     let dot_size = 1.5 * zoom.sqrt();
 
@@ -69,8 +75,16 @@ pub fn draw_node(
 ) -> (Rect, Vec<PinPos>) {
     let screen_pos = canvas_to_screen(node.position, offset, zoom, canvas_rect);
 
-    let input_count = node.pins.iter().filter(|p| p.direction == PinDirection::Input).count();
-    let output_count = node.pins.iter().filter(|p| p.direction == PinDirection::Output).count();
+    let input_count = node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Input)
+        .count();
+    let output_count = node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Output)
+        .count();
     let max_pins = input_count.max(output_count);
 
     // Thumbnail fills left-side empty space next to output pins (no extra height)
@@ -91,10 +105,16 @@ pub fn draw_node(
     painter.rect_filled(node_rect, CornerRadius::same(cr), config.node_bg);
 
     // Header
-    let header_rect = Rect::from_min_size(screen_pos, Vec2::new(scaled_w, config.header_height * zoom));
+    let header_rect =
+        Rect::from_min_size(screen_pos, Vec2::new(scaled_w, config.header_height * zoom));
     painter.rect_filled(
         header_rect,
-        CornerRadius { nw: cr, ne: cr, sw: 0, se: 0 },
+        CornerRadius {
+            nw: cr,
+            ne: cr,
+            sw: 0,
+            se: 0,
+        },
         node.header_color,
     );
 
@@ -114,7 +134,14 @@ pub fn draw_node(
     } else if is_hovered {
         // Slightly brighter border on hover
         let c = config.node_border;
-        (Color32::from_rgb(c.r().saturating_add(40), c.g().saturating_add(40), c.b().saturating_add(40)), 1.5 * zoom)
+        (
+            Color32::from_rgb(
+                c.r().saturating_add(40),
+                c.g().saturating_add(40),
+                c.b().saturating_add(40),
+            ),
+            1.5 * zoom,
+        )
     } else {
         (config.node_border, 1.5 * zoom)
     };
@@ -139,7 +166,11 @@ pub fn draw_node(
 
     // Input pins (left side)
     let mut iy = 0;
-    for pin in node.pins.iter().filter(|p| p.direction == PinDirection::Input) {
+    for pin in node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Input)
+    {
         let py = pin_start_y + (iy as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x, py);
 
@@ -161,7 +192,11 @@ pub fn draw_node(
         }
 
         pin_positions.push(PinPos {
-            id: PinId { node: node.id, name: pin.name.clone(), direction: PinDirection::Input },
+            id: PinId {
+                node: node.id,
+                name: pin.name.clone(),
+                direction: PinDirection::Input,
+            },
             screen_pos: pos,
             color: pin.color,
             hit_rect,
@@ -171,7 +206,11 @@ pub fn draw_node(
 
     // Output pins (right side)
     let mut oy_idx = 0;
-    for pin in node.pins.iter().filter(|p| p.direction == PinDirection::Output) {
+    for pin in node
+        .pins
+        .iter()
+        .filter(|p| p.direction == PinDirection::Output)
+    {
         let py = pin_start_y + (oy_idx as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x + scaled_w, py);
 
@@ -193,7 +232,11 @@ pub fn draw_node(
         }
 
         pin_positions.push(PinPos {
-            id: PinId { node: node.id, name: pin.name.clone(), direction: PinDirection::Output },
+            id: PinId {
+                node: node.id,
+                name: pin.name.clone(),
+                direction: PinDirection::Output,
+            },
             screen_pos: pos,
             color: pin.color,
             hit_rect,
@@ -234,11 +277,22 @@ pub fn draw_node(
 }
 
 /// Draw a pin shape (circle or triangle).
-fn draw_pin_shape(painter: &egui::Painter, pos: Pos2, shape: PinShape, color: Color32, radius: f32, zoom: f32) {
+fn draw_pin_shape(
+    painter: &egui::Painter,
+    pos: Pos2,
+    shape: PinShape,
+    color: Color32,
+    radius: f32,
+    zoom: f32,
+) {
     match shape {
         PinShape::Circle => {
             painter.circle_filled(pos, radius, color);
-            painter.circle_stroke(pos, radius, Stroke::new(1.0 * zoom, Color32::from_rgb(80, 80, 85)));
+            painter.circle_stroke(
+                pos,
+                radius,
+                Stroke::new(1.0 * zoom, Color32::from_rgb(80, 80, 85)),
+            );
         }
         PinShape::Triangle => {
             let s = radius * 0.8;
@@ -255,7 +309,10 @@ fn draw_pin_shape(painter: &egui::Painter, pos: Pos2, shape: PinShape, color: Co
 /// Draw a highlight behind a pin row on hover.
 pub fn draw_pin_highlight(painter: &egui::Painter, pin: &PinPos, _zoom: f32) {
     let color = Color32::from_rgba_premultiplied(
-        pin.color.r() / 4, pin.color.g() / 4, pin.color.b() / 4, 60,
+        pin.color.r() / 4,
+        pin.color.g() / 4,
+        pin.color.b() / 4,
+        60,
     );
     painter.rect_filled(pin.hit_rect, 0.0, color);
 }
@@ -330,7 +387,12 @@ pub fn point_near_cable(from: Pos2, to: Pos2, point: Pos2, zoom: f32, threshold:
 // ── Box selection ──────────────────────────────────────────────────────────
 
 /// Draw the rubber-band selection rectangle.
-pub fn draw_box_selection(painter: &egui::Painter, start: Pos2, end: Pos2, config: &NodeGraphConfig) {
+pub fn draw_box_selection(
+    painter: &egui::Painter,
+    start: Pos2,
+    end: Pos2,
+    config: &NodeGraphConfig,
+) {
     let rect = Rect::from_two_pos(start, end);
     painter.rect_filled(rect, CornerRadius::ZERO, config.selection_fill);
     painter.rect_stroke(

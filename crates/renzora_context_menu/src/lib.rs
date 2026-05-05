@@ -99,8 +99,7 @@ impl Plugin for ContextMenuPlugin {
             )
             .add_systems(
                 Update,
-                palette::drain_palette_actions
-                    .run_if(in_state(SplashState::Editor)),
+                palette::drain_palette_actions.run_if(in_state(SplashState::Editor)),
             )
             .add_systems(
                 EguiPrimaryContextPass,
@@ -111,7 +110,6 @@ impl Plugin for ContextMenuPlugin {
         app.register_panel(palette::PalettePanel::new());
     }
 }
-
 
 /// Drain pending [`OpenAddComponentMenuRequest`] — set by hierarchy /
 /// inspector / any panel that wants to trigger the component picker.
@@ -159,15 +157,14 @@ fn detect_right_click_tap(
         .map(|t| {
             matches!(
                 t,
-                ActiveTool::Select
-                    | ActiveTool::Translate
-                    | ActiveTool::Rotate
-                    | ActiveTool::Scale
+                ActiveTool::Select | ActiveTool::Translate | ActiveTool::Rotate | ActiveTool::Scale
             )
         })
         .unwrap_or(true);
 
-    let Ok(window) = window_q.single() else { return };
+    let Ok(window) = window_q.single() else {
+        return;
+    };
     let cursor = window.cursor_position();
 
     if mouse.just_pressed(MouseButton::Right) {
@@ -190,29 +187,37 @@ fn detect_right_click_tap(
     }
 
     let Some(cursor) = cursor else { return };
-    let Some(viewport) = viewport.as_deref() else { return };
+    let Some(viewport) = viewport.as_deref() else {
+        return;
+    };
     // Suppress the viewport context menu if the Viewport panel isn't the
     // currently-visible tab in its dock leaf. Otherwise a right-click in a
     // Blueprint / Material / other panel that shares the same dock slot
     // would spawn the scene's Add / EntityActions menu, because
     // ViewportState.screen_position is stale from when the Viewport tab
     // was last rendered.
-    if !docking.as_deref().map_or(true, |d| d.tree.is_active_tab("viewport")) {
+    if !docking
+        .as_deref()
+        .map_or(true, |d| d.tree.is_active_tab("viewport"))
+    {
         return;
     }
     let vp_min = viewport.screen_position;
     let vp_max = vp_min + viewport.screen_size;
-    if cursor.x < vp_min.x || cursor.y < vp_min.y
-        || cursor.x > vp_max.x || cursor.y > vp_max.y {
+    if cursor.x < vp_min.x || cursor.y < vp_min.y || cursor.x > vp_max.x || cursor.y > vp_max.y {
         return;
     }
 
-    let Some((camera, cam_xform)) = camera_q.iter().next() else { return };
+    let Some((camera, cam_xform)) = camera_q.iter().next() else {
+        return;
+    };
     let viewport_pos = Vec2::new(
         (cursor.x - vp_min.x) / viewport.screen_size.x * viewport.current_size.x as f32,
         (cursor.y - vp_min.y) / viewport.screen_size.y * viewport.current_size.y as f32,
     );
-    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else { return };
+    let Ok(ray) = camera.viewport_to_world(cam_xform, viewport_pos) else {
+        return;
+    };
 
     // Entity actions only when there's already a selection; otherwise the
     // Add menu is the "normal" right-click behaviour.
@@ -242,9 +247,13 @@ fn detect_right_click_tap(
 }
 
 fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Vec3> {
-    if dir.y.abs() <= 1e-6 { return None; }
+    if dir.y.abs() <= 1e-6 {
+        return None;
+    }
     let t = -origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 { return None; }
+    if t <= 0.0 || t > 10_000.0 {
+        return None;
+    }
     let hit = origin + dir * t;
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
@@ -254,11 +263,23 @@ fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Vec3> {
 fn render_context_menu(world: &mut World) {
     let (open, screen_pos, kind, mut query, just_opened, open_counter, mut scroll_to_cat) = {
         let s = world.resource::<ContextMenuState>();
-        (s.open, s.screen_pos, s.kind, s.query.clone(), s.just_opened, s.open_counter, s.scroll_to_category.clone())
+        (
+            s.open,
+            s.screen_pos,
+            s.kind,
+            s.query.clone(),
+            s.just_opened,
+            s.open_counter,
+            s.scroll_to_category.clone(),
+        )
     };
-    if !open { return; }
+    if !open {
+        return;
+    }
 
-    let theme = world.get_resource::<ThemeManager>().map(|m| m.active_theme.clone());
+    let theme = world
+        .get_resource::<ThemeManager>()
+        .map(|m| m.active_theme.clone());
     let ctx = {
         let mut state: bevy::ecs::system::SystemState<EguiContexts> =
             bevy::ecs::system::SystemState::new(world);
@@ -269,13 +290,15 @@ fn render_context_menu(world: &mut World) {
 
     let (bg, border, text_primary, text_muted, hover) = theme
         .as_ref()
-        .map(|t| (
-            t.surfaces.panel.to_color32(),
-            t.widgets.border.to_color32(),
-            t.text.primary.to_color32(),
-            t.text.muted.to_color32(),
-            t.widgets.hovered_bg.to_color32(),
-        ))
+        .map(|t| {
+            (
+                t.surfaces.panel.to_color32(),
+                t.widgets.border.to_color32(),
+                t.text.primary.to_color32(),
+                t.text.muted.to_color32(),
+                t.widgets.hovered_bg.to_color32(),
+            )
+        })
         .unwrap_or((
             Color32::from_rgb(30, 30, 32),
             Color32::from_rgb(80, 80, 88),
@@ -285,7 +308,9 @@ fn render_context_menu(world: &mut World) {
         ));
 
     let mut close = false;
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) { close = true; }
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
 
     // Action flagged by clicked menu item — applied after the UI closure.
     let mut pending_action: Option<PendingAction> = None;
@@ -322,8 +347,13 @@ fn render_context_menu(world: &mut World) {
                 match kind {
                     MenuKind::AddHere { world_pos } => {
                         render_add_menu(
-                            ui, world, &query, enter_pressed,
-                            text_primary, text_muted, hover,
+                            ui,
+                            world,
+                            &query,
+                            enter_pressed,
+                            text_primary,
+                            text_muted,
+                            hover,
                             &mut scroll_to_cat,
                             |id| {
                                 pending_action = Some(PendingAction::Spawn { id, world_pos });
@@ -332,8 +362,12 @@ fn render_context_menu(world: &mut World) {
                     }
                     MenuKind::EntityActions => {
                         render_entity_menu(
-                            ui, &query, enter_pressed,
-                            text_primary, text_muted, hover,
+                            ui,
+                            &query,
+                            enter_pressed,
+                            text_primary,
+                            text_muted,
+                            hover,
                             |result| {
                                 pending_action = Some(match result {
                                     EntityMenuResult::Action(action) => {
@@ -348,8 +382,13 @@ fn render_context_menu(world: &mut World) {
                     }
                     MenuKind::AddComponent => {
                         render_add_component_menu(
-                            ui, world, &query, enter_pressed,
-                            text_primary, text_muted, hover,
+                            ui,
+                            world,
+                            &query,
+                            enter_pressed,
+                            text_primary,
+                            text_muted,
+                            hover,
                             &mut scroll_to_cat,
                             |type_id| {
                                 pending_action = Some(PendingAction::AddComponent { type_id });
@@ -433,17 +472,30 @@ fn render_add_menu(
     mut on_pick: impl FnMut(&'static str),
 ) {
     let Some(registry) = world.get_resource::<SpawnRegistry>() else {
-        ui.label(RichText::new("No SpawnRegistry").color(text_muted).size(14.0));
+        ui.label(
+            RichText::new("No SpawnRegistry")
+                .color(text_muted)
+                .size(14.0),
+        );
         return;
     };
 
-    ui.label(RichText::new("Add").color(text_muted).size(14.0).monospace());
+    ui.label(
+        RichText::new("Add")
+            .color(text_muted)
+            .size(14.0)
+            .monospace(),
+    );
     ui.separator();
 
     let q = query.to_lowercase();
     let groups = group_presets(registry);
     if groups.is_empty() {
-        ui.label(RichText::new("No presets registered").color(text_muted).size(14.0));
+        ui.label(
+            RichText::new("No presets registered")
+                .color(text_muted)
+                .size(14.0),
+        );
         return;
     }
 
@@ -454,30 +506,32 @@ fn render_add_menu(
         .max_height(320.0)
         .auto_shrink([false, true])
         .show(ui, |ui| {
-        for (cat, entries) in &groups {
-            let visible: Vec<&PresetRow> = entries
-                .iter()
-                .filter(|r| matches_query(r.display_name, &q) || matches_query(cat, &q))
-                .collect();
-            if visible.is_empty() { continue; }
+            for (cat, entries) in &groups {
+                let visible: Vec<&PresetRow> = entries
+                    .iter()
+                    .filter(|r| matches_query(r.display_name, &q) || matches_query(cat, &q))
+                    .collect();
+                if visible.is_empty() {
+                    continue;
+                }
 
-            any_visible = true;
-            if !cat.is_empty() {
-                ui.label(RichText::new(*cat).color(text_muted).size(14.0).monospace());
-            }
-            for row in visible {
-                if first_visible.is_none() {
-                    first_visible = Some(row.id);
+                any_visible = true;
+                if !cat.is_empty() {
+                    ui.label(RichText::new(*cat).color(text_muted).size(14.0).monospace());
                 }
-                if menu_row(ui, row.icon, row.display_name, text_primary, hover) {
-                    on_pick(row.id);
+                for row in visible {
+                    if first_visible.is_none() {
+                        first_visible = Some(row.id);
+                    }
+                    if menu_row(ui, row.icon, row.display_name, text_primary, hover) {
+                        on_pick(row.id);
+                    }
                 }
             }
-        }
-        if !any_visible {
-            ui.label(RichText::new("No matches").color(text_muted).size(14.0));
-        }
-    });
+            if !any_visible {
+                ui.label(RichText::new("No matches").color(text_muted).size(14.0));
+            }
+        });
 
     if enter_pressed {
         if let Some(id) = first_visible {
@@ -526,7 +580,12 @@ fn render_entity_menu(
     hover: Color32,
     mut on_pick: impl FnMut(EntityMenuResult),
 ) {
-    ui.label(RichText::new("Entity").color(text_muted).size(14.0).monospace());
+    ui.label(
+        RichText::new("Entity")
+            .color(text_muted)
+            .size(14.0)
+            .monospace(),
+    );
     ui.separator();
 
     let q = query.to_lowercase();
@@ -559,7 +618,13 @@ fn render_entity_menu(
         if !visible.is_empty() {
             ui.separator();
         }
-        if menu_row(ui, regular::PLUS_CIRCLE, add_component_label, text_primary, hover) {
+        if menu_row(
+            ui,
+            regular::PLUS_CIRCLE,
+            add_component_label,
+            text_primary,
+            hover,
+        ) {
             on_pick(EntityMenuResult::Switch(MenuKind::AddComponent));
         }
     }
@@ -587,7 +652,8 @@ fn menu_row(
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::Vec2::new(w, 24.0), egui::Sense::click());
     if resp.hovered() {
-        ui.painter().rect_filled(rect, egui::CornerRadius::same(3), hover);
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(3), hover);
     }
     ui.painter().text(
         rect.left_center() + egui::Vec2::new(6.0, 0.0),
@@ -632,11 +698,15 @@ fn add_component_to_selection(world: &mut World, type_id: &'static str) {
         .get_resource::<EditorSelection>()
         .map(|s| s.get_all())
         .unwrap_or_default();
-    if entities.is_empty() { return; }
+    if entities.is_empty() {
+        return;
+    }
 
-    let add_fn = world
-        .get_resource::<InspectorRegistry>()
-        .and_then(|r| r.iter().find(|e| e.type_id == type_id).and_then(|e| e.add_fn));
+    let add_fn = world.get_resource::<InspectorRegistry>().and_then(|r| {
+        r.iter()
+            .find(|e| e.type_id == type_id)
+            .and_then(|e| e.add_fn)
+    });
     let Some(add_fn) = add_fn else {
         warn!("[context_menu] '{}' has no add_fn registered", type_id);
         return;
@@ -673,23 +743,36 @@ fn render_add_component_menu(
     } else {
         "Add Component".to_string()
     };
-    ui.label(RichText::new(title).color(text_muted).size(14.0).monospace());
+    ui.label(
+        RichText::new(title)
+            .color(text_muted)
+            .size(14.0)
+            .monospace(),
+    );
     ui.separator();
 
     let Some(registry) = world.get_resource::<InspectorRegistry>() else {
-        ui.label(RichText::new("No InspectorRegistry").color(text_muted).size(14.0));
+        ui.label(
+            RichText::new("No InspectorRegistry")
+                .color(text_muted)
+                .size(14.0),
+        );
         return;
     };
 
     let q = query.to_lowercase();
     let mut groups: Vec<(&'static str, Vec<&renzora_editor::InspectorEntry>)> = Vec::new();
     for entry in registry.iter() {
-        if entry.add_fn.is_none() { continue; }
+        if entry.add_fn.is_none() {
+            continue;
+        }
         if !targets.is_empty() && targets.iter().all(|e| (entry.has_fn)(world, *e)) {
             continue;
         }
         let matches = matches_query(entry.display_name, &q) || matches_query(entry.category, &q);
-        if !matches { continue; }
+        if !matches {
+            continue;
+        }
 
         if let Some(bucket) = groups.iter_mut().find(|(c, _)| *c == entry.category) {
             bucket.1.push(entry);
@@ -710,7 +793,12 @@ fn render_add_component_menu(
         .show(ui, |ui| {
             for (category, entries) in &groups {
                 if !category.is_empty() {
-                    ui.label(RichText::new(*category).color(text_muted).size(12.0).monospace());
+                    ui.label(
+                        RichText::new(*category)
+                            .color(text_muted)
+                            .size(12.0)
+                            .monospace(),
+                    );
                 }
                 for entry in entries {
                     if first_visible.is_none() {
@@ -746,3 +834,5 @@ fn spawn_preset_at(world: &mut World, preset_id: &'static str, position: Vec3) {
         sel.set(Some(entity));
     }
 }
+
+renzora::add!(ContextMenuPlugin, Editor);

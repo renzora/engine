@@ -10,8 +10,12 @@ use crate::selection::{MeshSelection, SelectMode};
 const BTN_H: f32 = 22.0;
 
 pub fn draw_edit_header(ui: &mut egui::Ui, world: &World) {
-    let Some(theme_mgr) = world.get_resource::<ThemeManager>() else { return };
-    let Some(cmds) = world.get_resource::<EditorCommands>() else { return };
+    let Some(theme_mgr) = world.get_resource::<ThemeManager>() else {
+        return;
+    };
+    let Some(cmds) = world.get_resource::<EditorCommands>() else {
+        return;
+    };
     let current_mode = world
         .get_resource::<MeshSelection>()
         .map(|s| s.mode)
@@ -25,15 +29,47 @@ pub fn draw_edit_header(ui: &mut egui::Ui, world: &World) {
     ui.spacing_mut().interact_size.y = BTN_H;
     ui.spacing_mut().item_spacing.x = 3.0;
 
-    mode_btn(ui, "Vertex", "1", SelectMode::Vertex, current_mode, active, inactive, hovered, cmds);
-    mode_btn(ui, "Edge",   "2", SelectMode::Edge,   current_mode, active, inactive, hovered, cmds);
-    mode_btn(ui, "Face",   "3", SelectMode::Face,   current_mode, active, inactive, hovered, cmds);
+    mode_btn(
+        ui,
+        "Vertex",
+        "1",
+        SelectMode::Vertex,
+        current_mode,
+        active,
+        inactive,
+        hovered,
+        cmds,
+    );
+    mode_btn(
+        ui,
+        "Edge",
+        "2",
+        SelectMode::Edge,
+        current_mode,
+        active,
+        inactive,
+        hovered,
+        cmds,
+    );
+    mode_btn(
+        ui,
+        "Face",
+        "3",
+        SelectMode::Face,
+        current_mode,
+        active,
+        inactive,
+        hovered,
+        cmds,
+    );
 
     ui.add_space(8.0);
     ui.label(
-        egui::RichText::new("G: grab   E: extrude   X/Y/Z: axis lock   A: select all   Esc/RMB: cancel")
-            .size(11.0)
-            .color(theme.text.muted.to_color32()),
+        egui::RichText::new(
+            "G: grab   E: extrude   X/Y/Z: axis lock   A: select all   Esc/RMB: cancel",
+        )
+        .size(11.0)
+        .color(theme.text.muted.to_color32()),
     );
 }
 
@@ -51,9 +87,17 @@ fn mode_btn(
     let is_active = mode == current;
     let size = Vec2::new(64.0, BTN_H);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
     if ui.is_rect_visible(rect) {
-        let bg = if is_active { active } else if resp.hovered() { hovered } else { inactive };
+        let bg = if is_active {
+            active
+        } else if resp.hovered() {
+            hovered
+        } else {
+            inactive
+        };
         ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
         ui.painter().text(
             rect.center(),

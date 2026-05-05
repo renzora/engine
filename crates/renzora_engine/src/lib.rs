@@ -13,7 +13,12 @@ pub mod scene_io;
 pub mod vfs;
 
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
-pub use renzora::{CurrentProject, MeshInstanceData, PendingSceneLoad, Persistent, ProjectConfig, WindowConfig, open_project, DefaultCamera, EditorCamera, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshPrimitive, PlayModeCamera, PlayModeState, PlayState, SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget};
+pub use renzora::{
+    open_project, CurrentProject, DefaultCamera, EditorCamera, EditorLocked, EffectRouting,
+    HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive, PendingSceneLoad,
+    Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig, SceneCamera, ShapeEntry,
+    ShapeRegistry, ViewportRenderTarget, WindowConfig,
+};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_engine::audio types
@@ -26,7 +31,9 @@ use renzora_lighting::Sun;
 
 /// Plugin that adds the game runtime: camera, scene, and core systems.
 /// In non-editor mode, also handles project loading from CLI args.
+#[derive(Default)]
 pub struct RuntimePlugin;
+
 
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
@@ -72,7 +79,10 @@ impl Plugin for RuntimePlugin {
                             info!("Loaded project from rpak: {}", config.name);
                             // Use a sentinel path — scene_io reads from Vfs, not disk.
                             let project_path = std::path::PathBuf::from(".");
-                            app.insert_resource(CurrentProject { path: project_path, config });
+                            app.insert_resource(CurrentProject {
+                                path: project_path,
+                                config,
+                            });
                         }
                         Err(e) => {
                             error!("Failed to parse project.toml from rpak: {}", e);
@@ -92,18 +102,25 @@ impl Plugin for RuntimePlugin {
                 app.insert_resource(vfs);
 
                 #[cfg(not(target_arch = "wasm32"))]
-                let project_path = parse_project_arg()
-                    .or_else(|| {
-                        let local = std::path::PathBuf::from("project.toml");
-                        if local.exists() { Some(local) } else { None }
-                    });
+                let project_path = parse_project_arg().or_else(|| {
+                    let local = std::path::PathBuf::from("project.toml");
+                    if local.exists() {
+                        Some(local)
+                    } else {
+                        None
+                    }
+                });
                 #[cfg(target_arch = "wasm32")]
                 let project_path: Option<std::path::PathBuf> = None;
 
                 if let Some(toml_path) = project_path {
                     match open_project(&toml_path) {
                         Ok(project) => {
-                            info!("Loaded project: {} ({})", project.config.name, project.path.display());
+                            info!(
+                                "Loaded project: {} ({})",
+                                project.config.name,
+                                project.path.display()
+                            );
                             app.insert_resource(project);
                         }
                         Err(e) => {
@@ -113,16 +130,29 @@ impl Plugin for RuntimePlugin {
                 }
             }
 
-            app.add_systems(Startup, (setup_vfs_script_reader, scene_io::load_current_scene).chain())
-                .add_systems(Update, (
+            app.add_systems(
+                Startup,
+                (setup_vfs_script_reader, scene_io::load_current_scene).chain(),
+            )
+            .add_systems(
+                Update,
+                (
                     scene_io::rehydrate_meshes,
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
-                ))
-                .add_systems(Update, (scene_io::rehydrate_cameras, scene_io::sync_play_mode_camera, scene_io::enforce_single_active_camera));
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    scene_io::rehydrate_cameras,
+                    scene_io::sync_play_mode_camera,
+                    scene_io::enforce_single_active_camera,
+                ),
+            );
         }
 
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
@@ -137,39 +167,259 @@ impl Plugin for RuntimePlugin {
             use procedural_meshes as pm;
             let mut reg = ShapeRegistry::default();
             // Basic
-            reg.register(ShapeEntry { id: "cube", name: "Cube", icon: "", category: "Basic", create_mesh: |m| m.add(Cuboid::new(1.0, 1.0, 1.0)), default_color: Color::srgb(0.8, 0.3, 0.2) });
-            reg.register(ShapeEntry { id: "sphere", name: "Sphere", icon: "", category: "Basic", create_mesh: |m| m.add(Sphere::new(0.5).mesh().ico(5).unwrap()), default_color: Color::srgb(0.2, 0.5, 0.8) });
-            reg.register(ShapeEntry { id: "cylinder", name: "Cylinder", icon: "", category: "Basic", create_mesh: |m| m.add(Cylinder::new(0.5, 1.0)), default_color: Color::srgb(0.3, 0.7, 0.4) });
-            reg.register(ShapeEntry { id: "plane", name: "Plane", icon: "", category: "Basic", create_mesh: |m| m.add(Plane3d::default().mesh().size(2.0, 2.0)), default_color: Color::srgb(0.35, 0.35, 0.35) });
-            reg.register(ShapeEntry { id: "cone", name: "Cone", icon: "", category: "Basic", create_mesh: |m| m.add(Cone { radius: 0.5, height: 1.0 }), default_color: Color::srgb(0.7, 0.5, 0.2) });
-            reg.register(ShapeEntry { id: "torus", name: "Torus", icon: "", category: "Basic", create_mesh: |m| m.add(Torus { minor_radius: 0.15, major_radius: 0.35 }), default_color: Color::srgb(0.6, 0.3, 0.7) });
-            reg.register(ShapeEntry { id: "capsule", name: "Capsule", icon: "", category: "Basic", create_mesh: |m| m.add(Capsule3d::new(0.25, 0.5)), default_color: Color::srgb(0.3, 0.6, 0.6) });
-            reg.register(ShapeEntry { id: "hemisphere", name: "Hemisphere", icon: "", category: "Basic", create_mesh: |m| m.add(pm::create_hemisphere_mesh(16)), default_color: Color::srgb(0.5, 0.4, 0.7) });
+            reg.register(ShapeEntry {
+                id: "cube",
+                name: "Cube",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(Cuboid::new(1.0, 1.0, 1.0)),
+                default_color: Color::srgb(0.8, 0.3, 0.2),
+            });
+            reg.register(ShapeEntry {
+                id: "sphere",
+                name: "Sphere",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+                default_color: Color::srgb(0.2, 0.5, 0.8),
+            });
+            reg.register(ShapeEntry {
+                id: "cylinder",
+                name: "Cylinder",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(Cylinder::new(0.5, 1.0)),
+                default_color: Color::srgb(0.3, 0.7, 0.4),
+            });
+            reg.register(ShapeEntry {
+                id: "plane",
+                name: "Plane",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(Plane3d::default().mesh().size(2.0, 2.0)),
+                default_color: Color::srgb(0.35, 0.35, 0.35),
+            });
+            reg.register(ShapeEntry {
+                id: "cone",
+                name: "Cone",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| {
+                    m.add(Cone {
+                        radius: 0.5,
+                        height: 1.0,
+                    })
+                },
+                default_color: Color::srgb(0.7, 0.5, 0.2),
+            });
+            reg.register(ShapeEntry {
+                id: "torus",
+                name: "Torus",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| {
+                    m.add(Torus {
+                        minor_radius: 0.15,
+                        major_radius: 0.35,
+                    })
+                },
+                default_color: Color::srgb(0.6, 0.3, 0.7),
+            });
+            reg.register(ShapeEntry {
+                id: "capsule",
+                name: "Capsule",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(Capsule3d::new(0.25, 0.5)),
+                default_color: Color::srgb(0.3, 0.6, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "hemisphere",
+                name: "Hemisphere",
+                icon: "",
+                category: "Basic",
+                create_mesh: |m| m.add(pm::create_hemisphere_mesh(16)),
+                default_color: Color::srgb(0.5, 0.4, 0.7),
+            });
             // Level
-            reg.register(ShapeEntry { id: "wedge", name: "Wedge", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_wedge_mesh()), default_color: Color::srgb(0.6, 0.6, 0.5) });
-            reg.register(ShapeEntry { id: "stairs", name: "Stairs", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_stairs_mesh(6)), default_color: Color::srgb(0.5, 0.5, 0.6) });
-            reg.register(ShapeEntry { id: "arch", name: "Arch", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_arch_mesh(16)), default_color: Color::srgb(0.6, 0.5, 0.4) });
-            reg.register(ShapeEntry { id: "half_cylinder", name: "Half Cylinder", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_half_cylinder_mesh(16)), default_color: Color::srgb(0.5, 0.6, 0.5) });
-            reg.register(ShapeEntry { id: "quarter_pipe", name: "Quarter Pipe", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_quarter_pipe_mesh(16)), default_color: Color::srgb(0.55, 0.55, 0.5) });
-            reg.register(ShapeEntry { id: "corner", name: "Corner", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_corner_mesh()), default_color: Color::srgb(0.5, 0.5, 0.55) });
-            reg.register(ShapeEntry { id: "wall", name: "Wall", icon: "", category: "Level", create_mesh: |m| m.add(Cuboid::new(1.0, 2.0, 0.1)), default_color: Color::srgb(0.55, 0.5, 0.5) });
-            reg.register(ShapeEntry { id: "ramp", name: "Ramp", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_ramp_mesh()), default_color: Color::srgb(0.5, 0.55, 0.5) });
-            reg.register(ShapeEntry { id: "curved_wall", name: "Curved Wall", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_curved_wall_mesh(16)), default_color: Color::srgb(0.55, 0.55, 0.55) });
-            reg.register(ShapeEntry { id: "doorway", name: "Doorway", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_doorway_mesh()), default_color: Color::srgb(0.5, 0.5, 0.6) });
-            reg.register(ShapeEntry { id: "window_wall", name: "Window Wall", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_window_wall_mesh()), default_color: Color::srgb(0.5, 0.55, 0.55) });
-            reg.register(ShapeEntry { id: "l_shape", name: "L-Shape", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_l_shape_mesh()), default_color: Color::srgb(0.55, 0.5, 0.55) });
-            reg.register(ShapeEntry { id: "t_shape", name: "T-Shape", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_t_shape_mesh()), default_color: Color::srgb(0.5, 0.55, 0.6) });
-            reg.register(ShapeEntry { id: "cross_shape", name: "Cross", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_cross_shape_mesh()), default_color: Color::srgb(0.55, 0.55, 0.6) });
-            reg.register(ShapeEntry { id: "spiral_stairs", name: "Spiral Stairs", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_spiral_stairs_mesh(16)), default_color: Color::srgb(0.5, 0.5, 0.55) });
-            reg.register(ShapeEntry { id: "pillar", name: "Pillar", icon: "", category: "Level", create_mesh: |m| m.add(pm::create_pillar_mesh()), default_color: Color::srgb(0.55, 0.5, 0.5) });
+            reg.register(ShapeEntry {
+                id: "wedge",
+                name: "Wedge",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_wedge_mesh()),
+                default_color: Color::srgb(0.6, 0.6, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "stairs",
+                name: "Stairs",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_stairs_mesh(6)),
+                default_color: Color::srgb(0.5, 0.5, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "arch",
+                name: "Arch",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_arch_mesh(16)),
+                default_color: Color::srgb(0.6, 0.5, 0.4),
+            });
+            reg.register(ShapeEntry {
+                id: "half_cylinder",
+                name: "Half Cylinder",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_half_cylinder_mesh(16)),
+                default_color: Color::srgb(0.5, 0.6, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "quarter_pipe",
+                name: "Quarter Pipe",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_quarter_pipe_mesh(16)),
+                default_color: Color::srgb(0.55, 0.55, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "corner",
+                name: "Corner",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_corner_mesh()),
+                default_color: Color::srgb(0.5, 0.5, 0.55),
+            });
+            reg.register(ShapeEntry {
+                id: "wall",
+                name: "Wall",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(Cuboid::new(1.0, 2.0, 0.1)),
+                default_color: Color::srgb(0.55, 0.5, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "ramp",
+                name: "Ramp",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_ramp_mesh()),
+                default_color: Color::srgb(0.5, 0.55, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "curved_wall",
+                name: "Curved Wall",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_curved_wall_mesh(16)),
+                default_color: Color::srgb(0.55, 0.55, 0.55),
+            });
+            reg.register(ShapeEntry {
+                id: "doorway",
+                name: "Doorway",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_doorway_mesh()),
+                default_color: Color::srgb(0.5, 0.5, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "window_wall",
+                name: "Window Wall",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_window_wall_mesh()),
+                default_color: Color::srgb(0.5, 0.55, 0.55),
+            });
+            reg.register(ShapeEntry {
+                id: "l_shape",
+                name: "L-Shape",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_l_shape_mesh()),
+                default_color: Color::srgb(0.55, 0.5, 0.55),
+            });
+            reg.register(ShapeEntry {
+                id: "t_shape",
+                name: "T-Shape",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_t_shape_mesh()),
+                default_color: Color::srgb(0.5, 0.55, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "cross_shape",
+                name: "Cross",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_cross_shape_mesh()),
+                default_color: Color::srgb(0.55, 0.55, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "spiral_stairs",
+                name: "Spiral Stairs",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_spiral_stairs_mesh(16)),
+                default_color: Color::srgb(0.5, 0.5, 0.55),
+            });
+            reg.register(ShapeEntry {
+                id: "pillar",
+                name: "Pillar",
+                icon: "",
+                category: "Level",
+                create_mesh: |m| m.add(pm::create_pillar_mesh()),
+                default_color: Color::srgb(0.55, 0.5, 0.5),
+            });
             // Curved
-            reg.register(ShapeEntry { id: "pipe", name: "Pipe", icon: "", category: "Curved", create_mesh: |m| m.add(pm::create_pipe_mesh(24)), default_color: Color::srgb(0.4, 0.5, 0.6) });
-            reg.register(ShapeEntry { id: "ring", name: "Ring", icon: "", category: "Curved", create_mesh: |m| m.add(pm::create_ring_mesh(24)), default_color: Color::srgb(0.5, 0.4, 0.6) });
-            reg.register(ShapeEntry { id: "funnel", name: "Funnel", icon: "", category: "Curved", create_mesh: |m| m.add(pm::create_funnel_mesh(24)), default_color: Color::srgb(0.6, 0.4, 0.5) });
-            reg.register(ShapeEntry { id: "gutter", name: "Gutter", icon: "", category: "Curved", create_mesh: |m| m.add(pm::create_gutter_mesh(16)), default_color: Color::srgb(0.4, 0.6, 0.5) });
+            reg.register(ShapeEntry {
+                id: "pipe",
+                name: "Pipe",
+                icon: "",
+                category: "Curved",
+                create_mesh: |m| m.add(pm::create_pipe_mesh(24)),
+                default_color: Color::srgb(0.4, 0.5, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "ring",
+                name: "Ring",
+                icon: "",
+                category: "Curved",
+                create_mesh: |m| m.add(pm::create_ring_mesh(24)),
+                default_color: Color::srgb(0.5, 0.4, 0.6),
+            });
+            reg.register(ShapeEntry {
+                id: "funnel",
+                name: "Funnel",
+                icon: "",
+                category: "Curved",
+                create_mesh: |m| m.add(pm::create_funnel_mesh(24)),
+                default_color: Color::srgb(0.6, 0.4, 0.5),
+            });
+            reg.register(ShapeEntry {
+                id: "gutter",
+                name: "Gutter",
+                icon: "",
+                category: "Curved",
+                create_mesh: |m| m.add(pm::create_gutter_mesh(16)),
+                default_color: Color::srgb(0.4, 0.6, 0.5),
+            });
             // Advanced
-            reg.register(ShapeEntry { id: "prism", name: "Prism", icon: "", category: "Advanced", create_mesh: |m| m.add(pm::create_prism_mesh()), default_color: Color::srgb(0.5, 0.5, 0.7) });
-            reg.register(ShapeEntry { id: "pyramid", name: "Pyramid", icon: "", category: "Advanced", create_mesh: |m| m.add(pm::create_pyramid_mesh()), default_color: Color::srgb(0.7, 0.5, 0.5) });
+            reg.register(ShapeEntry {
+                id: "prism",
+                name: "Prism",
+                icon: "",
+                category: "Advanced",
+                create_mesh: |m| m.add(pm::create_prism_mesh()),
+                default_color: Color::srgb(0.5, 0.5, 0.7),
+            });
+            reg.register(ShapeEntry {
+                id: "pyramid",
+                name: "Pyramid",
+                icon: "",
+                category: "Advanced",
+                create_mesh: |m| m.add(pm::create_pyramid_mesh()),
+                default_color: Color::srgb(0.7, 0.5, 0.5),
+            });
             app.insert_resource(reg);
         }
         app.init_resource::<renzora::EffectRouting>();
@@ -186,10 +436,13 @@ impl Plugin for RuntimePlugin {
         {
             app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
                 .add_systems(Startup, camera::spawn_editor_camera)
-                .add_systems(Update, (
-                    camera::sync_camera_render_target,
-                    camera::update_editor_camera_matrix,
-                ));
+                .add_systems(
+                    Update,
+                    (
+                        camera::sync_camera_render_target,
+                        camera::update_editor_camera_matrix,
+                    ),
+                );
             // Listen for save-scene event from the editor
             app.add_observer(on_save_current_scene);
         }
@@ -197,10 +450,7 @@ impl Plugin for RuntimePlugin {
 }
 
 #[cfg(feature = "editor")]
-fn on_save_current_scene(
-    _trigger: On<renzora::SaveCurrentScene>,
-    mut commands: Commands,
-) {
+fn on_save_current_scene(_trigger: On<renzora::SaveCurrentScene>, mut commands: Commands) {
     commands.queue(|world: &mut World| {
         scene_io::save_current_scene(world);
     });
@@ -213,8 +463,12 @@ fn setup_vfs_script_reader(
     vfs: Res<Vfs>,
     mut engine: Option<ResMut<renzora_scripting::ScriptEngine>>,
 ) {
-    if !vfs.has_archive() { return; }
-    let Some(ref mut engine) = engine else { return; };
+    if !vfs.has_archive() {
+        return;
+    }
+    let Some(ref mut engine) = engine else {
+        return;
+    };
     let vfs = vfs.clone();
     engine.set_file_reader(std::sync::Arc::new(move |path: &std::path::Path| {
         // Try archive-relative key: strip leading "./" and use forward slashes
@@ -303,7 +557,10 @@ fn process_pending_scene_loads(world: &mut World) {
 
     renzora::console_log::console_info(
         "Scene",
-        format!("Despawning {} entities from current scene", to_despawn.len()),
+        format!(
+            "Despawning {} entities from current scene",
+            to_despawn.len()
+        ),
     );
 
     for entity in to_despawn {
@@ -327,7 +584,10 @@ fn sync_project_asset_path(
     if !project.is_changed() {
         return;
     }
-    info!("[asset_reader] Project path set: {}", project.path.display());
+    info!(
+        "[asset_reader] Project path set: {}",
+        project.path.display()
+    );
     asset_path.set(project.path.clone());
 }
 

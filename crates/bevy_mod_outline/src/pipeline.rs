@@ -9,19 +9,19 @@ use bevy::render::batching::{gpu_preprocessing, GetBatchData, GetFullBatchData};
 use bevy::render::mesh::allocator::MeshAllocator;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntries, BlendState, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, Face, FragmentState, FrontFace,
-    GpuArrayBuffer, MultisampleState, PolygonMode, PrimitiveState, ShaderStages,
-    ShaderType, StencilState, TextureFormat, VertexState,
+    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntries, BlendState,
+    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face,
+    FragmentState, FrontFace, GpuArrayBuffer, MultisampleState, PolygonMode, PrimitiveState,
+    ShaderStages, ShaderType, StencilState, TextureFormat, VertexState,
 };
-use bevy::shader::ShaderDefVal;
 use bevy::render::renderer::RenderDevice;
 use bevy::render::settings::WgpuSettings;
 use bevy::render::sync_world::MainEntity;
 use bevy::render::view::ViewTarget;
+use bevy::shader::ShaderDefVal;
 use bevy::{
-    pbr::MeshPipeline,
     mesh::MeshVertexBufferLayoutRef,
+    pbr::MeshPipeline,
     render::render_resource::{
         RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError,
     },
@@ -65,14 +65,10 @@ impl FromWorld for OutlinePipeline {
             ShaderStages::VERTEX,
             uniform_buffer_sized(true, Some(OutlineViewUniform::min_size())),
         );
-        let outline_view_bind_group_layout = render_device.create_bind_group_layout(
-            "outline_view_bind_group_layout",
-            &outline_view_entries,
-        );
-        let outline_view_bind_group_layout_descriptor = BindGroupLayoutDescriptor::new(
-            "outline_view_bind_group_layout",
-            &outline_view_entries,
-        );
+        let outline_view_bind_group_layout = render_device
+            .create_bind_group_layout("outline_view_bind_group_layout", &outline_view_entries);
+        let outline_view_bind_group_layout_descriptor =
+            BindGroupLayoutDescriptor::new("outline_view_bind_group_layout", &outline_view_entries);
 
         let outline_instance_entries = BindGroupLayoutEntries::single(
             ShaderStages::VERTEX,
@@ -94,17 +90,12 @@ impl FromWorld for OutlinePipeline {
                 sampler(SamplerBindingType::Filtering),
             ),
         );
-        let alpha_mask_bind_group_layout = render_device.create_bind_group_layout(
-            "alpha_mask_bind_group_layout",
-            &alpha_mask_entries,
-        );
-        let alpha_mask_bind_group_layout_descriptor = BindGroupLayoutDescriptor::new(
-            "alpha_mask_bind_group_layout",
-            &alpha_mask_entries,
-        );
+        let alpha_mask_bind_group_layout = render_device
+            .create_bind_group_layout("alpha_mask_bind_group_layout", &alpha_mask_entries);
+        let alpha_mask_bind_group_layout_descriptor =
+            BindGroupLayoutDescriptor::new("alpha_mask_bind_group_layout", &alpha_mask_entries);
 
-        let instance_batch_size =
-            GpuArrayBuffer::<OutlineInstanceUniform>::batch_size(&limits);
+        let instance_batch_size = GpuArrayBuffer::<OutlineInstanceUniform>::batch_size(&limits);
         OutlinePipeline {
             mesh_pipeline,
             outline_view_bind_group_layout,

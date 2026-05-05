@@ -9,37 +9,40 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
+use renzora::core::ShapeRegistry;
 use renzora_editor::{
     search_overlay, AppEditorExt, AutoSelectFirstHierarchyEntity, EditorCommands, EditorPanel,
-    EditorSelection, HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry,
-    PanelLocation, SceneStarter, SceneStarterRegistry, SpawnRegistry,
+    EditorSelection, HierarchyOrder, InspectorRegistry, OverlayAction, OverlayEntry, PanelLocation,
+    SceneStarter, SceneStarterRegistry, SpawnRegistry,
 };
-use renzora::core::ShapeRegistry;
 use renzora_theme::ThemeManager;
-use renzora_undo::{self, CompoundCmd, RenameCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext};
+use renzora_undo::{
+    self, CompoundCmd, RenameCmd, ReparentCmd, SetHierarchyOrderCmd, SpawnEntityCmd,
+    SpawnEntityKind, SpawnShapeCmd, UndoCommand, UndoContext,
+};
 
 use cache::{HierarchyDirty, HierarchyTreeCache};
 use state::{filter_tree, filter_tree_by_type, HierarchyState};
 
 /// Label color presets: ([r, g, b], name).
 pub const LABEL_COLORS: &[([u8; 3], &str)] = &[
-    ([220, 70,  70],  "Red"),
-    ([210, 120, 80],  "Coral"),
-    ([220, 140, 60],  "Orange"),
-    ([210, 175, 55],  "Amber"),
-    ([210, 195, 60],  "Yellow"),
-    ([160, 210, 60],  "Lime"),
-    ([70,  190, 100], "Green"),
-    ([55,  185, 155], "Teal"),
-    ([60,  200, 200], "Cyan"),
-    ([70,  170, 220], "Sky"),
-    ([80,  140, 220], "Blue"),
-    ([90,  100, 220], "Indigo"),
-    ([155, 80,  220], "Purple"),
-    ([190, 70,  200], "Violet"),
-    ([220, 80,  180], "Pink"),
-    ([220, 80,  120], "Rose"),
-    ([160, 110, 75],  "Brown"),
+    ([220, 70, 70], "Red"),
+    ([210, 120, 80], "Coral"),
+    ([220, 140, 60], "Orange"),
+    ([210, 175, 55], "Amber"),
+    ([210, 195, 60], "Yellow"),
+    ([160, 210, 60], "Lime"),
+    ([70, 190, 100], "Green"),
+    ([55, 185, 155], "Teal"),
+    ([60, 200, 200], "Cyan"),
+    ([70, 170, 220], "Sky"),
+    ([80, 140, 220], "Blue"),
+    ([90, 100, 220], "Indigo"),
+    ([155, 80, 220], "Purple"),
+    ([190, 70, 200], "Violet"),
+    ([220, 80, 180], "Pink"),
+    ([220, 80, 120], "Rose"),
+    ([160, 110, 75], "Brown"),
     ([130, 130, 140], "Gray"),
     ([200, 200, 200], "White"),
 ];
@@ -106,10 +109,7 @@ impl EditorPanel for HierarchyPanel {
         }
 
         // Consume any keyboard-triggered rename request.
-        if let Some(req) = world
-            .get_resource::<RenameRequest>()
-            .and_then(|r| r.0)
-        {
+        if let Some(req) = world.get_resource::<RenameRequest>().and_then(|r| r.0) {
             // The name buffer seed is filled in by the panel when rename
             // actually begins — just set the target entity here.
             state.renaming_entity = Some(req);
@@ -132,7 +132,9 @@ impl EditorPanel for HierarchyPanel {
                 while let Some(child_of) = world.get::<ChildOf>(cur) {
                     let parent = child_of.parent();
                     let named = world.get::<Name>(parent).is_some();
-                    let hidden = world.get::<renzora_editor::HideInHierarchy>(parent).is_some();
+                    let hidden = world
+                        .get::<renzora_editor::HideInHierarchy>(parent)
+                        .is_some();
                     if named && !hidden {
                         state.expanded.insert(parent);
                     }
@@ -147,11 +149,16 @@ impl EditorPanel for HierarchyPanel {
         }
 
         // Check for CreateNode shortcut (Ctrl+A)
-        if world.get_resource::<renzora::core::CreateNodeRequested>().is_some() {
+        if world
+            .get_resource::<renzora::core::CreateNodeRequested>()
+            .is_some()
+        {
             state.show_add_overlay = true;
             state.add_search.clear();
             // Consume the resource via deferred command
-            commands.push(|w: &mut World| { w.remove_resource::<renzora::core::CreateNodeRequested>(); });
+            commands.push(|w: &mut World| {
+                w.remove_resource::<renzora::core::CreateNodeRequested>();
+            });
         }
 
         // Collect distinct type entries from the icon registry up front so
@@ -178,9 +185,7 @@ impl EditorPanel for HierarchyPanel {
         // Top-align so a shorter Add button sits flush with the top of the
         // search box rather than being vertically centered (which makes it
         // look offset downward).
-        ui.with_layout(
-            egui::Layout::left_to_right(egui::Align::Min),
-            |ui| {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
             ui.add_space(4.0);
             let add_width = 80.0;
             let add_height = (row_height - 2.0).max(16.0);
@@ -308,9 +313,14 @@ impl EditorPanel for HierarchyPanel {
                 ui.horizontal(|ui| {
                     ui.add_space(6.0);
                     ui.label(
-                        egui::RichText::new(format!("{} Stamping {}/{}", regular::TREE_STRUCTURE, done, total))
-                            .size(10.0)
-                            .color(theme.text.secondary.to_color32()),
+                        egui::RichText::new(format!(
+                            "{} Stamping {}/{}",
+                            regular::TREE_STRUCTURE,
+                            done,
+                            total
+                        ))
+                        .size(10.0)
+                        .color(theme.text.secondary.to_color32()),
                     );
                 });
                 let (_, bar_rect) = ui.allocate_space(egui::vec2(ui.available_width() - 8.0, 4.0));
@@ -379,7 +389,8 @@ impl EditorPanel for HierarchyPanel {
                 if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
                     let component_categories = &["rendering", "post_process", "effects", "Audio"];
                     for entry in inspector_reg.iter() {
-                        if entry.add_fn.is_some() && component_categories.contains(&entry.category) {
+                        if entry.add_fn.is_some() && component_categories.contains(&entry.category)
+                        {
                             entries.push(OverlayEntry {
                                 id: entry.type_id,
                                 label: entry.display_name,
@@ -392,50 +403,80 @@ impl EditorPanel for HierarchyPanel {
             }
 
             let ctx = ui.ctx().clone();
-            match search_overlay(&ctx, "add_entity_overlay", "Add Entity", &entries, &mut state.add_search, &theme) {
+            match search_overlay(
+                &ctx,
+                "add_entity_overlay",
+                "Add Entity",
+                &entries,
+                &mut state.add_search,
+                &theme,
+            ) {
                 OverlayAction::Selected(id) => {
                     state.show_add_overlay = false;
 
                     // Classify id: preset, shape, or component-type.
                     let mut handled = false;
-                    if world.get_resource::<SpawnRegistry>()
+                    if world
+                        .get_resource::<SpawnRegistry>()
                         .map_or(false, |r| r.iter().any(|p| p.id == id))
                     {
                         let preset_id = id.clone();
                         commands.push(move |world: &mut World| {
-                            renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
-                                entity: Entity::PLACEHOLDER,
-                                kind: SpawnEntityKind::Preset { id: preset_id },
-                            }));
+                            renzora_undo::execute(
+                                world,
+                                UndoContext::Scene,
+                                Box::new(SpawnEntityCmd {
+                                    entity: Entity::PLACEHOLDER,
+                                    kind: SpawnEntityKind::Preset { id: preset_id },
+                                }),
+                            );
                         });
                         handled = true;
                     }
                     if !handled {
-                        if let Some(entry) = world.get_resource::<ShapeRegistry>().and_then(|r| r.get(&id)) {
+                        if let Some(entry) = world
+                            .get_resource::<ShapeRegistry>()
+                            .and_then(|r| r.get(&id))
+                        {
                             let name = entry.name.to_string();
                             let shape_id = entry.id.to_string();
                             let color = entry.default_color;
                             commands.push(move |world: &mut World| {
-                                renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnShapeCmd {
-                                    entity: Entity::PLACEHOLDER,
-                                    shape_id, name, position: Vec3::ZERO, color,
-                                }));
+                                renzora_undo::execute(
+                                    world,
+                                    UndoContext::Scene,
+                                    Box::new(SpawnShapeCmd {
+                                        entity: Entity::PLACEHOLDER,
+                                        shape_id,
+                                        name,
+                                        position: Vec3::ZERO,
+                                        color,
+                                    }),
+                                );
                             });
                             handled = true;
                         }
                     }
                     if !handled {
-                        if let Some(entry) = world.get_resource::<InspectorRegistry>()
+                        if let Some(entry) = world
+                            .get_resource::<InspectorRegistry>()
                             .and_then(|r| r.iter().find(|e| e.type_id == id))
                         {
                             if entry.add_fn.is_some() {
                                 let display_name = entry.display_name.to_string();
                                 let type_id = entry.type_id.to_string();
                                 commands.push(move |world: &mut World| {
-                                    renzora_undo::execute(world, UndoContext::Scene, Box::new(SpawnEntityCmd {
-                                        entity: Entity::PLACEHOLDER,
-                                        kind: SpawnEntityKind::Component { type_id, display_name },
-                                    }));
+                                    renzora_undo::execute(
+                                        world,
+                                        UndoContext::Scene,
+                                        Box::new(SpawnEntityCmd {
+                                            entity: Entity::PLACEHOLDER,
+                                            kind: SpawnEntityKind::Component {
+                                                type_id,
+                                                display_name,
+                                            },
+                                        }),
+                                    );
                                 });
                             }
                         }
@@ -493,12 +534,19 @@ impl EditorPanel for HierarchyPanel {
                                         .map(|n| n.as_str().to_string())
                                         .unwrap_or_default();
                                     let new = format!("{}_{:02}", base, start as usize + i);
-                                    cmds.push(Box::new(RenameCmd { entity: *entity, old, new }));
+                                    cmds.push(Box::new(RenameCmd {
+                                        entity: *entity,
+                                        old,
+                                        new,
+                                    }));
                                 }
                                 renzora_undo::execute(
                                     world,
                                     UndoContext::Scene,
-                                    Box::new(CompoundCmd { label: "Batch Rename".to_string(), cmds }),
+                                    Box::new(CompoundCmd {
+                                        label: "Batch Rename".to_string(),
+                                        cmds,
+                                    }),
                                 );
                             });
                             state.batch_rename_active = false;
@@ -520,20 +568,21 @@ impl EditorPanel for HierarchyPanel {
         let cache_ref = world.get_resource::<HierarchyTreeCache>();
         let search_active = !state.search.trim().is_empty();
         let type_filter_active = !state.type_filter.is_empty();
-        let filtered_nodes: Option<Vec<state::EntityNode>> = if !search_active && !type_filter_active {
-            None
-        } else {
-            cache_ref.map(|c| {
-                let mut nodes = c.nodes.clone();
-                if type_filter_active {
-                    nodes = filter_tree_by_type(nodes, &state.type_filter);
-                }
-                if search_active {
-                    nodes = filter_tree(nodes, state.search.trim());
-                }
-                nodes
-            })
-        };
+        let filtered_nodes: Option<Vec<state::EntityNode>> =
+            if !search_active && !type_filter_active {
+                None
+            } else {
+                cache_ref.map(|c| {
+                    let mut nodes = c.nodes.clone();
+                    if type_filter_active {
+                        nodes = filter_tree_by_type(nodes, &state.type_filter);
+                    }
+                    if search_active {
+                        nodes = filter_tree(nodes, state.search.trim());
+                    }
+                    nodes
+                })
+            };
         let nodes: &[state::EntityNode] = match filtered_nodes.as_ref() {
             Some(v) => v.as_slice(),
             None => cache_ref.map_or(&[][..], |c| c.nodes.as_slice()),
@@ -556,103 +605,101 @@ impl EditorPanel for HierarchyPanel {
             tree_scroll = tree_scroll.vertical_scroll_offset(0.0);
             state.pending_scroll_top = false;
         }
-        tree_scroll
-            .show(ui, |ui| {
-                ui.style_mut().spacing.item_spacing.y = 0.0;
-                tree::render_tree(
-                    ui,
-                    nodes,
-                    state,
-                    selection,
-                    commands,
-                    &theme,
-                );
+        tree_scroll.show(ui, |ui| {
+            ui.style_mut().spacing.item_spacing.y = 0.0;
+            tree::render_tree(ui, nodes, state, selection, commands, &theme);
 
-                // Sticky-parent overlay: when the user scrolls down inside an
-                // expanded subtree, paint the chain of expanded ancestors as
-                // pinned headers at the top of the viewport so the user
-                // always knows which group they're inside. Skipped when the
-                // user has disabled it in settings.
-                let stacking_enabled = world
-                    .get_resource::<renzora_editor::EditorSettings>()
-                    .map(|s| s.hierarchy_parent_stacking)
-                    .unwrap_or(true);
-                if stacking_enabled {
-                    paint_sticky_parents(ui, state, commands, &theme);
+            // Sticky-parent overlay: when the user scrolls down inside an
+            // expanded subtree, paint the chain of expanded ancestors as
+            // pinned headers at the top of the viewport so the user
+            // always knows which group they're inside. Skipped when the
+            // user has disabled it in settings.
+            let stacking_enabled = world
+                .get_resource::<renzora_editor::EditorSettings>()
+                .map(|s| s.hierarchy_parent_stacking)
+                .unwrap_or(true);
+            if stacking_enabled {
+                paint_sticky_parents(ui, state, commands, &theme);
+            }
+
+            // Marquee drag selection — fill remaining visible space below
+            // the tree rows so the user can click/drag from the empty area.
+            let content_bottom = ui.cursor().top();
+            let visible_bottom = ui.clip_rect().max.y;
+            let remaining = (visible_bottom - content_bottom).max(40.0);
+            let (_, empty_resp) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), remaining),
+                egui::Sense::click_and_drag(),
+            );
+
+            if empty_resp.clicked() && state.marquee_origin.is_none() {
+                selection.clear();
+            }
+
+            if empty_resp.drag_started() {
+                if let Some(pos) = ui.ctx().pointer_interact_pos() {
+                    state.marquee_origin = Some(pos);
                 }
+            }
 
-                // Marquee drag selection — fill remaining visible space below
-                // the tree rows so the user can click/drag from the empty area.
-                let content_bottom = ui.cursor().top();
-                let visible_bottom = ui.clip_rect().max.y;
-                let remaining = (visible_bottom - content_bottom).max(40.0);
-                let (_, empty_resp) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), remaining),
-                    egui::Sense::click_and_drag(),
-                );
+            if let Some(origin) = state.marquee_origin {
+                if ui.ctx().input(|i| i.pointer.any_down()) {
+                    if let Some(current) = ui.ctx().pointer_latest_pos() {
+                        let marquee_rect = egui::Rect::from_two_pos(origin, current);
 
-                if empty_resp.clicked() && state.marquee_origin.is_none() {
-                    selection.clear();
-                }
-
-                if empty_resp.drag_started() {
-                    if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                        state.marquee_origin = Some(pos);
-                    }
-                }
-
-                if let Some(origin) = state.marquee_origin {
-                    if ui.ctx().input(|i| i.pointer.any_down()) {
-                        if let Some(current) = ui.ctx().pointer_latest_pos() {
-                            let marquee_rect = egui::Rect::from_two_pos(origin, current);
-
-                            let mut selected: Vec<Entity> = Vec::new();
-                            for &(entity, row_rect) in &state.row_rects {
-                                if marquee_rect.intersects(row_rect) {
-                                    selected.push(entity);
-                                }
+                        let mut selected: Vec<Entity> = Vec::new();
+                        for &(entity, row_rect) in &state.row_rects {
+                            if marquee_rect.intersects(row_rect) {
+                                selected.push(entity);
                             }
-
-                            if ui.ctx().input(|i| i.modifiers.ctrl || i.modifiers.command) {
-                                let mut existing = selection.get_all();
-                                for e in &selected {
-                                    if !existing.contains(e) {
-                                        existing.push(*e);
-                                    }
-                                }
-                                if existing != selection.get_all() {
-                                    selection.set_multiple(existing);
-                                }
-                            } else if selected != selection.get_all() {
-                                selection.set_multiple(selected);
-                            }
-
-                            let accent = theme.semantic.accent.to_color32();
-                            let fill = egui::Color32::from_rgba_unmultiplied(
-                                accent.r(), accent.g(), accent.b(), 30,
-                            );
-                            let fg = ui.ctx().layer_painter(egui::LayerId::new(
-                                egui::Order::Foreground,
-                                egui::Id::new("hierarchy_marquee"),
-                            ));
-                            fg.rect_filled(marquee_rect, 2.0, fill);
-                            fg.rect_stroke(
-                                marquee_rect,
-                                2.0,
-                                egui::Stroke::new(1.0, accent),
-                                egui::StrokeKind::Inside,
-                            );
-
-                            ui.ctx().request_repaint();
                         }
-                    } else {
-                        state.marquee_origin = None;
+
+                        if ui.ctx().input(|i| i.modifiers.ctrl || i.modifiers.command) {
+                            let mut existing = selection.get_all();
+                            for e in &selected {
+                                if !existing.contains(e) {
+                                    existing.push(*e);
+                                }
+                            }
+                            if existing != selection.get_all() {
+                                selection.set_multiple(existing);
+                            }
+                        } else if selected != selection.get_all() {
+                            selection.set_multiple(selected);
+                        }
+
+                        let accent = theme.semantic.accent.to_color32();
+                        let fill = egui::Color32::from_rgba_unmultiplied(
+                            accent.r(),
+                            accent.g(),
+                            accent.b(),
+                            30,
+                        );
+                        let fg = ui.ctx().layer_painter(egui::LayerId::new(
+                            egui::Order::Foreground,
+                            egui::Id::new("hierarchy_marquee"),
+                        ));
+                        fg.rect_filled(marquee_rect, 2.0, fill);
+                        fg.rect_stroke(
+                            marquee_rect,
+                            2.0,
+                            egui::Stroke::new(1.0, accent),
+                            egui::StrokeKind::Inside,
+                        );
+
+                        ui.ctx().request_repaint();
                     }
+                } else {
+                    state.marquee_origin = None;
                 }
-            });
+            }
+        });
 
         // Swap visible entity order for next frame's range selection
-        std::mem::swap(&mut state.visible_entity_order, &mut state.building_entity_order);
+        std::mem::swap(
+            &mut state.visible_entity_order,
+            &mut state.building_entity_order,
+        );
 
         // Handle drag release → apply reparent
         if !state.drag_entities.is_empty() && !ui.ctx().input(|i| i.pointer.any_down()) {
@@ -811,9 +858,15 @@ impl EditorPanel for HierarchyPanel {
                     let target_name = find_node_name(nodes, target_entity)
                         .unwrap_or_else(|| format!("{:?}", target_entity));
                     match zone {
-                        renzora_editor::TreeDropZone::Before => format!("Move above {}", target_name),
-                        renzora_editor::TreeDropZone::After => format!("Move below {}", target_name),
-                        renzora_editor::TreeDropZone::AsChild => format!("Move into {}", target_name),
+                        renzora_editor::TreeDropZone::Before => {
+                            format!("Move above {}", target_name)
+                        }
+                        renzora_editor::TreeDropZone::After => {
+                            format!("Move below {}", target_name)
+                        }
+                        renzora_editor::TreeDropZone::AsChild => {
+                            format!("Move into {}", target_name)
+                        }
                     }
                 } else {
                     let count = state.drag_entities.len();
@@ -920,8 +973,12 @@ fn auto_select_first_hierarchy_entity(
     cache: Res<HierarchyTreeCache>,
     selection: Res<EditorSelection>,
 ) {
-    if !pending.0 { return; }
-    if cache.nodes.is_empty() { return; }
+    if !pending.0 {
+        return;
+    }
+    if cache.nodes.is_empty() {
+        return;
+    }
     if selection.get().is_none() {
         if let Some(top) = cache.nodes.first() {
             selection.set(Some(top.entity));
@@ -940,12 +997,15 @@ impl Plugin for HierarchyPanelPlugin {
         app.init_resource::<RenameRequest>();
         app.init_resource::<HierarchyTreeCache>();
         app.init_resource::<HierarchyDirty>();
-        app.add_systems(bevy::prelude::Update, (
-            detect_selection_keybindings,
-            cache::mark_hierarchy_dirty,
-            cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
-            auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
-        ));
+        app.add_systems(
+            bevy::prelude::Update,
+            (
+                detect_selection_keybindings,
+                cache::mark_hierarchy_dirty,
+                cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
+                auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
+            ),
+        );
 
         // Spawn presets are now self-registered by their owning crates:
         // - Bevy types (Empty, lights, camera): renzora_editor::bevy_inspectors
@@ -968,7 +1028,10 @@ impl Plugin for HierarchyPanelPlugin {
                     Name::new("Camera"),
                     SceneCamera,
                     Camera3d::default(),
-                    Camera { is_active: false, ..default() },
+                    Camera {
+                        is_active: false,
+                        ..default()
+                    },
                     Transform::from_xyz(5.0, 4.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
                 ));
             },
@@ -992,7 +1055,9 @@ fn paint_sticky_parents(
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
 ) {
-    use egui_phosphor::regular::{CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN};
+    use egui_phosphor::regular::{
+        CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN,
+    };
     use renzora_ui::widgets::tree::{INDENT_SIZE, ROW_HEIGHT};
 
     // Right-edge layout for the eye + lock icons. Mirrors `tree.rs`.
@@ -1008,11 +1073,7 @@ fn paint_sticky_parents(
     let clip_top = clip.min.y;
 
     // Topmost visible row index — first row whose bottom is below clip_top.
-    let Some(top_idx) = state
-        .row_meta
-        .iter()
-        .position(|m| m.rect.max.y > clip_top)
-    else {
+    let Some(top_idx) = state.row_meta.iter().position(|m| m.rect.max.y > clip_top) else {
         return;
     };
 
@@ -1045,10 +1106,7 @@ fn paint_sticky_parents(
 
     // `Order::Middle` so title-bar dropdown popups (which use `Foreground`)
     // still draw above the sticky stack.
-    let layer_id = egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("hierarchy_sticky"),
-    );
+    let layer_id = egui::LayerId::new(egui::Order::Middle, egui::Id::new("hierarchy_sticky"));
     let painter = ui.ctx().layer_painter(layer_id);
 
     let row_w = clip.width();
@@ -1097,10 +1155,8 @@ fn paint_sticky_parents(
         // Optional left stripe if the row had a label color, mirroring the
         // tree row's accent strip.
         if let Some([r, g, b]) = meta.label_color {
-            let stripe = egui::Rect::from_min_max(
-                rect.min,
-                egui::pos2(rect.min.x + 3.0, rect.max.y),
-            );
+            let stripe =
+                egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 3.0, rect.max.y));
             painter.rect_filled(stripe, 0.0, egui::Color32::from_rgb(r, g, b));
         }
 
@@ -1110,7 +1166,11 @@ fn paint_sticky_parents(
 
         // Caret (parents always have children, but check anyway).
         if meta.has_children {
-            let caret = if meta.is_expanded { CARET_DOWN } else { CARET_RIGHT };
+            let caret = if meta.is_expanded {
+                CARET_DOWN
+            } else {
+                CARET_RIGHT
+            };
             let caret_color = egui::Color32::from_rgb(150, 150, 160);
             painter.text(
                 egui::pos2(content_x + 8.0, center_y),
@@ -1188,7 +1248,10 @@ fn paint_sticky_parents(
                     renzora_undo::execute(
                         world,
                         UndoContext::Scene,
-                        Box::new(renzora_undo::VisibilityToggleCmd { entity, was_visible }),
+                        Box::new(renzora_undo::VisibilityToggleCmd {
+                            entity,
+                            was_visible,
+                        }),
                     );
                 });
             }
@@ -1196,7 +1259,11 @@ fn paint_sticky_parents(
 
         // ── Lock toggle, rightmost slot ─────────────────────────────────
         {
-            let lock_icon = if meta.is_locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
+            let lock_icon = if meta.is_locked {
+                LOCK_SIMPLE
+            } else {
+                LOCK_SIMPLE_OPEN
+            };
             let lock_color = if meta.is_locked {
                 egui::Color32::from_rgb(220, 80, 80)
             } else {
@@ -1260,14 +1327,24 @@ fn detect_selection_keybindings(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     input_focus: Res<renzora::core::InputFocusState>,
     selection: Res<EditorSelection>,
-    entities_q: Query<(Entity, Option<&bevy::prelude::Name>, Option<&renzora::core::HideInHierarchy>)>,
+    entities_q: Query<(
+        Entity,
+        Option<&bevy::prelude::Name>,
+        Option<&renzora::core::HideInHierarchy>,
+    )>,
     mut vis_q: Query<&mut bevy::prelude::Visibility>,
     mut rename_req: ResMut<RenameRequest>,
 ) {
     use renzora::core::keybindings::EditorAction;
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) { return; }
-    if keybindings.rebinding.is_some() { return; }
-    if input_focus.egui_wants_keyboard { return; }
+    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if keybindings.rebinding.is_some() {
+        return;
+    }
+    if input_focus.egui_wants_keyboard {
+        return;
+    }
 
     // SelectAll: pick every named, non-hidden-in-hierarchy entity.
     if keybindings.just_pressed(EditorAction::SelectAll, &keyboard) {
@@ -1302,8 +1379,7 @@ fn detect_selection_keybindings(
     // IsolateSelected: hide everything except the current selection (and its
     // ancestors, so the tree stays navigable).
     if keybindings.just_pressed(EditorAction::IsolateSelected, &keyboard) {
-        let sel: std::collections::HashSet<Entity> =
-            selection.get_all().into_iter().collect();
+        let sel: std::collections::HashSet<Entity> = selection.get_all().into_iter().collect();
         if !sel.is_empty() {
             for (e, name, hide) in entities_q.iter() {
                 if name.is_none() || hide.is_some() {
@@ -1336,11 +1412,7 @@ fn find_node_name(nodes: &[state::EntityNode], target: Entity) -> Option<String>
 /// Empty-state UI for the hierarchy: a "New" picker with one clickable card
 /// per registered [`SceneStarter`]. Each card invokes that starter's
 /// `spawn_fn` via `EditorCommands`.
-fn render_scene_starter_picker(
-    ui: &mut egui::Ui,
-    world: &World,
-    theme: &renzora_theme::Theme,
-) {
+fn render_scene_starter_picker(ui: &mut egui::Ui, world: &World, theme: &renzora_theme::Theme) {
     let registry = match world.get_resource::<SceneStarterRegistry>() {
         Some(r) => r,
         None => return,
@@ -1388,7 +1460,16 @@ fn render_scene_starter_picker(
         .show(ui, |ui| {
             ui.style_mut().spacing.item_spacing.y = 6.0;
             for starter in &starters {
-                render_starter_card(ui, starter, row_bg, row_hover, border, text_primary, text_muted, world);
+                render_starter_card(
+                    ui,
+                    starter,
+                    row_bg,
+                    row_hover,
+                    border,
+                    text_primary,
+                    text_muted,
+                    world,
+                );
             }
         });
 }
@@ -1408,15 +1489,13 @@ fn render_starter_card(
 
     ui.horizontal(|ui| {
         ui.add_space(margin);
-        let (rect, resp) = ui.allocate_exact_size(
-            egui::vec2(width, 52.0),
-            egui::Sense::click(),
-        );
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 52.0), egui::Sense::click());
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         let fill = if resp.hovered() { bg_hover } else { bg };
-        ui.painter().rect_filled(rect, egui::CornerRadius::same(6), fill);
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(6), fill);
         ui.painter().rect_stroke(
             rect,
             egui::CornerRadius::same(6),
@@ -1469,3 +1548,4 @@ fn render_starter_card(
     });
 }
 
+renzora::add!(HierarchyPanelPlugin, Editor);

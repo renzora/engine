@@ -187,7 +187,14 @@ fn lua_delta(line: &str) -> i32 {
         || trimmed.starts_with("repeat");
     let opens_then = trimmed.ends_with(" then") || trimmed.ends_with("then");
     let opens_do = trimmed.ends_with(" do") || trimmed.ends_with("do");
-    if starts_block && (opens_then || opens_do || trimmed.ends_with(')') || trimmed == "do" || trimmed == "else" || trimmed.starts_with("repeat")) {
+    if starts_block
+        && (opens_then
+            || opens_do
+            || trimmed.ends_with(')')
+            || trimmed == "do"
+            || trimmed == "else"
+            || trimmed.starts_with("repeat"))
+    {
         d += 1;
     }
     if trimmed.starts_with("function ") || trimmed.starts_with("function(") {
@@ -201,7 +208,11 @@ fn lua_delta(line: &str) -> i32 {
     }
 
     // Closers
-    if trimmed == "end" || trimmed.starts_with("end ") || trimmed == "}" || trimmed.starts_with("until ") {
+    if trimmed == "end"
+        || trimmed.starts_with("end ")
+        || trimmed == "}"
+        || trimmed.starts_with("until ")
+    {
         d -= 1;
     }
     // else / elseif: net zero (close + open).
@@ -218,7 +229,13 @@ fn format_python(content: &str) -> String {
             let leading: String = line
                 .chars()
                 .take_while(|c| *c == ' ' || *c == '\t')
-                .map(|c| if c == '\t' { indent_unit.clone() } else { " ".to_string() })
+                .map(|c| {
+                    if c == '\t' {
+                        indent_unit.clone()
+                    } else {
+                        " ".to_string()
+                    }
+                })
                 .collect();
             let body: &str = line.trim_start_matches(|c: char| c == ' ' || c == '\t');
             let trimmed_body = body.trim_end_matches(|c: char| c == ' ' || c == '\t');

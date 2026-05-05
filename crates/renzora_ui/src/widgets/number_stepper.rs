@@ -13,7 +13,12 @@ pub struct NumberStepperConfig {
 
 impl Default for NumberStepperConfig {
     fn default() -> Self {
-        Self { step: 1.0, min: f32::NEG_INFINITY, max: f32::INFINITY, decimals: 2 }
+        Self {
+            step: 1.0,
+            min: f32::NEG_INFINITY,
+            max: f32::INFINITY,
+            decimals: 2,
+        }
     }
 }
 

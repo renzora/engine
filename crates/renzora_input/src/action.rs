@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::gamepad::{GamepadAxis, GamepadButton};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// What kind of value an action produces.
@@ -168,7 +168,9 @@ mod tests {
         // changed that, our serialized input maps would silently stop
         // resolving and every binding would go dead.
         let binding = InputBinding::key(KeyCode::KeyA);
-        let InputBinding::Key(s) = binding else { panic!("wrong variant") };
+        let InputBinding::Key(s) = binding else {
+            panic!("wrong variant")
+        };
         assert_eq!(s, "KeyA");
         assert_eq!(InputBinding::resolve_key(&s), Some(KeyCode::KeyA));
     }
@@ -176,14 +178,29 @@ mod tests {
     #[test]
     fn key_round_trip_covers_letters_digits_and_specials() {
         for kc in [
-            KeyCode::KeyW, KeyCode::Space, KeyCode::Escape, KeyCode::Enter,
-            KeyCode::Tab, KeyCode::Backspace, KeyCode::ShiftLeft,
-            KeyCode::ControlLeft, KeyCode::ArrowUp, KeyCode::F5,
-            KeyCode::Digit0, KeyCode::Digit9,
+            KeyCode::KeyW,
+            KeyCode::Space,
+            KeyCode::Escape,
+            KeyCode::Enter,
+            KeyCode::Tab,
+            KeyCode::Backspace,
+            KeyCode::ShiftLeft,
+            KeyCode::ControlLeft,
+            KeyCode::ArrowUp,
+            KeyCode::F5,
+            KeyCode::Digit0,
+            KeyCode::Digit9,
         ] {
             let binding = InputBinding::key(kc);
-            let InputBinding::Key(s) = binding else { panic!("wrong variant") };
-            assert_eq!(InputBinding::resolve_key(&s), Some(kc), "round trip failed for {:?}", kc);
+            let InputBinding::Key(s) = binding else {
+                panic!("wrong variant")
+            };
+            assert_eq!(
+                InputBinding::resolve_key(&s),
+                Some(kc),
+                "round trip failed for {:?}",
+                kc
+            );
         }
     }
 
@@ -201,7 +218,9 @@ mod tests {
             bevy::prelude::MouseButton::Middle,
         ] {
             let binding = InputBinding::mouse(btn);
-            let InputBinding::MouseButton(s) = binding else { panic!() };
+            let InputBinding::MouseButton(s) = binding else {
+                panic!()
+            };
             assert_eq!(InputBinding::resolve_mouse(&s), Some(btn));
         }
     }
@@ -214,9 +233,15 @@ mod tests {
 
     #[test]
     fn gamepad_button_round_trips() {
-        for btn in [GamepadButton::South, GamepadButton::DPadLeft, GamepadButton::Start] {
+        for btn in [
+            GamepadButton::South,
+            GamepadButton::DPadLeft,
+            GamepadButton::Start,
+        ] {
             let binding = InputBinding::gamepad_button(btn);
-            let InputBinding::GamepadButton(s) = binding else { panic!() };
+            let InputBinding::GamepadButton(s) = binding else {
+                panic!()
+            };
             assert_eq!(InputBinding::resolve_gamepad_button(&s), Some(btn));
         }
     }
@@ -224,21 +249,32 @@ mod tests {
     #[test]
     fn gamepad_axis_round_trips() {
         for axis in [
-            GamepadAxis::LeftStickX, GamepadAxis::LeftStickY,
-            GamepadAxis::RightStickX, GamepadAxis::RightStickY,
+            GamepadAxis::LeftStickX,
+            GamepadAxis::LeftStickY,
+            GamepadAxis::RightStickX,
+            GamepadAxis::RightStickY,
         ] {
             let binding = InputBinding::gamepad_axis(axis);
-            let InputBinding::GamepadAxis(s) = binding else { panic!() };
+            let InputBinding::GamepadAxis(s) = binding else {
+                panic!()
+            };
             assert_eq!(InputBinding::resolve_gamepad_axis(&s), Some(axis));
         }
     }
 
     #[test]
     fn composite_2d_stores_debug_strings_per_direction() {
-        let binding = InputBinding::composite_2d(
-            KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD,
-        );
-        let InputBinding::Composite2D { up, down, left, right } = binding else { panic!() };
+        let binding =
+            InputBinding::composite_2d(KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD);
+        let InputBinding::Composite2D {
+            up,
+            down,
+            left,
+            right,
+        } = binding
+        else {
+            panic!()
+        };
         assert_eq!(up, "KeyW");
         assert_eq!(down, "KeyS");
         assert_eq!(left, "KeyA");
@@ -272,34 +308,69 @@ mod tests {
 /// Parse a KeyCode from its Debug string representation.
 fn key_from_str(s: &str) -> Option<KeyCode> {
     Some(match s {
-        "KeyA" => KeyCode::KeyA, "KeyB" => KeyCode::KeyB, "KeyC" => KeyCode::KeyC,
-        "KeyD" => KeyCode::KeyD, "KeyE" => KeyCode::KeyE, "KeyF" => KeyCode::KeyF,
-        "KeyG" => KeyCode::KeyG, "KeyH" => KeyCode::KeyH, "KeyI" => KeyCode::KeyI,
-        "KeyJ" => KeyCode::KeyJ, "KeyK" => KeyCode::KeyK, "KeyL" => KeyCode::KeyL,
-        "KeyM" => KeyCode::KeyM, "KeyN" => KeyCode::KeyN, "KeyO" => KeyCode::KeyO,
-        "KeyP" => KeyCode::KeyP, "KeyQ" => KeyCode::KeyQ, "KeyR" => KeyCode::KeyR,
-        "KeyS" => KeyCode::KeyS, "KeyT" => KeyCode::KeyT, "KeyU" => KeyCode::KeyU,
-        "KeyV" => KeyCode::KeyV, "KeyW" => KeyCode::KeyW, "KeyX" => KeyCode::KeyX,
-        "KeyY" => KeyCode::KeyY, "KeyZ" => KeyCode::KeyZ,
-        "Digit0" => KeyCode::Digit0, "Digit1" => KeyCode::Digit1,
-        "Digit2" => KeyCode::Digit2, "Digit3" => KeyCode::Digit3,
-        "Digit4" => KeyCode::Digit4, "Digit5" => KeyCode::Digit5,
-        "Digit6" => KeyCode::Digit6, "Digit7" => KeyCode::Digit7,
-        "Digit8" => KeyCode::Digit8, "Digit9" => KeyCode::Digit9,
+        "KeyA" => KeyCode::KeyA,
+        "KeyB" => KeyCode::KeyB,
+        "KeyC" => KeyCode::KeyC,
+        "KeyD" => KeyCode::KeyD,
+        "KeyE" => KeyCode::KeyE,
+        "KeyF" => KeyCode::KeyF,
+        "KeyG" => KeyCode::KeyG,
+        "KeyH" => KeyCode::KeyH,
+        "KeyI" => KeyCode::KeyI,
+        "KeyJ" => KeyCode::KeyJ,
+        "KeyK" => KeyCode::KeyK,
+        "KeyL" => KeyCode::KeyL,
+        "KeyM" => KeyCode::KeyM,
+        "KeyN" => KeyCode::KeyN,
+        "KeyO" => KeyCode::KeyO,
+        "KeyP" => KeyCode::KeyP,
+        "KeyQ" => KeyCode::KeyQ,
+        "KeyR" => KeyCode::KeyR,
+        "KeyS" => KeyCode::KeyS,
+        "KeyT" => KeyCode::KeyT,
+        "KeyU" => KeyCode::KeyU,
+        "KeyV" => KeyCode::KeyV,
+        "KeyW" => KeyCode::KeyW,
+        "KeyX" => KeyCode::KeyX,
+        "KeyY" => KeyCode::KeyY,
+        "KeyZ" => KeyCode::KeyZ,
+        "Digit0" => KeyCode::Digit0,
+        "Digit1" => KeyCode::Digit1,
+        "Digit2" => KeyCode::Digit2,
+        "Digit3" => KeyCode::Digit3,
+        "Digit4" => KeyCode::Digit4,
+        "Digit5" => KeyCode::Digit5,
+        "Digit6" => KeyCode::Digit6,
+        "Digit7" => KeyCode::Digit7,
+        "Digit8" => KeyCode::Digit8,
+        "Digit9" => KeyCode::Digit9,
         "Space" => KeyCode::Space,
         "Enter" => KeyCode::Enter,
         "Escape" => KeyCode::Escape,
         "Tab" => KeyCode::Tab,
         "Backspace" => KeyCode::Backspace,
-        "ShiftLeft" => KeyCode::ShiftLeft, "ShiftRight" => KeyCode::ShiftRight,
-        "ControlLeft" => KeyCode::ControlLeft, "ControlRight" => KeyCode::ControlRight,
-        "AltLeft" => KeyCode::AltLeft, "AltRight" => KeyCode::AltRight,
-        "ArrowUp" => KeyCode::ArrowUp, "ArrowDown" => KeyCode::ArrowDown,
-        "ArrowLeft" => KeyCode::ArrowLeft, "ArrowRight" => KeyCode::ArrowRight,
-        "F1" => KeyCode::F1, "F2" => KeyCode::F2, "F3" => KeyCode::F3,
-        "F4" => KeyCode::F4, "F5" => KeyCode::F5, "F6" => KeyCode::F6,
-        "F7" => KeyCode::F7, "F8" => KeyCode::F8, "F9" => KeyCode::F9,
-        "F10" => KeyCode::F10, "F11" => KeyCode::F11, "F12" => KeyCode::F12,
+        "ShiftLeft" => KeyCode::ShiftLeft,
+        "ShiftRight" => KeyCode::ShiftRight,
+        "ControlLeft" => KeyCode::ControlLeft,
+        "ControlRight" => KeyCode::ControlRight,
+        "AltLeft" => KeyCode::AltLeft,
+        "AltRight" => KeyCode::AltRight,
+        "ArrowUp" => KeyCode::ArrowUp,
+        "ArrowDown" => KeyCode::ArrowDown,
+        "ArrowLeft" => KeyCode::ArrowLeft,
+        "ArrowRight" => KeyCode::ArrowRight,
+        "F1" => KeyCode::F1,
+        "F2" => KeyCode::F2,
+        "F3" => KeyCode::F3,
+        "F4" => KeyCode::F4,
+        "F5" => KeyCode::F5,
+        "F6" => KeyCode::F6,
+        "F7" => KeyCode::F7,
+        "F8" => KeyCode::F8,
+        "F9" => KeyCode::F9,
+        "F10" => KeyCode::F10,
+        "F11" => KeyCode::F11,
+        "F12" => KeyCode::F12,
         _ => return None,
     })
 }

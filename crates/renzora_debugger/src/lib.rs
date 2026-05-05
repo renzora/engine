@@ -8,8 +8,10 @@ pub mod state;
 
 use std::sync::{Arc, Mutex, RwLock};
 
+use bevy::diagnostic::{
+    EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
+};
 use bevy::prelude::*;
-use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, EntityCountDiagnosticsPlugin, SystemInformationDiagnosticsPlugin};
 use bevy_egui::egui;
 
 use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
@@ -34,7 +36,9 @@ struct DebugBridge {
 
 impl Default for DebugBridge {
     fn default() -> Self {
-        Self { pending: Arc::new(Mutex::new(DebugBridgeInner::default())) }
+        Self {
+            pending: Arc::new(Mutex::new(DebugBridgeInner::default())),
+        }
     }
 }
 
@@ -45,19 +49,49 @@ impl Default for DebugBridge {
 struct SystemProfilerPanel;
 
 impl EditorPanel for SystemProfilerPanel {
-    fn id(&self) -> &str { "system_profiler" }
-    fn title(&self) -> &str { "System Profiler" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::CHART_LINE_UP) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "system_profiler"
+    }
+    fn title(&self) -> &str {
+        "System Profiler"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::CHART_LINE_UP)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let diagnostics = world.get_resource::<DiagnosticsState>().cloned().unwrap_or_default();
-        let timing = world.get_resource::<SystemTimingState>().cloned().unwrap_or_default();
-        let render = world.get_resource::<RenderStats>().cloned().unwrap_or_default();
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
-        panels::system_profiler::render_system_profiler_content(ui, &diagnostics, &timing, &render, &theme);
+        let diagnostics = world
+            .get_resource::<DiagnosticsState>()
+            .cloned()
+            .unwrap_or_default();
+        let timing = world
+            .get_resource::<SystemTimingState>()
+            .cloned()
+            .unwrap_or_default();
+        let render = world
+            .get_resource::<RenderStats>()
+            .cloned()
+            .unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
+        panels::system_profiler::render_system_profiler_content(
+            ui,
+            &diagnostics,
+            &timing,
+            &render,
+            &theme,
+        );
     }
 }
 
@@ -68,16 +102,34 @@ impl EditorPanel for SystemProfilerPanel {
 struct MemoryProfilerPanel;
 
 impl EditorPanel for MemoryProfilerPanel {
-    fn id(&self) -> &str { "memory_profiler" }
-    fn title(&self) -> &str { "Memory Profiler" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MEMORY) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "memory_profiler"
+    }
+    fn title(&self) -> &str {
+        "Memory Profiler"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::MEMORY)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let state = world.get_resource::<MemoryProfilerState>().cloned().unwrap_or_default();
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let state = world
+            .get_resource::<MemoryProfilerState>()
+            .cloned()
+            .unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
         panels::memory::render_memory_profiler_content(ui, &state, &theme);
     }
 }
@@ -93,17 +145,32 @@ struct CameraDebugPanel {
 
 impl CameraDebugPanel {
     fn new(bridge: Arc<Mutex<DebugBridgeInner>>) -> Self {
-        Self { bridge, local: RwLock::new(CameraDebugState::default()) }
+        Self {
+            bridge,
+            local: RwLock::new(CameraDebugState::default()),
+        }
     }
 }
 
 impl EditorPanel for CameraDebugPanel {
-    fn id(&self) -> &str { "camera_debug" }
-    fn title(&self) -> &str { "Camera Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::VIDEO_CAMERA) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Right }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "camera_debug"
+    }
+    fn title(&self) -> &str {
+        "Camera Debug"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::VIDEO_CAMERA)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(state) = world.get_resource::<CameraDebugState>() {
@@ -111,14 +178,21 @@ impl EditorPanel for CameraDebugPanel {
                 local.cameras = state.cameras.clone();
                 // Preserve local UI state (selected_camera, toggles) but update data
                 if local.selected_camera.is_some() {
-                    if !local.cameras.iter().any(|c| c.entity == local.selected_camera.unwrap()) {
+                    if !local
+                        .cameras
+                        .iter()
+                        .any(|c| c.entity == local.selected_camera.unwrap())
+                    {
                         local.selected_camera = None;
                     }
                 }
             }
         }
 
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
 
         if let Ok(mut local) = self.local.write() {
             panels::camera::render_camera_debug_content(ui, &mut local, &theme);
@@ -152,17 +226,32 @@ struct CullingDebugPanel {
 
 impl CullingDebugPanel {
     fn new(bridge: Arc<Mutex<DebugBridgeInner>>) -> Self {
-        Self { bridge, local: RwLock::new(CullingDebugState::default()) }
+        Self {
+            bridge,
+            local: RwLock::new(CullingDebugState::default()),
+        }
     }
 }
 
 impl EditorPanel for CullingDebugPanel {
-    fn id(&self) -> &str { "culling_debug" }
-    fn title(&self) -> &str { "Culling Debug" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::EYE_SLASH) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Right }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "culling_debug"
+    }
+    fn title(&self) -> &str {
+        "Culling Debug"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::EYE_SLASH)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(state) = world.get_resource::<CullingDebugState>() {
@@ -177,7 +266,10 @@ impl EditorPanel for CullingDebugPanel {
             }
         }
 
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
 
         if let Ok(mut local) = self.local.write() {
             panels::culling::render_culling_debug_content(ui, &mut local, &theme);
@@ -210,16 +302,34 @@ impl EditorPanel for CullingDebugPanel {
 struct PerformancePanel;
 
 impl EditorPanel for PerformancePanel {
-    fn id(&self) -> &str { "performance" }
-    fn title(&self) -> &str { "Performance" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SPEEDOMETER) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "performance"
+    }
+    fn title(&self) -> &str {
+        "Performance"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::SPEEDOMETER)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let diagnostics = world.get_resource::<DiagnosticsState>().cloned().unwrap_or_default();
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let diagnostics = world
+            .get_resource::<DiagnosticsState>()
+            .cloned()
+            .unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
         panels::performance::render_performance_content(ui, &diagnostics, &theme);
     }
 }
@@ -231,16 +341,34 @@ impl EditorPanel for PerformancePanel {
 struct RenderStatsPanel;
 
 impl EditorPanel for RenderStatsPanel {
-    fn id(&self) -> &str { "render_stats" }
-    fn title(&self) -> &str { "Render Stats" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::MONITOR) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "render_stats"
+    }
+    fn title(&self) -> &str {
+        "Render Stats"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::MONITOR)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let render = world.get_resource::<RenderStats>().cloned().unwrap_or_default();
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let render = world
+            .get_resource::<RenderStats>()
+            .cloned()
+            .unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
         panels::render_stats::render_render_stats_content(ui, &render, &theme);
     }
 }
@@ -255,17 +383,31 @@ struct RenderPipelinePanel {
 
 impl RenderPipelinePanel {
     fn new() -> Self {
-        Self { local_graph: RwLock::new(RenderPipelineGraphData::default()) }
+        Self {
+            local_graph: RwLock::new(RenderPipelineGraphData::default()),
+        }
     }
 }
 
 impl EditorPanel for RenderPipelinePanel {
-    fn id(&self) -> &str { "render_pipeline" }
-    fn title(&self) -> &str { "Render Pipeline" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::FLOW_ARROW) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [400.0, 300.0] }
+    fn id(&self) -> &str {
+        "render_pipeline"
+    }
+    fn title(&self) -> &str {
+        "Render Pipeline"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::FLOW_ARROW)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [400.0, 300.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(world_graph) = world.get_resource::<RenderPipelineGraphData>() {
@@ -284,11 +426,19 @@ impl EditorPanel for RenderPipelinePanel {
             }
         }
 
-        let render = world.get_resource::<RenderStats>().cloned().unwrap_or_default();
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let render = world
+            .get_resource::<RenderStats>()
+            .cloned()
+            .unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
 
         if let Ok(mut local) = self.local_graph.write() {
-            panels::render_pipeline::render_render_pipeline_content(ui, &mut local, &render, &theme);
+            panels::render_pipeline::render_render_pipeline_content(
+                ui, &mut local, &render, &theme,
+            );
         }
     }
 }
@@ -303,17 +453,31 @@ struct EcsStatsPanel {
 
 impl EcsStatsPanel {
     fn new() -> Self {
-        Self { local: RwLock::new(EcsStatsState::default()) }
+        Self {
+            local: RwLock::new(EcsStatsState::default()),
+        }
     }
 }
 
 impl EditorPanel for EcsStatsPanel {
-    fn id(&self) -> &str { "ecs_stats" }
-    fn title(&self) -> &str { "ECS Stats" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::DATABASE) }
-    fn category(&self) -> &str { "Debug" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "ecs_stats"
+    }
+    fn title(&self) -> &str {
+        "ECS Stats"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::DATABASE)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(state) = world.get_resource::<EcsStatsState>() {
@@ -327,7 +491,10 @@ impl EditorPanel for EcsStatsPanel {
             }
         }
 
-        let theme = world.get_resource::<ThemeManager>().map(|tm| tm.active_theme.clone()).unwrap_or_default();
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
 
         if let Ok(mut local) = self.local.write() {
             panels::ecs_stats::render_ecs_stats_content(ui, &mut local, &theme);
@@ -394,17 +561,24 @@ impl Plugin for DebuggerPlugin {
 
         // Update systems
         use renzora_editor::SplashState;
-        app.add_systems(Update, (
-            update_diagnostics_state,
-            update_render_stats,
-            update_memory_profiler,
-            update_system_timing,
-            update_camera_debug_state,
-            update_culling_debug_state,
-            update_render_pipeline_timing,
-            sync_debug_bridge,
-        ).run_if(in_state(SplashState::Editor)));
-        app.add_systems(Update, update_ecs_stats.run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (
+                update_diagnostics_state,
+                update_render_stats,
+                update_memory_profiler,
+                update_system_timing,
+                update_camera_debug_state,
+                update_culling_debug_state,
+                update_render_pipeline_timing,
+                sync_debug_bridge,
+            )
+                .run_if(in_state(SplashState::Editor)),
+        );
+        app.add_systems(
+            Update,
+            update_ecs_stats.run_if(in_state(SplashState::Editor)),
+        );
 
         app.register_panel(SystemProfilerPanel);
         app.register_panel(MemoryProfilerPanel);
@@ -421,3 +595,4 @@ impl Plugin for DebuggerPlugin {
     }
 }
 
+renzora::add!(DebuggerPlugin, Editor);

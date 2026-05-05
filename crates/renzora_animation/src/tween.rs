@@ -61,17 +61,29 @@ impl EasingFunction {
             Self::EaseIn => t * t,
             Self::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
             Self::EaseInOut => {
-                if t < 0.5 { 2.0 * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(2) / 2.0 }
+                if t < 0.5 {
+                    2.0 * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
+                }
             }
             Self::EaseInQuad => t * t,
             Self::EaseOutQuad => 1.0 - (1.0 - t) * (1.0 - t),
             Self::EaseInOutQuad => {
-                if t < 0.5 { 2.0 * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(2) / 2.0 }
+                if t < 0.5 {
+                    2.0 * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
+                }
             }
             Self::EaseInCubic => t * t * t,
             Self::EaseOutCubic => 1.0 - (1.0 - t).powi(3),
             Self::EaseInOutCubic => {
-                if t < 0.5 { 4.0 * t * t * t } else { 1.0 - (-2.0 * t + 2.0).powi(3) / 2.0 }
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
             }
             Self::EaseInBack => {
                 let c = 1.70158;
@@ -90,12 +102,16 @@ impl EasingFunction {
                 }
             }
             Self::EaseInElastic => {
-                if t == 0.0 || t == 1.0 { return t; }
+                if t == 0.0 || t == 1.0 {
+                    return t;
+                }
                 let c = (2.0 * PI) / 3.0;
                 -(2.0f32.powf(10.0 * t - 10.0)) * ((t * 10.0 - 10.75) * c).sin()
             }
             Self::EaseOutElastic => {
-                if t == 0.0 || t == 1.0 { return t; }
+                if t == 0.0 || t == 1.0 {
+                    return t;
+                }
                 let c = (2.0 * PI) / 3.0;
                 2.0f32.powf(-10.0 * t) * ((t * 10.0 - 0.75) * c).sin() + 1.0
             }

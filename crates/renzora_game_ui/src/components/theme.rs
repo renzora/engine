@@ -237,10 +237,12 @@ impl UiTheme {
             shadow: None,
             opacity: 1.0,
             cursor: match widget_type {
-                UiWidgetType::Button | UiWidgetType::Checkbox | UiWidgetType::Toggle
-                | UiWidgetType::RadioButton | UiWidgetType::Slider | UiWidgetType::Dropdown => {
-                    UiCursor::Pointer
-                }
+                UiWidgetType::Button
+                | UiWidgetType::Checkbox
+                | UiWidgetType::Toggle
+                | UiWidgetType::RadioButton
+                | UiWidgetType::Slider
+                | UiWidgetType::Dropdown => UiCursor::Pointer,
                 UiWidgetType::TextInput => UiCursor::Text,
                 _ => UiCursor::Default,
             },

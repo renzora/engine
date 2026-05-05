@@ -34,9 +34,8 @@ impl EditorPanel for ParticlePreviewPanel {
         let user_textures = world.get_resource::<EguiUserTextures>();
 
         let texture_id = preview.and_then(|p| {
-            p.texture_id.or_else(|| {
-                user_textures.and_then(|ut| ut.image_id(p.handle.id()))
-            })
+            p.texture_id
+                .or_else(|| user_textures.and_then(|ut| ut.image_id(p.handle.id())))
         });
 
         if let Some(texture_id) = texture_id {

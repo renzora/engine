@@ -89,10 +89,7 @@ impl Default for ImportOverlayState {
 
 /// Drain progress messages from the background thread into overlay state.
 pub(crate) fn poll_import_task(world: &mut World) {
-    let has_task = world
-        .resource::<ImportOverlayState>()
-        .active_task
-        .is_some();
+    let has_task = world.resource::<ImportOverlayState>().active_task.is_some();
     if !has_task {
         return;
     }
@@ -117,8 +114,9 @@ pub(crate) fn poll_import_task(world: &mut World) {
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    progress_updates
-                        .push(ImportMsg::Error("Import thread terminated unexpectedly".into()));
+                    progress_updates.push(ImportMsg::Error(
+                        "Import thread terminated unexpectedly".into(),
+                    ));
                     finished = true;
                     break;
                 }
@@ -203,7 +201,16 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
     painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
 
     // Read theme
-    let (panel_bg, text_primary, text_secondary, accent, error_color, border_color, surface_mid, success_color) = {
+    let (
+        panel_bg,
+        text_primary,
+        text_secondary,
+        accent,
+        error_color,
+        border_color,
+        surface_mid,
+        success_color,
+    ) = {
         let theme_mgr = world.resource::<ThemeManager>();
         let t = &theme_mgr.active_theme;
         (
@@ -359,7 +366,10 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     }
 
                     if let Some(idx) = remove_idx {
-                        world.resource_mut::<ImportOverlayState>().pending_files.remove(idx);
+                        world
+                            .resource_mut::<ImportOverlayState>()
+                            .pending_files
+                            .remove(idx);
                     }
 
                     ui.add_space(4.0);
@@ -378,8 +388,11 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                         if ui
                             .add(
                                 egui::Button::new(
-                                    egui::RichText::new(format!("{} Browse...", regular::FOLDER_OPEN))
-                                        .size(11.0),
+                                    egui::RichText::new(format!(
+                                        "{} Browse...",
+                                        regular::FOLDER_OPEN
+                                    ))
+                                    .size(11.0),
                                 )
                                 .fill(surface_mid),
                             )
@@ -401,7 +414,9 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                                     }
                                 }
                                 if was_empty && state.settings.scale == 1.0 {
-                                    if let Some(scale) = renzora_import::units::detect_unit_scale(&paths[0]) {
+                                    if let Some(scale) =
+                                        renzora_import::units::detect_unit_scale(&paths[0])
+                                    {
                                         state.settings.scale = scale;
                                     }
                                 }
@@ -427,7 +442,9 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                             }
                         }
                         if was_empty && state.settings.scale == 1.0 {
-                            if let Some(scale) = renzora_import::units::detect_unit_scale(&dropped_in_zone[0]) {
+                            if let Some(scale) =
+                                renzora_import::units::detect_unit_scale(&dropped_in_zone[0])
+                            {
                                 state.settings.scale = scale;
                             }
                         }
@@ -527,7 +544,8 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                     );
                     ui.checkbox(
                         &mut state.settings.extract_materials,
-                        egui::RichText::new("Materials (→ materials/*.material)").color(text_primary),
+                        egui::RichText::new("Materials (→ materials/*.material)")
+                            .color(text_primary),
                     );
                 }
 
@@ -578,8 +596,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                 let browse_clicked = ui
                     .add(
                         egui::Button::new(
-                            egui::RichText::new(format!("{} Browse", regular::FOLDER))
-                                .size(11.0),
+                            egui::RichText::new(format!("{} Browse", regular::FOLDER)).size(11.0),
                         )
                         .fill(surface_mid),
                     )
@@ -607,7 +624,9 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                         && state.active_task.is_none()
                         && matches!(
                             progress,
-                            ImportProgress::Idle | ImportProgress::Done(_) | ImportProgress::Error(_)
+                            ImportProgress::Idle
+                                | ImportProgress::Done(_)
+                                | ImportProgress::Error(_)
                         );
                     (progress, can, state.log_entries.clone())
                 };
@@ -685,9 +704,13 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                                                 .color(text_primary),
                                         );
                                         ui.label(
-                                            egui::RichText::new(&entry.message)
-                                                .size(11.0)
-                                                .color(if entry.success { text_secondary } else { error_color }),
+                                            egui::RichText::new(&entry.message).size(11.0).color(
+                                                if entry.success {
+                                                    text_secondary
+                                                } else {
+                                                    error_color
+                                                },
+                                            ),
                                         );
                                     });
                                 }
@@ -717,9 +740,7 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                         if ui
                             .add(
                                 egui::Button::new(
-                                    egui::RichText::new("Cancel")
-                                        .size(13.0)
-                                        .color(text_primary),
+                                    egui::RichText::new("Cancel").size(13.0).color(text_primary),
                                 )
                                 .fill(surface_mid)
                                 .min_size(egui::vec2(80.0, 32.0)),
@@ -776,9 +797,7 @@ pub(crate) fn run_import(world: &mut World) {
             total,
             label: "Starting...".into(),
         };
-        state.active_task = Some(ImportTask {
-            rx: Mutex::new(rx),
-        });
+        state.active_task = Some(ImportTask { rx: Mutex::new(rx) });
     }
 
     // Spawn background thread
@@ -861,10 +880,7 @@ fn import_worker(
                     match renzora_import::optimize_glb(&result.glb_bytes, &opt_settings) {
                         Ok(optimized) => optimized,
                         Err(e) => {
-                            warn!(
-                                "[import] Mesh optimization failed for {}: {}",
-                                file_name, e
-                            );
+                            warn!("[import] Mesh optimization failed for {}: {}", file_name, e);
                             result.glb_bytes.clone()
                         }
                     }
@@ -926,14 +942,24 @@ fn import_worker(
                                 emissive: mat.emissive,
                                 base_color_texture: rewrite_uri(&mat.base_color_texture),
                                 normal_texture: rewrite_uri(&mat.normal_texture),
-                                metallic_roughness_texture: rewrite_uri(&mat.metallic_roughness_texture),
+                                metallic_roughness_texture: rewrite_uri(
+                                    &mat.metallic_roughness_texture,
+                                ),
                                 emissive_texture: rewrite_uri(&mat.emissive_texture),
                                 occlusion_texture: rewrite_uri(&mat.occlusion_texture),
-                                specular_glossiness_texture: rewrite_uri(&mat.specular_glossiness_texture),
+                                specular_glossiness_texture: rewrite_uri(
+                                    &mat.specular_glossiness_texture,
+                                ),
                                 alpha_mode: match mat.alpha_mode {
-                                    renzora_import::ExtractedAlphaMode::Opaque => renzora::core::PbrAlphaMode::Opaque,
-                                    renzora_import::ExtractedAlphaMode::Mask => renzora::core::PbrAlphaMode::Mask,
-                                    renzora_import::ExtractedAlphaMode::Blend => renzora::core::PbrAlphaMode::Blend,
+                                    renzora_import::ExtractedAlphaMode::Opaque => {
+                                        renzora::core::PbrAlphaMode::Opaque
+                                    }
+                                    renzora_import::ExtractedAlphaMode::Mask => {
+                                        renzora::core::PbrAlphaMode::Mask
+                                    }
+                                    renzora_import::ExtractedAlphaMode::Blend => {
+                                        renzora::core::PbrAlphaMode::Blend
+                                    }
                                 },
                                 alpha_cutoff: mat.alpha_cutoff,
                                 double_sided: mat.double_sided,
@@ -948,17 +974,12 @@ fn import_worker(
                 if settings.extract_textures && !result.extracted_textures.is_empty() {
                     let tex_dir = model_dir.join("textures");
                     if let Err(e) = std::fs::create_dir_all(&tex_dir) {
-                        all_warnings
-                            .push(format!("textures dir: {}", e));
+                        all_warnings.push(format!("textures dir: {}", e));
                     } else {
                         for tex in &result.extracted_textures {
-                            let tex_path =
-                                tex_dir.join(format!("{}.{}", tex.name, tex.extension));
+                            let tex_path = tex_dir.join(format!("{}.{}", tex.name, tex.extension));
                             if let Err(e) = std::fs::write(&tex_path, &tex.data) {
-                                all_warnings.push(format!(
-                                    "texture '{}': {}",
-                                    tex.name, e
-                                ));
+                                all_warnings.push(format!("texture '{}': {}", tex.name, e));
                             }
                         }
                     }
@@ -1059,11 +1080,17 @@ fn import_worker(
                         None
                     } else {
                         match ext_lower.as_str() {
-                            "fbx" => Some(renzora_import::extract_animations_from_fbx(source_path, &anim_dir)),
-                            "usd" | "usda" | "usdc" | "usdz" => {
-                                Some(renzora_import::extract_animations_from_usd(source_path, &anim_dir))
-                            }
-                            "bvh" => Some(renzora_import::extract_animations_from_bvh(source_path, &anim_dir)),
+                            "fbx" => Some(renzora_import::extract_animations_from_fbx(
+                                source_path,
+                                &anim_dir,
+                            )),
+                            "usd" | "usda" | "usdc" | "usdz" => Some(
+                                renzora_import::extract_animations_from_usd(source_path, &anim_dir),
+                            ),
+                            "bvh" => Some(renzora_import::extract_animations_from_bvh(
+                                source_path,
+                                &anim_dir,
+                            )),
                             _ => None,
                         }
                     };
@@ -1101,8 +1128,7 @@ fn import_worker(
                             }
                         }
                         Err(fb_err) => {
-                            fallback_note =
-                                Some(format!("animation fallback failed: {}", fb_err));
+                            fallback_note = Some(format!("animation fallback failed: {}", fb_err));
                         }
                     }
                 }

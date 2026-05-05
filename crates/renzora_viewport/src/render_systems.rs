@@ -9,8 +9,8 @@
 //!     any source material type through the generic
 //!     [`apply_visualization_mode_for<M>`] system.
 
+use bevy::pbr::{wireframe::WireframeConfig, Material, MeshMaterial3d};
 use bevy::prelude::*;
-use bevy::pbr::{Material, MeshMaterial3d, wireframe::WireframeConfig};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -91,7 +91,10 @@ pub struct DebugMaterialCache<M: Asset> {
 }
 impl<M: Asset> Default for DebugMaterialCache<M> {
     fn default() -> Self {
-        Self { map: HashMap::new(), _p: PhantomData }
+        Self {
+            map: HashMap::new(),
+            _p: PhantomData,
+        }
     }
 }
 
@@ -102,7 +105,12 @@ pub struct LastVizState<M: Asset> {
     _p: PhantomData<M>,
 }
 impl<M: Asset> Default for LastVizState<M> {
-    fn default() -> Self { Self { mode: None, _p: PhantomData } }
+    fn default() -> Self {
+        Self {
+            mode: None,
+            _p: PhantomData,
+        }
+    }
 }
 
 const MODE_FLAT_CLAY: f32 = 5.0;
@@ -207,7 +215,9 @@ pub fn update_render_toggles(
         for id in &ids {
             if !original_states.states.contains_key(id) {
                 if let Some(m) = materials.get(*id) {
-                    original_states.states.insert(*id, MaterialState::capture(m));
+                    original_states
+                        .states
+                        .insert(*id, MaterialState::capture(m));
                 }
             }
         }
@@ -235,7 +245,9 @@ pub fn update_render_toggles(
     for id in &ids {
         if !original_states.states.contains_key(id) {
             if let Some(m) = materials.get(*id) {
-                original_states.states.insert(*id, MaterialState::capture(m));
+                original_states
+                    .states
+                    .insert(*id, MaterialState::capture(m));
             }
         }
     }
@@ -251,7 +263,9 @@ pub fn update_render_toggles(
 
     for id in ids {
         let original = original_states.states.get(&id).cloned();
-        let Some(material) = materials.get_mut(id) else { continue };
+        let Some(material) = materials.get_mut(id) else {
+            continue;
+        };
         if let Some(ref orig) = original {
             orig.apply_to(material);
         }
@@ -271,7 +285,10 @@ fn apply_swap_generic<M: Material>(
     debug_materials: &mut Assets<ViewportDebugMaterial>,
     source_materials: &Assets<M>,
     q_src: &Query<(Entity, &MeshMaterial3d<M>), Without<ViewportDebugBackup<M>>>,
-    q_swapped: &Query<(Entity, &ViewportDebugBackup<M>), With<MeshMaterial3d<ViewportDebugMaterial>>>,
+    q_swapped: &Query<
+        (Entity, &ViewportDebugBackup<M>),
+        With<MeshMaterial3d<ViewportDebugMaterial>>,
+    >,
     desired_fn: fn(&ViewportSettings) -> Option<f32>,
 ) {
     let desired = desired_fn(settings);
@@ -282,7 +299,8 @@ fn apply_swap_generic<M: Material>(
         if changed {
             last_viz.mode = None;
             for (entity, backup) in q_swapped.iter() {
-                commands.entity(entity)
+                commands
+                    .entity(entity)
                     .insert(MeshMaterial3d(backup.0.clone()))
                     .remove::<ViewportDebugBackup<M>>()
                     .remove::<MeshMaterial3d<ViewportDebugMaterial>>();
@@ -305,27 +323,32 @@ fn apply_swap_generic<M: Material>(
         let src_handle = mm.0.clone();
         let src_id = src_handle.id();
 
-        let dbg_handle = cache.map.entry(src_id).or_insert_with(|| {
-            let mut dbg = ViewportDebugMaterial::default();
-            // If this is a StandardMaterial we can fill scalar roughness/metallic
-            // and the MR texture; for other materials those stay defaults and the
-            // shader falls back to scalar values.
-            let src_any = source_materials.get(src_id);
-            let any_mat: Option<&dyn std::any::Any> = src_any.map(|m| m as &dyn std::any::Any);
-            if let Some(std_mat) = any_mat.and_then(|a| a.downcast_ref::<StandardMaterial>()) {
-                dbg.params = standard_debug_params(mode_idx, std_mat);
-                dbg.mr_texture = std_mat.metallic_roughness_texture.clone();
-            } else {
-                dbg.params = default_debug_params(mode_idx);
-            }
-            debug_materials.add(dbg)
-        }).clone();
+        let dbg_handle = cache
+            .map
+            .entry(src_id)
+            .or_insert_with(|| {
+                let mut dbg = ViewportDebugMaterial::default();
+                // If this is a StandardMaterial we can fill scalar roughness/metallic
+                // and the MR texture; for other materials those stay defaults and the
+                // shader falls back to scalar values.
+                let src_any = source_materials.get(src_id);
+                let any_mat: Option<&dyn std::any::Any> = src_any.map(|m| m as &dyn std::any::Any);
+                if let Some(std_mat) = any_mat.and_then(|a| a.downcast_ref::<StandardMaterial>()) {
+                    dbg.params = standard_debug_params(mode_idx, std_mat);
+                    dbg.mr_texture = std_mat.metallic_roughness_texture.clone();
+                } else {
+                    dbg.params = default_debug_params(mode_idx);
+                }
+                debug_materials.add(dbg)
+            })
+            .clone();
 
         if let Some(dbg) = debug_materials.get_mut(&dbg_handle) {
             dbg.params.config.x = mode_idx;
         }
 
-        commands.entity(entity)
+        commands
+            .entity(entity)
             .insert(ViewportDebugBackup::<M>(src_handle))
             .insert(MeshMaterial3d(dbg_handle))
             .remove::<MeshMaterial3d<M>>();
@@ -343,10 +366,22 @@ pub fn apply_visualization_mode_for<M: Material>(
     mut debug_materials: ResMut<Assets<ViewportDebugMaterial>>,
     source_materials: Res<Assets<M>>,
     q_src: Query<(Entity, &MeshMaterial3d<M>), Without<ViewportDebugBackup<M>>>,
-    q_swapped: Query<(Entity, &ViewportDebugBackup<M>), With<MeshMaterial3d<ViewportDebugMaterial>>>,
+    q_swapped: Query<
+        (Entity, &ViewportDebugBackup<M>),
+        With<MeshMaterial3d<ViewportDebugMaterial>>,
+    >,
 ) {
-    apply_swap_generic(&mut commands, &settings, &mut last_viz, &mut cache,
-        &mut debug_materials, &source_materials, &q_src, &q_swapped, desired_mode);
+    apply_swap_generic(
+        &mut commands,
+        &settings,
+        &mut last_viz,
+        &mut cache,
+        &mut debug_materials,
+        &source_materials,
+        &q_src,
+        &q_swapped,
+        desired_mode,
+    );
 }
 
 /// Viz-swap system for custom materials (terrain, foliage, etc.). Also fires
@@ -359,10 +394,22 @@ pub fn apply_visualization_mode_for_custom<M: Material>(
     mut debug_materials: ResMut<Assets<ViewportDebugMaterial>>,
     source_materials: Res<Assets<M>>,
     q_src: Query<(Entity, &MeshMaterial3d<M>), Without<ViewportDebugBackup<M>>>,
-    q_swapped: Query<(Entity, &ViewportDebugBackup<M>), With<MeshMaterial3d<ViewportDebugMaterial>>>,
+    q_swapped: Query<
+        (Entity, &ViewportDebugBackup<M>),
+        With<MeshMaterial3d<ViewportDebugMaterial>>,
+    >,
 ) {
-    apply_swap_generic(&mut commands, &settings, &mut last_viz, &mut cache,
-        &mut debug_materials, &source_materials, &q_src, &q_swapped, desired_mode_custom);
+    apply_swap_generic(
+        &mut commands,
+        &settings,
+        &mut last_viz,
+        &mut cache,
+        &mut debug_materials,
+        &source_materials,
+        &q_src,
+        &q_swapped,
+        desired_mode_custom,
+    );
 }
 
 // ── System: shadow toggle ───────────────────────────────────────────────────

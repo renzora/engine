@@ -139,7 +139,8 @@ pub fn build_brush_layer_mesh(
             .iter()
             .find(|c| c.chunk_x == cx && c.chunk_z == cz)
             .map(|c| {
-                let normalized = c.get_height(vx.min(chunk_res - 1), vz.min(chunk_res - 1), chunk_res);
+                let normalized =
+                    c.get_height(vx.min(chunk_res - 1), vz.min(chunk_res - 1), chunk_res);
                 terrain.min_height + normalized * height_range
             })
             .unwrap_or(terrain.min_height)
@@ -219,7 +220,12 @@ pub fn build_brush_layer_mesh(
 pub fn regenerate_brush_layer_mesh_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut layer_query: Query<(Entity, &mut TerrainBrushLayer, &TerrainBrushLayerOf, Option<&Mesh3d>)>,
+    mut layer_query: Query<(
+        Entity,
+        &mut TerrainBrushLayer,
+        &TerrainBrushLayerOf,
+        Option<&Mesh3d>,
+    )>,
     terrain_query: Query<&TerrainData>,
     chunk_query: Query<(&TerrainChunkData, &TerrainChunkOf)>,
 ) {
@@ -266,7 +272,11 @@ pub fn apply_brush_layer_material_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     vfs: Res<renzora::core::VirtualFileReader>,
-    mut layer_query: Query<(Entity, &mut TerrainBrushLayer, Option<&MeshMaterial3d<StandardMaterial>>)>,
+    mut layer_query: Query<(
+        Entity,
+        &mut TerrainBrushLayer,
+        Option<&MeshMaterial3d<StandardMaterial>>,
+    )>,
 ) {
     for (entity, mut layer, existing_mat) in layer_query.iter_mut() {
         if !layer.material_dirty && existing_mat.is_some() {
@@ -301,7 +311,8 @@ fn build_material_for_layer(
         };
     };
 
-    let (albedo, normal, arm) = extract_layer_textures_from_json(&json).unwrap_or((None, None, None));
+    let (albedo, normal, arm) =
+        extract_layer_textures_from_json(&json).unwrap_or((None, None, None));
 
     let mut mat = StandardMaterial {
         base_color: Color::WHITE,
@@ -351,7 +362,9 @@ fn extract_layer_textures_from_json(
             c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin_name)
         })?;
         let from_node_id = conn["from_node"].as_u64()?;
-        let source = nodes.iter().find(|n| n["id"].as_u64() == Some(from_node_id))?;
+        let source = nodes
+            .iter()
+            .find(|n| n["id"].as_u64() == Some(from_node_id))?;
         let node_type = source["node_type"].as_str()?;
         if !node_type.contains("texture") {
             return None;

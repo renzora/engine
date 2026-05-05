@@ -81,10 +81,7 @@ impl TabAssetCache {
     /// below as `MeshInstanceData` entities arrive. Idempotent: storing
     /// the same path twice replaces the handle with itself.
     fn record(&mut self, tab_id: u64, path: String, handle: Handle<Gltf>) {
-        self.by_tab
-            .entry(tab_id)
-            .or_default()
-            .insert(path, handle);
+        self.by_tab.entry(tab_id).or_default().insert(path, handle);
     }
 }
 
@@ -102,7 +99,9 @@ pub fn cache_added_mesh_instances(
     new_instances: Query<&MeshInstanceData, Added<MeshInstanceData>>,
 ) {
     let Some(tabs) = tabs else { return };
-    let Some(active_id) = tabs.active_tab_id() else { return };
+    let Some(active_id) = tabs.active_tab_id() else {
+        return;
+    };
 
     for instance in new_instances.iter() {
         let Some(ref path) = instance.model_path else {
@@ -121,10 +120,7 @@ pub fn cache_added_mesh_instances(
 /// `TabClosed`. Bevy's per-handle refcount handles cross-tab sharing —
 /// if another tab still references the same path, its own handle keeps
 /// the asset alive and only the closed tab's claim is released.
-pub fn evict_closed_tab(
-    trigger: On<TabClosed>,
-    mut cache: ResMut<TabAssetCache>,
-) {
+pub fn evict_closed_tab(trigger: On<TabClosed>, mut cache: ResMut<TabAssetCache>) {
     cache.drop_tab(trigger.event().tab_id);
 }
 

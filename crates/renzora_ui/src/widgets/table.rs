@@ -32,7 +32,9 @@ pub struct TableSort {
 }
 
 impl Default for SortOrder {
-    fn default() -> Self { SortOrder::None }
+    fn default() -> Self {
+        SortOrder::None
+    }
 }
 
 /// Render a simple table. `headers` labels each column, `row_count` is the
@@ -58,7 +60,8 @@ pub fn table(
     ui.horizontal(|ui| {
         for (i, h) in headers.iter().enumerate() {
             let (cell_rect, resp) = ui.allocate_exact_size(Vec2::new(col_w, 20.0), Sense::click());
-            ui.painter().rect_filled(cell_rect, 0.0, theme.surfaces.faint.to_color32());
+            ui.painter()
+                .rect_filled(cell_rect, 0.0, theme.surfaces.faint.to_color32());
             let label = if sort.column == Some(i) {
                 match sort.order {
                     SortOrder::Ascending => format!("{h} ▲"),
@@ -89,30 +92,30 @@ pub fn table(
         }
     });
     ui.painter().line_segment(
-        [
-            ui.min_rect().left_bottom(),
-            ui.min_rect().right_bottom(),
-        ],
+        [ui.min_rect().left_bottom(), ui.min_rect().right_bottom()],
         Stroke::new(1.0, theme.widgets.border.to_color32()),
     );
 
     // Rows
-    egui::ScrollArea::vertical().id_salt(id).auto_shrink([false, false]).show_rows(
-        ui,
-        row_height,
-        row_count,
-        |ui, range| {
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .auto_shrink([false, false])
+        .show_rows(ui, row_height, row_count, |ui, range| {
             for row in range {
                 let bg = if row % 2 == 0 {
                     theme.panels.inspector_row_even.to_color32()
                 } else {
                     theme.panels.inspector_row_odd.to_color32()
                 };
-                let (row_rect, _) =
-                    ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::hover());
+                let (row_rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), row_height),
+                    Sense::hover(),
+                );
                 ui.painter().rect_filled(row_rect, 0.0, bg);
                 ui.scope_builder(
-                    egui::UiBuilder::new().max_rect(row_rect).layout(egui::Layout::left_to_right(egui::Align::Center)),
+                    egui::UiBuilder::new()
+                        .max_rect(row_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
                     |ui| {
                         for col in 0..col_count {
                             let cell_rect = egui::Rect::from_min_size(
@@ -120,17 +123,16 @@ pub fn table(
                                 Vec2::new(col_w, row_height),
                             );
                             ui.scope_builder(
-                                egui::UiBuilder::new().max_rect(cell_rect).layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                ),
+                                egui::UiBuilder::new()
+                                    .max_rect(cell_rect)
+                                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
                                 |ui| cell(ui, row, col),
                             );
                         }
                     },
                 );
             }
-        },
-    );
+        });
 
     ui.memory_mut(|m| m.data.insert_temp(id, sort));
     sort

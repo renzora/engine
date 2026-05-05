@@ -37,8 +37,12 @@ fn init_avian_mesh_colliders(
     pending: Query<(Entity, &Mesh3d, &CollisionShapeData), With<PendingMeshCollider>>,
 ) {
     for (entity, mesh_ref, shape) in &pending {
-        let Some(mesh) = meshes.get(&mesh_ref.0) else { continue };
-        let Some(collider) = trimesh_from_mesh(mesh) else { continue };
+        let Some(mesh) = meshes.get(&mesh_ref.0) else {
+            continue;
+        };
+        let Some(collider) = trimesh_from_mesh(mesh) else {
+            continue;
+        };
 
         let mut ec = commands.entity(entity);
         ec.try_insert((
@@ -63,12 +67,20 @@ fn trimesh_from_mesh(mesh: &Mesh) -> Option<Collider> {
         VertexAttributeValues::Float32x3(v) => v,
         _ => return None,
     };
-    let vertices: Vec<Vec3> = positions.iter().map(|p| Vec3::new(p[0], p[1], p[2])).collect();
+    let vertices: Vec<Vec3> = positions
+        .iter()
+        .map(|p| Vec3::new(p[0], p[1], p[2]))
+        .collect();
     let indices: Vec<[u32; 3]> = match mesh.indices()? {
         Indices::U32(idx) => idx.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect(),
-        Indices::U16(idx) => idx.chunks_exact(3).map(|c| [c[0] as u32, c[1] as u32, c[2] as u32]).collect(),
+        Indices::U16(idx) => idx
+            .chunks_exact(3)
+            .map(|c| [c[0] as u32, c[1] as u32, c[2] as u32])
+            .collect(),
     };
-    if indices.is_empty() { return None; }
+    if indices.is_empty() {
+        return None;
+    }
     Some(Collider::trimesh(vertices, indices))
 }
 
@@ -127,7 +139,11 @@ pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &P
 }
 
 /// Spawn Avian collider components from CollisionShapeData.
-pub fn spawn_collision_shape(commands: &mut Commands, entity: Entity, shape_data: &CollisionShapeData) {
+pub fn spawn_collision_shape(
+    commands: &mut Commands,
+    entity: Entity,
+    shape_data: &CollisionShapeData,
+) {
     let collider = match shape_data.shape_type {
         CollisionShapeType::Box => Collider::cuboid(
             shape_data.half_extents.x * 2.0,
@@ -237,4 +253,3 @@ fn sync_physics_properties(
         state.substeps = substeps.0;
     }
 }
-

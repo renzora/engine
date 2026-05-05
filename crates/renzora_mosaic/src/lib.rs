@@ -2,8 +2,6 @@ use bevy::prelude::*;
 use serde;
 use renzora_postprocess;
 #[cfg(feature = "editor")]
-use renzora::editor as renzora_editor;
-#[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "mosaic.wgsl", name = "Mosaic", icon = "GRID_FOUR")]

@@ -36,8 +36,12 @@ Linux: `sudo apt install libwayland-dev` before building.
 | `makers docker-build` | Build the Docker image (toolchain -- first time only) |
 | `makers docker-create` | Create a persistent build container for this directory |
 | `makers docker-run` | Build all platforms (fast after first run -- cache persists) |
+| `makers docker-run -- <platforms>` | Build a subset, e.g. `makers docker-run -- windows linux` |
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
+| `makers upx` | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow). Pass platform paths after `--` to scope it. |
+
+Pass platforms after `--` to skip the rest. Recognized: `linux`, `windows`, `macos` (= both archs), `macos-x64`, `macos-arm64`, `wasm`, `android` (= both archs), `android-arm64`, `android-x86`, `ios`. Order doesn't matter and unknown names are silently no-ops (typo-safe).
 
 Each build target (editor, runtime, server) is isolated with its own feature flag and target directory. No feature unification, no hash mixing. Switching between local targets is instant after the first build of each.
 
@@ -47,7 +51,8 @@ Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `di
 
 The image cross-compiles to all platforms from a single `linux/amd64` container. A few one-time setup steps depending on your host:
 
-- **macOS cross-compilation**: Apple's SDK isn't redistributable, so you extract it from your own Xcode install once and drop the tarball at `docker/sdk/MacOSX26.2.sdk.tar.bz2`. See `docker/sdk/README.md` for the extraction command.
+- **macOS cross-compilation**: Apple's SDK isn't redistributable, so you extract it from your own Xcode install once and drop the tarball at `docker/sdk/MacOSX26.1.sdk.tar.xz`. See `docker/sdk/README.md` for the extraction command.
+- **iOS cross-compilation**: same story for iPhoneOS — drop `docker/sdk/iPhoneOS15.5.sdk.tar.xz`. The README links to a community-maintained SDK release if you don't have a Mac handy.
 - **Apple Silicon hosts (M1/M2/M3/M4)**: Docker Desktop's default QEMU emulation is flaky with `apt-get` (you'll see random I/O errors mid-install). Enable Rosetta instead: **Docker Desktop → Settings → General → Use Virtualization framework**, then **Features in development → Use Rosetta for x86_64/amd64 emulation**. [OrbStack](https://orbstack.dev) is a lighter alternative that handles this out of the box.
 - **Windows / x86_64 Linux hosts**: no extra setup — the image builds natively.
 
@@ -68,22 +73,34 @@ Core editor infrastructure (viewport, camera, gizmo, grid, scene, keybindings, c
 
 ## Plugin SDK
 
-Plugins are Rust `dylib` crates that get full Bevy ECS access -- `Commands`, `Query`, `Res`, `ResMut`, `Assets`, everything. No FFI wrappers or translation layers.
+Plugins are Rust crates that get full Bevy ECS access -- `Commands`, `Query`, `Res`, `ResMut`, `Assets`, everything. No FFI wrappers or translation layers.
 
 The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` macro, editor framework traits (`EditorPanel`, `ThemeManager`), and shared types. It does not re-export engine internals -- plugins interact with engine systems through the ECS.
 
-### Writing a Plugin
+### Scaffolding
 
-Add a dependency on the SDK crate and write a standard Bevy plugin:
+Use the workspace task to create a plugin:
+
+```bash
+makers add cool_fx              # engine plugin (Runtime + Editor, baked into binary)
+makers add my_panel --editor    # editor-only plugin
+makers add my_effect --dylib    # distribution plugin (.dll/.so/.dylib for plugins/)
+makers remove cool_fx           # delete one
+```
+
+`makers add` creates `crates/renzora_<name>/` with a default skeleton. Static plugins (default and `--editor`) are registered as a dep of `renzora_runtime`; the `crates/*` workspace glob auto-includes the new directory. Distribution plugins (`--dylib`) are built standalone (`crate-type = ["cdylib"]`, `renzora/dlopen` feature) and aren't added to `renzora_runtime` -- they're loaded at runtime by `dynamic_plugin_loader` from the `plugins/` directory next to the binary. Adding a plugin is a single command, no manual edits to the runtime crate.
+
+### Plugin Crate
+
+The scaffold writes this for you:
 
 ```rust
 use bevy::prelude::*;
-use renzora::prelude::*;
 
 #[derive(Default)]
-pub struct MyPlugin;
+pub struct CoolFxPlugin;
 
-impl Plugin for MyPlugin {
+impl Plugin for CoolFxPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
     }
@@ -93,52 +110,62 @@ fn setup(mut commands: Commands) {
     commands.spawn(PointLight::default());
 }
 
-renzora::add!(MyPlugin);
+renzora::add!(CoolFxPlugin);
 ```
-
-### Plugin Cargo.toml
 
 ```toml
 [package]
-name = "my_plugin"
+name = "renzora_cool_fx"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["dylib"]
-
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../../crates/renzora" }
+renzora = { path = "../renzora", default-features = false }
 ```
+
+No `[lib]` section needed -- the crate defaults to `rlib`, gets statically linked into the host binary, and self-registers via an `inventory` ctor at process startup. Same on desktop, iOS staticlib, Android cdylib, and WASM.
 
 ### Plugin Scope
 
 Control when your plugin loads:
 
 ```rust
-add!(MyPlugin);                // editor + exported games (default)
-add!(MyPlugin, Editor);        // editor only
-add!(MyPlugin, Runtime);       // exported games only
+renzora::add!(MyPlugin);                          // editor + exported games (default)
+renzora::add!(MyPlugin, Editor);                  // editor only
+renzora::add!(MyPlugin, Runtime);                 // exported games only
+renzora::add!(MyPlugin, EditorAndRuntime, priority = -100); // load earlier
 ```
 
-### Building Plugins
+The macro emits an `inventory::submit!` block; the runtime iterates the registry once at startup and calls `app.add_plugins(...)` on every entry whose scope matches the host. No central enumeration, no manual `add_plugins` to keep in sync.
 
-1. Create your plugin crate under `crates/` (or anywhere in the repo)
-2. Add it to the `[workspace]` members in the root `Cargo.toml`
-3. Run `makers build-editor` (or `build-runtime` / `build-server`)
+### Distribution Plugins
 
-The plugin DLL appears in `dist/<platform>/<target>/plugins/` with a matching `bevy_dylib` hash.
+If you want to ship a plugin as a standalone file users can drop into `<renzora>/plugins/`, scaffold it with `--dylib`:
 
-Do **not** build plugins standalone (`cargo build -p my_plugin`) -- this may produce a different `bevy_dylib` hash and the plugin won't load.
+```sh
+makers add cool_fx --dylib
+```
+
+That scaffold uses `crate-type = ["cdylib"]` and enables the `renzora/dlopen` feature, which makes `renzora::add!` emit unmangled `extern "C"` exports (`plugin_create`, `plugin_scope`, `plugin_bevy_hash`). Build with `cargo build -p renzora_cool_fx --profile dist` and copy the resulting `.dll`/`.so`/`.dylib` into the engine's `plugins/` directory. The host's `dynamic_plugin_loader` finds it at startup, validates the bevy ABI hash, and loads it. The plugin must be built against the same bevy + renzora versions as the host -- otherwise the hash check rejects it.
 
 ### Loading
 
-The engine loads plugins from two locations on startup (before `app.run()`):
+**Desktop**: workspace plugins are baked into the binary (rlib). Distribution plugins are dlopen'd at startup from:
 - `plugins/` -- next to the binary
 - `<project>/plugins/` -- project-specific plugins (editor only)
 
-If the same plugin exists in both locations, the first one loaded takes priority. Restart the editor to pick up new plugins.
+Restart the editor to pick up new distribution plugins.
+
+**Mobile / WASM**: there's no runtime plugin loading (Apple/Google Play forbid it; WASM has no dlopen). All plugins are statically linked at build time, registered through the same `inventory` ctor path. From the plugin author's view, the `renzora::add!` call site is identical to desktop.
+
+### Building
+
+For desktop development, just `makers run` -- workspace builds compile the engine + every plugin together with matching `bevy_dylib` hashes.
+
+For per-target builds: `makers build-editor`, `makers build-runtime`, or `makers build-server`. Plugin DLLs land in `dist/<platform>/<target>/plugins/`.
+
+Don't build plugins standalone (`cargo build -p my_plugin` from outside `--workspace`) -- it may produce a different `bevy_dylib` hash and the plugin won't load. Stay inside `--workspace`.
 
 ## Creating Components
 
@@ -210,7 +237,7 @@ Docker builds are scoped per directory. Running `makers docker-create` creates a
 - Each fork produces its own editor, runtime, and server binaries with its own plugin hashes
 - No cross-contamination between forks, even if they share the same Docker image
 
-The Docker **image** (`makers docker-build`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross, MinGW, Android NDK), and system dependencies. The **container** is your build environment with cached compilation artifacts.
+The Docker **image** (`makers docker-build`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross for macOS/iOS, xwin for Windows MSVC, Android NDK, Clang 19 with LLD for everything), and system dependencies. The **container** is your build environment with cached compilation artifacts.
 
 ```bash
 # In ~/projects/my-rpg-engine/

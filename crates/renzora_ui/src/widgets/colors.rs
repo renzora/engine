@@ -27,7 +27,10 @@ pub fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
         for col in 0..cols {
             let color = if (row + col) % 2 == 0 { light } else { dark };
             let cell = egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + col as f32 * size, rect.min.y + row as f32 * size),
+                egui::pos2(
+                    rect.min.x + col as f32 * size,
+                    rect.min.y + row as f32 * size,
+                ),
                 Vec2::splat(size),
             )
             .intersect(rect);

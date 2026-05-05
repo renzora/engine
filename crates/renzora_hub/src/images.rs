@@ -47,11 +47,8 @@ impl ImageCache {
                         [img.width as usize, img.height as usize],
                         &img.rgba,
                     );
-                    let handle = ctx.load_texture(
-                        &img.url,
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    );
+                    let handle =
+                        ctx.load_texture(&img.url, color_image, egui::TextureOptions::LINEAR);
                     self.textures.insert(img.url, handle);
                 }
                 Err(url) => {

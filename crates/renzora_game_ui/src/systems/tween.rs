@@ -2,12 +2,18 @@
 
 use bevy::prelude::*;
 
-use crate::components::{TweenComplete, UiTween, UiTweenProperty, UiFill, UiOpacity};
+use crate::components::{TweenComplete, UiFill, UiOpacity, UiTween, UiTweenProperty};
 
 pub fn ui_tween_system(
     mut commands: Commands,
     time: Res<Time>,
-    mut tweens: Query<(Entity, &mut UiTween, &mut Node, Option<&mut UiOpacity>, Option<&mut UiFill>)>,
+    mut tweens: Query<(
+        Entity,
+        &mut UiTween,
+        &mut Node,
+        Option<&mut UiOpacity>,
+        Option<&mut UiFill>,
+    )>,
 ) {
     let dt = time.delta_secs();
 

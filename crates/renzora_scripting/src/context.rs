@@ -286,9 +286,15 @@ impl ScriptContext {
             ScriptCommand::Translate { x, y, z } => self.translation = Some(Vec3::new(x, y, z)),
             ScriptCommand::Rotate { x, y, z } => self.rotation_delta = Some(Vec3::new(x, y, z)),
             ScriptCommand::LookAt { x, y, z } => self.look_at_target = Some(Vec3::new(x, y, z)),
-            ScriptCommand::ParentSetPosition { x, y, z } => self.parent_new_position = Some(Vec3::new(x, y, z)),
-            ScriptCommand::ParentSetRotation { x, y, z } => self.parent_new_rotation = Some(Vec3::new(x, y, z)),
-            ScriptCommand::ParentTranslate { x, y, z } => self.parent_translation = Some(Vec3::new(x, y, z)),
+            ScriptCommand::ParentSetPosition { x, y, z } => {
+                self.parent_new_position = Some(Vec3::new(x, y, z))
+            }
+            ScriptCommand::ParentSetRotation { x, y, z } => {
+                self.parent_new_rotation = Some(Vec3::new(x, y, z))
+            }
+            ScriptCommand::ParentTranslate { x, y, z } => {
+                self.parent_translation = Some(Vec3::new(x, y, z))
+            }
             ScriptCommand::ChildSetPosition { name, x, y, z } => {
                 self.child_changes.entry(name).or_default().new_position = Some(Vec3::new(x, y, z));
             }
@@ -302,11 +308,19 @@ impl ScriptContext {
                 self.env_sun_azimuth = Some(azimuth);
                 self.env_sun_elevation = Some(elevation);
             }
-            ScriptCommand::SetAmbientBrightness { brightness } => self.env_ambient_brightness = Some(brightness),
+            ScriptCommand::SetAmbientBrightness { brightness } => {
+                self.env_ambient_brightness = Some(brightness)
+            }
             ScriptCommand::SetAmbientColor { r, g, b } => self.env_ambient_color = Some((r, g, b)),
             ScriptCommand::SetSkyTopColor { r, g, b } => self.env_sky_top_color = Some((r, g, b)),
-            ScriptCommand::SetSkyHorizonColor { r, g, b } => self.env_sky_horizon_color = Some((r, g, b)),
-            ScriptCommand::SetFog { enabled, start, end } => {
+            ScriptCommand::SetSkyHorizonColor { r, g, b } => {
+                self.env_sky_horizon_color = Some((r, g, b))
+            }
+            ScriptCommand::SetFog {
+                enabled,
+                start,
+                end,
+            } => {
                 self.env_fog_enabled = Some(enabled);
                 self.env_fog_start = Some(start);
                 self.env_fog_end = Some(end);

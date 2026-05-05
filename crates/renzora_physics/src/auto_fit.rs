@@ -4,8 +4,8 @@
 //! each frame until mesh AABBs are available (or the user edits the shape, in
 //! which case the marker is removed without changing anything).
 
-use bevy::prelude::*;
 use bevy::camera::primitives::Aabb;
+use bevy::prelude::*;
 
 use crate::{CollisionShapeData, CollisionShapeType};
 
@@ -46,10 +46,14 @@ pub fn auto_fit_collision_shapes(
 
         let inv = entity_gt.affine().inverse();
         let corners = [
-            Vec3::new(min.x, min.y, min.z), Vec3::new(max.x, min.y, min.z),
-            Vec3::new(min.x, max.y, min.z), Vec3::new(max.x, max.y, min.z),
-            Vec3::new(min.x, min.y, max.z), Vec3::new(max.x, min.y, max.z),
-            Vec3::new(min.x, max.y, max.z), Vec3::new(max.x, max.y, max.z),
+            Vec3::new(min.x, min.y, min.z),
+            Vec3::new(max.x, min.y, min.z),
+            Vec3::new(min.x, max.y, min.z),
+            Vec3::new(max.x, max.y, min.z),
+            Vec3::new(min.x, min.y, max.z),
+            Vec3::new(max.x, min.y, max.z),
+            Vec3::new(min.x, max.y, max.z),
+            Vec3::new(max.x, max.y, max.z),
         ];
 
         let mut local_min = Vec3::splat(f32::INFINITY);
@@ -121,5 +125,9 @@ fn combined_world_aabb(
         }
     }
 
-    if found { Some((min, max)) } else { None }
+    if found {
+        Some((min, max))
+    } else {
+        None
+    }
 }

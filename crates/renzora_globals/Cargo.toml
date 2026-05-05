@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

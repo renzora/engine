@@ -37,7 +37,7 @@ struct LuaInstance {
     source_version: u64,
 }
 
-use super::{push_command, drain_commands};
+use super::{drain_commands, push_command};
 
 pub struct LuaBackend {
     scripts_folder: Option<PathBuf>,
@@ -118,7 +118,8 @@ impl LuaBackend {
         // Parse props by running the script in a temporary Lua state
         let props = self.parse_props(&source);
 
-        let name = path.file_stem()
+        let name = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -129,14 +130,17 @@ impl LuaBackend {
 
         if let Ok(mut cache) = self.cache.write() {
             let prev_version = cache.get(path).map(|c| c.version).unwrap_or(0);
-            cache.insert(path.to_path_buf(), CachedScript {
-                source,
-                path: path.to_path_buf(),
-                name,
-                last_modified,
-                props,
-                version: prev_version.wrapping_add(1),
-            });
+            cache.insert(
+                path.to_path_buf(),
+                CachedScript {
+                    source,
+                    path: path.to_path_buf(),
+                    name,
+                    last_modified,
+                    props,
+                    version: prev_version.wrapping_add(1),
+                },
+            );
         }
 
         // Source changed, so any persistent VM running the old chunk is
@@ -169,15 +173,16 @@ impl LuaBackend {
 
             // Check if it's a table with "default" or "value" key
             if let LuaValue::Table(ref prop_table) = value {
-                let default_val = prop_table.get::<LuaValue>("value")
+                let default_val = prop_table
+                    .get::<LuaValue>("value")
                     .or_else(|_| prop_table.get::<LuaValue>("default"));
 
                 if let Ok(ref default_val) = default_val {
                     if let Some(sv) = lua_to_script_value(default_val) {
                         let hint: Option<String> = prop_table.get("hint").ok();
                         let tab: Option<String> = prop_table.get("tab").ok();
-                        let mut def = ScriptVariableDefinition::new(name, sv)
-                            .with_display_name(display_name);
+                        let mut def =
+                            ScriptVariableDefinition::new(name, sv).with_display_name(display_name);
                         if let Some(h) = hint {
                             def = def.with_hint(h);
                         }
@@ -191,10 +196,7 @@ impl LuaBackend {
             }
 
             if let Some(sv) = lua_to_script_value(&value) {
-                props.push(
-                    ScriptVariableDefinition::new(name, sv)
-                        .with_display_name(display_name),
-                );
+                props.push(ScriptVariableDefinition::new(name, sv).with_display_name(display_name));
             }
         }
 
@@ -213,7 +215,8 @@ impl LuaBackend {
 
         let (source, version) = {
             let cache = self.cache.read().map_err(|e| e.to_string())?;
-            let cached = cache.get(path)
+            let cached = cache
+                .get(path)
                 .ok_or_else(|| format!("Script not in cache: {}", path.display()))?;
             (cached.source.clone(), cached.version)
         };
@@ -236,12 +239,20 @@ impl LuaBackend {
             if let Some(extensions) = ctx.extensions() {
                 extensions.register_lua_functions(&lua);
             }
-            lua.load(&source).exec()
+            lua.load(&source)
+                .exec()
                 .map_err(|e| format!("Lua error: {}", e))?;
-            instances.insert(key.clone(), LuaInstance { lua, source_version: version });
+            instances.insert(
+                key.clone(),
+                LuaInstance {
+                    lua,
+                    source_version: version,
+                },
+            );
         }
 
-        let instance = instances.get(&key)
+        let instance = instances
+            .get(&key)
             .ok_or_else(|| "Lua instance vanished".to_string())?;
         let lua = &instance.lua;
 
@@ -259,11 +270,13 @@ impl LuaBackend {
         let globals = lua.globals();
         let func: Result<LuaFunction, _> = globals.get(hook);
         if let Ok(func) = func {
-            func.call::<()>(())
-                .map_err(|e| {
-                    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
-                    format!("{} {}: {}", name, hook, e)
-                })?;
+            func.call::<()>(()).map_err(|e| {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} {}: {}", name, hook, e)
+            })?;
         }
 
         read_back_variables(lua, vars);
@@ -273,9 +286,13 @@ impl LuaBackend {
 }
 
 impl ScriptBackend for LuaBackend {
-    fn name(&self) -> &str { "Lua" }
+    fn name(&self) -> &str {
+        "Lua"
+    }
 
-    fn extensions(&self) -> &[&str] { &["lua"] }
+    fn extensions(&self) -> &[&str] {
+        &["lua"]
+    }
 
     fn set_scripts_folder(&mut self, path: PathBuf) {
         self.scripts_folder = Some(path);
@@ -286,13 +303,16 @@ impl ScriptBackend for LuaBackend {
     }
 
     fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
-        let Some(folder) = &self.scripts_folder else { return Vec::new() };
+        let Some(folder) = &self.scripts_folder else {
+            return Vec::new();
+        };
         let mut scripts = Vec::new();
         if let Ok(entries) = std::fs::read_dir(folder) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "lua") {
-                    let name = path.file_stem()
+                    let name = path
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("unknown")
                         .to_string();
@@ -306,7 +326,8 @@ impl ScriptBackend for LuaBackend {
     fn get_script_props(&self, path: &Path) -> Vec<ScriptVariableDefinition> {
         let _ = self.load_script(path);
         let cache = self.cache.read().ok();
-        cache.and_then(|c| c.get(path).map(|s| s.props.clone()))
+        cache
+            .and_then(|c| c.get(path).map(|s| s.props.clone()))
             .unwrap_or_default()
     }
 
@@ -329,13 +350,24 @@ impl ScriptBackend for LuaBackend {
     }
 
     fn needs_reload(&self, path: &Path) -> bool {
-        let cache = match self.cache.read() { Ok(c) => c, Err(_) => return false };
+        let cache = match self.cache.read() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
         // Not in cache = never loaded yet, not a "reload" scenario
-        let Some(cached) = cache.get(path) else { return false };
+        let Some(cached) = cache.get(path) else {
+            return false;
+        };
         // VFS/rpak scripts don't change at runtime — no reload needed once cached
-        if self.file_reader.is_some() { return false; }
-        let Ok(meta) = std::fs::metadata(path) else { return false };
-        let Ok(modified) = meta.modified() else { return false };
+        if self.file_reader.is_some() {
+            return false;
+        }
+        let Ok(meta) = std::fs::metadata(path) else {
+            return false;
+        };
+        let Ok(modified) = meta.modified() else {
+            return false;
+        };
         modified != cached.last_modified
     }
 
@@ -404,210 +436,458 @@ fn register_api(lua: &Lua) {
     });
 
     // -- Child transform --
-    let _ = globals.set("set_child_position", lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
-        push_command(ScriptCommand::ChildSetPosition { name, x, y, z });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_child_rotation", lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
-        push_command(ScriptCommand::ChildSetRotation { name, x, y, z });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("child_translate", lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
-        push_command(ScriptCommand::ChildTranslate { name, x, y, z });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "set_child_position",
+        lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
+            push_command(ScriptCommand::ChildSetPosition { name, x, y, z });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_child_rotation",
+        lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
+            push_command(ScriptCommand::ChildSetRotation { name, x, y, z });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "child_translate",
+        lua.create_function(|_, (name, x, y, z): (String, f32, f32, f32)| {
+            push_command(ScriptCommand::ChildTranslate { name, x, y, z });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Input --
-    let _ = globals.set("is_key_pressed", lua.create_function(|lua, key: String| {
-        let keys: LuaTable = lua.globals().get("_keys_pressed")?;
-        let pressed: bool = keys.get(key).unwrap_or(false);
-        Ok(pressed)
-    }).unwrap());
-    let _ = globals.set("is_key_just_pressed", lua.create_function(|lua, key: String| {
-        let keys: LuaTable = lua.globals().get("_keys_just_pressed")?;
-        let pressed: bool = keys.get(key).unwrap_or(false);
-        Ok(pressed)
-    }).unwrap());
-    let _ = globals.set("is_key_just_released", lua.create_function(|lua, key: String| {
-        let keys: LuaTable = lua.globals().get("_keys_just_released")?;
-        let pressed: bool = keys.get(key).unwrap_or(false);
-        Ok(pressed)
-    }).unwrap());
+    let _ = globals.set(
+        "is_key_pressed",
+        lua.create_function(|lua, key: String| {
+            let keys: LuaTable = lua.globals().get("_keys_pressed")?;
+            let pressed: bool = keys.get(key).unwrap_or(false);
+            Ok(pressed)
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "is_key_just_pressed",
+        lua.create_function(|lua, key: String| {
+            let keys: LuaTable = lua.globals().get("_keys_just_pressed")?;
+            let pressed: bool = keys.get(key).unwrap_or(false);
+            Ok(pressed)
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "is_key_just_released",
+        lua.create_function(|lua, key: String| {
+            let keys: LuaTable = lua.globals().get("_keys_just_released")?;
+            let pressed: bool = keys.get(key).unwrap_or(false);
+            Ok(pressed)
+        })
+        .unwrap(),
+    );
 
     // Action-based input — reads the InputMap's ActionState by name so scripts
     // work identically with keyboard and gamepad.
-    let _ = globals.set("input_button_pressed", lua.create_function(|lua, name: String| {
-        let t: LuaTable = lua.globals().get("_action_pressed")?;
-        Ok(t.get::<bool>(name).unwrap_or(false))
-    }).unwrap());
-    let _ = globals.set("input_button_just_pressed", lua.create_function(|lua, name: String| {
-        let t: LuaTable = lua.globals().get("_action_just_pressed")?;
-        Ok(t.get::<bool>(name).unwrap_or(false))
-    }).unwrap());
-    let _ = globals.set("input_button_just_released", lua.create_function(|lua, name: String| {
-        let t: LuaTable = lua.globals().get("_action_just_released")?;
-        Ok(t.get::<bool>(name).unwrap_or(false))
-    }).unwrap());
-    let _ = globals.set("input_axis_1d", lua.create_function(|lua, name: String| {
-        let t: LuaTable = lua.globals().get("_action_axis_1d")?;
-        Ok(t.get::<f64>(name).unwrap_or(0.0))
-    }).unwrap());
+    let _ = globals.set(
+        "input_button_pressed",
+        lua.create_function(|lua, name: String| {
+            let t: LuaTable = lua.globals().get("_action_pressed")?;
+            Ok(t.get::<bool>(name).unwrap_or(false))
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "input_button_just_pressed",
+        lua.create_function(|lua, name: String| {
+            let t: LuaTable = lua.globals().get("_action_just_pressed")?;
+            Ok(t.get::<bool>(name).unwrap_or(false))
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "input_button_just_released",
+        lua.create_function(|lua, name: String| {
+            let t: LuaTable = lua.globals().get("_action_just_released")?;
+            Ok(t.get::<bool>(name).unwrap_or(false))
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "input_axis_1d",
+        lua.create_function(|lua, name: String| {
+            let t: LuaTable = lua.globals().get("_action_axis_1d")?;
+            Ok(t.get::<f64>(name).unwrap_or(0.0))
+        })
+        .unwrap(),
+    );
     // Returns two values (x, y). Use: `local mx, my = input_axis_2d("move")`.
-    let _ = globals.set("input_axis_2d", lua.create_function(|lua, name: String| {
-        let t: LuaTable = lua.globals().get("_action_axis_2d")?;
-        if let Ok(pair) = t.get::<LuaTable>(name) {
-            let x: f64 = pair.get(1).unwrap_or(0.0);
-            let y: f64 = pair.get(2).unwrap_or(0.0);
-            Ok((x, y))
-        } else {
-            Ok((0.0, 0.0))
-        }
-    }).unwrap());
+    let _ = globals.set(
+        "input_axis_2d",
+        lua.create_function(|lua, name: String| {
+            let t: LuaTable = lua.globals().get("_action_axis_2d")?;
+            if let Ok(pair) = t.get::<LuaTable>(name) {
+                let x: f64 = pair.get(1).unwrap_or(0.0);
+                let y: f64 = pair.get(2).unwrap_or(0.0);
+                Ok((x, y))
+            } else {
+                Ok((0.0, 0.0))
+            }
+        })
+        .unwrap(),
+    );
 
     // -- Audio --
-    let _ = globals.set("play_sound", lua.create_function(|_, args: LuaMultiValue| {
-        let path: String = args.get(0).and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default();
-        let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
-        let bus: String = args.get(2).and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_else(|| "Sfx".into());
-        push_command(ScriptCommand::PlaySound { path, volume, looping: false, bus });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("play_sound_looping", lua.create_function(|_, (path, volume): (String, f32)| {
-        push_command(ScriptCommand::PlaySound { path, volume, looping: true, bus: "Sfx".into() });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("play_music", lua.create_function(|_, args: LuaMultiValue| {
-        let path: String = args.get(0).and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default();
-        let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
-        let fade_in: f32 = args.get(2).and_then(|v| v.as_f32()).unwrap_or(0.0);
-        push_command(ScriptCommand::PlayMusic { path, volume, fade_in, bus: "Music".into() });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("stop_music", lua.create_function(|_, fade_out: Option<f32>| {
-        push_command(ScriptCommand::StopMusic { fade_out: fade_out.unwrap_or(0.0) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("stop_all_sounds", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::StopAllSounds);
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "play_sound",
+        lua.create_function(|_, args: LuaMultiValue| {
+            let path: String = args
+                .get(0)
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
+            let bus: String = args
+                .get(2)
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "Sfx".into());
+            push_command(ScriptCommand::PlaySound {
+                path,
+                volume,
+                looping: false,
+                bus,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "play_sound_looping",
+        lua.create_function(|_, (path, volume): (String, f32)| {
+            push_command(ScriptCommand::PlaySound {
+                path,
+                volume,
+                looping: true,
+                bus: "Sfx".into(),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "play_music",
+        lua.create_function(|_, args: LuaMultiValue| {
+            let path: String = args
+                .get(0)
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
+            let fade_in: f32 = args.get(2).and_then(|v| v.as_f32()).unwrap_or(0.0);
+            push_command(ScriptCommand::PlayMusic {
+                path,
+                volume,
+                fade_in,
+                bus: "Music".into(),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "stop_music",
+        lua.create_function(|_, fade_out: Option<f32>| {
+            push_command(ScriptCommand::StopMusic {
+                fade_out: fade_out.unwrap_or(0.0),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "stop_all_sounds",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::StopAllSounds);
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Physics --
-    let _ = globals.set("apply_force", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-        push_command(ScriptCommand::ApplyForce { entity_id: None, force: bevy::prelude::Vec3::new(x, y, z) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("apply_impulse", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-        push_command(ScriptCommand::ApplyImpulse { entity_id: None, impulse: bevy::prelude::Vec3::new(x, y, z) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_velocity", lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
-        push_command(ScriptCommand::SetVelocity { entity_id: None, velocity: bevy::prelude::Vec3::new(x, y, z) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_gravity_scale", lua.create_function(|_, scale: f32| {
-        push_command(ScriptCommand::SetGravityScale { entity_id: None, scale });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "apply_force",
+        lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+            push_command(ScriptCommand::ApplyForce {
+                entity_id: None,
+                force: bevy::prelude::Vec3::new(x, y, z),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "apply_impulse",
+        lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+            push_command(ScriptCommand::ApplyImpulse {
+                entity_id: None,
+                impulse: bevy::prelude::Vec3::new(x, y, z),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_velocity",
+        lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
+            push_command(ScriptCommand::SetVelocity {
+                entity_id: None,
+                velocity: bevy::prelude::Vec3::new(x, y, z),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_gravity_scale",
+        lua.create_function(|_, scale: f32| {
+            push_command(ScriptCommand::SetGravityScale {
+                entity_id: None,
+                scale,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Timers --
-    let _ = globals.set("start_timer", lua.create_function(|_, (name, duration, repeat): (String, f32, Option<bool>)| {
-        push_command(ScriptCommand::StartTimer { name, duration, repeat: repeat.unwrap_or(false) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("stop_timer", lua.create_function(|_, name: String| {
-        push_command(ScriptCommand::StopTimer { name });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "start_timer",
+        lua.create_function(|_, (name, duration, repeat): (String, f32, Option<bool>)| {
+            push_command(ScriptCommand::StartTimer {
+                name,
+                duration,
+                repeat: repeat.unwrap_or(false),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "stop_timer",
+        lua.create_function(|_, name: String| {
+            push_command(ScriptCommand::StopTimer { name });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Debug --
-    let _ = globals.set("print_log", lua.create_function(|_, msg: String| {
-        push_command(ScriptCommand::Log { level: "Info".into(), message: msg });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("draw_line", lua.create_function(|_, (sx, sy, sz, ex, ey, ez, duration): (f32, f32, f32, f32, f32, f32, Option<f32>)| {
-        push_command(ScriptCommand::DrawLine {
-            start: bevy::prelude::Vec3::new(sx, sy, sz),
-            end: bevy::prelude::Vec3::new(ex, ey, ez),
-            color: [1.0, 0.0, 0.0, 1.0],
-            duration: duration.unwrap_or(0.0),
-        });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "print_log",
+        lua.create_function(|_, msg: String| {
+            push_command(ScriptCommand::Log {
+                level: "Info".into(),
+                message: msg,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "draw_line",
+        lua.create_function(
+            |_, (sx, sy, sz, ex, ey, ez, duration): (f32, f32, f32, f32, f32, f32, Option<f32>)| {
+                push_command(ScriptCommand::DrawLine {
+                    start: bevy::prelude::Vec3::new(sx, sy, sz),
+                    end: bevy::prelude::Vec3::new(ex, ey, ez),
+                    color: [1.0, 0.0, 0.0, 1.0],
+                    duration: duration.unwrap_or(0.0),
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
 
     // -- Rendering --
-    let _ = globals.set("set_visibility", lua.create_function(|_, visible: bool| {
-        push_command(ScriptCommand::SetVisibility { entity_id: None, visible });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_material_color", lua.create_function(|_, (r, g, b, a): (f32, f32, f32, Option<f32>)| {
-        push_command(ScriptCommand::SetMaterialColor { entity_id: None, color: [r, g, b, a.unwrap_or(1.0)] });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "set_visibility",
+        lua.create_function(|_, visible: bool| {
+            push_command(ScriptCommand::SetVisibility {
+                entity_id: None,
+                visible,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_material_color",
+        lua.create_function(|_, (r, g, b, a): (f32, f32, f32, Option<f32>)| {
+            push_command(ScriptCommand::SetMaterialColor {
+                entity_id: None,
+                color: [r, g, b, a.unwrap_or(1.0)],
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Animation --
-    let _ = globals.set("play_animation", lua.create_function(|_, (name, looping, speed): (String, Option<bool>, Option<f32>)| {
-        push_command(ScriptCommand::PlayAnimation { entity_id: None, name, looping: looping.unwrap_or(true), speed: speed.unwrap_or(1.0) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("stop_animation", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::StopAnimation { entity_id: None });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("pause_animation", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::PauseAnimation { entity_id: None });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("resume_animation", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::ResumeAnimation { entity_id: None });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_animation_speed", lua.create_function(|_, speed: f32| {
-        push_command(ScriptCommand::SetAnimationSpeed { entity_id: None, speed });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("crossfade_animation", lua.create_function(|_, (name, duration, looping): (String, f32, Option<bool>)| {
-        push_command(ScriptCommand::CrossfadeAnimation { entity_id: None, name, duration, looping: looping.unwrap_or(true) });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_anim_param", lua.create_function(|_, (name, value): (String, f32)| {
-        push_command(ScriptCommand::SetAnimationParam { entity_id: None, name, value });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_anim_bool", lua.create_function(|_, (name, value): (String, bool)| {
-        push_command(ScriptCommand::SetAnimationBoolParam { entity_id: None, name, value });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("trigger_anim", lua.create_function(|_, name: String| {
-        push_command(ScriptCommand::TriggerAnimation { entity_id: None, name });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_layer_weight", lua.create_function(|_, (layer_name, weight): (String, f32)| {
-        push_command(ScriptCommand::SetAnimationLayerWeight { entity_id: None, layer_name, weight });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "play_animation",
+        lua.create_function(
+            |_, (name, looping, speed): (String, Option<bool>, Option<f32>)| {
+                push_command(ScriptCommand::PlayAnimation {
+                    entity_id: None,
+                    name,
+                    looping: looping.unwrap_or(true),
+                    speed: speed.unwrap_or(1.0),
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "stop_animation",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::StopAnimation { entity_id: None });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "pause_animation",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::PauseAnimation { entity_id: None });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "resume_animation",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::ResumeAnimation { entity_id: None });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_animation_speed",
+        lua.create_function(|_, speed: f32| {
+            push_command(ScriptCommand::SetAnimationSpeed {
+                entity_id: None,
+                speed,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "crossfade_animation",
+        lua.create_function(
+            |_, (name, duration, looping): (String, f32, Option<bool>)| {
+                push_command(ScriptCommand::CrossfadeAnimation {
+                    entity_id: None,
+                    name,
+                    duration,
+                    looping: looping.unwrap_or(true),
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_anim_param",
+        lua.create_function(|_, (name, value): (String, f32)| {
+            push_command(ScriptCommand::SetAnimationParam {
+                entity_id: None,
+                name,
+                value,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_anim_bool",
+        lua.create_function(|_, (name, value): (String, bool)| {
+            push_command(ScriptCommand::SetAnimationBoolParam {
+                entity_id: None,
+                name,
+                value,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "trigger_anim",
+        lua.create_function(|_, name: String| {
+            push_command(ScriptCommand::TriggerAnimation {
+                entity_id: None,
+                name,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_layer_weight",
+        lua.create_function(|_, (layer_name, weight): (String, f32)| {
+            push_command(ScriptCommand::SetAnimationLayerWeight {
+                entity_id: None,
+                layer_name,
+                weight,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Cursor --
-    let _ = globals.set("lock_cursor", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::LockCursor);
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("unlock_cursor", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::UnlockCursor);
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "lock_cursor",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::LockCursor);
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "unlock_cursor",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::UnlockCursor);
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Camera --
-    let _ = globals.set("screen_shake", lua.create_function(|_, (intensity, duration): (f32, f32)| {
-        push_command(ScriptCommand::ScreenShake { intensity, duration });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "screen_shake",
+        lua.create_function(|_, (intensity, duration): (f32, f32)| {
+            push_command(ScriptCommand::ScreenShake {
+                intensity,
+                duration,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- ECS --
-    let _ = globals.set("spawn_entity", lua.create_function(|_, name: String| {
-        push_command(ScriptCommand::SpawnEntity { name });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "spawn_entity",
+        lua.create_function(|_, name: String| {
+            push_command(ScriptCommand::SpawnEntity { name });
+            Ok(())
+        })
+        .unwrap(),
+    );
     // spawn_primitive(name, kind, x, y, z, [r, g, b])
     //   kind: "cube" | "sphere" | "wall" | … (any id in ShapeRegistry)
     //   r/g/b: optional, default to the shape's registered tint.
@@ -622,242 +902,360 @@ fn register_api(lua: &Lua) {
     // `LuaValue::as_f32()` path silently dropped integers (Lua's
     // numeric for-loops yield integers) and every cube landed at the
     // origin.
-    let _ = globals.set("spawn_primitive", lua.create_function(
-        |_, (name, kind, x, y, z, r, g, b): (
-            String, String, f32, f32, f32,
-            Option<f32>, Option<f32>, Option<f32>,
-        )| {
-            let color = match (r, g, b) {
-                (Some(r), Some(g), Some(b)) => Some([r, g, b, 1.0]),
-                _ => None,
-            };
-            push_command(ScriptCommand::SpawnPrimitive {
-                name,
-                primitive_type: kind,
-                position: Some(bevy::math::Vec3::new(x, y, z)),
-                scale: None,
-                color,
-            });
+    let _ = globals.set(
+        "spawn_primitive",
+        lua.create_function(
+            |_,
+             (name, kind, x, y, z, r, g, b): (
+                String,
+                String,
+                f32,
+                f32,
+                f32,
+                Option<f32>,
+                Option<f32>,
+                Option<f32>,
+            )| {
+                let color = match (r, g, b) {
+                    (Some(r), Some(g), Some(b)) => Some([r, g, b, 1.0]),
+                    _ => None,
+                };
+                push_command(ScriptCommand::SpawnPrimitive {
+                    name,
+                    primitive_type: kind,
+                    position: Some(bevy::math::Vec3::new(x, y, z)),
+                    scale: None,
+                    color,
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "despawn_self",
+        lua.create_function(|_, ()| {
+            push_command(ScriptCommand::DespawnSelf);
             Ok(())
-        },
-    ).unwrap());
-    let _ = globals.set("despawn_self", lua.create_function(|_, ()| {
-        push_command(ScriptCommand::DespawnSelf);
-        Ok(())
-    }).unwrap());
+        })
+        .unwrap(),
+    );
     // despawn_by_prefix("chunk_3_5_") — evicts every entity whose
     // Name starts with the prefix. Used by streaming-world scripts
     // that name spawned entities by chunk coordinate so the script
     // can release a chunk in a single call instead of looping over
     // every cube it spawned.
-    let _ = globals.set("despawn_by_prefix", lua.create_function(|_, prefix: String| {
-        push_command(ScriptCommand::DespawnByPrefix { prefix });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "despawn_by_prefix",
+        lua.create_function(|_, prefix: String| {
+            push_command(ScriptCommand::DespawnByPrefix { prefix });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Scene --
-    let _ = globals.set("load_scene", lua.create_function(|_, path: String| {
-        push_command(ScriptCommand::LoadScene { path });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "load_scene",
+        lua.create_function(|_, path: String| {
+            push_command(ScriptCommand::LoadScene { path });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Environment --
-    let _ = globals.set("set_sun_angles", lua.create_function(|_, (azimuth, elevation): (f32, f32)| {
-        push_command(ScriptCommand::SetSunAngles { azimuth, elevation });
-        Ok(())
-    }).unwrap());
-    let _ = globals.set("set_fog", lua.create_function(|_, (enabled, start, end): (bool, f32, f32)| {
-        push_command(ScriptCommand::SetFog { enabled, start, end });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "set_sun_angles",
+        lua.create_function(|_, (azimuth, elevation): (f32, f32)| {
+            push_command(ScriptCommand::SetSunAngles { azimuth, elevation });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "set_fog",
+        lua.create_function(|_, (enabled, start, end): (bool, f32, f32)| {
+            push_command(ScriptCommand::SetFog {
+                enabled,
+                start,
+                end,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Generic Reflection (set/set_on) --
     // set("ComponentType.field.subfield", value) — on self entity
-    let _ = globals.set("set", lua.create_function(|_, (path, value): (String, LuaValue)| {
-        let (component, field) = parse_component_path(&path)
-            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
-        push_command(ScriptCommand::SetComponentField {
-            entity_id: None,
-            entity_name: None,
-            component_type: component,
-            field_path: field,
-            value: lua_to_property_value(&value),
-        });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "set",
+        lua.create_function(|_, (path, value): (String, LuaValue)| {
+            let (component, field) = parse_component_path(&path).ok_or_else(|| {
+                mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
+            })?;
+            push_command(ScriptCommand::SetComponentField {
+                entity_id: None,
+                entity_name: None,
+                component_type: component,
+                field_path: field,
+                value: lua_to_property_value(&value),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // set_on("EntityName", "ComponentType.field.subfield", value) — on named entity
-    let _ = globals.set("set_on", lua.create_function(|_, (entity_name, path, value): (String, String, LuaValue)| {
-        let (component, field) = parse_component_path(&path)
-            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
-        push_command(ScriptCommand::SetComponentField {
-            entity_id: None,
-            entity_name: Some(entity_name),
-            component_type: component,
-            field_path: field,
-            value: lua_to_property_value(&value),
-        });
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        "set_on",
+        lua.create_function(
+            |_, (entity_name, path, value): (String, String, LuaValue)| {
+                let (component, field) = parse_component_path(&path).ok_or_else(|| {
+                    mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
+                })?;
+                push_command(ScriptCommand::SetComponentField {
+                    entity_id: None,
+                    entity_name: Some(entity_name),
+                    component_type: component,
+                    field_path: field,
+                    value: lua_to_property_value(&value),
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
 
     // -- Generic Reflection (get/get_on) --
     // get("Component.field") — read from self entity
-    let _ = globals.set("get", lua.create_function(|lua, path: String| {
-        let (component, field) = parse_component_path(&path)
-            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
-        match crate::get_handler::call_get(None, &component, &field) {
-            Some(v) => property_value_to_lua_result(lua, v),
-            None => Ok(LuaValue::Nil),
-        }
-    }).unwrap());
+    let _ = globals.set(
+        "get",
+        lua.create_function(|lua, path: String| {
+            let (component, field) = parse_component_path(&path).ok_or_else(|| {
+                mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
+            })?;
+            match crate::get_handler::call_get(None, &component, &field) {
+                Some(v) => property_value_to_lua_result(lua, v),
+                None => Ok(LuaValue::Nil),
+            }
+        })
+        .unwrap(),
+    );
 
     // get_on("EntityName", "Component.field") — read from named entity
-    let _ = globals.set("get_on", lua.create_function(|lua, (entity_name, path): (String, String)| {
-        let (component, field) = parse_component_path(&path)
-            .ok_or_else(|| mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path)))?;
-        match crate::get_handler::call_get(Some(&entity_name), &component, &field) {
-            Some(v) => property_value_to_lua_result(lua, v),
-            None => Ok(LuaValue::Nil),
-        }
-    }).unwrap());
+    let _ = globals.set(
+        "get_on",
+        lua.create_function(|lua, (entity_name, path): (String, String)| {
+            let (component, field) = parse_component_path(&path).ok_or_else(|| {
+                mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
+            })?;
+            match crate::get_handler::call_get(Some(&entity_name), &component, &field) {
+                Some(v) => property_value_to_lua_result(lua, v),
+                None => Ok(LuaValue::Nil),
+            }
+        })
+        .unwrap(),
+    );
 
     // -- Script Actions (generic events for domain crates) --
     // action("name", { key = value, ... }) — triggers a ScriptAction event
-    let _ = globals.set("action", lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
-        let mut map = std::collections::HashMap::new();
-        if let Some(tbl) = args {
-            for pair in tbl.pairs::<String, LuaValue>() {
-                if let Ok((k, v)) = pair {
-                    map.insert(k, lua_to_action_value(&v));
+    let _ = globals.set(
+        "action",
+        lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
+            let mut map = std::collections::HashMap::new();
+            if let Some(tbl) = args {
+                for pair in tbl.pairs::<String, LuaValue>() {
+                    if let Ok((k, v)) = pair {
+                        map.insert(k, lua_to_action_value(&v));
+                    }
                 }
             }
-        }
-        push_command(ScriptCommand::Action {
-            name,
-            target_entity: None,
-            args: map,
-        });
-        Ok(())
-    }).unwrap());
+            push_command(ScriptCommand::Action {
+                name,
+                target_entity: None,
+                args: map,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // action_on("EntityName", "name", { key = value, ... }) — action targeting another entity
-    let _ = globals.set("action_on", lua.create_function(|_, (target, name, args): (String, String, Option<LuaTable>)| {
-        let mut map = std::collections::HashMap::new();
-        if let Some(tbl) = args {
-            for pair in tbl.pairs::<String, LuaValue>() {
-                if let Ok((k, v)) = pair {
-                    map.insert(k, lua_to_action_value(&v));
+    let _ = globals.set(
+        "action_on",
+        lua.create_function(
+            |_, (target, name, args): (String, String, Option<LuaTable>)| {
+                let mut map = std::collections::HashMap::new();
+                if let Some(tbl) = args {
+                    for pair in tbl.pairs::<String, LuaValue>() {
+                        if let Ok((k, v)) = pair {
+                            map.insert(k, lua_to_action_value(&v));
+                        }
+                    }
                 }
-            }
-        }
-        push_command(ScriptCommand::Action {
-            name,
-            target_entity: Some(target),
-            args: map,
-        });
-        Ok(())
-    }).unwrap());
+                push_command(ScriptCommand::Action {
+                    name,
+                    target_entity: Some(target),
+                    args: map,
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
 
     // -- Component Reflection --
     // get_component("ComponentType") — returns all fields as a table
-    let _ = globals.set("get_component", lua.create_function(|lua, component_type: String| {
-        match crate::get_handler::call_get_component(None, &component_type) {
-            Some(fields) => {
-                let t = lua.create_table()?;
-                for (key, val) in fields {
-                    match property_value_to_lua_result(lua, val) {
-                        Ok(lv) => { let _ = t.set(key, lv); }
-                        Err(_) => {}
+    let _ = globals.set(
+        "get_component",
+        lua.create_function(|lua, component_type: String| {
+            match crate::get_handler::call_get_component(None, &component_type) {
+                Some(fields) => {
+                    let t = lua.create_table()?;
+                    for (key, val) in fields {
+                        match property_value_to_lua_result(lua, val) {
+                            Ok(lv) => {
+                                let _ = t.set(key, lv);
+                            }
+                            Err(_) => {}
+                        }
                     }
+                    Ok(LuaValue::Table(t))
                 }
-                Ok(LuaValue::Table(t))
+                None => Ok(LuaValue::Nil),
             }
-            None => Ok(LuaValue::Nil),
-        }
-    }).unwrap());
+        })
+        .unwrap(),
+    );
 
     // get_component_on("EntityName", "ComponentType") — returns all fields from named entity
-    let _ = globals.set("get_component_on", lua.create_function(|lua, (entity_name, component_type): (String, String)| {
-        match crate::get_handler::call_get_component(Some(&entity_name), &component_type) {
-            Some(fields) => {
-                let t = lua.create_table()?;
-                for (key, val) in fields {
-                    match property_value_to_lua_result(lua, val) {
-                        Ok(lv) => { let _ = t.set(key, lv); }
-                        Err(_) => {}
+    let _ = globals.set(
+        "get_component_on",
+        lua.create_function(|lua, (entity_name, component_type): (String, String)| {
+            match crate::get_handler::call_get_component(Some(&entity_name), &component_type) {
+                Some(fields) => {
+                    let t = lua.create_table()?;
+                    for (key, val) in fields {
+                        match property_value_to_lua_result(lua, val) {
+                            Ok(lv) => {
+                                let _ = t.set(key, lv);
+                            }
+                            Err(_) => {}
+                        }
                     }
+                    Ok(LuaValue::Table(t))
                 }
-                Ok(LuaValue::Table(t))
+                None => Ok(LuaValue::Nil),
             }
-            None => Ok(LuaValue::Nil),
-        }
-    }).unwrap());
+        })
+        .unwrap(),
+    );
 
     // get_components() — list all reflected component names on self
-    let _ = globals.set("get_components", lua.create_function(|lua, ()| {
-        let names = crate::get_handler::call_get_components(None);
-        let t = lua.create_table()?;
-        for (i, name) in names.iter().enumerate() {
-            t.set(i + 1, name.as_str())?;
-        }
-        Ok(t)
-    }).unwrap());
+    let _ = globals.set(
+        "get_components",
+        lua.create_function(|lua, ()| {
+            let names = crate::get_handler::call_get_components(None);
+            let t = lua.create_table()?;
+            for (i, name) in names.iter().enumerate() {
+                t.set(i + 1, name.as_str())?;
+            }
+            Ok(t)
+        })
+        .unwrap(),
+    );
 
     // get_components_on("EntityName") — list component names on named entity
-    let _ = globals.set("get_components_on", lua.create_function(|lua, entity_name: String| {
-        let names = crate::get_handler::call_get_components(Some(&entity_name));
-        let t = lua.create_table()?;
-        for (i, name) in names.iter().enumerate() {
-            t.set(i + 1, name.as_str())?;
-        }
-        Ok(t)
-    }).unwrap());
+    let _ = globals.set(
+        "get_components_on",
+        lua.create_function(|lua, entity_name: String| {
+            let names = crate::get_handler::call_get_components(Some(&entity_name));
+            let t = lua.create_table()?;
+            for (i, name) in names.iter().enumerate() {
+                t.set(i + 1, name.as_str())?;
+            }
+            Ok(t)
+        })
+        .unwrap(),
+    );
 
     // has_component("ComponentType") — check if self has a component
-    let _ = globals.set("has_component", lua.create_function(|_, component_type: String| {
-        Ok(crate::get_handler::call_get_component(None, &component_type).is_some())
-    }).unwrap());
+    let _ = globals.set(
+        "has_component",
+        lua.create_function(|_, component_type: String| {
+            Ok(crate::get_handler::call_get_component(None, &component_type).is_some())
+        })
+        .unwrap(),
+    );
 
     // has_component_on("EntityName", "ComponentType") — check on named entity
-    let _ = globals.set("has_component_on", lua.create_function(|_, (entity_name, component_type): (String, String)| {
-        Ok(crate::get_handler::call_get_component(Some(&entity_name), &component_type).is_some())
-    }).unwrap());
+    let _ = globals.set(
+        "has_component_on",
+        lua.create_function(|_, (entity_name, component_type): (String, String)| {
+            Ok(
+                crate::get_handler::call_get_component(Some(&entity_name), &component_type)
+                    .is_some(),
+            )
+        })
+        .unwrap(),
+    );
 
     // -- Math helpers --
-    let _ = globals.set("vec3", lua.create_function(|lua, (x, y, z): (f32, f32, f32)| {
-        let t = lua.create_table()?;
-        t.set("x", x)?;
-        t.set("y", y)?;
-        t.set("z", z)?;
-        Ok(t)
-    }).unwrap());
-    let _ = globals.set("vec2", lua.create_function(|lua, (x, y): (f32, f32)| {
-        let t = lua.create_table()?;
-        t.set("x", x)?;
-        t.set("y", y)?;
-        Ok(t)
-    }).unwrap());
-    let _ = globals.set("lerp", lua.create_function(|_, (a, b, t): (f32, f32, f32)| {
-        Ok(a + (b - a) * t)
-    }).unwrap());
-    let _ = globals.set("clamp", lua.create_function(|_, (v, min, max): (f32, f32, f32)| {
-        Ok(v.max(min).min(max))
-    }).unwrap());
+    let _ = globals.set(
+        "vec3",
+        lua.create_function(|lua, (x, y, z): (f32, f32, f32)| {
+            let t = lua.create_table()?;
+            t.set("x", x)?;
+            t.set("y", y)?;
+            t.set("z", z)?;
+            Ok(t)
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "vec2",
+        lua.create_function(|lua, (x, y): (f32, f32)| {
+            let t = lua.create_table()?;
+            t.set("x", x)?;
+            t.set("y", y)?;
+            Ok(t)
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "lerp",
+        lua.create_function(|_, (a, b, t): (f32, f32, f32)| Ok(a + (b - a) * t))
+            .unwrap(),
+    );
+    let _ = globals.set(
+        "clamp",
+        lua.create_function(|_, (v, min, max): (f32, f32, f32)| Ok(v.max(min).min(max)))
+            .unwrap(),
+    );
 }
 
 // Helper to register a 3-arg (f32, f32, f32) -> () function
 fn register_fn3(lua: &Lua, globals: &LuaTable, name: &str, f: fn(f32, f32, f32)) {
-    let _ = globals.set(name, lua.create_function(move |_, (x, y, z): (f32, f32, f32)| {
-        f(x, y, z);
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        name,
+        lua.create_function(move |_, (x, y, z): (f32, f32, f32)| {
+            f(x, y, z);
+            Ok(())
+        })
+        .unwrap(),
+    );
 }
 
 fn register_fn1(lua: &Lua, globals: &LuaTable, name: &str, f: fn(f32)) {
-    let _ = globals.set(name, lua.create_function(move |_, v: f32| {
-        f(v);
-        Ok(())
-    }).unwrap());
+    let _ = globals.set(
+        name,
+        lua.create_function(move |_, v: f32| {
+            f(v);
+            Ok(())
+        })
+        .unwrap(),
+    );
 }
 
 // =============================================================================
@@ -897,7 +1295,10 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     let _ = g.set("mouse_right", ctx.mouse_buttons_pressed[1]);
     let _ = g.set("mouse_middle", ctx.mouse_buttons_pressed[2]);
     let _ = g.set("mouse_left_just_pressed", ctx.mouse_buttons_just_pressed[0]);
-    let _ = g.set("mouse_right_just_pressed", ctx.mouse_buttons_just_pressed[1]);
+    let _ = g.set(
+        "mouse_right_just_pressed",
+        ctx.mouse_buttons_just_pressed[1],
+    );
     let _ = g.set("mouse_scroll", ctx.mouse_scroll as f64);
 
     // Gamepad
@@ -954,19 +1355,27 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     // Action-based input (InputMap). Exposed as _action_* tables keyed by
     // action name; Lua side reads via `input_button_pressed("jump")` etc.
     if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_pressed { let _ = t.set(k.clone(), v); }
+        for (k, &v) in &ctx.action_pressed {
+            let _ = t.set(k.clone(), v);
+        }
         let _ = g.set("_action_pressed", t);
     }
     if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_just_pressed { let _ = t.set(k.clone(), v); }
+        for (k, &v) in &ctx.action_just_pressed {
+            let _ = t.set(k.clone(), v);
+        }
         let _ = g.set("_action_just_pressed", t);
     }
     if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_just_released { let _ = t.set(k.clone(), v); }
+        for (k, &v) in &ctx.action_just_released {
+            let _ = t.set(k.clone(), v);
+        }
         let _ = g.set("_action_just_released", t);
     }
     if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_axis_1d { let _ = t.set(k.clone(), v as f64); }
+        for (k, &v) in &ctx.action_axis_1d {
+            let _ = t.set(k.clone(), v as f64);
+        }
         let _ = g.set("_action_axis_1d", t);
     }
     if let Ok(t) = lua.create_table() {
@@ -1004,11 +1413,21 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     // Script variables as globals
     for (key, value) in vars.iter_all() {
         match value {
-            ScriptValue::Float(v) => { let _ = g.set(key.as_str(), *v as f64); }
-            ScriptValue::Int(v) => { let _ = g.set(key.as_str(), *v as i64); }
-            ScriptValue::Bool(v) => { let _ = g.set(key.as_str(), *v); }
-            ScriptValue::String(v) => { let _ = g.set(key.as_str(), v.clone()); }
-            ScriptValue::Entity(v) => { let _ = g.set(key.as_str(), v.clone()); }
+            ScriptValue::Float(v) => {
+                let _ = g.set(key.as_str(), *v as f64);
+            }
+            ScriptValue::Int(v) => {
+                let _ = g.set(key.as_str(), *v as i64);
+            }
+            ScriptValue::Bool(v) => {
+                let _ = g.set(key.as_str(), *v);
+            }
+            ScriptValue::String(v) => {
+                let _ = g.set(key.as_str(), v.clone());
+            }
+            ScriptValue::Entity(v) => {
+                let _ = g.set(key.as_str(), v.clone());
+            }
             ScriptValue::Vec2(v) => {
                 if let Ok(t) = lua.create_table() {
                     let _ = t.set("x", v.x as f64);
@@ -1059,13 +1478,20 @@ fn lua_to_script_value(value: &LuaValue) -> Option<ScriptValue> {
             // Check for vec2/vec3/color
             if let (Ok(x), Ok(y)) = (t.get::<f64>("x"), t.get::<f64>("y")) {
                 if let Ok(z) = t.get::<f64>("z") {
-                    return Some(ScriptValue::Vec3(bevy::prelude::Vec3::new(x as f32, y as f32, z as f32)));
+                    return Some(ScriptValue::Vec3(bevy::prelude::Vec3::new(
+                        x as f32, y as f32, z as f32,
+                    )));
                 }
-                return Some(ScriptValue::Vec2(bevy::prelude::Vec2::new(x as f32, y as f32)));
+                return Some(ScriptValue::Vec2(bevy::prelude::Vec2::new(
+                    x as f32, y as f32,
+                )));
             }
-            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b")) {
+            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b"))
+            {
                 let a: f64 = t.get("a").unwrap_or(1.0);
-                return Some(ScriptValue::Color(bevy::prelude::Vec4::new(r as f32, g as f32, b as f32, a as f32)));
+                return Some(ScriptValue::Color(bevy::prelude::Vec4::new(
+                    r as f32, g as f32, b as f32, a as f32,
+                )));
             }
             None
         }
@@ -1102,14 +1528,18 @@ fn lua_to_property_value(value: &LuaValue) -> crate::command::PropertyValue {
         LuaValue::Number(n) => PropertyValue::Float(*n as f32),
         LuaValue::Integer(n) => PropertyValue::Int(*n),
         LuaValue::Boolean(b) => PropertyValue::Bool(*b),
-        LuaValue::String(s) => PropertyValue::String(s.to_str().map(|s| s.to_string()).unwrap_or_default()),
+        LuaValue::String(s) => {
+            PropertyValue::String(s.to_str().map(|s| s.to_string()).unwrap_or_default())
+        }
         LuaValue::Table(t) => {
             // Check for vec3 {x, y, z}
-            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f64>("x"), t.get::<f64>("y"), t.get::<f64>("z")) {
+            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f64>("x"), t.get::<f64>("y"), t.get::<f64>("z"))
+            {
                 return PropertyValue::Vec3([x as f32, y as f32, z as f32]);
             }
             // Check for color {r, g, b, a}
-            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b")) {
+            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b"))
+            {
                 let a: f64 = t.get("a").unwrap_or(1.0);
                 return PropertyValue::Color([r as f32, g as f32, b as f32, a as f32]);
             }
@@ -1127,7 +1557,10 @@ fn lua_to_property_value(value: &LuaValue) -> crate::command::PropertyValue {
 }
 
 /// Convert a PropertyValue to a Lua value (requires Lua context for strings/tables).
-fn property_value_to_lua_result(lua: &Lua, value: crate::command::PropertyValue) -> LuaResult<LuaValue> {
+fn property_value_to_lua_result(
+    lua: &Lua,
+    value: crate::command::PropertyValue,
+) -> LuaResult<LuaValue> {
     use crate::command::PropertyValue;
     match value {
         PropertyValue::Float(v) => Ok(LuaValue::Number(v as f64)),
@@ -1163,7 +1596,8 @@ fn lua_to_action_value(value: &LuaValue) -> renzora::ScriptActionValue {
         LuaValue::String(s) => ScriptActionValue::String(s.to_string_lossy().to_string()),
         LuaValue::Table(t) => {
             // Check if it's a vec3 table {x, y, z}
-            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f32>("x"), t.get::<f32>("y"), t.get::<f32>("z")) {
+            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f32>("x"), t.get::<f32>("y"), t.get::<f32>("z"))
+            {
                 ScriptActionValue::Vec3([x, y, z])
             } else {
                 ScriptActionValue::String(format!("{:?}", value))

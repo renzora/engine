@@ -159,3 +159,4 @@ pub fn apply_material(world: &mut World) {
     world.resource_mut::<MaterialEditorState>().is_dirty = false;
 }
 
+renzora::add!(MaterialEditorPlugin, Editor);

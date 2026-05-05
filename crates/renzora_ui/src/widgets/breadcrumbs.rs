@@ -15,10 +15,8 @@ pub fn breadcrumbs(ui: &mut egui::Ui, segments: &[&str], theme: &Theme) -> Optio
             } else {
                 theme.widgets.active_bg.to_color32()
             };
-            let resp = ui.selectable_label(
-                false,
-                egui::RichText::new(*seg).color(color).size(11.0),
-            );
+            let resp =
+                ui.selectable_label(false, egui::RichText::new(*seg).color(color).size(11.0));
             if resp.clicked() && !is_last {
                 picked = Some(i);
             }

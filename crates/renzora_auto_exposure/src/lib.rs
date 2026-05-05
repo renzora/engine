@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::post_process::auto_exposure::AutoExposure;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -42,7 +42,10 @@ fn sync_auto_exposure(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
                 if settings.enabled {
                     commands.entity(*target).insert(AutoExposure {
                         range: settings.range_min..=settings.range_max,
@@ -53,11 +56,14 @@ fn sync_auto_exposure(
                 } else {
                     commands.entity(*target).remove::<AutoExposure>();
                 }
-                found = true; break;
+                found = true;
+                break;
             }
         }
         if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<AutoExposure>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<AutoExposure>();
+            }
         }
     }
 }
@@ -69,7 +75,9 @@ fn cleanup_auto_exposure(
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<AutoExposure>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<AutoExposure>();
+            }
         }
     }
 }
@@ -83,16 +91,25 @@ fn auto_exposure_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<AutoExposureSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(AutoExposureSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(AutoExposureSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(AutoExposureSettings, AutoExposure)>();
+            world
+                .entity_mut(entity)
+                .remove::<(AutoExposureSettings, AutoExposure)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<AutoExposureSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<AutoExposureSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(auto_exposure_custom_ui),
@@ -107,16 +124,24 @@ fn auto_exposure_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<AutoExposureSettings>(entity) else { return };
+    let Some(settings) = world.get::<AutoExposureSettings>(entity) else {
+        return;
+    };
     let mut row = 0;
 
     let mut speed_b = settings.speed_brighten;
     inline_property(ui, row, "Speed Brighten", theme, |ui| {
         let orig = speed_b;
-        ui.add(egui::DragValue::new(&mut speed_b).speed(0.1).range(0.1..=20.0));
+        ui.add(
+            egui::DragValue::new(&mut speed_b)
+                .speed(0.1)
+                .range(0.1..=20.0),
+        );
         if speed_b != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) { s.speed_brighten = speed_b; }
+                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
+                    s.speed_brighten = speed_b;
+                }
             });
         }
     });
@@ -125,10 +150,16 @@ fn auto_exposure_custom_ui(
     let mut speed_d = settings.speed_darken;
     inline_property(ui, row, "Speed Darken", theme, |ui| {
         let orig = speed_d;
-        ui.add(egui::DragValue::new(&mut speed_d).speed(0.1).range(0.1..=20.0));
+        ui.add(
+            egui::DragValue::new(&mut speed_d)
+                .speed(0.1)
+                .range(0.1..=20.0),
+        );
         if speed_d != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) { s.speed_darken = speed_d; }
+                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
+                    s.speed_darken = speed_d;
+                }
             });
         }
     });
@@ -137,10 +168,16 @@ fn auto_exposure_custom_ui(
     let mut rmin = settings.range_min;
     inline_property(ui, row, "Range Min (EV)", theme, |ui| {
         let orig = rmin;
-        ui.add(egui::DragValue::new(&mut rmin).speed(0.1).range(-16.0..=0.0));
+        ui.add(
+            egui::DragValue::new(&mut rmin)
+                .speed(0.1)
+                .range(-16.0..=0.0),
+        );
         if rmin != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) { s.range_min = rmin; }
+                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
+                    s.range_min = rmin;
+                }
             });
         }
     });
@@ -152,12 +189,15 @@ fn auto_exposure_custom_ui(
         ui.add(egui::DragValue::new(&mut rmax).speed(0.1).range(0.0..=16.0));
         if rmax != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) { s.range_max = rmax; }
+                if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
+                    s.range_max = rmax;
+                }
             });
         }
     });
 }
 
+#[derive(Default)]
 pub struct AutoExposurePlugin;
 
 impl Plugin for AutoExposurePlugin {
@@ -169,3 +209,5 @@ impl Plugin for AutoExposurePlugin {
         app.register_inspector(auto_exposure_entry());
     }
 }
+
+renzora::add!(AutoExposurePlugin);

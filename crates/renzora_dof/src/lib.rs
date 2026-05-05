@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -87,16 +87,25 @@ fn inspector_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(DepthOfFieldSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(DepthOfFieldSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(DepthOfFieldSettings, DepthOfField)>();
+            world
+                .entity_mut(entity)
+                .remove::<(DepthOfFieldSettings, DepthOfField)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<DepthOfFieldSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<DepthOfFieldSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(dof_custom_ui),
@@ -143,10 +152,16 @@ fn dof_custom_ui(
     let mut focal = settings.focal_distance;
     inline_property(ui, row, "Focal Distance", theme, |ui| {
         let orig = focal;
-        ui.add(egui::DragValue::new(&mut focal).speed(0.1).range(0.1..=1000.0));
+        ui.add(
+            egui::DragValue::new(&mut focal)
+                .speed(0.1)
+                .range(0.1..=1000.0),
+        );
         if focal != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.focal_distance = focal; }
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
+                    s.focal_distance = focal;
+                }
             });
         }
     });
@@ -156,10 +171,16 @@ fn dof_custom_ui(
     let mut aperture = settings.aperture_f_stops;
     inline_property(ui, row, "Aperture", theme, |ui| {
         let orig = aperture;
-        ui.add(egui::DragValue::new(&mut aperture).speed(0.1).range(0.1..=64.0));
+        ui.add(
+            egui::DragValue::new(&mut aperture)
+                .speed(0.1)
+                .range(0.1..=64.0),
+        );
         if aperture != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.aperture_f_stops = aperture; }
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
+                    s.aperture_f_stops = aperture;
+                }
             });
         }
     });
@@ -172,7 +193,9 @@ fn dof_custom_ui(
         ui.add(egui::DragValue::new(&mut coc).speed(1.0).range(1.0..=256.0));
         if coc != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) { s.max_circle_of_confusion_diameter = coc; }
+                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
+                    s.max_circle_of_confusion_diameter = coc;
+                }
             });
         }
     });
@@ -192,6 +215,7 @@ fn cleanup_dof(
     }
 }
 
+#[derive(Default)]
 pub struct DepthOfFieldPlugin;
 
 impl Plugin for DepthOfFieldPlugin {
@@ -203,3 +227,5 @@ impl Plugin for DepthOfFieldPlugin {
         app.register_inspector(inspector_entry());
     }
 }
+
+renzora::add!(DepthOfFieldPlugin);

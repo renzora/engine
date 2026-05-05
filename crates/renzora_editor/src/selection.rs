@@ -61,7 +61,10 @@ impl EditorSelection {
             renzora::console_log::console_info("Selection", &format!("Deselected {:?}", entity));
         } else {
             sel.push(entity);
-            renzora::console_log::console_info("Selection", &format!("Added {:?} to selection", entity));
+            renzora::console_log::console_info(
+                "Selection",
+                &format!("Added {:?} to selection", entity),
+            );
         }
     }
 

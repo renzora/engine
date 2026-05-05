@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 // ── Re-export shared graph types from renzora ─────────────────────────
 pub use renzora::{
-    NodeId, PinType, PinDir, PinValue, PinTemplate, BlueprintNodeDef,
-    BlueprintConnection, BlueprintNode,
+    BlueprintConnection, BlueprintNode, BlueprintNodeDef, NodeId, PinDir, PinTemplate, PinType,
+    PinValue,
 };
 
 // ── Blueprint graph (the component) ─────────────────────────────────────────
@@ -52,19 +52,16 @@ impl BlueprintGraph {
             .retain(|c| c.from_node != id && c.to_node != id);
     }
 
-    pub fn connect(
-        &mut self,
-        from_node: NodeId,
-        from_pin: &str,
-        to_node: NodeId,
-        to_pin: &str,
-    ) {
+    pub fn connect(&mut self, from_node: NodeId, from_pin: &str, to_node: NodeId, to_pin: &str) {
         // For data pins: inputs accept only one connection.
         // For exec pins: outputs can fan out to multiple targets.
-        let is_exec = self.get_node(to_node)
+        let is_exec = self
+            .get_node(to_node)
             .and_then(|_| crate::node_def(&self.get_node(to_node)?.node_type))
             .map(|def| {
-                (def.pins)().iter().any(|p| p.name == to_pin && p.pin_type == PinType::Exec)
+                (def.pins)()
+                    .iter()
+                    .any(|p| p.name == to_pin && p.pin_type == PinType::Exec)
             })
             .unwrap_or(false);
 

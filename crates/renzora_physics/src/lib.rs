@@ -1,7 +1,7 @@
+pub mod auto_fit;
+pub mod backend;
 pub mod data;
 pub mod properties;
-pub mod backend;
-pub mod auto_fit;
 pub mod read_state;
 pub mod script_extension;
 
@@ -24,10 +24,14 @@ pub struct ColliderStampQueue {
 
 impl ColliderStampQueue {
     pub fn progress(&self) -> f32 {
-        if self.total == 0 { return 1.0; }
+        if self.total == 0 {
+            return 1.0;
+        }
         (self.total - self.remaining.len()) as f32 / self.total as f32
     }
-    pub fn is_active(&self) -> bool { !self.remaining.is_empty() }
+    pub fn is_active(&self) -> bool {
+        !self.remaining.is_empty()
+    }
 }
 #[cfg(feature = "editor")]
 pub mod inspector;
@@ -54,15 +58,20 @@ fn drain_collider_stamp_queue(
     existing_shapes: Query<(), With<CollisionShapeData>>,
 ) {
     const BATCH: usize = 24;
-    if queue.remaining.is_empty() { return; }
+    if queue.remaining.is_empty() {
+        return;
+    }
     for _ in 0..BATCH {
-        let Some(e) = queue.remaining.pop() else { break };
+        let Some(e) = queue.remaining.pop() else {
+            break;
+        };
         // Skip if the entity has gained a collision shape since we queued it.
-        if existing_shapes.get(e).is_ok() { continue; }
-        commands.entity(e).insert((
-            PhysicsBodyData::static_body(),
-            CollisionShapeData::mesh(),
-        ));
+        if existing_shapes.get(e).is_ok() {
+            continue;
+        }
+        commands
+            .entity(e)
+            .insert((PhysicsBodyData::static_body(), CollisionShapeData::mesh()));
     }
     if queue.remaining.is_empty() {
         renzora::console_log::console_success(
@@ -84,6 +93,7 @@ compile_error!("renzora_physics: enable only one of `avian` or `rapier`, not bot
 ///
 /// Automatically starts paused when the `editor` feature is enabled,
 /// and runs immediately in standalone/runtime mode.
+#[derive(Default)]
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
@@ -104,14 +114,18 @@ impl Plugin for PhysicsPlugin {
         app.add_plugins(backend::rapier::RapierBackendPlugin { start_paused });
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
-        app.add_systems(Update, (
-            auto_fit::mark_new_collision_shapes,
-            auto_fit::auto_fit_collision_shapes,
-        ).chain());
+        app.add_systems(
+            Update,
+            (
+                auto_fit::mark_new_collision_shapes,
+                auto_fit::auto_fit_collision_shapes,
+            )
+                .chain(),
+        );
 
         // Listen for editor pause/unpause events (decoupled from renzora_editor)
         app.add_observer(on_pause_physics)
-           .add_observer(on_unpause_physics);
+            .add_observer(on_unpause_physics);
 
         #[cfg(feature = "avian")]
         app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
@@ -138,9 +152,9 @@ impl Plugin for PhysicsPlugin {
 
         // Register Lua/Rhai functions owned by the physics crate.
         {
-            let mut extensions = app
-                .world_mut()
-                .get_resource_or_insert_with(renzora_scripting::extension::ScriptExtensions::default);
+            let mut extensions = app.world_mut().get_resource_or_insert_with(
+                renzora_scripting::extension::ScriptExtensions::default,
+            );
             extensions.register(script_extension::PhysicsScriptExtension);
         }
 
@@ -201,7 +215,9 @@ fn compute_kinematic_slides(
             &filter,
         );
         let new_pos = transform.translation + result.actual_delta;
-        resolved.0.push((slide.entity, new_pos, result.grounded, result.ground_normal));
+        resolved
+            .0
+            .push((slide.entity, new_pos, result.grounded, result.ground_normal));
     }
 }
 
@@ -227,9 +243,14 @@ fn apply_kinematic_slides(
 
 /// System to clear avian forces each frame (since we use ConstantForce for one-time pushes).
 #[cfg(feature = "avian")]
-fn clear_avian_forces(mut commands: Commands, query: Query<Entity, With<avian3d::prelude::ConstantForce>>) {
+fn clear_avian_forces(
+    mut commands: Commands,
+    query: Query<Entity, With<avian3d::prelude::ConstantForce>>,
+) {
     for entity in &query {
-        commands.entity(entity).remove::<avian3d::prelude::ConstantForce>();
+        commands
+            .entity(entity)
+            .remove::<avian3d::prelude::ConstantForce>();
     }
 }
 
@@ -276,22 +297,34 @@ fn handle_physics_script_actions(
     }
 
     use renzora::ScriptActionValue;
-    let x = match action.args.get("x") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
-    let y = match action.args.get("y") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
-    let z = match action.args.get("z") { Some(ScriptActionValue::Float(v)) => *v, _ => 0.0 };
+    let x = match action.args.get("x") {
+        Some(ScriptActionValue::Float(v)) => *v,
+        _ => 0.0,
+    };
+    let y = match action.args.get("y") {
+        Some(ScriptActionValue::Float(v)) => *v,
+        _ => 0.0,
+    };
+    let z = match action.args.get("z") {
+        Some(ScriptActionValue::Float(v)) => *v,
+        _ => 0.0,
+    };
     let vec = Vec3::new(x, y, z);
 
     // Default to the entity that triggered the action, or use target ID if provided
-    let target = if let Some(Some(ScriptActionValue::Int(id))) = action.args.get("entity_id").map(Some) {
-        Entity::from_bits(*id as u64)
-    } else {
-        action.entity
-    };
+    let target =
+        if let Some(Some(ScriptActionValue::Int(id))) = action.args.get("entity_id").map(Some) {
+            Entity::from_bits(*id as u64)
+        } else {
+            action.entity
+        };
 
     match name {
         "apply_force" => {
             #[cfg(feature = "avian")]
-            commands.entity(target).insert(avian3d::prelude::ConstantForce(vec));
+            commands
+                .entity(target)
+                .insert(avian3d::prelude::ConstantForce(vec));
             #[cfg(feature = "rapier")]
             { /* TODO: rapier apply_force */ }
         }
@@ -301,14 +334,18 @@ fn handle_physics_script_actions(
                 // Avian 0.6.1 doesn't have a built-in one-shot impulse component in prelude.
                 // We'll apply it by inserting LinearVelocity which avian's solver will integrate.
                 // This is a simplified impulse. For a true additive impulse we'd need a solver hook.
-                commands.entity(target).insert(avian3d::prelude::LinearVelocity(vec));
+                commands
+                    .entity(target)
+                    .insert(avian3d::prelude::LinearVelocity(vec));
             }
             #[cfg(feature = "rapier")]
             { /* TODO: rapier apply_impulse */ }
         }
         "set_velocity" => {
             #[cfg(feature = "avian")]
-            commands.entity(target).insert(avian3d::prelude::LinearVelocity(vec));
+            commands
+                .entity(target)
+                .insert(avian3d::prelude::LinearVelocity(vec));
             #[cfg(feature = "rapier")]
             { /* TODO: rapier set_velocity */ }
         }
@@ -327,7 +364,11 @@ pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &P
 }
 
 /// Spawn collider components on an entity.
-pub fn spawn_collision_shape(commands: &mut Commands, entity: Entity, shape_data: &CollisionShapeData) {
+pub fn spawn_collision_shape(
+    commands: &mut Commands,
+    entity: Entity,
+    shape_data: &CollisionShapeData,
+) {
     #[cfg(feature = "avian")]
     backend::avian::spawn_collision_shape(commands, entity, shape_data);
     #[cfg(feature = "rapier")]
@@ -371,16 +412,36 @@ pub fn spawn_entity_physics(
 fn auto_init_physics(
     mut commands: Commands,
     new_bodies: Query<
-        (Entity, Option<&PhysicsBodyData>, Option<&CollisionShapeData>, Option<&Name>),
-        (Without<RuntimePhysics>, Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>),
+        (
+            Entity,
+            Option<&PhysicsBodyData>,
+            Option<&CollisionShapeData>,
+            Option<&Name>,
+        ),
+        (
+            Without<RuntimePhysics>,
+            Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
+        ),
     >,
 ) {
     for (entity, body, shape, name) in &new_bodies {
         let label = name.map(|n| n.as_str()).unwrap_or("unnamed");
-        info!("[Physics] Initialized physics on '{}' {:?} (body={}, shape={})",
-            label, entity, body.is_some(), shape.is_some());
-        renzora::console_log::console_info("Physics",
-            format!("Initialized physics on '{}' (body={}, shape={})", label, body.is_some(), shape.is_some()));
+        info!(
+            "[Physics] Initialized physics on '{}' {:?} (body={}, shape={})",
+            label,
+            entity,
+            body.is_some(),
+            shape.is_some()
+        );
+        renzora::console_log::console_info(
+            "Physics",
+            format!(
+                "Initialized physics on '{}' (body={}, shape={})",
+                label,
+                body.is_some(),
+                shape.is_some()
+            ),
+        );
         if let Some(b) = body {
             spawn_physics_body(&mut commands, entity, b);
         }
@@ -394,8 +455,14 @@ fn auto_init_physics(
 /// Re-apply backend components when PhysicsBodyData or CollisionShapeData change at runtime.
 fn sync_physics_data(
     mut commands: Commands,
-    changed_bodies: Query<(Entity, &PhysicsBodyData), (With<RuntimePhysics>, Changed<PhysicsBodyData>)>,
-    changed_shapes: Query<(Entity, &CollisionShapeData), (With<RuntimePhysics>, Changed<CollisionShapeData>)>,
+    changed_bodies: Query<
+        (Entity, &PhysicsBodyData),
+        (With<RuntimePhysics>, Changed<PhysicsBodyData>),
+    >,
+    changed_shapes: Query<
+        (Entity, &CollisionShapeData),
+        (With<RuntimePhysics>, Changed<CollisionShapeData>),
+    >,
 ) {
     for (entity, body_data) in &changed_bodies {
         spawn_physics_body(&mut commands, entity, body_data);
@@ -448,3 +515,4 @@ pub fn pause(world: &mut World) {
         // TODO: rapier pause
     }
 }
+

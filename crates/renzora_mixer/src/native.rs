@@ -123,10 +123,18 @@ impl MixerPanel {
 }
 
 impl EditorPanel for MixerPanel {
-    fn id(&self) -> &str { "mixer" }
-    fn title(&self) -> &str { "Mixer" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SLIDERS_HORIZONTAL) }
-    fn category(&self) -> &str { "Audio" }
+    fn id(&self) -> &str {
+        "mixer"
+    }
+    fn title(&self) -> &str {
+        "Mixer"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::SLIDERS_HORIZONTAL)
+    }
+    fn category(&self) -> &str {
+        "Audio"
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         if let Some(mixer) = world.get_resource::<MixerState>() {
@@ -155,7 +163,13 @@ impl EditorPanel for MixerPanel {
         if let Ok(mut snap) = self.local.write() {
             let mut tmp = snap.to_mixer_state();
             render::render_mixer_content(
-                ui, &mut tmp, panel_bg, muted_color, inserts, catalog, commands,
+                ui,
+                &mut tmp,
+                panel_bg,
+                muted_color,
+                inserts,
+                catalog,
+                commands,
             );
             *snap = MixerSnapshot::from_mixer(&tmp);
         }
@@ -167,9 +181,15 @@ impl EditorPanel for MixerPanel {
         }
     }
 
-    fn closable(&self) -> bool { true }
-    fn min_size(&self) -> [f32; 2] { [200.0, 180.0] }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
+    fn closable(&self) -> bool {
+        true
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 180.0]
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +220,8 @@ pub fn build(app: &mut App) {
     app.register_panel(MixerPanel::new(arc));
     app.init_resource::<renzora_editor::InspectorRegistry>();
     inspectors::register_audio_inspectors(
-        &mut app.world_mut().resource_mut::<renzora_editor::InspectorRegistry>(),
+        &mut app
+            .world_mut()
+            .resource_mut::<renzora_editor::InspectorRegistry>(),
     );
 }

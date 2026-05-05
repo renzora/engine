@@ -5,10 +5,10 @@
 //! the skeleton gizmo) so they pick via `MeshRayCast` and read as solid in
 //! the viewport.
 
-use bevy::prelude::*;
-use bevy::input::mouse::MouseMotion;
 use bevy::camera::visibility::RenderLayers;
+use bevy::input::mouse::MouseMotion;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, RayCastVisibility};
+use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::ViewportState;
@@ -37,11 +37,25 @@ pub enum ResizeAxis {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum LinearAxis { X, Y, Z }
+pub enum LinearAxis {
+    X,
+    Y,
+    Z,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Sign { Pos, Neg }
-impl Sign { fn f(self) -> f32 { match self { Sign::Pos => 1.0, Sign::Neg => -1.0 } } }
+pub enum Sign {
+    Pos,
+    Neg,
+}
+impl Sign {
+    fn f(self) -> f32 {
+        match self {
+            Sign::Pos => 1.0,
+            Sign::Neg => -1.0,
+        }
+    }
+}
 
 /// Marker on each spawned sphere so we can despawn all at start of frame.
 #[derive(Component)]
@@ -128,7 +142,9 @@ fn max_extent(shape: &CollisionShapeData) -> f32 {
     match shape.shape_type {
         CollisionShapeType::Box => shape.half_extents.max_element(),
         CollisionShapeType::Sphere => shape.radius,
-        CollisionShapeType::Capsule | CollisionShapeType::Cylinder => shape.radius.max(shape.half_height + shape.radius),
+        CollisionShapeType::Capsule | CollisionShapeType::Cylinder => {
+            shape.radius.max(shape.half_height + shape.radius)
+        }
         CollisionShapeType::Mesh => 0.5,
     }
 }
@@ -160,22 +176,32 @@ fn handles_for(shape_type: CollisionShapeType) -> Vec<HandleKind> {
     out
 }
 
-fn material_for(handle: HandleKind, hovered: bool, a: &ColliderHandleAssets) -> Handle<GizmoMaterial> {
-    if hovered { return a.mat_hover.clone(); }
+fn material_for(
+    handle: HandleKind,
+    hovered: bool,
+    a: &ColliderHandleAssets,
+) -> Handle<GizmoMaterial> {
+    if hovered {
+        return a.mat_hover.clone();
+    }
     match handle {
         HandleKind::BodyMove => a.mat_body.clone(),
         HandleKind::Offset(LinearAxis::X) => a.mat_x.clone(),
         HandleKind::Offset(LinearAxis::Y) => a.mat_y.clone(),
         HandleKind::Offset(LinearAxis::Z) => a.mat_z.clone(),
-        HandleKind::Resize(ResizeAxis::BoxX(_)) | HandleKind::Resize(ResizeAxis::Radius) => a.mat_resize_x.clone(),
-        HandleKind::Resize(ResizeAxis::BoxY(_)) | HandleKind::Resize(ResizeAxis::Height(_)) => a.mat_resize_y.clone(),
+        HandleKind::Resize(ResizeAxis::BoxX(_)) | HandleKind::Resize(ResizeAxis::Radius) => {
+            a.mat_resize_x.clone()
+        }
+        HandleKind::Resize(ResizeAxis::BoxY(_)) | HandleKind::Resize(ResizeAxis::Height(_)) => {
+            a.mat_resize_y.clone()
+        }
         HandleKind::Resize(ResizeAxis::BoxZ(_)) => a.mat_resize_z.clone(),
     }
 }
 
 fn make_uv_sphere(radius: f32, lat: u32, lon: u32) -> Mesh {
-    use bevy::mesh::{Indices, PrimitiveTopology};
     use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
     let mut positions = Vec::with_capacity(((lat + 1) * (lon + 1)) as usize);
     let mut normals = Vec::with_capacity(positions.capacity());
     let mut uvs = Vec::with_capacity(positions.capacity());
@@ -201,7 +227,10 @@ fn make_uv_sphere(radius: f32, lat: u32, lon: u32) -> Mesh {
             indices.extend_from_slice(&[a, b, a + 1, b, b + 1, a + 1]);
         }
     }
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
@@ -215,11 +244,15 @@ fn ensure_assets(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<GizmoMaterial>,
 ) {
-    if assets.is_some() { return; }
-    let mk = |m: &mut Assets<GizmoMaterial>, r: f32, g: f32, b: f32| m.add(GizmoMaterial {
-        base_color: LinearRgba::new(r, g, b, 1.0),
-        emissive: LinearRgba::new(r, g, b, 1.0),
-    });
+    if assets.is_some() {
+        return;
+    }
+    let mk = |m: &mut Assets<GizmoMaterial>, r: f32, g: f32, b: f32| {
+        m.add(GizmoMaterial {
+            base_color: LinearRgba::new(r, g, b, 1.0),
+            emissive: LinearRgba::new(r, g, b, 1.0),
+        })
+    };
     commands.insert_resource(ColliderHandleAssets {
         mesh: meshes.add(make_uv_sphere(1.0, 10, 14)),
         mat_x: mk(materials, 1.0, 0.25, 0.25),
@@ -247,16 +280,35 @@ pub fn spawn_handle_meshes(
     existing: Query<Entity, With<ColliderHandleMesh>>,
 ) {
     // Clear previous frame's handles.
-    for e in &existing { commands.entity(e).despawn(); }
+    for e in &existing {
+        commands.entity(e).despawn();
+    }
 
-    if !edit_mode.active { return; }
-    let Some(selected) = selection.get() else { return };
-    let Ok((shape, gt)) = shapes.get(selected) else { return };
-    let Ok((cam_gt, projection)) = camera_q.single() else { return };
-    let Some(vp) = viewport.as_deref() else { return };
+    if !edit_mode.active {
+        return;
+    }
+    let Some(selected) = selection.get() else {
+        return;
+    };
+    let Ok((shape, gt)) = shapes.get(selected) else {
+        return;
+    };
+    let Ok((cam_gt, projection)) = camera_q.single() else {
+        return;
+    };
+    let Some(vp) = viewport.as_deref() else {
+        return;
+    };
 
-    ensure_assets(&mut commands, assets.as_deref(), &mut meshes, &mut materials);
-    let Some(assets) = assets.as_deref() else { return };
+    ensure_assets(
+        &mut commands,
+        assets.as_deref(),
+        &mut meshes,
+        &mut materials,
+    );
+    let Some(assets) = assets.as_deref() else {
+        return;
+    };
 
     let (_scale, rot, trans) = gt.to_scale_rotation_translation();
     let center = trans + rot * shape.offset;
@@ -270,7 +322,8 @@ pub fn spawn_handle_meshes(
             HANDLE_SCREEN_SIZE
         };
         let world_size = screen_to_world(size_pixels, distance, projection, vp);
-        let hovered = state.hovered == Some(handle) || state.dragging.as_ref().map(|d| d.handle) == Some(handle);
+        let hovered = state.hovered == Some(handle)
+            || state.dragging.as_ref().map(|d| d.handle) == Some(handle);
 
         commands.spawn((
             Name::new("ColliderHandle"),
@@ -289,9 +342,16 @@ pub fn spawn_handle_meshes(
     }
 }
 
-fn screen_to_world(pixels: f32, distance: f32, projection: &Projection, viewport: &ViewportState) -> f32 {
+fn screen_to_world(
+    pixels: f32,
+    distance: f32,
+    projection: &Projection,
+    viewport: &ViewportState,
+) -> f32 {
     match projection {
-        Projection::Perspective(p) => distance * (p.fov * 0.5).tan() * 2.0 * pixels / viewport.screen_size.y,
+        Projection::Perspective(p) => {
+            distance * (p.fov * 0.5).tan() * 2.0 * pixels / viewport.screen_size.y
+        }
         Projection::Orthographic(o) => o.area.height() * pixels / viewport.screen_size.y,
         _ => 0.1,
     }
@@ -317,13 +377,31 @@ pub fn pick_and_drag_handles(
         return;
     }
     let Some(selected) = selection.get() else {
-        state.hovered = None; state.dragging = None; mouse_motion.clear(); return;
+        state.hovered = None;
+        state.dragging = None;
+        mouse_motion.clear();
+        return;
     };
-    let Ok((mut shape, gt)) = shapes.get_mut(selected) else { mouse_motion.clear(); return };
-    let Ok((camera, cam_gt, projection)) = camera_q.single() else { mouse_motion.clear(); return };
-    let Ok(window) = windows.single() else { mouse_motion.clear(); return };
-    let Some(cursor) = window.cursor_position() else { mouse_motion.clear(); return };
-    let Some(vp) = viewport.as_deref() else { mouse_motion.clear(); return };
+    let Ok((mut shape, gt)) = shapes.get_mut(selected) else {
+        mouse_motion.clear();
+        return;
+    };
+    let Ok((camera, cam_gt, projection)) = camera_q.single() else {
+        mouse_motion.clear();
+        return;
+    };
+    let Ok(window) = windows.single() else {
+        mouse_motion.clear();
+        return;
+    };
+    let Some(cursor) = window.cursor_position() else {
+        mouse_motion.clear();
+        return;
+    };
+    let Some(vp) = viewport.as_deref() else {
+        mouse_motion.clear();
+        return;
+    };
 
     if state.dragging.is_some() && !mouse.pressed(MouseButton::Left) {
         state.dragging = None;
@@ -350,11 +428,14 @@ pub fn pick_and_drag_handles(
                 filter: &|e| handle_meshes.contains(e),
                 early_exit_test: &|_| true,
             };
-            ray_cast.cast_ray(ray, &settings)
+            ray_cast
+                .cast_ray(ray, &settings)
                 .first()
                 .and_then(|(e, _hit)| handle_meshes.get(*e).ok())
                 .map(|h| h.handle)
-        } else { None };
+        } else {
+            None
+        };
     }
 
     if mouse.just_pressed(MouseButton::Left) {
@@ -370,10 +451,17 @@ pub fn pick_and_drag_handles(
         }
     }
 
-    let Some(drag) = state.dragging.as_mut() else { mouse_motion.clear(); return };
+    let Some(drag) = state.dragging.as_mut() else {
+        mouse_motion.clear();
+        return;
+    };
     let mut total_delta = Vec2::ZERO;
-    for ev in mouse_motion.read() { total_delta += ev.delta; }
-    if total_delta.length_squared() < 1e-6 { return; }
+    for ev in mouse_motion.read() {
+        total_delta += ev.delta;
+    }
+    if total_delta.length_squared() < 1e-6 {
+        return;
+    }
 
     let distance = (cam_gt.translation() - center).length().max(0.01);
     let scale = match projection {
@@ -386,8 +474,8 @@ pub fn pick_and_drag_handles(
 
     if matches!(drag.handle, HandleKind::BodyMove) {
         drag.accumulated_2d += total_delta;
-        let world_delta = cam_right * (drag.accumulated_2d.x * scale)
-            + cam_up * (-drag.accumulated_2d.y * scale);
+        let world_delta =
+            cam_right * (drag.accumulated_2d.x * scale) + cam_up * (-drag.accumulated_2d.y * scale);
         // Convert world-space offset delta into entity-local space.
         let local_delta = rot.inverse() * world_delta;
         shape.offset = drag.start_shape.offset + local_delta;
@@ -397,23 +485,38 @@ pub fn pick_and_drag_handles(
     let (_, axis_dir) = handle_world(drag.handle, &drag.start_shape, center, rot);
     let screen_axis = Vec2::new(axis_dir.dot(cam_right), -axis_dir.dot(cam_up));
     let len = screen_axis.length();
-    if len < 1e-4 { return; }
+    if len < 1e-4 {
+        return;
+    }
     let delta_along = total_delta.dot(screen_axis / len) * scale;
     drag.accumulated += delta_along;
 
     apply_drag(&mut shape, drag.handle, &drag.start_shape, drag.accumulated);
 }
 
-fn apply_drag(shape: &mut CollisionShapeData, handle: HandleKind, start: &CollisionShapeData, delta: f32) {
+fn apply_drag(
+    shape: &mut CollisionShapeData,
+    handle: HandleKind,
+    start: &CollisionShapeData,
+    delta: f32,
+) {
     match handle {
         HandleKind::Offset(LinearAxis::X) => shape.offset.x = start.offset.x + delta,
         HandleKind::Offset(LinearAxis::Y) => shape.offset.y = start.offset.y + delta,
         HandleKind::Offset(LinearAxis::Z) => shape.offset.z = start.offset.z + delta,
-        HandleKind::Resize(ResizeAxis::BoxX(_)) => shape.half_extents.x = (start.half_extents.x + delta).max(0.01),
-        HandleKind::Resize(ResizeAxis::BoxY(_)) => shape.half_extents.y = (start.half_extents.y + delta).max(0.01),
-        HandleKind::Resize(ResizeAxis::BoxZ(_)) => shape.half_extents.z = (start.half_extents.z + delta).max(0.01),
+        HandleKind::Resize(ResizeAxis::BoxX(_)) => {
+            shape.half_extents.x = (start.half_extents.x + delta).max(0.01)
+        }
+        HandleKind::Resize(ResizeAxis::BoxY(_)) => {
+            shape.half_extents.y = (start.half_extents.y + delta).max(0.01)
+        }
+        HandleKind::Resize(ResizeAxis::BoxZ(_)) => {
+            shape.half_extents.z = (start.half_extents.z + delta).max(0.01)
+        }
         HandleKind::Resize(ResizeAxis::Radius) => shape.radius = (start.radius + delta).max(0.01),
-        HandleKind::Resize(ResizeAxis::Height(_)) => shape.half_height = (start.half_height + delta).max(0.01),
+        HandleKind::Resize(ResizeAxis::Height(_)) => {
+            shape.half_height = (start.half_height + delta).max(0.01)
+        }
         HandleKind::BodyMove => {}
     }
 }

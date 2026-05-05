@@ -51,3 +51,4 @@ impl Plugin for TestComponentPlugin {
     }
 }
 
+renzora::add!(TestComponentPlugin, Editor);

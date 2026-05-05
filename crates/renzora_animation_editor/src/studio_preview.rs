@@ -4,13 +4,13 @@
 //! copy of the selected entity's model. The animation system drives playback
 //! on the real entity while this panel mirrors it visually.
 
-use bevy::prelude::*;
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
-use renzora::core::{IsolatedCamera, MeshInstanceData, EditorLocked, HideInHierarchy};
+use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
 use renzora_editor::DockingState;
 
 use crate::AnimationEditorState;
@@ -314,7 +314,8 @@ pub fn setup_studio_preview(
         depth_or_array_layers: 1,
     };
     checker_image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-    checker_image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    checker_image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
 
     let checker_tex = images.add(checker_image);
 
@@ -344,10 +345,7 @@ pub fn setup_studio_preview(
 // Resize render target to match panel size
 // ---------------------------------------------------------------------------
 
-pub fn resize_preview(
-    mut preview: ResMut<StudioPreviewImage>,
-    mut images: ResMut<Assets<Image>>,
-) {
+pub fn resize_preview(mut preview: ResMut<StudioPreviewImage>, mut images: ResMut<Assets<Image>>) {
     let (rw, rh) = preview.requested_size;
     let (cw, ch) = preview.current_size;
 
@@ -403,11 +401,17 @@ pub fn sync_preview_model(
     // Get the model path from the selected entity
     let model_path = {
         let Ok(mesh_data) = mesh_query.get(source) else {
-            warn!("[studio_preview] Selected entity {:?} has no MeshInstanceData", source);
+            warn!(
+                "[studio_preview] Selected entity {:?} has no MeshInstanceData",
+                source
+            );
             return;
         };
         let Some(ref path) = mesh_data.model_path else {
-            warn!("[studio_preview] Selected entity {:?} has no model_path", source);
+            warn!(
+                "[studio_preview] Selected entity {:?} has no model_path",
+                source
+            );
             return;
         };
         path.clone()
@@ -444,7 +448,10 @@ pub fn sync_preview_model(
         ChildOf(root),
     ));
 
-    info!("[studio_preview] Loaded model '{}' into preview", model_path);
+    info!(
+        "[studio_preview] Loaded model '{}' into preview",
+        model_path
+    );
 }
 
 /// Observer: the moment any entity is parented into the studio-preview subtree
@@ -467,10 +474,9 @@ pub fn hide_new_preview_descendants(
     while let Ok(child_of) = parent_q.get(cursor) {
         let parent = child_of.parent();
         if preview_root_q.contains(parent) || already_hidden.contains(parent) {
-            commands.entity(entity).try_insert((
-                RenderLayers::layer(STUDIO_PREVIEW_LAYER),
-                HideInHierarchy,
-            ));
+            commands
+                .entity(entity)
+                .try_insert((RenderLayers::layer(STUDIO_PREVIEW_LAYER), HideInHierarchy));
             return;
         }
         cursor = parent;
@@ -584,8 +590,10 @@ pub fn auto_fit_preview_camera(
     orbit.pitch = 0.2;
 
     tracker.auto_fitted = true;
-    info!("[studio_preview] Auto-fitted camera: center={:?}, radius={:.2}, distance={:.2}",
-        center, radius, orbit.distance);
+    info!(
+        "[studio_preview] Auto-fitted camera: center={:?}, radius={:.2}, distance={:.2}",
+        center, radius, orbit.distance
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -625,7 +633,10 @@ pub fn register_preview_gizmos(app: &mut bevy::app::App) {
         StudioPreviewGizmoGroup,
         GizmoConfig {
             depth_bias: -1.0,
-            line: GizmoLineConfig { width: 2.0, ..default() },
+            line: GizmoLineConfig {
+                width: 2.0,
+                ..default()
+            },
             render_layers: RenderLayers::layer(STUDIO_PREVIEW_LAYER),
             ..default()
         },
@@ -658,7 +669,9 @@ pub fn draw_preview_skeleton(
     collect_bones_recursive(root, &children_q, &target_q, &mut bones);
 
     for &bone in &bones {
-        let Ok(bone_gt) = global_transforms.get(bone) else { continue };
+        let Ok(bone_gt) = global_transforms.get(bone) else {
+            continue;
+        };
         let bone_pos = bone_gt.translation();
 
         // Joint sphere

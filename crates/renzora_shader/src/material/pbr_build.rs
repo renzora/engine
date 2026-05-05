@@ -6,9 +6,7 @@
 //! they pulled out of the source file. The observer below converts each
 //! event into a graph file the rest of the editor can load and edit.
 
-use crate::material::graph::{
-    AlphaMode, Connection, MaterialDomain, MaterialGraph, PinValue,
-};
+use crate::material::graph::{AlphaMode, Connection, MaterialDomain, MaterialGraph, PinValue};
 
 /// Plain PBR inputs, deliberately a mirror of `renzora_import::ExtractedPbrMaterial`
 /// so importers don't need a crate-specific conversion struct. Covers the

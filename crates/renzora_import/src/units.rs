@@ -15,10 +15,7 @@ use std::path::Path;
 /// - `1.0` = source is already in meters
 /// - `None` = unknown / assume meters
 pub fn detect_unit_scale(path: &Path) -> Option<f32> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())?
-        .to_lowercase();
+    let ext = path.extension().and_then(|e| e.to_str())?.to_lowercase();
 
     match ext.as_str() {
         "fbx" => detect_fbx_units(path),
@@ -80,9 +77,7 @@ fn detect_fbx_units_binary(data: &[u8]) -> Option<f32> {
                                 crate::fbx_legacy::FbxProp::F64(v) => {
                                     return Some((*v / 100.0) as f32)
                                 }
-                                crate::fbx_legacy::FbxProp::F32(v) => {
-                                    return Some(*v / 100.0)
-                                }
+                                crate::fbx_legacy::FbxProp::F32(v) => return Some(*v / 100.0),
                                 crate::fbx_legacy::FbxProp::I32(v) => {
                                     return Some(*v as f32 / 100.0)
                                 }

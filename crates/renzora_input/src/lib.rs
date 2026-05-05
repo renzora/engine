@@ -14,6 +14,7 @@ use bevy::prelude::*;
 /// Registers `InputMap` and `ActionState` resources and updates action state
 /// each frame from raw Bevy input. On startup, attempts to load `input_map.ron`
 /// from the project directory; falls back to defaults if not found.
+#[derive(Default)]
 pub struct InputPlugin;
 
 impl Plugin for InputPlugin {
@@ -43,12 +44,18 @@ fn load_input_map_on_startup(
         if let Some(content) = vfs.read_string("input_map.ron") {
             match ron::from_str::<InputMap>(&content) {
                 Ok(map) => {
-                    info!("[InputPlugin] Loaded input map from VFS ({} actions)", map.actions.len());
+                    info!(
+                        "[InputPlugin] Loaded input map from VFS ({} actions)",
+                        map.actions.len()
+                    );
                     *input_map = map;
                     return;
                 }
                 Err(e) => {
-                    warn!("[InputPlugin] Failed to parse input_map.ron from VFS: {}", e);
+                    warn!(
+                        "[InputPlugin] Failed to parse input_map.ron from VFS: {}",
+                        e
+                    );
                 }
             }
         }
@@ -59,18 +66,20 @@ fn load_input_map_on_startup(
         let path = project.resolve_path("input_map.ron");
         if path.exists() {
             match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    match ron::from_str::<InputMap>(&content) {
-                        Ok(map) => {
-                            info!("[InputPlugin] Loaded input map from {} ({} actions)", path.display(), map.actions.len());
-                            *input_map = map;
-                            return;
-                        }
-                        Err(e) => {
-                            warn!("[InputPlugin] Failed to parse {}: {}", path.display(), e);
-                        }
+                Ok(content) => match ron::from_str::<InputMap>(&content) {
+                    Ok(map) => {
+                        info!(
+                            "[InputPlugin] Loaded input map from {} ({} actions)",
+                            path.display(),
+                            map.actions.len()
+                        );
+                        *input_map = map;
+                        return;
                     }
-                }
+                    Err(e) => {
+                        warn!("[InputPlugin] Failed to parse {}: {}", path.display(), e);
+                    }
+                },
                 Err(e) => {
                     warn!("[InputPlugin] Failed to read {}: {}", path.display(), e);
                 }
@@ -78,12 +87,18 @@ fn load_input_map_on_startup(
         }
     }
 
-    info!("[InputPlugin] Using default input map ({} actions)", input_map.actions.len());
+    info!(
+        "[InputPlugin] Using default input map ({} actions)",
+        input_map.actions.len()
+    );
 }
 
 /// Save the input map to the project directory.
 /// Called by the editor when the input map is modified.
-pub fn save_input_map(input_map: &InputMap, project: &renzora::CurrentProject) -> Result<(), String> {
+pub fn save_input_map(
+    input_map: &InputMap,
+    project: &renzora::CurrentProject,
+) -> Result<(), String> {
     let path = project.resolve_path("input_map.ron");
     let content = ron::ser::to_string_pretty(input_map, ron::ser::PrettyConfig::default())
         .map_err(|e| format!("Failed to serialize input map: {}", e))?;
@@ -92,3 +107,4 @@ pub fn save_input_map(input_map: &InputMap, project: &renzora::CurrentProject) -
     info!("[InputPlugin] Saved input map to {}", path.display());
     Ok(())
 }
+

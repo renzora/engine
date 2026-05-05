@@ -126,11 +126,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
 
     // --- Label color stripe ---
     if let Some([r, g, b]) = cfg.label_color {
-        painter.rect_filled(
-            rect,
-            0.0,
-            Color32::from_rgba_unmultiplied(r, g, b, 25),
-        );
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 25));
         let stripe = egui::Rect::from_min_max(rect.min, Pos2::new(rect.min.x + 3.0, rect.max.y));
         painter.rect_filled(stripe, 0.0, Color32::from_rgb(r, g, b));
     }
@@ -138,11 +134,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
     // --- Selection / hover highlight ---
     if cfg.is_selected {
         let [r, g, b, _] = selection_color.to_array();
-        painter.rect_filled(
-            rect,
-            0.0,
-            Color32::from_rgba_unmultiplied(r, g, b, 160),
-        );
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 160));
         painter.rect_stroke(
             rect.shrink(0.5),
             0.0,
@@ -151,11 +143,7 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
         );
     } else if response.hovered() {
         let [r, g, b, _] = theme.widgets.hovered_bg.to_color32().to_array();
-        painter.rect_filled(
-            rect,
-            0.0,
-            Color32::from_rgba_unmultiplied(r, g, b, 40),
-        );
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(r, g, b, 40));
     }
 
     if response.hovered() {
@@ -189,7 +177,10 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
         if cfg.is_last {
             // └ shape
             painter.line_segment(
-                [Pos2::new(x, rect.min.y - LINE_OVERLAP), Pos2::new(x, center_y)],
+                [
+                    Pos2::new(x, rect.min.y - LINE_OVERLAP),
+                    Pos2::new(x, center_y),
+                ],
                 line_stroke,
             );
         } else {
@@ -255,7 +246,9 @@ pub fn tree_row(ui: &mut egui::Ui, cfg: &TreeRowConfig<'_>) -> TreeRowResult {
     // --- Icon ---
     let mut text_x = after_prefix_x;
     if let Some(icon_str) = cfg.icon {
-        let ic = cfg.icon_color.unwrap_or_else(|| theme.text.muted.to_color32());
+        let ic = cfg
+            .icon_color
+            .unwrap_or_else(|| theme.text.muted.to_color32());
         painter.text(
             Pos2::new(text_x + 6.0, center_y),
             egui::Align2::LEFT_CENTER,

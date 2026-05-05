@@ -3,15 +3,15 @@
 //!
 //! Priority: selected Camera3d > DefaultCamera > first scene Camera3d.
 
-use bevy::prelude::*;
-use bevy::camera::RenderTarget;
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
 use bevy::core_pipeline::Skybox;
+use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
-use renzora_editor::{DockingState, EditorSelection};
 use renzora::core::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_editor::{DockingState, EditorSelection};
 
 /// Preview image size.
 const PREVIEW_WIDTH: u32 = 640;
@@ -102,8 +102,17 @@ pub fn update_camera_preview(
     selection: Res<EditorSelection>,
     mut preview_state: ResMut<CameraPreviewState>,
     scene_cameras: Query<
-        (Entity, &GlobalTransform, &Projection, Option<&DefaultCamera>),
-        (With<Camera3d>, Without<CameraPreviewMarker>, Without<EditorCamera>),
+        (
+            Entity,
+            &GlobalTransform,
+            &Projection,
+            Option<&DefaultCamera>,
+        ),
+        (
+            With<Camera3d>,
+            Without<CameraPreviewMarker>,
+            Without<EditorCamera>,
+        ),
     >,
     mut preview_cameras: Query<
         (Entity, &mut Transform, &mut Projection),
@@ -124,15 +133,12 @@ pub fn update_camera_preview(
         .and_then(|e| scene_cameras.get(e).ok())
         .map(|(e, gt, p, _)| (e, gt, p))
         .or_else(|| {
-            scene_cameras.iter()
+            scene_cameras
+                .iter()
                 .find(|(_, _, _, dc)| dc.is_some())
                 .map(|(e, gt, p, _)| (e, gt, p))
         })
-        .or_else(|| {
-            scene_cameras.iter()
-                .next()
-                .map(|(e, gt, p, _)| (e, gt, p))
-        });
+        .or_else(|| scene_cameras.iter().next().map(|(e, gt, p, _)| (e, gt, p)));
 
     let existing_preview = preview_cameras.iter_mut().next();
 

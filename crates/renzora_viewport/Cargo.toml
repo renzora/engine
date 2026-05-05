@@ -21,3 +21,6 @@ renzora_terrain = { path = "../renzora_terrain" }
 renzora_engine = { path = "../renzora_engine" }
 renzora_import = { path = "../renzora_import" }
 serde_json = "1"
+
+[lints]
+workspace = true

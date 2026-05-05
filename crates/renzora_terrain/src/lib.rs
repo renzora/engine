@@ -1,19 +1,20 @@
 pub mod brush_layer;
 pub mod data;
-pub mod painter;
+pub mod foliage;
 pub mod height_layers;
+pub mod heightmap_import;
 pub mod material;
 pub mod mesh;
-pub mod sculpt;
 pub mod paint;
+pub mod painter;
+pub mod sculpt;
 pub mod splatmap_material;
 pub mod splatmap_systems;
 pub mod undo;
-pub mod heightmap_import;
-pub mod foliage;
 
 use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
@@ -80,3 +81,5 @@ impl Plugin for TerrainPlugin {
         }
     }
 }
+
+renzora::add!(TerrainPlugin);

@@ -1,4 +1,4 @@
-use bevy::{ecs::query::QueryItem, prelude::*, camera::visibility::RenderLayers};
+use bevy::{camera::visibility::RenderLayers, ecs::query::QueryItem, prelude::*};
 
 use crate::{
     pipeline_key::ComputedOutlineKey,

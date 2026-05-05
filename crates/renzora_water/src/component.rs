@@ -180,9 +180,24 @@ impl WaterSurface {
                 wind_speed: 0.05,
                 wind_angle: 0.0,
                 waves: vec![
-                    GerstnerWave { direction: Vec2::new(1.0, 0.3).normalize(), steepness: 0.2, wavelength: 15.0, amplitude: 0.15 },
-                    GerstnerWave { direction: Vec2::new(-0.4, 0.9).normalize(), steepness: 0.15, wavelength: 10.0, amplitude: 0.08 },
-                    GerstnerWave { direction: Vec2::new(0.6, -0.7).normalize(), steepness: 0.25, wavelength: 5.0, amplitude: 0.04 },
+                    GerstnerWave {
+                        direction: Vec2::new(1.0, 0.3).normalize(),
+                        steepness: 0.2,
+                        wavelength: 15.0,
+                        amplitude: 0.15,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.4, 0.9).normalize(),
+                        steepness: 0.15,
+                        wavelength: 10.0,
+                        amplitude: 0.08,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.6, -0.7).normalize(),
+                        steepness: 0.25,
+                        wavelength: 5.0,
+                        amplitude: 0.04,
+                    },
                 ],
             },
             WaterPreset::River => Self {
@@ -207,10 +222,30 @@ impl WaterSurface {
                 wind_angle: 0.0,
                 waves: vec![
                     // Strong directional flow
-                    GerstnerWave { direction: Vec2::new(1.0, 0.0), steepness: 0.3, wavelength: 8.0, amplitude: 0.25 },
-                    GerstnerWave { direction: Vec2::new(0.9, 0.2).normalize(), steepness: 0.35, wavelength: 5.0, amplitude: 0.15 },
-                    GerstnerWave { direction: Vec2::new(0.8, -0.3).normalize(), steepness: 0.4, wavelength: 3.0, amplitude: 0.1 },
-                    GerstnerWave { direction: Vec2::new(0.7, 0.4).normalize(), steepness: 0.45, wavelength: 2.0, amplitude: 0.05 },
+                    GerstnerWave {
+                        direction: Vec2::new(1.0, 0.0),
+                        steepness: 0.3,
+                        wavelength: 8.0,
+                        amplitude: 0.25,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.9, 0.2).normalize(),
+                        steepness: 0.35,
+                        wavelength: 5.0,
+                        amplitude: 0.15,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.8, -0.3).normalize(),
+                        steepness: 0.4,
+                        wavelength: 3.0,
+                        amplitude: 0.1,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.7, 0.4).normalize(),
+                        steepness: 0.45,
+                        wavelength: 2.0,
+                        amplitude: 0.05,
+                    },
                 ],
             },
             WaterPreset::Ocean => Self::default(),
@@ -236,14 +271,44 @@ impl WaterSurface {
                 wind_angle: 0.5,
                 waves: vec![
                     // Massive swells
-                    GerstnerWave { direction: Vec2::new(0.7, 0.7).normalize(), steepness: 0.5, wavelength: 50.0, amplitude: 3.0 },
-                    GerstnerWave { direction: Vec2::new(-0.4, 0.9).normalize(), steepness: 0.45, wavelength: 35.0, amplitude: 2.0 },
+                    GerstnerWave {
+                        direction: Vec2::new(0.7, 0.7).normalize(),
+                        steepness: 0.5,
+                        wavelength: 50.0,
+                        amplitude: 3.0,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.4, 0.9).normalize(),
+                        steepness: 0.45,
+                        wavelength: 35.0,
+                        amplitude: 2.0,
+                    },
                     // Heavy chop
-                    GerstnerWave { direction: Vec2::new(0.9, -0.3).normalize(), steepness: 0.55, wavelength: 15.0, amplitude: 1.0 },
-                    GerstnerWave { direction: Vec2::new(-0.6, -0.5).normalize(), steepness: 0.5, wavelength: 10.0, amplitude: 0.6 },
+                    GerstnerWave {
+                        direction: Vec2::new(0.9, -0.3).normalize(),
+                        steepness: 0.55,
+                        wavelength: 15.0,
+                        amplitude: 1.0,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.6, -0.5).normalize(),
+                        steepness: 0.5,
+                        wavelength: 10.0,
+                        amplitude: 0.6,
+                    },
                     // Aggressive ripples
-                    GerstnerWave { direction: Vec2::new(0.3, -0.9).normalize(), steepness: 0.6, wavelength: 5.0, amplitude: 0.3 },
-                    GerstnerWave { direction: Vec2::new(-0.8, 0.2).normalize(), steepness: 0.55, wavelength: 3.5, amplitude: 0.15 },
+                    GerstnerWave {
+                        direction: Vec2::new(0.3, -0.9).normalize(),
+                        steepness: 0.6,
+                        wavelength: 5.0,
+                        amplitude: 0.3,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.8, 0.2).normalize(),
+                        steepness: 0.55,
+                        wavelength: 3.5,
+                        amplitude: 0.15,
+                    },
                 ],
             },
             WaterPreset::Tropical => Self {
@@ -267,9 +332,24 @@ impl WaterSurface {
                 wind_speed: 0.05,
                 wind_angle: 0.0,
                 waves: vec![
-                    GerstnerWave { direction: Vec2::new(0.8, 0.5).normalize(), steepness: 0.2, wavelength: 20.0, amplitude: 0.3 },
-                    GerstnerWave { direction: Vec2::new(-0.3, 0.9).normalize(), steepness: 0.15, wavelength: 12.0, amplitude: 0.15 },
-                    GerstnerWave { direction: Vec2::new(0.5, -0.6).normalize(), steepness: 0.25, wavelength: 6.0, amplitude: 0.06 },
+                    GerstnerWave {
+                        direction: Vec2::new(0.8, 0.5).normalize(),
+                        steepness: 0.2,
+                        wavelength: 20.0,
+                        amplitude: 0.3,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.3, 0.9).normalize(),
+                        steepness: 0.15,
+                        wavelength: 12.0,
+                        amplitude: 0.15,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.5, -0.6).normalize(),
+                        steepness: 0.25,
+                        wavelength: 6.0,
+                        amplitude: 0.06,
+                    },
                 ],
             },
             WaterPreset::Arctic => Self {
@@ -293,10 +373,30 @@ impl WaterSurface {
                 wind_speed: 0.4,
                 wind_angle: 1.2,
                 waves: vec![
-                    GerstnerWave { direction: Vec2::new(0.6, 0.8).normalize(), steepness: 0.35, wavelength: 25.0, amplitude: 1.0 },
-                    GerstnerWave { direction: Vec2::new(-0.5, 0.7).normalize(), steepness: 0.3, wavelength: 15.0, amplitude: 0.5 },
-                    GerstnerWave { direction: Vec2::new(0.8, -0.4).normalize(), steepness: 0.4, wavelength: 8.0, amplitude: 0.25 },
-                    GerstnerWave { direction: Vec2::new(-0.3, -0.9).normalize(), steepness: 0.45, wavelength: 5.0, amplitude: 0.12 },
+                    GerstnerWave {
+                        direction: Vec2::new(0.6, 0.8).normalize(),
+                        steepness: 0.35,
+                        wavelength: 25.0,
+                        amplitude: 1.0,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.5, 0.7).normalize(),
+                        steepness: 0.3,
+                        wavelength: 15.0,
+                        amplitude: 0.5,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(0.8, -0.4).normalize(),
+                        steepness: 0.4,
+                        wavelength: 8.0,
+                        amplitude: 0.25,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.3, -0.9).normalize(),
+                        steepness: 0.45,
+                        wavelength: 5.0,
+                        amplitude: 0.12,
+                    },
                 ],
             },
             WaterPreset::Swamp => Self {
@@ -320,8 +420,18 @@ impl WaterSurface {
                 wind_speed: 0.0,
                 wind_angle: 0.0,
                 waves: vec![
-                    GerstnerWave { direction: Vec2::new(1.0, 0.2).normalize(), steepness: 0.1, wavelength: 8.0, amplitude: 0.03 },
-                    GerstnerWave { direction: Vec2::new(-0.3, 0.8).normalize(), steepness: 0.08, wavelength: 5.0, amplitude: 0.02 },
+                    GerstnerWave {
+                        direction: Vec2::new(1.0, 0.2).normalize(),
+                        steepness: 0.1,
+                        wavelength: 8.0,
+                        amplitude: 0.03,
+                    },
+                    GerstnerWave {
+                        direction: Vec2::new(-0.3, 0.8).normalize(),
+                        steepness: 0.08,
+                        wavelength: 5.0,
+                        amplitude: 0.02,
+                    },
                 ],
             },
         }
@@ -331,7 +441,7 @@ impl WaterSurface {
 /// Build the manual inspector entry for WaterSurface with color fields.
 #[cfg(feature = "editor")]
 pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "water_surface",
@@ -354,11 +464,15 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
                 name: "Deep Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Color(s.deep_color))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Color(s.deep_color))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.deep_color = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.deep_color = v;
+                        }
                     }
                 },
             },
@@ -366,11 +480,15 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
                 name: "Shallow Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Color(s.shallow_color))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Color(s.shallow_color))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.shallow_color = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.shallow_color = v;
+                        }
                     }
                 },
             },
@@ -378,157 +496,257 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
                 name: "Foam Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Color(s.foam_color))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Color(s.foam_color))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.foam_color = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.foam_color = v;
+                        }
                     }
                 },
             },
             // ── Float params ──
             FieldDef {
                 name: "Foam Threshold",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.foam_threshold))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.foam_threshold))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.foam_threshold = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.foam_threshold = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Absorption",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.absorption))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.absorption))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.absorption = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.absorption = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Roughness",
-                field_type: FieldType::Float { speed: 0.01, min: 0.01, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.01,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.roughness))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.roughness))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.roughness = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.roughness = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Subsurface",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.subsurface_strength))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.subsurface_strength))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.subsurface_strength = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.subsurface_strength = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Mesh Size",
-                field_type: FieldType::Float { speed: 1.0, min: 10.0, max: 1000.0 },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 10.0,
+                    max: 1000.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.mesh_size))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.mesh_size))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.mesh_size = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.mesh_size = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Refraction Strength",
-                field_type: FieldType::Float { speed: 0.005, min: 0.0, max: 0.2 },
+                field_type: FieldType::Float {
+                    speed: 0.005,
+                    min: 0.0,
+                    max: 0.2,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.refraction_strength))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.refraction_strength))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.refraction_strength = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.refraction_strength = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Max Depth",
-                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 50.0 },
+                field_type: FieldType::Float {
+                    speed: 0.5,
+                    min: 1.0,
+                    max: 50.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.max_depth))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.max_depth))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.max_depth = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.max_depth = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Caustic Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.caustic_intensity))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.caustic_intensity))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.caustic_intensity = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.caustic_intensity = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Specular Power",
-                field_type: FieldType::Float { speed: 100.0, min: 100.0, max: 10000.0 },
+                field_type: FieldType::Float {
+                    speed: 100.0,
+                    min: 100.0,
+                    max: 10000.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.specular_power))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.specular_power))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.specular_power = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.specular_power = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Foam Depth",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 5.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 5.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.foam_depth))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.foam_depth))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.foam_depth = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.foam_depth = v;
+                        }
                     }
                 },
             },
             // ── Wind ──
             FieldDef {
                 name: "Wind Speed",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.wind_speed))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.wind_speed))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.wind_speed = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.wind_speed = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Wind Angle",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 6.28 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 6.28,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterSurface>(entity).map(|s| FieldValue::Float(s.wind_angle))
+                    world
+                        .get::<WaterSurface>(entity)
+                        .map(|s| FieldValue::Float(s.wind_angle))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) { s.wind_angle = v; }
+                        if let Some(mut s) = world.get_mut::<WaterSurface>(entity) {
+                            s.wind_angle = v;
+                        }
                     }
                 },
             },
@@ -538,7 +756,7 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
 
 #[cfg(feature = "editor")]
 pub fn water_interactor_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "water_interactor",
@@ -547,7 +765,10 @@ pub fn water_interactor_inspector_entry() -> renzora_editor::InspectorEntry {
         category: "physics",
         has_fn: |world, entity| world.get::<WaterInteractor>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(WaterInteractor { radius: 2.0, intensity: 1.0 });
+            world.entity_mut(entity).insert(WaterInteractor {
+                radius: 2.0,
+                intensity: 1.0,
+            });
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<WaterInteractor>();
@@ -558,25 +779,41 @@ pub fn water_interactor_inspector_entry() -> renzora_editor::InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "Radius",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 20.0 },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.1,
+                    max: 20.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterInteractor>(entity).map(|s| FieldValue::Float(s.radius))
+                    world
+                        .get::<WaterInteractor>(entity)
+                        .map(|s| FieldValue::Float(s.radius))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterInteractor>(entity) { s.radius = v; }
+                        if let Some(mut s) = world.get_mut::<WaterInteractor>(entity) {
+                            s.radius = v;
+                        }
                     }
                 },
             },
             FieldDef {
                 name: "Intensity",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 2.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 2.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<WaterInteractor>(entity).map(|s| FieldValue::Float(s.intensity))
+                    world
+                        .get::<WaterInteractor>(entity)
+                        .map(|s| FieldValue::Float(s.intensity))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<WaterInteractor>(entity) { s.intensity = v; }
+                        if let Some(mut s) = world.get_mut::<WaterInteractor>(entity) {
+                            s.intensity = v;
+                        }
                     }
                 },
             },

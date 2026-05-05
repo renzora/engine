@@ -5,9 +5,9 @@
 //! Parses tokenized USDA into a UsdStage by walking the token stream
 //! and building prims, properties, and relationships.
 
-use super::tokenizer::Token;
 use super::super::scene::*;
 use super::super::UsdResult;
+use super::tokenizer::Token;
 
 /// Parse a tokenized USDA file into a UsdStage.
 pub fn parse_stage(tokens: &[Token], _raw: &str) -> UsdResult<UsdStage> {
@@ -189,7 +189,10 @@ fn parse_prim(
                 path: full_path.clone(),
                 kind: match type_name.as_str() {
                     "DistantLight" => LightKind::Distant { angle: 0.53 },
-                    "RectLight" => LightKind::Rect { width: 1.0, height: 1.0 },
+                    "RectLight" => LightKind::Rect {
+                        width: 1.0,
+                        height: 1.0,
+                    },
                     "DiskLight" => LightKind::Disk { radius: 1.0 },
                     "DomeLight" => LightKind::Dome { texture_path: None },
                     _ => LightKind::Sphere { radius: 1.0 },
@@ -222,10 +225,9 @@ fn parse_prim(
                 }
             }
             // Property
-            Token::Identifier(_)
-            | Token::Keyword(_)
+            Token::Identifier(_) | Token::Keyword(_)
                 if matches!(&tokens[*pos], Token::Keyword(k) if k == "custom" || k == "uniform")
-                || matches!(&tokens[*pos], Token::Identifier(_)) =>
+                    || matches!(&tokens[*pos], Token::Identifier(_)) =>
             {
                 parse_property(
                     tokens,
@@ -337,24 +339,38 @@ fn parse_property(
         // --- Mesh properties ---
         "points" if mesh.is_some() => {
             let vals = parse_vec3_array(tokens, pos);
-            if let Some(m) = mesh { m.positions = vals; }
+            if let Some(m) = mesh {
+                m.positions = vals;
+            }
         }
         "normals" if mesh.is_some() => {
             let vals = parse_vec3_array(tokens, pos);
-            if let Some(m) = mesh { m.normals = vals; }
+            if let Some(m) = mesh {
+                m.normals = vals;
+            }
         }
         "faceVertexCounts" if mesh.is_some() => {
             let vals = parse_int_array(tokens, pos);
-            if let Some(m) = mesh { m.face_vertex_counts = vals.iter().map(|&i| i as u32).collect(); }
+            if let Some(m) = mesh {
+                m.face_vertex_counts = vals.iter().map(|&i| i as u32).collect();
+            }
         }
         "faceVertexIndices" if mesh.is_some() => {
             let vals = parse_int_array(tokens, pos);
-            if let Some(m) = mesh { m.face_vertex_indices = vals.iter().map(|&i| i as u32).collect(); }
+            if let Some(m) = mesh {
+                m.face_vertex_indices = vals.iter().map(|&i| i as u32).collect();
+            }
         }
         "primvars:st" | "primvars:st0" | "primvars:st1" if mesh.is_some() => {
             let vals = parse_vec2_array(tokens, pos);
-            let uv_name = if prop_name == "primvars:st" { "st" } else { &prop_name[8..] };
-            if let Some(m) = mesh { m.uv_sets.insert(uv_name.to_string(), vals); }
+            let uv_name = if prop_name == "primvars:st" {
+                "st"
+            } else {
+                &prop_name[8..]
+            };
+            if let Some(m) = mesh {
+                m.uv_sets.insert(uv_name.to_string(), vals);
+            }
         }
         "primvars:displayColor" if mesh.is_some() => {
             let vals = parse_vec3_array(tokens, pos);
@@ -364,7 +380,9 @@ fn parse_property(
         }
         "subdivisionScheme" if mesh.is_some() => {
             if let Some(Token::QuotedString(v)) = tokens.get(*pos) {
-                if let Some(m) = mesh { m.subdivision_scheme = v.clone(); }
+                if let Some(m) = mesh {
+                    m.subdivision_scheme = v.clone();
+                }
                 *pos += 1;
             } else {
                 skip_value(tokens, pos);
@@ -374,37 +392,61 @@ fn parse_property(
         // --- Material / shader properties ---
         "inputs:diffuseColor" if material.is_some() => {
             if let Some(c) = parse_vec3_value(tokens, pos) {
-                if let Some(m) = material { m.diffuse_color = c; }
-            } else { skip_value(tokens, pos); }
+                if let Some(m) = material {
+                    m.diffuse_color = c;
+                }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:emissiveColor" if material.is_some() => {
             if let Some(c) = parse_vec3_value(tokens, pos) {
-                if let Some(m) = material { m.emissive_color = c; }
-            } else { skip_value(tokens, pos); }
+                if let Some(m) = material {
+                    m.emissive_color = c;
+                }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:metallic" if material.is_some() => {
             if let Some(Token::Number(v)) = tokens.get(*pos) {
-                if let Some(m) = material { m.metallic = *v as f32; }
+                if let Some(m) = material {
+                    m.metallic = *v as f32;
+                }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:roughness" if material.is_some() => {
             if let Some(Token::Number(v)) = tokens.get(*pos) {
-                if let Some(m) = material { m.roughness = *v as f32; }
+                if let Some(m) = material {
+                    m.roughness = *v as f32;
+                }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:opacity" if material.is_some() => {
             if let Some(Token::Number(v)) = tokens.get(*pos) {
-                if let Some(m) = material { m.opacity = *v as f32; }
+                if let Some(m) = material {
+                    m.opacity = *v as f32;
+                }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:ior" if material.is_some() => {
             if let Some(Token::Number(v)) = tokens.get(*pos) {
-                if let Some(m) = material { m.ior = *v as f32; }
+                if let Some(m) = material {
+                    m.ior = *v as f32;
+                }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
 
         // --- Skeleton properties ---
@@ -417,24 +459,36 @@ fn parse_property(
         }
         "bindTransforms" if skeleton.is_some() => {
             let vals = parse_matrix4_array(tokens, pos);
-            if let Some(s) = skeleton { s.bind_transforms = vals; }
+            if let Some(s) = skeleton {
+                s.bind_transforms = vals;
+            }
         }
         "restTransforms" if skeleton.is_some() => {
             let vals = parse_matrix4_array(tokens, pos);
-            if let Some(s) = skeleton { s.rest_transforms = vals; }
+            if let Some(s) = skeleton {
+                s.rest_transforms = vals;
+            }
         }
 
         // --- Light properties ---
         "inputs:color" | "color" if light.is_some() => {
             if let Some(c) = parse_vec3_value(tokens, pos) {
-                if let Some(l) = light { l.color = c; }
-            } else { skip_value(tokens, pos); }
+                if let Some(l) = light {
+                    l.color = c;
+                }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "inputs:intensity" | "intensity" if light.is_some() => {
             if let Some(Token::Number(v)) = tokens.get(*pos) {
-                if let Some(l) = light { l.intensity = *v as f32; }
+                if let Some(l) = light {
+                    l.intensity = *v as f32;
+                }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
 
         // --- Camera properties ---
@@ -446,7 +500,9 @@ fn parse_property(
                     }
                 }
                 *pos += 1;
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
         "clippingRange" if camera.is_some() => {
             if let Some(v) = parse_vec2_value(tokens, pos) {
@@ -454,7 +510,9 @@ fn parse_property(
                     c.near_clip = v[0];
                     c.far_clip = v[1];
                 }
-            } else { skip_value(tokens, pos); }
+            } else {
+                skip_value(tokens, pos);
+            }
         }
 
         // --- Transform ---
@@ -526,14 +584,19 @@ fn parse_vec3_array(tokens: &[Token], pos: &mut usize) -> Vec<[f32; 3]> {
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::CloseBracket => { *pos += 1; break; }
+            Token::CloseBracket => {
+                *pos += 1;
+                break;
+            }
             Token::OpenParen => {
                 *pos += 1;
                 if let Some(v) = read_3_numbers(tokens, pos) {
                     result.push(v);
                 }
                 // Skip close paren
-                if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
+                if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+                    *pos += 1;
+                }
             }
             Token::Comma => *pos += 1,
             _ => *pos += 1,
@@ -553,13 +616,18 @@ fn parse_vec2_array(tokens: &[Token], pos: &mut usize) -> Vec<[f32; 2]> {
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::CloseBracket => { *pos += 1; break; }
+            Token::CloseBracket => {
+                *pos += 1;
+                break;
+            }
             Token::OpenParen => {
                 *pos += 1;
                 if let Some(v) = read_2_numbers(tokens, pos) {
                     result.push(v);
                 }
-                if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
+                if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+                    *pos += 1;
+                }
             }
             Token::Comma => *pos += 1,
             _ => *pos += 1,
@@ -579,7 +647,10 @@ fn parse_int_array(tokens: &[Token], pos: &mut usize) -> Vec<i32> {
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::CloseBracket => { *pos += 1; break; }
+            Token::CloseBracket => {
+                *pos += 1;
+                break;
+            }
             Token::Number(n) => {
                 result.push(*n as i32);
                 *pos += 1;
@@ -602,7 +673,10 @@ fn parse_string_array(tokens: &[Token], pos: &mut usize) -> Vec<String> {
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::CloseBracket => { *pos += 1; break; }
+            Token::CloseBracket => {
+                *pos += 1;
+                break;
+            }
             Token::QuotedString(s) => {
                 result.push(s.clone());
                 *pos += 1;
@@ -621,7 +695,9 @@ fn parse_vec3_value(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
     }
     *pos += 1;
     let v = read_3_numbers(tokens, pos)?;
-    if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
+    if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+        *pos += 1;
+    }
     Some(v)
 }
 
@@ -631,7 +707,9 @@ fn parse_vec2_value(tokens: &[Token], pos: &mut usize) -> Option<[f32; 2]> {
     }
     *pos += 1;
     let v = read_2_numbers(tokens, pos)?;
-    if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
+    if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+        *pos += 1;
+    }
     Some(v)
 }
 
@@ -656,14 +734,22 @@ fn parse_matrix4_value(tokens: &[Token], pos: &mut usize) -> Option<[f32; 16]> {
                 *pos += 1;
             }
             // skip comma
-            if matches!(tokens.get(*pos), Some(Token::Comma)) { *pos += 1; }
+            if matches!(tokens.get(*pos), Some(Token::Comma)) {
+                *pos += 1;
+            }
         }
 
-        if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
-        if matches!(tokens.get(*pos), Some(Token::Comma)) { *pos += 1; }
+        if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+            *pos += 1;
+        }
+        if matches!(tokens.get(*pos), Some(Token::Comma)) {
+            *pos += 1;
+        }
     }
 
-    if matches!(tokens.get(*pos), Some(Token::CloseParen)) { *pos += 1; }
+    if matches!(tokens.get(*pos), Some(Token::CloseParen)) {
+        *pos += 1;
+    }
     Some(m)
 }
 
@@ -677,7 +763,10 @@ fn parse_matrix4_array(tokens: &[Token], pos: &mut usize) -> Vec<[f32; 16]> {
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::CloseBracket => { *pos += 1; break; }
+            Token::CloseBracket => {
+                *pos += 1;
+                break;
+            }
             Token::OpenParen => {
                 if let Some(m) = parse_matrix4_value(tokens, pos) {
                     result.push(m);
@@ -701,7 +790,9 @@ fn read_3_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
             }
             _ => return None,
         }
-        if matches!(tokens.get(*pos), Some(Token::Comma)) { *pos += 1; }
+        if matches!(tokens.get(*pos), Some(Token::Comma)) {
+            *pos += 1;
+        }
     }
     Some(vals)
 }
@@ -716,7 +807,9 @@ fn read_2_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 2]> {
             }
             _ => return None,
         }
-        if matches!(tokens.get(*pos), Some(Token::Comma)) { *pos += 1; }
+        if matches!(tokens.get(*pos), Some(Token::Comma)) {
+            *pos += 1;
+        }
     }
     Some(vals)
 }
@@ -726,14 +819,29 @@ fn read_2_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 2]> {
 // ---------------------------------------------------------------------------
 
 fn skip_value(tokens: &[Token], pos: &mut usize) {
-    if *pos >= tokens.len() { return; }
+    if *pos >= tokens.len() {
+        return;
+    }
 
     match &tokens[*pos] {
-        Token::OpenBracket => { *pos += 1; skip_until_close_bracket(tokens, pos); }
-        Token::OpenParen => { *pos += 1; skip_until_close_paren(tokens, pos); }
-        Token::OpenBrace => { *pos += 1; skip_until_close_brace(tokens, pos); }
-        Token::Keyword(k) if k == "None" => { *pos += 1; }
-        _ => { *pos += 1; }
+        Token::OpenBracket => {
+            *pos += 1;
+            skip_until_close_bracket(tokens, pos);
+        }
+        Token::OpenParen => {
+            *pos += 1;
+            skip_until_close_paren(tokens, pos);
+        }
+        Token::OpenBrace => {
+            *pos += 1;
+            skip_until_close_brace(tokens, pos);
+        }
+        Token::Keyword(k) if k == "None" => {
+            *pos += 1;
+        }
+        _ => {
+            *pos += 1;
+        }
     }
 }
 
@@ -778,7 +886,11 @@ fn skip_to_next_property(tokens: &[Token], pos: &mut usize) {
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::CloseBrace => return,
-            Token::Keyword(k) if k == "def" || k == "over" || k == "class" || k == "custom" || k == "uniform" => return,
+            Token::Keyword(k)
+                if k == "def" || k == "over" || k == "class" || k == "custom" || k == "uniform" =>
+            {
+                return
+            }
             _ => *pos += 1,
         }
     }
@@ -860,10 +972,7 @@ fn compute_parent_indices(joints: &[String]) -> Vec<i32> {
 fn resolve_material_bindings(stage: &mut UsdStage) {
     for mesh in &mut stage.meshes {
         if let Some(ref binding) = mesh.material_binding {
-            mesh.material_index = stage
-                .materials
-                .iter()
-                .position(|m| m.path == *binding);
+            mesh.material_index = stage.materials.iter().position(|m| m.path == *binding);
         }
     }
 }

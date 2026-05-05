@@ -4,8 +4,8 @@
 //! so that we can carry the original metallic-roughness texture into the
 //! debug shader and sample it per-pixel (for Roughness and Metallic modes).
 
-use bevy::prelude::*;
 use bevy::pbr::Material;
+use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 

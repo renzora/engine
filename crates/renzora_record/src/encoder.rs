@@ -38,7 +38,10 @@ pub struct EncoderSettings {
 /// Result reported back to the main thread when the worker exits.
 #[derive(Debug)]
 pub enum EncoderResult {
-    Ok { frames_written: u64, output_path: PathBuf },
+    Ok {
+        frames_written: u64,
+        output_path: PathBuf,
+    },
     Err(String),
 }
 
@@ -56,8 +59,7 @@ const FRAME_QUEUE_DEPTH: usize = 8;
 
 pub fn start(settings: EncoderSettings) -> Result<EncoderHandle, String> {
     if let Some(parent) = settings.output_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create output dir: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create output dir: {}", e))?;
     }
 
     let output_str = settings
@@ -124,10 +126,9 @@ pub fn start(settings: EncoderSettings) -> Result<EncoderHandle, String> {
                     frames_written,
                     output_path,
                 },
-                Ok(status) => EncoderResult::Err(format!(
-                    "ffmpeg exited with status {:?}",
-                    status.code()
-                )),
+                Ok(status) => {
+                    EncoderResult::Err(format!("ffmpeg exited with status {:?}", status.code()))
+                }
                 Err(e) => EncoderResult::Err(format!("waiting on ffmpeg: {}", e)),
             }
         })

@@ -3,8 +3,8 @@
 
 use std::time::Duration;
 
-use bevy::prelude::*;
 use bevy::animation::AnimationTargetId;
+use bevy::prelude::*;
 
 use renzora_animation::AnimatorState;
 
@@ -100,11 +100,13 @@ pub fn update_animation_preview(
 
     // Seek the studio preview model's AnimationPlayer
     // Check if we need to start the clip on the preview player
-    let need_start = !playback.preview_started
-        || playback.started_clip.as_deref() != Some(&clip_name);
+    let need_start =
+        !playback.preview_started || playback.started_clip.as_deref() != Some(&clip_name);
 
     for root in preview_roots.iter() {
-        if let Some(preview_player_entity) = find_player_in_children(root, &children_query, &player_query) {
+        if let Some(preview_player_entity) =
+            find_player_in_children(root, &children_query, &player_query)
+        {
             if let Ok((mut player, transitions)) = players.get_mut(preview_player_entity) {
                 if need_start {
                     // Start the animation node on the preview player
@@ -169,7 +171,8 @@ pub fn sync_preview_animation_graph(
     let graph_handle = source_graph.0.clone();
 
     for root in preview_roots.iter() {
-        if let Some(preview_player) = find_player_in_children(root, &children_query, &player_query) {
+        if let Some(preview_player) = find_player_in_children(root, &children_query, &player_query)
+        {
             if graph_query.get(preview_player).is_err() {
                 // Copy graph
                 commands
@@ -182,7 +185,10 @@ pub fn sync_preview_animation_graph(
 
                 playback.synced_source = Some(entity);
                 playback.preview_started = false;
-                info!("[studio_preview] Copied AnimationGraph + targets to preview player {:?}", preview_player);
+                info!(
+                    "[studio_preview] Copied AnimationGraph + targets to preview player {:?}",
+                    preview_player
+                );
             }
         }
     }

@@ -26,7 +26,10 @@ pub fn rehydrate_animators(
 ) {
     for (entity, animator) in new_animators.iter() {
         if animator.clips.is_empty() {
-            info!("[animation] Rehydrate: {:?} has empty clips, skipping", entity);
+            info!(
+                "[animation] Rehydrate: {:?} has empty clips, skipping",
+                entity
+            );
             continue;
         }
 
@@ -40,7 +43,10 @@ pub fn rehydrate_animators(
 
         for slot in &animator.clips {
             if !slot.path.is_empty() {
-                info!("[animation]   Loading clip '{}' from '{}'", slot.name, slot.path);
+                info!(
+                    "[animation]   Loading clip '{}' from '{}'",
+                    slot.name, slot.path
+                );
                 let handle: Handle<AnimationClip> = asset_server.load(&slot.path);
                 state.clip_handles.insert(slot.name.clone(), handle);
             }
@@ -60,11 +66,8 @@ pub fn rehydrate_animators(
     // flag the graph for rebuild. `current_clip` is cleared so auto-play
     // picks a valid clip once re-init finishes.
     for (entity, animator, mut state) in changed_animators.iter_mut() {
-        let current_slot_names: std::collections::HashSet<String> = animator
-            .clips
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
+        let current_slot_names: std::collections::HashSet<String> =
+            animator.clips.iter().map(|s| s.name.clone()).collect();
 
         state
             .clip_handles
@@ -133,12 +136,18 @@ pub fn initialize_animation_graphs(
         }
 
         if loaded_count == 0 {
-            warn!("[animation] All {} clips failed to load for {:?}", total, entity);
+            warn!(
+                "[animation] All {} clips failed to load for {:?}",
+                total, entity
+            );
             state.initialized = true; // Don't retry
             continue;
         }
 
-        info!("[animation] {}/{} clips loaded for {:?}", loaded_count, total, entity);
+        info!(
+            "[animation] {}/{} clips loaded for {:?}",
+            loaded_count, total, entity
+        );
 
         // Collect valid clip handles in slot order
         let mut ordered_handles: Vec<(String, Handle<AnimationClip>)> = Vec::new();
@@ -173,26 +182,31 @@ pub fn initialize_animation_graphs(
         // loaded `.anim` clips — there's no player yet, so insert one on the
         // AnimatorComponent entity itself. It's the natural animation root
         // because all skinned descendants hang beneath it.
-        let player_entity =
-            match find_animation_player(entity, &children_query, &player_query) {
-                Some(e) => {
-                    info!("[animation] Found AnimationPlayer at {:?}", e);
-                    e
-                }
-                None => {
-                    info!(
+        let player_entity = match find_animation_player(entity, &children_query, &player_query) {
+            Some(e) => {
+                info!("[animation] Found AnimationPlayer at {:?}", e);
+                e
+            }
+            None => {
+                info!(
                         "[animation] No AnimationPlayer found for {:?}; inserting one (side-loaded clips)",
                         entity
                     );
-                    commands.entity(entity).insert(AnimationPlayer::default());
-                    entity
-                }
-            };
+                commands.entity(entity).insert(AnimationPlayer::default());
+                entity
+            }
+        };
 
         state.player_entity = Some(player_entity);
 
         // Add AnimationTarget components to skeleton bones
-        add_animation_targets(&mut commands, entity, player_entity, &children_query, &name_query);
+        add_animation_targets(
+            &mut commands,
+            entity,
+            player_entity,
+            &children_query,
+            &name_query,
+        );
 
         // Assign graph and transitions to the player
         commands
@@ -278,7 +292,10 @@ pub fn auto_play_default(
         playing.set_speed(speed);
 
         state.current_clip = Some(default_name.clone());
-        info!("[animation] Auto-playing default clip '{}' on {:?}", default_name, player_entity);
+        info!(
+            "[animation] Auto-playing default clip '{}' on {:?}",
+            default_name, player_entity
+        );
     }
 }
 
@@ -353,7 +370,11 @@ pub fn process_animation_commands(
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 ) {
     if !cmd_queue.commands.is_empty() {
-        info!("[animation] Processing {} command(s): {:?}", cmd_queue.commands.len(), cmd_queue.commands);
+        info!(
+            "[animation] Processing {} command(s): {:?}",
+            cmd_queue.commands.len(),
+            cmd_queue.commands
+        );
     }
     for cmd in cmd_queue.commands.drain(..) {
         match cmd {
@@ -393,9 +414,7 @@ pub fn process_animation_commands(
 
                 // Per-clip blend: prefer target.blend_in, else source.blend_out,
                 // else the animator's global blend_duration.
-                let target_blend_in = animator
-                    .get_slot(&name)
-                    .and_then(|s| s.blend_in);
+                let target_blend_in = animator.get_slot(&name).and_then(|s| s.blend_in);
                 let source_blend_out = state
                     .current_clip
                     .as_ref()
@@ -549,14 +568,22 @@ pub fn process_animation_commands(
                 state.is_paused = false;
             }
 
-            AnimationCommand::SetParam { entity, name, value } => {
+            AnimationCommand::SetParam {
+                entity,
+                name,
+                value,
+            } => {
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
                 state.params.set_float(name, value);
             }
 
-            AnimationCommand::SetBoolParam { entity, name, value } => {
+            AnimationCommand::SetBoolParam {
+                entity,
+                name,
+                value,
+            } => {
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
@@ -578,11 +605,7 @@ pub fn process_animation_commands(
                 let Ok((mut animator, _)) = animators.get_mut(entity) else {
                     continue;
                 };
-                if let Some(layer) = animator
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.name == layer_name)
-                {
+                if let Some(layer) = animator.layers.iter_mut().find(|l| l.name == layer_name) {
                     layer.weight = weight.clamp(0.0, 1.0);
                 }
             }
@@ -627,16 +650,16 @@ pub fn update_state_machines(
         state.state_time += time.delta_secs();
 
         // Evaluate transitions
-        if let Some(transition) = sm.evaluate_transitions(
-            current_state_name,
-            &state.params,
-            state.state_time,
-        ) {
+        if let Some(transition) =
+            sm.evaluate_transitions(current_state_name, &state.params, state.state_time)
+        {
             let to_state = transition.to.clone();
             let blend_duration = transition.blend_duration;
 
             // Consume trigger if the condition was a trigger
-            if let crate::state_machine::AnimCondition::Trigger(ref trigger_name) = transition.condition {
+            if let crate::state_machine::AnimCondition::Trigger(ref trigger_name) =
+                transition.condition
+            {
                 state.params.consume_trigger(trigger_name);
             }
 
@@ -653,7 +676,9 @@ pub fn update_state_machines(
                 if let Some(clip_name) = clip_name {
                     if let Some(&node_idx) = state.node_indices.get(&clip_name) {
                         if let Some(player_entity) = state.player_entity {
-                            if let Ok((mut player, mut transitions)) = players.get_mut(player_entity) {
+                            if let Ok((mut player, mut transitions)) =
+                                players.get_mut(player_entity)
+                            {
                                 let blend = Duration::from_secs_f32(blend_duration.max(0.0));
                                 let playing = transitions.play(&mut player, node_idx, blend);
                                 if target_state.looping {
@@ -721,14 +746,26 @@ pub fn detect_animation_finished(world: &mut World) {
         let mut player_query = world.query::<&AnimationPlayer>();
 
         for (entity, animator, state) in query.iter(world) {
-            if !state.initialized || state.is_paused { continue; }
-            let Some(ref current_clip) = state.current_clip else { continue; };
+            if !state.initialized || state.is_paused {
+                continue;
+            }
+            let Some(ref current_clip) = state.current_clip else {
+                continue;
+            };
             let slot = animator.get_slot(current_clip);
             let is_looping = slot.map_or(true, |s| s.looping);
-            if is_looping { continue; }
-            let Some(&node_idx) = state.node_indices.get(current_clip.as_str()) else { continue; };
-            let Some(player_entity) = state.player_entity else { continue; };
-            let Ok(player) = player_query.get(world, player_entity) else { continue; };
+            if is_looping {
+                continue;
+            }
+            let Some(&node_idx) = state.node_indices.get(current_clip.as_str()) else {
+                continue;
+            };
+            let Some(player_entity) = state.player_entity else {
+                continue;
+            };
+            let Ok(player) = player_query.get(world, player_entity) else {
+                continue;
+            };
             if let Some(anim) = player.animation(node_idx) {
                 if anim.is_finished() {
                     finished.push((entity, current_clip.clone()));
@@ -738,19 +775,29 @@ pub fn detect_animation_finished(world: &mut World) {
     }
 
     // Apply via reflection (sets BlueprintRuntimeState.anim_finished_clip if present)
-    if finished.is_empty() { return; }
+    if finished.is_empty() {
+        return;
+    }
 
     let registry = type_registry.read();
-    let registration = registry.iter().find(|r| {
-        r.type_info().type_path().ends_with("BlueprintRuntimeState")
-    });
-    let Some(registration) = registration else { return; };
-    let Some(reflect_component) = registration.data::<ReflectComponent>() else { return; };
+    let registration = registry
+        .iter()
+        .find(|r| r.type_info().type_path().ends_with("BlueprintRuntimeState"));
+    let Some(registration) = registration else {
+        return;
+    };
+    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+        return;
+    };
 
     for (entity, clip_name) in finished {
         let entity_ref = world.entity(entity);
-        let Some(reflected) = reflect_component.reflect(entity_ref) else { continue; };
-        let Ok(mut cloned) = reflected.reflect_clone() else { continue; };
+        let Some(reflected) = reflect_component.reflect(entity_ref) else {
+            continue;
+        };
+        let Ok(mut cloned) = reflected.reflect_clone() else {
+            continue;
+        };
         if let bevy::reflect::ReflectMut::Struct(s) = cloned.reflect_mut() {
             if let Some(field) = s.field_mut("anim_finished_clip") {
                 if let Some(opt) = field.try_downcast_mut::<Option<String>>() {

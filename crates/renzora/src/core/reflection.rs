@@ -76,13 +76,19 @@ fn navigate_to_field<'a>(
     reflect: &'a dyn bevy::reflect::PartialReflect,
     path: &[&str],
 ) -> Option<&'a dyn bevy::reflect::PartialReflect> {
-    if path.is_empty() { return Some(reflect); }
+    if path.is_empty() {
+        return Some(reflect);
+    }
     let field_name = path[0];
     let remaining = &path[1..];
     match reflect.reflect_ref() {
         ReflectRef::Struct(s) => {
             let field = s.field(field_name)?;
-            if remaining.is_empty() { Some(field) } else { navigate_to_field(field, remaining) }
+            if remaining.is_empty() {
+                Some(field)
+            } else {
+                navigate_to_field(field, remaining)
+            }
         }
         _ => None,
     }

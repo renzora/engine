@@ -13,11 +13,12 @@ pub use data::{
     FoliagePaintSettings, FoliageType, MAX_FOLIAGE_TYPES,
 };
 pub use material::{GrassMaterial, GrassUniforms};
-pub use scatter::{TerrainFoliageConfig, FoliageBatch, generate_foliage_instances};
+pub use scatter::{generate_foliage_instances, FoliageBatch, TerrainFoliageConfig};
 
-use bevy::prelude::*;
 use bevy::pbr::MaterialPlugin;
+use bevy::prelude::*;
 
+#[derive(Default)]
 pub struct FoliagePlugin;
 
 impl Plugin for FoliagePlugin {
@@ -38,3 +39,5 @@ impl Plugin for FoliagePlugin {
             );
     }
 }
+
+renzora::add!(FoliagePlugin);

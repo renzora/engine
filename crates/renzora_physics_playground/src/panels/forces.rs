@@ -21,9 +21,18 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                             ("\u{f071}", theme.semantic.warning.to_color32())
                         };
                         ui.label(RichText::new(icon).size(11.0).color(color));
-                        ui.label(RichText::new(format!("Entity {:?}", entity)).size(10.0).color(theme.text.secondary.to_color32()).monospace());
+                        ui.label(
+                            RichText::new(format!("Entity {:?}", entity))
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32())
+                                .monospace(),
+                        );
                         if !state.selected_has_rigidbody {
-                            ui.label(RichText::new("(no rigid body)").size(9.0).color(theme.semantic.warning.to_color32()));
+                            ui.label(
+                                RichText::new("(no rigid body)")
+                                    .size(9.0)
+                                    .color(theme.semantic.warning.to_color32()),
+                            );
                         }
                     });
 
@@ -31,19 +40,44 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                         ui.horizontal(|ui| {
                             let v = state.selected_linear_velocity;
                             let w = state.selected_angular_velocity;
-                            ui.label(RichText::new(format!("v: [{:.1}, {:.1}, {:.1}]", v.x, v.y, v.z)).size(9.0).color(theme.text.muted.to_color32()).monospace());
-                            ui.label(RichText::new(format!("\u{03c9}: [{:.1}, {:.1}, {:.1}]", w.x, w.y, w.z)).size(9.0).color(theme.text.muted.to_color32()).monospace());
+                            ui.label(
+                                RichText::new(format!("v: [{:.1}, {:.1}, {:.1}]", v.x, v.y, v.z))
+                                    .size(9.0)
+                                    .color(theme.text.muted.to_color32())
+                                    .monospace(),
+                            );
+                            ui.label(
+                                RichText::new(format!(
+                                    "\u{03c9}: [{:.1}, {:.1}, {:.1}]",
+                                    w.x, w.y, w.z
+                                ))
+                                .size(9.0)
+                                .color(theme.text.muted.to_color32())
+                                .monospace(),
+                            );
                         });
                     }
                 } else {
-                    ui.label(RichText::new("No entity selected").size(11.0).color(theme.text.muted.to_color32()));
-                    ui.label(RichText::new("Select a rigid body entity to apply forces").size(9.0).color(theme.text.disabled.to_color32()));
+                    ui.label(
+                        RichText::new("No entity selected")
+                            .size(11.0)
+                            .color(theme.text.muted.to_color32()),
+                    );
+                    ui.label(
+                        RichText::new("Select a rigid body entity to apply forces")
+                            .size(9.0)
+                            .color(theme.text.disabled.to_color32()),
+                    );
                 }
 
                 ui.add_space(12.0);
 
                 // Mode
-                ui.label(RichText::new("Mode").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Mode")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     for mode in ForceMode::ALL {
@@ -63,13 +97,20 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                 ui.add_space(12.0);
 
                 // Direction
-                ui.label(RichText::new("Direction").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Direction")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     let presets = [
-                        DirectionPreset::Up, DirectionPreset::Down,
-                        DirectionPreset::Left, DirectionPreset::Right,
-                        DirectionPreset::Forward, DirectionPreset::Back,
+                        DirectionPreset::Up,
+                        DirectionPreset::Down,
+                        DirectionPreset::Left,
+                        DirectionPreset::Right,
+                        DirectionPreset::Forward,
+                        DirectionPreset::Back,
                         DirectionPreset::Custom,
                     ];
                     for preset in &presets {
@@ -92,11 +133,23 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                 if state.direction_preset == DirectionPreset::Custom {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("X").size(10.0).color(theme.text.secondary.to_color32()));
+                        ui.label(
+                            RichText::new("X")
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
                         ui.add(egui::DragValue::new(&mut state.custom_direction.x).speed(0.1));
-                        ui.label(RichText::new("Y").size(10.0).color(theme.text.secondary.to_color32()));
+                        ui.label(
+                            RichText::new("Y")
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
                         ui.add(egui::DragValue::new(&mut state.custom_direction.y).speed(0.1));
-                        ui.label(RichText::new("Z").size(10.0).color(theme.text.secondary.to_color32()));
+                        ui.label(
+                            RichText::new("Z")
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
                         ui.add(egui::DragValue::new(&mut state.custom_direction.z).speed(0.1));
                     });
                 }
@@ -104,9 +157,17 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                 ui.add_space(8.0);
 
                 // Magnitude
-                ui.label(RichText::new("Magnitude").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Magnitude")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
-                ui.add(egui::Slider::new(&mut state.magnitude, 0.1..=1000.0).logarithmic(true).clamping(egui::SliderClamping::Always));
+                ui.add(
+                    egui::Slider::new(&mut state.magnitude, 0.1..=1000.0)
+                        .logarithmic(true)
+                        .clamping(egui::SliderClamping::Always),
+                );
 
                 ui.add_space(12.0);
 
@@ -124,13 +185,17 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                             .fill(theme.semantic.success.to_color32());
                         if ui.add(apply_btn).clicked() {
                             if let Some(entity) = state.selected_entity {
-                                let direction = if state.direction_preset == DirectionPreset::Custom {
+                                let direction = if state.direction_preset == DirectionPreset::Custom
+                                {
                                     state.custom_direction
                                 } else {
                                     state.direction_preset.to_vec3()
                                 };
                                 state.commands.push(ForceCommand::Apply {
-                                    entity, mode: state.mode, direction, magnitude: state.magnitude,
+                                    entity,
+                                    mode: state.mode,
+                                    direction,
+                                    magnitude: state.magnitude,
                                 });
                             }
                         }
@@ -147,24 +212,46 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                 ui.add_space(16.0);
 
                 // Explosion
-                ui.label(RichText::new("Explosion").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Explosion")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
                 egui::Grid::new("explosion_params")
                     .num_columns(2)
                     .spacing([8.0, 4.0])
                     .show(ui, |ui| {
-                        ui.label(RichText::new("Radius").size(10.0).color(theme.text.secondary.to_color32()));
-                        ui.add(egui::DragValue::new(&mut state.explosion_radius).speed(0.5).range(0.1..=100.0).suffix(" m"));
+                        ui.label(
+                            RichText::new("Radius")
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut state.explosion_radius)
+                                .speed(0.5)
+                                .range(0.1..=100.0)
+                                .suffix(" m"),
+                        );
                         ui.end_row();
 
-                        ui.label(RichText::new("Force").size(10.0).color(theme.text.secondary.to_color32()));
-                        ui.add(egui::DragValue::new(&mut state.explosion_magnitude).speed(1.0).range(1.0..=1000.0));
+                        ui.label(
+                            RichText::new("Force")
+                                .size(10.0)
+                                .color(theme.text.secondary.to_color32()),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut state.explosion_magnitude)
+                                .speed(1.0)
+                                .range(1.0..=1000.0),
+                        );
                         ui.end_row();
                     });
 
                 ui.add_space(4.0);
-                let explode_btn = egui::Button::new(RichText::new("\u{f1e2} Explode at Origin").size(11.0))
-                    .fill(theme.semantic.warning.to_color32());
+                let explode_btn =
+                    egui::Button::new(RichText::new("\u{f1e2} Explode at Origin").size(11.0))
+                        .fill(theme.semantic.warning.to_color32());
                 if ui.add(explode_btn).clicked() {
                     state.commands.push(ForceCommand::Explosion {
                         origin: bevy::math::Vec3::ZERO,
@@ -176,7 +263,11 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                 ui.add_space(16.0);
 
                 // Velocity override
-                ui.label(RichText::new("Velocity Override").size(12.0).color(theme.text.muted.to_color32()));
+                ui.label(
+                    RichText::new("Velocity Override")
+                        .size(12.0)
+                        .color(theme.text.muted.to_color32()),
+                );
                 ui.add_space(4.0);
                 let can_set = state.selected_entity.is_some() && state.selected_has_rigidbody;
                 ui.add_enabled_ui(can_set, |ui| {
@@ -184,24 +275,61 @@ pub fn render_forces_content(ui: &mut egui::Ui, state: &mut ForcesState, theme: 
                         .num_columns(4)
                         .spacing([4.0, 4.0])
                         .show(ui, |ui| {
-                            ui.label(RichText::new("Linear").size(10.0).color(theme.text.secondary.to_color32()));
-                            ui.add(egui::DragValue::new(&mut state.velocity_linear.x).speed(0.5).prefix("x:"));
-                            ui.add(egui::DragValue::new(&mut state.velocity_linear.y).speed(0.5).prefix("y:"));
-                            ui.add(egui::DragValue::new(&mut state.velocity_linear.z).speed(0.5).prefix("z:"));
+                            ui.label(
+                                RichText::new("Linear")
+                                    .size(10.0)
+                                    .color(theme.text.secondary.to_color32()),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_linear.x)
+                                    .speed(0.5)
+                                    .prefix("x:"),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_linear.y)
+                                    .speed(0.5)
+                                    .prefix("y:"),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_linear.z)
+                                    .speed(0.5)
+                                    .prefix("z:"),
+                            );
                             ui.end_row();
 
-                            ui.label(RichText::new("Angular").size(10.0).color(theme.text.secondary.to_color32()));
-                            ui.add(egui::DragValue::new(&mut state.velocity_angular.x).speed(0.5).prefix("x:"));
-                            ui.add(egui::DragValue::new(&mut state.velocity_angular.y).speed(0.5).prefix("y:"));
-                            ui.add(egui::DragValue::new(&mut state.velocity_angular.z).speed(0.5).prefix("z:"));
+                            ui.label(
+                                RichText::new("Angular")
+                                    .size(10.0)
+                                    .color(theme.text.secondary.to_color32()),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_angular.x)
+                                    .speed(0.5)
+                                    .prefix("x:"),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_angular.y)
+                                    .speed(0.5)
+                                    .prefix("y:"),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.velocity_angular.z)
+                                    .speed(0.5)
+                                    .prefix("z:"),
+                            );
                             ui.end_row();
                         });
 
                     ui.add_space(4.0);
-                    if ui.button(RichText::new("Set Velocity").size(10.0)).clicked() {
+                    if ui
+                        .button(RichText::new("Set Velocity").size(10.0))
+                        .clicked()
+                    {
                         if let Some(entity) = state.selected_entity {
                             state.commands.push(ForceCommand::SetVelocity {
-                                entity, linear: state.velocity_linear, angular: state.velocity_angular,
+                                entity,
+                                linear: state.velocity_linear,
+                                angular: state.velocity_angular,
                             });
                         }
                     }

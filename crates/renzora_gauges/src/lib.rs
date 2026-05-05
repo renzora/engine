@@ -32,6 +32,7 @@ pub struct Gauges;
 
 /// Renzora gauges plugin — adds `bevy_gauge::AttributesPlugin` and editor
 /// integrations when the `editor` feature is enabled.
+#[derive(Default)]
 pub struct GaugesPlugin;
 
 impl Plugin for GaugesPlugin {
@@ -66,7 +67,6 @@ fn ensure_attributes(
     }
 }
 
-
 // ── Snapshot resource for editor panels ────────────────────────────────────
 
 /// Snapshot of all gauge entities and their attribute values, updated each frame.
@@ -93,7 +93,14 @@ fn update_gauges_snapshot(
     for (entity, attrs, name) in &query {
         let attributes: Vec<(String, f32)> = attrs
             .iter()
-            .map(|(id, val)| (bevy_gauge::attribute_id::Interner::global().resolve(id).to_string(), val))
+            .map(|(id, val)| {
+                (
+                    bevy_gauge::attribute_id::Interner::global()
+                        .resolve(id)
+                        .to_string(),
+                    val,
+                )
+            })
             .collect();
         snapshot.entries.push(GaugeEntitySnapshot {
             entity,
@@ -103,3 +110,5 @@ fn update_gauges_snapshot(
     }
     snapshot.entries.sort_by_key(|e| e.entity);
 }
+
+renzora::add!(GaugesPlugin);

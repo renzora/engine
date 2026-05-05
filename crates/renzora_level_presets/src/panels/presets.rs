@@ -22,7 +22,12 @@ pub fn render_level_presets_content(
     // Header
     ui.horizontal(|ui| {
         ui.add_space(padding);
-        ui.label(RichText::new("Level Templates").size(13.0).color(text_primary).strong());
+        ui.label(
+            RichText::new("Level Templates")
+                .size(13.0)
+                .color(text_primary)
+                .strong(),
+        );
         if state.has_active_level {
             ui.label(
                 RichText::new(format!("({} entities)", state.entity_count))

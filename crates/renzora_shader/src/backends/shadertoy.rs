@@ -261,9 +261,12 @@ fn looks_like_vec4_expr(expr: &str) -> bool {
     }
     // If it's a function call wrapping something with vec4 inside
     // e.g. cos(a+vec4(...))
-    if trimmed.starts_with("cos(") || trimmed.starts_with("sin(")
-        || trimmed.starts_with("abs(") || trimmed.starts_with("floor(")
-        || trimmed.starts_with("ceil(") || trimmed.starts_with("fract(")
+    if trimmed.starts_with("cos(")
+        || trimmed.starts_with("sin(")
+        || trimmed.starts_with("abs(")
+        || trimmed.starts_with("floor(")
+        || trimmed.starts_with("ceil(")
+        || trimmed.starts_with("fract(")
     {
         return true;
     }
@@ -318,12 +321,18 @@ fn expand_defines(source: &str) -> String {
             if let Some(paren_pos) = rest.find('(') {
                 let name = rest[..paren_pos].trim().to_string();
                 // Make sure there's no space before '(' — it must be right after the name
-                if rest.as_bytes().get(paren_pos.saturating_sub(1)).map_or(false, |c| c.is_ascii_alphanumeric() || *c == b'_')
+                if rest
+                    .as_bytes()
+                    .get(paren_pos.saturating_sub(1))
+                    .map_or(false, |c| c.is_ascii_alphanumeric() || *c == b'_')
                     || paren_pos == name.len()
                 {
                     if let Some(close_paren) = rest[paren_pos..].find(')') {
                         let params_str = &rest[paren_pos + 1..paren_pos + close_paren];
-                        let params: Vec<String> = params_str.split(',').map(|s| s.trim().to_string()).collect();
+                        let params: Vec<String> = params_str
+                            .split(',')
+                            .map(|s| s.trim().to_string())
+                            .collect();
                         let body = rest[paren_pos + close_paren + 1..].trim().to_string();
                         defines.push((name, params, body));
                         continue;
@@ -373,9 +382,7 @@ fn expand_function_macro(source: &str, name: &str, params: &[String], body: &str
 
     while i < chars.len() {
         // Try to match macro name
-        if i + name_len < chars.len()
-            && &chars[i..i + name_len] == name_chars.as_slice()
-        {
+        if i + name_len < chars.len() && &chars[i..i + name_len] == name_chars.as_slice() {
             let before_ok = if i == 0 {
                 true
             } else {
@@ -545,12 +552,18 @@ fn remap_uniforms(wgsl: &str) -> String {
     for (from, to) in [
         ("_st.member.iTimeDelta", "uniforms.delta_time"),
         ("_st.member.iTime", "uniforms.time"),
-        ("_st.member.iResolution", "vec3<f32>(uniforms.resolution, uniforms.resolution.x / uniforms.resolution.y)"),
+        (
+            "_st.member.iResolution",
+            "vec3<f32>(uniforms.resolution, uniforms.resolution.x / uniforms.resolution.y)",
+        ),
         ("_st.member.iMouse", "uniforms.mouse"),
         ("_st.member.iFrame", "i32(uniforms.frame)"),
         ("_st.iTimeDelta", "uniforms.delta_time"),
         ("_st.iTime", "uniforms.time"),
-        ("_st.iResolution", "vec3<f32>(uniforms.resolution, uniforms.resolution.x / uniforms.resolution.y)"),
+        (
+            "_st.iResolution",
+            "vec3<f32>(uniforms.resolution, uniforms.resolution.x / uniforms.resolution.y)",
+        ),
         ("_st.iMouse", "uniforms.mouse"),
         ("_st.iFrame", "i32(uniforms.frame)"),
     ] {

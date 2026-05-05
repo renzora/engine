@@ -39,7 +39,14 @@ fn hanabi_custom_ui(
 
     // Source info
     let source_label = match &data.source {
-        EffectSource::Asset { path } => format!("Asset: {}", if path.is_empty() { "(none)" } else { path.as_str() }),
+        EffectSource::Asset { path } => format!(
+            "Asset: {}",
+            if path.is_empty() {
+                "(none)"
+            } else {
+                path.as_str()
+            }
+        ),
         EffectSource::Inline { definition } => format!("Inline: {}", definition.name),
     };
 
@@ -62,7 +69,14 @@ fn hanabi_custom_ui(
     let mut new_rate = rate_mult;
     ui.horizontal(|ui| {
         ui.label("Rate Multiplier:");
-        if ui.add(egui::DragValue::new(&mut new_rate).speed(0.05).range(0.0..=10.0)).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut new_rate)
+                    .speed(0.05)
+                    .range(0.0..=10.0),
+            )
+            .changed()
+        {
             cmds.push(move |world: &mut World| {
                 if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.rate_multiplier = new_rate;
@@ -75,7 +89,14 @@ fn hanabi_custom_ui(
     let mut new_scale = scale_mult;
     ui.horizontal(|ui| {
         ui.label("Scale Multiplier:");
-        if ui.add(egui::DragValue::new(&mut new_scale).speed(0.05).range(0.0..=10.0)).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut new_scale)
+                    .speed(0.05)
+                    .range(0.0..=10.0),
+            )
+            .changed()
+        {
             cmds.push(move |world: &mut World| {
                 if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.scale_multiplier = new_scale;
@@ -88,7 +109,14 @@ fn hanabi_custom_ui(
     let mut new_ts = time_scale;
     ui.horizontal(|ui| {
         ui.label("Time Scale:");
-        if ui.add(egui::DragValue::new(&mut new_ts).speed(0.05).range(0.0..=5.0)).changed() {
+        if ui
+            .add(
+                egui::DragValue::new(&mut new_ts)
+                    .speed(0.05)
+                    .range(0.0..=5.0),
+            )
+            .changed()
+        {
             cmds.push(move |world: &mut World| {
                 if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
                     d.time_scale = new_ts;
@@ -101,7 +129,13 @@ fn hanabi_custom_ui(
     let mut rgba = egui::Rgba::from_rgba_premultiplied(tint[0], tint[1], tint[2], tint[3]);
     ui.horizontal(|ui| {
         ui.label("Color Tint:");
-        if egui::color_picker::color_edit_button_rgba(ui, &mut rgba, egui::color_picker::Alpha::OnlyBlend).changed() {
+        if egui::color_picker::color_edit_button_rgba(
+            ui,
+            &mut rgba,
+            egui::color_picker::Alpha::OnlyBlend,
+        )
+        .changed()
+        {
             let new_tint = [rgba.r(), rgba.g(), rgba.b(), rgba.a()];
             cmds.push(move |world: &mut World| {
                 if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
@@ -118,11 +152,17 @@ fn hanabi_custom_ui(
             ui.label(format!("Capacity: {}", definition.capacity));
             ui.label(format!("Spawn Mode: {:?}", definition.spawn_mode));
             ui.label(format!("Spawn Rate: {:.1}/s", definition.spawn_rate));
-            ui.label(format!("Lifetime: {:.2} - {:.2}s", definition.lifetime_min, definition.lifetime_max));
+            ui.label(format!(
+                "Lifetime: {:.2} - {:.2}s",
+                definition.lifetime_min, definition.lifetime_max
+            ));
             ui.label(format!("Emit Shape: {:?}", definition.emit_shape));
             ui.label(format!("Velocity Mode: {:?}", definition.velocity_mode));
             ui.label(format!("Alpha Mode: {:?}", definition.alpha_mode));
-            ui.label(format!("Simulation Space: {:?}", definition.simulation_space));
+            ui.label(format!(
+                "Simulation Space: {:?}",
+                definition.simulation_space
+            ));
         });
     }
 }

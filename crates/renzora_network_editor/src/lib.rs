@@ -5,10 +5,10 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
-use renzora_network::{NetworkStatus, Networked, NetworkId, NetworkOwner, OwnerKind};
-use renzora_network::status::ConnectionState;
 use renzora::core::CurrentProject;
+use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_network::status::ConnectionState;
+use renzora_network::{NetworkId, NetworkOwner, NetworkStatus, Networked, OwnerKind};
 use renzora_theme::ThemeManager;
 
 // ============================================================================
@@ -18,15 +18,28 @@ use renzora_theme::ThemeManager;
 struct NetworkMonitorPanel;
 
 impl EditorPanel for NetworkMonitorPanel {
-    fn id(&self) -> &str { "network_monitor" }
-    fn title(&self) -> &str { "Network Monitor" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::WIFI_HIGH) }
-    fn category(&self) -> &str { "Network" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Bottom }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "network_monitor"
+    }
+    fn title(&self) -> &str {
+        "Network Monitor"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::WIFI_HIGH)
+    }
+    fn category(&self) -> &str {
+        "Network"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Bottom
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = world.get_resource::<ThemeManager>()
+        let theme = world
+            .get_resource::<ThemeManager>()
             .map(|tm| tm.active_theme.clone())
             .unwrap_or_default();
         let muted = theme.text.muted.to_color32();
@@ -59,16 +72,14 @@ impl EditorPanel for NetworkMonitorPanel {
                             .color(muted),
                     );
                     ui.add_space(8.0);
-                    ui.label(
-                        egui::RichText::new("Disconnected")
-                            .size(13.0)
-                            .color(muted),
-                    );
+                    ui.label(egui::RichText::new("Disconnected").size(13.0).color(muted));
                     ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("Configure networking in Network Settings to get started.")
-                            .size(11.0)
-                            .color(muted),
+                        egui::RichText::new(
+                            "Configure networking in Network Settings to get started.",
+                        )
+                        .size(11.0)
+                        .color(muted),
                     );
                 });
             }
@@ -77,11 +88,7 @@ impl EditorPanel for NetworkMonitorPanel {
                     ui.add_space(40.0);
                     ui.spinner();
                     ui.add_space(8.0);
-                    ui.label(
-                        egui::RichText::new("Connecting...")
-                            .size(13.0)
-                            .color(muted),
-                    );
+                    ui.label(egui::RichText::new("Connecting...").size(13.0).color(muted));
                 });
             }
             ConnectionState::Connected => {
@@ -99,11 +106,7 @@ impl EditorPanel for NetworkMonitorPanel {
                                 .color(egui::Color32::from_rgb(80, 200, 120)),
                         );
                         if status.is_server {
-                            ui.label(
-                                egui::RichText::new("(Server)")
-                                    .size(11.0)
-                                    .color(muted),
-                            );
+                            ui.label(egui::RichText::new("(Server)").size(11.0).color(muted));
                         }
                     });
 
@@ -178,21 +181,35 @@ impl EditorPanel for NetworkMonitorPanel {
 struct NetworkEntitiesPanel;
 
 impl EditorPanel for NetworkEntitiesPanel {
-    fn id(&self) -> &str { "network_entities" }
-    fn title(&self) -> &str { "Network Entities" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::SHARE_NETWORK) }
-    fn category(&self) -> &str { "Network" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Left }
-    fn min_size(&self) -> [f32; 2] { [180.0, 100.0] }
+    fn id(&self) -> &str {
+        "network_entities"
+    }
+    fn title(&self) -> &str {
+        "Network Entities"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::SHARE_NETWORK)
+    }
+    fn category(&self) -> &str {
+        "Network"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Left
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [180.0, 100.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = world.get_resource::<ThemeManager>()
+        let theme = world
+            .get_resource::<ThemeManager>()
             .map(|tm| tm.active_theme.clone())
             .unwrap_or_default();
         let muted = theme.text.muted.to_color32();
 
         // Gather networked entities by iterating archetypes
-        let mut networked_entities: Vec<(Entity, Option<String>, Option<u64>, Option<OwnerKind>)> = Vec::new();
+        let mut networked_entities: Vec<(Entity, Option<String>, Option<u64>, Option<OwnerKind>)> =
+            Vec::new();
         for archetype in world.archetypes().iter() {
             for arch_entity in archetype.entities() {
                 let entity = arch_entity.id();
@@ -221,9 +238,11 @@ impl EditorPanel for NetworkEntitiesPanel {
                 );
                 ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new("Add a Networked component to entities\nto see them listed here.")
-                        .size(11.0)
-                        .color(muted),
+                    egui::RichText::new(
+                        "Add a Networked component to entities\nto see them listed here.",
+                    )
+                    .size(11.0)
+                    .color(muted),
                 );
             });
             return;
@@ -240,9 +259,7 @@ impl EditorPanel for NetworkEntitiesPanel {
                 ui.horizontal(|ui| {
                     // Entity name
                     let fallback = format!("{:?}", entity);
-                    let display_name = name
-                        .as_deref()
-                        .unwrap_or(&fallback);
+                    let display_name = name.as_deref().unwrap_or(&fallback);
                     ui.label(
                         egui::RichText::new(egui_phosphor::regular::CUBE)
                             .size(12.0)
@@ -265,11 +282,7 @@ impl EditorPanel for NetworkEntitiesPanel {
                             OwnerKind::Server => "Server".to_string(),
                             OwnerKind::Client(id) => format!("Client {}", id),
                         };
-                        ui.label(
-                            egui::RichText::new(owner_str)
-                                .size(10.0)
-                                .color(muted),
-                        );
+                        ui.label(egui::RichText::new(owner_str).size(10.0).color(muted));
                     }
                 });
             }
@@ -284,15 +297,28 @@ impl EditorPanel for NetworkEntitiesPanel {
 struct NetworkSettingsPanel;
 
 impl EditorPanel for NetworkSettingsPanel {
-    fn id(&self) -> &str { "network_settings" }
-    fn title(&self) -> &str { "Network Settings" }
-    fn icon(&self) -> Option<&str> { Some(egui_phosphor::regular::GEAR_SIX) }
-    fn category(&self) -> &str { "Network" }
-    fn default_location(&self) -> PanelLocation { PanelLocation::Right }
-    fn min_size(&self) -> [f32; 2] { [200.0, 150.0] }
+    fn id(&self) -> &str {
+        "network_settings"
+    }
+    fn title(&self) -> &str {
+        "Network Settings"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::GEAR_SIX)
+    }
+    fn category(&self) -> &str {
+        "Network"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [200.0, 150.0]
+    }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = world.get_resource::<ThemeManager>()
+        let theme = world
+            .get_resource::<ThemeManager>()
             .map(|tm| tm.active_theme.clone())
             .unwrap_or_default();
         let muted = theme.text.muted.to_color32();
@@ -303,33 +329,37 @@ impl EditorPanel for NetworkSettingsPanel {
         match net_config {
             Some(config) => {
                 ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("Network Configuration")
-                            .size(13.0),
-                    );
+                    ui.label(egui::RichText::new("Network Configuration").size(13.0));
                     ui.separator();
 
-                    egui::Grid::new("net_settings").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                        ui.label(egui::RichText::new("Server Address").size(11.0).color(muted));
-                        ui.label(&config.server_addr);
-                        ui.end_row();
+                    egui::Grid::new("net_settings")
+                        .num_columns(2)
+                        .spacing([12.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new("Server Address")
+                                    .size(11.0)
+                                    .color(muted),
+                            );
+                            ui.label(&config.server_addr);
+                            ui.end_row();
 
-                        ui.label(egui::RichText::new("Port").size(11.0).color(muted));
-                        ui.label(format!("{}", config.port));
-                        ui.end_row();
+                            ui.label(egui::RichText::new("Port").size(11.0).color(muted));
+                            ui.label(format!("{}", config.port));
+                            ui.end_row();
 
-                        ui.label(egui::RichText::new("Transport").size(11.0).color(muted));
-                        ui.label(&config.transport);
-                        ui.end_row();
+                            ui.label(egui::RichText::new("Transport").size(11.0).color(muted));
+                            ui.label(&config.transport);
+                            ui.end_row();
 
-                        ui.label(egui::RichText::new("Tick Rate").size(11.0).color(muted));
-                        ui.label(format!("{} Hz", config.tick_rate));
-                        ui.end_row();
+                            ui.label(egui::RichText::new("Tick Rate").size(11.0).color(muted));
+                            ui.label(format!("{} Hz", config.tick_rate));
+                            ui.end_row();
 
-                        ui.label(egui::RichText::new("Max Clients").size(11.0).color(muted));
-                        ui.label(format!("{}", config.max_clients));
-                        ui.end_row();
-                    });
+                            ui.label(egui::RichText::new("Max Clients").size(11.0).color(muted));
+                            ui.label(format!("{}", config.max_clients));
+                            ui.end_row();
+                        });
 
                     ui.add_space(12.0);
                     ui.label(
@@ -381,3 +411,4 @@ impl Plugin for NetworkEditorPlugin {
     }
 }
 
+renzora::add!(NetworkEditorPlugin, Editor);

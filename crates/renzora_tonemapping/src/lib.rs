@@ -1,8 +1,8 @@
 #![allow(dead_code)] // MODE_LABELS used by editor inspector only.
 
-use bevy::prelude::*;
-use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::camera::Exposure;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -81,15 +81,17 @@ fn sync_tonemapping(
     for (target, source_list) in routing.iter() {
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { break; }
+                if !routing_changed && !settings.is_changed() {
+                    break;
+                }
                 let tm = if settings.enabled {
                     mode_to_tonemapping(settings.mode)
                 } else {
                     Tonemapping::None
                 };
-                commands.entity(*target)
-                    .insert(tm)
-                    .insert(Exposure { ev100: settings.ev100 });
+                commands.entity(*target).insert(tm).insert(Exposure {
+                    ev100: settings.ev100,
+                });
                 break;
             }
         }
@@ -113,20 +115,28 @@ fn inspector_entry() -> InspectorEntry {
                 .get::<Exposure>(entity)
                 .map(|e| e.ev100)
                 .unwrap_or(9.7);
-            world
-                .entity_mut(entity)
-                .insert(TonemappingSettings { mode, ev100, enabled: true });
+            world.entity_mut(entity).insert(TonemappingSettings {
+                mode,
+                ev100,
+                enabled: true,
+            });
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity)
+            world
+                .entity_mut(entity)
                 .remove::<TonemappingSettings>()
                 .insert((Tonemapping::default(), Exposure::default()));
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<TonemappingSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<TonemappingSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(tonemapping_custom_ui),
@@ -211,7 +221,9 @@ fn sync_deband_dither(
     for (target, source_list) in routing.iter() {
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { break; }
+                if !routing_changed && !settings.is_changed() {
+                    break;
+                }
                 commands.entity(*target).insert(if settings.enabled {
                     DebandDither::Enabled
                 } else {
@@ -230,7 +242,9 @@ fn cleanup_deband_dither(
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.insert(DebandDither::Disabled); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.insert(DebandDither::Disabled);
+            }
         }
     }
 }
@@ -244,17 +258,24 @@ fn deband_dither_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<DebandDitherSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(DebandDitherSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(DebandDitherSettings::default());
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<DebandDitherSettings>();
             world.entity_mut(entity).insert(DebandDither::Disabled);
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<DebandDitherSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<DebandDitherSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DebandDitherSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<DebandDitherSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: None,
@@ -275,6 +296,7 @@ fn cleanup_tonemapping(
     }
 }
 
+#[derive(Default)]
 pub struct TonemappingPlugin;
 
 impl Plugin for TonemappingPlugin {
@@ -282,7 +304,15 @@ impl Plugin for TonemappingPlugin {
         info!("[runtime] TonemappingPlugin");
         app.register_type::<TonemappingSettings>();
         app.register_type::<DebandDitherSettings>();
-        app.add_systems(Update, (sync_tonemapping, cleanup_tonemapping, sync_deband_dither, cleanup_deband_dither));
+        app.add_systems(
+            Update,
+            (
+                sync_tonemapping,
+                cleanup_tonemapping,
+                sync_deband_dither,
+                cleanup_deband_dither,
+            ),
+        );
         #[cfg(feature = "editor")]
         {
             app.register_inspector(inspector_entry());
@@ -290,3 +320,5 @@ impl Plugin for TonemappingPlugin {
         }
     }
 }
+
+renzora::add!(TonemappingPlugin);

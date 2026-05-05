@@ -1,6 +1,8 @@
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, Pos2, RichText, Sense, Stroke, StrokeKind, Vec2};
+use bevy_egui::egui::{
+    self, Color32, CornerRadius, CursorIcon, Pos2, RichText, Sense, Stroke, StrokeKind, Vec2,
+};
 use egui_phosphor::regular as icons;
 
 use crate::auth::SplashAuth;
@@ -73,8 +75,8 @@ enum ShapeKind {
 struct Shape3D {
     pos: Vec2,
     vel: Vec2,
-    rotation: [f32; 3],   // pitch, yaw, roll (radians)
-    rot_speed: [f32; 3],  // angular velocity per axis
+    rotation: [f32; 3],  // pitch, yaw, roll (radians)
+    rot_speed: [f32; 3], // angular velocity per axis
     size: f32,
     color: Color32,
     kind: ShapeKind,
@@ -95,65 +97,89 @@ fn shape_geometry(kind: ShapeKind) -> (&'static [[f32; 3]], &'static [(usize, us
         ShapeKind::Cube => {
             const V: [[f32; 3]; 8] = [
                 [-1.0, -1.0, -1.0],
-                [ 1.0, -1.0, -1.0],
-                [-1.0,  1.0, -1.0],
-                [ 1.0,  1.0, -1.0],
-                [-1.0, -1.0,  1.0],
-                [ 1.0, -1.0,  1.0],
-                [-1.0,  1.0,  1.0],
-                [ 1.0,  1.0,  1.0],
+                [1.0, -1.0, -1.0],
+                [-1.0, 1.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [-1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
             ];
             const E: [(usize, usize); 12] = [
-                (0, 1), (1, 3), (3, 2), (2, 0),
-                (4, 5), (5, 7), (7, 6), (6, 4),
-                (0, 4), (1, 5), (2, 6), (3, 7),
+                (0, 1),
+                (1, 3),
+                (3, 2),
+                (2, 0),
+                (4, 5),
+                (5, 7),
+                (7, 6),
+                (6, 4),
+                (0, 4),
+                (1, 5),
+                (2, 6),
+                (3, 7),
             ];
             (&V, &E)
         }
         ShapeKind::Tetrahedron => {
             // Regular tetrahedron inscribed in a cube.
             const V: [[f32; 3]; 4] = [
-                [ 1.0,  1.0,  1.0],
-                [-1.0, -1.0,  1.0],
-                [-1.0,  1.0, -1.0],
-                [ 1.0, -1.0, -1.0],
+                [1.0, 1.0, 1.0],
+                [-1.0, -1.0, 1.0],
+                [-1.0, 1.0, -1.0],
+                [1.0, -1.0, -1.0],
             ];
-            const E: [(usize, usize); 6] = [
-                (0, 1), (0, 2), (0, 3),
-                (1, 2), (1, 3), (2, 3),
-            ];
+            const E: [(usize, usize); 6] = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)];
             (&V, &E)
         }
         ShapeKind::Octahedron => {
             const V: [[f32; 3]; 6] = [
-                [ 1.2,  0.0,  0.0],
-                [-1.2,  0.0,  0.0],
-                [ 0.0,  1.2,  0.0],
-                [ 0.0, -1.2,  0.0],
-                [ 0.0,  0.0,  1.2],
-                [ 0.0,  0.0, -1.2],
+                [1.2, 0.0, 0.0],
+                [-1.2, 0.0, 0.0],
+                [0.0, 1.2, 0.0],
+                [0.0, -1.2, 0.0],
+                [0.0, 0.0, 1.2],
+                [0.0, 0.0, -1.2],
             ];
             const E: [(usize, usize); 12] = [
-                (0, 2), (0, 3), (0, 4), (0, 5),
-                (1, 2), (1, 3), (1, 4), (1, 5),
-                (2, 4), (2, 5), (3, 4), (3, 5),
+                (0, 2),
+                (0, 3),
+                (0, 4),
+                (0, 5),
+                (1, 2),
+                (1, 3),
+                (1, 4),
+                (1, 5),
+                (2, 4),
+                (2, 5),
+                (3, 4),
+                (3, 5),
             ];
             (&V, &E)
         }
         ShapeKind::Diamond => {
             // Square bipyramid (tall).
             const V: [[f32; 3]; 6] = [
-                [ 0.0,  1.4,  0.0],   // top
-                [ 0.0, -1.4,  0.0],   // bottom
-                [ 0.8,  0.0,  0.0],
-                [-0.8,  0.0,  0.0],
-                [ 0.0,  0.0,  0.8],
-                [ 0.0,  0.0, -0.8],
+                [0.0, 1.4, 0.0],  // top
+                [0.0, -1.4, 0.0], // bottom
+                [0.8, 0.0, 0.0],
+                [-0.8, 0.0, 0.0],
+                [0.0, 0.0, 0.8],
+                [0.0, 0.0, -0.8],
             ];
             const E: [(usize, usize); 12] = [
-                (0, 2), (0, 3), (0, 4), (0, 5),
-                (1, 2), (1, 3), (1, 4), (1, 5),
-                (2, 4), (4, 3), (3, 5), (5, 2),
+                (0, 2),
+                (0, 3),
+                (0, 4),
+                (0, 5),
+                (1, 2),
+                (1, 3),
+                (1, 4),
+                (1, 5),
+                (2, 4),
+                (4, 3),
+                (3, 5),
+                (5, 2),
             ];
             (&V, &E)
         }
@@ -287,7 +313,8 @@ fn draw_background(painter: &egui::Painter, screen: Vec2, state: &mut BgState, t
                 1 => Color32::from_rgb(220, 120, 240),
                 2 => Color32::from_rgb(255, 180, 120),
                 _ => Color32::from_rgb(140, 220, 180),
-            }.gamma_multiply(0.5 + 0.1 * hue.sin());
+            }
+            .gamma_multiply(0.5 + 0.1 * hue.sin());
             state.shapes.push(Shape3D {
                 pos: Vec2::new(hash01(seed) * screen.x, hash01(seed + 1) * screen.y),
                 vel: Vec2::new(
@@ -322,15 +349,30 @@ fn draw_background(painter: &egui::Painter, screen: Vec2, state: &mut BgState, t
             shape.rotation[axis] += shape.rot_speed[axis] * dt;
         }
         let margin = shape.size;
-        if shape.pos.x < margin { shape.pos.x = margin; shape.vel.x = shape.vel.x.abs(); }
-        if shape.pos.x > screen.x - margin { shape.pos.x = screen.x - margin; shape.vel.x = -shape.vel.x.abs(); }
-        if shape.pos.y < margin { shape.pos.y = margin; shape.vel.y = shape.vel.y.abs(); }
-        if shape.pos.y > screen.y - margin { shape.pos.y = screen.y - margin; shape.vel.y = -shape.vel.y.abs(); }
+        if shape.pos.x < margin {
+            shape.pos.x = margin;
+            shape.vel.x = shape.vel.x.abs();
+        }
+        if shape.pos.x > screen.x - margin {
+            shape.pos.x = screen.x - margin;
+            shape.vel.x = -shape.vel.x.abs();
+        }
+        if shape.pos.y < margin {
+            shape.pos.y = margin;
+            shape.vel.y = shape.vel.y.abs();
+        }
+        if shape.pos.y > screen.y - margin {
+            shape.pos.y = screen.y - margin;
+            shape.vel.y = -shape.vel.y.abs();
+        }
 
         let (verts, edges) = shape_geometry(shape.kind);
         let center = Pos2::new(shape.pos.x, shape.pos.y);
         let rotated: Vec<[f32; 3]> = verts.iter().map(|v| rotate3(*v, shape.rotation)).collect();
-        let projected: Vec<(Pos2, f32)> = rotated.iter().map(|v| project(*v, center, shape.size)).collect();
+        let projected: Vec<(Pos2, f32)> = rotated
+            .iter()
+            .map(|v| project(*v, center, shape.size))
+            .collect();
 
         for &(i, j) in edges.iter() {
             let (a, za) = projected[i];
@@ -353,10 +395,18 @@ fn draw_background(painter: &egui::Painter, screen: Vec2, state: &mut BgState, t
     // Constellation particles + distance-faded links.
     for p in state.particles.iter_mut() {
         p.pos += p.vel * dt;
-        if p.pos.x < 0.0 { p.pos.x += screen.x; }
-        if p.pos.x > screen.x { p.pos.x -= screen.x; }
-        if p.pos.y < 0.0 { p.pos.y += screen.y; }
-        if p.pos.y > screen.y { p.pos.y -= screen.y; }
+        if p.pos.x < 0.0 {
+            p.pos.x += screen.x;
+        }
+        if p.pos.x > screen.x {
+            p.pos.x -= screen.x;
+        }
+        if p.pos.y < 0.0 {
+            p.pos.y += screen.y;
+        }
+        if p.pos.y > screen.y {
+            p.pos.y -= screen.y;
+        }
     }
 
     let link_dist: f32 = 140.0;
@@ -400,7 +450,9 @@ fn open_url(url: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn();
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(url).spawn();
         #[cfg(all(unix, not(target_os = "macos")))]
@@ -417,7 +469,14 @@ fn open_url(url: &str) {
 // ── Reusable button helpers ────────────────────────────────────────
 
 /// Icon-prefixed link button. Returns the response so callers can open URLs.
-fn link_button(ui: &mut egui::Ui, rect: egui::Rect, icon: &str, label: &str, url: &str, starred: bool) {
+fn link_button(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    icon: &str,
+    label: &str,
+    url: &str,
+    starred: bool,
+) {
     let resp = ui.allocate_rect(rect, Sense::click());
     let hovered = resp.hovered();
     if hovered {
@@ -439,7 +498,13 @@ fn link_button(ui: &mut egui::Ui, rect: egui::Rect, icon: &str, label: &str, url
         TEXT
     };
     let painter = ui.painter();
-    painter.rect(rect, CornerRadius::same(7), bg, Stroke::new(1.0, border), StrokeKind::Inside);
+    painter.rect(
+        rect,
+        CornerRadius::same(7),
+        bg,
+        Stroke::new(1.0, border),
+        StrokeKind::Inside,
+    );
 
     let content = format!("{icon}  {label}");
     painter.text(
@@ -461,13 +526,21 @@ fn compact_button(ui: &mut egui::Ui, label: &str, width: f32) -> bool {
     }
     let is_primary = label.starts_with('+');
     let bg = if is_primary {
-        if resp.hovered() { ACCENT_HOVER } else { ACCENT }
+        if resp.hovered() {
+            ACCENT_HOVER
+        } else {
+            ACCENT
+        }
     } else if resp.hovered() {
         Color32::from_rgba_unmultiplied(255, 255, 255, 22)
     } else {
         Color32::from_rgba_unmultiplied(255, 255, 255, 10)
     };
-    let border = if is_primary { Stroke::NONE } else { Stroke::new(1.0, BORDER) };
+    let border = if is_primary {
+        Stroke::NONE
+    } else {
+        Stroke::new(1.0, BORDER)
+    };
     let text_color = if is_primary { Color32::WHITE } else { TEXT };
     let painter = ui.painter();
     painter.rect(rect, CornerRadius::same(6), bg, border, StrokeKind::Inside);
@@ -539,9 +612,20 @@ fn render_sign_in_card(ui: &mut egui::Ui, auth: &mut SplashAuth) {
 }
 
 fn render_sign_in_form(ui: &mut egui::Ui, auth: &mut SplashAuth) {
-    ui.label(RichText::new("SIGN IN").size(10.0).color(TEXT_MUTED).strong().extra_letter_spacing(1.4));
+    ui.label(
+        RichText::new("SIGN IN")
+            .size(10.0)
+            .color(TEXT_MUTED)
+            .strong()
+            .extra_letter_spacing(1.4),
+    );
     ui.add_space(2.0);
-    ui.label(RichText::new("Welcome back to Renzora").size(16.0).color(Color32::WHITE).strong());
+    ui.label(
+        RichText::new("Welcome back to Renzora")
+            .size(16.0)
+            .color(Color32::WHITE)
+            .strong(),
+    );
 
     ui.add_space(12.0);
 
@@ -562,10 +646,8 @@ fn render_sign_in_form(ui: &mut egui::Ui, auth: &mut SplashAuth) {
 
     ui.add_space(4.0);
 
-    let (btn_rect, btn_resp) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), 38.0),
-        Sense::click(),
-    );
+    let (btn_rect, btn_resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::click());
     if btn_resp.hovered() && !auth.loading {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
@@ -577,7 +659,13 @@ fn render_sign_in_form(ui: &mut egui::Ui, auth: &mut SplashAuth) {
         ACCENT
     };
     let painter = ui.painter();
-    painter.rect(btn_rect, CornerRadius::same(6), btn_bg, Stroke::NONE, StrokeKind::Inside);
+    painter.rect(
+        btn_rect,
+        CornerRadius::same(6),
+        btn_bg,
+        Stroke::NONE,
+        StrokeKind::Inside,
+    );
     let btn_label = if auth.loading {
         format!("{}  Signing in…", icons::CIRCLE_NOTCH)
     } else {
@@ -615,8 +703,13 @@ fn render_sign_in_form(ui: &mut egui::Ui, auth: &mut SplashAuth) {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let forgot = ui.add(
-                egui::Label::new(RichText::new("Forgot password?").size(11.0).color(TEXT_MUTED).italics())
-                    .sense(Sense::click()),
+                egui::Label::new(
+                    RichText::new("Forgot password?")
+                        .size(11.0)
+                        .color(TEXT_MUTED)
+                        .italics(),
+                )
+                .sense(Sense::click()),
             );
             if forgot.hovered() {
                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -629,7 +722,13 @@ fn render_sign_in_form(ui: &mut egui::Ui, auth: &mut SplashAuth) {
 }
 
 fn render_welcome(ui: &mut egui::Ui, auth: &mut SplashAuth, user: &crate::auth::UserProfile) {
-    ui.label(RichText::new("SIGNED IN").size(10.0).color(TEXT_MUTED).strong().extra_letter_spacing(1.4));
+    ui.label(
+        RichText::new("SIGNED IN")
+            .size(10.0)
+            .color(TEXT_MUTED)
+            .strong()
+            .extra_letter_spacing(1.4),
+    );
     ui.add_space(6.0);
     ui.label(
         RichText::new(format!("Welcome, {}", user.username))
@@ -641,10 +740,8 @@ fn render_welcome(ui: &mut egui::Ui, auth: &mut SplashAuth, user: &crate::auth::
     ui.label(RichText::new(&user.email).size(11.0).color(TEXT_MUTED));
     ui.add_space(16.0);
 
-    let (cb_rect, _) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), 48.0),
-        Sense::hover(),
-    );
+    let (cb_rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 48.0), Sense::hover());
     ui.painter().rect(
         cb_rect,
         CornerRadius::same(8),
@@ -677,10 +774,8 @@ fn render_welcome(ui: &mut egui::Ui, auth: &mut SplashAuth, user: &crate::auth::
 
     ui.add_space(ui.available_height().max(0.0) - 42.0);
 
-    let (rect, resp) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), 34.0),
-        Sense::click(),
-    );
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::click());
     if resp.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
     }
@@ -690,7 +785,13 @@ fn render_welcome(ui: &mut egui::Ui, auth: &mut SplashAuth, user: &crate::auth::
         Color32::from_rgba_unmultiplied(255, 255, 255, 10)
     };
     let painter = ui.painter();
-    painter.rect(rect, CornerRadius::same(6), bg, Stroke::new(1.0, BORDER), StrokeKind::Inside);
+    painter.rect(
+        rect,
+        CornerRadius::same(6),
+        bg,
+        Stroke::new(1.0, BORDER),
+        StrokeKind::Inside,
+    );
     painter.text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -713,11 +814,7 @@ fn render_roadmap_card(ui: &mut egui::Ui) {
     #[allow(deprecated)]
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(icons::ROCKET)
-                    .size(14.0)
-                    .color(ACCENT),
-            );
+            ui.label(RichText::new(icons::ROCKET).size(14.0).color(ACCENT));
             ui.label(
                 RichText::new("ROADMAP")
                     .size(10.0)
@@ -736,10 +833,8 @@ fn render_roadmap_card(ui: &mut egui::Ui) {
         ui.add_space(10.0);
 
         for item in ROADMAP_ITEMS {
-            let (line_rect, _) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), 22.0),
-                Sense::hover(),
-            );
+            let (line_rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
             let painter = ui.painter();
             painter.circle_filled(
                 Pos2::new(line_rect.left() + 5.0, line_rect.center().y),
@@ -756,10 +851,8 @@ fn render_roadmap_card(ui: &mut egui::Ui) {
         }
 
         ui.add_space(10.0);
-        let (btn_rect, resp) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), 30.0),
-            Sense::click(),
-        );
+        let (btn_rect, resp) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
         if resp.hovered() {
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
         }
@@ -769,7 +862,13 @@ fn render_roadmap_card(ui: &mut egui::Ui) {
             Color32::from_rgba_unmultiplied(255, 255, 255, 10)
         };
         let painter = ui.painter();
-        painter.rect(btn_rect, CornerRadius::same(6), bg, Stroke::new(1.0, BORDER), StrokeKind::Inside);
+        painter.rect(
+            btn_rect,
+            CornerRadius::same(6),
+            bg,
+            Stroke::new(1.0, BORDER),
+            StrokeKind::Inside,
+        );
         painter.text(
             btn_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -801,7 +900,13 @@ fn render_projects_card(
     #[allow(deprecated)]
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("PROJECTS").size(10.0).color(TEXT_MUTED).strong().extra_letter_spacing(1.4));
+            ui.label(
+                RichText::new("PROJECTS")
+                    .size(10.0)
+                    .color(TEXT_MUTED)
+                    .strong()
+                    .extra_letter_spacing(1.4),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if compact_button(ui, "Open Project", 104.0) {
                     open_existing_project(app_config, commands, next_state);
@@ -816,15 +921,25 @@ fn render_projects_card(
         ui.add_space(12.0);
 
         let mut new_name = ui.memory_mut(|mem| {
-            mem.data.get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name")).0.clone()
+            mem.data
+                .get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name"))
+                .0
+                .clone()
         });
         let _ = input_box(ui, &mut new_name, "New project name…", false);
         ui.memory_mut(|mem| {
-            mem.data.get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name")).0 = new_name;
+            mem.data
+                .get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name"))
+                .0 = new_name;
         });
 
         ui.add_space(16.0);
-        ui.label(RichText::new("Recents").size(15.0).color(Color32::WHITE).strong());
+        ui.label(
+            RichText::new("Recents")
+                .size(15.0)
+                .color(Color32::WHITE)
+                .strong(),
+        );
         ui.add_space(8.0);
 
         render_recent_list(ui, app_config, commands, next_state);
@@ -840,9 +955,18 @@ fn render_recent_list(
     if app_config.recent_projects.is_empty() {
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("No recent projects yet").size(13.0).color(TEXT_MUTED).italics());
+            ui.label(
+                RichText::new("No recent projects yet")
+                    .size(13.0)
+                    .color(TEXT_MUTED)
+                    .italics(),
+            );
             ui.add_space(4.0);
-            ui.label(RichText::new("Click + New or Open Project to get started.").size(11.0).color(TEXT_MUTED));
+            ui.label(
+                RichText::new("Click + New or Open Project to get started.")
+                    .size(11.0)
+                    .color(TEXT_MUTED),
+            );
         });
         return;
     }
@@ -869,18 +993,22 @@ fn render_recent_list(
                     crate::web_storage::load_web_project(slug).is_some()
                 };
 
-                let (item_rect, response) = ui.allocate_exact_size(
-                    Vec2::new(list_width, 60.0),
-                    Sense::click(),
-                );
+                let (item_rect, response) =
+                    ui.allocate_exact_size(Vec2::new(list_width, 60.0), Sense::click());
                 let hovered = response.hovered();
                 if hovered && exists {
                     ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                 }
-                let bg = if hovered && exists { PANEL_HOVER } else {
+                let bg = if hovered && exists {
+                    PANEL_HOVER
+                } else {
                     Color32::from_rgba_unmultiplied(255, 255, 255, 8)
                 };
-                let border = if hovered && exists { ACCENT } else { BORDER_SOFT };
+                let border = if hovered && exists {
+                    ACCENT
+                } else {
+                    BORDER_SOFT
+                };
                 ui.painter().rect(
                     item_rect,
                     CornerRadius::same(8),
@@ -933,7 +1061,11 @@ fn render_recent_list(
                     if rm_resp.hovered() {
                         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                     }
-                    let rm_color = if rm_resp.hovered() { ERROR_COLOR } else { TEXT_MUTED };
+                    let rm_color = if rm_resp.hovered() {
+                        ERROR_COLOR
+                    } else {
+                        TEXT_MUTED
+                    };
                     ui.painter().text(
                         remove_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -1011,7 +1143,10 @@ fn create_new_project(
     next_state: &mut NextState<SplashState>,
 ) {
     let typed_name = ui.memory_mut(|mem| {
-        mem.data.get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name")).0.clone()
+        mem.data
+            .get_temp_mut_or_default::<NewProjectName>(egui::Id::new("splash_new_name"))
+            .0
+            .clone()
     });
     let project_name = if typed_name.trim().is_empty() {
         "New Project".to_string()
@@ -1061,7 +1196,10 @@ fn render_bottom_bar(ui: &mut egui::Ui, rect: egui::Rect, stars: Option<u64>) {
         Color32::from_rgba_unmultiplied(8, 10, 18, 200),
     );
     ui.painter().line_segment(
-        [Pos2::new(rect.left(), rect.top()), Pos2::new(rect.right(), rect.top())],
+        [
+            Pos2::new(rect.left(), rect.top()),
+            Pos2::new(rect.right(), rect.top()),
+        ],
         Stroke::new(1.0, BORDER_SOFT),
     );
 
@@ -1078,16 +1216,23 @@ fn render_bottom_bar(ui: &mut egui::Ui, rect: egui::Rect, stars: Option<u64>) {
         Color32::WHITE,
     );
     // Measure so the version pill sits flush after the wordmark.
-    let wordmark_size = painter.layout_no_wrap(
-        "Renzora Engine".into(),
-        egui::FontId::proportional(13.0),
-        Color32::WHITE,
-    ).size();
+    let wordmark_size = painter
+        .layout_no_wrap(
+            "Renzora Engine".into(),
+            egui::FontId::proportional(13.0),
+            Color32::WHITE,
+        )
+        .size();
     let version_font = egui::FontId::monospace(10.5);
-    let version_size = painter.layout_no_wrap(VERSION.into(), version_font.clone(), ACCENT).size();
+    let version_size = painter
+        .layout_no_wrap(VERSION.into(), version_font.clone(), ACCENT)
+        .size();
     let pill_w = version_size.x + 14.0;
     let pill_rect = egui::Rect::from_center_size(
-        Pos2::new(wordmark_pos.x + wordmark_size.x + 10.0 + pill_w / 2.0, center_y),
+        Pos2::new(
+            wordmark_pos.x + wordmark_size.x + 10.0 + pill_w / 2.0,
+            center_y,
+        ),
         Vec2::new(pill_w, 18.0),
     );
     painter.rect(
@@ -1120,10 +1265,8 @@ fn render_bottom_bar(ui: &mut egui::Ui, rect: egui::Rect, stars: Option<u64>) {
     let mut x_cursor = rect.right() - 24.0;
     for (icon, label, url, w, starred) in links.iter() {
         x_cursor -= w;
-        let btn_rect = egui::Rect::from_min_size(
-            Pos2::new(x_cursor, center_y - 15.0),
-            Vec2::new(*w, 30.0),
-        );
+        let btn_rect =
+            egui::Rect::from_min_size(Pos2::new(x_cursor, center_y - 15.0), Vec2::new(*w, 30.0));
         link_button(ui, btn_rect, icon, label, url, *starred);
         x_cursor -= gap;
     }
@@ -1134,31 +1277,25 @@ fn render_bottom_bar(ui: &mut egui::Ui, rect: egui::Rect, stars: Option<u64>) {
 /// Renders the top 36px strip: a draggable empty region on the left and
 /// min/maximize/close buttons on the right. Returns a WindowAction if the
 /// user interacted with any of them.
-fn render_window_chrome(
-    ui: &mut egui::Ui,
-    rect: egui::Rect,
-    is_maximized: bool,
-) -> WindowAction {
+fn render_window_chrome(ui: &mut egui::Ui, rect: egui::Rect, is_maximized: bool) -> WindowAction {
     let mut action = WindowAction::None;
 
     // Opaque background for the title strip — keeps the busy animated
     // background from bleeding through behind the window controls.
-    ui.painter().rect_filled(
-        rect,
-        CornerRadius::ZERO,
-        Color32::from_rgb(12, 14, 22),
-    );
+    ui.painter()
+        .rect_filled(rect, CornerRadius::ZERO, Color32::from_rgb(12, 14, 22));
     ui.painter().line_segment(
-        [Pos2::new(rect.left(), rect.bottom()), Pos2::new(rect.right(), rect.bottom())],
+        [
+            Pos2::new(rect.left(), rect.bottom()),
+            Pos2::new(rect.right(), rect.bottom()),
+        ],
         Stroke::new(1.0, BORDER_SOFT),
     );
 
     // Right-anchored window buttons (close, maximize, minimize — right to left).
     let btn_size = Vec2::new(40.0, rect.height());
-    let close_rect = egui::Rect::from_min_size(
-        Pos2::new(rect.right() - btn_size.x, rect.top()),
-        btn_size,
-    );
+    let close_rect =
+        egui::Rect::from_min_size(Pos2::new(rect.right() - btn_size.x, rect.top()), btn_size);
     let max_rect = egui::Rect::from_min_size(
         Pos2::new(rect.right() - btn_size.x * 2.0, rect.top()),
         btn_size,
@@ -1239,11 +1376,7 @@ fn window_button(ui: &mut egui::Ui, rect: egui::Rect, icon: &str, is_close: bool
 
 /// A hidden hit-region along an edge or corner of the window. Returns `true`
 /// if the user started dragging it this frame.
-fn resize_zone(
-    ui: &mut egui::Ui,
-    rect: egui::Rect,
-    cursor: CursorIcon,
-) -> bool {
+fn resize_zone(ui: &mut egui::Ui, rect: egui::Rect, cursor: CursorIcon) -> bool {
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     if resp.hovered() {
         ui.ctx().set_cursor_icon(cursor);
@@ -1256,8 +1389,8 @@ fn resize_zone(
 fn render_resize_zones(ui: &mut egui::Ui, rect: egui::Rect) -> WindowAction {
     // Grippable — these extend INTO the window so corners and edges are
     // easy to grab without pixel-perfect aim.
-    let t: f32 = 10.0;  // edge thickness
-    let c: f32 = 18.0;  // corner size
+    let t: f32 = 10.0; // edge thickness
+    let c: f32 = 18.0; // corner size
 
     // Edges (between corners).
     let top_edge = egui::Rect::from_min_size(
@@ -1281,16 +1414,35 @@ fn render_resize_zones(ui: &mut egui::Ui, rect: egui::Rect) -> WindowAction {
     let nw = egui::Rect::from_min_size(rect.min, Vec2::splat(c));
     let ne = egui::Rect::from_min_size(Pos2::new(rect.right() - c, rect.top()), Vec2::splat(c));
     let sw = egui::Rect::from_min_size(Pos2::new(rect.left(), rect.bottom() - c), Vec2::splat(c));
-    let se = egui::Rect::from_min_size(Pos2::new(rect.right() - c, rect.bottom() - c), Vec2::splat(c));
+    let se = egui::Rect::from_min_size(
+        Pos2::new(rect.right() - c, rect.bottom() - c),
+        Vec2::splat(c),
+    );
 
-    if resize_zone(ui, nw, CursorIcon::ResizeNorthWest) { return WindowAction::StartResize(CompassOctant::NorthWest); }
-    if resize_zone(ui, ne, CursorIcon::ResizeNorthEast) { return WindowAction::StartResize(CompassOctant::NorthEast); }
-    if resize_zone(ui, sw, CursorIcon::ResizeSouthWest) { return WindowAction::StartResize(CompassOctant::SouthWest); }
-    if resize_zone(ui, se, CursorIcon::ResizeSouthEast) { return WindowAction::StartResize(CompassOctant::SouthEast); }
-    if resize_zone(ui, top_edge, CursorIcon::ResizeNorth) { return WindowAction::StartResize(CompassOctant::North); }
-    if resize_zone(ui, bottom_edge, CursorIcon::ResizeSouth) { return WindowAction::StartResize(CompassOctant::South); }
-    if resize_zone(ui, left_edge, CursorIcon::ResizeWest) { return WindowAction::StartResize(CompassOctant::West); }
-    if resize_zone(ui, right_edge, CursorIcon::ResizeEast) { return WindowAction::StartResize(CompassOctant::East); }
+    if resize_zone(ui, nw, CursorIcon::ResizeNorthWest) {
+        return WindowAction::StartResize(CompassOctant::NorthWest);
+    }
+    if resize_zone(ui, ne, CursorIcon::ResizeNorthEast) {
+        return WindowAction::StartResize(CompassOctant::NorthEast);
+    }
+    if resize_zone(ui, sw, CursorIcon::ResizeSouthWest) {
+        return WindowAction::StartResize(CompassOctant::SouthWest);
+    }
+    if resize_zone(ui, se, CursorIcon::ResizeSouthEast) {
+        return WindowAction::StartResize(CompassOctant::SouthEast);
+    }
+    if resize_zone(ui, top_edge, CursorIcon::ResizeNorth) {
+        return WindowAction::StartResize(CompassOctant::North);
+    }
+    if resize_zone(ui, bottom_edge, CursorIcon::ResizeSouth) {
+        return WindowAction::StartResize(CompassOctant::South);
+    }
+    if resize_zone(ui, left_edge, CursorIcon::ResizeWest) {
+        return WindowAction::StartResize(CompassOctant::West);
+    }
+    if resize_zone(ui, right_edge, CursorIcon::ResizeEast) {
+        return WindowAction::StartResize(CompassOctant::East);
+    }
 
     WindowAction::None
 }
@@ -1319,14 +1471,21 @@ pub fn render_splash(
             let screen = Vec2::new(screen_rect.width(), screen_rect.height());
 
             let mut bg = ui.memory_mut(|mem| {
-                mem.data.get_temp_mut_or_default::<BgState>(egui::Id::new("splash_bg")).clone()
+                mem.data
+                    .get_temp_mut_or_default::<BgState>(egui::Id::new("splash_bg"))
+                    .clone()
             });
             let t = ui.input(|i| i.time);
-            let dt = if bg.last_time > 0.0 { (t - bg.last_time) as f32 } else { 0.016 };
+            let dt = if bg.last_time > 0.0 {
+                (t - bg.last_time) as f32
+            } else {
+                0.016
+            };
             bg.last_time = t;
             draw_background(ui.painter(), screen, &mut bg, t, dt.min(0.1));
             ui.memory_mut(|mem| {
-                *mem.data.get_temp_mut_or_default::<BgState>(egui::Id::new("splash_bg")) = bg;
+                *mem.data
+                    .get_temp_mut_or_default::<BgState>(egui::Id::new("splash_bg")) = bg;
             });
 
             // Top chrome strip (borderless window controls).

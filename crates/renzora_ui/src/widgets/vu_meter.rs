@@ -81,10 +81,8 @@ pub fn vu_meter(
         config.width
     };
 
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(total_width, config.height),
-        Sense::hover(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(total_width, config.height), Sense::hover());
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();

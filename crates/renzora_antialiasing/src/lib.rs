@@ -1,15 +1,17 @@
-use bevy::prelude::*;
+use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
 use bevy::anti_alias::fxaa::{Fxaa, Sensitivity};
 use bevy::anti_alias::smaa::{Smaa, SmaaPreset};
 use bevy::anti_alias::taa::TemporalAntiAliasing;
-use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
     bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry},
+    renzora_editor::{
+        inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry,
+    },
     renzora_theme::Theme,
 };
 
@@ -55,7 +57,10 @@ fn sync_fxaa(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
                 if settings.enabled {
                     commands.entity(*target).insert(Fxaa {
                         enabled: true,
@@ -65,11 +70,14 @@ fn sync_fxaa(
                 } else {
                     commands.entity(*target).remove::<Fxaa>();
                 }
-                found = true; break;
+                found = true;
+                break;
             }
         }
         if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<Fxaa>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<Fxaa>();
+            }
         }
     }
 }
@@ -86,7 +94,10 @@ pub struct SmaaSettings {
 
 impl Default for SmaaSettings {
     fn default() -> Self {
-        Self { preset: 2, enabled: true }
+        Self {
+            preset: 2,
+            enabled: true,
+        }
     }
 }
 
@@ -100,7 +111,10 @@ fn sync_smaa(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
                 if settings.enabled {
                     let preset = match settings.preset {
                         0 => SmaaPreset::Low,
@@ -113,11 +127,14 @@ fn sync_smaa(
                 } else {
                     commands.entity(*target).remove::<Smaa>();
                 }
-                found = true; break;
+                found = true;
+                break;
             }
         }
         if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<Smaa>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<Smaa>();
+            }
         }
     }
 }
@@ -133,7 +150,10 @@ pub struct TaaSettings {
 
 impl Default for TaaSettings {
     fn default() -> Self {
-        Self { reset: false, enabled: true }
+        Self {
+            reset: false,
+            enabled: true,
+        }
     }
 }
 
@@ -147,19 +167,28 @@ fn sync_taa(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
                 if settings.enabled {
-                    commands.entity(*target)
+                    commands
+                        .entity(*target)
                         .insert(Msaa::Off)
-                        .insert(TemporalAntiAliasing { reset: settings.reset });
+                        .insert(TemporalAntiAliasing {
+                            reset: settings.reset,
+                        });
                 } else {
                     commands.entity(*target).remove::<TemporalAntiAliasing>();
                 }
-                found = true; break;
+                found = true;
+                break;
             }
         }
         if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<TemporalAntiAliasing>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<TemporalAntiAliasing>();
+            }
         }
     }
 }
@@ -171,7 +200,9 @@ fn cleanup_taa(
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<TemporalAntiAliasing>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<TemporalAntiAliasing>();
+            }
         }
     }
 }
@@ -206,7 +237,10 @@ fn sync_cas(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() { found = true; break; }
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
                 if settings.enabled {
                     commands.entity(*target).insert(ContrastAdaptiveSharpening {
                         enabled: true,
@@ -214,13 +248,18 @@ fn sync_cas(
                         denoise: settings.denoise,
                     });
                 } else {
-                    commands.entity(*target).remove::<ContrastAdaptiveSharpening>();
+                    commands
+                        .entity(*target)
+                        .remove::<ContrastAdaptiveSharpening>();
                 }
-                found = true; break;
+                found = true;
+                break;
             }
         }
         if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) { ec.remove::<ContrastAdaptiveSharpening>(); }
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<ContrastAdaptiveSharpening>();
+            }
         }
     }
 }
@@ -248,10 +287,15 @@ fn fxaa_entry() -> InspectorEntry {
             world.entity_mut(entity).remove::<(FxaaSettings, Fxaa)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<FxaaSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<FxaaSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(fxaa_custom_ui),
@@ -266,7 +310,9 @@ fn fxaa_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<FxaaSettings>(entity) else { return };
+    let Some(settings) = world.get::<FxaaSettings>(entity) else {
+        return;
+    };
     let mut row = 0;
 
     // Edge Threshold
@@ -284,7 +330,9 @@ fn fxaa_custom_ui(
         if new_et != et {
             let val = new_et as u32;
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) { s.edge_threshold = val; }
+                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
+                    s.edge_threshold = val;
+                }
             });
         }
     });
@@ -305,7 +353,9 @@ fn fxaa_custom_ui(
         if new_etm != etm {
             let val = new_etm as u32;
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) { s.edge_threshold_min = val; }
+                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
+                    s.edge_threshold_min = val;
+                }
             });
         }
     });
@@ -326,10 +376,15 @@ fn smaa_entry() -> InspectorEntry {
             world.entity_mut(entity).remove::<(SmaaSettings, Smaa)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<SmaaSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<SmaaSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SmaaSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<SmaaSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(smaa_custom_ui),
@@ -344,7 +399,9 @@ fn smaa_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<SmaaSettings>(entity) else { return };
+    let Some(settings) = world.get::<SmaaSettings>(entity) else {
+        return;
+    };
 
     let current = settings.preset as usize;
     inline_property(ui, 0, "Preset", theme, |ui| {
@@ -379,13 +436,20 @@ fn taa_entry() -> InspectorEntry {
             world.entity_mut(entity).insert(TaaSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(TaaSettings, TemporalAntiAliasing)>();
+            world
+                .entity_mut(entity)
+                .remove::<(TaaSettings, TemporalAntiAliasing)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<TaaSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<TaaSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<TaaSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<TaaSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(taa_custom_ui),
@@ -400,7 +464,9 @@ fn taa_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<TaaSettings>(entity) else { return };
+    let Some(settings) = world.get::<TaaSettings>(entity) else {
+        return;
+    };
 
     let reset = settings.reset;
     inline_property(ui, 0, "Reset", theme, |ui| {
@@ -408,7 +474,9 @@ fn taa_custom_ui(
         if toggle_switch(ui, id, reset) {
             let new_val = !reset;
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<TaaSettings>(entity) { s.reset = new_val; }
+                if let Some(mut s) = world.get_mut::<TaaSettings>(entity) {
+                    s.reset = new_val;
+                }
             });
         }
     });
@@ -426,13 +494,20 @@ fn cas_entry() -> InspectorEntry {
             world.entity_mut(entity).insert(CasSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(CasSettings, ContrastAdaptiveSharpening)>();
+            world
+                .entity_mut(entity)
+                .remove::<(CasSettings, ContrastAdaptiveSharpening)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<CasSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<CasSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<CasSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(cas_custom_ui),
@@ -447,17 +522,25 @@ fn cas_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<CasSettings>(entity) else { return };
+    let Some(settings) = world.get::<CasSettings>(entity) else {
+        return;
+    };
     let mut row = 0;
 
     // Strength
     let mut strength = settings.sharpening_strength;
     inline_property(ui, row, "Strength", theme, |ui| {
         let orig = strength;
-        ui.add(egui::DragValue::new(&mut strength).speed(0.01).range(0.0..=1.0));
+        ui.add(
+            egui::DragValue::new(&mut strength)
+                .speed(0.01)
+                .range(0.0..=1.0),
+        );
         if strength != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.sharpening_strength = strength; }
+                if let Some(mut s) = world.get_mut::<CasSettings>(entity) {
+                    s.sharpening_strength = strength;
+                }
             });
         }
     });
@@ -470,12 +553,15 @@ fn cas_custom_ui(
         if toggle_switch(ui, id, denoise) {
             let new_val = !denoise;
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<CasSettings>(entity) { s.denoise = new_val; }
+                if let Some(mut s) = world.get_mut::<CasSettings>(entity) {
+                    s.denoise = new_val;
+                }
             });
         }
     });
 }
 
+#[derive(Default)]
 pub struct AntiAliasingPlugin;
 
 impl Plugin for AntiAliasingPlugin {
@@ -485,7 +571,10 @@ impl Plugin for AntiAliasingPlugin {
         app.register_type::<SmaaSettings>();
         app.register_type::<TaaSettings>();
         app.register_type::<CasSettings>();
-        app.add_systems(Update, (sync_fxaa, sync_smaa, sync_taa, sync_cas, cleanup_taa));
+        app.add_systems(
+            Update,
+            (sync_fxaa, sync_smaa, sync_taa, sync_cas, cleanup_taa),
+        );
         #[cfg(feature = "editor")]
         {
             app.register_inspector(fxaa_entry());
@@ -495,3 +584,5 @@ impl Plugin for AntiAliasingPlugin {
         }
     }
 }
+
+renzora::add!(AntiAliasingPlugin);

@@ -24,7 +24,11 @@ fn pct_h(px: f32, r: &Ref) -> Val {
 }
 
 /// Spawn any widget by type, parenting to a canvas. Returns the spawned entity.
-pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Option<Entity>) -> Entity {
+pub fn spawn_widget(
+    world: &mut World,
+    widget_type: &UiWidgetType,
+    parent: Option<Entity>,
+) -> Entity {
     // Find or create canvas.
     let canvas_entity = {
         let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
@@ -112,9 +116,7 @@ pub fn spawn_widget(world: &mut World, widget_type: &UiWidgetType, parent: Optio
 
     #[cfg(feature = "editor")]
     {
-        if let Some(requests) =
-            world.get_resource::<renzora_editor::HierarchyExpandRequests>()
-        {
+        if let Some(requests) = world.get_resource::<renzora_editor::HierarchyExpandRequests>() {
             requests.push(canvas_entity);
         }
         if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
@@ -490,7 +492,9 @@ fn spawn_checkbox(world: &mut World, r: &Ref) -> Entity {
         ))
         .id();
 
-    world.entity_mut(checkmark).set_parent_in_place(checkbox_box);
+    world
+        .entity_mut(checkmark)
+        .set_parent_in_place(checkbox_box);
     world.entity_mut(checkbox_box).set_parent_in_place(parent);
     world.entity_mut(label).set_parent_in_place(parent);
     parent
@@ -618,7 +622,12 @@ fn spawn_spinner(world: &mut World, r: &Ref) -> Entity {
             UiStroke {
                 color: Color::WHITE,
                 width: 3.0,
-                sides: UiSides { top: true, right: true, bottom: true, left: false },
+                sides: UiSides {
+                    top: true,
+                    right: true,
+                    bottom: true,
+                    left: false,
+                },
             },
             UiBorderRadius::all(999.0),
             BorderColor::all(Color::WHITE),
@@ -874,7 +883,11 @@ fn spawn_tab_bar(world: &mut World, r: &Ref) -> Entity {
                 },
                 Button,
                 Interaction::default(),
-                BackgroundColor(if is_active { data.active_color } else { data.tab_color }),
+                BackgroundColor(if is_active {
+                    data.active_color
+                } else {
+                    data.tab_color
+                }),
                 bevy::ui::widget::Text::new(tab_name.clone()),
                 TextColor(Color::WHITE),
                 TextFont {
@@ -2287,7 +2300,11 @@ fn spawn_list(world: &mut World, r: &Ref) -> Entity {
         .id();
 
     for item in &data.items {
-        let bg = if item.selected { data.selected_bg_color } else { Color::NONE };
+        let bg = if item.selected {
+            data.selected_bg_color
+        } else {
+            Color::NONE
+        };
         let row = world
             .spawn((
                 UiWidgetPart::new("item"),

@@ -28,7 +28,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     };
 
     if models.is_empty() {
-        return Err(ImportError::ParseError("OBJ file contains no meshes".into()));
+        return Err(ImportError::ParseError(
+            "OBJ file contains no meshes".into(),
+        ));
     }
 
     let mut all_positions: Vec<f32> = Vec::new();
@@ -112,7 +114,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
     }
 
     if all_positions.is_empty() {
-        return Err(ImportError::ParseError("no valid geometry found in OBJ".into()));
+        return Err(ImportError::ParseError(
+            "no valid geometry found in OBJ".into(),
+        ));
     }
 
     // Walk MTL materials: copy referenced texture files into
@@ -122,11 +126,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         if settings.extract_textures || settings.extract_materials {
             extract_obj_materials(path, &mtl_materials, settings, &mut warnings)
         } else {
-            (
-                MaterialBundle::default(),
-                Vec::new(),
-                Vec::new(),
-            )
+            (MaterialBundle::default(), Vec::new(), Vec::new())
         };
 
     let glb_bytes = build_glb(
@@ -165,8 +165,7 @@ fn extract_obj_materials(
     let mut extracted_textures: Vec<ExtractedTexture> = Vec::new();
     let mut extracted_materials: Vec<ExtractedPbrMaterial> = Vec::new();
     // MTL texture path (relative to .obj) → index in `extracted_textures`.
-    let mut tex_paths: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut tex_paths: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let obj_dir = obj_path.parent().unwrap_or(Path::new("."));
 
@@ -317,25 +316,47 @@ fn sanitize_name(input: &str) -> String {
 }
 
 fn sniff_image_ext(data: &[u8]) -> &'static str {
-    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { "png" }
-    else if data.starts_with(&[0xFF, 0xD8, 0xFF]) { "jpg" }
-    else if data.starts_with(b"DDS ") { "dds" }
-    else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") { "gif" }
-    else if data.starts_with(b"BM") { "bmp" }
-    else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") { "webp" }
-    else { "bin" }
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "png"
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "jpg"
+    } else if data.starts_with(b"DDS ") {
+        "dds"
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        "gif"
+    } else if data.starts_with(b"BM") {
+        "bmp"
+    } else if data.starts_with(&[0x52, 0x49, 0x46, 0x46]) && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else {
+        "bin"
+    }
 }
 
 fn generate_flat_normals(positions: &[f32], indices: &[u32], vertex_count: usize) -> Vec<f32> {
     let mut normals = vec![0.0f32; vertex_count * 3];
 
     for tri in indices.chunks(3) {
-        if tri.len() < 3 { break; }
+        if tri.len() < 3 {
+            break;
+        }
         let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
 
-        let p0 = [positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]];
-        let p1 = [positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]];
-        let p2 = [positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]];
+        let p0 = [
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
+        ];
+        let p1 = [
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
+        ];
+        let p2 = [
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
+        ];
 
         let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
         let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
@@ -382,8 +403,12 @@ pub(crate) fn build_glb(
     for i in 0..vertex_count {
         for c in 0..3 {
             let v = positions[i * 3 + c];
-            if v < min[c] { min[c] = v; }
-            if v > max[c] { max[c] = v; }
+            if v < min[c] {
+                min[c] = v;
+            }
+            if v > max[c] {
+                max[c] = v;
+            }
         }
     }
 
@@ -454,7 +479,9 @@ pub(crate) fn build_glb(
         byte_offset: Some(validation::USize64(idx_offset as u64)),
         byte_stride: None,
         name: None,
-        target: Some(validation::Checked::Valid(buffer::Target::ElementArrayBuffer)),
+        target: Some(validation::Checked::Valid(
+            buffer::Target::ElementArrayBuffer,
+        )),
         extensions: None,
         extras: Default::default(),
     });
@@ -664,8 +691,12 @@ pub(crate) fn build_skinned_glb(
     for i in 0..vertex_count {
         for c in 0..3 {
             let v = positions[i * 3 + c];
-            if v < min[c] { min[c] = v; }
-            if v > max[c] { max[c] = v; }
+            if v < min[c] {
+                min[c] = v;
+            }
+            if v > max[c] {
+                max[c] = v;
+            }
         }
     }
 
@@ -732,10 +763,22 @@ pub(crate) fn build_skinned_glb(
     // 0: positions, 1: normals, 2: texcoords, 3: indices,
     // 4: joints, 5: weights, 6: IBMs.
     let views = [
-        (pos_offset, pos_bytes.len(), Some(buffer::Target::ArrayBuffer)),
-        (norm_offset, norm_bytes.len(), Some(buffer::Target::ArrayBuffer)),
+        (
+            pos_offset,
+            pos_bytes.len(),
+            Some(buffer::Target::ArrayBuffer),
+        ),
+        (
+            norm_offset,
+            norm_bytes.len(),
+            Some(buffer::Target::ArrayBuffer),
+        ),
         (tc_offset, tc_bytes.len(), Some(buffer::Target::ArrayBuffer)),
-        (idx_offset, idx_bytes.len(), Some(buffer::Target::ElementArrayBuffer)),
+        (
+            idx_offset,
+            idx_bytes.len(),
+            Some(buffer::Target::ElementArrayBuffer),
+        ),
         (ji_offset, ji_bytes.len(), Some(buffer::Target::ArrayBuffer)),
         (w_offset, w_bytes.len(), Some(buffer::Target::ArrayBuffer)),
         (ibm_offset, ibm_bytes.len(), None),
@@ -1053,7 +1096,9 @@ fn emit_material_bundle(root: &mut gltf_json::Root, bundle: &MaterialBundle) {
     if !bundle.textures.is_empty() {
         let mut sampler = texture::Sampler::default();
         sampler.mag_filter = Some(validation::Checked::Valid(texture::MagFilter::Linear));
-        sampler.min_filter = Some(validation::Checked::Valid(texture::MinFilter::LinearMipmapLinear));
+        sampler.min_filter = Some(validation::Checked::Valid(
+            texture::MinFilter::LinearMipmapLinear,
+        ));
         sampler.wrap_s = validation::Checked::Valid(texture::WrappingMode::Repeat);
         sampler.wrap_t = validation::Checked::Valid(texture::WrappingMode::Repeat);
         root.samplers.push(sampler);
@@ -1098,8 +1143,7 @@ fn emit_material_bundle(root: &mut gltf_json::Root, bundle: &MaterialBundle) {
         });
         let mut m = Material::default();
         m.alpha_mode = validation::Checked::Valid(material::AlphaMode::Opaque);
-        m.pbr_metallic_roughness.base_color_factor =
-            material::PbrBaseColorFactor(mat.base_color);
+        m.pbr_metallic_roughness.base_color_factor = material::PbrBaseColorFactor(mat.base_color);
         m.pbr_metallic_roughness.base_color_texture = base_tex;
         m.pbr_metallic_roughness.metallic_factor = material::StrengthFactor(mat.metallic);
         m.pbr_metallic_roughness.roughness_factor = material::StrengthFactor(mat.roughness);

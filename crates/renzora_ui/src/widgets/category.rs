@@ -29,8 +29,11 @@ pub fn collapsible_section(
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
     let id = ui.make_persistent_id(id_source);
-    let mut state =
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        id,
+        default_open,
+    );
 
     let (accent_color, header_bg) = category_colors(theme, category);
     let frame_bg = theme.panels.category_frame_bg.to_color32();
@@ -52,16 +55,15 @@ pub fn collapsible_section(
                 .inner_margin(egui::Margin::symmetric(8, 6))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                        let caret = if state.is_open() {
+                            CARET_DOWN
+                        } else {
+                            CARET_RIGHT
+                        };
                         ui.label(RichText::new(caret).size(12.0).color(text_muted));
                         ui.label(RichText::new(icon).size(15.0).color(accent_color));
                         ui.add_space(4.0);
-                        ui.label(
-                            RichText::new(label)
-                                .size(13.0)
-                                .strong()
-                                .color(text_primary),
-                        );
+                        ui.label(RichText::new(label).size(13.0).strong().color(text_primary));
                         ui.allocate_space(ui.available_size());
                     });
                 })
@@ -111,8 +113,11 @@ pub fn collapsible_section_with_actions(
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
     let id = ui.make_persistent_id(id_source);
-    let mut state =
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        id,
+        default_open,
+    );
 
     let (accent_color, header_bg) = category_colors(theme, category);
     let frame_bg = theme.panels.category_frame_bg.to_color32();
@@ -134,36 +139,39 @@ pub fn collapsible_section_with_actions(
                 .inner_margin(egui::Margin::symmetric(8, 6))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let left_response = ui.scope(|ui| {
-                            ui.set_max_width(
-                                (ui.available_width() - 32.0).max(20.0),
-                            );
+                        let left_response = ui
+                            .scope(|ui| {
+                                ui.set_max_width((ui.available_width() - 32.0).max(20.0));
 
-                            let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                            ui.label(RichText::new(caret).size(12.0).color(text_muted));
-                            ui.label(RichText::new(icon).size(15.0).color(accent_color));
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(label)
-                                        .size(13.0)
-                                        .strong()
-                                        .color(text_primary),
-                                )
-                                .truncate(),
-                            );
-                        }).response;
+                                let caret = if state.is_open() {
+                                    CARET_DOWN
+                                } else {
+                                    CARET_RIGHT
+                                };
+                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
+                                ui.label(RichText::new(icon).size(15.0).color(accent_color));
+                                ui.add_space(4.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(label)
+                                            .size(13.0)
+                                            .strong()
+                                            .color(text_primary),
+                                    )
+                                    .truncate(),
+                                );
+                            })
+                            .response;
 
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                header_actions(ui);
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            header_actions(ui);
+                        });
 
                         left_response.rect
-                    }).inner
-                }).inner;
+                    })
+                    .inner
+                })
+                .inner;
 
             let click = ui.interact(header_inner, id.with("header_click"), Sense::click());
             if click.hovered() {
@@ -206,8 +214,11 @@ pub fn collapsible_section_removable(
     add_contents: impl FnOnce(&mut egui::Ui),
 ) -> CategoryHeaderAction {
     let id = ui.make_persistent_id(id_source);
-    let mut state =
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+        ui.ctx(),
+        id,
+        default_open,
+    );
 
     let mut remove_clicked = false;
     let mut toggle_clicked_flag = false;
@@ -218,10 +229,26 @@ pub fn collapsible_section_removable(
     let text_muted = theme.text.muted.to_color32();
     let text_primary = theme.text.primary.to_color32();
 
-    let _eff_accent = if is_disabled { dim_color(accent_color, 0.5) } else { accent_color };
-    let eff_header = if is_disabled { dim_color(header_bg, 0.6) } else { header_bg };
-    let eff_text = if is_disabled { dim_color(text_primary, 0.5) } else { text_primary };
-    let eff_icon = if is_disabled { dim_color(accent_color, 0.4) } else { accent_color };
+    let _eff_accent = if is_disabled {
+        dim_color(accent_color, 0.5)
+    } else {
+        accent_color
+    };
+    let eff_header = if is_disabled {
+        dim_color(header_bg, 0.6)
+    } else {
+        header_bg
+    };
+    let eff_text = if is_disabled {
+        dim_color(text_primary, 0.5)
+    } else {
+        text_primary
+    };
+    let eff_icon = if is_disabled {
+        dim_color(accent_color, 0.4)
+    } else {
+        accent_color
+    };
 
     egui::Frame::new()
         .fill(frame_bg)
@@ -239,32 +266,28 @@ pub fn collapsible_section_removable(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         // Left: grip + caret + icon + label
-                        let left_response = ui.scope(|ui| {
-                            ui.set_max_width(
-                                (ui.available_width() - 58.0).max(20.0),
-                            );
+                        let left_response = ui
+                            .scope(|ui| {
+                                ui.set_max_width((ui.available_width() - 58.0).max(20.0));
 
-                            let caret =
-                                if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
-                            ui.label(
-                                RichText::new(caret).size(12.0).color(text_muted),
-                            );
+                                let caret = if state.is_open() {
+                                    CARET_DOWN
+                                } else {
+                                    CARET_RIGHT
+                                };
+                                ui.label(RichText::new(caret).size(12.0).color(text_muted));
 
-                            ui.label(
-                                RichText::new(icon).size(15.0).color(eff_icon),
-                            );
-                            ui.add_space(4.0);
+                                ui.label(RichText::new(icon).size(15.0).color(eff_icon));
+                                ui.add_space(4.0);
 
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(label)
-                                        .size(13.0)
-                                        .strong()
-                                        .color(eff_text),
-                                )
-                                .truncate(),
-                            );
-                        }).response;
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(label).size(13.0).strong().color(eff_text),
+                                    )
+                                    .truncate(),
+                                );
+                            })
+                            .response;
 
                         // Right: toggle + trash
                         if can_remove {
@@ -274,9 +297,7 @@ pub fn collapsible_section_removable(
                                     // Trash
                                     let trash = ui.add(
                                         egui::Button::new(
-                                            RichText::new(TRASH)
-                                                .size(13.0)
-                                                .color(text_muted),
+                                            RichText::new(TRASH).size(13.0).color(text_muted),
                                         )
                                         .frame(false),
                                     );
@@ -285,9 +306,7 @@ pub fn collapsible_section_removable(
                                         ui.painter().rect_filled(
                                             r,
                                             3.0,
-                                            Color32::from_rgba_premultiplied(
-                                                230, 89, 89, 30,
-                                            ),
+                                            Color32::from_rgba_premultiplied(230, 89, 89, 30),
                                         );
                                     }
                                     if trash.clicked() {
@@ -297,8 +316,7 @@ pub fn collapsible_section_removable(
                                     ui.add_space(4.0);
 
                                     // Toggle
-                                    if toggle_switch(ui, id.with("toggle"), !is_disabled)
-                                    {
+                                    if toggle_switch(ui, id.with("toggle"), !is_disabled) {
                                         toggle_clicked_flag = true;
                                     }
                                 },
@@ -308,23 +326,29 @@ pub fn collapsible_section_removable(
                         }
 
                         left_response.rect
-                    }).inner
-                }).inner;
+                    })
+                    .inner
+                })
+                .inner;
 
-                let click = ui.interact(header_inner, id.with("header_click"), Sense::click_and_drag());
-                if click.drag_started() {
-                    drag_started = true;
+            let click = ui.interact(
+                header_inner,
+                id.with("header_click"),
+                Sense::click_and_drag(),
+            );
+            if click.drag_started() {
+                drag_started = true;
+            }
+            if click.hovered() {
+                if click.dragged() {
+                    ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+                } else {
+                    ui.ctx().set_cursor_icon(CursorIcon::Grab);
                 }
-                if click.hovered() {
-                    if click.dragged() {
-                        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-                    } else {
-                        ui.ctx().set_cursor_icon(CursorIcon::Grab);
-                    }
-                }
-                if click.clicked() {
-                    state.toggle(ui);
-                }
+            }
+            if click.clicked() {
+                state.toggle(ui);
+            }
 
             // Content
             if state.is_open() {

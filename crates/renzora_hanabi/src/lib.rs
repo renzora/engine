@@ -12,13 +12,12 @@ pub mod systems;
 mod inspector;
 
 pub use data::*;
-pub use systems::{
-    HanabiEffectSynced, ParticleCommand, ParticleCommandQueue,
-};
+pub use systems::{HanabiEffectSynced, ParticleCommand, ParticleCommandQueue};
 
 use bevy::prelude::*;
 use bevy_hanabi::HanabiPlugin;
 
+#[derive(Default)]
 pub struct HanabiParticlePlugin;
 
 impl Plugin for HanabiParticlePlugin {
@@ -75,3 +74,5 @@ impl Plugin for HanabiParticlePlugin {
         inspector::register_inspector(app);
     }
 }
+
+renzora::add!(HanabiParticlePlugin);

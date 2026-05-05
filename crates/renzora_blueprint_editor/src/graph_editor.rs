@@ -1,12 +1,12 @@
 //! Syncs the BlueprintGraph data model with the renzora_ui NodeGraphState widget.
 
-use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Vec2, Ui};
+use bevy_egui::egui::{self, Align2, Color32, CursorIcon, Pos2, Sense, Stroke, Ui, Vec2};
 use renzora_blueprint::graph::*;
-use renzora_blueprint::{BlueprintNodeDef, nodes};
+use renzora_blueprint::{nodes, BlueprintNodeDef};
 use renzora_theme::Theme;
 use renzora_ui::widgets::node_graph::{
-    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState,
-    PinDef, PinDirection, PinShape,
+    node_graph, ConnectionDef, NodeDef, NodeGraphConfig, NodeGraphState, PinDef, PinDirection,
+    PinShape,
 };
 
 // ── Coordinate helpers ──────────────────────────────────────────────────────
@@ -142,9 +142,9 @@ pub fn sync_graph_to_widget(graph: &BlueprintGraph) -> NodeGraphState {
 fn is_exec_connection(graph: &BlueprintGraph, conn: &BlueprintConnection) -> bool {
     if let Some(node) = graph.get_node(conn.from_node) {
         if let Some(def) = nodes::node_def(&node.node_type) {
-            return (def.pins)().iter().any(|p| {
-                p.name == conn.from_pin && p.pin_type == PinType::Exec
-            });
+            return (def.pins)()
+                .iter()
+                .any(|p| p.name == conn.from_pin && p.pin_type == PinType::Exec);
         }
     }
     false
@@ -216,7 +216,9 @@ pub fn render_graph_editor(
             if let Some(cr) = state.canvas_rect {
                 let graph_w = max_x - min_x + 100.0;
                 let graph_h = max_y - min_y + 100.0;
-                let fit_zoom = (cr.width() / graph_w).min(cr.height() / graph_h).clamp(0.25, 1.5);
+                let fit_zoom = (cr.width() / graph_w)
+                    .min(cr.height() / graph_h)
+                    .clamp(0.25, 1.5);
                 state.widget_state.zoom = fit_zoom;
             }
         }
@@ -369,7 +371,8 @@ fn render_context_menu(
 
                     if row_resp.hovered() || is_open {
                         painter.rect_filled(
-                            row_rect, 0.0,
+                            row_rect,
+                            0.0,
                             Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                         );
                     }
@@ -388,16 +391,22 @@ fn render_context_menu(
                     };
 
                     painter.text(
-                        Pos2::new(base_x, cy), Align2::LEFT_CENTER,
-                        icon, egui::FontId::proportional(14.0), accent,
+                        Pos2::new(base_x, cy),
+                        Align2::LEFT_CENTER,
+                        icon,
+                        egui::FontId::proportional(14.0),
+                        accent,
                     );
                     painter.text(
-                        Pos2::new(base_x + 20.0, cy), Align2::LEFT_CENTER,
-                        category, egui::FontId::proportional(13.0),
+                        Pos2::new(base_x + 20.0, cy),
+                        Align2::LEFT_CENTER,
+                        category,
+                        egui::FontId::proportional(13.0),
                         theme.text.primary.to_color32(),
                     );
                     painter.text(
-                        Pos2::new(row_rect.max.x - 14.0, cy), Align2::CENTER_CENTER,
+                        Pos2::new(row_rect.max.x - 14.0, cy),
+                        Align2::CENTER_CENTER,
                         egui_phosphor::regular::CARET_RIGHT,
                         egui::FontId::proportional(12.0),
                         Color32::from_rgb(120, 120, 130),
@@ -448,7 +457,8 @@ fn render_context_menu(
 
                             if row_resp.hovered() {
                                 painter.rect_filled(
-                                    row_rect, 0.0,
+                                    row_rect,
+                                    0.0,
                                     Color32::from_rgba_unmultiplied(255, 255, 255, 15),
                                 );
                                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -459,12 +469,15 @@ fn render_context_menu(
                             let accent = header_color(def);
 
                             painter.text(
-                                Pos2::new(item_x, cy), Align2::LEFT_CENTER,
+                                Pos2::new(item_x, cy),
+                                Align2::LEFT_CENTER,
                                 category_icon(category),
-                                egui::FontId::proportional(13.0), accent,
+                                egui::FontId::proportional(13.0),
+                                accent,
                             );
                             painter.text(
-                                Pos2::new(item_x + 20.0, cy), Align2::LEFT_CENTER,
+                                Pos2::new(item_x + 20.0, cy),
+                                Align2::LEFT_CENTER,
                                 def.display_name,
                                 egui::FontId::proportional(12.0),
                                 theme.text.primary.to_color32(),

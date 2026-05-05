@@ -53,3 +53,4 @@ impl Plugin for SequencerPlugin {
     }
 }
 
+renzora::add!(SequencerPlugin, Editor);

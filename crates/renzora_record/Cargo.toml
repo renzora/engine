@@ -3,8 +3,19 @@ name = "renzora_record"
 version = "0.1.0"
 edition = "2021"
 
+# Distribution plugin: ships as a standalone `.dll`/`.so`/`.dylib` that
+# `dynamic_plugin_loader` finds in `plugins/` at startup. `cdylib` keeps
+# the export surface to the unmangled `extern "C"` symbols emitted by
+# `renzora::add!` under the `dlopen` feature (`plugin_create`,
+# `plugin_scope`, `plugin_bevy_hash`). Not statically linked into the
+# host — that's why this crate doesn't appear in `renzora_runtime`'s
+# `[dependencies]`.
+[features]
+default = ["dlopen"]
+dlopen = []
+
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
@@ -16,3 +27,6 @@ bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
 ffmpeg-sidecar = "2"
 crossbeam-channel = "0.5"
+
+[lints]
+workspace = true

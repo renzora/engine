@@ -6,16 +6,16 @@ use std::sync::RwLock;
 
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
-use egui_phosphor::regular::{TREE, PAINT_BRUSH, ERASER, PLUS, TRASH};
+use egui_phosphor::regular::{ERASER, PAINT_BRUSH, PLUS, TRASH, TREE};
 
-use renzora_theme::ThemeManager;
-use renzora_editor::EditorPanel;
-use renzora_terrain::foliage::{FoliageConfig, FoliageDensityMap, FoliageType};
-use renzora_terrain::data::TerrainChunkData;
 use renzora_editor::EditorCommands;
+use renzora_editor::EditorPanel;
+use renzora_terrain::data::TerrainChunkData;
+use renzora_terrain::foliage::{FoliageConfig, FoliageDensityMap, FoliageType};
+use renzora_theme::ThemeManager;
 
-use renzora_terrain::foliage::{FoliageBrushType, FoliagePaintSettings};
 use crate::systems::FoliageToolState;
+use renzora_terrain::foliage::{FoliageBrushType, FoliagePaintSettings};
 
 struct PanelState {
     section_types: bool,
@@ -77,9 +77,17 @@ impl EditorPanel for FoliagePanel {
         let mut state = self.state.write().unwrap();
 
         // Get mutable access to resources via EditorCommands
-        let Some(config) = world.get_resource::<FoliageConfig>() else { return };
-        let settings = world.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default();
-        let tool_state = world.get_resource::<FoliageToolState>().copied().unwrap_or_default();
+        let Some(config) = world.get_resource::<FoliageConfig>() else {
+            return;
+        };
+        let settings = world
+            .get_resource::<FoliagePaintSettings>()
+            .cloned()
+            .unwrap_or_default();
+        let tool_state = world
+            .get_resource::<FoliageToolState>()
+            .copied()
+            .unwrap_or_default();
 
         let mut config_clone = config.clone();
         let mut settings_mut = settings.clone();
@@ -130,15 +138,24 @@ impl EditorPanel for FoliagePanel {
                 }
 
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new(format!("{} Add", PLUS)).color(text_primary)).clicked() {
+                    if ui
+                        .button(RichText::new(format!("{} Add", PLUS)).color(text_primary))
+                        .clicked()
+                    {
                         config_clone.types.push(FoliageType::default());
                     }
                     if config_clone.types.len() > 1 {
-                        if ui.button(RichText::new(format!("{} Remove", TRASH)).color(text_primary)).clicked() {
-                            let idx = settings_mut.active_type.min(config_clone.types.len().saturating_sub(1));
+                        if ui
+                            .button(RichText::new(format!("{} Remove", TRASH)).color(text_primary))
+                            .clicked()
+                        {
+                            let idx = settings_mut
+                                .active_type
+                                .min(config_clone.types.len().saturating_sub(1));
                             config_clone.types.remove(idx);
                             if settings_mut.active_type >= config_clone.types.len() {
-                                settings_mut.active_type = config_clone.types.len().saturating_sub(1);
+                                settings_mut.active_type =
+                                    config_clone.types.len().saturating_sub(1);
                             }
                         }
                     }
@@ -173,17 +190,31 @@ impl EditorPanel for FoliagePanel {
 
                 ui.add_space(4.0);
                 ui.label(RichText::new("Size").color(text_secondary).size(11.0));
-                ui.add(egui::Slider::new(&mut settings_mut.brush_radius, 0.01..=0.5));
+                ui.add(egui::Slider::new(
+                    &mut settings_mut.brush_radius,
+                    0.01..=0.5,
+                ));
                 ui.label(RichText::new("Strength").color(text_secondary).size(11.0));
-                ui.add(egui::Slider::new(&mut settings_mut.brush_strength, 0.01..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut settings_mut.brush_strength,
+                    0.01..=1.0,
+                ));
                 ui.label(RichText::new("Falloff").color(text_secondary).size(11.0));
-                ui.add(egui::Slider::new(&mut settings_mut.brush_falloff, 0.0..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut settings_mut.brush_falloff,
+                    0.0..=1.0,
+                ));
             });
             ui.add_space(4.0);
         }
 
         // ── Selected Type Properties ───────────────────────────────────
-        if collapsible(ui, "Properties", &mut state.section_properties, text_primary) {
+        if collapsible(
+            ui,
+            "Properties",
+            &mut state.section_properties,
+            text_primary,
+        ) {
             if let Some(ft) = config_clone.types.get_mut(settings_mut.active_type) {
                 ui.indent("foliage_props", |ui| {
                     ui.horizontal(|ui| {
@@ -194,13 +225,31 @@ impl EditorPanel for FoliagePanel {
                     ui.label(RichText::new("Density").color(text_secondary).size(11.0));
                     ui.add(egui::Slider::new(&mut ft.density, 1.0..=50.0));
 
-                    ui.label(RichText::new("Height Range").color(text_secondary).size(11.0));
+                    ui.label(
+                        RichText::new("Height Range")
+                            .color(text_secondary)
+                            .size(11.0),
+                    );
                     ui.horizontal(|ui| {
-                        ui.add(egui::DragValue::new(&mut ft.height_range.x).speed(0.01).range(0.01..=2.0).prefix("min "));
-                        ui.add(egui::DragValue::new(&mut ft.height_range.y).speed(0.01).range(0.01..=2.0).prefix("max "));
+                        ui.add(
+                            egui::DragValue::new(&mut ft.height_range.x)
+                                .speed(0.01)
+                                .range(0.01..=2.0)
+                                .prefix("min "),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut ft.height_range.y)
+                                .speed(0.01)
+                                .range(0.01..=2.0)
+                                .prefix("max "),
+                        );
                     });
 
-                    ui.label(RichText::new("Wind Strength").color(text_secondary).size(11.0));
+                    ui.label(
+                        RichText::new("Wind Strength")
+                            .color(text_secondary)
+                            .size(11.0),
+                    );
                     ui.add(egui::Slider::new(&mut ft.wind_strength, 0.0..=2.0));
 
                     ui.checkbox(&mut ft.enabled, "Enabled");
@@ -220,15 +269,21 @@ impl EditorPanel for FoliagePanel {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             if tool_mut != tool_state {
                 let val = tool_mut;
-                cmds.push(move |w: &mut World| { w.insert_resource(val); });
+                cmds.push(move |w: &mut World| {
+                    w.insert_resource(val);
+                });
             }
             if settings_changed {
                 let val = settings_mut;
-                cmds.push(move |w: &mut World| { w.insert_resource(val); });
+                cmds.push(move |w: &mut World| {
+                    w.insert_resource(val);
+                });
             }
             if config_changed {
                 let val = config_clone;
-                cmds.push(move |w: &mut World| { w.insert_resource(val); });
+                cmds.push(move |w: &mut World| {
+                    w.insert_resource(val);
+                });
             }
             // Auto-add FoliageDensityMap to terrain chunks that don't have one
             if tool_mut.active {
@@ -246,14 +301,13 @@ impl EditorPanel for FoliagePanel {
     }
 }
 
-fn collapsible(
-    ui: &mut egui::Ui,
-    label: &str,
-    open: &mut bool,
-    color: egui::Color32,
-) -> bool {
+fn collapsible(ui: &mut egui::Ui, label: &str, open: &mut bool, color: egui::Color32) -> bool {
     let resp = ui.horizontal(|ui| {
-        let arrow = if *open { egui_phosphor::regular::CARET_DOWN } else { egui_phosphor::regular::CARET_RIGHT };
+        let arrow = if *open {
+            egui_phosphor::regular::CARET_DOWN
+        } else {
+            egui_phosphor::regular::CARET_RIGHT
+        };
         let btn = ui.button(RichText::new(arrow).color(color).size(12.0));
         ui.label(RichText::new(label).color(color).size(12.0).strong());
         btn.clicked()

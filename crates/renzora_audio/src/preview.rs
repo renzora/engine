@@ -36,20 +36,18 @@ impl AudioPreviewState {
         }
 
         match StaticSoundData::from_file(&full_path) {
-            Ok(data) => {
-                match manager.play_on_bus(data, bus, mixer) {
-                    Ok(handle) => {
-                        self.handle = Some(handle);
-                        self.previewing_entity = Some(entity);
-                        self.previewing_path = Some(path.to_string());
-                        self.previewing_bus = Some(bus.to_string());
-                        info!("[AudioPreview] Playing: {}", path);
-                    }
-                    Err(e) => {
-                        warn!("[AudioPreview] Failed to play {}: {}", path, e);
-                    }
+            Ok(data) => match manager.play_on_bus(data, bus, mixer) {
+                Ok(handle) => {
+                    self.handle = Some(handle);
+                    self.previewing_entity = Some(entity);
+                    self.previewing_path = Some(path.to_string());
+                    self.previewing_bus = Some(bus.to_string());
+                    info!("[AudioPreview] Playing: {}", path);
                 }
-            }
+                Err(e) => {
+                    warn!("[AudioPreview] Failed to play {}: {}", path, e);
+                }
+            },
             Err(e) => {
                 warn!("[AudioPreview] Failed to load {}: {}", path, e);
             }

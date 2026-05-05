@@ -4,14 +4,13 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText};
 
 use renzora_editor::{
-    collapsible_section, inline_property,
-    EditorCommands, EditorPanel, PanelLocation,
+    collapsible_section, inline_property, EditorCommands, EditorPanel, PanelLocation,
 };
 use renzora_shader::file::{ParamType, ParamValue};
 use renzora_theme::ThemeManager;
 
-use crate::ShaderEditorState;
 use crate::code_panel::reapply_params;
+use crate::ShaderEditorState;
 
 pub struct ShaderPropertiesPanel;
 
@@ -39,12 +38,18 @@ impl EditorPanel for ShaderPropertiesPanel {
         };
         let disabled = theme.text.disabled.to_color32();
 
-        let Some(state) = world.get_resource::<ShaderEditorState>() else { return };
+        let Some(state) = world.get_resource::<ShaderEditorState>() else {
+            return;
+        };
 
         if state.shader_file.params.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
-                ui.label(RichText::new("No parameters defined").size(11.0).color(disabled));
+                ui.label(
+                    RichText::new("No parameters defined")
+                        .size(11.0)
+                        .color(disabled),
+                );
                 ui.label(
                     RichText::new("Add // @param annotations to your shader")
                         .size(10.0)
@@ -64,11 +69,31 @@ impl EditorPanel for ShaderPropertiesPanel {
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             // Group params by type for sectioning
-            let float_params: Vec<_> = params.iter().filter(|(_, p)| p.param_type == ParamType::Float).collect();
-            let color_params: Vec<_> = params.iter().filter(|(_, p)| p.param_type == ParamType::Color).collect();
-            let vec_params: Vec<_> = params.iter().filter(|(_, p)| matches!(p.param_type, ParamType::Vec2 | ParamType::Vec3 | ParamType::Vec4)).collect();
-            let int_params: Vec<_> = params.iter().filter(|(_, p)| p.param_type == ParamType::Int).collect();
-            let bool_params: Vec<_> = params.iter().filter(|(_, p)| p.param_type == ParamType::Bool).collect();
+            let float_params: Vec<_> = params
+                .iter()
+                .filter(|(_, p)| p.param_type == ParamType::Float)
+                .collect();
+            let color_params: Vec<_> = params
+                .iter()
+                .filter(|(_, p)| p.param_type == ParamType::Color)
+                .collect();
+            let vec_params: Vec<_> = params
+                .iter()
+                .filter(|(_, p)| {
+                    matches!(
+                        p.param_type,
+                        ParamType::Vec2 | ParamType::Vec3 | ParamType::Vec4
+                    )
+                })
+                .collect();
+            let int_params: Vec<_> = params
+                .iter()
+                .filter(|(_, p)| p.param_type == ParamType::Int)
+                .collect();
+            let bool_params: Vec<_> = params
+                .iter()
+                .filter(|(_, p)| p.param_type == ParamType::Bool)
+                .collect();
 
             let mut row = 0usize;
 
@@ -181,7 +206,9 @@ fn render_float_param(
     theme: &renzora_theme::Theme,
     row: usize,
 ) {
-    let ParamValue::Float(v) = param.default_value else { return };
+    let ParamValue::Float(v) = param.default_value else {
+        return;
+    };
     let mut val = v;
     let min = param.min.unwrap_or(0.0);
     let max = param.max.unwrap_or(1.0);
@@ -212,7 +239,9 @@ fn render_color_param(
     theme: &renzora_theme::Theme,
     row: usize,
 ) {
-    let ParamValue::Color(v) = param.default_value else { return };
+    let ParamValue::Color(v) = param.default_value else {
+        return;
+    };
     let mut color = [v[0], v[1], v[2]];
 
     inline_property(ui, row, name, theme, |ui| {
@@ -248,10 +277,22 @@ fn render_vec_param(
                 let w = ((ui.available_width() - 32.0) / 2.0).max(30.0);
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let mut changed = false;
-                ui.label(RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01)).changed();
-                ui.label(RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(90, 200, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01)).changed();
+                ui.label(
+                    RichText::new("X")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(230, 90, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("Y")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(90, 200, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01))
+                    .changed();
                 if changed {
                     let n = name.to_string();
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -274,12 +315,30 @@ fn render_vec_param(
                 let w = ((ui.available_width() - 48.0) / 3.0).max(30.0);
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let mut changed = false;
-                ui.label(RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01)).changed();
-                ui.label(RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(90, 200, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01)).changed();
-                ui.label(RichText::new("Z").size(10.0).color(egui::Color32::from_rgb(90, 130, 230)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[2]).speed(0.01)).changed();
+                ui.label(
+                    RichText::new("X")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(230, 90, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("Y")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(90, 200, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("Z")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(90, 130, 230)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[2]).speed(0.01))
+                    .changed();
                 if changed {
                     let n = name.to_string();
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -302,14 +361,38 @@ fn render_vec_param(
                 let w = ((ui.available_width() - 64.0) / 4.0).max(25.0);
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let mut changed = false;
-                ui.label(RichText::new("X").size(10.0).color(egui::Color32::from_rgb(230, 90, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01)).changed();
-                ui.label(RichText::new("Y").size(10.0).color(egui::Color32::from_rgb(90, 200, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01)).changed();
-                ui.label(RichText::new("Z").size(10.0).color(egui::Color32::from_rgb(90, 130, 230)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[2]).speed(0.01)).changed();
-                ui.label(RichText::new("W").size(10.0).color(egui::Color32::from_rgb(200, 200, 90)));
-                changed |= ui.add_sized([w, 16.0], egui::DragValue::new(&mut val[3]).speed(0.01)).changed();
+                ui.label(
+                    RichText::new("X")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(230, 90, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[0]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("Y")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(90, 200, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[1]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("Z")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(90, 130, 230)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[2]).speed(0.01))
+                    .changed();
+                ui.label(
+                    RichText::new("W")
+                        .size(10.0)
+                        .color(egui::Color32::from_rgb(200, 200, 90)),
+                );
+                changed |= ui
+                    .add_sized([w, 16.0], egui::DragValue::new(&mut val[3]).speed(0.01))
+                    .changed();
                 if changed {
                     let n = name.to_string();
                     if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -338,7 +421,9 @@ fn render_int_param(
     theme: &renzora_theme::Theme,
     row: usize,
 ) {
-    let ParamValue::Int(v) = param.default_value else { return };
+    let ParamValue::Int(v) = param.default_value else {
+        return;
+    };
     let mut val = v;
 
     inline_property(ui, row, name, theme, |ui| {
@@ -367,7 +452,9 @@ fn render_bool_param(
     theme: &renzora_theme::Theme,
     row: usize,
 ) {
-    let ParamValue::Bool(v) = param.default_value else { return };
+    let ParamValue::Bool(v) = param.default_value else {
+        return;
+    };
     let mut val = v;
 
     inline_property(ui, row, name, theme, |ui| {

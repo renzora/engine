@@ -7,21 +7,20 @@ use std::sync::RwLock;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Rounding, Vec2};
 use egui_phosphor::regular::{
-    MOUNTAINS, WAVES, EQUALS, ARROW_FAT_LINE_UP, TREE, DROP, WAVEFORM,
-    STAIRS, ARROWS_IN_CARDINAL, ACTIVITY, GRAPH, CHART_BAR,
-    CIRCLE, SQUARE, DIAMOND, CARET_DOWN, CARET_RIGHT,
-    ARROWS_OUT_CARDINAL, ERASER, PAINT_BRUSH, PALETTE, PLUS,
+    ACTIVITY, ARROWS_IN_CARDINAL, ARROWS_OUT_CARDINAL, ARROW_FAT_LINE_UP, CARET_DOWN, CARET_RIGHT,
+    CHART_BAR, CIRCLE, DIAMOND, DROP, EQUALS, ERASER, GRAPH, MOUNTAINS, PAINT_BRUSH, PALETTE, PLUS,
+    SQUARE, STAIRS, TREE, WAVEFORM, WAVES,
 };
 
+use renzora::core::CurrentProject;
+use renzora_editor::EditorCommands;
+use renzora_editor::EditorPanel;
+use renzora_editor::{asset_drop_target, AssetDragPayload};
 use renzora_terrain::data::*;
 use renzora_terrain::paint::*;
 #[allow(unused_imports)]
 use renzora_terrain::splatmap_material::LayerAnimationType;
 use renzora_theme::{Theme, ThemeManager};
-use renzora_editor::EditorCommands;
-use renzora_editor::EditorPanel;
-use renzora_editor::{asset_drop_target, AssetDragPayload};
-use renzora::core::CurrentProject;
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
@@ -86,9 +85,15 @@ impl EditorPanel for TerrainToolsPanel {
             None => return,
         };
         let theme = &theme;
-        let Some(cmds) = world.get_resource::<EditorCommands>() else { return };
-        let Some(tool_state) = world.get_resource::<TerrainToolState>() else { return };
-        let Some(settings) = world.get_resource::<TerrainSettings>() else { return };
+        let Some(cmds) = world.get_resource::<EditorCommands>() else {
+            return;
+        };
+        let Some(tool_state) = world.get_resource::<TerrainToolState>() else {
+            return;
+        };
+        let Some(settings) = world.get_resource::<TerrainSettings>() else {
+            return;
+        };
 
         let accent = theme.semantic.accent.to_color32();
         let text_primary = theme.text.primary.to_color32();
@@ -98,8 +103,16 @@ impl EditorPanel for TerrainToolsPanel {
 
         // Activate / deactivate toggle
         let active = tool_state.active;
-        let toggle_label = if active { "Terrain Mode Active" } else { "Enable Terrain Mode" };
-        let toggle_bg = if active { accent } else { theme.widgets.inactive_bg.to_color32() };
+        let toggle_label = if active {
+            "Terrain Mode Active"
+        } else {
+            "Enable Terrain Mode"
+        };
+        let toggle_bg = if active {
+            accent
+        } else {
+            theme.widgets.inactive_bg.to_color32()
+        };
         let toggle_fg = if active { Color32::WHITE } else { text_primary };
 
         if ui
@@ -139,7 +152,17 @@ impl EditorPanel for TerrainToolsPanel {
         ui.horizontal(|ui| {
             let half_w = (ui.available_width() - 4.0) / 2.0;
 
-            if tab_button(ui, MOUNTAINS, "Sculpt", current_tab == TerrainTab::Sculpt, half_w, accent, theme).clicked() {
+            if tab_button(
+                ui,
+                MOUNTAINS,
+                "Sculpt",
+                current_tab == TerrainTab::Sculpt,
+                half_w,
+                accent,
+                theme,
+            )
+            .clicked()
+            {
                 cmds.push(|world: &mut World| {
                     if let Some(mut s) = world.get_resource_mut::<TerrainSettings>() {
                         s.tab = TerrainTab::Sculpt;
@@ -147,7 +170,17 @@ impl EditorPanel for TerrainToolsPanel {
                 });
             }
 
-            if tab_button(ui, PAINT_BRUSH, "Paint", current_tab == TerrainTab::Paint, half_w, accent, theme).clicked() {
+            if tab_button(
+                ui,
+                PAINT_BRUSH,
+                "Paint",
+                current_tab == TerrainTab::Paint,
+                half_w,
+                accent,
+                theme,
+            )
+            .clicked()
+            {
                 cmds.push(|world: &mut World| {
                     if let Some(mut s) = world.get_resource_mut::<TerrainSettings>() {
                         s.tab = TerrainTab::Paint;
@@ -159,8 +192,26 @@ impl EditorPanel for TerrainToolsPanel {
         ui.add_space(8.0);
 
         match current_tab {
-            TerrainTab::Sculpt => render_sculpt_tab(ui, settings, &mut state, accent, text_primary, text_secondary, theme, cmds),
-            TerrainTab::Paint => render_paint_tab(ui, world, &mut state, accent, text_primary, text_secondary, theme, cmds),
+            TerrainTab::Sculpt => render_sculpt_tab(
+                ui,
+                settings,
+                &mut state,
+                accent,
+                text_primary,
+                text_secondary,
+                theme,
+                cmds,
+            ),
+            TerrainTab::Paint => render_paint_tab(
+                ui,
+                world,
+                &mut state,
+                accent,
+                text_primary,
+                text_secondary,
+                theme,
+                cmds,
+            ),
         }
     }
 }
@@ -179,22 +230,22 @@ fn render_sculpt_tab(
 ) {
     // ── Tool Grid ────────────────────────────────────────────────────────
     let tools: &[(TerrainBrushType, &str, &str)] = &[
-        (TerrainBrushType::Sculpt,    MOUNTAINS,          "Sculpt"),
-        (TerrainBrushType::Smooth,    WAVES,              "Smooth"),
-        (TerrainBrushType::Flatten,   EQUALS,             "Flatten"),
-        (TerrainBrushType::Ramp,      ARROW_FAT_LINE_UP,  "Ramp"),
-        (TerrainBrushType::Erosion,   TREE,               "Erosion"),
-        (TerrainBrushType::Hydro,     DROP,               "Hydro"),
-        (TerrainBrushType::Noise,     WAVEFORM,           "Noise"),
-        (TerrainBrushType::Terrace,   STAIRS,             "Terrace"),
-        (TerrainBrushType::Pinch,     ARROWS_IN_CARDINAL, "Pinch"),
-        (TerrainBrushType::Relax,     ACTIVITY,           "Relax"),
-        (TerrainBrushType::Retop,     GRAPH,              "Retop"),
-        (TerrainBrushType::Cliff,     CHART_BAR,          "Cliff"),
-        (TerrainBrushType::Raise,     ARROWS_OUT_CARDINAL,"Raise"),
-        (TerrainBrushType::Lower,     ARROWS_OUT_CARDINAL,"Lower"),
-        (TerrainBrushType::SetHeight, EQUALS,             "Set H"),
-        (TerrainBrushType::Erase,     ERASER,             "Erase"),
+        (TerrainBrushType::Sculpt, MOUNTAINS, "Sculpt"),
+        (TerrainBrushType::Smooth, WAVES, "Smooth"),
+        (TerrainBrushType::Flatten, EQUALS, "Flatten"),
+        (TerrainBrushType::Ramp, ARROW_FAT_LINE_UP, "Ramp"),
+        (TerrainBrushType::Erosion, TREE, "Erosion"),
+        (TerrainBrushType::Hydro, DROP, "Hydro"),
+        (TerrainBrushType::Noise, WAVEFORM, "Noise"),
+        (TerrainBrushType::Terrace, STAIRS, "Terrace"),
+        (TerrainBrushType::Pinch, ARROWS_IN_CARDINAL, "Pinch"),
+        (TerrainBrushType::Relax, ACTIVITY, "Relax"),
+        (TerrainBrushType::Retop, GRAPH, "Retop"),
+        (TerrainBrushType::Cliff, CHART_BAR, "Cliff"),
+        (TerrainBrushType::Raise, ARROWS_OUT_CARDINAL, "Raise"),
+        (TerrainBrushType::Lower, ARROWS_OUT_CARDINAL, "Lower"),
+        (TerrainBrushType::SetHeight, EQUALS, "Set H"),
+        (TerrainBrushType::Erase, ERASER, "Erase"),
     ];
 
     let current_brush = settings.brush_type;
@@ -318,10 +369,10 @@ fn render_paint_tab(
     // ── Paint Brush Tools ────────────────────────────────────────────────
     if let Some(ps) = paint_settings {
         let tools: &[(PaintBrushType, &str, &str)] = &[
-            (PaintBrushType::Paint,  PAINT_BRUSH, "Paint"),
-            (PaintBrushType::Erase,  ERASER,      "Erase"),
-            (PaintBrushType::Smooth, WAVES,       "Smooth"),
-            (PaintBrushType::Fill,   PALETTE,     "Fill"),
+            (PaintBrushType::Paint, PAINT_BRUSH, "Paint"),
+            (PaintBrushType::Erase, ERASER, "Erase"),
+            (PaintBrushType::Smooth, WAVES, "Smooth"),
+            (PaintBrushType::Fill, PALETTE, "Fill"),
         ];
 
         let current = ps.brush_type;
@@ -341,7 +392,12 @@ fn render_paint_tab(
         }
 
         // ── Paint Brush Settings ────────────────────────────────────────
-        if collapsible_header(ui, "Brush Settings", &mut state.section_paint_settings, theme) {
+        if collapsible_header(
+            ui,
+            "Brush Settings",
+            &mut state.section_paint_settings,
+            theme,
+        ) {
             ui.add_space(4.0);
             ui.indent("paint_brush_settings", |ui| {
                 if let Some(ps) = paint_settings {
@@ -355,9 +411,19 @@ fn render_paint_tab(
         if collapsible_header(ui, "Foliage", &mut state.section_foliage, theme) {
             ui.add_space(4.0);
             ui.indent("foliage_settings", |ui| {
-                ui.label(RichText::new("Auto-scatter foliage based on layer weights.").color(text_secondary).size(11.0));
+                ui.label(
+                    RichText::new("Auto-scatter foliage based on layer weights.")
+                        .color(text_secondary)
+                        .size(11.0),
+                );
                 ui.add_space(4.0);
-                ui.label(RichText::new("Configure foliage per-layer via TerrainFoliageConfig component.").color(text_secondary).size(10.0));
+                ui.label(
+                    RichText::new(
+                        "Configure foliage per-layer via TerrainFoliageConfig component.",
+                    )
+                    .color(text_secondary)
+                    .size(10.0),
+                );
             });
             ui.add_space(4.0);
         }
@@ -373,8 +439,12 @@ fn render_layer_list(
     theme: &Theme,
     cmds: &EditorCommands,
 ) {
-    let Some(paint_settings) = world.get_resource::<SurfacePaintSettings>() else { return };
-    let Some(paint_state) = world.get_resource::<SurfacePaintState>() else { return };
+    let Some(paint_settings) = world.get_resource::<SurfacePaintSettings>() else {
+        return;
+    };
+    let Some(paint_state) = world.get_resource::<SurfacePaintState>() else {
+        return;
+    };
 
     let active_layer = paint_settings.active_layer;
 
@@ -384,8 +454,16 @@ fn render_layer_list(
 
     for i in 0..layer_count.min(MAX_LAYERS) {
         let is_active = i == active_layer;
-        let bg = if is_active { accent } else { theme.widgets.inactive_bg.to_color32() };
-        let fg = if is_active { Color32::WHITE } else { text_primary };
+        let bg = if is_active {
+            accent
+        } else {
+            theme.widgets.inactive_bg.to_color32()
+        };
+        let fg = if is_active {
+            Color32::WHITE
+        } else {
+            text_primary
+        };
 
         let name = if i < paint_state.layers_preview.len() {
             paint_state.layers_preview[i].name.clone()
@@ -445,7 +523,8 @@ fn render_layer_list(
                 let layer = i;
                 cmds.push(move |world: &mut World| {
                     if let Some(mut ps) = world.get_resource_mut::<SurfacePaintState>() {
-                        ps.pending_commands.push(SurfacePaintCommand::AssignMaterial { layer, path });
+                        ps.pending_commands
+                            .push(SurfacePaintCommand::AssignMaterial { layer, path });
                     }
                 });
             }
@@ -453,7 +532,8 @@ fn render_layer_list(
                 let layer = i;
                 cmds.push(move |world: &mut World| {
                     if let Some(mut ps) = world.get_resource_mut::<SurfacePaintState>() {
-                        ps.pending_commands.push(SurfacePaintCommand::ClearMaterial(layer));
+                        ps.pending_commands
+                            .push(SurfacePaintCommand::ClearMaterial(layer));
                     }
                 });
             }
@@ -497,9 +577,30 @@ fn render_paint_brush_settings(
     let mut strength = settings.brush_strength;
     let mut falloff = settings.brush_falloff;
 
-    labeled_slider(ui, "Size", label_width, text_secondary, &mut radius, 0.01..=0.5);
-    labeled_slider(ui, "Strength", label_width, text_secondary, &mut strength, 0.01..=1.0);
-    labeled_slider(ui, "Falloff", label_width, text_secondary, &mut falloff, 0.0..=1.0);
+    labeled_slider(
+        ui,
+        "Size",
+        label_width,
+        text_secondary,
+        &mut radius,
+        0.01..=0.5,
+    );
+    labeled_slider(
+        ui,
+        "Strength",
+        label_width,
+        text_secondary,
+        &mut strength,
+        0.01..=1.0,
+    );
+    labeled_slider(
+        ui,
+        "Falloff",
+        label_width,
+        text_secondary,
+        &mut falloff,
+        0.0..=1.0,
+    );
 
     if radius != settings.brush_radius
         || strength != settings.brush_strength
@@ -520,9 +621,15 @@ fn render_paint_brush_settings(
         ui.allocate_ui_with_layout(
             egui::vec2(label_width, 20.0),
             egui::Layout::left_to_right(egui::Align::Center),
-            |ui| { ui.label(RichText::new("Shape").color(text_secondary).size(11.0)); },
+            |ui| {
+                ui.label(RichText::new("Shape").color(text_secondary).size(11.0));
+            },
         );
-        for (s, icon) in [(BrushShape::Circle, CIRCLE), (BrushShape::Square, SQUARE), (BrushShape::Diamond, DIAMOND)] {
+        for (s, icon) in [
+            (BrushShape::Circle, CIRCLE),
+            (BrushShape::Square, SQUARE),
+            (BrushShape::Diamond, DIAMOND),
+        ] {
             if small_toggle_button(ui, icon, shape == s, theme).clicked() {
                 shape = s;
             }
@@ -592,7 +699,9 @@ fn render_tool_grid(
                     if idx < tools.len() {
                         let (brush_type, icon, label) = &tools[idx];
                         let active = selected == *brush_type;
-                        if grid_tool_button(ui, icon, label, active, button_size, accent, theme).clicked() {
+                        if grid_tool_button(ui, icon, label, active, button_size, accent, theme)
+                            .clicked()
+                        {
                             let bt = *brush_type;
                             cmds.push(move |world: &mut World| {
                                 if let Some(mut s) = world.get_resource_mut::<TerrainSettings>() {
@@ -622,7 +731,14 @@ fn render_tool_settings(
     let mut strength = settings.brush_strength;
 
     // Strength
-    labeled_slider(ui, "Strength", label_width, text_secondary, &mut strength, 0.01..=1.0);
+    labeled_slider(
+        ui,
+        "Strength",
+        label_width,
+        text_secondary,
+        &mut strength,
+        0.01..=1.0,
+    );
     if strength != settings.brush_strength {
         cmds.push(move |world: &mut World| {
             if let Some(mut s) = world.get_resource_mut::<TerrainSettings>() {
@@ -638,7 +754,9 @@ fn render_tool_settings(
             ui.allocate_ui_with_layout(
                 egui::vec2(label_width, 20.0),
                 egui::Layout::left_to_right(egui::Align::Center),
-                |ui| { ui.label(RichText::new("Mode").color(text_secondary).size(11.0)); },
+                |ui| {
+                    ui.label(RichText::new("Mode").color(text_secondary).size(11.0));
+                },
             );
             egui::ComboBox::from_id_salt("flatten_mode")
                 .selected_text(match flatten_mode {
@@ -665,9 +783,19 @@ fn render_tool_settings(
             ui.allocate_ui_with_layout(
                 egui::vec2(label_width, 20.0),
                 egui::Layout::left_to_right(egui::Align::Center),
-                |ui| { ui.label(RichText::new("Target Height").color(text_secondary).size(11.0)); },
+                |ui| {
+                    ui.label(
+                        RichText::new("Target Height")
+                            .color(text_secondary)
+                            .size(11.0),
+                    );
+                },
             );
-            ui.add(egui::DragValue::new(&mut target_h).speed(0.005).range(0.0..=1.0));
+            ui.add(
+                egui::DragValue::new(&mut target_h)
+                    .speed(0.005)
+                    .range(0.0..=1.0),
+            );
         });
         if target_h != settings.target_height {
             cmds.push(move |world: &mut World| {
@@ -696,7 +824,9 @@ fn render_tool_settings(
             ui.allocate_ui_with_layout(
                 egui::vec2(label_width, 20.0),
                 egui::Layout::left_to_right(egui::Align::Center),
-                |ui| { ui.label(RichText::new("Mode").color(text_secondary).size(11.0)); },
+                |ui| {
+                    ui.label(RichText::new("Mode").color(text_secondary).size(11.0));
+                },
             );
             egui::ComboBox::from_id_salt("noise_mode")
                 .selected_text(noise_mode.display_name())
@@ -707,14 +837,61 @@ fn render_tool_settings(
                 });
         });
 
-        labeled_drag(ui, "Scale", label_width, text_secondary, &mut scale, 0.5, 1.0..=500.0);
-        labeled_drag(ui, "Octaves", label_width, text_secondary, &mut octaves, 0.1, 1..=8);
-        labeled_drag(ui, "Lacunarity", label_width, text_secondary, &mut lac, 0.05, 1.0..=4.0);
-        labeled_drag(ui, "Persistence", label_width, text_secondary, &mut pers, 0.01, 0.1..=0.9);
-        labeled_drag(ui, "Seed", label_width, text_secondary, &mut seed, 1.0, 0..=u32::MAX);
+        labeled_drag(
+            ui,
+            "Scale",
+            label_width,
+            text_secondary,
+            &mut scale,
+            0.5,
+            1.0..=500.0,
+        );
+        labeled_drag(
+            ui,
+            "Octaves",
+            label_width,
+            text_secondary,
+            &mut octaves,
+            0.1,
+            1..=8,
+        );
+        labeled_drag(
+            ui,
+            "Lacunarity",
+            label_width,
+            text_secondary,
+            &mut lac,
+            0.05,
+            1.0..=4.0,
+        );
+        labeled_drag(
+            ui,
+            "Persistence",
+            label_width,
+            text_secondary,
+            &mut pers,
+            0.01,
+            0.1..=0.9,
+        );
+        labeled_drag(
+            ui,
+            "Seed",
+            label_width,
+            text_secondary,
+            &mut seed,
+            1.0,
+            0..=u32::MAX,
+        );
 
         if noise_mode == NoiseMode::Warped {
-            labeled_slider(ui, "Warp", label_width, text_secondary, &mut warp, 0.0..=5.0);
+            labeled_slider(
+                ui,
+                "Warp",
+                label_width,
+                text_secondary,
+                &mut warp,
+                0.0..=5.0,
+            );
         }
 
         if scale != settings.noise_scale
@@ -747,8 +924,23 @@ fn render_tool_settings(
         let mut steps = settings.terrace_steps;
         let mut sharpness = settings.terrace_sharpness;
 
-        labeled_drag(ui, "Steps", label_width, text_secondary, &mut steps, 0.1, 2..=32);
-        labeled_slider(ui, "Sharpness", label_width, text_secondary, &mut sharpness, 0.0..=1.0);
+        labeled_drag(
+            ui,
+            "Steps",
+            label_width,
+            text_secondary,
+            &mut steps,
+            0.1,
+            2..=32,
+        );
+        labeled_slider(
+            ui,
+            "Sharpness",
+            label_width,
+            text_secondary,
+            &mut sharpness,
+            0.0..=1.0,
+        );
 
         if steps != settings.terrace_steps || sharpness != settings.terrace_sharpness {
             cmds.push(move |world: &mut World| {
@@ -777,17 +969,37 @@ fn render_brush_settings(
     let mut shape = settings.brush_shape;
     let mut falloff_type = settings.falloff_type;
 
-    labeled_slider(ui, "Size", label_width, text_secondary, &mut radius, 1.0..=200.0);
-    labeled_slider(ui, "Falloff", label_width, text_secondary, &mut falloff, 0.0..=1.0);
+    labeled_slider(
+        ui,
+        "Size",
+        label_width,
+        text_secondary,
+        &mut radius,
+        1.0..=200.0,
+    );
+    labeled_slider(
+        ui,
+        "Falloff",
+        label_width,
+        text_secondary,
+        &mut falloff,
+        0.0..=1.0,
+    );
 
     // Shape buttons
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
             egui::vec2(label_width, 20.0),
             egui::Layout::left_to_right(egui::Align::Center),
-            |ui| { ui.label(RichText::new("Shape").color(text_secondary).size(11.0)); },
+            |ui| {
+                ui.label(RichText::new("Shape").color(text_secondary).size(11.0));
+            },
         );
-        for (s, icon) in [(BrushShape::Circle, CIRCLE), (BrushShape::Square, SQUARE), (BrushShape::Diamond, DIAMOND)] {
+        for (s, icon) in [
+            (BrushShape::Circle, CIRCLE),
+            (BrushShape::Square, SQUARE),
+            (BrushShape::Diamond, DIAMOND),
+        ] {
             if small_toggle_button(ui, icon, shape == s, theme).clicked() {
                 shape = s;
             }
@@ -799,7 +1011,13 @@ fn render_brush_settings(
         ui.allocate_ui_with_layout(
             egui::vec2(label_width, 20.0),
             egui::Layout::left_to_right(egui::Align::Center),
-            |ui| { ui.label(RichText::new("Falloff Type").color(text_secondary).size(11.0)); },
+            |ui| {
+                ui.label(
+                    RichText::new("Falloff Type")
+                        .color(text_secondary)
+                        .size(11.0),
+                );
+            },
         );
         for (ft, label) in [
             (BrushFalloffType::Smooth, "S"),
@@ -857,7 +1075,11 @@ fn tab_button(
         } else {
             theme.widgets.inactive_bg.to_color32()
         };
-        let fg = if active { Color32::WHITE } else { theme.text.primary.to_color32() };
+        let fg = if active {
+            Color32::WHITE
+        } else {
+            theme.text.primary.to_color32()
+        };
 
         ui.painter().rect_filled(rect, Rounding::same(4), bg);
         ui.painter().text(
@@ -886,7 +1108,9 @@ fn labeled_slider(
         ui.allocate_ui_with_layout(
             egui::vec2(label_width, 20.0),
             egui::Layout::left_to_right(egui::Align::Center),
-            |ui| { ui.label(RichText::new(label).color(text_color).size(11.0)); },
+            |ui| {
+                ui.label(RichText::new(label).color(text_color).size(11.0));
+            },
         );
         ui.add(
             egui::Slider::new(value, range)
@@ -909,7 +1133,9 @@ fn labeled_drag<N: egui::emath::Numeric>(
         ui.allocate_ui_with_layout(
             egui::vec2(label_width, 20.0),
             egui::Layout::left_to_right(egui::Align::Center),
-            |ui| { ui.label(RichText::new(label).color(text_color).size(11.0)); },
+            |ui| {
+                ui.label(RichText::new(label).color(text_color).size(11.0));
+            },
         );
         ui.add(egui::DragValue::new(value).speed(speed).range(range));
     });
@@ -917,7 +1143,10 @@ fn labeled_drag<N: egui::emath::Numeric>(
 
 fn collapsible_header(ui: &mut egui::Ui, label: &str, open: &mut bool, theme: &Theme) -> bool {
     let height = 24.0;
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), height),
+        egui::Sense::click(),
+    );
 
     if response.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -963,7 +1192,8 @@ fn grid_tool_button(
     accent: Color32,
     theme: &Theme,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size + 18.0), egui::Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(size, size + 18.0), egui::Sense::click());
 
     if response.hovered() {
         ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
@@ -981,7 +1211,11 @@ fn grid_tool_button(
         let icon_rect = egui::Rect::from_min_size(rect.min, egui::vec2(size, size));
         ui.painter().rect_filled(icon_rect, Rounding::same(4), bg);
 
-        let icon_color = if active { Color32::WHITE } else { theme.text.primary.to_color32() };
+        let icon_color = if active {
+            Color32::WHITE
+        } else {
+            theme.text.primary.to_color32()
+        };
         ui.painter().text(
             icon_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -990,7 +1224,11 @@ fn grid_tool_button(
             icon_color,
         );
 
-        let label_color = if active { theme.text.primary.to_color32() } else { theme.text.secondary.to_color32() };
+        let label_color = if active {
+            theme.text.primary.to_color32()
+        } else {
+            theme.text.secondary.to_color32()
+        };
         ui.painter().text(
             egui::pos2(rect.center().x, rect.bottom() - 2.0),
             egui::Align2::CENTER_BOTTOM,
@@ -1003,7 +1241,12 @@ fn grid_tool_button(
     response
 }
 
-fn small_toggle_button(ui: &mut egui::Ui, label: &str, active: bool, theme: &Theme) -> egui::Response {
+fn small_toggle_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    active: bool,
+    theme: &Theme,
+) -> egui::Response {
     let size = egui::vec2(28.0, 24.0);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
@@ -1021,7 +1264,11 @@ fn small_toggle_button(ui: &mut egui::Ui, label: &str, active: bool, theme: &The
         };
         ui.painter().rect_filled(rect, Rounding::same(3), bg);
 
-        let color = if active { Color32::WHITE } else { theme.text.primary.to_color32() };
+        let color = if active {
+            Color32::WHITE
+        } else {
+            theme.text.primary.to_color32()
+        };
         ui.painter().text(
             rect.center(),
             egui::Align2::CENTER_CENTER,

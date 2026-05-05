@@ -1,6 +1,6 @@
-use bevy::prelude::*;
-use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
+use bevy::prelude::*;
 
 /// Generate a flat subdivided XZ plane centered at origin.
 /// All wave displacement happens in the vertex shader.
