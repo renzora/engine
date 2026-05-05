@@ -7,6 +7,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod apk_signer;
 #[cfg(not(target_arch = "wasm32"))]
+mod download;
+#[cfg(not(target_arch = "wasm32"))]
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;

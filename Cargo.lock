@@ -9305,7 +9305,9 @@ dependencies = [
  "rfd",
  "ring",
  "serde",
+ "serde_json",
  "toml 0.8.23",
+ "ureq",
  "zip 2.4.2",
 ]
 
