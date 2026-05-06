@@ -95,40 +95,52 @@ impl Plugin for MaterialEditorPlugin {
 /// Save the current material graph to disk and invalidate the resolver cache.
 /// Called from the Apply button in the graph panel toolbar.
 pub fn apply_material(world: &mut World) {
-    let (path, graph_json) = {
+    let path = {
         let state = world.resource::<MaterialEditorState>();
-        let path = match &state.edit_mode {
+        match &state.edit_mode {
             MaterialEditMode::Existing { path, .. } => path.clone(),
             MaterialEditMode::EditingFile { path } => path.clone(),
             _ => return,
-        };
-        let json = match serde_json::to_string_pretty(&state.graph) {
-            Ok(j) => j,
-            Err(e) => {
-                warn!("[material_editor] Failed to serialize graph: {}", e);
-                return;
-            }
-        };
-        (path, json)
-    };
-
-    let fs_path = {
-        let project = world.get_resource::<CurrentProject>();
-        if let Some(p) = project {
-            p.resolve_path(&path).to_string_lossy().to_string()
-        } else {
-            path.clone()
         }
     };
 
-    if let Some(parent) = std::path::Path::new(&fs_path).parent() {
+    let project_root = match world.get_resource::<CurrentProject>() {
+        Some(p) => p.path.clone(),
+        None => {
+            warn!("[material_editor] No project open; cannot save material");
+            return;
+        }
+    };
+    let fs_path = project_root.join(&path);
+
+    if let Some(parent) = fs_path.parent() {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut graph = world.resource::<MaterialEditorState>().graph.clone();
+    let (graph_json, errors) =
+        match renzora_shader::material::precompiled::save_compiled_and_serialize(
+            &mut graph,
+            &project_root,
+            &fs_path,
+        ) {
+            Ok(out) => out,
+            Err(e) => {
+                warn!("[material_editor] Save compile failed: {}", e);
+                return;
+            }
+        };
+    for err in &errors {
+        warn!("[material_editor] codegen error in '{}': {}", path, err);
     }
 
     if let Err(e) = std::fs::write(&fs_path, &graph_json) {
         warn!("[material_editor] Save failed: {}", e);
         return;
     }
+    // Mirror the freshly-saved graph back into editor state so UI sees the
+    // updated wgsl_path link (and a future diff doesn't think it's dirty).
+    world.resource_mut::<MaterialEditorState>().graph = graph;
     info!("[material_editor] Saved {}", path);
 
     // Invalidate resolver cache so the mesh picks up the new material

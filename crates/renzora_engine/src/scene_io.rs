@@ -1182,9 +1182,27 @@ pub fn load_current_scene(world: &mut World) {
 
 /// Rehydrate mesh primitives — spawns `Mesh3d` + `MeshMaterial3d` for entities that have
 /// `MeshPrimitive` but no `Mesh3d` yet (e.g. after scene deserialization).
+///
+/// Entities that also carry a `MaterialRef` get only `Mesh3d` here — the
+/// material resolver is the authority on their material. Inserting a
+/// `StandardMaterial` alongside causes a command-ordering race where the
+/// resolver's `MeshMaterial3d<GraphMaterial>` lands first, then this system
+/// drops a fresh `StandardMaterial` on top, and Bevy ends up rendering the
+/// wrong one (visible as the bright fallback color where the user expects
+/// their custom shader). Symptom appeared as the runtime plane rendering
+/// gray while the editor rendered correctly — the build's plugin set
+/// changes the system schedule, which decides the race.
 pub fn rehydrate_meshes(
     mut commands: Commands,
-    query: Query<(Entity, &MeshPrimitive, Option<&MeshColor>), Without<Mesh3d>>,
+    query: Query<
+        (
+            Entity,
+            &MeshPrimitive,
+            Option<&MeshColor>,
+            Option<&renzora::core::MaterialRef>,
+        ),
+        Without<Mesh3d>,
+    >,
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
@@ -1192,11 +1210,18 @@ pub fn rehydrate_meshes(
     let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
         return;
     };
-    for (entity, primitive, color) in &query {
+    for (entity, primitive, color, material_ref) in &query {
         let Some(mesh) = registry.create_mesh(&primitive.0, &mut meshes) else {
             warn!("Unknown shape ID '{}' — skipping rehydration", primitive.0);
             continue;
         };
+
+        if material_ref.is_some() {
+            // Resolver will own the material. Inserting one here would race
+            // against `resolve_material_refs` and clobber its result.
+            commands.entity(entity).try_insert(Mesh3d(mesh));
+            continue;
+        }
 
         let base_color = color.map_or(Color::WHITE, |c| c.0);
         let material = materials.add(StandardMaterial {

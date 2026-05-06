@@ -936,6 +936,7 @@ fn import_worker(
                             renzora::core::PbrMaterialExtracted {
                                 name: mat.name.clone(),
                                 output_dir: mat_dir.clone(),
+                                project_root: project.path.clone(),
                                 base_color: mat.base_color,
                                 metallic: mat.metallic,
                                 roughness: mat.roughness,

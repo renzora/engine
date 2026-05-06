@@ -201,10 +201,9 @@ pub fn build_surface_graph(inputs: &PbrInputs) -> MaterialGraph {
     graph
 }
 
-/// One-shot helper: PBR inputs → serialized `.material` JSON. The resolver
-/// reads JSON via `serde_json::from_str::<MaterialGraph>`, so any change to
-/// the on-disk format must agree with that call site.
-pub fn pbr_to_json(inputs: &PbrInputs) -> Result<String, serde_json::Error> {
-    let graph = build_surface_graph(inputs);
-    serde_json::to_string_pretty(&graph)
+/// PBR inputs → constructed `MaterialGraph`. Callers serialize via
+/// [`super::precompiled::to_json_with_compile`] so the saved file carries
+/// an embedded WGSL artifact alongside the graph.
+pub fn pbr_to_graph(inputs: &PbrInputs) -> MaterialGraph {
+    build_surface_graph(inputs)
 }

@@ -328,6 +328,10 @@ pub struct PbrMaterialExtracted {
     pub name: String,
     /// Absolute path of the directory to write the `.material` file into.
     pub output_dir: std::path::PathBuf,
+    /// Absolute path of the project root. Subscribers compute the
+    /// project-relative `wgsl_path` link saved into the `.material` from
+    /// this; left empty when there's no project context.
+    pub project_root: std::path::PathBuf,
     pub base_color: [f32; 4],
     pub metallic: f32,
     pub roughness: f32,

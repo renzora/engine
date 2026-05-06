@@ -311,6 +311,13 @@ pub struct MaterialGraph {
     /// Render back faces too. `#[serde(default)]` for the same reason.
     #[serde(default)]
     pub double_sided: bool,
+    /// Project-relative path to the `.wgsl` file produced by codegen the
+    /// last time this graph was saved. The runtime resolver follows this
+    /// link to skip codegen entirely; the editor follows it for play-mode
+    /// rendering. `None` when the graph has never been saved through a
+    /// precompile-aware editor (legacy files fall back to live codegen).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wgsl_path: Option<String>,
 }
 
 impl Default for MaterialGraph {
@@ -329,6 +336,7 @@ impl MaterialGraph {
             next_id: 1,
             alpha_mode: AlphaMode::Opaque,
             double_sided: false,
+            wgsl_path: None,
         };
         // Always start with the output node
         graph.add_output_node(domain);

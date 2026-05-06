@@ -196,6 +196,10 @@ impl EditorPanel for MaterialGraphPanel {
             let errors = result.errors.clone();
 
             cmds.push(move |world: &mut World| {
+                // The captured `graph` is rebound as `mut` here so the save
+                // path can swap in a copy carrying a freshly-written
+                // wgsl_path link.
+                let mut graph = graph;
                 // Check Pending INSIDE the closure (after sync_to_entity has run)
                 let pending_entity = {
                     let state = world.resource::<MaterialEditorState>();
@@ -213,13 +217,25 @@ impl EditorPanel for MaterialGraphPanel {
                     };
                     let asset_path = format!("materials/{}.material", graph_name);
 
-                    // Save the initial file
-                    if let Some(project) = world.get_resource::<CurrentProject>() {
-                        let dir = project.path.join("materials");
+                    // Save the initial file. Clone the graph for the save so
+                    // the outer binding stays alive — editor state below
+                    // mirrors back the (newly-linked) graph.
+                    if let Some(project_root) =
+                        world.get_resource::<CurrentProject>().map(|p| p.path.clone())
+                    {
+                        let dir = project_root.join("materials");
                         let _ = std::fs::create_dir_all(&dir);
                         let file = dir.join(format!("{}.material", graph_name));
-                        if let Ok(json) = serde_json::to_string_pretty(&graph) {
+                        let mut graph_to_save = graph.clone();
+                        if let Ok((json, _errors)) =
+                            renzora_shader::material::precompiled::save_compiled_and_serialize(
+                                &mut graph_to_save,
+                                &project_root,
+                                &file,
+                            )
+                        {
                             let _ = std::fs::write(&file, &json);
+                            graph = graph_to_save;
                         }
                     }
 

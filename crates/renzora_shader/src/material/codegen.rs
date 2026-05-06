@@ -71,7 +71,7 @@ pub struct CompileResult {
 /// Master shaders bake the default value into the WGSL; downstream tooling
 /// (material instances, the inspector) consults this list to know what
 /// overrides are valid and what defaults they replace.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MaterialParam {
     /// Identifier the user authored on the parameter node (e.g. "BaseColor").
     pub name: String,
@@ -81,7 +81,7 @@ pub struct MaterialParam {
     pub default: graph::PinValue,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ParamKind {
     Float,
     Color,
@@ -91,7 +91,7 @@ pub enum ParamKind {
     Bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TextureKind {
     /// Standard 2D sampler (bindings 100/102/104/106 + paired samplers).
     D2,
@@ -103,7 +103,7 @@ pub enum TextureKind {
     D3,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TextureBinding {
     pub name: String,
     pub binding: u32,

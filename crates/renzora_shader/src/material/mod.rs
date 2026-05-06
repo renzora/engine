@@ -4,6 +4,7 @@ pub mod instance;
 pub mod material_ref;
 pub mod nodes;
 pub mod pbr_build;
+pub mod precompiled;
 pub mod resolver;
 pub mod runtime;
 pub mod standard_build;
@@ -89,15 +90,27 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
         double_sided: ev.double_sided,
     };
 
-    match pbr_build::pbr_to_json(&inputs) {
-        Ok(json) => {
+    let mut graph = pbr_build::pbr_to_graph(&inputs);
+    let project_root = if ev.project_root.as_os_str().is_empty() {
+        // Fall back to the material's own directory; produces an absolute
+        // wgsl_path which still works for the editor reader, just isn't
+        // portable across machines.
+        path.parent().unwrap_or(&path).to_path_buf()
+    } else {
+        ev.project_root.clone()
+    };
+    match precompiled::save_compiled_and_serialize(&mut graph, &project_root, &path) {
+        Ok((json, errors)) => {
+            for err in &errors {
+                warn!("[material] codegen '{}': {}", ev.name, err);
+            }
             if let Err(e) = std::fs::write(&path, json) {
                 warn!("[material] write '{}': {}", path.display(), e);
             } else {
                 info!("[material] wrote {}", path.display());
             }
         }
-        Err(e) => warn!("[material] serialize '{}': {}", ev.name, e),
+        Err(e) => warn!("[material] save '{}': {}", ev.name, e),
     }
 }
 

@@ -574,8 +574,20 @@ fn material_custom_ui(
 
                 let _ = std::fs::create_dir_all(&mat_save_dir);
                 let mat_file = mat_save_dir.join(format!("{}.material", mat_name));
-                if let Ok(json) = serde_json::to_string_pretty(&graph) {
-                    let _ = std::fs::write(&mat_file, &json);
+                if let Some(project_root) = world
+                    .get_resource::<renzora::core::CurrentProject>()
+                    .map(|p| p.path.clone())
+                {
+                    let mut graph = graph;
+                    if let Ok((json, _errors)) =
+                        renzora_shader::material::precompiled::save_compiled_and_serialize(
+                            &mut graph,
+                            &project_root,
+                            &mat_file,
+                        )
+                    {
+                        let _ = std::fs::write(&mat_file, &json);
+                    }
                 }
 
                 let mat_asset_path = {

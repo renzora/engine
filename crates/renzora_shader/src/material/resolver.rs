@@ -261,6 +261,7 @@ fn resolve_material_refs(
             } else {
                 resolve_material_file(
                     &fs_path,
+                    project.as_deref(),
                     &mut standard_materials,
                     &mut graph_materials,
                     &mut shaders,
@@ -348,6 +349,45 @@ fn resolve_material_refs(
             || path.ends_with(".frag")
             || path.ends_with(".vert")
         {
+            // A `.wgsl` paired with a `<path>.meta` sidecar is the compiled
+            // output of a `.material` graph — assemble it as a GraphMaterial
+            // (the same asset type the resolver builds when following a
+            // `wgsl_path` link from inside a `.material`). No sidecar →
+            // hand-written code shader, fall through to the raw-shader path.
+            if path.ends_with(".wgsl") {
+                if let Some((wgsl, meta)) =
+                    load_compiled_from_vfs(&fs_path, project.as_deref(), reader)
+                {
+                    let (handle, parameters) = assemble_graph_material(
+                        &fs_path,
+                        wgsl,
+                        meta.domain,
+                        meta.alpha_mode,
+                        meta.double_sided,
+                        meta.requires_transmission,
+                        &meta.texture_bindings,
+                        meta.parameters,
+                        &mut graph_materials,
+                        &mut shaders,
+                        &fallback_texture,
+                        &asset_server,
+                    );
+                    cache.graph_materials.insert(path.clone(), handle.clone());
+                    cache
+                        .master_meta
+                        .insert(path.clone(), MasterMeta { parameters });
+                    commands
+                        .entity(entity)
+                        .remove::<MeshMaterial3d<bevy::pbr::StandardMaterial>>();
+                    commands.entity(entity).try_insert((
+                        MeshMaterial3d(handle),
+                        MaterialResolved {
+                            source_path: path.clone(),
+                        },
+                    ));
+                    continue;
+                }
+            }
             match resolve_raw_shader(
                 &fs_path,
                 &mut code_materials,
@@ -506,6 +546,7 @@ fn is_derived_material_file(path: &str, reader: &renzora::VirtualFileReader) -> 
 /// graphs — fails to compile to WGSL.
 fn resolve_material_file(
     path: &str,
+    project: Option<&renzora::CurrentProject>,
     standard_materials: &mut Assets<bevy::pbr::StandardMaterial>,
     graph_materials: &mut Assets<GraphMaterial>,
     shaders: &mut Assets<Shader>,
@@ -537,8 +578,34 @@ fn resolve_material_file(
         return Some(CompiledMaterial::Standard(standard_materials.add(mat)));
     }
 
-    // Procedural fallback: hand off to the existing graph→WGSL codegen and
-    // wrap the result in an ExtendedMaterial. Same code path as before.
+    // Precompiled .wgsl on disk — written by the editor on save. Read the
+    // shader + sidecar metadata, skip codegen entirely.
+    if let Some(wgsl_path) = graph.wgsl_path.as_deref() {
+        if let Some((wgsl, meta)) = load_compiled_from_vfs(wgsl_path, project, reader) {
+            let (handle, parameters) = assemble_graph_material(
+                wgsl_path,
+                wgsl,
+                meta.domain,
+                meta.alpha_mode,
+                meta.double_sided,
+                meta.requires_transmission,
+                &meta.texture_bindings,
+                meta.parameters,
+                graph_materials,
+                shaders,
+                fallback_texture,
+                asset_server,
+            );
+            return Some(CompiledMaterial::Graph { handle, parameters });
+        }
+        warn!(
+            "Material '{}' references missing or unreadable wgsl '{}'; falling back to live codegen",
+            path, wgsl_path
+        );
+    }
+
+    // Legacy fallback: no `wgsl_path` link or it failed to load. Run the
+    // full graph→WGSL codegen now.
     let (handle, parameters) = resolve_graph_material_from_graph(
         path,
         &graph,
@@ -549,6 +616,48 @@ fn resolve_material_file(
         asset_server,
     )?;
     Some(CompiledMaterial::Graph { handle, parameters })
+}
+
+/// Read a `.wgsl` plus its `.wgsl.meta` sidecar via the project VFS. Both
+/// must be present for this to succeed — a `.wgsl` without a sidecar isn't
+/// a graph-material artifact (could be a hand-written code shader, handled
+/// elsewhere) and can't be assembled into a `GraphMaterial`.
+///
+/// `wgsl_path` is project-relative (as stored in `MaterialGraph::wgsl_path`).
+/// The runtime VFS reader uses project-relative keys directly. The editor's
+/// disk-backed default reader needs absolute paths, so resolve through the
+/// project the same way the `.material` lookup does.
+fn load_compiled_from_vfs(
+    wgsl_path: &str,
+    project: Option<&renzora::CurrentProject>,
+    reader: &renzora::VirtualFileReader,
+) -> Option<(String, super::precompiled::CompiledMaterialMeta)> {
+    let resolve = |key: &str| -> String {
+        if std::path::Path::new(key).is_absolute() {
+            return key.to_string();
+        }
+        if let Some(proj) = project {
+            let raw = proj.resolve_path(key).to_string_lossy().to_string();
+            let normalized = raw.replace('\\', "/");
+            return normalized
+                .strip_prefix("./")
+                .unwrap_or(&normalized)
+                .to_string();
+        }
+        key.to_string()
+    };
+
+    let wgsl = reader.read_string(&resolve(wgsl_path))?;
+    let meta_key = format!("{}.meta", wgsl_path);
+    let meta_json = reader.read_string(&resolve(&meta_key))?;
+    let meta: super::precompiled::CompiledMaterialMeta = match serde_json::from_str(&meta_json) {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to parse '{}': {}", meta_key, e);
+            return None;
+        }
+    };
+    Some((wgsl, meta))
 }
 
 /// Read a `.material_instance` file, resolve its master, splice in the
@@ -657,15 +766,35 @@ fn resolve_material_instance_file(
     //    cache both the GraphMaterial handle and the parameter list. Two
     //    instances of the same master share this compilation.
     if cache.graph_materials.get(&master_key).is_none() {
-        let (handle, parameters) = resolve_graph_material_from_graph(
-            &master_fs_path,
-            &master_graph,
-            graph_materials,
-            shaders,
-            shader_state,
-            fallback_texture,
-            asset_server,
-        )?;
+        let from_precompiled = master_graph.wgsl_path.as_deref().and_then(|wp| {
+            load_compiled_from_vfs(wp, project, reader).map(|loaded| (wp.to_string(), loaded))
+        });
+        let (handle, parameters) = if let Some((wgsl_key, (wgsl, meta))) = from_precompiled {
+            assemble_graph_material(
+                &wgsl_key,
+                wgsl,
+                meta.domain,
+                meta.alpha_mode,
+                meta.double_sided,
+                meta.requires_transmission,
+                &meta.texture_bindings,
+                meta.parameters,
+                graph_materials,
+                shaders,
+                fallback_texture,
+                asset_server,
+            )
+        } else {
+            resolve_graph_material_from_graph(
+                &master_fs_path,
+                &master_graph,
+                graph_materials,
+                shaders,
+                shader_state,
+                fallback_texture,
+                asset_server,
+            )?
+        };
         cache.graph_materials.insert(master_key.clone(), handle);
         cache
             .master_meta
@@ -737,6 +866,41 @@ fn resolve_graph_material_from_graph(
         return None;
     }
 
+    Some(assemble_graph_material(
+        path,
+        result.fragment_shader,
+        result.domain,
+        graph.alpha_mode,
+        graph.double_sided,
+        result.requires_transmission,
+        &result.texture_bindings,
+        result.parameters,
+        materials,
+        shaders,
+        fallback_texture,
+        asset_server,
+    ))
+}
+
+/// Build the `GraphMaterial` asset from already-compiled WGSL plus the
+/// graph-level fields (alpha mode, double-sided) needed by the asset
+/// assembler. Shared between live graph codegen and precompiled artifacts
+/// loaded from a packaged build.
+#[allow(clippy::too_many_arguments)]
+fn assemble_graph_material(
+    path: &str,
+    fragment_shader: String,
+    domain: MaterialDomain,
+    alpha_mode: super::graph::AlphaMode,
+    double_sided: bool,
+    requires_transmission: bool,
+    texture_bindings: &[super::codegen::TextureBinding],
+    parameters: Vec<MaterialParam>,
+    materials: &mut Assets<GraphMaterial>,
+    shaders: &mut Assets<Shader>,
+    fallback_texture: &Option<Res<FallbackTexture>>,
+    asset_server: &AssetServer,
+) -> (Handle<GraphMaterial>, Vec<MaterialParam>) {
     // Each material gets its own compiled shader, inserted at a unique
     // `Handle::Uuid`. The UUID lives in the extension's pipeline key so
     // `specialize()` can reconstruct the handle and swap it into the
@@ -744,12 +908,9 @@ fn resolve_graph_material_from_graph(
     // `Handle<Shader>` directly (packed-struct + non-Copy).
     let shader_uuid = Uuid::new_v4();
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
-    let shader = Shader::from_wgsl(result.fragment_shader, format!("material://{}", path));
+    let shader = Shader::from_wgsl(fragment_shader, format!("material://{}", path));
     let _ = shaders.insert(&shader_handle, shader);
 
-    // Build the ExtendedMaterial<StandardMaterial, SurfaceGraphExt>. The base
-    // StandardMaterial supplies all the heavy PBR plumbing; our extension
-    // supplies the compiled per-material fragment shader and texture slots.
     let mut mat = if let Some(fb) = fallback_texture {
         new_graph_material(fb)
     } else {
@@ -757,10 +918,7 @@ fn resolve_graph_material_from_graph(
     };
     mat.extension.shader_uuid = Some(shader_uuid);
 
-    // Domain → base StandardMaterial configuration. This is where the graph's
-    // compile-time domain choice translates into a Bevy-side feature flip
-    // (unlit bypasses lighting; AlphaMode controls queue placement).
-    match result.domain {
+    match domain {
         MaterialDomain::Unlit => {
             mat.base.unlit = true;
         }
@@ -769,33 +927,24 @@ fn resolve_graph_material_from_graph(
         }
     }
 
-    // Transmission pins connected → must enable transmission on the CPU-side
-    // StandardMaterial so Bevy's `reads_view_transmission_texture()` returns
-    // true, which schedules the transmissive render pass that populates
-    // `view_transmission_texture`. The runtime-shader value (driven by the
-    // graph) overrides this default anyway; 0.5 is just enough to trigger
-    // the pipeline decision.
-    if result.requires_transmission {
+    if requires_transmission {
         mat.base.specular_transmission = 0.5;
     }
 
-    // Map graph-level alpha mode and double-sided flag onto Bevy's
-    // StandardMaterial. Without this, transparent materials (glass, foliage,
-    // decals) render as opaque garbage even when the alpha pin is wired up.
-    mat.base.alpha_mode = match graph.alpha_mode {
+    mat.base.alpha_mode = match alpha_mode {
         crate::material::graph::AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
         crate::material::graph::AlphaMode::Mask { cutoff } => {
             bevy::prelude::AlphaMode::Mask(cutoff)
         }
         crate::material::graph::AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
     };
-    mat.base.cull_mode = if graph.double_sided {
+    mat.base.cull_mode = if double_sided {
         None
     } else {
         Some(bevy::render::render_resource::Face::Back)
     };
 
-    for tb in &result.texture_bindings {
+    for tb in texture_bindings {
         if tb.asset_path.is_empty() {
             continue;
         }
@@ -817,10 +966,8 @@ fn resolve_graph_material_from_graph(
         }
     }
 
-    // Seed the parameter UBO from the master's authored defaults so the
-    // master renders correctly out of the gate. Material instances will
-    // overlay their per-instance values on top of this seed.
-    mat.extension.params.slots = super::instance::build_default_param_slots(&result.parameters);
+    mat.extension.params.slots = super::instance::build_default_param_slots(&parameters);
 
-    Some((materials.add(mat), result.parameters))
+    (materials.add(mat), parameters)
 }
+

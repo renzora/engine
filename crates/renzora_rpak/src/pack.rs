@@ -196,6 +196,26 @@ where
                 if visited.insert(actual_key.clone()) {
                     let _ = packer.add_from_disk(project_dir, &disk_path);
                     on_packed(&actual_key);
+                    // Compiled material `.wgsl` files travel with a
+                    // `<path>.meta` sidecar that holds texture bindings,
+                    // parameters, alpha mode, etc. The .wgsl itself contains
+                    // no quoted asset paths, so the BFS would otherwise
+                    // never reach the meta. Pack it here.
+                    if actual_key.ends_with(".wgsl") {
+                        let meta_key = format!("{}.meta", actual_key);
+                        if !visited.contains(&meta_key) {
+                            if let Some(meta_disk) = resolve(&meta_key) {
+                                if let Some(meta_actual) = archive_key_for(&meta_disk) {
+                                    if visited.insert(meta_actual.clone()) {
+                                        let _ =
+                                            packer.add_from_disk(project_dir, &meta_disk);
+                                        on_packed(&meta_actual);
+                                        queue.push_back(meta_actual);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     queue.push_back(actual_key);
                 }
             }
@@ -243,18 +263,41 @@ where
 
     // BFS: for each queued file, scan for asset path references and pack them
     while let Some(file_key) = queue.pop_front() {
-        let Some(data) = packer.get(&file_key) else {
-            continue;
+        let refs: Vec<String> = {
+            let Some(data) = packer.get(&file_key) else {
+                continue;
+            };
+            // Binary GLBs aren't UTF-8 — pull out the JSON chunk so we can
+            // discover externally-referenced textures and .bin files.
+            let text: &str = if file_key.ends_with(".glb") {
+                let Some(json) = extract_glb_json(data) else {
+                    continue;
+                };
+                json
+            } else if let Ok(t) = std::str::from_utf8(data) {
+                t
+            } else {
+                continue;
+            };
+            extract_quoted_asset_paths(text)
         };
-        let Ok(text) = std::str::from_utf8(data) else {
-            continue;
+
+        // Parent dir of the referrer (forward-slashed). Used to resolve
+        // references that are relative to the file containing them — e.g.
+        // a GLB at models/foo/scene.glb pointing to "textures/img.png".
+        let parent_dir: String = match Path::new(&file_key).parent() {
+            Some(p) if !p.as_os_str().is_empty() => p.to_string_lossy().replace('\\', "/"),
+            _ => String::new(),
         };
-        let refs = extract_quoted_asset_paths(text);
 
         for reference in refs {
             let norm = reference.replace('\\', "/");
             let stripped = norm.trim_start_matches("./").to_string();
-            for candidate in [norm.clone(), stripped.clone()] {
+            let mut candidates: Vec<String> = vec![norm.clone(), stripped.clone()];
+            if !parent_dir.is_empty() {
+                candidates.push(format!("{}/{}", parent_dir, stripped));
+            }
+            for candidate in candidates {
                 if !visited.contains(&candidate) {
                     try_pack(
                         &candidate,
@@ -828,6 +871,27 @@ fn extract_quoted_asset_paths(text: &str) -> Vec<String> {
     refs
 }
 
+/// Extract the JSON chunk from a binary glTF (GLB) file.
+///
+/// GLB layout: 12-byte header (`glTF` magic + version + total length), then
+/// a sequence of chunks. The first chunk must be JSON. We need its bytes so
+/// the BFS can discover external `uri` references (textures, `.bin` buffers)
+/// inside the glTF JSON without choking on the binary BIN chunk.
+fn extract_glb_json(data: &[u8]) -> Option<&str> {
+    if data.len() < 20 || &data[0..4] != b"glTF" {
+        return None;
+    }
+    let chunk_len = u32::from_le_bytes(data[12..16].try_into().ok()?) as usize;
+    if &data[16..20] != b"JSON" {
+        return None;
+    }
+    let json_end = 20usize.checked_add(chunk_len)?;
+    if json_end > data.len() {
+        return None;
+    }
+    std::str::from_utf8(&data[20..json_end]).ok()
+}
+
 /// Check if a quoted string looks like an asset file path.
 fn looks_like_asset_path(s: &str) -> bool {
     if s.is_empty() || s.len() > 512 {
@@ -969,5 +1033,51 @@ mod tests {
         let bytes = p.finish(3).expect("finish");
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
         assert_eq!(archive.get("big.bin"), Some(big.as_slice()));
+    }
+
+    /// Build a minimal GLB byte sequence wrapping `json` as the JSON chunk,
+    /// followed by a binary BIN chunk of garbage bytes (so the whole file
+    /// is not valid UTF-8 — that's the case the BFS used to choke on).
+    fn synth_glb(json: &str) -> Vec<u8> {
+        let json_bytes = json.as_bytes();
+        // GLB JSON chunks must be 4-byte aligned, padded with 0x20.
+        let json_pad = (4 - (json_bytes.len() % 4)) % 4;
+        let json_chunk_len = json_bytes.len() + json_pad;
+        let bin: [u8; 8] = [0xff, 0x00, 0xfe, 0x80, 0x00, 0xc0, 0xff, 0xee];
+        let total =
+            12 + 8 + json_chunk_len + 8 + bin.len();
+
+        let mut out = Vec::with_capacity(total);
+        out.extend_from_slice(b"glTF");
+        out.extend_from_slice(&2u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&(json_chunk_len as u32).to_le_bytes());
+        out.extend_from_slice(b"JSON");
+        out.extend_from_slice(json_bytes);
+        for _ in 0..json_pad {
+            out.push(0x20);
+        }
+        out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"BIN\0");
+        out.extend_from_slice(&bin);
+        out
+    }
+
+    #[test]
+    fn extract_glb_json_returns_json_chunk() {
+        let json = r#"{"images":[{"uri":"textures/img.png"}]}"#;
+        let glb = synth_glb(json);
+        // Whole file is not UTF-8 because of the BIN chunk bytes.
+        assert!(std::str::from_utf8(&glb).is_err());
+        let extracted = extract_glb_json(&glb).expect("json chunk");
+        // Padding bytes are part of the chunk; trim before comparison.
+        assert_eq!(extracted.trim_end_matches(' '), json);
+    }
+
+    #[test]
+    fn extract_glb_json_rejects_non_glb() {
+        assert!(extract_glb_json(b"").is_none());
+        assert!(extract_glb_json(b"not a glb at all").is_none());
+        assert!(extract_glb_json(&[0u8; 24]).is_none());
     }
 }

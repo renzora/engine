@@ -348,6 +348,7 @@ fn run_import_pipeline(
             world.trigger(renzora::core::PbrMaterialExtracted {
                 name: mat.name.clone(),
                 output_dir: mat_dir.clone(),
+                project_root: project_path.to_path_buf(),
                 base_color: mat.base_color,
                 metallic: mat.metallic,
                 roughness: mat.roughness,
