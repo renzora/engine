@@ -678,6 +678,37 @@ fn register_api(engine: &mut Engine) {
         },
     );
 
+    // Asset Load Progress — see the Lua backend for usage notes; identical
+    // semantics here, just exposed as Rhai globals.
+    engine.register_fn("asset_progress", || -> Dynamic {
+        let Some(snapshot) = crate::get_handler::call_asset_progress() else {
+            return Dynamic::UNIT;
+        };
+        let mut m = Map::new();
+        m.insert("state".into(), Dynamic::from(snapshot.state.to_string()));
+        m.insert("total_files".into(), Dynamic::from(snapshot.total_files as i64));
+        m.insert("loaded_files".into(), Dynamic::from(snapshot.loaded_files as i64));
+        m.insert("total_bytes".into(), Dynamic::from(snapshot.total_bytes as i64));
+        m.insert("loaded_bytes".into(), Dynamic::from(snapshot.loaded_bytes as i64));
+        m.insert("fraction".into(), Dynamic::from(snapshot.fraction as f64));
+        m.insert("elapsed_secs".into(), Dynamic::from(snapshot.elapsed_secs as f64));
+        match snapshot.current_path {
+            Some(p) => m.insert("current_path".into(), Dynamic::from(p)),
+            None => m.insert("current_path".into(), Dynamic::UNIT),
+        };
+        Dynamic::from(m)
+    });
+    engine.register_fn("is_loading", || -> bool {
+        crate::get_handler::call_asset_progress()
+            .map(|s| s.state == "loading")
+            .unwrap_or(false)
+    });
+    engine.register_fn("is_loaded", || -> bool {
+        crate::get_handler::call_asset_progress()
+            .map(|s| s.state == "done")
+            .unwrap_or(false)
+    });
+
     // Math helpers
     engine.register_fn("vec3", |x: f64, y: f64, z: f64| -> Map {
         let mut m = Map::new();

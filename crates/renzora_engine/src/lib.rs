@@ -4,6 +4,7 @@
 //! When the editor is present, it renders to an offscreen image.
 //! When standalone, it renders directly to the window.
 
+pub mod asset_progress;
 pub mod asset_reader;
 pub mod camera;
 pub mod crash;
@@ -12,6 +13,7 @@ pub mod procedural_meshes;
 pub mod scene_io;
 pub mod vfs;
 
+pub use asset_progress::{AssetLoadProgress, LoadProgressState};
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
 pub use renzora::{
     open_project, CurrentProject, DefaultCamera, EditorCamera, EditorLocked, EffectRouting,
@@ -161,7 +163,16 @@ impl Plugin for RuntimePlugin {
 
         app.init_resource::<ViewportRenderTarget>()
             .init_resource::<scene_io::SceneLoadState>()
-            .init_resource::<scene_io::SceneReferenceCache>();
+            .init_resource::<scene_io::SceneReferenceCache>()
+            .init_resource::<asset_progress::AssetLoadProgress>()
+            .add_systems(
+                Update,
+                (
+                    asset_progress::tick_asset_load_progress,
+                    asset_progress::publish_asset_progress_to_bridge,
+                )
+                    .chain(),
+            );
         {
             use bevy::prelude::*;
             use procedural_meshes as pm;

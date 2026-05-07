@@ -402,6 +402,20 @@ pub fn run_scripts(world: &mut World) {
                 }
             }));
 
+            // Snapshot asset-load progress for `asset_progress()` reads inside
+            // this script's tick. The data is published into the
+            // `AssetProgressBridge` resource by `renzora_engine` (which depends
+            // on this crate, so we can't reference its types directly — the
+            // bridge is the indirection that breaks the dep cycle).
+            {
+                let world_ref = unsafe { &*world_ptr };
+                if let Some(bridge) = world_ref.get_resource::<crate::AssetProgressBridge>() {
+                    if let Some(snapshot) = bridge.snapshot.clone() {
+                        crate::get_handler::set_asset_progress(snapshot);
+                    }
+                }
+            }
+
             // Execute script
             let engine = world.resource::<ScriptEngine>();
             if !entry.runtime_state.initialized {

@@ -1201,6 +1201,69 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+    // -- Asset Load Progress --
+    // asset_progress() — returns the runtime asset-load tracker as a table.
+    // Returns nil when no scene is loading (idle / no rpak / no scene yet).
+    // Fields: state ("idle"/"loading"/"done"), total_files, loaded_files,
+    // total_bytes, loaded_bytes, fraction (0..1), current_path, elapsed_secs.
+    //
+    // Typical loading-screen pattern in a script attached to the boot scene:
+    //   function on_update()
+    //     local p = asset_progress()
+    //     if p == nil then return end
+    //     action("ui_set_progress", { name="LoadBar", value=p.fraction })
+    //     if p.current_path then
+    //       action("ui_set_text", { name="LoadLabel", text=p.current_path })
+    //     end
+    //     if p.state == "done" then
+    //       action("ui_hide", { name="LoadingScreen" })
+    //     end
+    //   end
+    let _ = globals.set(
+        "asset_progress",
+        lua.create_function(|lua, ()| {
+            let Some(snapshot) = crate::get_handler::call_asset_progress() else {
+                return Ok(LuaValue::Nil);
+            };
+            let t = lua.create_table()?;
+            t.set("state", snapshot.state)?;
+            t.set("total_files", snapshot.total_files)?;
+            t.set("loaded_files", snapshot.loaded_files)?;
+            t.set("total_bytes", snapshot.total_bytes as f64)?;
+            t.set("loaded_bytes", snapshot.loaded_bytes as f64)?;
+            t.set("fraction", snapshot.fraction)?;
+            t.set("elapsed_secs", snapshot.elapsed_secs)?;
+            match snapshot.current_path {
+                Some(p) => t.set("current_path", p)?,
+                None => t.set("current_path", LuaValue::Nil)?,
+            }
+            Ok(LuaValue::Table(t))
+        })
+        .unwrap(),
+    );
+
+    // is_loading() — convenience boolean wrapper around asset_progress().state.
+    let _ = globals.set(
+        "is_loading",
+        lua.create_function(|_, ()| {
+            Ok(crate::get_handler::call_asset_progress()
+                .map(|s| s.state == "loading")
+                .unwrap_or(false))
+        })
+        .unwrap(),
+    );
+
+    // is_loaded() — true once every tracked asset has finished loading.
+    let _ = globals.set(
+        "is_loaded",
+        lua.create_function(|_, ()| {
+            Ok(crate::get_handler::call_asset_progress()
+                .map(|s| s.state == "done")
+                .unwrap_or(false))
+        })
+        .unwrap(),
+    );
+
     // -- Math helpers --
     let _ = globals.set(
         "vec3",
