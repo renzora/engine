@@ -143,6 +143,13 @@ pub struct ProjectConfig {
     pub editor_last_scene: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// Scenes that load before `main_scene` and persist across every
+    /// subsequent `load_scene()` call. Use for the loading overlay,
+    /// global audio, save state — anything that needs to stay alive while
+    /// the active scene swaps. Paths are project-relative (e.g.
+    /// `"scenes/loader.ron"`). Empty by default; nothing happens if unset.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub autoload: Vec<String>,
     #[serde(default)]
     pub window: WindowConfig,
     /// Whether the runtime should attach a console (Windows) for `println!` /
@@ -165,6 +172,7 @@ impl Default for ProjectConfig {
             main_scene: "scenes/main.ron".to_string(),
             editor_last_scene: None,
             icon: None,
+            autoload: Vec::new(),
             window: WindowConfig::default(),
             console_logging: false,
             network: None,
@@ -266,7 +274,12 @@ pub struct HideInHierarchy;
 
 /// Marker component — entity persists across scene loads (e.g. loader UI root).
 /// `process_pending_scene_loads` and similar despawn-the-world logic must skip these.
-#[derive(Component, Default, Clone, Copy, Debug)]
+///
+/// Auto-applied to every entity spawned from an autoload scene (see
+/// `renzora_engine::autoload`). The component is also reflected so users can
+/// hand-tag arbitrary entities from the inspector if they ever need to.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component)]
 pub struct Persistent;
 
 /// Marker component — entity is locked from editing in the hierarchy.

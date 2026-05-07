@@ -6,6 +6,7 @@
 
 pub mod asset_progress;
 pub mod asset_reader;
+pub mod autoload;
 pub mod camera;
 pub mod crash;
 pub mod debug_log;
@@ -47,6 +48,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::SceneInstance>()
             .register_type::<renzora::DefaultCamera>()
             .register_type::<renzora::EntityTag>()
+            .register_type::<renzora::Persistent>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -134,7 +136,12 @@ impl Plugin for RuntimePlugin {
 
             app.add_systems(
                 Startup,
-                (setup_vfs_script_reader, scene_io::load_current_scene).chain(),
+                (
+                    setup_vfs_script_reader,
+                    autoload::load_autoloads,
+                    scene_io::load_current_scene,
+                )
+                    .chain(),
             )
             .add_systems(
                 Update,
