@@ -9,5 +9,10 @@ zstd = "0.13"
 cfg-if = "1"
 toml = "0.8"
 
+# Memory-mapped file backend for zero-copy reads on desktop/iOS. WASM and
+# pure-bytes scenarios go through `BytesBackend` instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memmap2 = "0.9"
+
 [lints]
 workspace = true

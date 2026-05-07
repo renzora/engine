@@ -299,7 +299,7 @@ impl Vfs {
     pub fn read(&self, path: &str) -> Option<Vec<u8>> {
         if let Some(ref archive) = self.archive {
             if let Some(data) = archive.get(path) {
-                return Some(data.to_vec());
+                return Some(data);
             }
         }
         // Fallback to filesystem

@@ -6,6 +6,11 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use crate::format::{
+    encode_footer, encode_index, Compression, Header, PakEntry, FOOTER_LEN,
+    FORMAT_VERSION, HEADER_FLAG_INDEX_COMPRESSED, HEADER_LEN,
+};
+
 /// Collects files and writes them into an `.rpak` archive.
 pub struct RpakPacker {
     /// path (relative, forward-slash) -> file contents
@@ -50,63 +55,108 @@ impl RpakPacker {
         self.entries.get(archive_path).map(|v| v.as_slice())
     }
 
-    /// Serialize and zstd-compress the archive, returning the compressed bytes.
+    /// Serialize the archive into v2 bytes: header + per-entry-compressed
+    /// data + (optionally compressed) index.
+    ///
+    /// Returns the standalone rpak content with no footer — append the
+    /// 16-byte footer from [`crate::format::encode_footer`] when embedding
+    /// in a host binary.
     pub fn finish(self, compression_level: i32) -> io::Result<Vec<u8>> {
-        // Build uncompressed blob: header + data
-        let mut raw = Vec::new();
+        // Reserve header space; we'll backfill once the index offset is known.
+        let mut out: Vec<u8> = vec![0u8; HEADER_LEN as usize];
 
-        // Entry count
-        let count = self.entries.len() as u32;
-        raw.extend_from_slice(&count.to_le_bytes());
-
-        // First pass: compute offsets (relative to start of data section)
-        let mut offset: u64 = 0;
-        let mut index_entries: Vec<(String, u64, u64)> = Vec::with_capacity(self.entries.len());
+        // ── Pass 1: write each entry's payload (zstd-compress when it shrinks).
+        let mut entries: Vec<PakEntry> = Vec::with_capacity(self.entries.len());
         for (path, data) in &self.entries {
-            let size = data.len() as u64;
-            index_entries.push((path.clone(), offset, size));
-            offset += size;
+            let uncompressed_size = data.len() as u64;
+            let entry_offset = out.len() as u64;
+
+            // zstd-compress the payload, but fall back to Stored if the
+            // compressor ends up making it larger (common for tiny files,
+            // already-compressed formats like .png/.ogg/.glb-with-jpeg).
+            let compressed = zstd::encode_all(data.as_slice(), compression_level)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            let (compression, payload) = if (compressed.len() as u64) < uncompressed_size {
+                (Compression::Zstd, compressed)
+            } else {
+                (Compression::Stored, data.clone())
+            };
+
+            let compressed_size = payload.len() as u64;
+            out.extend_from_slice(&payload);
+
+            entries.push(PakEntry {
+                path: path.clone(),
+                offset: entry_offset,
+                compressed_size,
+                uncompressed_size,
+                compression,
+                flags: 0,
+                crc32: 0, // reserved for a later step
+            });
         }
 
-        // Write index
-        for (path, offset, size) in &index_entries {
-            let path_bytes = path.as_bytes();
-            raw.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
-            raw.extend_from_slice(path_bytes);
-            raw.extend_from_slice(&offset.to_le_bytes());
-            raw.extend_from_slice(&size.to_le_bytes());
-        }
-
-        // Write file data
-        for (_path, data) in &self.entries {
-            raw.extend_from_slice(data);
-        }
-
-        // Compress
-        let compressed = zstd::encode_all(raw.as_slice(), compression_level)
+        // ── Pass 2: encode the index and (optionally) zstd it.
+        let raw_index = encode_index(&entries);
+        let index_uncompressed_len = raw_index.len();
+        let compressed_index = zstd::encode_all(raw_index.as_slice(), compression_level)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        Ok(compressed)
+        let (index_compress, stored_index): (bool, Vec<u8>) =
+            if compressed_index.len() < index_uncompressed_len {
+                (true, compressed_index)
+            } else {
+                (false, raw_index)
+            };
+
+        let index_offset = out.len() as u64;
+        let index_compressed_len = stored_index.len();
+        out.extend_from_slice(&stored_index);
+
+        // ── Pass 3: backfill the header.
+        let mut flags: u32 = 0;
+        if index_compress {
+            flags |= HEADER_FLAG_INDEX_COMPRESSED;
+        }
+        let header = Header {
+            version: FORMAT_VERSION,
+            flags,
+            index_offset,
+            index_compressed: index_compressed_len as u32,
+            index_uncompressed: index_uncompressed_len as u32,
+        };
+        let mut header_bytes = Vec::with_capacity(HEADER_LEN as usize);
+        header.write_into(&mut header_bytes);
+        // Pad header to fixed length.
+        while header_bytes.len() < HEADER_LEN as usize {
+            header_bytes.push(0);
+        }
+        out[..HEADER_LEN as usize].copy_from_slice(&header_bytes);
+
+        Ok(out)
     }
 
     /// Write the archive to a standalone `.rpak` file.
     pub fn write_to_file(self, path: &Path, compression_level: i32) -> io::Result<()> {
-        let compressed = self.finish(compression_level)?;
+        let bytes = self.finish(compression_level)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, &compressed)?;
+        std::fs::write(path, &bytes)?;
         Ok(())
     }
 
     /// Append the archive to a binary, creating a self-contained executable.
+    /// The 16-byte footer carrying `rpak_total_size + RPAK_MAGIC` is written
+    /// after the rpak content so the loader can locate the rpak start.
     pub fn append_to_binary(
         self,
         binary_path: &Path,
         output_path: &Path,
         compression_level: i32,
     ) -> io::Result<()> {
-        let compressed = self.finish(compression_level)?;
+        let rpak_bytes = self.finish(compression_level)?;
         let binary_data = std::fs::read(binary_path)?;
 
         if let Some(parent) = output_path.parent() {
@@ -115,10 +165,10 @@ impl RpakPacker {
 
         let mut out = std::fs::File::create(output_path)?;
         out.write_all(&binary_data)?;
-        out.write_all(&compressed)?;
-        // Footer: size of compressed data + magic
-        out.write_all(&(compressed.len() as u64).to_le_bytes())?;
-        out.write_all(crate::RPAK_MAGIC)?;
+        out.write_all(&rpak_bytes)?;
+        let footer = encode_footer(rpak_bytes.len() as u64);
+        debug_assert_eq!(footer.len(), FOOTER_LEN as usize);
+        out.write_all(&footer)?;
         out.flush()?;
 
         Ok(())
@@ -971,10 +1021,10 @@ mod tests {
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
 
         assert_eq!(archive.len(), 3);
-        assert_eq!(archive.get("scenes/main.ron"), Some(scene.as_slice()));
-        assert_eq!(archive.get("models/car.glb"), Some(model.as_slice()));
+        assert_eq!(archive.get("scenes/main.ron").as_deref(), Some(scene.as_slice()));
+        assert_eq!(archive.get("models/car.glb").as_deref(), Some(model.as_slice()));
         assert_eq!(
-            archive.get("textures/wall.png"),
+            archive.get("textures/wall.png").as_deref(),
             Some(&[0xff, 0xee, 0xdd][..])
         );
     }
@@ -987,7 +1037,7 @@ mod tests {
         p.add_file("models/car.glb", vec![1, 2, 3]);
         let bytes = p.finish(3).expect("finish");
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
-        assert_eq!(archive.get("models\\car.glb"), Some(&[1u8, 2, 3][..]));
+        assert_eq!(archive.get("models\\car.glb").as_deref(), Some(&[1u8, 2, 3][..]));
         assert!(archive.contains("models\\car.glb"));
     }
 
@@ -1010,15 +1060,15 @@ mod tests {
         p.add_file("only.txt", vec![42]);
         let bytes = p.finish(3).expect("finish");
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
-        assert_eq!(archive.get("nope.txt"), None);
+        assert!(archive.get("nope.txt").is_none());
         assert!(!archive.contains("nope.txt"));
     }
 
     #[test]
     fn corrupted_bytes_return_error() {
-        // Random garbage is not valid zstd → archive load fails. The
-        // failure path used to silently produce an empty archive in an
-        // earlier version; locking the error path in.
+        // A garbage buffer doesn't have a valid header → archive load fails.
+        // Earlier versions silently produced an empty archive on garbage; this
+        // pins the error path so we can't regress.
         let result = RpakArchive::from_bytes(&[0u8, 1, 2, 3]);
         assert!(result.is_err());
     }
@@ -1026,13 +1076,105 @@ mod tests {
     #[test]
     fn large_file_round_trips() {
         // Sanity-check the offset/size arithmetic with a file bigger than
-        // the index header so any off-by-one in pos accounting shows up.
+        // the header so any off-by-one in pos accounting shows up.
         let mut p = RpakPacker::new();
         let big: Vec<u8> = (0..10_000).map(|i| (i % 251) as u8).collect();
         p.add_file("big.bin", big.clone());
         let bytes = p.finish(3).expect("finish");
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
-        assert_eq!(archive.get("big.bin"), Some(big.as_slice()));
+        assert_eq!(archive.get("big.bin").as_deref(), Some(big.as_slice()));
+    }
+
+    #[test]
+    fn already_compressed_files_use_stored_compression() {
+        // Random bytes don't compress — the packer should fall through to
+        // Stored so we don't waste CPU decompressing a buffer that grew.
+        let mut p = RpakPacker::new();
+        let mut rnd = 0xdeadbeefu64;
+        let random: Vec<u8> = (0..4096)
+            .map(|_| {
+                rnd = rnd.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                (rnd >> 33) as u8
+            })
+            .collect();
+        p.add_file("noise.bin", random.clone());
+        let bytes = p.finish(3).expect("finish");
+        let archive = RpakArchive::from_bytes(&bytes).expect("read");
+
+        let entry = archive.entry("noise.bin").expect("entry");
+        assert_eq!(entry.compression, crate::format::Compression::Stored);
+        assert_eq!(entry.compressed_size, entry.uncompressed_size);
+        assert_eq!(archive.get("noise.bin").as_deref(), Some(random.as_slice()));
+    }
+
+    #[test]
+    fn appended_to_binary_round_trips() {
+        // Build a fake host-binary file, append a packed rpak with footer,
+        // and verify `from_bytes` (which auto-detects the footer) extracts
+        // the rpak content correctly.
+        let mut p = RpakPacker::new();
+        p.add_file("hello.txt", b"world".to_vec());
+        let rpak = p.finish(3).expect("finish");
+
+        let mut combined = b"PRETEND_THIS_IS_AN_EXE".to_vec();
+        combined.extend_from_slice(&rpak);
+        combined.extend_from_slice(&crate::format::encode_footer(rpak.len() as u64));
+
+        let archive = RpakArchive::from_bytes(&combined).expect("read");
+        assert_eq!(archive.get("hello.txt").as_deref(), Some(b"world".as_slice()));
+    }
+
+    #[test]
+    fn from_file_uses_mmap_backend() {
+        // Write a packed rpak to a temp file and read it back through
+        // `from_file`, which should pick the `MmapBackend` path. Verifies
+        // the backend abstraction round-trips end-to-end on real disk I/O.
+        let mut p = RpakPacker::new();
+        let payload: Vec<u8> = (0u8..=255).cycle().take(8192).collect();
+        p.add_file("blob.bin", payload.clone());
+        p.add_file("text/readme.txt", b"hello from disk".to_vec());
+
+        let dir = std::env::temp_dir().join("renzora_rpak_test_mmap");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test.rpak");
+        p.write_to_file(&path, 3).expect("write");
+
+        let archive = RpakArchive::from_file(&path).expect("read");
+        assert_eq!(archive.get("blob.bin").as_deref(), Some(payload.as_slice()));
+        assert_eq!(
+            archive.get("text/readme.txt").as_deref(),
+            Some(b"hello from disk".as_slice())
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn from_binary_finds_appended_rpak_via_file() {
+        // Same end-to-end check, but for the appended-to-binary case —
+        // exercises footer detection through the mmap/file backend.
+        let mut p = RpakPacker::new();
+        p.add_file("config.toml", b"name = \"test\"".to_vec());
+
+        let dir = std::env::temp_dir().join("renzora_rpak_test_appended");
+        let _ = std::fs::create_dir_all(&dir);
+        let host_path = dir.join("fake_exe.bin");
+        let combined_path = dir.join("fake_exe_with_rpak.bin");
+
+        std::fs::write(&host_path, b"FAKE_HOST_BINARY_BYTES").unwrap();
+        p.append_to_binary(&host_path, &combined_path, 3)
+            .expect("append");
+
+        let archive = RpakArchive::from_binary(&combined_path)
+            .expect("read")
+            .expect("found");
+        assert_eq!(
+            archive.get("config.toml").as_deref(),
+            Some(b"name = \"test\"".as_slice())
+        );
+
+        let _ = std::fs::remove_file(&host_path);
+        let _ = std::fs::remove_file(&combined_path);
     }
 
     /// Build a minimal GLB byte sequence wrapping `json` as the JSON chunk,

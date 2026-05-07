@@ -112,7 +112,7 @@ impl EmbeddedAssetReader {
     fn try_read_from_archive(&self, normalized: &str) -> Option<Vec<u8>> {
         let lock = self.archive.read().ok()?;
         let archive = lock.as_ref()?;
-        archive.get(normalized).map(|data| data.to_vec())
+        archive.get(normalized)
     }
 
     /// Try reading a file from the project directory.
