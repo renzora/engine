@@ -75,7 +75,10 @@ pub fn install_panic_hook() {
 
         let _ = save_crash_report(&report);
 
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+        #[cfg(all(
+            feature = "editor",
+            not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
+        ))]
         show_crash_dialog(&report);
 
         default_hook(panic_info);
@@ -115,24 +118,64 @@ fn chrono_lite_timestamp() -> String {
     )
 }
 
-/// Save the crash report to a file
+/// Save the crash report to a file.
+///
+/// In the editor build the report is overwritten in `~/.renzora/crashes/last_crash.txt`
+/// so the next editor launch can pick it up and show its dialog. In the runtime
+/// build the report is appended to `<exe_dir>/crash.log` next to the shipped
+/// binary, where players can find it without hunting through their home dir.
 fn save_crash_report(report: &CrashReport) -> std::io::Result<()> {
     let crash_dir = get_crash_dir();
     std::fs::create_dir_all(&crash_dir)?;
 
-    let crash_file = crash_dir.join("last_crash.txt");
-    std::fs::write(&crash_file, report.format())?;
+    #[cfg(feature = "editor")]
+    {
+        let crash_file = crash_dir.join("last_crash.txt");
+        std::fs::write(&crash_file, report.format())?;
+    }
+
+    #[cfg(not(feature = "editor"))]
+    {
+        use std::io::Write as _;
+        let crash_file = crash_dir.join("crash.log");
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&crash_file)?;
+        writeln!(f, "{}\n", report.format())?;
+    }
 
     Ok(())
 }
 
-/// Get the crash report directory
+/// Get the crash report directory.
+///
+/// Editor builds keep history under the user's home dir; runtime builds drop
+/// the file next to the executable so it ships with the game directory.
 fn get_crash_dir() -> std::path::PathBuf {
-    #[cfg(not(target_arch = "wasm32"))]
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".renzora").join("crashes");
+    #[cfg(all(feature = "editor", not(target_arch = "wasm32")))]
+    {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(".renzora").join("crashes");
+        }
+        return std::path::PathBuf::from(".renzora/crashes");
     }
-    std::path::PathBuf::from(".renzora/crashes")
+
+    #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
+    {
+        if let Some(exe_dir) = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        {
+            return exe_dir;
+        }
+        return std::path::PathBuf::from(".");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::path::PathBuf::from(".renzora/crashes")
+    }
 }
 
 /// Check if there's a crash report from a previous session
@@ -183,8 +226,12 @@ pub fn check_previous_crash() -> Option<CrashReport> {
     })
 }
 
-/// Show a native crash dialog using rfd, with option to copy to clipboard
-#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+/// Show a native crash dialog using rfd, with option to copy to clipboard.
+/// Editor-only — shipped runtime builds write `crash.log` silently instead.
+#[cfg(all(
+    feature = "editor",
+    not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
+))]
 fn show_crash_dialog(report: &CrashReport) {
     let short_message = format!(
         "The application has crashed.\n\n\

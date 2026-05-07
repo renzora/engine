@@ -41,13 +41,33 @@ impl VirtualFileReader {
     }
 }
 
+/// Window display mode for exported games.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WindowMode {
+    #[default]
+    Windowed,
+    Fullscreen,
+    /// Borderless decorations, sized to the monitor. No exclusive mode.
+    Borderless,
+}
+
 /// Window configuration for exported/runtime games
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct WindowConfig {
     pub width: u32,
     pub height: u32,
+    #[serde(default = "default_resizable")]
     pub resizable: bool,
-    pub fullscreen: bool,
+    #[serde(default)]
+    pub mode: WindowMode,
+}
+
+fn default_resizable() -> bool {
+    true
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Default for WindowConfig {
@@ -56,7 +76,7 @@ impl Default for WindowConfig {
             width: 1280,
             height: 720,
             resizable: true,
-            fullscreen: false,
+            mode: WindowMode::Windowed,
         }
     }
 }
@@ -125,6 +145,10 @@ pub struct ProjectConfig {
     pub icon: Option<String>,
     #[serde(default)]
     pub window: WindowConfig,
+    /// Whether the runtime should attach a console (Windows) for `println!` /
+    /// `log::*` output. No effect on Linux/macOS where stdout is always live.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub console_logging: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
     /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
@@ -142,6 +166,7 @@ impl Default for ProjectConfig {
             editor_last_scene: None,
             icon: None,
             window: WindowConfig::default(),
+            console_logging: false,
             network: None,
             editor: None,
         }
@@ -1370,8 +1395,9 @@ mod tests {
                 width: 1920,
                 height: 1080,
                 resizable: false,
-                fullscreen: true,
+                mode: WindowMode::Fullscreen,
             },
+            console_logging: false,
             network: None,
             editor: Some(crate::core::viewport_types::EditorPrefs::default()),
         };
@@ -1423,7 +1449,7 @@ mod tests {
         assert_eq!(w.width, 1280);
         assert_eq!(w.height, 720);
         assert!(w.resizable);
-        assert!(!w.fullscreen);
+        assert_eq!(w.mode, WindowMode::Windowed);
     }
 
     #[test]

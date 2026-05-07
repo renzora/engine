@@ -96,6 +96,10 @@ pub fn add_default_rendering(app: &mut App) {
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Renzora".into(),
+                    // Initial values — `apply_window_config` overwrites these
+                    // from `CurrentProject` once the project is loaded. The
+                    // editor still wants `decorations: false` because it draws
+                    // its own title bar; the runtime startup system flips it on.
                     decorations: false,
                     resizable: true,
                     ..default()
@@ -103,15 +107,183 @@ pub fn add_default_rendering(app: &mut App) {
                 ..default()
             }),
     );
+    #[cfg(feature = "editor")]
     app.add_systems(Startup, maximize_primary_window);
+    #[cfg(not(feature = "editor"))]
+    {
+        // `apply_window_config` only touches the `Window` component, so it can
+        // run on Startup. `apply_window_icon` needs `WinitWindows`, which is
+        // only created after winit's `resumed` event fires — well after
+        // `Startup` — so it has to live on `Update` and self-disable once
+        // it's applied.
+        app.add_systems(Startup, apply_window_config);
+        app.add_systems(Update, apply_window_icon);
+    }
 }
 
+#[cfg(feature = "editor")]
 fn maximize_primary_window(
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     if let Ok(mut window) = windows.single_mut() {
         window.set_maximized(true);
     }
+}
+
+/// Apply `CurrentProject.config.window` to the primary window at runtime startup.
+///
+/// The runtime template ships pre-built — every project would otherwise see
+/// the same hardcoded "Renzora", `decorations: false`, maximized layout. This
+/// system reads the project config (loaded from the rpak by `RuntimePlugin`
+/// before `Startup` runs) and applies the user's choices.
+#[cfg(not(feature = "editor"))]
+fn apply_window_config(
+    project: Option<Res<renzora::CurrentProject>>,
+    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    use bevy::window::WindowMode as BevyWindowMode;
+
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    let Some(project) = project else {
+        warn!("[runtime] No project loaded — window config not applied");
+        return;
+    };
+
+    if project.config.console_logging {
+        attach_console();
+    }
+
+    let cfg = &project.config.window;
+    window.title = project.config.name.clone();
+    window.resizable = cfg.resizable;
+    window.resolution.set(cfg.width as f32, cfg.height as f32);
+
+    match cfg.mode {
+        renzora::WindowMode::Windowed => {
+            window.decorations = true;
+            window.mode = BevyWindowMode::Windowed;
+        }
+        renzora::WindowMode::Fullscreen => {
+            window.decorations = false;
+            window.mode = BevyWindowMode::BorderlessFullscreen(
+                bevy::window::MonitorSelection::Current,
+            );
+        }
+        renzora::WindowMode::Borderless => {
+            window.decorations = false;
+            window.mode = BevyWindowMode::Windowed;
+        }
+    }
+}
+
+/// Attach a console window so subsequent stdout/stderr (Bevy log output) is
+/// visible. On Windows the runtime is built with `windows_subsystem = "windows"`
+/// for release, so without this call there's no console at all. We try
+/// `AttachConsole(ATTACH_PARENT_PROCESS)` first so launching from cmd.exe pipes
+/// output to that terminal; if there's no parent console we fall back to
+/// `AllocConsole`. No-op on platforms where stdout already works.
+#[cfg(all(target_os = "windows", not(feature = "editor")))]
+fn attach_console() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ATTACHED: AtomicBool = AtomicBool::new(false);
+    if ATTACHED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn AttachConsole(dw_process_id: u32) -> i32;
+        fn AllocConsole() -> i32;
+    }
+
+    unsafe {
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            AllocConsole();
+        }
+    }
+}
+
+#[cfg(all(
+    not(feature = "editor"),
+    not(all(target_os = "windows", not(feature = "editor")))
+))]
+fn attach_console() {
+    // stdout is always live on Linux/macOS; no console to allocate.
+}
+
+/// Apply the icon referenced by `project.config.icon` to the primary window.
+///
+/// Bevy 0.18 has no public window-icon API on `Window`, so we drop down to
+/// winit via `WinitWindows`. The icon is read from the VFS (rpak) so it
+/// works the same whether the project ships single-binary or split.
+///
+/// `WinitWindows` is created lazily by `bevy_winit` after the winit `resumed`
+/// event, which is past `Startup`. The system therefore runs on `Update`,
+/// wraps the resource in `Option`, and a `Local<bool>` flag short-circuits
+/// once the icon has been applied (or once we've decided there's nothing to
+/// apply).
+#[cfg(not(feature = "editor"))]
+fn apply_window_icon(
+    mut applied: Local<bool>,
+    project: Option<Res<renzora::CurrentProject>>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    windows: Option<NonSend<bevy::winit::WinitWindows>>,
+    vfs: Option<Res<renzora_engine::vfs::Vfs>>,
+) {
+    if *applied {
+        return;
+    }
+    let Some(windows) = windows else { return };
+    let Some(project) = project else { return };
+    let Some(icon_rel) = project.config.icon.as_deref() else {
+        // No icon configured — nothing to do, but mark as applied so we stop
+        // re-running this every frame.
+        *applied = true;
+        return;
+    };
+
+    // Try the VFS first (rpak), then fall back to disk for `--project` runs.
+    let bytes = vfs
+        .as_ref()
+        .and_then(|v| v.read(icon_rel))
+        .or_else(|| std::fs::read(project.path.join(icon_rel)).ok());
+    let Some(bytes) = bytes else {
+        warn!("[runtime] Window icon not found: {}", icon_rel);
+        *applied = true;
+        return;
+    };
+
+    let img = match image::load_from_memory(&bytes) {
+        Ok(i) => i.into_rgba8(),
+        Err(e) => {
+            warn!("[runtime] Failed to decode icon {}: {}", icon_rel, e);
+            *applied = true;
+            return;
+        }
+    };
+    let (w, h) = img.dimensions();
+    let icon = match winit::window::Icon::from_rgba(img.into_raw(), w, h) {
+        Ok(i) => i,
+        Err(e) => {
+            warn!("[runtime] Invalid icon dimensions {}x{}: {}", w, h, e);
+            *applied = true;
+            return;
+        }
+    };
+
+    let Ok(entity) = primary.single() else {
+        // Window entity not yet spawned — try again next frame.
+        return;
+    };
+    let Some(window) = windows.get_window(entity) else {
+        // WinitWindow not yet bound to entity — try again next frame.
+        return;
+    };
+    window.set_window_icon(Some(icon));
+    *applied = true;
 }
 
 /// Adds every engine plugin to the App.

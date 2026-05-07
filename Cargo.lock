@@ -10192,6 +10192,7 @@ name = "renzora_runtime"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "image",
  "renzora",
  "renzora_animation",
  "renzora_animation_editor",
@@ -10276,6 +10277,7 @@ dependencies = [
  "renzora_water",
  "renzora_widget_gallery",
  "toml 0.8.23",
+ "winit",
 ]
 
 [[package]]

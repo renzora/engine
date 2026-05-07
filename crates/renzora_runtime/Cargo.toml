@@ -94,6 +94,12 @@ editor = [
 
 [dependencies]
 bevy = { workspace = true }
+# Used by the runtime startup system to set the primary window's icon from
+# the rpak. Bevy 0.18 doesn't expose a public window-icon API, so we drop
+# down to winit's `set_window_icon` via the `WinitWindows` resource.
+# Version must match the one bevy_winit 0.18 depends on (0.30).
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Core
 renzora_engine = { path = "../renzora_engine" }

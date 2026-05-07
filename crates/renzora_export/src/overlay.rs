@@ -7,7 +7,7 @@ use std::sync::{mpsc, Mutex};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora::core::CurrentProject;
+use renzora::core::{CurrentProject, WindowMode};
 use renzora_import::optimize::MeshOptSettings;
 use renzora_rpak::{
     pack_project_filtered, pack_project_with_progress, RpakPacker, SERVER_EXTENSIONS,
@@ -26,14 +26,6 @@ pub enum PackagingMode {
     SeparateFiles,
     /// .rpak appended to the binary — single executable.
     SingleBinary,
-}
-
-/// Window mode for the exported game.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowMode {
-    Windowed,
-    Fullscreen,
-    Borderless,
 }
 
 /// Export progress state.
@@ -70,6 +62,9 @@ pub struct ExportOverlayState {
     pub compression_level: i32,
     pub icon_path: Option<String>,
     pub include_server: bool,
+    /// Optional override for the exported binary's filename (without extension).
+    /// Empty = use the project name.
+    pub binary_name: String,
     pub mesh_simplify: bool,
     pub mesh_simplify_ratio: f32,
     pub mesh_quantize: bool,
@@ -112,6 +107,7 @@ impl Default for ExportOverlayState {
             compression_level: 3,
             icon_path: None,
             include_server: false,
+            binary_name: String::new(),
             mesh_simplify: false,
             mesh_simplify_ratio: 0.5,
             mesh_quantize: false,
@@ -576,6 +572,21 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 ui.add_space(4.0);
 
                 let mut export_state = world.resource_mut::<ExportOverlayState>();
+
+                let binary_hint = format!("Binary name (default: {})", project_name);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Name:")
+                            .size(12.0)
+                            .color(text_secondary),
+                    );
+                    let text_edit = egui::TextEdit::singleline(&mut export_state.binary_name)
+                        .hint_text(binary_hint)
+                        .desired_width(ui.available_width());
+                    ui.add(text_edit);
+                });
+
+                ui.add_space(4.0);
 
                 ui.horizontal(|ui| {
                     let text_edit = egui::TextEdit::singleline(&mut export_state.output_dir)
@@ -1553,8 +1564,21 @@ fn run_export(world: &mut World, project_name: &str) {
     let window_mode = export_state.window_mode;
     let window_width = export_state.window_width;
     let window_height = export_state.window_height;
-    let _console_logging = export_state.console_logging;
+    let console_logging = export_state.console_logging;
     let include_server = export_state.include_server;
+    let icon_path = if export_state.icon_path.as_deref().map(str::is_empty).unwrap_or(true) {
+        None
+    } else {
+        export_state.icon_path.clone()
+    };
+    let binary_name_override: Option<String> = {
+        let trimmed = export_state.binary_name.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    };
     let mesh_simplify = export_state.mesh_simplify;
     let mesh_simplify_ratio = export_state.mesh_simplify_ratio;
     let mesh_quantize = export_state.mesh_quantize;
@@ -1613,6 +1637,9 @@ fn run_export(world: &mut World, project_name: &str) {
             window_mode,
             window_width,
             window_height,
+            console_logging,
+            icon_path,
+            binary_name_override,
             include_server,
             mesh_simplify,
             mesh_simplify_ratio,
@@ -1640,6 +1667,9 @@ fn export_worker(
     window_mode: WindowMode,
     window_width: u32,
     window_height: u32,
+    console_logging: bool,
+    icon_path: Option<String>,
+    binary_name_override: Option<String>,
     include_server: bool,
     mesh_simplify: bool,
     mesh_simplify_ratio: f32,
@@ -1718,16 +1748,48 @@ fn export_worker(
         );
     }
 
-    let file_count = packer.len();
-
-    let _ = tx.send(ExportMsg::Progress("Writing output...".into()));
-
-    // Write export config
+    // Build the runtime ProjectConfig from the editor's project.toml plus
+    // the export-overlay overrides, then replace project.toml inside the
+    // rpak so the runtime sees the chosen window mode / size / console flag.
     let mut export_config = project.config.clone();
     export_config.window.width = window_width;
     export_config.window.height = window_height;
-    export_config.window.fullscreen = matches!(window_mode, WindowMode::Fullscreen);
+    export_config.window.mode = window_mode;
     export_config.window.resizable = matches!(window_mode, WindowMode::Windowed);
+    export_config.console_logging = console_logging;
+    // Editor-only fields shouldn't ship in exported builds.
+    export_config.editor = None;
+    export_config.editor_last_scene = None;
+
+    // If the user picked an icon, copy it into the rpak under `assets/icon.png`
+    // and point project.toml at it. The runtime resolves icons through Vfs.
+    if let Some(ref icon_src) = icon_path {
+        match std::fs::read(icon_src) {
+            Ok(bytes) => {
+                let archive_path = "assets/icon.png".to_string();
+                packer.add_file(&archive_path, bytes);
+                export_config.icon = Some(archive_path);
+            }
+            Err(e) => {
+                warn!("[export] Failed to read icon {}: {}", icon_src, e);
+            }
+        }
+    }
+
+    match toml::to_string_pretty(&export_config) {
+        Ok(s) => packer.add_file("project.toml", s.into_bytes()),
+        Err(e) => {
+            let _ = tx.send(ExportMsg::Error(format!(
+                "Failed to serialize project config: {}",
+                e
+            )));
+            return;
+        }
+    }
+
+    let file_count = packer.len();
+
+    let _ = tx.send(ExportMsg::Progress("Writing output...".into()));
 
     // Create output directory: output_dir/project_name/
     let output_dir = output_dir.join(&project_name);
@@ -1739,7 +1801,12 @@ fn export_worker(
         return;
     }
 
-    let binary_name = platform.binary_name(&project_name);
+    // Stem the binary's filename uses (e.g. "MyGame" produces MyGame.exe / MyGame.apk).
+    // Override falls back to the project name when blank.
+    let binary_stem = binary_name_override
+        .as_deref()
+        .unwrap_or(project_name.as_str());
+    let binary_name = platform.binary_name(binary_stem);
     let is_android = matches!(
         platform,
         Platform::AndroidArm64 | Platform::AndroidX86_64 | Platform::FireTVArm64
@@ -1751,7 +1818,7 @@ fn export_worker(
         export_ios_app(
             &template_path,
             &output_dir,
-            &project_name,
+            binary_stem,
             packer,
             compression_level,
         )
@@ -1760,7 +1827,7 @@ fn export_worker(
             &tx,
             &template_path,
             &output_dir,
-            &project_name,
+            binary_stem,
             packer,
             compression_level,
         )
@@ -1779,7 +1846,7 @@ fn export_worker(
     } else {
         match packaging_mode {
             PackagingMode::SeparateFiles => {
-                let rpak_path = output_dir.join(format!("{}.rpak", project_name));
+                let rpak_path = output_dir.join(format!("{}.rpak", binary_stem));
                 let binary_dest = output_dir.join(&binary_name);
 
                 packer
@@ -1867,7 +1934,7 @@ fn export_worker(
                 let server_result = export_server_standalone(
                     &tx,
                     &project,
-                    &project_name,
+                    binary_stem,
                     platform,
                     packaging_mode,
                     compression_level,

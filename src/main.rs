@@ -1,4 +1,18 @@
 #![allow(unused_imports)]
+// Runtime exports default to a windowless launch on Windows so shipped
+// games don't pop a console window. The runtime startup system reattaches
+// a console at runtime when `project.toml` opts in via `console_logging`.
+// Editor and server still get a console by default.
+#![cfg_attr(
+    all(
+        target_os = "windows",
+        feature = "runtime",
+        not(feature = "editor"),
+        not(feature = "server"),
+        not(debug_assertions)
+    ),
+    windows_subsystem = "windows"
+)]
 
 use bevy::prelude::*;
 

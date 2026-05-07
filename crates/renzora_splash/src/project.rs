@@ -16,11 +16,7 @@ pub fn create_project(
         name: name.to_string(),
         version: "0.1.0".to_string(),
         main_scene: "scenes/main.ron".to_string(),
-        editor_last_scene: None,
-        icon: None,
-        window: WindowConfig::default(),
-        network: None,
-        editor: None,
+        ..Default::default()
     };
 
     let config_path = path.join("project.toml");

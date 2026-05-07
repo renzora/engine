@@ -929,8 +929,34 @@ fn render_project_tab(
             settings_row(ui, 2, "Resizable", theme, |ui| {
                 ui.checkbox(&mut config.window.resizable, "")
             });
-            settings_row(ui, 3, "Fullscreen", theme, |ui| {
-                ui.checkbox(&mut config.window.fullscreen, "")
+            settings_row(ui, 3, "Mode", theme, |ui| {
+                use renzora::WindowMode as RWM;
+                let mut changed = false;
+                let resp = egui::ComboBox::from_id_salt("settings_window_mode")
+                    .selected_text(match config.window.mode {
+                        RWM::Windowed => "Windowed",
+                        RWM::Fullscreen => "Fullscreen",
+                        RWM::Borderless => "Borderless",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [
+                            (RWM::Windowed, "Windowed"),
+                            (RWM::Fullscreen, "Fullscreen"),
+                            (RWM::Borderless, "Borderless"),
+                        ] {
+                            if ui
+                                .selectable_value(&mut config.window.mode, value, label)
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        }
+                    })
+                    .response;
+                if changed {
+                    resp.clone().mark_changed();
+                }
+                resp
             });
         },
     );

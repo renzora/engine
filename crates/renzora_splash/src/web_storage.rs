@@ -78,9 +78,7 @@ pub fn create_web_project(name: &str) -> Result<CurrentProject, String> {
         name: name.to_string(),
         version: "0.1.0".to_string(),
         main_scene: "scenes/main.ron".to_string(),
-        icon: None,
-        window: WindowConfig::default(),
-        network: None,
+        ..Default::default()
     };
 
     let scene_content = "(
