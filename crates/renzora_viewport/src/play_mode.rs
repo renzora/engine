@@ -8,8 +8,8 @@ use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions};
 use renzora::core::{
-    DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, PlayState, SceneCamera,
-    ViewportRenderTarget,
+    DefaultCamera, EditorCamera, EditorCamera2d, PlayModeCamera, PlayModeState, PlayState,
+    SceneCamera, ViewportRenderTarget,
 };
 use renzora_editor::camera::EditorUiCamera;
 use renzora_editor::EditorSettings;
@@ -217,19 +217,28 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         .get::<Name>(cam_entity)
         .map(|n| n.to_string())
         .unwrap_or_else(|| "unnamed".into());
+    let is_2d_camera = world.get::<Camera2d>(cam_entity).is_some();
     console_info(
         "PlayMode",
-        format!("Selected game camera: {:?} \"{}\"", cam_entity, cam_name),
+        format!(
+            "Selected game camera: {:?} \"{}\" mode={}",
+            cam_entity,
+            cam_name,
+            if is_2d_camera { "2D" } else { "3D" }
+        ),
     );
 
-    // Disable editor camera
+    // Disable both 3D and 2D editor cameras — either could be active
+    // depending on which view the user was in when they hit Play.
     let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
     let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
-    for entity in &editor_entities {
+    let mut editor_2d_q = world.query_filtered::<Entity, With<EditorCamera2d>>();
+    let editor_2d_entities: Vec<Entity> = editor_2d_q.iter(world).collect();
+    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
         console_info("PlayMode", format!("Disabling editor camera {:?}", entity));
     }
-    for entity in editor_entities {
-        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
+        if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
             camera.is_active = false;
         }
     }
@@ -240,12 +249,15 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     console_info(
         "PlayMode",
         format!(
-            "Game camera {:?} state before setup: Camera3d={} Camera={}",
-            cam_entity, had_cam3d, had_camera
+            "Game camera {:?} state before setup: Camera3d={} Camera2d={} Camera={}",
+            cam_entity, had_cam3d, is_2d_camera, had_camera
         ),
     );
 
-    if !had_cam3d {
+    // Only force-insert Camera3d for 3D play. A Camera2d already has its
+    // own pipeline; adding Camera3d would attempt to attach the 3D bind
+    // group on top and crash wgpu.
+    if !is_2d_camera && !had_cam3d {
         world.entity_mut(cam_entity).insert(Camera3d::default());
         console_info("PlayMode", format!("Inserted Camera3d on {:?}", cam_entity));
     }
@@ -279,31 +291,35 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         }
     }
 
-    // Match the editor camera's render setup. Atmosphere components must
-    // be attached at the moment Bevy first renders this camera —
-    // attaching them later would expand the bind group layout and crash
-    // wgpu with a binding mismatch. `EffectRouting` later replaces these
-    // values with whatever a `WorldEnvironment` entity authored, so the
-    // play camera ends up rendering identically to the editor camera.
-    let medium_handle = world
-        .resource_mut::<Assets<ScatteringMedium>>()
-        .add(ScatteringMedium::default());
-    world.entity_mut(cam_entity).insert((
-        Hdr,
-        NormalPrepass,
-        Atmosphere {
-            bottom_radius: 6_360_000.0,
-            top_radius: 6_460_000.0,
-            ground_albedo: Vec3::splat(0.3),
-            medium: medium_handle,
-        },
-        AtmosphereSettings::default(),
-        AtmosphereEnvironmentMapLight {
-            intensity: 0.0,
-            ..default()
-        },
-        Msaa::Off,
-    ));
+    // 3D-only render setup: HDR + atmosphere + normal prepass. Atmosphere
+    // components must be attached at the moment Bevy first renders this
+    // camera — attaching them later would expand the bind group layout
+    // and crash wgpu with a binding mismatch. `EffectRouting` later
+    // replaces these values with whatever a `WorldEnvironment` entity
+    // authored, so the play camera ends up rendering identically to the
+    // editor 3D camera. None of this applies to a 2D camera, which uses
+    // its own pipeline and has no atmosphere bind group.
+    if !is_2d_camera {
+        let medium_handle = world
+            .resource_mut::<Assets<ScatteringMedium>>()
+            .add(ScatteringMedium::default());
+        world.entity_mut(cam_entity).insert((
+            Hdr,
+            NormalPrepass,
+            Atmosphere {
+                bottom_radius: 6_360_000.0,
+                top_radius: 6_460_000.0,
+                ground_albedo: Vec3::splat(0.3),
+                medium: medium_handle,
+            },
+            AtmosphereSettings::default(),
+            AtmosphereEnvironmentMapLight {
+                intensity: 0.0,
+                ..default()
+            },
+            Msaa::Off,
+        ));
+    }
 
     world.entity_mut(cam_entity).insert(PlayModeCamera);
     console_info(
@@ -336,57 +352,71 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     let mut play_cam_q = world.query_filtered::<Entity, With<PlayModeCamera>>();
     let play_cams: Vec<Entity> = play_cam_q.iter(world).collect();
 
-    for entity in &play_cams {
+    // Snapshot which play cameras are 2D — the 3D-specific component
+    // strip below would otherwise no-op for 2D, but keep the data clean
+    // so we don't rip Camera2d off an authored 2D scene camera.
+    let play_cam_kinds: Vec<(Entity, bool)> = play_cams
+        .iter()
+        .map(|e| (*e, world.get::<Camera2d>(*e).is_some()))
+        .collect();
+
+    for (entity, is_2d) in &play_cam_kinds {
         let name = world
             .get::<Name>(*entity)
             .map(|n| n.to_string())
             .unwrap_or_else(|| "unnamed".into());
         console_info("PlayMode", format!(
-            "Tearing down play camera {:?} \"{}\": removing PlayModeCamera, Camera, Camera3d, RenderTarget",
-            entity, name
+            "Tearing down play camera {:?} \"{}\" mode={}",
+            entity, name, if *is_2d { "2D" } else { "3D" }
         ));
     }
 
-    for entity in play_cams {
+    for (entity, is_2d) in play_cam_kinds {
         if let Some(mut cam) = world.get_mut::<Camera>(entity) {
             cam.is_active = false;
         }
         let mut e = world.entity_mut(entity);
         e.remove::<PlayModeCamera>();
         e.remove::<Camera>();
-        e.remove::<Camera3d>();
-        // Strip everything we added on entry so the authored `SceneCamera`
-        // returns to its baseline state. Bevy's bind group layout for the
-        // camera also goes away when `Camera3d` is removed, so re-adding
-        // these on a future play-mode entry rebuilds it cleanly.
-        e.remove::<Hdr>();
-        e.remove::<NormalPrepass>();
-        e.remove::<Atmosphere>();
-        e.remove::<AtmosphereSettings>();
-        e.remove::<AtmosphereEnvironmentMapLight>();
-        e.remove::<Msaa>();
+        if !is_2d {
+            // Strip 3D-only components we added on entry so the authored
+            // `SceneCamera` returns to its baseline. The bind group layout
+            // for the camera also goes away when `Camera3d` is removed,
+            // so a future play-mode entry rebuilds it cleanly. Camera2d
+            // is authored content — leave it intact.
+            e.remove::<Camera3d>();
+            e.remove::<Hdr>();
+            e.remove::<NormalPrepass>();
+            e.remove::<Atmosphere>();
+            e.remove::<AtmosphereSettings>();
+            e.remove::<AtmosphereEnvironmentMapLight>();
+            e.remove::<Msaa>();
+        }
     }
 
-    // Re-enable editor camera and restore its render target
+    // Re-enable both editor camera flavours and restore their render
+    // targets. Either could have been deactivated on entry.
     let viewport_image = world
         .get_resource::<ViewportRenderTarget>()
         .and_then(|vrt| vrt.image.clone());
 
     let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
     let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
-    for entity in &editor_entities {
+    let mut editor_2d_q = world.query_filtered::<Entity, With<EditorCamera2d>>();
+    let editor_2d_entities: Vec<Entity> = editor_2d_q.iter(world).collect();
+    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
         console_info(
             "PlayMode",
             format!("Re-enabling editor camera {:?}", entity),
         );
     }
-    for entity in editor_entities {
-        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
+        if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
             camera.is_active = true;
         }
         if let Some(ref img) = viewport_image {
             world
-                .entity_mut(entity)
+                .entity_mut(*entity)
                 .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
         }
     }

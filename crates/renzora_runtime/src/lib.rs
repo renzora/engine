@@ -98,9 +98,19 @@ pub fn add_default_rendering(app: &mut App) {
                     title: "Renzora".into(),
                     // Initial values — `apply_window_config` overwrites these
                     // from `CurrentProject` once the project is loaded. The
-                    // editor still wants `decorations: false` because it draws
-                    // its own title bar; the runtime startup system flips it on.
+                    // editor draws its own title bar so it wants
+                    // `decorations: false`; the runtime uses the OS title
+                    // bar and needs decorations on **at creation time** so
+                    // winit sizes the inner (renderable) area correctly.
+                    // Flipping decorations on after the window exists makes
+                    // Windows eat the title-bar height from the existing
+                    // outer size, shrinking the render surface and causing
+                    // sprites authored against window.width/height to clip
+                    // off the right/bottom.
+                    #[cfg(feature = "editor")]
                     decorations: false,
+                    #[cfg(not(feature = "editor"))]
+                    decorations: true,
                     resizable: true,
                     ..default()
                 }),

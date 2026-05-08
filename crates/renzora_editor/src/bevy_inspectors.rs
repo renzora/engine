@@ -144,17 +144,44 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         icon: regular::VIDEO_CAMERA,
         category: "camera",
         spawn_fn: |world| {
-            world
+            // Mirror the 3D preset: tag with SceneCamera so play mode can
+            // discover it, and DefaultCamera if this is the first scene
+            // camera in the world. Without these, the Play button stays
+            // disabled and the play-mode picker can't find the camera.
+            let mut count = 0u32;
+            let mut q = world.query_filtered::<(), With<renzora::SceneCamera>>();
+            for _ in q.iter(world) {
+                count += 1;
+            }
+            let is_first = count == 0;
+            let name = if is_first {
+                "Camera 2D".to_string()
+            } else {
+                format!("Camera 2D ({})", count + 1)
+            };
+            // Camera 2D spawns at world origin. The Godot-style
+            // alignment (world (0, 0) renders at the top-left of the
+            // viewport, matching the window-area outline) is handled
+            // by an observer that sets `viewport_origin = (0, 1)` on
+            // every Camera2d insert — see `renzora_engine::camera`.
+            let entity = world
                 .spawn((
-                    Name::new("Camera 2D"),
+                    Name::new(name),
                     Transform::default(),
                     Camera2d,
                     Camera {
                         is_active: false,
                         ..default()
                     },
+                    renzora::SceneCamera,
                 ))
-                .id()
+                .id();
+            if is_first {
+                world
+                    .entity_mut(entity)
+                    .insert(renzora::core::DefaultCamera);
+            }
+            entity
         },
     });
 

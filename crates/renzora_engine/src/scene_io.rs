@@ -1506,9 +1506,17 @@ pub fn rehydrate_visibility(
 /// In editor mode, all scene cameras are inactive (the editor camera renders).
 /// In play mode, the default camera becomes the active play mode camera with the
 /// viewport render target.
+///
+/// `Without<Camera2d>` is critical: `Camera2d` and `Camera3d` are mutually
+/// exclusive markers and stacking them on the same entity makes Bevy pick
+/// the 3D pipeline, breaking sprite rendering. Authored 2D scene cameras
+/// stay 2D-only.
 pub fn rehydrate_cameras(
     mut commands: Commands,
-    query: Query<(Entity, Option<&DefaultCamera>), (With<SceneCamera>, Without<Camera3d>)>,
+    query: Query<
+        (Entity, Option<&DefaultCamera>),
+        (With<SceneCamera>, Without<Camera3d>, Without<Camera2d>),
+    >,
     editor_camera: Query<(), With<EditorCamera>>,
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,

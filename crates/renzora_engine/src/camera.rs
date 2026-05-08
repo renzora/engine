@@ -293,6 +293,54 @@ pub fn editor_2d_camera_controller(
     }
 }
 
+/// Observer: every time a `Camera2d` is inserted (preset spawn, scene
+/// reflection load, runtime spawn), shift the projection's
+/// `viewport_origin` so the camera's transform position maps to the
+/// **top-left** of the rendered viewport.
+///
+/// This keeps Bevy's 2D world consistent with our Godot-style
+/// convention: the project's window-area outline is anchored at world
+/// (0, 0) extending to (width, -height), and a Camera 2D at world
+/// origin renders that area exactly. Default Bevy `viewport_origin`
+/// is `(0.5, 0.5)` (centred), which would render world (0, 0) at the
+/// middle of the runtime window — sprites authored against the
+/// outline would appear off-centre.
+pub fn on_camera_2d_inserted(
+    trigger: On<Insert, Camera2d>,
+    mut projections: Query<&mut Projection>,
+) {
+    let entity = trigger.entity;
+    if let Ok(mut projection) = projections.get_mut(entity) {
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.viewport_origin = Vec2::new(0.0, 1.0);
+        }
+    }
+}
+
+/// Companion observer: when `Projection` itself is inserted on an
+/// entity that already carries `Camera2d`, re-apply the top-left
+/// `viewport_origin`. Reflection-based scene loads insert `Camera2d`
+/// first (which fires `on_camera_2d_inserted` and fixes the projection)
+/// *and then* deserialize the saved `Projection` on top — overwriting
+/// the fix with whatever was on disk. This catches that second insert
+/// so legacy scenes converge to the Godot-style convention as soon as
+/// they load. No-op for `Camera3d` and any other camera kind.
+pub fn on_projection_inserted_for_2d(
+    trigger: On<Insert, Projection>,
+    cameras_2d: Query<(), With<Camera2d>>,
+    mut projections: Query<&mut Projection>,
+) {
+    let entity = trigger.entity;
+    if cameras_2d.get(entity).is_err() {
+        return;
+    }
+    if let Ok(mut projection) = projections.get_mut(entity) {
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.viewport_origin = Vec2::new(0.0, 1.0);
+        }
+    }
+}
+
 /// Watches for changes to `ViewportRenderTarget` and updates both editor
 /// cameras accordingly.
 ///

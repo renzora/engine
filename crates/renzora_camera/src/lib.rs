@@ -897,12 +897,25 @@ fn update_camera_projection(
             }
         }
         ProjectionMode::Orthographic => {
+            // Match the perspective FOV at the orbit-focus distance so the
+            // toggle is seamless: ortho's vertical world extent =
+            // 2 * distance * tan(fov / 2). `default_3d()` ships with a
+            // pixel-units scaling mode, which makes scale=1 mean "1 pixel
+            // per world unit" — useless for a metre-scale 3D scene.
+            // FixedVertical pins the visible world-height directly in
+            // metres, independent of viewport pixel size.
+            let fov: f32 = std::f32::consts::FRAC_PI_4;
+            let viewport_height = 2.0 * orbit.distance * (fov * 0.5).tan();
             if !matches!(*projection, Projection::Orthographic(_)) {
                 let mut ortho = OrthographicProjection::default_3d();
-                ortho.scale = orbit.distance / 5.0;
+                ortho.scaling_mode = bevy::camera::ScalingMode::FixedVertical { viewport_height };
+                ortho.scale = 1.0;
+                ortho.far = 100_000.0;
+                ortho.near = -100_000.0;
                 *projection = Projection::Orthographic(ortho);
             } else if let Projection::Orthographic(ref mut ortho) = *projection {
-                ortho.scale = orbit.distance / 5.0;
+                ortho.scaling_mode = bevy::camera::ScalingMode::FixedVertical { viewport_height };
+                ortho.scale = 1.0;
             }
         }
     }

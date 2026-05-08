@@ -62,6 +62,14 @@ impl Plugin for RuntimePlugin {
         // paths so moved assets don't leave dangling references in the scene.
         app.add_observer(apply_asset_path_changes_to_mesh_instances);
 
+        // Camera2d viewport_origin override (Godot convention: world (0,0)
+        // renders at the top-left of the viewport instead of the centre).
+        // Registered unconditionally so the editor's preset spawns and the
+        // runtime's scene load *both* fix the projection. The companion
+        // observer catches reflection-loaded `Projection` overwrites.
+        app.add_observer(camera::on_camera_2d_inserted);
+        app.add_observer(camera::on_projection_inserted_for_2d);
+
         app.add_plugins(debug_log::DebugLogPlugin);
 
         #[cfg(not(feature = "editor"))]
