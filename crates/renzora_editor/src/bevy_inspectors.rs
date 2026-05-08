@@ -136,6 +136,62 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
             entity
         },
     });
+
+    // ── 2D presets ──────────────────────────────────────────────────────────
+    registry.register(EntityPreset {
+        id: "camera_2d",
+        display_name: "Camera 2D",
+        icon: regular::VIDEO_CAMERA,
+        category: "camera",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Camera 2D"),
+                    Transform::default(),
+                    Camera2d,
+                    Camera {
+                        is_active: false,
+                        ..default()
+                    },
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "sprite",
+        display_name: "Sprite",
+        icon: regular::IMAGE_SQUARE,
+        category: "nodes_2d",
+        // Default spawn is a 100×100 light-blue square. Bevy's Sprite renders
+        // a flat-colored quad when no image is set — gives the user something
+        // visible to drag around in the 2D view before they assign a texture.
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Sprite"),
+                    Transform::default(),
+                    Sprite {
+                        color: Color::srgba(0.5, 0.7, 1.0, 1.0),
+                        custom_size: Some(Vec2::new(100.0, 100.0)),
+                        ..default()
+                    },
+                ))
+                .id()
+        },
+    });
+
+    registry.register(EntityPreset {
+        id: "node_2d",
+        display_name: "Node 2D",
+        icon: regular::CIRCLE,
+        category: "nodes_2d",
+        spawn_fn: |world| {
+            world
+                .spawn((Name::new("Node 2D"), Transform::default()))
+                .id()
+        },
+    });
 }
 
 /// Register hierarchy icons for core Bevy components.
@@ -146,6 +202,22 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
         icon: regular::VIDEO_CAMERA,
         color: [100, 180, 255],
         priority: 100,
+        dynamic_icon_fn: None,
+    });
+    registry.register(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<Camera2d>(),
+        name: "Camera 2D",
+        icon: regular::VIDEO_CAMERA,
+        color: [180, 220, 130],
+        priority: 100,
+        dynamic_icon_fn: None,
+    });
+    registry.register(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<Sprite>(),
+        name: "Sprite",
+        icon: regular::IMAGE_SQUARE,
+        color: [180, 220, 130],
+        priority: 50,
         dynamic_icon_fn: None,
     });
     registry.register(ComponentIconEntry {
