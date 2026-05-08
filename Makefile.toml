@@ -57,8 +57,12 @@ dependencies = ["clean-outputs-editor", "build-editor-cargo", "sync-dist-editor"
 
 [tasks.build-editor-cargo]
 description = "Compile workspace (editor)"
+# `renzora-android` (cdylib) and `renzora-ios` (staticlib) are workspace
+# members but mobile-only — exclude them from the host-OS desktop build so
+# `makers build-editor` doesn't drag the mobile crates into the host
+# compilation. Mirrors `scripts/build-all.sh` (used by `makers docker-run`).
 command = "cargo"
-args = ["build", "--profile", "dist", "--workspace", "--no-default-features", "--features", "editor", "--target-dir", "target/editor"]
+args = ["build", "--profile", "dist", "--workspace", "--exclude", "renzora-android", "--exclude", "renzora-ios", "--no-default-features", "--features", "editor", "--target-dir", "target/editor"]
 
 # makers build-runtime — compile runtime + plugins (export template)
 [tasks.build-runtime]
