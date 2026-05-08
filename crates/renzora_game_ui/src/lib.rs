@@ -92,8 +92,18 @@ impl Plugin for GameUiPlugin {
         // ── Auto-layout on reparent ────────────────────────────────────
         // When a UI widget is dragged to a new parent in the hierarchy,
         // re-apply parent-aware positioning: Container parent → Relative
-        // (flex flow), Canvas parent → Absolute (free placement).
+        // (flex flow), Canvas parent → Absolute (free placement). The
+        // Changed-filtered system covers runtime drag-reparents; the
+        // Insert observer covers the scene-load case (reflection inserts
+        // bypass change detection).
         app.add_systems(Update, on_widget_reparented);
+        app.add_observer(on_childof_inserted);
+
+        // Visibility-mode binding: same dual-path setup as the reparent
+        // logic. The Changed system handles inspector edits to the
+        // mode dropdown; the observer applies the saved mode on scene
+        // load when reflection inserts skip change-tick propagation.
+        app.add_observer(on_canvas_inserted);
 
 
         // ── Shape primitives ────────────────────────────────────────────
@@ -742,20 +752,42 @@ fn apply_canvas_visibility_mode(
 ) {
     let in_play = play_mode.map_or(true, |p| p.is_in_play_mode());
     for (canvas, mut vis) in &mut canvases {
-        let visible = match canvas.visibility_mode.as_str() {
-            "always" => true,
-            "play_only" => in_play,
-            "editor_only" => !in_play,
-            _ => true,
-        };
-        let target = if visible {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        if *vis != target {
-            *vis = target;
-        }
+        apply_canvas_visibility_to(in_play, canvas, &mut vis);
+    }
+}
+
+fn apply_canvas_visibility_to(in_play: bool, canvas: &UiCanvas, vis: &mut Visibility) {
+    let visible = match canvas.visibility_mode.as_str() {
+        "always" => true,
+        "play_only" => in_play,
+        "editor_only" => !in_play,
+        _ => true,
+    };
+    let target = if visible {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    if *vis != target {
+        *vis = target;
+    }
+}
+
+/// Lifecycle observer covering the scene-load case the `Changed`-filtered
+/// system above misses. Reflection inserts (used by `DynamicScene::write_to_world`)
+/// don't propagate Bevy's change ticks, so a saved canvas with
+/// `visibility_mode: "play_only"` would render incorrectly in the editor
+/// until the user touched it. The observer fires on insert and applies
+/// the same logic.
+fn on_canvas_inserted(
+    trigger: On<Insert, UiCanvas>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
+    mut canvases: Query<(&UiCanvas, &mut Visibility)>,
+) {
+    let entity = trigger.entity;
+    let in_play = play_mode.map_or(true, |p| p.is_in_play_mode());
+    if let Ok((canvas, mut vis)) = canvases.get_mut(entity) {
+        apply_canvas_visibility_to(in_play, canvas, &mut vis);
     }
 }
 
@@ -780,6 +812,22 @@ fn on_widget_reparented(
             crate::spawn::reapply_layout_from_parent(world, entity);
         });
     }
+}
+
+/// Lifecycle observer covering the scene-load case the `Changed`-filtered
+/// system above misses. `DynamicScene::write_to_world` inserts `ChildOf`
+/// via reflection without propagating change ticks, so widgets loaded
+/// from a saved scene wouldn't have their parent-aware layout applied
+/// (Container parent → Relative, Canvas root → Absolute) until the user
+/// touched them.
+fn on_childof_inserted(trigger: On<Insert, ChildOf>, mut commands: Commands, widgets: Query<(), With<UiWidget>>) {
+    let entity = trigger.entity;
+    if widgets.get(entity).is_err() {
+        return;
+    }
+    commands.queue(move |world: &mut World| {
+        crate::spawn::reapply_layout_from_parent(world, entity);
+    });
 }
 
 // ── Canvas scaler ───────────────────────────────────────────────────────────

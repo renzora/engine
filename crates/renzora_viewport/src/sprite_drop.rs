@@ -144,13 +144,12 @@ fn handle_sprite_drop(
 
     if let Some(entity) = hit_entity {
         // Retarget the existing sprite's image — keeps the user's
-        // chosen size/position so they can iterate quickly.
+        // chosen size/position so they can iterate quickly. Always
+        // `insert` (replace) so the SpriteImagePath lifecycle observer
+        // fires; in-place mutation via `Mut<>` doesn't trigger
+        // observers.
         if let Ok(mut em) = world.get_entity_mut(entity) {
-            if let Some(mut p) = em.get_mut::<SpriteImagePath>() {
-                p.0 = path_str;
-            } else {
-                em.insert(SpriteImagePath(path_str));
-            }
+            em.insert(SpriteImagePath(path_str));
         }
     } else {
         // Spawn a fresh sprite at the drop point. Name from the file

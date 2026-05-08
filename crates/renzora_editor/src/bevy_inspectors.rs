@@ -343,13 +343,13 @@ fn sprite_image_entry() -> InspectorEntry {
             set_fn: |world, entity, val| {
                 if let FieldValue::Asset(path) = val {
                     let path_str = path.unwrap_or_default();
-                    if let Some(mut p) = world.get_mut::<renzora::core::SpriteImagePath>(entity) {
-                        p.0 = path_str;
-                    } else {
-                        world
-                            .entity_mut(entity)
-                            .insert(renzora::core::SpriteImagePath(path_str));
-                    }
+                    // Always `insert` (replace) so the lifecycle observer
+                    // fires; in-place `Mut<>` mutation doesn't trigger
+                    // observers, which is the path that's actually wired
+                    // up to bind the texture handle.
+                    world
+                        .entity_mut(entity)
+                        .insert(renzora::core::SpriteImagePath(path_str));
                 }
             },
         }],
