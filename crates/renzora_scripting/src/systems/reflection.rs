@@ -97,7 +97,8 @@ pub fn apply_reflection_sets(world: &mut World) {
         };
 
         // Navigate the field path and set the value
-        let parts: Vec<&str> = set_op.field_path.split('.').collect();
+        let resolved_path = resolve_field_alias(&set_op.component_type, &set_op.field_path);
+        let parts: Vec<&str> = resolved_path.split('.').collect();
         if set_field_by_path(cloned.as_mut(), &parts, &set_op.value) {
             // Apply the modified component back
             let mut entity_mut = world.entity_mut(target);
@@ -113,7 +114,42 @@ pub fn apply_reflection_sets(world: &mut World) {
     }
 }
 
-/// Recursively navigate a reflected struct by field path and set the final value.
+/// Translate a friendly first-segment field name into the underlying
+/// reflection path. Bevy's tuple-struct components (`Text(String)`,
+/// `BackgroundColor(Color)`, `ZIndex(i32)`, …) only expose field "0" via
+/// reflection, but the inspector — and anything a user reasonably types in
+/// a script — uses a named alias like `content`, `color`, or `value`. We
+/// rewrite those to the numeric index here so `set("Text.content", "...")`
+/// reaches the same field as `set("Text.0", "...")`.
+///
+/// Anything not in the table passes through unchanged, so existing scripts
+/// using the raw `0` index keep working and named-struct components
+/// (`UiBorderRadius.top_left`, `Node.width`, …) are unaffected.
+fn resolve_field_alias(component_short: &str, path: &str) -> String {
+    let (head, rest) = match path.find('.') {
+        Some(i) => (&path[..i], &path[i..]),
+        None => (path, ""),
+    };
+    // Component lookup elsewhere is already case-insensitive, so match on
+    // the lowercased short name to keep the alias map a single source of
+    // truth regardless of whether the script wrote `text.content` or
+    // `Text.content`.
+    let component_lc = component_short.to_lowercase();
+    let resolved_head = match (component_lc.as_str(), head) {
+        ("text", "content") => "0",
+        ("backgroundcolor", "color") => "0",
+        ("textcolor", "color") => "0",
+        ("zindex", "value" | "index") => "0",
+        ("uiopacity", "value" | "opacity") => "0",
+        ("uiclipcontent", "value" | "enabled" | "clip") => "0",
+        _ => head,
+    };
+    format!("{}{}", resolved_head, rest)
+}
+
+/// Recursively navigate a reflected struct or tuple-struct by field path and
+/// set the final value. Numeric path parts (e.g. "0") index into tuple
+/// structs — that's how `set("Text.0", "...")` reaches `Text(pub String)`.
 fn set_field_by_path(
     reflect: &mut dyn bevy::reflect::PartialReflect,
     path: &[&str],
@@ -126,21 +162,28 @@ fn set_field_by_path(
     let field_name = path[0];
     let remaining = &path[1..];
 
-    // Try struct field access
     match reflect.reflect_mut() {
         bevy::reflect::ReflectMut::Struct(s) => {
+            let Some(field) = s.field_mut(field_name) else {
+                return false;
+            };
             if remaining.is_empty() {
-                // Set the leaf field
-                if let Some(field) = s.field_mut(field_name) {
-                    return apply_value_to_reflect(field, value);
-                }
-                false
+                apply_value_to_reflect(field, value)
             } else {
-                // Navigate deeper
-                if let Some(field) = s.field_mut(field_name) {
-                    return set_field_by_path(field, remaining, value);
-                }
-                false
+                set_field_by_path(field, remaining, value)
+            }
+        }
+        bevy::reflect::ReflectMut::TupleStruct(ts) => {
+            let Ok(idx) = field_name.parse::<usize>() else {
+                return false;
+            };
+            let Some(field) = ts.field_mut(idx) else {
+                return false;
+            };
+            if remaining.is_empty() {
+                apply_value_to_reflect(field, value)
+            } else {
+                set_field_by_path(field, remaining, value)
             }
         }
         _ => false,

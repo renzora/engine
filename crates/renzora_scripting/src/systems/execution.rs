@@ -218,10 +218,16 @@ pub fn run_scripts(world: &mut World) {
 
     let mut script_entities: Vec<ScriptEntityData> = Vec::new();
     {
+        // `Transform` is optional: UI entities use `UiTransform` and have no
+        // `Transform` component, so requiring it here would silently skip every
+        // script attached to UI text, buttons, etc. For those we hand the
+        // script the identity transform — `position_x/y/z` etc. read as 0
+        // which matches the convention scripts already see for entities that
+        // happen to sit at the origin.
         let mut query = world.query::<(
             Entity,
             &ScriptComponent,
-            &Transform,
+            Option<&Transform>,
             Option<&Name>,
             Option<&ChildOf>,
             Option<&Children>,
@@ -232,7 +238,7 @@ pub fn run_scripts(world: &mut World) {
                 entity_name: name
                     .map(|n| n.as_str().to_string())
                     .unwrap_or_else(|| format!("Entity_{}", entity.index())),
-                transform: *transform,
+                transform: transform.copied().unwrap_or(Transform::IDENTITY),
                 parent: parent.map(|p| p.0),
                 children: children.map(|c| c.iter().collect()).unwrap_or_default(),
             });

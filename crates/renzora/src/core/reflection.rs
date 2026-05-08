@@ -30,8 +30,43 @@ pub fn get_reflected_field(
     let entity_ref = world.entity(entity);
     let reflected = reflect_component.reflect(entity_ref)?;
 
-    let parts: Vec<&str> = field_path.split('.').collect();
+    let resolved_path = resolve_field_alias(component_type, field_path);
+    let parts: Vec<&str> = resolved_path.split('.').collect();
     get_field_by_path(reflected, &parts)
+}
+
+/// Translate a friendly first-segment field name into the underlying
+/// reflection path. Mirror of the same alias map in
+/// `renzora_scripting::systems::reflection` — keeps `get` and `set` in
+/// step so a script that writes `set("Text.content", ...)` can later read
+/// it back with `get("Text.content")`.
+///
+/// Bevy's tuple-struct components (`Text(String)`, `BackgroundColor(Color)`,
+/// `ZIndex(i32)`, …) only expose field "0" via reflection, but the
+/// inspector — and anything a user reasonably types in a script — uses a
+/// named alias like `content`, `color`, or `value`. Anything not in the
+/// table passes through unchanged, so existing scripts using the raw `0`
+/// index keep working and named-struct components are unaffected.
+fn resolve_field_alias(component_short: &str, path: &str) -> String {
+    let (head, rest) = match path.find('.') {
+        Some(i) => (&path[..i], &path[i..]),
+        None => (path, ""),
+    };
+    // Component lookup elsewhere is already case-insensitive, so match on
+    // the lowercased short name to keep the alias map a single source of
+    // truth regardless of whether the script wrote `text.content` or
+    // `Text.content`.
+    let component_lc = component_short.to_lowercase();
+    let resolved_head = match (component_lc.as_str(), head) {
+        ("text", "content") => "0",
+        ("backgroundcolor", "color") => "0",
+        ("textcolor", "color") => "0",
+        ("zindex", "value" | "index") => "0",
+        ("uiopacity", "value" | "opacity") => "0",
+        ("uiclipcontent", "value" | "enabled" | "clip") => "0",
+        _ => head,
+    };
+    format!("{}{}", resolved_head, rest)
 }
 
 /// Read a reflected `Vec<f32>` field from a component. Needed for reading
@@ -94,7 +129,10 @@ fn navigate_to_field<'a>(
     }
 }
 
-/// Recursively navigate a reflected struct by field path and read the value.
+/// Recursively navigate a reflected struct or tuple-struct by field path
+/// and read the value. Numeric path parts (e.g. "0") index into tuple
+/// structs — that's how `get("Text.0")` (and the aliased `Text.content`)
+/// reach `Text(pub String)`.
 fn get_field_by_path(
     reflect: &dyn bevy::reflect::PartialReflect,
     path: &[&str],
@@ -109,6 +147,15 @@ fn get_field_by_path(
     match reflect.reflect_ref() {
         ReflectRef::Struct(s) => {
             let field = s.field(field_name)?;
+            if remaining.is_empty() {
+                read_value_from_reflect(field)
+            } else {
+                get_field_by_path(field, remaining)
+            }
+        }
+        ReflectRef::TupleStruct(ts) => {
+            let idx = field_name.parse::<usize>().ok()?;
+            let field = ts.field(idx)?;
             if remaining.is_empty() {
                 read_value_from_reflect(field)
             } else {
