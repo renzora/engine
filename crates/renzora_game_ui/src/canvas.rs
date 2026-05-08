@@ -701,6 +701,7 @@ fn snap(v: f32, grid: f32) -> f32 {
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
+#[derive(Resource)]
 pub struct UiCanvasPanel {
     state: RwLock<CanvasState>,
 }

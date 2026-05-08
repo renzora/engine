@@ -159,6 +159,10 @@ fn render_strip_contents(
     // padding keeps sliders exactly as tall as our 22px icon buttons.
     ui.spacing_mut().button_padding = Vec2::new(4.0, 0.0);
 
+    // ── Viewport view (3D / 2D / UI) ────────────────────────────────────────
+    view_dropdown(ui, settings, cmds, active, inactive, hovered);
+    separator(ui);
+
     // ── Viewport mode dropdown (always first so users can always switch back) ─
     mode_dropdown(ui, settings, cmds, active, inactive, hovered);
     separator(ui);
@@ -374,6 +378,98 @@ fn mode_dropdown(
                     cmds.push(move |w: &mut World| {
                         if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
                             s.viewport_mode = m;
+                        }
+                    });
+                    ui.close();
+                }
+            }
+        },
+    );
+}
+
+fn view_dropdown(
+    ui: &mut egui::Ui,
+    settings: &ViewportSettings,
+    cmds: &EditorCommands,
+    active: Color32,
+    inactive: Color32,
+    hovered: Color32,
+) {
+    use renzora::core::viewport_types::ViewportView;
+
+    let current = settings.viewport_view;
+    let label = current.label();
+    let btn_size = Vec2::new(56.0, BTN_H);
+    let (rect, resp) = ui.allocate_exact_size(btn_size, Sense::click());
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let popup_id = ui.make_persistent_id("viewport_view_dropdown");
+    if ui.is_rect_visible(rect) {
+        let bg = if resp.hovered() { hovered } else { inactive };
+        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        let text_rect = Rect::from_min_max(
+            Pos2::new(rect.min.x + 6.0, rect.min.y),
+            Pos2::new(rect.max.x - 14.0, rect.max.y),
+        );
+        ui.painter().text(
+            text_rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(12.0),
+            Color32::WHITE,
+        );
+        ui.painter().text(
+            Pos2::new(rect.max.x - 8.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            FontId::proportional(10.0),
+            Color32::WHITE,
+        );
+    }
+    if resp.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|m| m.toggle_popup(popup_id));
+    }
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        popup_id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(100.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+            for view in ViewportView::ALL {
+                let is_current = *view == current;
+                let (row_rect, row_resp) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), BTN_H), Sense::click());
+                if row_resp.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if ui.is_rect_visible(row_rect) {
+                    let bg = if is_current {
+                        active
+                    } else if row_resp.hovered() {
+                        hovered
+                    } else {
+                        Color32::TRANSPARENT
+                    };
+                    ui.painter()
+                        .rect_filled(row_rect, CornerRadius::same(3), bg);
+                    ui.painter().text(
+                        Pos2::new(row_rect.min.x + 8.0, row_rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        view.label(),
+                        FontId::proportional(12.0),
+                        Color32::WHITE,
+                    );
+                }
+                if row_resp.clicked() {
+                    let v = *view;
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                            s.viewport_view = v;
                         }
                     });
                     ui.close();

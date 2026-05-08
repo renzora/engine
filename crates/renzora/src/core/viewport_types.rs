@@ -143,6 +143,29 @@ impl ViewportMode {
     }
 }
 
+/// What kind of content the viewport is currently displaying. Switches the
+/// camera/projection preset and (for `Ui`) hands off rendering to the
+/// `ui_canvas` panel so UI authoring lives in the same surface as the 3D
+/// scene.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ViewportView {
+    #[default]
+    Three,
+    Two,
+    Ui,
+}
+
+impl ViewportView {
+    pub const ALL: &'static [ViewportView] = &[Self::Three, Self::Two, Self::Ui];
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Three => "3D",
+            Self::Two => "2D",
+            Self::Ui => "UI",
+        }
+    }
+}
+
 /// Visualization mode for debug rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VisualizationMode {
@@ -297,6 +320,7 @@ pub struct ViewportSettings {
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
+    pub viewport_view: ViewportView,
     pub camera: CameraSettingsState,
     pub snap: SnapSettings,
     /// Pending view angle command (consumed by camera system).
@@ -319,6 +343,7 @@ impl Default for ViewportSettings {
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
+            viewport_view: ViewportView::default(),
             camera: CameraSettingsState::default(),
             snap: SnapSettings::default(),
             pending_view_angle: None,
@@ -511,6 +536,7 @@ mod tests {
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
+            viewport_view: ViewportView::default(),
             camera: CameraSettingsState {
                 move_speed: 11.5,
                 look_sensitivity: 0.7,

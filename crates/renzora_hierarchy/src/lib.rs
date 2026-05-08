@@ -338,66 +338,38 @@ impl EditorPanel for HierarchyPanel {
 
         // Add Entity overlay
         if state.show_add_overlay {
-            // Gate entries by active workspace: Scene hides "ui" presets,
-            // UI hides everything except "ui" presets. Other layouts show all.
-            let active_layout = world
-                .get_resource::<renzora_editor::LayoutManager>()
-                .map(|lm| lm.active_name().to_string())
-                .unwrap_or_default();
-            let is_ui_layout = active_layout == "UI";
-            let is_scene_layout = active_layout == "Scene";
-
             let mut entries: Vec<OverlayEntry> = Vec::new();
 
-            // Add SpawnRegistry presets (lights, cameras, ui widgets, etc.)
             if let Some(registry) = world.get_resource::<SpawnRegistry>() {
                 for p in registry.iter() {
-                    let is_ui_preset = p.category == "ui";
-                    let include = if is_ui_layout {
-                        is_ui_preset
-                    } else if is_scene_layout {
-                        !is_ui_preset
-                    } else {
-                        true
-                    };
-                    if include {
+                    entries.push(OverlayEntry {
+                        id: p.id,
+                        label: p.display_name,
+                        icon: p.icon,
+                        category: p.category,
+                    });
+                }
+            }
+
+            if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
+                entries.extend(shape_reg.iter().map(|s| OverlayEntry {
+                    id: s.id,
+                    label: s.name,
+                    icon: s.icon,
+                    category: s.category,
+                }));
+            }
+
+            if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
+                let component_categories = &["rendering", "post_process", "effects", "Audio"];
+                for entry in inspector_reg.iter() {
+                    if entry.add_fn.is_some() && component_categories.contains(&entry.category) {
                         entries.push(OverlayEntry {
-                            id: p.id,
-                            label: p.display_name,
-                            icon: p.icon,
-                            category: p.category,
+                            id: entry.type_id,
+                            label: entry.display_name,
+                            icon: entry.icon,
+                            category: entry.category,
                         });
-                    }
-                }
-            }
-
-            // Add ShapeRegistry shapes (meshes) — not relevant in UI layout.
-            if !is_ui_layout {
-                if let Some(shape_reg) = world.get_resource::<ShapeRegistry>() {
-                    entries.extend(shape_reg.iter().map(|s| OverlayEntry {
-                        id: s.id,
-                        label: s.name,
-                        icon: s.icon,
-                        category: s.category,
-                    }));
-                }
-            }
-
-            // Add components from InspectorRegistry (post-processing, rendering,
-            // effects, audio) — not relevant in UI layout.
-            if !is_ui_layout {
-                if let Some(inspector_reg) = world.get_resource::<InspectorRegistry>() {
-                    let component_categories = &["rendering", "post_process", "effects", "Audio"];
-                    for entry in inspector_reg.iter() {
-                        if entry.add_fn.is_some() && component_categories.contains(&entry.category)
-                        {
-                            entries.push(OverlayEntry {
-                                id: entry.type_id,
-                                label: entry.display_name,
-                                icon: entry.icon,
-                                category: entry.category,
-                            });
-                        }
                     }
                 }
             }

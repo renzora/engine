@@ -156,8 +156,7 @@ impl Plugin for GameUiPlugin {
             app.register_panel(palette::WidgetPalettePanel::default());
             register_ui_presets(app);
             app.init_resource::<canvas::UiCanvasPreviewEnabled>();
-            app.init_resource::<UiWorkspaceActive>();
-            app.register_panel(canvas::UiCanvasPanel::default());
+            app.init_resource::<canvas::UiCanvasPanel>();
             app.register_panel(inspector::UiInspectorPanel::default());
 
             // Register hierarchy icons for UI entities
@@ -192,6 +191,7 @@ impl Plugin for GameUiPlugin {
                 canvas_render::sync_canvases_to_editor_camera
                     .after(sync_ui_canvas_target_camera),
             );
+            app.add_systems(Update, sync_ui_scale_to_canvas_reference);
             app.add_systems(
                 Update,
                 (
@@ -199,20 +199,50 @@ impl Plugin for GameUiPlugin {
                     ensure_ui_visibility_components,
                     sync_ui_canvas_target_camera,
                     sync_canvas_sort_order_from_hierarchy,
-                    sync_hierarchy_filter_for_ui_workspace,
                     register_ui_image_textures,
                     debug_ui_tree,
                 )
                     .chain(),
             );
-            app.add_systems(Update, auto_switch_to_ui_layout_on_selection);
-            app.add_systems(Update, reset_ui_preview_on_layout_enter);
         }
 
         #[cfg(not(feature = "editor"))]
         {
             info!("[runtime] GameUiPlugin");
         }
+    }
+}
+
+// ── UiScale ↔ canvas reference sync ─────────────────────────────────────
+//
+// The editor renders bevy_ui to a fixed-size texture (`UI_RENDER_WIDTH ×
+// UI_RENDER_HEIGHT`), then displays it in the canvas tab at the active
+// canvas's reference resolution. If those two don't match — say, a
+// 1920×1080 canvas reference into a 1280×720 render target — every
+// `Val::Px(400)` would render at 400 texture-pixels (= 600 design-pixels
+// on display), and selection handles authored in design space would sit
+// at the wrong place over the rendered widget.
+//
+// Fix: scale `UiScale` so `design_pixels × UiScale = render_pixels`
+// matches the texture's resolution. Then bevy_ui rasterises at the
+// correct fraction of the render target, the texture stretches cleanly
+// to the display, and design-space coordinates line up everywhere.
+//
+// Single global UiScale means we use the *first* canvas's reference; if
+// you have multiple canvases at different references, only the first
+// will match. That's fine for the common single-canvas authoring case.
+#[cfg(feature = "editor")]
+fn sync_ui_scale_to_canvas_reference(
+    canvases: Query<&UiCanvas>,
+    mut ui_scale: ResMut<bevy::ui::UiScale>,
+) {
+    let Some(canvas) = canvases.iter().next() else {
+        return;
+    };
+    let ref_w = canvas.reference_width.max(1.0);
+    let target = canvas_render::UI_RENDER_WIDTH as f32 / ref_w;
+    if (ui_scale.0 - target).abs() > 0.001 {
+        ui_scale.0 = target;
     }
 }
 
@@ -413,80 +443,6 @@ fn sync_ui_zindex(
 }
 
 // ── Editor-only systems ─────────────────────────────────────────────────────
-
-/// Filter the hierarchy by active workspace: UI layout shows only `UiCanvas`
-/// subtrees, Scene layout hides them. Other layouts are left alone so their
-/// own sync systems (e.g. materials → `Mesh3d`) still apply.
-#[cfg(feature = "editor")]
-fn sync_hierarchy_filter_for_ui_workspace(
-    layout_mgr: Res<renzora_editor::LayoutManager>,
-    mut filter: ResMut<renzora_editor::HierarchyFilter>,
-) {
-    let desired = match layout_mgr.active_name() {
-        "UI" => renzora_editor::HierarchyFilter::OnlyWithComponents(vec!["UiCanvas"]),
-        "Scene" => renzora_editor::HierarchyFilter::ExcludeDescendantsOf(vec!["UiCanvas"]),
-        _ => return,
-    };
-    if *filter != desired {
-        *filter = desired;
-    }
-}
-
-/// Tracks whether the UI workspace was active last frame, so we can detect
-/// transitions into it and reset the preview toggle from settings.
-#[cfg(feature = "editor")]
-#[derive(Resource, Default)]
-struct UiWorkspaceActive(bool);
-
-#[cfg(feature = "editor")]
-fn reset_ui_preview_on_layout_enter(
-    layout_mgr: Res<renzora_editor::LayoutManager>,
-    settings: Option<Res<renzora_editor::EditorSettings>>,
-    mut last: ResMut<UiWorkspaceActive>,
-    mut preview: ResMut<canvas::UiCanvasPreviewEnabled>,
-) {
-    let is_ui = layout_mgr.active_name() == "UI";
-    if is_ui && !last.0 {
-        let default_on = settings.map_or(true, |s| s.ui_preview_by_default);
-        preview.0 = default_on;
-    }
-    last.0 = is_ui;
-}
-
-/// When a UI entity (UiCanvas or a descendant of one) becomes selected in the
-/// Scene workspace, auto-switch to the UI workspace so the user can edit it
-/// (and vice versa). Only fires while one of those two layouts is already
-/// active — Scripting/Animation/Materials/etc. were chosen deliberately and
-/// must not be hijacked by selection changes.
-#[cfg(feature = "editor")]
-fn auto_switch_to_ui_layout_on_selection(world: &mut World) {
-    let active = world
-        .resource::<renzora_editor::LayoutManager>()
-        .active_name()
-        .to_string();
-    if active != "Scene" && active != "UI" {
-        return;
-    }
-    let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() else {
-        return;
-    };
-    let Some(entity) = sel.get() else { return };
-    let mut check = entity;
-    let is_ui = loop {
-        if world.get::<UiCanvas>(check).is_some() || world.get::<UiWidget>(check).is_some() {
-            break true;
-        }
-        match world.get::<ChildOf>(check) {
-            Some(c) => check = c.parent(),
-            None => break false,
-        }
-    };
-    match (is_ui, active.as_str()) {
-        (true, "UI") | (false, "Scene") => {}
-        (true, _) => renzora_editor::switch_layout_by_name(world, "UI"),
-        (false, _) => renzora_editor::switch_layout_by_name(world, "Scene"),
-    }
-}
 
 /// In the editor, sync `UiCanvas::sort_order` from `HierarchyOrder` so that
 /// reordering canvases in the hierarchy panel updates their z-index.

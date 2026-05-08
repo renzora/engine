@@ -377,6 +377,35 @@ impl EditorPanel for ViewportPanel {
         // Header bar with toggles and dropdowns
         header::viewport_header(ui, world);
 
+        // Dispatch on viewport view: 3D draws the scene render target, UI
+        // hands off to the canvas panel, 2D is a placeholder until 2D nodes land.
+        let view = world
+            .get_resource::<ViewportSettings>()
+            .map(|s| s.viewport_view)
+            .unwrap_or_default();
+        match view {
+            renzora::core::viewport_types::ViewportView::Three => {}
+            renzora::core::viewport_types::ViewportView::Two => {
+                let rect = ui.available_rect_before_wrap();
+                ui.painter()
+                    .rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "2D mode — coming soon",
+                    egui::FontId::proportional(14.0),
+                    egui::Color32::from_white_alpha(80),
+                );
+                return;
+            }
+            renzora::core::viewport_types::ViewportView::Ui => {
+                if let Some(panel) = world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>() {
+                    panel.ui(ui, world);
+                }
+                return;
+            }
+        }
+
         let rect = ui.available_rect_before_wrap();
 
         // Request resize to match panel dimensions + track hover
@@ -1204,18 +1233,15 @@ fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Re
         });
 }
 
-/// Toggles the Editor Camera's `is_active` based on whether any panel that
-/// displays its output is currently mounted in the dock tree. Today that's
-/// the Viewport panel and the UI Canvas panel (the canvas draws game UI on
-/// top of the editor scene render). If neither is mounted there's no point
-/// running the editor scene render pass.
+/// Toggles the Editor Camera's `is_active` based on whether the Viewport
+/// panel is currently mounted in the dock tree. The viewport now hosts UI
+/// authoring as one of its view modes, so it's the only panel that needs
+/// the editor camera running.
 fn sync_viewport_camera_activation(
     docking: Option<Res<DockingState>>,
     mut cameras: Query<&mut Camera, With<EditorCamera>>,
 ) {
-    let mounted = docking.map_or(true, |d| {
-        d.tree.contains_panel("viewport") || d.tree.contains_panel("ui_canvas")
-    });
+    let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
     for mut camera in cameras.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;

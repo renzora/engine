@@ -58,7 +58,6 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Animation", layout_animation()),
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
-            WorkspaceLayout::scene("UI", layout_ui()),
             WorkspaceLayout::scene("Video", layout_video()),
             WorkspaceLayout::scene("Audio", layout_audio()),
             WorkspaceLayout::scene("Debug", layout_debug()),
@@ -491,25 +490,6 @@ pub fn layout_particles_advanced() -> DockTree {
             0.5,
         ),
         0.75,
-    )
-}
-
-/// UI: Hierarchy | Assets (left)  |  UI Canvas (center)  |  UiInspector+WidgetLibrary (right)
-fn layout_ui() -> DockTree {
-    DockTree::horizontal(
-        // Left: hierarchy on top, assets below. Width matches Scene layout.
-        DockTree::vertical(DockTree::leaf("hierarchy"), DockTree::leaf("assets"), 0.6),
-        DockTree::horizontal(
-            // Center: UI canvas fills the full column.
-            DockTree::leaf("ui_canvas"),
-            // Right: UI inspector + widget palette tabbed together.
-            DockTree::Leaf {
-                tabs: vec!["ui_inspector".into(), "widget_library".into()],
-                active_tab: 0,
-            },
-            0.82,
-        ),
-        0.15,
     )
 }
 
