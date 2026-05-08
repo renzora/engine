@@ -166,6 +166,9 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         // Default spawn is a 100×100 light-blue square. Bevy's Sprite renders
         // a flat-colored quad when no image is set — gives the user something
         // visible to drag around in the 2D view before they assign a texture.
+        // SpriteImagePath ships empty so the inspector shows a drop slot the
+        // user can drag a texture onto; the rehydration system reads that
+        // path back into Sprite.image.
         spawn_fn: |world| {
             world
                 .spawn((
@@ -176,6 +179,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                         custom_size: Some(Vec2::new(100.0, 100.0)),
                         ..default()
                     },
+                    renzora::core::SpriteImagePath::default(),
                 ))
                 .id()
         },
@@ -294,6 +298,63 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
     registry.register(volumetric_fog_entry());
+    registry.register(sprite_image_entry());
+}
+
+fn sprite_image_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "sprite_image",
+        display_name: "Sprite Image",
+        icon: regular::IMAGE_SQUARE,
+        category: "rendering",
+        // Show for any Sprite — `SpriteImagePath` is auto-added on first
+        // assignment if missing, so the user always sees the drop slot.
+        has_fn: |world, entity| world.get::<Sprite>(entity).is_some(),
+        add_fn: None,
+        // Removing the path doesn't remove the Sprite, just clears the
+        // image — so drop the path component back to default rather than
+        // pulling it off entirely.
+        remove_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .remove::<renzora::core::SpriteImagePath>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![FieldDef {
+            name: "Image",
+            field_type: FieldType::Asset {
+                extensions: vec![
+                    "png".into(),
+                    "jpg".into(),
+                    "jpeg".into(),
+                    "webp".into(),
+                    "ktx2".into(),
+                    "rmip".into(),
+                ],
+            },
+            get_fn: |world, entity| {
+                let path = world
+                    .get::<renzora::core::SpriteImagePath>(entity)
+                    .map(|p| if p.0.is_empty() { None } else { Some(p.0.clone()) })
+                    .unwrap_or(None);
+                Some(FieldValue::Asset(path))
+            },
+            set_fn: |world, entity, val| {
+                if let FieldValue::Asset(path) = val {
+                    let path_str = path.unwrap_or_default();
+                    if let Some(mut p) = world.get_mut::<renzora::core::SpriteImagePath>(entity) {
+                        p.0 = path_str;
+                    } else {
+                        world
+                            .entity_mut(entity)
+                            .insert(renzora::core::SpriteImagePath(path_str));
+                    }
+                }
+            },
+        }],
+        custom_ui_fn: None,
+    }
 }
 
 fn name_entry() -> InspectorEntry {

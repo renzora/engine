@@ -18,6 +18,7 @@ pub mod render_systems;
 pub mod scene_drop;
 pub mod settings;
 pub mod shape_drop;
+pub mod sprite_drop;
 pub mod toolbar;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -467,6 +468,10 @@ impl EditorPanel for ViewportPanel {
 
         // Check for shape library drops on the viewport
         shape_drop::check_viewport_shape_drop(ui, world, rect);
+
+        // 2D-only: image asset drops retarget the sprite under the
+        // pointer or spawn a new Sprite at the drop point.
+        sprite_drop::check_viewport_sprite_drop(ui, world, rect);
 
         // Overlay: modal transform HUD (scale circle, mode text, axis info)
         render_modal_transform_hud(ui.ctx(), world, rect);

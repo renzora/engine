@@ -184,8 +184,9 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
 /// Only acts when `viewport_view == Two`, the cursor is over the viewport
 /// panel, and we're in editing mode. Middle-mouse drag pans (screen pixels
 /// converted to world units via the orthographic scale so drag stays
-/// 1:1 with the cursor at any zoom). Scroll wheel adjusts ortho scale —
-/// scroll up zooms in.
+/// 1:1 with the cursor at any zoom). Scroll wheel adjusts ortho scale,
+/// translating the camera so the world point under the cursor stays
+/// pinned to the cursor — Photoshop-style zoom-toward-cursor.
 pub fn editor_2d_camera_controller(
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
@@ -193,7 +194,8 @@ pub fn editor_2d_camera_controller(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
-    mut camera_query: Query<(&mut Transform, &mut Projection), With<EditorCamera2d>>,
+    windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+    mut camera_query: Query<(&Camera, &mut Transform, &mut Projection), With<EditorCamera2d>>,
 ) {
     let in_play = play_mode.map_or(false, |pm| pm.is_in_play_mode());
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
@@ -203,8 +205,8 @@ pub fn editor_2d_camera_controller(
         return;
     }
 
-    let hovered = viewport.map_or(false, |v| v.hovered);
-    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+    let hovered = viewport.as_ref().map_or(false, |v| v.hovered);
+    let Ok((camera, mut transform, mut projection)) = camera_query.single_mut() else {
         mouse_motion.clear();
         scroll_events.clear();
         return;
@@ -238,8 +240,52 @@ pub fn editor_2d_camera_controller(
         }
         if zoom != 0.0 {
             if let Projection::Orthographic(ref mut o) = *projection {
+                // Capture cursor world position BEFORE scale change so we
+                // can adjust the camera translation to keep that world
+                // point under the cursor.
+                let cursor_world_before = viewport
+                    .as_deref()
+                    .and_then(|vs| {
+                        let window = windows.single().ok()?;
+                        let cursor = window.cursor_position()?;
+                        let in_rect = cursor - vs.screen_position;
+                        if in_rect.x < 0.0
+                            || in_rect.y < 0.0
+                            || in_rect.x >= vs.screen_size.x
+                            || in_rect.y >= vs.screen_size.y
+                        {
+                            return None;
+                        }
+                        let image_size = vs.current_size.as_vec2();
+                        if image_size.x <= 0.0 || image_size.y <= 0.0 {
+                            return None;
+                        }
+                        let scaled = Vec2::new(
+                            in_rect.x * image_size.x / vs.screen_size.x,
+                            in_rect.y * image_size.y / vs.screen_size.y,
+                        );
+                        let cam_gt = GlobalTransform::from(*transform);
+                        camera.viewport_to_world_2d(&cam_gt, scaled).ok()
+                    });
+
+                let old_scale = o.scale;
                 let step: f32 = 0.9;
                 o.scale = (o.scale * step.powf(zoom)).clamp(0.01, 1000.0);
+                let new_scale = o.scale;
+
+                // Translate so the captured world point stays pinned to
+                // the cursor. The new world point at the same cursor
+                // image-pixel scales linearly with the projection scale,
+                // so `delta_cam = (cursor_world - cam) * (1 - new/old)`.
+                if let Some(cursor_world) = cursor_world_before {
+                    if old_scale > 0.0 {
+                        let cam_xy = transform.translation.truncate();
+                        let offset = cursor_world - cam_xy;
+                        let zoom_factor = new_scale / old_scale;
+                        transform.translation.x += offset.x * (1.0 - zoom_factor);
+                        transform.translation.y += offset.y * (1.0 - zoom_factor);
+                    }
+                }
             }
         }
     } else {

@@ -50,6 +50,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::EntityTag>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
+            .register_type::<renzora::core::SpriteImagePath>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -153,6 +154,7 @@ impl Plugin for RuntimePlugin {
                     scene_io::rehydrate_visibility,
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
+                    scene_io::rehydrate_sprite_images,
                 ),
             )
             .add_systems(

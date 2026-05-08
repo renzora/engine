@@ -1425,6 +1425,27 @@ pub fn rehydrate_meshes(
     }
 }
 
+/// Loads `Sprite.image` from `SpriteImagePath` whenever the path
+/// component is added or its string changes. Mirrors `rehydrate_ui_images`
+/// for `UiImagePath` — `Handle<Image>` doesn't survive scene save/load
+/// (asset IDs are runtime-only), but the path string does, and the asset
+/// server re-resolves it cheaply.
+pub fn rehydrate_sprite_images(
+    mut query: Query<
+        (&renzora::core::SpriteImagePath, &mut bevy::sprite::Sprite),
+        Changed<renzora::core::SpriteImagePath>,
+    >,
+    asset_server: Res<AssetServer>,
+) {
+    for (path, mut sprite) in &mut query {
+        if path.0.is_empty() {
+            sprite.image = Default::default();
+            continue;
+        }
+        sprite.image = asset_server.load(path.0.clone());
+    }
+}
+
 /// Ensure parent entities have `Visibility` so transform/visibility propagation works.
 /// Fixes groups/empty parents that were saved without `Visibility`.
 pub fn rehydrate_visibility(

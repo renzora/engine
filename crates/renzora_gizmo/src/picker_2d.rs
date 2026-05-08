@@ -1,14 +1,15 @@
-//! 2D viewport interaction — click-to-pick, drag-to-move, selection outline.
+//! 2D viewport interaction — click-to-pick, drag-to-move, resize handles,
+//! and selection outline.
 //!
-//! Sibling of `entity_pick_system`/`gizmo_drag` for 3D, but much simpler:
-//! the editor 2D camera is orthographic, so picking is just an AABB hit
-//! test in world space and dragging is a cursor-to-world offset that
-//! makes the entity snap to the cursor exactly. All gated on
-//! `viewport_view == Two`.
+//! Shape: on left-click the picker decides whether the user grabbed a
+//! resize handle of the currently-selected sprite, the body of any
+//! sprite, or empty space — and stores that decision in [`Drag2dState`].
+//! [`drag_move_2d_system`] then executes Move or Resize each frame until
+//! the mouse is released.
 //!
-//! The selection outline is registered with `ViewportOverlayRegistry` so
-//! it paints on top of the rendered image alongside the existing 3D
-//! overlays.
+//! All work is gated on `viewport_view == Two`. The selection outline is
+//! registered with `ViewportOverlayRegistry` so it paints on top of the
+//! rendered image alongside the existing 3D overlays.
 
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
@@ -18,16 +19,115 @@ use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportVie
 use renzora::core::{Node2d, PlayModeState};
 use renzora_editor::EditorSelection;
 
-/// Per-drag bookkeeping so cursor-to-entity tracking stays exact across
-/// frames. Captured on drag start, cleared on release.
+/// Hit threshold for handle picking, in panel pixels. Generous so users
+/// don't have to be sub-pixel accurate on a small sprite.
+const HANDLE_HIT_RADIUS: f32 = 8.0;
+/// Drawn handle size in panel pixels. Smaller than the hit radius so
+/// users can grab a handle even if their cursor is just outside the
+/// drawn square.
+const HANDLE_DRAW_SIZE: f32 = 9.0;
+
+/// Which resize handle the user grabbed. Indexed by which corner / edge
+/// of the entity AABB the handle sits at.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ResizeHandle {
+    NW,
+    N,
+    NE,
+    W,
+    E,
+    SW,
+    S,
+    SE,
+}
+
+impl ResizeHandle {
+    /// Per-frame resize: given the cursor's current world position and the
+    /// AABB captured at drag start, returns `(new_translation, new_size)`
+    /// for the entity. The opposite handle stays anchored.
+    fn resize(self, cursor: Vec2, init_min: Vec2, init_max: Vec2) -> (Vec2, Vec2) {
+        let (mut min_x, mut max_x, mut min_y, mut max_y) =
+            (init_min.x, init_max.x, init_min.y, init_max.y);
+        match self {
+            ResizeHandle::NW => {
+                min_x = cursor.x;
+                max_y = cursor.y;
+            }
+            ResizeHandle::N => {
+                max_y = cursor.y;
+            }
+            ResizeHandle::NE => {
+                max_x = cursor.x;
+                max_y = cursor.y;
+            }
+            ResizeHandle::W => {
+                min_x = cursor.x;
+            }
+            ResizeHandle::E => {
+                max_x = cursor.x;
+            }
+            ResizeHandle::SW => {
+                min_x = cursor.x;
+                min_y = cursor.y;
+            }
+            ResizeHandle::S => {
+                min_y = cursor.y;
+            }
+            ResizeHandle::SE => {
+                max_x = cursor.x;
+                min_y = cursor.y;
+            }
+        }
+        // Allow flipping the box so dragging past the opposite handle
+        // mirrors instead of going negative on the size.
+        let (lo_x, hi_x) = if min_x <= max_x {
+            (min_x, max_x)
+        } else {
+            (max_x, min_x)
+        };
+        let (lo_y, hi_y) = if min_y <= max_y {
+            (min_y, max_y)
+        } else {
+            (max_y, min_y)
+        };
+        // Floor at 1 world unit so the sprite stays visible / pickable.
+        let size = Vec2::new((hi_x - lo_x).max(1.0), (hi_y - lo_y).max(1.0));
+        let translation = Vec2::new((lo_x + hi_x) * 0.5, (lo_y + hi_y) * 0.5);
+        (translation, size)
+    }
+}
+
+/// What the active drag is doing, plus enough captured state to do it
+/// without drift.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum DragMode {
+    #[default]
+    None,
+    /// Translate the entity. `offset` is `entity_translation - cursor_world`
+    /// captured at drag start so the entity stays pinned to the grab point.
+    Move {
+        offset: Vec2,
+    },
+    /// Resize via one of the eight handles. Initial bounds are captured
+    /// at drag start so the math doesn't accumulate float drift.
+    Resize {
+        handle: ResizeHandle,
+        init_min: Vec2,
+        init_max: Vec2,
+    },
+}
+
 #[derive(Resource, Default)]
 pub struct Drag2dState {
-    /// Offset from cursor world position to entity local translation,
-    /// captured at drag start. `None` while not dragging.
-    offset: Option<Vec2>,
-    /// Entity whose offset is captured. Recapture if the selection changes
-    /// mid-drag (shouldn't happen, but defensive).
-    entity: Option<Entity>,
+    pub mode: DragMode,
+    pub entity: Option<Entity>,
+}
+
+impl Drag2dState {
+    fn cancel(&mut self) {
+        self.mode = DragMode::None;
+        self.entity = None;
+    }
 }
 
 /// Look up the editor 2D camera via the entity reference cached by
@@ -51,7 +151,6 @@ fn cursor_to_world(
     camera: &Camera,
     cam_gt: &GlobalTransform,
 ) -> Option<Vec2> {
-    // Reject cursors outside the panel rect.
     let in_rect = cursor_window - viewport.screen_position;
     if in_rect.x < 0.0
         || in_rect.y < 0.0
@@ -60,11 +159,6 @@ fn cursor_to_world(
     {
         return None;
     }
-
-    // The camera renders into the offscreen image at `current_size`; the
-    // panel displays that image stretched to `screen_size`. Cursor coords
-    // need to be in image space for `viewport_to_world_2d` to give a
-    // correct result.
     let image_size = viewport.current_size.as_vec2();
     if image_size.x <= 0.0 || image_size.y <= 0.0 {
         return None;
@@ -76,16 +170,83 @@ fn cursor_to_world(
     camera.viewport_to_world_2d(cam_gt, scaled).ok()
 }
 
-/// AABB pick: left-click sets `EditorSelection` to the topmost (highest Z)
-/// Sprite under the cursor, or `None` if empty space.
+/// Project a world-space point to panel-rect-relative pixel coords.
+/// Returns `None` if the point is behind the camera.
+fn world_to_panel(
+    world_pos: Vec3,
+    viewport: &ViewportState,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+) -> Option<Vec2> {
+    let img = camera.world_to_viewport(cam_gt, world_pos).ok()?;
+    let image_size = viewport.current_size.as_vec2();
+    if image_size.x <= 0.0 || image_size.y <= 0.0 {
+        return None;
+    }
+    Some(Vec2::new(
+        img.x * viewport.screen_size.x / image_size.x,
+        img.y * viewport.screen_size.y / image_size.y,
+    ))
+}
+
+/// Resolve the entity's effective 2D position. Reads `Transform` for
+/// parentless entities so the overlay tracks an active drag without one
+/// frame of `transform_propagate` lag.
+fn entity_translation(world: &World, entity: Entity) -> Option<Vec3> {
+    if world.get::<ChildOf>(entity).is_some() {
+        Some(world.get::<GlobalTransform>(entity)?.translation())
+    } else {
+        Some(world.get::<Transform>(entity)?.translation)
+    }
+}
+
+/// AABB half-extents for the selection. Sprites use `custom_size`,
+/// `Node2d` groups get a small handle rectangle so empty groups have
+/// visible feedback.
+fn entity_half_size(world: &World, entity: Entity) -> Option<Vec2> {
+    if let Some(sprite) = world.get::<Sprite>(entity) {
+        let size = sprite.custom_size.unwrap_or(Vec2::ZERO);
+        if size.x <= 0.0 || size.y <= 0.0 {
+            return None;
+        }
+        Some(size * 0.5)
+    } else if world.get::<Node2d>(entity).is_some() {
+        Some(Vec2::splat(20.0))
+    } else {
+        None
+    }
+}
+
+/// All eight handle positions for the entity's AABB, in world space.
+fn handle_world_positions(translation: Vec2, half: Vec2) -> [(ResizeHandle, Vec2); 8] {
+    let cx = translation.x;
+    let cy = translation.y;
+    [
+        (ResizeHandle::NW, Vec2::new(cx - half.x, cy + half.y)),
+        (ResizeHandle::N, Vec2::new(cx, cy + half.y)),
+        (ResizeHandle::NE, Vec2::new(cx + half.x, cy + half.y)),
+        (ResizeHandle::W, Vec2::new(cx - half.x, cy)),
+        (ResizeHandle::E, Vec2::new(cx + half.x, cy)),
+        (ResizeHandle::SW, Vec2::new(cx - half.x, cy - half.y)),
+        (ResizeHandle::S, Vec2::new(cx, cy - half.y)),
+        (ResizeHandle::SE, Vec2::new(cx + half.x, cy - half.y)),
+    ]
+}
+
+/// On left-click, resolve what the user grabbed: a handle of the
+/// currently-selected entity, the body of any sprite, or empty space.
+/// Updates `EditorSelection` and `Drag2dState` accordingly.
 pub fn pick_2d_system(
     selection: Res<EditorSelection>,
     mouse: Res<ButtonInput<MouseButton>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
+    mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
+    transforms: Query<&Transform>,
+    world_root: Query<()>,
 ) {
     if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
         return;
@@ -104,16 +265,47 @@ pub fn pick_2d_system(
     let Ok((camera, cam_gt)) = cameras_2d.single() else {
         return;
     };
-    let Some(world_pos) = cursor_to_world(cursor, &viewport, camera, cam_gt) else {
+    let Some(cursor_world) = cursor_to_world(cursor, &viewport, camera, cam_gt) else {
         return;
     };
+    let cursor_panel = cursor - viewport.screen_position;
+    let _ = world_root;
 
-    // AABB hit test sprites; topmost (highest Z) wins so layered scenes
-    // pick the foreground sprite first.
-    let mut best: Option<(Entity, f32)> = None;
+    // --- Step 1: handle hit-test on the *currently selected* entity. ---
+    if let Some(entity) = selection.get() {
+        let translation_3d = transforms.get(entity).map(|t| t.translation).ok();
+        let half = sprites
+            .get(entity)
+            .ok()
+            .and_then(|(_, s, _)| s.custom_size)
+            .map(|s| s * 0.5);
+        if let (Some(t3d), Some(half)) = (translation_3d, half) {
+            let translation = t3d.truncate();
+            let init_min = translation - half;
+            let init_max = translation + half;
+            for (handle, world_pos) in handle_world_positions(translation, half) {
+                let Some(panel_pos) =
+                    world_to_panel(Vec3::new(world_pos.x, world_pos.y, t3d.z), &viewport, camera, cam_gt)
+                else {
+                    continue;
+                };
+                if (panel_pos - cursor_panel).length() <= HANDLE_HIT_RADIUS {
+                    drag.entity = Some(entity);
+                    drag.mode = DragMode::Resize {
+                        handle,
+                        init_min,
+                        init_max,
+                    };
+                    return;
+                }
+            }
+        }
+    }
+
+    // --- Step 2: AABB hit-test against all sprites. ---
+    let mut best: Option<(Entity, f32, Vec2)> = None;
     for (entity, sprite, gt) in &sprites {
         let Some(size) = sprite.custom_size else {
-            // No custom_size and no image bound — nothing to pick.
             continue;
         };
         if size.x <= 0.0 || size.y <= 0.0 {
@@ -121,24 +313,32 @@ pub fn pick_2d_system(
         }
         let pos = gt.translation();
         let half = size * 0.5;
-        if (world_pos.x - pos.x).abs() <= half.x && (world_pos.y - pos.y).abs() <= half.y {
+        if (cursor_world.x - pos.x).abs() <= half.x && (cursor_world.y - pos.y).abs() <= half.y {
             match best {
-                None => best = Some((entity, pos.z)),
-                Some((_, z)) if pos.z > z => best = Some((entity, pos.z)),
+                None => best = Some((entity, pos.z, pos.truncate())),
+                Some((_, z, _)) if pos.z > z => best = Some((entity, pos.z, pos.truncate())),
                 _ => {}
             }
         }
     }
 
-    selection.set(best.map(|(e, _)| e));
+    if let Some((entity, _, translation)) = best {
+        selection.set(Some(entity));
+        drag.entity = Some(entity);
+        drag.mode = DragMode::Move {
+            offset: translation - cursor_world,
+        };
+    } else {
+        selection.set(None);
+        drag.cancel();
+    }
 }
 
-/// Left-drag translates the selected entity. Uses an offset-based scheme
-/// (capture cursor↔entity offset on drag start, snap entity to cursor +
-/// offset every frame) so the entity tracks the cursor exactly at any
-/// pan/zoom and away from the viewport center.
+/// Execute the active drag: Move snaps `Transform.translation` to
+/// `cursor_world + offset`; Resize recomputes size + translation from
+/// the captured AABB and the moving cursor. Releases drag when the
+/// mouse button is released or the cursor leaves the viewport.
 pub fn drag_move_2d_system(
-    selection: Res<EditorSelection>,
     mouse: Res<ButtonInput<MouseButton>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
@@ -146,61 +346,49 @@ pub fn drag_move_2d_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     mut transforms: Query<&mut Transform>,
+    mut sprites: Query<&mut Sprite>,
 ) {
-    let cancel = |drag: &mut Drag2dState| {
-        drag.offset = None;
-        drag.entity = None;
-    };
-
     if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
-        cancel(&mut drag);
+        drag.cancel();
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
-        cancel(&mut drag);
+        drag.cancel();
         return;
     }
     let Some(viewport) = viewport else {
-        cancel(&mut drag);
+        drag.cancel();
         return;
     };
     if !viewport.hovered {
-        cancel(&mut drag);
         return;
     }
-    let Some(entity) = selection.get() else {
-        cancel(&mut drag);
+    let DragMode::Move { offset } = drag.mode else {
+        // Resize handled below; None means nothing to do.
+        if let DragMode::Resize {
+            handle,
+            init_min,
+            init_max,
+        } = drag.mode
+        {
+            return resize_step(
+                handle, init_min, init_max, drag.entity, &viewport, &windows, &cameras_2d,
+                &mut transforms, &mut sprites,
+            );
+        }
         return;
     };
-    let Ok(window) = windows.single() else {
-        cancel(&mut drag);
-        return;
-    };
+    let Some(entity) = drag.entity else { return };
+    let Ok(window) = windows.single() else { return };
     let Some(cursor) = window.cursor_position() else {
-        cancel(&mut drag);
         return;
     };
     let Ok((camera, cam_gt)) = cameras_2d.single() else {
-        cancel(&mut drag);
         return;
     };
     let Some(cursor_world) = cursor_to_world(cursor, &viewport, camera, cam_gt) else {
-        cancel(&mut drag);
         return;
     };
-
-    // Capture the cursor↔entity offset on drag start so the entity stays
-    // pinned to where the user grabbed it (instead of snapping its origin
-    // to the cursor on first move).
-    if drag.offset.is_none() || drag.entity != Some(entity) {
-        let Ok(tr) = transforms.get(entity) else {
-            cancel(&mut drag);
-            return;
-        };
-        drag.offset = Some(tr.translation.truncate() - cursor_world);
-        drag.entity = Some(entity);
-    }
-    let offset = drag.offset.unwrap();
 
     let Ok(mut tr) = transforms.get_mut(entity) else {
         return;
@@ -209,10 +397,41 @@ pub fn drag_move_2d_system(
     tr.translation.y = cursor_world.y + offset.y;
 }
 
-/// Egui overlay: paint a yellow rectangle outline + corner handles
-/// around the selected 2D entity. Reads `Transform` (not GlobalTransform)
-/// for parentless entities so the outline tracks the drag without one
-/// frame of propagation lag.
+#[allow(clippy::too_many_arguments)]
+fn resize_step(
+    handle: ResizeHandle,
+    init_min: Vec2,
+    init_max: Vec2,
+    entity: Option<Entity>,
+    viewport: &ViewportState,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    cameras_2d: &Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    transforms: &mut Query<&mut Transform>,
+    sprites: &mut Query<&mut Sprite>,
+) {
+    let Some(entity) = entity else { return };
+    let Ok(window) = windows.single() else { return };
+    let Some(cursor) = window.cursor_position() else {
+        return;
+    };
+    let Ok((camera, cam_gt)) = cameras_2d.single() else {
+        return;
+    };
+    let Some(cursor_world) = cursor_to_world(cursor, viewport, camera, cam_gt) else {
+        return;
+    };
+    let (new_translation, new_size) = handle.resize(cursor_world, init_min, init_max);
+    if let Ok(mut tr) = transforms.get_mut(entity) {
+        tr.translation.x = new_translation.x;
+        tr.translation.y = new_translation.y;
+    }
+    if let Ok(mut sprite) = sprites.get_mut(entity) {
+        sprite.custom_size = Some(new_size);
+    }
+}
+
+/// Egui overlay: paint a yellow rectangle outline + 8 handles around the
+/// selected 2D entity.
 pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     let view = world
         .get_resource::<ViewportSettings>()
@@ -234,64 +453,34 @@ pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::R
     let Some((camera, cam_gt)) = find_editor_camera_2d(world) else {
         return;
     };
-
-    // Prefer Transform over GlobalTransform when the entity has no parent —
-    // the drag system writes Transform, and GlobalTransform doesn't update
-    // until transform_propagate runs (which is after this overlay frame),
-    // so reading GlobalTransform shows last frame's position.
-    let pos = if world.get::<ChildOf>(entity).is_some() {
-        let Some(gt) = world.get::<GlobalTransform>(entity) else {
-            return;
-        };
-        gt.translation()
-    } else {
-        let Some(tr) = world.get::<Transform>(entity) else {
-            return;
-        };
-        tr.translation
+    let Some(translation_3d) = entity_translation(world, entity) else {
+        return;
     };
-
-    // Build a world-space AABB for the selection.
-    let half = if let Some(sprite) = world.get::<Sprite>(entity) {
-        let size = sprite.custom_size.unwrap_or(Vec2::ZERO);
-        if size.x <= 0.0 || size.y <= 0.0 {
-            return;
-        }
-        size * 0.5
-    } else if world.get::<Node2d>(entity).is_some() {
-        // Empty group — small handle rect so the user has visual feedback.
-        Vec2::splat(20.0)
-    } else {
+    let Some(half) = entity_half_size(world, entity) else {
         return;
     };
 
-    let image_size = viewport.current_size.as_vec2();
-    if image_size.x <= 0.0 || image_size.y <= 0.0 {
-        return;
-    }
+    let translation = translation_3d.truncate();
+    let z = translation_3d.z;
+
     let to_screen = |world_pos: Vec3| -> Option<egui::Pos2> {
-        let img = camera.world_to_viewport(cam_gt, world_pos).ok()?;
-        let x = rect.min.x + img.x * rect.width() / image_size.x;
-        let y = rect.min.y + img.y * rect.height() / image_size.y;
-        Some(egui::Pos2::new(x, y))
+        let panel = world_to_panel(world_pos, viewport, camera, cam_gt)?;
+        Some(egui::Pos2::new(rect.min.x + panel.x, rect.min.y + panel.y))
     };
 
-    // Project the four corners individually so a tilted parent transform
-    // (when we eventually support rotated 2D groups) gives a correct quad.
-    // Today everything's axis-aligned so it just falls out as a rect.
-    let tl = to_screen(Vec3::new(pos.x - half.x, pos.y + half.y, pos.z));
-    let tr = to_screen(Vec3::new(pos.x + half.x, pos.y + half.y, pos.z));
-    let bl = to_screen(Vec3::new(pos.x - half.x, pos.y - half.y, pos.z));
-    let br = to_screen(Vec3::new(pos.x + half.x, pos.y - half.y, pos.z));
-    let (Some(tl), Some(tr), Some(bl), Some(br)) = (tl, tr, bl, br) else {
+    // Outline corners.
+    let tl = to_screen(Vec3::new(translation.x - half.x, translation.y + half.y, z));
+    let tr_corner = to_screen(Vec3::new(translation.x + half.x, translation.y + half.y, z));
+    let bl = to_screen(Vec3::new(translation.x - half.x, translation.y - half.y, z));
+    let br = to_screen(Vec3::new(translation.x + half.x, translation.y - half.y, z));
+    let (Some(tl), Some(tr_corner), Some(bl), Some(br)) = (tl, tr_corner, bl, br) else {
         return;
     };
 
     let outline_color = egui::Color32::from_rgb(250, 220, 100);
     let painter = ui.painter_at(rect);
 
-    // Outline rect (axis-aligned bbox of the four projected corners).
-    let outline = egui::Rect::from_two_pos(tl.min(bl), tr.max(br));
+    let outline = egui::Rect::from_two_pos(tl.min(bl), tr_corner.max(br));
     painter.rect_stroke(
         outline,
         0.0,
@@ -299,19 +488,24 @@ pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::R
         egui::StrokeKind::Outside,
     );
 
-    // Corner handles — small filled squares with a darker outline. Resize
-    // interaction is a follow-up; right now they're purely visual.
-    let handle_size = 8.0_f32;
-    let half_handle = handle_size * 0.5;
+    // Handles: 4 corners + 4 edge midpoints. Drawn after the outline so
+    // they paint on top of the rectangle stroke.
     let handle_fill = egui::Color32::from_rgb(255, 255, 255);
     let handle_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50));
-    for corner in [tl, tr, bl, br] {
+    let edge_n = to_screen(Vec3::new(translation.x, translation.y + half.y, z));
+    let edge_s = to_screen(Vec3::new(translation.x, translation.y - half.y, z));
+    let edge_w = to_screen(Vec3::new(translation.x - half.x, translation.y, z));
+    let edge_e = to_screen(Vec3::new(translation.x + half.x, translation.y, z));
+    let mut handles = vec![tl, tr_corner, bl, br];
+    if let (Some(n), Some(s), Some(w), Some(e)) = (edge_n, edge_s, edge_w, edge_e) {
+        handles.extend_from_slice(&[n, s, w, e]);
+    }
+    for pos in handles {
         let h_rect = egui::Rect::from_center_size(
-            corner,
-            egui::Vec2::new(handle_size, handle_size),
+            pos,
+            egui::Vec2::new(HANDLE_DRAW_SIZE, HANDLE_DRAW_SIZE),
         );
         painter.rect_filled(h_rect, 1.0, handle_fill);
         painter.rect_stroke(h_rect, 1.0, handle_stroke, egui::StrokeKind::Inside);
-        let _ = half_handle;
     }
 }

@@ -286,6 +286,18 @@ pub struct EditorCamera2d;
 #[reflect(Component)]
 pub struct Node2d;
 
+/// Asset-relative path of the image bound to a `Sprite`.
+///
+/// Mirror of `UiImagePath` for sprites. Bevy's `Sprite.image` holds a
+/// `Handle<Image>`, which doesn't survive scene save/load — handle IDs
+/// are runtime-only and don't remap. This component stores the path so
+/// a rehydration system can re-load the image and assign the handle on
+/// scene load (or whenever the path changes via the inspector / a
+/// drag-drop).
+#[derive(Component, Reflect, Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SpriteImagePath(pub String);
+
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
 #[derive(Component)]
 pub struct HideInHierarchy;
