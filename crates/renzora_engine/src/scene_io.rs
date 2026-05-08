@@ -51,6 +51,19 @@ pub struct SceneLoadFailed {
     pub error: String,
 }
 
+/// Fired after a scene loads when one or more component/resource types
+/// were skipped because they aren't registered in the type registry.
+/// The editor turns this into a toast; the runtime just logs it.
+///
+/// Most-common cause: an editor-only component (e.g.
+/// `renzora_camera::OrbitCameraState`) was serialized into the scene and
+/// then loaded by a runtime build that doesn't register editor types.
+#[derive(Event, Clone, Debug)]
+pub struct SceneLoadedWithSkippedTypes {
+    pub path: String,
+    pub skipped: Vec<String>,
+}
+
 // ============================================================================
 // Save
 // ============================================================================
@@ -385,30 +398,23 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
         return;
     }
 
-    let scene = {
-        let type_registry = world.resource::<AppTypeRegistry>().clone();
-        let registry = type_registry.read();
-
-        let scene_deserializer = bevy::scene::serde::SceneDeserializer {
-            type_registry: &registry,
-        };
-
-        let mut ron_deserializer = match ron::Deserializer::from_str(ron) {
-            Ok(d) => d,
-            Err(e) => {
-                error!("Failed to parse RON string: {}", e);
-                return;
-            }
-        };
-
-        match scene_deserializer.deserialize(&mut ron_deserializer) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Failed to deserialize scene from string: {}", e);
-                return;
-            }
+    let (scene, skipped_types) = match deserialize_scene_lossy(world, ron) {
+        Ok(pair) => pair,
+        Err(e) => {
+            error!("Failed to deserialize scene from string: {}", e);
+            return;
         }
     };
+    if !skipped_types.is_empty() {
+        for type_path in &skipped_types {
+            warn!("[scene] string scene skipped unregistered type `{}`", type_path);
+        }
+        // No path to report for string scenes — pass an empty marker.
+        world.trigger(SceneLoadedWithSkippedTypes {
+            path: String::new(),
+            skipped: skipped_types.clone(),
+        });
+    }
 
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     match scene.write_to_world(world, &mut entity_map) {
@@ -451,6 +457,173 @@ pub fn save_current_scene(world: &mut World) {
 // ============================================================================
 // Load
 // ============================================================================
+
+/// Try to deserialize a scene RON, transparently skipping any
+/// component/resource entries whose type isn't registered.
+///
+/// Bevy's [`SceneDeserializer`] aborts on the first unknown type, so
+/// we loop: parse the offending type out of the error message, strip
+/// that entry from the RON, retry. Each pass either makes progress
+/// (one type stripped) or returns an error we can't massage away.
+///
+/// Returns the parsed scene plus the list of skipped type paths so the
+/// caller can surface a warning.
+fn deserialize_scene_lossy(
+    world: &World,
+    ron: &str,
+) -> Result<(bevy::scene::DynamicScene, Vec<String>), String> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+    let mut current = ron.to_string();
+    let mut skipped: Vec<String> = Vec::new();
+
+    // Hard cap on the number of strip-and-retry rounds — protects against
+    // a pathological case where we keep getting the same error and can't
+    // make progress.
+    for _ in 0..256 {
+        let scene_deserializer = bevy::scene::serde::SceneDeserializer {
+            type_registry: &registry,
+        };
+        let mut ron_deserializer = ron::Deserializer::from_str(&current)
+            .map_err(|e| format!("RON parse failed: {e}"))?;
+        match scene_deserializer.deserialize(&mut ron_deserializer) {
+            Ok(scene) => return Ok((scene, skipped)),
+            Err(e) => {
+                let msg = e.to_string();
+                let Some(type_path) = extract_unregistered_type(&msg) else {
+                    return Err(msg);
+                };
+                let Some(stripped) = strip_component_entry(&current, &type_path) else {
+                    return Err(format!(
+                        "could not locate `{}` to strip from scene RON: {}",
+                        type_path, msg
+                    ));
+                };
+                if stripped == current {
+                    return Err(format!(
+                        "stripping `{}` made no change; cannot recover: {}",
+                        type_path, msg
+                    ));
+                }
+                current = stripped;
+                if !skipped.iter().any(|s| s == &type_path) {
+                    skipped.push(type_path);
+                }
+            }
+        }
+    }
+    Err("scene deserialization made no progress after 256 retries".to_string())
+}
+
+/// Pull the offending type path out of a Bevy/serde error message of the
+/// form "no registration found for `some::type::path`". Returns `None`
+/// if the error isn't of that shape — caller should surface the original
+/// error verbatim in that case.
+fn extract_unregistered_type(error_message: &str) -> Option<String> {
+    let needle = "no registration found for ";
+    let pos = error_message.find(needle)?;
+    let rest = &error_message[pos + needle.len()..];
+    // Tolerate both `... for \`T\`` and `... for type \`T\``.
+    let rest = rest.strip_prefix("type ").unwrap_or(rest);
+    let rest = rest.strip_prefix('`')?;
+    let close = rest.find('`')?;
+    Some(rest[..close].to_string())
+}
+
+/// Remove the entry `"<type_path>": ( ... )` (and its trailing comma /
+/// own line) from a RON scene string, walking balanced parens to find
+/// the closing `)` while respecting string literals. Returns `None` if
+/// the key isn't present or paren-matching fails.
+///
+/// Removing the whole line keeps the surrounding map well-formed
+/// regardless of whether the entry is first, last, or middle: leftover
+/// commas are RON-tolerated (trailing commas allowed), and we never
+/// leave back-to-back commas because we consume one trailing comma when
+/// it's there.
+fn strip_component_entry(ron: &str, type_path: &str) -> Option<String> {
+    let key = format!("\"{}\"", type_path);
+    let key_pos = ron.find(&key)?;
+    let key_end = key_pos + key.len();
+    let bytes = ron.as_bytes();
+
+    // Find the opening `(` after the key (skipping the `:` and whitespace).
+    let mut i = key_end;
+    while i < bytes.len() && bytes[i] != b'(' {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+    let open_pos = i;
+
+    // Walk balanced parens from after the open. String literals don't
+    // count toward depth — track escapes so an escaped quote inside a
+    // string doesn't terminate it prematurely.
+    let mut depth: i32 = 1;
+    let mut in_string = false;
+    let mut prev_escape = false;
+    let mut close_pos: Option<usize> = None;
+    for j in (open_pos + 1)..bytes.len() {
+        let c = bytes[j];
+        if in_string {
+            if c == b'"' && !prev_escape {
+                in_string = false;
+            }
+            prev_escape = c == b'\\' && !prev_escape;
+            continue;
+        }
+        prev_escape = false;
+        match c {
+            b'"' => in_string = true,
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close_pos = Some(j);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close_pos = close_pos?;
+
+    // Extend forward to consume the trailing comma + the rest of the
+    // line (including the line break). Keeps the surrounding indentation
+    // pristine.
+    let mut end = close_pos + 1;
+    while end < bytes.len() && (bytes[end] == b' ' || bytes[end] == b'\t') {
+        end += 1;
+    }
+    if end < bytes.len() && bytes[end] == b',' {
+        end += 1;
+    }
+    while end < bytes.len() && (bytes[end] == b' ' || bytes[end] == b'\t') {
+        end += 1;
+    }
+    if end < bytes.len() && bytes[end] == b'\n' {
+        end += 1;
+    }
+
+    // Extend backward to the start of the key's own line so we don't
+    // leave a blank, indented line behind.
+    let mut start = key_pos;
+    while start > 0 {
+        let c = bytes[start - 1];
+        if c == b'\n' {
+            break;
+        }
+        if !c.is_ascii_whitespace() {
+            break;
+        }
+        start -= 1;
+    }
+
+    let mut out = String::with_capacity(ron.len());
+    out.push_str(&ron[..start]);
+    out.push_str(&ron[end..]);
+    Some(out)
+}
 
 /// Load a scene from a RON file into the world.
 ///
@@ -532,30 +705,26 @@ pub fn load_scene(world: &mut World, path: &Path) {
         return;
     }
 
-    let scene = {
-        let type_registry = world.resource::<AppTypeRegistry>().clone();
-        let registry = type_registry.read();
-
-        let scene_deserializer = bevy::scene::serde::SceneDeserializer {
-            type_registry: &registry,
-        };
-
-        let mut ron_deserializer = match ron::Deserializer::from_str(&content) {
-            Ok(d) => d,
-            Err(e) => {
-                error!("Failed to parse RON {}: {}", path.display(), e);
-                return;
-            }
-        };
-
-        match scene_deserializer.deserialize(&mut ron_deserializer) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Failed to deserialize scene {}: {}", path.display(), e);
-                return;
-            }
+    let (scene, skipped_types) = match deserialize_scene_lossy(world, &content) {
+        Ok(pair) => pair,
+        Err(e) => {
+            error!("Failed to deserialize scene {}: {}", path.display(), e);
+            return;
         }
     };
+    if !skipped_types.is_empty() {
+        for type_path in &skipped_types {
+            warn!(
+                "[scene] {} skipped unregistered type `{}`",
+                path.display(),
+                type_path
+            );
+        }
+        world.trigger(SceneLoadedWithSkippedTypes {
+            path: path_str.clone(),
+            skipped: skipped_types.clone(),
+        });
+    }
 
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     match scene.write_to_world(world, &mut entity_map) {

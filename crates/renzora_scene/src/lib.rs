@@ -949,6 +949,37 @@ fn short_name(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// Observer: surface "scene loaded but skipped some component types" as
+/// a warning toast. Fires whenever the lossy scene deserializer in
+/// `renzora_engine::scene_io` had to drop one or more entries to make
+/// the scene parseable — typically because the scene was authored in
+/// the editor but is being loaded in a runtime build that doesn't
+/// register editor-only types.
+fn toast_skipped_scene_types(
+    trigger: On<scene_io::SceneLoadedWithSkippedTypes>,
+    mut toasts: ResMut<renzora_ui::Toasts>,
+) {
+    let event = trigger.event();
+    if event.skipped.is_empty() {
+        return;
+    }
+    let scene_label = std::path::Path::new(&event.path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("scene");
+    let message = match event.skipped.len() {
+        1 => format!(
+            "{}: skipped unregistered type `{}`",
+            scene_label, event.skipped[0]
+        ),
+        n => format!(
+            "{}: skipped {} unregistered types (`{}`, …)",
+            scene_label, n, event.skipped[0]
+        ),
+    };
+    toasts.warning(message);
+}
+
 // ============================================================================
 // Plugin
 // ============================================================================
@@ -980,6 +1011,7 @@ impl Plugin for ScenePlugin {
             // the assets it pinned can evict (assuming no other tab
             // still references them).
             .add_observer(tab_asset_cache::evict_closed_tab)
+            .add_observer(toast_skipped_scene_types)
             // Re-entering Splash means the user is opening a different
             // project (or returning to the picker). Despawn the previous
             // project's scene entities and clear per-tab caches so the
