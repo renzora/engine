@@ -6,20 +6,24 @@ default_to_workspace = false
 # =============================================================================
 
 # Clean stale build outputs (keeps deps/build/incremental cache)
-[tasks.clean-outputs-editor]
+[tasks.clean-editor]
 description = "Clean editor build outputs"
 env = { CLEAN_TARGET = "editor" }
 run_task = "clean-outputs"
 
-[tasks.clean-outputs-runtime]
+[tasks.clean-runtime]
 description = "Clean runtime build outputs"
 env = { CLEAN_TARGET = "runtime" }
 run_task = "clean-outputs"
 
-[tasks.clean-outputs-server]
+[tasks.clean-server]
 description = "Clean server build outputs"
 env = { CLEAN_TARGET = "server" }
 run_task = "clean-outputs"
+
+[tasks.clean]
+description = "Clean editor + runtime + server build outputs"
+dependencies = ["clean-editor", "clean-runtime", "clean-server"]
 
 [tasks.clean-outputs]
 description = "Remove final artifacts from target/{target}/dist/ (keeps dep cache)"
@@ -53,7 +57,7 @@ alias = "build-editor"
 # makers build-editor — compile editor + plugins
 [tasks.build-editor]
 description = "Build editor and sync to dist/"
-dependencies = ["clean-outputs-editor", "build-editor-cargo", "sync-dist-editor"]
+dependencies = ["clean-editor", "build-editor-cargo", "sync-dist-editor"]
 
 [tasks.build-editor-cargo]
 description = "Compile workspace (editor)"
@@ -67,7 +71,7 @@ args = ["build", "--profile", "dist", "--workspace", "--exclude", "renzora-andro
 # makers build-runtime — compile runtime + plugins (export template)
 [tasks.build-runtime]
 description = "Build runtime and sync to dist/"
-dependencies = ["clean-outputs-runtime", "build-runtime-cargo", "sync-dist-runtime"]
+dependencies = ["clean-runtime", "build-runtime-cargo", "sync-dist-runtime"]
 
 [tasks.build-runtime-cargo]
 description = "Compile the runtime binary (no editor crates in the dep tree)"
@@ -77,7 +81,7 @@ args = ["build", "--profile", "dist", "--bin", "renzora", "--no-default-features
 # makers build-server — compile server + plugins
 [tasks.build-server]
 description = "Build server and sync to dist/"
-dependencies = ["clean-outputs-server", "build-server-cargo", "sync-dist-server"]
+dependencies = ["clean-server", "build-server-cargo", "sync-dist-server"]
 
 [tasks.build-server-cargo]
 description = "Compile the server binary (no editor crates in the dep tree)"
@@ -542,49 +546,49 @@ command -v wasm-bindgen >/dev/null 2>&1 || cargo install wasm-bindgen-cli --vers
 command -v wasm-opt >/dev/null 2>&1 || cargo install wasm-opt
 '''
 
-[tasks.dist-web]
+[tasks.build-web-editor]
 description = "Build WASM editor + optimize + generate JS bindings"
 dependencies = ["ensure-wasm-tools"]
 
-[tasks.dist-web.windows]
+[tasks.build-web-editor.windows]
 script_runner = "@shell"
 script = '''
-cargo dist-web-editor
+cargo build-web-editor
 wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
 wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
 brotli -k -q 11 -f templates/web/renzora_bg.wasm
 echo Output: templates/web/
 '''
 
-[tasks.dist-web.linux]
+[tasks.build-web-editor.linux]
 script = '''
-cargo dist-web-editor
+cargo build-web-editor
 wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
 wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
 brotli -k -q 11 -f templates/web/renzora_bg.wasm
 echo "Output: templates/web/"
 '''
 
-[tasks.dist-web.mac]
+[tasks.build-web-editor.mac]
 script = '''
-cargo dist-web-editor
+cargo build-web-editor
 wasm-bindgen --out-dir templates/web --out-name renzora --target web target/wasm32-unknown-unknown/dist/renzora.wasm
 wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o templates/web/renzora_bg.wasm templates/web/renzora_bg.wasm
 brotli -k -q 11 -f templates/web/renzora_bg.wasm
 echo "Output: templates/web/"
 '''
 
-[tasks.dist-web-runtime]
+[tasks.build-web]
 description = "Build WASM runtime export template (.zip)"
 dependencies = ["ensure-wasm-tools"]
 
-[tasks.dist-web-runtime.windows]
+[tasks.build-web.windows]
 command = "powershell"
 args = ["-ExecutionPolicy", "Bypass", "-File", "scripts\\build-web-runtime.ps1"]
 
-[tasks.dist-web-runtime.linux]
+[tasks.build-web.linux]
 script = '''
-cargo dist-web-runtime
+cargo build-web
 wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
 wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
 brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
@@ -592,9 +596,9 @@ cd target/dist/web && zip ../renzora-runtime-web-wasm32.zip renzora-runtime.js r
 echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
 '''
 
-[tasks.dist-web-runtime.mac]
+[tasks.build-web.mac]
 script = '''
-cargo dist-web-runtime
+cargo build-web
 wasm-bindgen --out-dir target/dist/web --out-name renzora-runtime --target web target/wasm32-unknown-unknown/dist/renzora-runtime.wasm
 wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o target/dist/web/renzora-runtime_bg.wasm target/dist/web/renzora-runtime_bg.wasm
 brotli -k -q 11 -f target/dist/web/renzora-runtime_bg.wasm
@@ -606,36 +610,36 @@ echo "Template: target/dist/renzora-runtime-web-wasm32.zip"
 # Mobile / TV templates
 # =============================================================================
 
-[tasks.dist-android-arm64]
+[tasks.build-android-arm64]
 description = "Build Android ARM64 template APK"
-[tasks.dist-android-arm64.windows]
+[tasks.build-android-arm64.windows]
 command = "powershell"
 args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-arm64"]
-[tasks.dist-android-arm64.linux]
+[tasks.build-android-arm64.linux]
 command = "./templates/android/build-template.sh"
 args = ["--arm64"]
-[tasks.dist-android-arm64.mac]
+[tasks.build-android-arm64.mac]
 command = "./templates/android/build-template.sh"
 args = ["--arm64"]
 
-[tasks.dist-android-all]
+[tasks.build-android]
 description = "Build all Android template APKs"
-[tasks.dist-android-all.windows]
+[tasks.build-android.windows]
 command = "powershell"
 args = ["-ExecutionPolicy", "Bypass", "-File", "templates\\android\\build-template.ps1", "-all"]
-[tasks.dist-android-all.linux]
+[tasks.build-android.linux]
 command = "./templates/android/build-template.sh"
 args = ["--all"]
-[tasks.dist-android-all.mac]
+[tasks.build-android.mac]
 command = "./templates/android/build-template.sh"
 args = ["--all"]
 
-[tasks.dist-ios]
+[tasks.build-ios]
 description = "Build iOS ARM64 template (requires macOS + Xcode)"
-[tasks.dist-ios.mac]
+[tasks.build-ios.mac]
 command = "./templates/ios/build-template.sh"
-[tasks.dist-ios.windows]
+[tasks.build-ios.windows]
 script_runner = "@shell"
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'
-[tasks.dist-ios.linux]
+[tasks.build-ios.linux]
 script = 'echo "Error: iOS builds require macOS with Xcode." && exit 1'

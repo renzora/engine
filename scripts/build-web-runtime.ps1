@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 # Build WASM runtime
-cargo dist-web-runtime
+cargo build-web
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Generate JS bindings

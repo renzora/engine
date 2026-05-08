@@ -1418,7 +1418,7 @@ fn export_ios_app(
 /// Export for Web/WASM: extract template zip, add rpak + index.html, write output zip.
 ///
 /// The template is a zip file containing `renzora-runtime.js` and
-/// `renzora-runtime_bg.wasm` (built by `cargo make dist-web-runtime`).
+/// `renzora-runtime_bg.wasm` (built by `makers build-web`).
 fn export_wasm_zip(
     tx: &mpsc::Sender<ExportMsg>,
     template_zip_path: &std::path::Path,
