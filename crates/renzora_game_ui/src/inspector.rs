@@ -1,16 +1,15 @@
-//! UI Inspector panel — property editor for selected UiWidget / UiCanvas entities.
-//! Uses the same collapsible section + inline property pattern as the scene inspector.
-
-use std::sync::RwLock;
+//! UI Inspector — property editor for selected UiWidget / UiCanvas entities.
+//!
+//! No longer a standalone panel; exposes `render_ui_inspector` which the main
+//! inspector calls via an `InspectorEntry` whose `has_fn` matches UI entities.
 
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
 use renzora_editor::{
-    collapsible_section, collapsible_section_removable, empty_state, inline_property,
-    EditorCommands, EditorPanel, EditorSelection, PanelLocation,
+    collapsible_section, inline_property, EditorCommands, EditorSelection,
 };
-use renzora_theme::ThemeManager;
+use renzora_theme::Theme;
 
 use crate::components::{self, UiCanvas, UiWidget, UiWidgetType};
 
@@ -72,23 +71,6 @@ struct InspectorSnapshot {
     tooltip: Option<components::TooltipData>,
     modal: Option<components::ModalData>,
     draggable_window: Option<components::DraggableWindowData>,
-}
-
-#[derive(Default)]
-struct UiInspectorState {
-    snap: InspectorSnapshot,
-}
-
-pub struct UiInspectorPanel {
-    state: RwLock<UiInspectorState>,
-}
-
-impl Default for UiInspectorPanel {
-    fn default() -> Self {
-        Self {
-            state: RwLock::new(UiInspectorState::default()),
-        }
-    }
 }
 
 /// Convert a Val to design-space pixels given a reference dimension.
@@ -191,55 +173,24 @@ fn arr_to_color(c: [f32; 4]) -> Color {
     Color::srgba(c[0], c[1], c[2], c[3])
 }
 
-impl EditorPanel for UiInspectorPanel {
-    fn id(&self) -> &str {
-        "ui_inspector"
-    }
-
-    fn title(&self) -> &str {
-        "UI Inspector"
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(regular::SLIDERS)
-    }
-
-    fn category(&self) -> &str {
-        "Visual"
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = match world.get_resource::<ThemeManager>() {
-            Some(tm) => tm.active_theme.clone(),
-            None => return,
-        };
-        let commands = match world.get_resource::<EditorCommands>() {
-            Some(c) => c,
-            None => return,
-        };
-        let selection = match world.get_resource::<EditorSelection>() {
-            Some(s) => s,
-            None => return,
-        };
-
-        let mut state = self.state.write().unwrap();
-
-        // Get selected entity
-        let selected = selection.get();
-        let Some(entity) = selected else {
-            empty_state(
-                ui,
-                regular::CURSOR_CLICK,
-                "No widget selected",
-                "Select a UI widget or canvas to inspect its properties.",
-                &theme,
-            );
-            return;
-        };
-
-        // Snapshot entity data
-        let snap = &mut state.snap;
-        snap.entity = Some(entity);
+/// Lump inspector for the remaining UI style/data components — fill, stroke,
+/// border-radius, text, padding, effects (opacity/shadow/clip/cursor),
+/// interaction states, and widget-specific data. Each will graduate to its
+/// own `InspectorEntry` in Phase B/C; for now they share this entry so users
+/// see them in the inspector during the migration.
+pub fn render_ui_style_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    // Body was lifted from the old panel impl which had a local `theme: Theme`.
+    // Clone once so the existing `&theme` call sites still type-check.
+    let theme = theme.clone();
+    let mut snap = InspectorSnapshot::default();
+    snap.entity = Some(entity);
+    let snap = &mut snap;
 
         // Name
         snap.name = world
@@ -268,18 +219,6 @@ impl EditorPanel for UiInspectorPanel {
             .get::<Visibility>(entity)
             .map(|v| *v != Visibility::Hidden)
             .unwrap_or(true);
-
-        // If neither canvas nor widget, show nothing
-        if !snap.is_canvas && !snap.is_widget {
-            empty_state(
-                ui,
-                regular::WARNING,
-                "Not a UI element",
-                "The selected entity is not a UI canvas or widget.",
-                &theme,
-            );
-            return;
-        }
 
         // Resolve reference resolution from parent canvas (or self if canvas)
         snap.canvas_ref_w = 1280.0;
@@ -353,407 +292,7 @@ impl EditorPanel for UiInspectorPanel {
             .cloned();
 
         // ── Render sections ──────────────────────────────────────────────
-        egui::ScrollArea::vertical()
-            .id_salt("ui_inspector_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-
-                // ── Identity section ──
-                collapsible_section(
-                    ui,
-                    regular::TAG,
-                    "Identity",
-                    "ui",
-                    &theme,
-                    "ui_insp_identity",
-                    true,
-                    |ui| {
-                        let mut row = 0;
-                        inline_property(ui, row, "Name", &theme, |ui| {
-                            let mut name = snap.name.clone();
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut name)
-                                    .desired_width(ui.available_width()),
-                            );
-                            if resp.changed() {
-                                snap.name = name.clone();
-                                commands.push(move |world: &mut World| {
-                                    if let Ok(mut em) = world.get_entity_mut(entity) {
-                                        if let Some(mut n) = em.get_mut::<Name>() {
-                                            n.set(name.clone());
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                        row += 1;
-                        inline_property(ui, row, "Type", &theme, |ui| {
-                            let type_name = if snap.is_canvas {
-                                "Canvas"
-                            } else {
-                                snap.widget_type.label()
-                            };
-                            ui.label(egui::RichText::new(type_name).size(11.0));
-                        });
-                    },
-                );
-
-                // ── Visibility section ──
-                {
-                    let action = collapsible_section_removable(
-                        ui,
-                        regular::EYE,
-                        "Visibility",
-                        "ui",
-                        &theme,
-                        "ui_insp_visibility",
-                        true,
-                        false,            // can't remove
-                        !snap.is_visible, // disabled = hidden
-                        |ui| {
-                            inline_property(ui, 0, "Visible", &theme, |ui| {
-                                let mut v = snap.is_visible;
-                                if ui.checkbox(&mut v, "").changed() {
-                                    let new_vis = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
-                                            *vis = if new_vis {
-                                                Visibility::Inherited
-                                            } else {
-                                                Visibility::Hidden
-                                            };
-                                        }
-                                    });
-                                }
-                            });
-                            if snap.is_widget {
-                                inline_property(ui, 1, "Locked", &theme, |ui| {
-                                    let mut v = snap.locked;
-                                    if ui.checkbox(&mut v, "").changed() {
-                                        snap.locked = v;
-                                        commands.push(move |world: &mut World| {
-                                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                                if let Some(mut w) = em.get_mut::<UiWidget>() {
-                                                    w.locked = v;
-                                                }
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-                        },
-                    );
-                    if action.toggle_clicked {
-                        let new_vis = !snap.is_visible;
-                        commands.push(move |world: &mut World| {
-                            if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
-                                *vis = if new_vis {
-                                    Visibility::Inherited
-                                } else {
-                                    Visibility::Hidden
-                                };
-                            }
-                        });
-                    }
-                }
-
-                // ── Canvas section ──
-                if snap.is_canvas {
-                    collapsible_section(
-                        ui,
-                        regular::FRAME_CORNERS,
-                        "Canvas",
-                        "ui",
-                        &theme,
-                        "ui_insp_canvas",
-                        true,
-                        |ui| {
-                            let mut row = 0;
-                            inline_property(ui, row, "Sort Order", &theme, |ui| {
-                                let mut v = snap.sort_order;
-                                if ui
-                                    .add(egui::DragValue::new(&mut v).range(-100..=100))
-                                    .changed()
-                                {
-                                    snap.sort_order = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
-                                                canvas.sort_order = v;
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Visibility", &theme, |ui| {
-                                let modes = ["always", "play_only", "editor_only"];
-                                let mut idx = modes
-                                    .iter()
-                                    .position(|m| *m == snap.visibility_mode)
-                                    .unwrap_or(0);
-                                if egui::ComboBox::from_id_salt("vis_mode")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, modes.len(), |i| modes[i].to_string())
-                                    .changed()
-                                {
-                                    let mode = modes[idx].to_string();
-                                    snap.visibility_mode = mode.clone();
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
-                                                canvas.visibility_mode = mode.clone();
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Ref Width", &theme, |ui| {
-                                let mut v = snap.reference_width;
-                                if ui
-                                    .add(
-                                        egui::DragValue::new(&mut v).speed(1.0).range(1.0..=7680.0),
-                                    )
-                                    .changed()
-                                {
-                                    snap.reference_width = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
-                                                canvas.reference_width = v;
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Ref Height", &theme, |ui| {
-                                let mut v = snap.reference_height;
-                                if ui
-                                    .add(
-                                        egui::DragValue::new(&mut v).speed(1.0).range(1.0..=4320.0),
-                                    )
-                                    .changed()
-                                {
-                                    snap.reference_height = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
-                                                canvas.reference_height = v;
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            // Theme selector
-                            let current_theme_name = world
-                                .get_resource::<components::UiTheme>()
-                                .map(|t| t.name.clone())
-                                .unwrap_or_default();
-                            inline_property(ui, row, "Theme", &theme, |ui| {
-                                let themes = ["Dark", "Light", "High Contrast"];
-                                let mut idx = themes
-                                    .iter()
-                                    .position(|t| *t == current_theme_name)
-                                    .unwrap_or(0);
-                                if egui::ComboBox::from_id_salt("ui_theme")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, themes.len(), |i| {
-                                        themes[i].to_string()
-                                    })
-                                    .changed()
-                                {
-                                    let theme_idx = idx;
-                                    commands.push(move |world: &mut World| {
-                                        let new_theme = match theme_idx {
-                                            1 => components::UiTheme::light(),
-                                            2 => components::UiTheme::high_contrast(),
-                                            _ => components::UiTheme::dark(),
-                                        };
-                                        world.insert_resource(new_theme);
-                                    });
-                                }
-                            });
-                        },
-                    );
-                }
-
-                // ── Layout section ──
-                if snap.has_node {
-                    collapsible_section(
-                        ui,
-                        regular::LAYOUT,
-                        "Layout",
-                        "transform",
-                        &theme,
-                        "ui_insp_layout",
-                        true,
-                        |ui| {
-                            let mut row = 0;
-                            inline_property(ui, row, "Position", &theme, |ui| {
-                                let labels = ["Relative", "Absolute"];
-                                let mut idx = snap.position_type as usize;
-                                if egui::ComboBox::from_id_salt("pos_type")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, labels.len(), |i| {
-                                        labels[i].to_string()
-                                    })
-                                    .changed()
-                                {
-                                    snap.position_type = idx as u8;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.position_type = u8_to_position_type(idx as u8);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "X", &theme, |ui| {
-                                let mut v = snap.left;
-                                if ui.add(egui::DragValue::new(&mut v).speed(1.0)).changed() {
-                                    snap.left = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.left = bevy::ui::Val::Percent(v / crw * 100.0);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Y", &theme, |ui| {
-                                let mut v = snap.top;
-                                if ui.add(egui::DragValue::new(&mut v).speed(1.0)).changed() {
-                                    snap.top = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.top = bevy::ui::Val::Percent(v / crh * 100.0);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Width", &theme, |ui| {
-                                let mut v = snap.width;
-                                if ui
-                                    .add(
-                                        egui::DragValue::new(&mut v)
-                                            .speed(1.0)
-                                            .range(0.0..=f32::MAX),
-                                    )
-                                    .changed()
-                                {
-                                    snap.width = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.width =
-                                                    bevy::ui::Val::Percent(v / crw * 100.0);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Height", &theme, |ui| {
-                                let mut v = snap.height;
-                                if ui
-                                    .add(
-                                        egui::DragValue::new(&mut v)
-                                            .speed(1.0)
-                                            .range(0.0..=f32::MAX),
-                                    )
-                                    .changed()
-                                {
-                                    snap.height = v;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.height =
-                                                    bevy::ui::Val::Percent(v / crh * 100.0);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Direction", &theme, |ui| {
-                                let labels = ["Row", "Column", "Row Rev", "Col Rev"];
-                                let mut idx = snap.flex_direction as usize;
-                                if egui::ComboBox::from_id_salt("flex_dir")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, labels.len(), |i| {
-                                        labels[i].to_string()
-                                    })
-                                    .changed()
-                                {
-                                    snap.flex_direction = idx as u8;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.flex_direction =
-                                                    u8_to_flex_direction(idx as u8);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Justify", &theme, |ui| {
-                                let labels =
-                                    ["Start", "Center", "End", "Between", "Around", "Evenly"];
-                                let mut idx = snap.justify_content as usize;
-                                if egui::ComboBox::from_id_salt("justify")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, labels.len(), |i| {
-                                        labels[i].to_string()
-                                    })
-                                    .changed()
-                                {
-                                    snap.justify_content = idx as u8;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.justify_content =
-                                                    u8_to_justify_content(idx as u8);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                            row += 1;
-                            inline_property(ui, row, "Align", &theme, |ui| {
-                                let labels = ["Start", "Center", "End", "Stretch"];
-                                let mut idx = snap.align_items as usize;
-                                if egui::ComboBox::from_id_salt("align")
-                                    .width(ui.available_width())
-                                    .show_index(ui, &mut idx, labels.len(), |i| {
-                                        labels[i].to_string()
-                                    })
-                                    .changed()
-                                {
-                                    snap.align_items = idx as u8;
-                                    commands.push(move |world: &mut World| {
-                                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                                            if let Some(mut node) = em.get_mut::<Node>() {
-                                                node.align_items = u8_to_align_items(idx as u8);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                        },
-                    );
-                }
+        ui.spacing_mut().item_spacing.y = 0.0;
 
                 // ── Fill section ──
                 if let Some(ref mut fill) = snap.fill {
@@ -799,45 +338,351 @@ impl EditorPanel for UiInspectorPanel {
                 // ── Widget-specific data sections ──
                 widget_data_sections(ui, snap, entity, commands, &theme);
 
-                // ── Delete widget (removable section style) ──
-                {
-                    let action = collapsible_section_removable(
-                        ui,
-                        regular::TRASH,
-                        "Delete Widget",
-                        "ui",
-                        &theme,
-                        "ui_insp_delete",
-                        false,
-                        true, // can_remove
-                        false,
-                        |ui| {
-                            ui.label(
-                                egui::RichText::new("Click the trash icon to remove this widget.")
-                                    .size(11.0)
-                                    .color(theme.text.muted.to_color32()),
-                            );
-                        },
-                    );
-                    if action.remove_clicked {
-                        commands.push(move |world: &mut World| {
-                            if world.get_entity(entity).is_ok() {
-                                world.despawn(entity);
-                            }
-                            if let Some(sel) = world.get_resource::<EditorSelection>() {
-                                sel.set(None);
-                            }
-                        });
+        ui.add_space(8.0);
+}
+
+/// Inspector for `UiCanvas` — sort order, visibility mode, reference resolution,
+/// and a global theme picker. Registered as its own InspectorEntry; the main
+/// inspector wraps the body in a collapsible automatically.
+pub fn render_canvas_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(canvas) = world.get::<UiCanvas>(entity) else {
+        return;
+    };
+    let theme = theme.clone();
+    let sort_order = canvas.sort_order;
+    let visibility_mode = canvas.visibility_mode.clone();
+    let reference_width = canvas.reference_width;
+    let reference_height = canvas.reference_height;
+
+    let mut row = 0;
+    inline_property(ui, row, "Sort Order", &theme, |ui| {
+        let mut v = sort_order;
+        if ui
+            .add(egui::DragValue::new(&mut v).range(-100..=100))
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                        canvas.sort_order = v;
                     }
                 }
-
-                ui.add_space(8.0);
             });
-    }
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Visibility", &theme, |ui| {
+        let modes = ["always", "play_only", "editor_only"];
+        let mut idx = modes
+            .iter()
+            .position(|m| *m == visibility_mode)
+            .unwrap_or(0);
+        if egui::ComboBox::from_id_salt("vis_mode")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, modes.len(), |i| modes[i].to_string())
+            .changed()
+        {
+            let mode = modes[idx].to_string();
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                        canvas.visibility_mode = mode.clone();
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Ref Width", &theme, |ui| {
+        let mut v = reference_width;
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(1.0).range(1.0..=7680.0))
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                        canvas.reference_width = v;
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Ref Height", &theme, |ui| {
+        let mut v = reference_height;
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(1.0).range(1.0..=4320.0))
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut canvas) = em.get_mut::<UiCanvas>() {
+                        canvas.reference_height = v;
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    let current_theme_name = world
+        .get_resource::<components::UiTheme>()
+        .map(|t| t.name.clone())
+        .unwrap_or_default();
+    inline_property(ui, row, "Theme", &theme, |ui| {
+        let themes = ["Dark", "Light", "High Contrast"];
+        let mut idx = themes
+            .iter()
+            .position(|t| *t == current_theme_name)
+            .unwrap_or(0);
+        if egui::ComboBox::from_id_salt("ui_theme")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, themes.len(), |i| themes[i].to_string())
+            .changed()
+        {
+            let theme_idx = idx;
+            commands.push(move |world: &mut World| {
+                let new_theme = match theme_idx {
+                    1 => components::UiTheme::light(),
+                    2 => components::UiTheme::high_contrast(),
+                    _ => components::UiTheme::dark(),
+                };
+                world.insert_resource(new_theme);
+            });
+        }
+    });
+}
 
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Right
+/// Inspector for `UiWidget` — widget type display, locked toggle, and a delete
+/// button that despawns the entity (since removing the UiWidget component alone
+/// would leave a stranded entity).
+pub fn render_widget_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(widget) = world.get::<UiWidget>(entity) else {
+        return;
+    };
+    let theme = theme.clone();
+    let widget_type_label = widget.widget_type.label().to_string();
+    let locked = widget.locked;
+
+    let mut row = 0;
+    inline_property(ui, row, "Type", &theme, |ui| {
+        ui.label(egui::RichText::new(widget_type_label.clone()).size(11.0));
+    });
+    row += 1;
+    inline_property(ui, row, "Locked", &theme, |ui| {
+        let mut v = locked;
+        if ui.checkbox(&mut v, "").changed() {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut w) = em.get_mut::<UiWidget>() {
+                        w.locked = v;
+                    }
+                }
+            });
+        }
+    });
+
+    ui.add_space(6.0);
+    let delete_btn = egui::Button::new(
+        egui::RichText::new(format!("{} Delete Widget", regular::TRASH))
+            .size(11.0)
+            .color(theme.semantic.error.to_color32()),
+    )
+    .min_size(egui::vec2(ui.available_width(), 22.0));
+    if ui.add(delete_btn).clicked() {
+        commands.push(move |world: &mut World| {
+            if world.get_entity(entity).is_ok() {
+                world.despawn(entity);
+            }
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.set(None);
+            }
+        });
     }
+}
+
+/// Inspector for the bevy_ui `Node` (layout) on a UI entity. Position type,
+/// X/Y/W/H in design pixels (stored as percent of the resolved canvas
+/// reference resolution), and flex direction/justify/align.
+pub fn render_layout_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(node) = world.get::<Node>(entity) else {
+        return;
+    };
+    let theme = theme.clone();
+
+    // Resolve canvas reference resolution from parent canvas (or self).
+    let (crw, crh) = {
+        let mut w = 1280.0_f32;
+        let mut h = 720.0_f32;
+        if let Some(canvas) = world.get::<UiCanvas>(entity) {
+            w = canvas.reference_width;
+            h = canvas.reference_height;
+        } else if let Some(child_of) = world.get::<ChildOf>(entity) {
+            if let Some(canvas) = world.get::<UiCanvas>(child_of.parent()) {
+                w = canvas.reference_width;
+                h = canvas.reference_height;
+            }
+        }
+        (w, h)
+    };
+
+    let position_type = position_type_to_u8(node.position_type);
+    let left = val_to_design_px(node.left, crw);
+    let top = val_to_design_px(node.top, crh);
+    let width = val_to_design_px(node.width, crw);
+    let height = val_to_design_px(node.height, crh);
+    let flex_direction = flex_direction_to_u8(node.flex_direction);
+    let justify_content = justify_content_to_u8(node.justify_content);
+    let align_items = align_items_to_u8(node.align_items);
+
+    let mut row = 0;
+    inline_property(ui, row, "Position", &theme, |ui| {
+        let labels = ["Relative", "Absolute"];
+        let mut idx = position_type as usize;
+        if egui::ComboBox::from_id_salt("pos_type")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.position_type = u8_to_position_type(idx as u8);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "X", &theme, |ui| {
+        let mut v = left;
+        if ui.add(egui::DragValue::new(&mut v).speed(1.0)).changed() {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.left = bevy::ui::Val::Percent(v / crw * 100.0);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Y", &theme, |ui| {
+        let mut v = top;
+        if ui.add(egui::DragValue::new(&mut v).speed(1.0)).changed() {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.top = bevy::ui::Val::Percent(v / crh * 100.0);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Width", &theme, |ui| {
+        let mut v = width;
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=f32::MAX))
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.width = bevy::ui::Val::Percent(v / crw * 100.0);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Height", &theme, |ui| {
+        let mut v = height;
+        if ui
+            .add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=f32::MAX))
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.height = bevy::ui::Val::Percent(v / crh * 100.0);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Direction", &theme, |ui| {
+        let labels = ["Row", "Column", "Row Rev", "Col Rev"];
+        let mut idx = flex_direction as usize;
+        if egui::ComboBox::from_id_salt("flex_dir")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.flex_direction = u8_to_flex_direction(idx as u8);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Justify", &theme, |ui| {
+        let labels = ["Start", "Center", "End", "Between", "Around", "Evenly"];
+        let mut idx = justify_content as usize;
+        if egui::ComboBox::from_id_salt("justify")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.justify_content = u8_to_justify_content(idx as u8);
+                    }
+                }
+            });
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Align", &theme, |ui| {
+        let labels = ["Start", "Center", "End", "Stretch"];
+        let mut idx = align_items as usize;
+        if egui::ComboBox::from_id_salt("align")
+            .width(ui.available_width())
+            .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
+            .changed()
+        {
+            commands.push(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(entity) {
+                    if let Some(mut node) = em.get_mut::<Node>() {
+                        node.align_items = u8_to_align_items(idx as u8);
+                    }
+                }
+            });
+        }
+    });
 }
 
 // ── Fill section ─────────────────────────────────────────────────────────────

@@ -157,7 +157,72 @@ impl Plugin for GameUiPlugin {
             register_ui_presets(app);
             app.init_resource::<canvas::UiCanvasPreviewEnabled>();
             app.init_resource::<canvas::UiCanvasPanel>();
-            app.register_panel(inspector::UiInspectorPanel::default());
+            app.init_resource::<LastSelectionForViewSwitch>();
+            // Per-component inspector entries (Phase A of the UI inspector
+            // decomposition). Each constituent component gets its own
+            // collapsible in the main inspector. Fill/stroke/etc. are still
+            // grouped under a "UI Style" lump until Phase B splits them.
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_canvas",
+                display_name: "UI Canvas",
+                icon: egui_phosphor::regular::FRAME_CORNERS,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiCanvas>(entity).is_some(),
+                add_fn: None,
+                remove_fn: None,
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_canvas_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_widget",
+                display_name: "UI Widget",
+                icon: egui_phosphor::regular::SQUARES_FOUR,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiWidget>(entity).is_some(),
+                add_fn: None,
+                remove_fn: None,
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_widget_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_layout",
+                display_name: "Layout",
+                icon: egui_phosphor::regular::SQUARE_HALF,
+                category: "ui",
+                has_fn: |world, entity| {
+                    // Restrict to UI entities so Bevy's Node component on
+                    // non-UI usages isn't picked up.
+                    world.get::<bevy::ui::Node>(entity).is_some()
+                        && (world.get::<components::UiCanvas>(entity).is_some()
+                            || world.get::<components::UiWidget>(entity).is_some())
+                },
+                add_fn: None,
+                remove_fn: None,
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_layout_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_style",
+                display_name: "UI Style",
+                icon: egui_phosphor::regular::PAINT_BRUSH,
+                category: "ui",
+                has_fn: |world, entity| {
+                    world.get::<components::UiCanvas>(entity).is_some()
+                        || world.get::<components::UiWidget>(entity).is_some()
+                },
+                add_fn: None,
+                remove_fn: None,
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_ui_style_inspector),
+            });
 
             // Register hierarchy icons for UI entities
             app.register_component_icon(renzora_editor::ComponentIconEntry {
@@ -204,6 +269,7 @@ impl Plugin for GameUiPlugin {
                 )
                     .chain(),
             );
+            app.add_systems(Update, auto_switch_view_on_selection);
         }
 
         #[cfg(not(feature = "editor"))]
@@ -443,6 +509,63 @@ fn sync_ui_zindex(
 }
 
 // ── Editor-only systems ─────────────────────────────────────────────────────
+
+/// Tracks the last selection we processed for view-auto-switching, so the
+/// switch fires on selection *change* only — not every frame, which would
+/// fight a user who explicitly picked a different viewport view while a
+/// UI entity was selected.
+#[cfg(feature = "editor")]
+#[derive(Resource, Default)]
+struct LastSelectionForViewSwitch(Option<Entity>);
+
+/// When the selection changes to a UI entity (`UiCanvas`/`UiWidget` or a
+/// descendant of one), flip the viewport into UI view. When it changes to
+/// a non-UI entity *and* we're currently in UI view, flip back to 3D.
+/// Other view transitions (3D ↔ 2D) are left to the user.
+#[cfg(feature = "editor")]
+fn auto_switch_view_on_selection(world: &mut World) {
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+
+    let current_sel = world
+        .get_resource::<renzora_editor::EditorSelection>()
+        .and_then(|s| s.get());
+    let last_sel = world
+        .get_resource::<LastSelectionForViewSwitch>()
+        .map(|l| l.0)
+        .unwrap_or(None);
+    if current_sel == last_sel {
+        return;
+    }
+    if let Some(mut last) = world.get_resource_mut::<LastSelectionForViewSwitch>() {
+        last.0 = current_sel;
+    }
+    let Some(entity) = current_sel else { return };
+
+    let mut check = entity;
+    let is_ui = loop {
+        if world.get::<UiCanvas>(check).is_some() || world.get::<UiWidget>(check).is_some() {
+            break true;
+        }
+        match world.get::<ChildOf>(check) {
+            Some(c) => check = c.parent(),
+            None => break false,
+        }
+    };
+
+    let view = world
+        .get_resource::<ViewportSettings>()
+        .map(|s| s.viewport_view)
+        .unwrap_or_default();
+    let target = match (is_ui, view) {
+        (true, ViewportView::Ui) => return,
+        (true, _) => ViewportView::Ui,
+        (false, ViewportView::Ui) => ViewportView::Three,
+        (false, _) => return,
+    };
+    if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
+        settings.viewport_view = target;
+    }
+}
 
 /// In the editor, sync `UiCanvas::sort_order` from `HierarchyOrder` so that
 /// reordering canvases in the hierarchy panel updates their z-index.
