@@ -268,6 +268,24 @@ pub struct EntityTag {
 #[derive(Component)]
 pub struct EditorCamera;
 
+/// Marker component for the editor's 2D scene-navigation camera.
+///
+/// Sibling of [`EditorCamera`]: orthographic, attached to the same viewport
+/// render target, but only active when `ViewportSettings.viewport_view` is
+/// [`ViewportView::Two`]. Pan with middle-mouse, zoom with scroll.
+#[derive(Component)]
+pub struct EditorCamera2d;
+
+/// Marker component tagging an entity as a 2D scene node.
+///
+/// Currently semantically equivalent to a plain `Transform` parent, but
+/// distinguished so the editor can: (a) auto-switch the viewport to 2D
+/// view when one is selected, and (b) show a 2D-specific hierarchy icon
+/// instead of the generic folder/circle.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component)]
+pub struct Node2d;
+
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
 #[derive(Component)]
 pub struct HideInHierarchy;
@@ -781,6 +799,16 @@ impl PlayModeState {
 /// Use as `.run_if(not_in_play_mode)` on editor systems that should be disabled during play.
 pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
     !play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode())
+}
+
+/// Run condition: returns true when the viewport is in 3D view. Use on
+/// editor systems whose visuals (transform gizmo arrows, collider wireframes,
+/// rotation pies, etc.) only make sense projecting through a 3D camera.
+pub fn in_three_view(
+    settings: Option<Res<crate::core::viewport_types::ViewportSettings>>,
+) -> bool {
+    use crate::core::viewport_types::ViewportView;
+    settings.map_or(true, |s| s.viewport_view == ViewportView::Three)
 }
 
 /// Marker component added to the game camera entity during play mode.

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:bevy_egui"]
+editor = ["dep:bevy_egui", "dep:renzora_editor"]
 
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
@@ -27,6 +27,7 @@ serde = "1"
 thiserror = "2"
 toml = "0.8"
 bevy_egui = { version = "0.39", optional = true }
+renzora_editor = { path = "../renzora_editor", optional = true }
 avian3d = { version = "0.6", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))'.dependencies]

@@ -9260,6 +9260,7 @@ dependencies = [
  "renzora",
  "renzora_animation",
  "renzora_audio",
+ "renzora_editor",
  "renzora_lighting",
  "renzora_macros",
  "renzora_network",

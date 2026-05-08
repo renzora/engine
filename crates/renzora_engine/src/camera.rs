@@ -1,13 +1,16 @@
 //! Runtime camera spawning and render target syncing.
 
-use crate::{EditorCamera, EditorLocked, HideInHierarchy, ViewportRenderTarget};
+use crate::{EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, RenderTarget};
 use bevy::core_pipeline::prepass::NormalPrepass;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
+use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
+use renzora::core::PlayModeState;
 use renzora::viewport_types::EditorCameraMatrix;
 
 /// Spawns the editor's 3D scene-navigation camera.
@@ -90,13 +93,169 @@ pub fn spawn_editor_camera(
     }
 }
 
-/// Watches for changes to `ViewportRenderTarget` and updates the camera accordingly.
+/// Spawns the editor's 2D scene-navigation camera.
 ///
-/// Only acts when an image handle is set (editor mode). When `None`, the camera
-/// keeps its default window target — we never remove `RenderTarget`.
+/// Sibling of [`spawn_editor_camera`] — orthographic camera that renders
+/// to the same viewport offscreen image. Starts inactive; the
+/// `sync_viewport_camera_activation` system in `renzora_viewport` toggles
+/// it active when `ViewportSettings.viewport_view == ViewportView::Two`.
+///
+/// Only one of the two editor cameras is ever active at a time, so they
+/// can safely share the render target.
+pub fn spawn_editor_2d_camera(
+    mut commands: Commands,
+    render_target: Res<ViewportRenderTarget>,
+) {
+    let mut entity = commands.spawn((
+        Camera2d,
+        Camera {
+            // Match the 3D editor camera's order so cycling between views
+            // doesn't change z-stacking against any other cameras (e.g. UI).
+            order: -1,
+            // Inactive until the user picks the 2D viewport view; otherwise
+            // both editor cameras would race for the offscreen target.
+            is_active: false,
+            ..default()
+        },
+        Transform::default(),
+        EditorCamera2d,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Editor Camera 2D"),
+    ));
+
+    if let Some(ref image) = render_target.image {
+        entity.insert(RenderTarget::Image(image.clone().into()));
+    }
+}
+
+/// Tracks the last selection processed for auto-view-switching, so the
+/// 2D-flip fires on selection *change* only — same pattern the UI
+/// auto-switch uses, but kept independent so the two systems don't
+/// fight over a shared tracker.
+#[cfg(feature = "editor")]
+#[derive(Resource, Default)]
+pub struct LastSelectionForView2dSwitch(pub Option<bevy::ecs::entity::Entity>);
+
+/// When the selection changes to a 2D entity (Sprite or Camera2d), flip the
+/// viewport to 2D view. When it changes to a non-2D entity *and* we're
+/// currently in 2D view, fall back to 3D. Other view transitions (3D ↔ UI)
+/// are left to the UI auto-switch system or the user.
+#[cfg(feature = "editor")]
+pub fn auto_switch_view_on_2d_selection(world: &mut World) {
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+
+    let current_sel = world
+        .get_resource::<renzora_editor::EditorSelection>()
+        .and_then(|s| s.get());
+    let last_sel = world
+        .get_resource::<LastSelectionForView2dSwitch>()
+        .map(|l| l.0)
+        .unwrap_or(None);
+    if current_sel == last_sel {
+        return;
+    }
+    if let Some(mut last) = world.get_resource_mut::<LastSelectionForView2dSwitch>() {
+        last.0 = current_sel;
+    }
+    let Some(entity) = current_sel else { return };
+
+    let is_2d = world.get::<bevy::sprite::Sprite>(entity).is_some()
+        || world.get::<Camera2d>(entity).is_some()
+        || world.get::<renzora::core::Node2d>(entity).is_some();
+
+    let view = world
+        .get_resource::<ViewportSettings>()
+        .map(|s| s.viewport_view)
+        .unwrap_or_default();
+    let target = match (is_2d, view) {
+        (true, ViewportView::Two) => return,
+        (true, _) => ViewportView::Two,
+        (false, ViewportView::Two) => ViewportView::Three,
+        (false, _) => return,
+    };
+    if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
+        settings.viewport_view = target;
+    }
+}
+
+/// Pan + zoom controls for the editor 2D camera.
+///
+/// Only acts when `viewport_view == Two`, the cursor is over the viewport
+/// panel, and we're in editing mode. Middle-mouse drag pans (screen pixels
+/// converted to world units via the orthographic scale so drag stays
+/// 1:1 with the cursor at any zoom). Scroll wheel adjusts ortho scale —
+/// scroll up zooms in.
+pub fn editor_2d_camera_controller(
+    settings: Option<Res<ViewportSettings>>,
+    viewport: Option<Res<ViewportState>>,
+    play_mode: Option<Res<PlayModeState>>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut mouse_motion: MessageReader<MouseMotion>,
+    mut scroll_events: MessageReader<MouseWheel>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), With<EditorCamera2d>>,
+) {
+    let in_play = play_mode.map_or(false, |pm| pm.is_in_play_mode());
+    let view = settings.map(|s| s.viewport_view).unwrap_or_default();
+    if in_play || view != ViewportView::Two {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
+
+    let hovered = viewport.map_or(false, |v| v.hovered);
+    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    };
+
+    // Pan: middle-mouse drag converts screen pixels to world units via scale.
+    if hovered && mouse_button.pressed(MouseButton::Middle) {
+        let mut delta = Vec2::ZERO;
+        for ev in mouse_motion.read() {
+            delta += ev.delta;
+        }
+        if delta != Vec2::ZERO {
+            let scale = match &*projection {
+                Projection::Orthographic(o) => o.scale,
+                _ => 1.0,
+            };
+            transform.translation.x -= delta.x * scale;
+            // Screen y increases downward, world y increases upward.
+            transform.translation.y += delta.y * scale;
+        }
+    } else {
+        mouse_motion.clear();
+    }
+
+    // Zoom: scroll wheel. Each notch is 10% in/out, clamped to a
+    // generous range so the camera doesn't disappear from extreme edits.
+    if hovered {
+        let mut zoom = 0.0_f32;
+        for ev in scroll_events.read() {
+            zoom += ev.y;
+        }
+        if zoom != 0.0 {
+            if let Projection::Orthographic(ref mut o) = *projection {
+                let step: f32 = 0.9;
+                o.scale = (o.scale * step.powf(zoom)).clamp(0.01, 1000.0);
+            }
+        }
+    } else {
+        scroll_events.clear();
+    }
+}
+
+/// Watches for changes to `ViewportRenderTarget` and updates both editor
+/// cameras accordingly.
+///
+/// Only acts when an image handle is set (editor mode). When `None`, the cameras
+/// keep their default window target — we never remove `RenderTarget`.
 pub fn sync_camera_render_target(
     render_target: Res<ViewportRenderTarget>,
-    cameras: Query<Entity, With<EditorCamera>>,
+    cameras_3d: Query<Entity, With<EditorCamera>>,
+    cameras_2d: Query<Entity, With<EditorCamera2d>>,
     mut commands: Commands,
 ) {
     if !render_target.is_changed() {
@@ -105,9 +264,9 @@ pub fn sync_camera_render_target(
 
     if let Some(ref image) = render_target.image {
         info!(
-            "[camera] ViewportRenderTarget changed — redirecting editor camera to offscreen image"
+            "[camera] ViewportRenderTarget changed — redirecting editor cameras to offscreen image"
         );
-        for entity in &cameras {
+        for entity in cameras_3d.iter().chain(cameras_2d.iter()) {
             commands
                 .entity(entity)
                 .insert(RenderTarget::Image(image.clone().into()));

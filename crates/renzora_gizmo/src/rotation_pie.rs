@@ -162,6 +162,13 @@ pub fn update_rotation_pie_state(
 /// Egui overlay drawer registered with `ViewportOverlayRegistry`. Reads
 /// [`RotationPieState`] and projects the wedge onto the viewport rect.
 pub fn draw_pie_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+    let three = world
+        .get_resource::<ViewportSettings>()
+        .map_or(true, |s| s.viewport_view == ViewportView::Three);
+    if !three {
+        return;
+    }
     let Some(state) = world.get_resource::<RotationPieState>() else {
         return;
     };

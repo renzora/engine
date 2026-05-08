@@ -17,10 +17,10 @@ pub mod vfs;
 pub use asset_progress::{AssetLoadProgress, LoadProgressState};
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
 pub use renzora::{
-    open_project, CurrentProject, DefaultCamera, EditorCamera, EditorLocked, EffectRouting,
-    HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive, PendingSceneLoad,
-    Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig, SceneCamera, ShapeEntry,
-    ShapeRegistry, ViewportRenderTarget, WindowConfig,
+    open_project, CurrentProject, DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked,
+    EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
+    PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
+    SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget, WindowConfig,
 };
 pub use vfs::Vfs;
 
@@ -49,6 +49,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::DefaultCamera>()
             .register_type::<renzora::EntityTag>()
             .register_type::<renzora::Persistent>()
+            .register_type::<renzora::core::Node2d>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -453,12 +454,18 @@ impl Plugin for RuntimePlugin {
         #[cfg(feature = "editor")]
         {
             app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
-                .add_systems(Startup, camera::spawn_editor_camera)
+                .init_resource::<camera::LastSelectionForView2dSwitch>()
+                .add_systems(
+                    Startup,
+                    (camera::spawn_editor_camera, camera::spawn_editor_2d_camera),
+                )
                 .add_systems(
                     Update,
                     (
                         camera::sync_camera_render_target,
                         camera::update_editor_camera_matrix,
+                        camera::editor_2d_camera_controller,
+                        camera::auto_switch_view_on_2d_selection,
                     ),
                 );
             // Listen for save-scene event from the editor

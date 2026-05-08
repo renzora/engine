@@ -247,11 +247,14 @@ pub fn draw_light_icon_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rec
 
 /// Whether scene icons should render. Read from `ViewportSettings` so the
 /// Display dropdown checkbox controls both the light and camera overlays.
+/// Hidden in non-3D viewport views — light/camera icons are 3D scene
+/// concerns and don't belong in 2D or UI surfaces.
 pub(crate) fn icons_enabled(world: &World) -> bool {
-    world
-        .get_resource::<renzora::core::viewport_types::ViewportSettings>()
-        .map(|s| s.show_scene_icons)
-        .unwrap_or(true)
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+    let Some(settings) = world.get_resource::<ViewportSettings>() else {
+        return true;
+    };
+    settings.show_scene_icons && settings.viewport_view == ViewportView::Three
 }
 
 /// Project a world-space point into egui rect coordinates. Returns `None`

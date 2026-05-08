@@ -184,11 +184,15 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "node_2d",
         display_name: "Node 2D",
-        icon: regular::CIRCLE,
+        icon: regular::SHAPES,
         category: "nodes_2d",
         spawn_fn: |world| {
             world
-                .spawn((Name::new("Node 2D"), Transform::default()))
+                .spawn((
+                    Name::new("Node 2D"),
+                    Transform::default(),
+                    renzora::core::Node2d,
+                ))
                 .id()
         },
     });
@@ -218,6 +222,14 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
         icon: regular::IMAGE_SQUARE,
         color: [180, 220, 130],
         priority: 50,
+        dynamic_icon_fn: None,
+    });
+    registry.register(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<renzora::core::Node2d>(),
+        name: "Node 2D",
+        icon: regular::SHAPES,
+        color: [180, 220, 130],
+        priority: 70,
         dynamic_icon_fn: None,
     });
     registry.register(ComponentIconEntry {

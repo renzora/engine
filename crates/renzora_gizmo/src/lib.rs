@@ -400,52 +400,60 @@ impl Plugin for GizmoPlugin {
                 )
                     .chain()
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
                 render_box_selection
                     .after(box_selection_system)
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
                 selection_visuals::terrain_chunk_selection_system
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::in_three_view),
             )
             .init_resource::<collider_handles::ColliderHandleState>()
             .add_systems(
                 Update,
                 collider_gizmo::draw_collider_gizmos
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
                 light_gizmo::draw_light_gizmos
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .init_resource::<light_gizmo::SceneIconCache>()
             .add_systems(
                 Update,
                 light_gizmo::update_scene_icon_cache
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .init_resource::<rotation_pie::RotationPieState>()
             .add_systems(
                 Update,
                 rotation_pie::update_rotation_pie_state
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .init_resource::<plane_fill::PlaneFillState>()
             .add_systems(
                 Update,
                 plane_fill::update_plane_fill_state
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
@@ -455,7 +463,8 @@ impl Plugin for GizmoPlugin {
                 )
                     .chain()
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             )
             .init_resource::<LastSelectionCount>()
             .add_systems(
@@ -464,7 +473,8 @@ impl Plugin for GizmoPlugin {
                     .after(entity_pick_system)
                     .after(box_selection_system)
                     .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
             );
 
         // Always-visible scene icons painted as phosphor glyphs on the

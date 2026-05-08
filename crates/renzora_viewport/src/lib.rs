@@ -389,20 +389,11 @@ impl EditorPanel for ViewportPanel {
             .map(|s| s.viewport_view)
             .unwrap_or_default();
         match view {
-            renzora::core::viewport_types::ViewportView::Three => {}
-            renzora::core::viewport_types::ViewportView::Two => {
-                let rect = ui.available_rect_before_wrap();
-                ui.painter()
-                    .rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
-                ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "2D mode — coming soon",
-                    egui::FontId::proportional(14.0),
-                    egui::Color32::from_white_alpha(80),
-                );
-                return;
-            }
+            // 3D and 2D both fall through to the existing render-target
+            // display path — `sync_viewport_camera_activation` makes sure
+            // exactly one editor camera writes to the shared image.
+            renzora::core::viewport_types::ViewportView::Three
+            | renzora::core::viewport_types::ViewportView::Two => {}
             renzora::core::viewport_types::ViewportView::Ui => {
                 if let Some(panel) = world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>() {
                     panel.ui(ui, world);
@@ -507,18 +498,24 @@ impl EditorPanel for ViewportPanel {
         // Overlay: model load progress (mesh-only ghost + textured drops)
         render_model_load_progress(ui, world, rect);
 
-        // Overlay: axis orientation gizmo
-        let show_axis = world
-            .get_resource::<ViewportSettings>()
-            .map_or(true, |s| s.show_axis_gizmo);
+        // Overlay: axis orientation gizmo. 3D-only — meaningless in
+        // orthographic 2D and worse-than-meaningless in UI canvas mode.
+        let settings_for_overlays = world.get_resource::<ViewportSettings>();
+        let show_axis = settings_for_overlays.map_or(true, |s| s.show_axis_gizmo);
+        let view = settings_for_overlays
+            .map(|s| s.viewport_view)
+            .unwrap_or_default();
+        let is_three = view == renzora::core::viewport_types::ViewportView::Three;
         let play_mode = world.get_resource::<renzora::core::PlayModeState>();
         let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
-        if show_axis && !in_play {
+        if show_axis && !in_play && is_three {
             render_axis_gizmo(ui.ctx(), world, rect);
         }
 
-        // Overlay: nav pan/zoom buttons (right side, below axis gizmo)
-        if !in_play {
+        // Overlay: nav pan/zoom buttons. The drag handles drive the 3D
+        // orbit camera state — irrelevant in 2D (middle-mouse + scroll
+        // handle pan/zoom there) and UI mode.
+        if !in_play && is_three {
             toolbar::render_nav_overlay(ui.ctx(), world, rect);
         }
     }
@@ -1238,18 +1235,43 @@ fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Re
         });
 }
 
-/// Toggles the Editor Camera's `is_active` based on whether the Viewport
-/// panel is currently mounted in the dock tree. The viewport now hosts UI
-/// authoring as one of its view modes, so it's the only panel that needs
-/// the editor camera running.
+/// Toggles editor camera `is_active` based on whether the Viewport panel is
+/// mounted *and* which view (3D / 2D / UI) is selected. Only one editor
+/// camera renders at a time so the shared offscreen target stays clean.
 fn sync_viewport_camera_activation(
     docking: Option<Res<DockingState>>,
-    mut cameras: Query<&mut Camera, With<EditorCamera>>,
+    settings: Option<Res<ViewportSettings>>,
+    mut cameras_3d: Query<
+        &mut Camera,
+        (
+            With<EditorCamera>,
+            Without<renzora::core::EditorCamera2d>,
+        ),
+    >,
+    mut cameras_2d: Query<
+        &mut Camera,
+        (
+            With<renzora::core::EditorCamera2d>,
+            Without<EditorCamera>,
+        ),
+    >,
 ) {
+    use renzora::core::viewport_types::ViewportView;
+
     let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
-    for mut camera in cameras.iter_mut() {
-        if camera.is_active != mounted {
-            camera.is_active = mounted;
+    let view = settings.map(|s| s.viewport_view).unwrap_or_default();
+
+    let want_3d = mounted && view == ViewportView::Three;
+    let want_2d = mounted && view == ViewportView::Two;
+
+    for mut camera in cameras_3d.iter_mut() {
+        if camera.is_active != want_3d {
+            camera.is_active = want_3d;
+        }
+    }
+    for mut camera in cameras_2d.iter_mut() {
+        if camera.is_active != want_2d {
+            camera.is_active = want_2d;
         }
     }
 }
