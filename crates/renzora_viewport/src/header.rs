@@ -537,7 +537,16 @@ fn render_left_actions(
     let play_mode = world.get_resource::<PlayModeState>();
     let is_playing = play_mode.map(|p| p.is_in_play_mode()).unwrap_or(false);
     let is_scripts = play_mode.map(|p| p.is_scripts_only()).unwrap_or(false);
-    let is_editing = play_mode.map(|p| p.is_editing()).unwrap_or(true);
+    // External-runtime mode keeps `PlayModeState` in `Editing`, so
+    // `is_editing()` would be true while a child runtime is alive. The
+    // play button needs to switch to Stop in that case too — `is_active`
+    // is the union of "in-editor play" and "external runtime alive".
+    let runtime_alive = world
+        .get_resource::<crate::external_runtime::ExternalRuntime>()
+        .map(|r| r.is_alive())
+        .unwrap_or(false);
+    let is_active = is_playing || runtime_alive;
+    let is_editing = play_mode.map(|p| p.is_editing()).unwrap_or(true) && !runtime_alive;
     let play_color = theme.semantic.success.to_color32();
     let scripts_color = theme.semantic.accent.to_color32();
     let stop_color = theme.semantic.error.to_color32();
@@ -635,8 +644,8 @@ fn render_left_actions(
 
     // Play (or Stop when in full play mode). Title bar mirrors these — the
     // viewport copies stay so the gizmo workflow has the controls inline.
-    let play_clickable = is_playing || (is_editing && has_scene_camera);
-    let (play_icon, play_icon_color, play_tip) = if is_playing {
+    let play_clickable = is_active || (is_editing && has_scene_camera);
+    let (play_icon, play_icon_color, play_tip) = if is_active {
         (STOP, stop_color, "Stop")
     } else if !has_scene_camera {
         (PLAY, muted, "Scene has no camera — add one to play")
@@ -654,8 +663,16 @@ fn render_left_actions(
     );
     if play_clickable && r.clicked() {
         cmds.push(|w: &mut World| {
+            // External-runtime path is handled by the same `request_stop`
+            // signal that `play_mode::handle_play_mode_transitions`
+            // intercepts, so a single `request_stop = true` covers both
+            // a live child runtime and an in-editor play session.
+            let runtime_alive = w
+                .get_resource::<crate::external_runtime::ExternalRuntime>()
+                .map(|r| r.is_alive())
+                .unwrap_or(false);
             if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
-                if pm.is_in_play_mode() {
+                if runtime_alive || pm.is_in_play_mode() {
                     pm.request_stop = true;
                 } else if pm.is_scripts_only() {
                     pm.request_stop = true;
@@ -671,7 +688,7 @@ fn render_left_actions(
     let scripts_clickable = is_scripts || is_editing;
     let (scr_icon, scr_color, scr_tip) = if is_scripts {
         (STOP, scripts_color, "Stop Scripts")
-    } else if is_playing {
+    } else if is_active {
         (CODE, muted, "Stop play mode first")
     } else {
         (CODE, scripts_color, "Run Scripts (Shift+F5)")
@@ -680,12 +697,12 @@ fn render_left_actions(
         ui,
         &mut x,
         scr_icon,
-        scripts_clickable && !is_playing,
+        scripts_clickable && !is_active,
         scr_color,
         scr_tip,
         "vp_hdr_scripts",
     );
-    if scripts_clickable && !is_playing && r.clicked() {
+    if scripts_clickable && !is_active && r.clicked() {
         cmds.push(|w: &mut World| {
             if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
                 if pm.is_scripts_only() {
@@ -699,7 +716,7 @@ fn render_left_actions(
 
     // Toolbar tool buttons (Select/Translate/Rotate/Scale + terrain + custom)
     // sit on the left immediately after the action buttons.
-    let render_toolbar = !is_playing && !is_scripts;
+    let render_toolbar = !is_active && !is_scripts;
     if render_toolbar {
         x = render_left_tools(ui, world, cmds, theme, x, y, hovered_bg);
     }

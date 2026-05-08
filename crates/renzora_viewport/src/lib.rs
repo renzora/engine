@@ -6,6 +6,7 @@
 pub mod camera_preview;
 pub mod debug_material;
 pub mod effect_routing;
+pub mod external_runtime;
 pub mod glb_compat;
 pub mod header;
 pub mod material_drop;
@@ -69,6 +70,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<CameraOrbitSnapshot>()
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
+            .init_resource::<external_runtime::ExternalRuntime>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastToggleState>()
             // Per-material-type viz-swap state (one of each per registered type).
@@ -104,6 +106,7 @@ impl Plugin for ViewportPlugin {
                 ),
                 render_systems::update_shadow_settings,
                 play_mode::handle_play_mode_transitions,
+                external_runtime::poll_external_runtime,
                 effect_routing::update_effect_routing,
                 (
                     model_drop::spawn_loaded_gltfs,
@@ -172,6 +175,8 @@ impl Plugin for ViewportPlugin {
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(150, draw_viewport_cursor_overlay);
+
+        app.add_systems(Last, external_runtime::kill_on_app_exit);
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);

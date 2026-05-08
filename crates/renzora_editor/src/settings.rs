@@ -125,6 +125,13 @@ pub struct EditorSettings {
     pub scripts_use_game_camera: bool,
     /// Hide and lock the cursor when entering play mode
     pub hide_cursor_in_play_mode: bool,
+    /// Spawn the exported runtime binary as a child process when entering
+    /// play mode, instead of doing the in-editor camera switch. Gives a
+    /// "real exported game" experience — its own window, the project's
+    /// configured title/icon/decorations, and full insulation from editor
+    /// state. Falls back to in-editor play if the runtime binary can't be
+    /// located next to the editor.
+    pub external_play_window: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
@@ -160,6 +167,7 @@ impl Default for EditorSettings {
             script_rerun_on_ready_on_reload: true,
             scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
+            external_play_window: true,
             auto_import_on_drop: true,
             ui_preview_by_default: true,
             hierarchy_parent_stacking: true,

@@ -1187,6 +1187,12 @@ fn render_scripting_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme:
                     "Hide and lock cursor in play mode",
                 )
             });
+            settings_row(ui, 3, "External Window", theme, |ui| {
+                ui.checkbox(
+                    &mut settings.external_play_window,
+                    "Spawn the exported runtime in its own window when pressing Play",
+                )
+            });
         },
     );
 

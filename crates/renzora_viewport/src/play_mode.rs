@@ -12,9 +12,27 @@ use renzora::core::{
     ViewportRenderTarget,
 };
 use renzora_editor::camera::EditorUiCamera;
+use renzora_editor::EditorSettings;
+
+use crate::external_runtime::{
+    self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,
+};
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
+    // Try the external-runtime path first. If the user has the
+    // "external_play_window" setting on AND the runtime binary is
+    // discoverable, route Play/Stop to spawning/killing the child instead
+    // of doing the in-editor camera switch. The editor's own
+    // `PlayModeState` stays in `Editing` while the runtime owns the game.
+    //
+    // If the binary isn't discoverable (e.g. `cargo run` from a workspace
+    // with no `dist/{platform}/runtime/` sibling), this returns false and
+    // we fall through to in-editor play, so Play always does *something*.
+    if try_handle_external_runtime(world) {
+        return;
+    }
+
     let Some(mut play_mode) = world.remove_resource::<PlayModeState>() else {
         return;
     };
@@ -39,6 +57,118 @@ pub fn handle_play_mode_transitions(world: &mut World) {
     }
 
     world.insert_resource(play_mode);
+}
+
+/// External-runtime mode handler. Returns true if it consumed the
+/// play/stop request — caller should bail out without falling through to
+/// the in-editor path. Returns false if the feature is off or
+/// inapplicable (no binary found, no project loaded, no pending request).
+fn try_handle_external_runtime(world: &mut World) -> bool {
+    use renzora::core::console_log::*;
+
+    // Feature gate: only act when the user opted in.
+    let enabled = world
+        .get_resource::<EditorSettings>()
+        .map(|s| s.external_play_window)
+        .unwrap_or(false);
+    if !enabled {
+        return false;
+    }
+
+    // Inspect the request flags before mutating anything else.
+    let Some(play_mode) = world.get_resource::<PlayModeState>() else {
+        return false;
+    };
+    let runtime_alive = world
+        .get_resource::<ExternalRuntime>()
+        .map(|r| r.is_alive())
+        .unwrap_or(false);
+    let pending_play = play_mode.request_play && play_mode.is_editing();
+    let pending_stop = play_mode.request_stop;
+    // While a child runtime is alive, *every* play/stop request collapses
+    // to "stop." That keeps the title bar's Play button (which doesn't
+    // know about external runtime state) from accidentally spawning a
+    // second instance.
+    let want_stop = runtime_alive && (pending_play || pending_stop);
+    let want_play = !runtime_alive && pending_play;
+
+    if !want_play && !want_stop {
+        return false;
+    }
+
+    if want_stop {
+        if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
+            if external_runtime::kill_runtime(&mut runtime) {
+                console_info("PlayMode", "External runtime killed");
+            }
+        }
+        if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
+            pm.request_stop = false;
+            pm.request_play = false;
+        }
+        return true;
+    }
+
+    // want_play — try to locate and spawn the runtime. If we can't, log
+    // and let the caller fall through to the in-editor path so Play still
+    // does something.
+    let Some(binary) = find_runtime_binary() else {
+        console_info(
+            "PlayMode",
+            "External play requested but runtime binary not found — falling back to in-editor play",
+        );
+        return false;
+    };
+
+    let project_path = world
+        .get_resource::<renzora::CurrentProject>()
+        .map(|p| p.path.clone());
+    let Some(project_path) = project_path else {
+        console_error(
+            "PlayMode",
+            "External play requested but no project is loaded",
+        );
+        // Eat the request so we don't repeatedly attempt this — the user
+        // hasn't loaded a project, the in-editor path can't help either.
+        if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
+            pm.request_play = false;
+        }
+        return true;
+    };
+
+    // Save scene before launching, mirroring `enter_play_mode`. The
+    // runtime reads from disk, so unsaved edits would otherwise be
+    // invisible to it.
+    world.trigger(renzora::core::SaveCurrentScene);
+
+    console_info(
+        "PlayMode",
+        format!(
+            "Spawning external runtime: {} --project {}",
+            binary.display(),
+            project_path.display()
+        ),
+    );
+
+    match spawn_runtime(&binary, &project_path) {
+        Ok(child) => {
+            if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
+                replace_child(&mut runtime, child);
+            }
+            if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
+                pm.request_play = false;
+            }
+            true
+        }
+        Err(e) => {
+            console_error(
+                "PlayMode",
+                format!("Failed to spawn runtime: {} — falling back", e),
+            );
+            // Don't eat the request; let in-editor play take over.
+            false
+        }
+    }
 }
 
 fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
