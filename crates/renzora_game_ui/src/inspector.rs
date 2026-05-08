@@ -6,73 +6,12 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_editor::{
-    collapsible_section, inline_property, EditorCommands, EditorSelection,
-};
+use renzora_editor::{inline_property, EditorCommands, EditorSelection};
 use renzora_theme::Theme;
 
-use crate::components::{self, UiCanvas, UiWidget, UiWidgetType};
+use crate::components::{self, UiCanvas, UiWidget};
 
 /// Snapshot of the selected widget's properties for editing.
-#[derive(Default, Clone)]
-struct InspectorSnapshot {
-    entity: Option<Entity>,
-    name: String,
-    // Canvas props (if entity has UiCanvas)
-    is_canvas: bool,
-    sort_order: i32,
-    visibility_mode: String,
-    reference_width: f32,
-    reference_height: f32,
-    // Reference resolution (from parent canvas or defaults)
-    canvas_ref_w: f32,
-    canvas_ref_h: f32,
-    // Widget props (if entity has UiWidget)
-    is_widget: bool,
-    widget_type: UiWidgetType,
-    locked: bool,
-    // Visibility
-    is_visible: bool,
-    // Layout (from Node)
-    has_node: bool,
-    left: f32,
-    top: f32,
-    width: f32,
-    height: f32,
-    margin: [f32; 4],
-    position_type: u8,   // 0=Relative, 1=Absolute
-    flex_direction: u8,  // 0=Row, 1=Column, 2=RowReverse, 3=ColumnReverse
-    justify_content: u8, // 0=Start, 1=Center, 2=End, 3=SpaceBetween, 4=SpaceAround, 5=SpaceEvenly
-    align_items: u8,     // 0=Start, 1=Center, 2=End, 3=Stretch
-    // Widget style (individual components, formerly UiWidgetStyle)
-    fill: Option<components::UiFill>,
-    stroke: Option<components::UiStroke>,
-    border_radius: Option<components::UiBorderRadius>,
-    shadow: Option<components::UiBoxShadow>,
-    opacity: Option<components::UiOpacity>,
-    clip_content: Option<components::UiClipContent>,
-    cursor: Option<components::UiCursor>,
-    text_style: Option<components::UiTextStyle>,
-    padding: Option<components::UiPadding>,
-    // Text (content lives on bevy Text component, style props on UiTextStyle)
-    has_text: bool,
-    text_content: String,
-    // Interaction style
-    interaction_style: Option<components::UiInteractionStyle>,
-    transition_duration: Option<f32>,
-    // Widget-specific data snapshots
-    slider: Option<components::SliderData>,
-    checkbox: Option<components::CheckboxData>,
-    toggle: Option<components::ToggleData>,
-    radio_button: Option<components::RadioButtonData>,
-    dropdown: Option<components::DropdownData>,
-    text_input: Option<components::TextInputData>,
-    scroll_view: Option<components::ScrollViewData>,
-    tooltip: Option<components::TooltipData>,
-    modal: Option<components::ModalData>,
-    draggable_window: Option<components::DraggableWindowData>,
-}
-
 /// Convert a Val to design-space pixels given a reference dimension.
 fn val_to_design_px(v: bevy::ui::Val, reference: f32) -> f32 {
     match v {
@@ -171,133 +110,6 @@ fn color_to_arr(c: Color) -> [f32; 4] {
 /// Helper: convert `[f32; 4]` RGBA to `Color`.
 fn arr_to_color(c: [f32; 4]) -> Color {
     Color::srgba(c[0], c[1], c[2], c[3])
-}
-
-/// Lump inspector for widget-specific data (Slider, Checkbox, Dropdown, etc.).
-/// Each widget-type data component will graduate to its own `InspectorEntry`
-/// in Phase C; for now they share this entry to keep the diff manageable.
-pub fn render_widget_data_inspector(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    commands: &EditorCommands,
-    theme: &Theme,
-) {
-    // Body was lifted from the old panel impl which had a local `theme: Theme`.
-    // Clone once so the existing `&theme` call sites still type-check.
-    let theme = theme.clone();
-    let mut snap = InspectorSnapshot::default();
-    snap.entity = Some(entity);
-    let snap = &mut snap;
-
-        // Name
-        snap.name = world
-            .get::<Name>(entity)
-            .map(|n| n.as_str().to_string())
-            .unwrap_or_default();
-
-        // Canvas
-        snap.is_canvas = world.get::<UiCanvas>(entity).is_some();
-        if let Some(canvas) = world.get::<UiCanvas>(entity) {
-            snap.sort_order = canvas.sort_order;
-            snap.visibility_mode = canvas.visibility_mode.clone();
-            snap.reference_width = canvas.reference_width;
-            snap.reference_height = canvas.reference_height;
-        }
-
-        // Widget
-        snap.is_widget = world.get::<UiWidget>(entity).is_some();
-        if let Some(widget) = world.get::<UiWidget>(entity) {
-            snap.widget_type = widget.widget_type.clone();
-            snap.locked = widget.locked;
-        }
-
-        // Visibility
-        snap.is_visible = world
-            .get::<Visibility>(entity)
-            .map(|v| *v != Visibility::Hidden)
-            .unwrap_or(true);
-
-        // Resolve reference resolution from parent canvas (or self if canvas)
-        snap.canvas_ref_w = 1280.0;
-        snap.canvas_ref_h = 720.0;
-        if snap.is_canvas {
-            snap.canvas_ref_w = snap.reference_width;
-            snap.canvas_ref_h = snap.reference_height;
-        } else if let Some(child_of) = world.get::<ChildOf>(entity) {
-            if let Some(canvas) = world.get::<UiCanvas>(child_of.parent()) {
-                snap.canvas_ref_w = canvas.reference_width;
-                snap.canvas_ref_h = canvas.reference_height;
-            }
-        }
-        let crw = snap.canvas_ref_w;
-        let crh = snap.canvas_ref_h;
-
-        // Node
-        snap.has_node = world.get::<Node>(entity).is_some();
-        if let Some(node) = world.get::<Node>(entity) {
-            snap.left = val_to_design_px(node.left, crw);
-            snap.top = val_to_design_px(node.top, crh);
-            snap.width = val_to_design_px(node.width, crw);
-            snap.height = val_to_design_px(node.height, crh);
-            snap.position_type = position_type_to_u8(node.position_type);
-            snap.flex_direction = flex_direction_to_u8(node.flex_direction);
-            snap.justify_content = justify_content_to_u8(node.justify_content);
-            snap.align_items = align_items_to_u8(node.align_items);
-            snap.margin = [
-                val_px(node.margin.top),
-                val_px(node.margin.right),
-                val_px(node.margin.bottom),
-                val_px(node.margin.left),
-            ];
-        }
-
-        // Widget style (individual components)
-        snap.fill = world.get::<components::UiFill>(entity).cloned();
-        snap.stroke = world.get::<components::UiStroke>(entity).cloned();
-        snap.border_radius = world.get::<components::UiBorderRadius>(entity).cloned();
-        snap.shadow = world.get::<components::UiBoxShadow>(entity).cloned();
-        snap.opacity = world.get::<components::UiOpacity>(entity).cloned();
-        snap.clip_content = world.get::<components::UiClipContent>(entity).cloned();
-        snap.cursor = world.get::<components::UiCursor>(entity).cloned();
-        snap.text_style = world.get::<components::UiTextStyle>(entity).cloned();
-        snap.padding = world.get::<components::UiPadding>(entity).cloned();
-
-        // Text
-        snap.has_text = world.get::<bevy::ui::widget::Text>(entity).is_some();
-        if let Some(text) = world.get::<bevy::ui::widget::Text>(entity) {
-            snap.text_content = text.0.clone();
-        }
-
-        // Interaction style
-        snap.interaction_style = world.get::<components::UiInteractionStyle>(entity).cloned();
-        snap.transition_duration = world
-            .get::<components::UiTransition>(entity)
-            .map(|t| t.duration);
-
-        // Widget-specific data snapshots
-        snap.slider = world.get::<components::SliderData>(entity).cloned();
-        snap.checkbox = world.get::<components::CheckboxData>(entity).cloned();
-        snap.toggle = world.get::<components::ToggleData>(entity).cloned();
-        snap.radio_button = world.get::<components::RadioButtonData>(entity).cloned();
-        snap.dropdown = world.get::<components::DropdownData>(entity).cloned();
-        snap.text_input = world.get::<components::TextInputData>(entity).cloned();
-        snap.scroll_view = world.get::<components::ScrollViewData>(entity).cloned();
-        snap.tooltip = world.get::<components::TooltipData>(entity).cloned();
-        snap.modal = world.get::<components::ModalData>(entity).cloned();
-        snap.draggable_window = world
-            .get::<components::DraggableWindowData>(entity)
-            .cloned();
-
-        // ── Render sections ──────────────────────────────────────────────
-        // Style/effect/interaction components have graduated to their own
-        // InspectorEntries (Phase B). Only widget-specific data remains in
-        // the lump until Phase C splits each widget type into its own entry.
-        ui.spacing_mut().item_spacing.y = 0.0;
-
-        widget_data_sections(ui, snap, entity, commands, &theme);
-
-        ui.add_space(8.0);
 }
 
 /// Inspector for `UiCanvas` — sort order, visibility mode, reference resolution,
@@ -1206,17 +1018,8 @@ pub fn render_padding_inspector(
     }
 }
 
-// ── Effects section (opacity, shadow, clip, cursor) ──────────────────────────
-
-fn effects_section(
-    ui: &mut egui::Ui,
-    snap: &mut InspectorSnapshot,
-    entity: Entity,
-    commands: &EditorCommands,
-    theme: &renzora_theme::Theme,
-) {
-    let _ = (ui, snap, entity, commands, theme);
-}
+// ── Effects (opacity / shadow / clip / cursor) — split into per-component
+//    inspectors below. The old combined `effects_section` is retired.
 
 pub fn render_opacity_inspector(
     ui: &mut egui::Ui,
@@ -1439,17 +1242,7 @@ pub fn render_shadow_inspector(
     });
 }
 
-// ── Interaction States section ────────────────────────────────────────────────
-
-fn interaction_states_section(
-    ui: &mut egui::Ui,
-    snap: &mut InspectorSnapshot,
-    entity: Entity,
-    commands: &EditorCommands,
-    theme: &renzora_theme::Theme,
-) {
-    let _ = (ui, snap, entity, commands, theme);
-}
+// ── Interaction States — see render_interaction_inspector below.
 
 pub fn render_interaction_inspector(
     ui: &mut egui::Ui,
@@ -1801,26 +1594,25 @@ fn push_interaction_style(
     });
 }
 
-// ── Widget-specific property sections ────────────────────────────────────────
+// ── Widget-specific data inspectors ──────────────────────────────────────────
+//
+// Each widget data component (SliderData, CheckboxData, …) is its own
+// InspectorEntry now. The main inspector wraps each in a collapsible
+// automatically; these fns just render the inline_property rows.
 
-fn widget_data_sections(
+pub fn render_slider_data_inspector(
     ui: &mut egui::Ui,
-    snap: &mut InspectorSnapshot,
+    world: &World,
     entity: Entity,
     commands: &EditorCommands,
-    theme: &renzora_theme::Theme,
+    theme: &Theme,
 ) {
-    // Slider
-    if let Some(ref mut data) = snap.slider {
-        collapsible_section(
-            ui,
-            regular::SLIDERS_HORIZONTAL,
-            "Slider",
-            "ui",
-            theme,
-            "ui_insp_slider",
-            true,
-            |ui| {
+    let Some(mut data_owned) = world.get::<components::SliderData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::SliderData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Value", theme, |ui| {
                     let mut v = data.value;
@@ -1933,21 +1725,23 @@ fn widget_data_sections(
                             .map(|mut p| p.thumb_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Checkbox
-    if let Some(ref mut data) = snap.checkbox {
-        collapsible_section(
-            ui,
-            regular::CHECK_SQUARE,
-            "Checkbox",
-            "ui",
-            theme,
-            "ui_insp_checkbox",
-            true,
-            |ui| {
+pub fn render_checkbox_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::CheckboxData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::CheckboxData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Checked", theme, |ui| {
                     let mut v = data.checked;
@@ -2007,21 +1801,23 @@ fn widget_data_sections(
                             .map(|mut p| p.box_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Toggle
-    if let Some(ref mut data) = snap.toggle {
-        collapsible_section(
-            ui,
-            regular::TOGGLE_LEFT,
-            "Toggle",
-            "ui",
-            theme,
-            "ui_insp_toggle",
-            true,
-            |ui| {
+pub fn render_toggle_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::ToggleData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::ToggleData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "On", theme, |ui| {
                     let mut v = data.on;
@@ -2095,21 +1891,23 @@ fn widget_data_sections(
                             .map(|mut p| p.knob_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Radio Button
-    if let Some(ref mut data) = snap.radio_button {
-        collapsible_section(
-            ui,
-            regular::RADIO_BUTTON,
-            "Radio Button",
-            "ui",
-            theme,
-            "ui_insp_radio",
-            true,
-            |ui| {
+pub fn render_radio_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::RadioButtonData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::RadioButtonData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Group", theme, |ui| {
                     let mut v = data.group.clone();
@@ -2172,21 +1970,23 @@ fn widget_data_sections(
                             .map(|mut p| p.active_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Dropdown
-    if let Some(ref mut data) = snap.dropdown {
-        collapsible_section(
-            ui,
-            regular::CARET_CIRCLE_DOWN,
-            "Dropdown",
-            "ui",
-            theme,
-            "ui_insp_dropdown",
-            true,
-            |ui| {
+pub fn render_dropdown_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::DropdownData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::DropdownData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Placeholder", theme, |ui| {
                     let mut v = data.placeholder.clone();
@@ -2278,21 +2078,23 @@ fn widget_data_sections(
                         }
                     });
                 }
-            },
-        );
+        }
     }
+}
 
-    // Text Input
-    if let Some(ref mut data) = snap.text_input {
-        collapsible_section(
-            ui,
-            regular::TEXTBOX,
-            "Text Input",
-            "ui",
-            theme,
-            "ui_insp_text_input",
-            true,
-            |ui| {
+pub fn render_text_input_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::TextInputData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::TextInputData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Text", theme, |ui| {
                     let mut v = data.text.clone();
@@ -2359,21 +2161,23 @@ fn widget_data_sections(
                         });
                     }
                 });
-            },
-        );
+        }
     }
+}
 
-    // Scroll View
-    if let Some(ref mut data) = snap.scroll_view {
-        collapsible_section(
-            ui,
-            regular::SCROLL,
-            "Scroll View",
-            "ui",
-            theme,
-            "ui_insp_scroll",
-            true,
-            |ui| {
+pub fn render_scroll_view_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::ScrollViewData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::ScrollViewData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Scroll Speed", theme, |ui| {
                     let mut v = data.scroll_speed;
@@ -2419,21 +2223,23 @@ fn widget_data_sections(
                         });
                     }
                 });
-            },
-        );
+        }
     }
+}
 
-    // Tooltip
-    if let Some(ref mut data) = snap.tooltip {
-        collapsible_section(
-            ui,
-            regular::CHAT_CIRCLE,
-            "Tooltip",
-            "ui",
-            theme,
-            "ui_insp_tooltip",
-            true,
-            |ui| {
+pub fn render_tooltip_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::TooltipData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::TooltipData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Text", theme, |ui| {
                     let mut v = data.text.clone();
@@ -2497,21 +2303,23 @@ fn widget_data_sections(
                             .map(|mut p| p.text_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Modal
-    if let Some(ref mut data) = snap.modal {
-        collapsible_section(
-            ui,
-            regular::BROWSER,
-            "Modal",
-            "ui",
-            theme,
-            "ui_insp_modal",
-            true,
-            |ui| {
+pub fn render_modal_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::ModalData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::ModalData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Title", theme, |ui| {
                     let mut v = data.title.clone();
@@ -2557,21 +2365,23 @@ fn widget_data_sections(
                             .map(|mut p| p.backdrop_color = c)
                     },
                 );
-            },
-        );
+        }
     }
+}
 
-    // Draggable Window
-    if let Some(ref mut data) = snap.draggable_window {
-        collapsible_section(
-            ui,
-            regular::APP_WINDOW,
-            "Draggable Window",
-            "ui",
-            theme,
-            "ui_insp_dragwin",
-            true,
-            |ui| {
+pub fn render_draggable_window_data_inspector(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    commands: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(mut data_owned) = world.get::<components::DraggableWindowData>(entity).cloned() else {
+        return;
+    };
+    let data: &mut components::DraggableWindowData = &mut data_owned;
+    {
+        {
                 let mut row = 0;
                 inline_property(ui, row, "Title", theme, |ui| {
                     let mut v = data.title.clone();
@@ -2634,8 +2444,7 @@ fn widget_data_sections(
                             .map(|mut p| p.title_bar_color = c)
                     },
                 );
-            },
-        );
+        }
     }
 }
 

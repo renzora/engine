@@ -420,19 +420,218 @@ impl Plugin for GameUiPlugin {
                 fields: Vec::new(),
                 custom_ui_fn: Some(inspector::render_interaction_inspector),
             });
-            // Lump for widget-type-specific data (Phase C splits each).
+            // Per-widget-type data components — Phase C. Each is its own
+            // entry; users can swap a slider's data, drop a tooltip's data,
+            // etc. via the Add Component overlay.
             app.register_inspector(renzora_editor::InspectorEntry {
-                type_id: "ui_widget_data",
-                display_name: "Widget Data",
-                icon: egui_phosphor::regular::SLIDERS,
+                type_id: "ui_slider_data",
+                display_name: "Slider",
+                icon: egui_phosphor::regular::SLIDERS_HORIZONTAL,
                 category: "ui",
-                has_fn: |world, entity| world.get::<components::UiWidget>(entity).is_some(),
-                add_fn: None,
-                remove_fn: None,
+                has_fn: |world, entity| world.get::<components::SliderData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::SliderData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::SliderData>();
+                }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: Some(inspector::render_widget_data_inspector),
+                custom_ui_fn: Some(inspector::render_slider_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_checkbox_data",
+                display_name: "Checkbox",
+                icon: egui_phosphor::regular::CHECK_SQUARE,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::CheckboxData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::CheckboxData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::CheckboxData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_checkbox_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_toggle_data",
+                display_name: "Toggle",
+                icon: egui_phosphor::regular::TOGGLE_LEFT,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::ToggleData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::ToggleData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::ToggleData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_toggle_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_radio_data",
+                display_name: "Radio Button",
+                icon: egui_phosphor::regular::RADIO_BUTTON,
+                category: "ui",
+                has_fn: |world, entity| {
+                    world.get::<components::RadioButtonData>(entity).is_some()
+                },
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::RadioButtonData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::RadioButtonData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_radio_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_dropdown_data",
+                display_name: "Dropdown",
+                icon: egui_phosphor::regular::CARET_CIRCLE_DOWN,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::DropdownData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::DropdownData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::DropdownData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_dropdown_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_text_input_data",
+                display_name: "Text Input",
+                icon: egui_phosphor::regular::TEXTBOX,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::TextInputData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::TextInputData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::TextInputData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_text_input_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_scroll_view_data",
+                display_name: "Scroll View",
+                icon: egui_phosphor::regular::SCROLL,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::ScrollViewData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::ScrollViewData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::ScrollViewData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_scroll_view_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_tooltip_data",
+                display_name: "Tooltip",
+                icon: egui_phosphor::regular::CHAT_CIRCLE,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::TooltipData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::TooltipData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::TooltipData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_tooltip_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_modal_data",
+                display_name: "Modal",
+                icon: egui_phosphor::regular::BROWSER,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::ModalData>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::ModalData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::ModalData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_modal_data_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_draggable_window_data",
+                display_name: "Draggable Window",
+                icon: egui_phosphor::regular::APP_WINDOW,
+                category: "ui",
+                has_fn: |world, entity| {
+                    world
+                        .get::<components::DraggableWindowData>(entity)
+                        .is_some()
+                },
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::DraggableWindowData::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::DraggableWindowData>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_draggable_window_data_inspector),
             });
 
             // Register hierarchy icons for UI entities
