@@ -207,21 +207,232 @@ impl Plugin for GameUiPlugin {
                 fields: Vec::new(),
                 custom_ui_fn: Some(inspector::render_layout_inspector),
             });
+            // Per-style components — each is individually addable via the
+            // Add Component overlay and removable via the trash icon. A text
+            // label that doesn't want a border can drop UiStroke; a button
+            // that wants a shadow can add UiBoxShadow. (Phase B.)
             app.register_inspector(renzora_editor::InspectorEntry {
-                type_id: "ui_style",
-                display_name: "UI Style",
-                icon: egui_phosphor::regular::PAINT_BRUSH,
+                type_id: "ui_fill",
+                display_name: "UI Fill",
+                icon: egui_phosphor::regular::DROP_HALF,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiFill>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiFill::Solid(Color::srgba(0.2, 0.2, 0.2, 1.0)));
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiFill>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_fill_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_stroke",
+                display_name: "UI Border",
+                icon: egui_phosphor::regular::BOUNDING_BOX,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiStroke>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world.entity_mut(entity).insert(components::UiStroke::new(
+                        Color::srgba(0.4, 0.4, 0.4, 1.0),
+                        1.0,
+                    ));
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiStroke>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_stroke_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_border_radius",
+                display_name: "UI Border Radius",
+                icon: egui_phosphor::regular::FRAME_CORNERS,
                 category: "ui",
                 has_fn: |world, entity| {
-                    world.get::<components::UiCanvas>(entity).is_some()
-                        || world.get::<components::UiWidget>(entity).is_some()
+                    world.get::<components::UiBorderRadius>(entity).is_some()
                 },
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiBorderRadius::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::UiBorderRadius>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_border_radius_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_text",
+                display_name: "UI Text",
+                icon: egui_phosphor::regular::TEXT_AA,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiTextStyle>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiTextStyle::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::UiTextStyle>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_text_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_padding",
+                display_name: "UI Padding",
+                icon: egui_phosphor::regular::COLUMNS,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiPadding>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiPadding::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiPadding>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_padding_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_opacity",
+                display_name: "UI Opacity",
+                icon: egui_phosphor::regular::CIRCLE_HALF,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiOpacity>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiOpacity(1.0));
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiOpacity>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_opacity_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_shadow",
+                display_name: "UI Shadow",
+                icon: egui_phosphor::regular::SUN_DIM,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiBoxShadow>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiBoxShadow::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::UiBoxShadow>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_shadow_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_clip",
+                display_name: "UI Clip Content",
+                icon: egui_phosphor::regular::CROP,
+                category: "ui",
+                has_fn: |world, entity| {
+                    world.get::<components::UiClipContent>(entity).is_some()
+                },
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiClipContent(true));
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::UiClipContent>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_clip_content_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_cursor",
+                display_name: "UI Cursor",
+                icon: egui_phosphor::regular::CURSOR,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiCursor>(entity).is_some(),
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiCursor::Pointer);
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiCursor>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_cursor_inspector),
+            });
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_interaction",
+                display_name: "UI Interaction States",
+                icon: egui_phosphor::regular::CURSOR_CLICK,
+                category: "ui",
+                has_fn: |world, entity| {
+                    world
+                        .get::<components::UiInteractionStyle>(entity)
+                        .is_some()
+                },
+                add_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .insert(components::UiInteractionStyle::default());
+                }),
+                remove_fn: Some(|world, entity| {
+                    world
+                        .entity_mut(entity)
+                        .remove::<components::UiInteractionStyle>();
+                }),
+                is_enabled_fn: None,
+                set_enabled_fn: None,
+                fields: Vec::new(),
+                custom_ui_fn: Some(inspector::render_interaction_inspector),
+            });
+            // Lump for widget-type-specific data (Phase C splits each).
+            app.register_inspector(renzora_editor::InspectorEntry {
+                type_id: "ui_widget_data",
+                display_name: "Widget Data",
+                icon: egui_phosphor::regular::SLIDERS,
+                category: "ui",
+                has_fn: |world, entity| world.get::<components::UiWidget>(entity).is_some(),
                 add_fn: None,
                 remove_fn: None,
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: Some(inspector::render_ui_style_inspector),
+                custom_ui_fn: Some(inspector::render_widget_data_inspector),
             });
 
             // Register hierarchy icons for UI entities
