@@ -22,17 +22,13 @@ pub fn ui_theme_system(
         ),
         With<UiThemed>,
     >,
-    mut progress_bars: Query<(&mut ProgressBarData, &UiThemed)>,
-    mut health_bars: Query<(&mut HealthBarData, &UiThemed)>,
     mut sliders: Query<(&mut SliderData, &UiThemed)>,
     mut checkboxes: Query<(&mut CheckboxData, &UiThemed)>,
     mut toggles: Query<(&mut ToggleData, &UiThemed)>,
     mut radios: Query<(&mut RadioButtonData, &UiThemed)>,
-    mut spinners: Query<(&mut SpinnerData, &UiThemed)>,
     mut tooltips: Query<(&mut TooltipData, &UiThemed)>,
     mut modals: Query<(&mut ModalData, &UiThemed)>,
     mut windows: Query<(&mut DraggableWindowData, &UiThemed)>,
-    mut tab_bars: Query<(&mut TabBarData, &UiThemed)>,
 ) {
     if !theme.is_changed() {
         return;
@@ -75,17 +71,6 @@ pub fn ui_theme_system(
 
     // ── Widget data component colors (not covered by style components) ──
 
-    for (mut data, _themed) in &mut progress_bars {
-        data.fill_color = theme.progress_fill;
-        data.bg_color = theme.surface;
-    }
-
-    for (mut data, _themed) in &mut health_bars {
-        data.fill_color = theme.health_fill;
-        data.low_color = theme.health_low;
-        data.bg_color = theme.surface;
-    }
-
     for (mut data, _themed) in &mut sliders {
         data.track_color = theme.track;
         data.fill_color = theme.accent;
@@ -107,10 +92,6 @@ pub fn ui_theme_system(
         data.active_color = theme.accent;
     }
 
-    for (mut data, _themed) in &mut spinners {
-        data.color = theme.accent;
-    }
-
     for (mut data, _themed) in &mut tooltips {
         data.bg_color = theme.tooltip_bg;
         data.text_color = theme.text_primary;
@@ -122,10 +103,5 @@ pub fn ui_theme_system(
 
     for (mut data, _themed) in &mut windows {
         data.title_bar_color = theme.title_bar;
-    }
-
-    for (mut data, _themed) in &mut tab_bars {
-        data.tab_color = theme.surface;
-        data.active_color = theme.accent;
     }
 }

@@ -2,8 +2,6 @@
 
 //! Widget spawn functions — each creates the correct entity hierarchy for a widget type.
 
-use std::path::Path;
-
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
@@ -24,17 +22,75 @@ fn pct_h(px: f32, r: &Ref) -> Val {
 }
 
 /// Spawn any widget by type, parenting to a canvas. Returns the spawned entity.
+/// What kind of layout context a widget is being placed into.
+///
+/// Determines whether the new widget gets free (Absolute) or flowed
+/// (Relative) positioning — the same split Figma / Webflow / UMG draw
+/// between "free placement on a frame" and "auto-layout containers."
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ParentLayout {
+    /// Parent is a `UiCanvas` root → child uses `position_type: Absolute`
+    /// and gets a sensible canvas-relative position. Drag = freely move.
+    Canvas,
+    /// Parent is a `UiWidget` Container with `display: Flex` → child uses
+    /// `position_type: Relative` so flex flow positions it. Drag = reorder.
+    Container,
+}
+
+fn classify_parent(world: &World, parent: Option<Entity>) -> (Option<Entity>, ParentLayout) {
+    match parent {
+        Some(e) => {
+            // Direct UiCanvas → free placement.
+            if world.get::<UiCanvas>(e).is_some() {
+                return (Some(e), ParentLayout::Canvas);
+            }
+            // UiWidget with display: Flex → auto-layout container.
+            if world.get::<UiWidget>(e).is_some() {
+                let is_flex = world
+                    .get::<Node>(e)
+                    .map(|n| matches!(n.display, Display::Flex))
+                    .unwrap_or(false);
+                if is_flex {
+                    return (Some(e), ParentLayout::Container);
+                }
+            }
+            // Unknown — treat as canvas root.
+            (Some(e), ParentLayout::Canvas)
+        }
+        None => (None, ParentLayout::Canvas),
+    }
+}
+
+/// Walk up the parent chain to find the enclosing `UiCanvas` so we can
+/// look up its reference width/height for `pct_*` math.
+fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<Entity> {
+    loop {
+        if world.get::<UiCanvas>(entity).is_some() {
+            return Some(entity);
+        }
+        match world.get::<ChildOf>(entity) {
+            Some(co) => entity = co.parent(),
+            None => return None,
+        }
+    }
+}
+
 pub fn spawn_widget(
     world: &mut World,
     widget_type: &UiWidgetType,
     parent: Option<Entity>,
 ) -> Entity {
-    // Find or create canvas.
-    let canvas_entity = {
-        let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
-        match parent.or_else(|| q.iter(world).next()) {
-            Some(e) => e,
-            None => world
+    let (resolved_parent, layout) = classify_parent(world, parent);
+
+    // Resolve the actual parent entity. If none provided, find any canvas;
+    // if still none, spawn a default canvas.
+    let parent_entity = resolved_parent
+        .or_else(|| {
+            let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
+            q.iter(world).next()
+        })
+        .unwrap_or_else(|| {
+            world
                 .spawn((
                     Name::new("UI Canvas"),
                     UiCanvas::default(),
@@ -45,12 +101,17 @@ pub fn spawn_widget(
                         ..default()
                     },
                 ))
-                .id(),
-        }
-    };
+                .id()
+        });
 
-    let r = parent
-        .and_then(|p| world.get::<UiCanvas>(p))
+    // Reference dimensions for pct_w/pct_h come from the enclosing canvas.
+    // Container children still use canvas-reference percentages so the
+    // initial sizes are sensible (a 100×24 widget at 1280×720 reference is
+    // ~7.8% × 3.3%; flex flow will then constrain it inside the parent).
+    let canvas_for_ref =
+        find_ancestor_canvas(world, parent_entity).unwrap_or(parent_entity);
+    let r = world
+        .get::<UiCanvas>(canvas_for_ref)
         .map(|c| Ref {
             w: c.reference_width,
             h: c.reference_height,
@@ -66,8 +127,7 @@ pub fn spawn_widget(
         UiWidgetType::Text => spawn_text(world, &r),
         UiWidgetType::Image => spawn_image(world, &r),
         UiWidgetType::Button => spawn_button(world, &r),
-        UiWidgetType::ProgressBar => spawn_progress_bar(world, &r),
-        UiWidgetType::HealthBar => spawn_health_bar(world, &r),
+        UiWidgetType::BarFill => spawn_bar_fill(world, &r),
         UiWidgetType::Slider => spawn_slider(world, &r),
         UiWidgetType::Checkbox => spawn_checkbox(world, &r),
         UiWidgetType::Toggle => spawn_toggle(world, &r),
@@ -75,29 +135,14 @@ pub fn spawn_widget(
         UiWidgetType::Dropdown => spawn_dropdown(world, &r),
         UiWidgetType::TextInput => spawn_text_input(world, &r),
         UiWidgetType::ScrollView => spawn_scroll_view(world, &r),
-        UiWidgetType::TabBar => spawn_tab_bar(world, &r),
-        UiWidgetType::Spinner => spawn_spinner(world, &r),
         UiWidgetType::Tooltip => spawn_tooltip(world, &r),
         UiWidgetType::Modal => spawn_modal(world, &r),
         UiWidgetType::DraggableWindow => spawn_draggable_window(world, &r),
-        UiWidgetType::Crosshair => spawn_crosshair(world, &r),
-        UiWidgetType::AmmoCounter => spawn_ammo_counter(world, &r),
-        UiWidgetType::Compass => spawn_compass(world, &r),
-        UiWidgetType::StatusEffectBar => spawn_status_effect_bar(world, &r),
-        UiWidgetType::NotificationFeed => spawn_notification_feed(world, &r),
-        UiWidgetType::RadialMenu => spawn_radial_menu(world, &r),
-        UiWidgetType::Minimap => spawn_minimap(world, &r),
-        UiWidgetType::InventoryGrid => spawn_inventory_grid(world, &r),
-        UiWidgetType::DialogBox => spawn_dialog_box(world, &r),
-        UiWidgetType::ObjectiveTracker => spawn_objective_tracker(world, &r),
-        UiWidgetType::LoadingScreen => spawn_loading_screen(world, &r),
         UiWidgetType::KeybindRow => spawn_keybind_row(world, &r),
         UiWidgetType::SettingsRow => spawn_settings_row(world, &r),
         UiWidgetType::Separator => spawn_separator(world, &r),
         UiWidgetType::NumberInput => spawn_number_input(world, &r),
-        UiWidgetType::VerticalSlider => spawn_vertical_slider(world, &r),
         UiWidgetType::Scrollbar => spawn_scrollbar(world, &r),
-        UiWidgetType::List => spawn_list(world, &r),
         UiWidgetType::Circle => spawn_circle(world, &r),
         UiWidgetType::Arc => spawn_arc(world, &r),
         UiWidgetType::RadialProgress => spawn_radial_progress(world, &r),
@@ -108,16 +153,62 @@ pub fn spawn_widget(
         UiWidgetType::Wedge => spawn_wedge(world, &r),
     };
 
-    // Mark as themed + parent to canvas. Use `set_parent_in_place` to match
-    // the pattern used by composite widget spawners elsewhere in this file —
-    // bare `insert(ChildOf)` doesn't fire the Children-update hook at runtime.
+    // Apply the parent-aware layout. Widgets dropped on the canvas root
+    // get free Absolute positioning; widgets dropped into a Container get
+    // Relative + flex flow. Each individual `spawn_*` may have set its
+    // own Node defaults, but the parent context is the authority on
+    // *positioning* so we re-write those fields here.
+    apply_parent_layout(world, entity, layout);
+
+    // Default every widget to clip its children. Renzora's UI kit treats
+    // hierarchies as nested frames — children that exceed their parent's
+    // bounds get masked, recursively, at every level. Users can opt out
+    // per-widget via the `UiClipContent` toggle in the inspector
+    // (e.g. dropdowns or tooltips that need to extend past their parent).
+    //
+    // Border defaults: insert zero-width `UiStroke` and zero-radius
+    // `UiBorderRadius` if missing so the inspector's Stroke + Border
+    // Radius sections always render. Default values render as no-op
+    // (invisible border, sharp corners) — users edit them to taste.
+    if let Ok(mut em) = world.get_entity_mut(entity) {
+        if em.get::<UiClipContent>().is_none() {
+            em.insert(UiClipContent(true));
+        }
+        if em.get::<UiStroke>().is_none() {
+            em.insert(UiStroke {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+                width: 0.0,
+                sides: UiSides::all(),
+            });
+        }
+        if em.get::<UiBorderRadius>().is_none() {
+            em.insert(UiBorderRadius::all(0.0));
+        }
+        // Underlying bevy_ui `BorderColor` so the live border-color edits
+        // reach rendering. The widget-style system only writes to it if
+        // it exists; without this insert the inspector's color picker
+        // would be a no-op until the user manually adds the component.
+        if em.get::<BorderColor>().is_none() {
+            em.insert(BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.0)));
+        }
+        if let Some(mut node) = em.get_mut::<Node>() {
+            // Only set if currently default; respects per-widget overrides
+            // a `spawn_*` already wrote (e.g. ScrollView already does this).
+            if matches!(node.overflow.x, OverflowAxis::Visible)
+                && matches!(node.overflow.y, OverflowAxis::Visible)
+            {
+                node.overflow = Overflow::clip();
+            }
+        }
+    }
+
     world.entity_mut(entity).insert(UiThemed);
-    world.entity_mut(entity).set_parent_in_place(canvas_entity);
+    world.entity_mut(entity).set_parent_in_place(parent_entity);
 
     #[cfg(feature = "editor")]
     {
         if let Some(requests) = world.get_resource::<renzora_editor::HierarchyExpandRequests>() {
-            requests.push(canvas_entity);
+            requests.push(parent_entity);
         }
         if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
             sel.set(Some(entity));
@@ -127,7 +218,126 @@ pub fn spawn_widget(
     entity
 }
 
+/// Set `position_type` and `left`/`top` on an entity to match its parent
+/// context. Called both by `spawn_widget` after a fresh spawn and by the
+/// re-parent observer when a widget moves between parents in the
+/// hierarchy.
+fn apply_parent_layout(world: &mut World, entity: Entity, layout: ParentLayout) {
+    let Ok(mut em) = world.get_entity_mut(entity) else {
+        return;
+    };
+    let Some(mut node) = em.get_mut::<Node>() else {
+        return;
+    };
+    match layout {
+        ParentLayout::Canvas => {
+            node.position_type = PositionType::Absolute;
+            // Free-placement default: a small offset from origin so the
+            // widget appears on screen rather than at (0,0). The user
+            // drags afterward.
+            if matches!(node.left, Val::Auto) {
+                node.left = Val::Percent(10.0);
+            }
+            if matches!(node.top, Val::Auto) {
+                node.top = Val::Percent(10.0);
+            }
+        }
+        ParentLayout::Container => {
+            node.position_type = PositionType::Relative;
+            // Auto-layout flow doesn't use offsets — clear any leftover
+            // canvas-positioning values so the parent's flex algorithm
+            // takes over.
+            node.left = Val::Auto;
+            node.right = Val::Auto;
+            node.top = Val::Auto;
+            node.bottom = Val::Auto;
+        }
+    }
+}
+
+/// Re-apply [`apply_parent_layout`] to an entity based on its current
+/// parent in the world. Public so the editor's reparent observer can
+/// call it when a widget is dragged to a new parent in the hierarchy.
+pub fn reapply_layout_from_parent(world: &mut World, entity: Entity) {
+    let parent = world.get::<ChildOf>(entity).map(|co| co.parent());
+    let (_, layout) = classify_parent(world, parent);
+    apply_parent_layout(world, entity, layout);
+}
+
+/// True when an entity's parent is a flex-layout *container widget*
+/// (Container, Panel, etc. with `display: Flex`) — **not** a UiCanvas.
+///
+/// `UiCanvas` itself has `display: Flex` by default (Bevy's default), so a
+/// naive "parent has Flex display" check would mis-classify every
+/// canvas-root widget as a flex child. The canvas is conceptually a
+/// free-placement surface; only nested Container/Panel widgets count as
+/// auto-layout parents.
+///
+/// Used by the canvas editor's drag-handlers to skip writes that would
+/// convert a flex-flow child to absolute positioning. Without this guard,
+/// dragging or resizing a widget that's nested inside a Container
+/// silently force-converts it back to `position_type: Absolute` with
+/// canvas-relative coordinates — undoing the auto-layout entirely.
+pub fn is_flex_child(world: &World, entity: Entity) -> bool {
+    let Some(parent) = world.get::<ChildOf>(entity).map(|c| c.parent()) else {
+        return false;
+    };
+    // Direct child of canvas → free placement, not flex flow.
+    if world.get::<UiCanvas>(parent).is_some() {
+        return false;
+    }
+    // Only widget parents with explicit Flex display count as auto-layout.
+    if world.get::<UiWidget>(parent).is_none() {
+        return false;
+    }
+    world
+        .get::<Node>(parent)
+        .map(|n| matches!(n.display, Display::Flex))
+        .unwrap_or(false)
+}
+
+/// Choose the parent to use for a "Add Widget" action in the editor.
+///
+/// Order of preference:
+/// 1. Current `EditorSelection` if it's a UiCanvas or a UiWidget Container —
+///    the user expects new widgets to land "inside what I'm working in."
+/// 2. The provided `active_canvas` fallback — the canvas tab passes its
+///    active canvas here.
+/// 3. `None` — `spawn_widget` will fall back to "any canvas, or spawn one."
+#[cfg(feature = "editor")]
+pub fn pick_spawn_parent(world: &World, active_canvas: Option<Entity>) -> Option<Entity> {
+    if let Some(sel_res) = world.get_resource::<renzora_editor::EditorSelection>() {
+        if let Some(sel) = sel_res.get() {
+            // Container/Panel: a layout-mode parent for nested widgets.
+            let is_container = world
+                .get::<UiWidget>(sel)
+                .map(|w| matches!(w.widget_type, UiWidgetType::Container | UiWidgetType::Panel))
+                .unwrap_or(false);
+            if is_container {
+                return Some(sel);
+            }
+            // Canvas: a free-placement parent.
+            if world.get::<UiCanvas>(sel).is_some() {
+                return Some(sel);
+            }
+        }
+    }
+    active_canvas
+}
+
 fn spawn_container(world: &mut World, r: &Ref) -> Entity {
+    // Containers default to **auto-layout frames**: Flex display, clipped
+    // overflow, dim translucent fill so the frame is visible without
+    // setup. Children dropped into a Container flow along the flex axis
+    // (Row by default) and are clipped to the container's bounds —
+    // matching how Figma's "auto-layout" frames or Webflow's flex
+    // containers behave.
+    //
+    // `overflow: clip` is set directly on `Node` (not via `UiClipContent`
+    // alone) so masking is in effect immediately on spawn. Otherwise the
+    // first frame between spawn and the `widget_style` system running
+    // would render children unmasked.
+    let bg = Color::srgba(0.15, 0.15, 0.18, 0.4);
     world
         .spawn((
             Name::new("Container"),
@@ -138,10 +348,18 @@ fn spawn_container(world: &mut World, r: &Ref) -> Entity {
             Node {
                 width: pct_w(200.0, r),
                 height: pct_h(100.0, r),
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                overflow: Overflow::clip(),
                 ..default()
             },
+            UiFill::solid(bg),
             UiStroke::new(Color::srgba(0.3, 0.3, 0.35, 0.5), 1.0),
             UiBorderRadius::all(2.0),
+            UiClipContent(true),
+            BackgroundColor(bg),
         ))
         .id()
 }
@@ -253,89 +471,6 @@ fn spawn_button(world: &mut World, r: &Ref) -> Entity {
             UiTransition::default(),
         ))
         .id()
-}
-
-fn spawn_progress_bar(world: &mut World, r: &Ref) -> Entity {
-    let data = ProgressBarData::default();
-    let bg_color = data.bg_color;
-    let fill_color = data.fill_color;
-
-    let parent = world
-        .spawn((
-            Name::new("Progress Bar"),
-            UiWidget {
-                widget_type: UiWidgetType::ProgressBar,
-                locked: false,
-            },
-            Node {
-                width: pct_w(200.0, r),
-                height: pct_h(24.0, r),
-                ..default()
-            },
-            data,
-            UiFill::solid(bg_color),
-            UiBorderRadius::all(4.0),
-            UiClipContent(true),
-            BackgroundColor(bg_color),
-        ))
-        .id();
-
-    // Fill child
-    let fill = world
-        .spawn((
-            UiWidgetPart::new("fill"),
-            Node {
-                width: Val::Percent(50.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            BackgroundColor(fill_color),
-        ))
-        .id();
-
-    world.entity_mut(fill).set_parent_in_place(parent);
-    parent
-}
-
-fn spawn_health_bar(world: &mut World, r: &Ref) -> Entity {
-    let data = HealthBarData::default();
-    let bg_color = data.bg_color;
-    let fill_color = data.fill_color;
-
-    let parent = world
-        .spawn((
-            Name::new("Health Bar"),
-            UiWidget {
-                widget_type: UiWidgetType::HealthBar,
-                locked: false,
-            },
-            Node {
-                width: pct_w(200.0, r),
-                height: pct_h(20.0, r),
-                ..default()
-            },
-            data,
-            UiFill::solid(bg_color),
-            UiBorderRadius::all(3.0),
-            UiClipContent(true),
-            BackgroundColor(bg_color),
-        ))
-        .id();
-
-    let fill = world
-        .spawn((
-            UiWidgetPart::new("fill"),
-            Node {
-                width: Val::Percent(75.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            BackgroundColor(fill_color),
-        ))
-        .id();
-
-    world.entity_mut(fill).set_parent_in_place(parent);
-    parent
 }
 
 fn spawn_slider(world: &mut World, r: &Ref) -> Entity {
@@ -604,38 +739,6 @@ fn spawn_scroll_view(world: &mut World, r: &Ref) -> Entity {
         .id()
 }
 
-fn spawn_spinner(world: &mut World, r: &Ref) -> Entity {
-    let data = SpinnerData::default();
-    world
-        .spawn((
-            Name::new("Spinner"),
-            UiWidget {
-                widget_type: UiWidgetType::Spinner,
-                locked: false,
-            },
-            Node {
-                width: pct_w(32.0, r),
-                height: pct_h(32.0, r),
-                ..default()
-            },
-            data,
-            UiStroke {
-                color: Color::WHITE,
-                width: 3.0,
-                sides: UiSides {
-                    top: true,
-                    right: true,
-                    bottom: true,
-                    left: false,
-                },
-            },
-            UiBorderRadius::all(999.0),
-            BorderColor::all(Color::WHITE),
-            BackgroundColor(Color::NONE),
-        ))
-        .id()
-}
-
 fn spawn_radio_button(world: &mut World, r: &Ref) -> Entity {
     let data = RadioButtonData::default();
 
@@ -845,64 +948,6 @@ fn spawn_text_input(world: &mut World, r: &Ref) -> Entity {
     parent
 }
 
-fn spawn_tab_bar(world: &mut World, r: &Ref) -> Entity {
-    let data = TabBarData::default();
-
-    let parent = world
-        .spawn((
-            Name::new("Tab Bar"),
-            UiWidget {
-                widget_type: UiWidgetType::TabBar,
-                locked: false,
-            },
-            Node {
-                width: pct_w(400.0, r),
-                height: pct_h(36.0, r),
-                flex_direction: FlexDirection::Row,
-                ..default()
-            },
-            data.clone(),
-            UiFill::solid(Color::srgba(0.15, 0.15, 0.18, 1.0)),
-            UiBorderRadius::all(4.0),
-            UiClipContent(true),
-            BackgroundColor(Color::srgba(0.15, 0.15, 0.18, 1.0)),
-        ))
-        .id();
-
-    // Spawn tab children
-    for (i, tab_name) in data.tabs.iter().enumerate() {
-        let is_active = i == data.active;
-        let tab = world
-            .spawn((
-                UiWidgetPart::new(&format!("tab_{}", i)),
-                Node {
-                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                Button,
-                Interaction::default(),
-                BackgroundColor(if is_active {
-                    data.active_color
-                } else {
-                    data.tab_color
-                }),
-                bevy::ui::widget::Text::new(tab_name.clone()),
-                TextColor(Color::WHITE),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-            ))
-            .id();
-
-        world.entity_mut(tab).set_parent_in_place(parent);
-    }
-
-    parent
-}
-
 fn spawn_tooltip(world: &mut World, r: &Ref) -> Entity {
     let data = TooltipData::default();
 
@@ -1076,317 +1121,6 @@ fn spawn_draggable_window(world: &mut World, r: &Ref) -> Entity {
 }
 
 // ── HUD spawn functions ────────────────────────────────────────────────────
-
-fn spawn_crosshair(world: &mut World, _r: &Ref) -> Entity {
-    let data = CrosshairData::default();
-
-    let parent = world
-        .spawn((
-            Name::new("Crosshair"),
-            UiWidget {
-                widget_type: UiWidgetType::Crosshair,
-                locked: false,
-            },
-            Node {
-                width: Val::Px(data.size),
-                height: Val::Px(data.size),
-                position_type: PositionType::Absolute,
-                left: Val::Percent(50.0),
-                top: Val::Percent(50.0),
-                ..default()
-            },
-            data,
-        ))
-        .id();
-
-    // Horizontal line
-    world
-        .spawn((
-            UiWidgetPart::new("h_line"),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(2.0),
-                position_type: PositionType::Absolute,
-                top: Val::Percent(50.0),
-                ..default()
-            },
-            BackgroundColor(Color::WHITE),
-        ))
-        .set_parent_in_place(parent);
-
-    // Vertical line
-    world
-        .spawn((
-            UiWidgetPart::new("v_line"),
-            Node {
-                width: Val::Px(2.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                left: Val::Percent(50.0),
-                ..default()
-            },
-            BackgroundColor(Color::WHITE),
-        ))
-        .set_parent_in_place(parent);
-
-    parent
-}
-
-fn spawn_ammo_counter(world: &mut World, r: &Ref) -> Entity {
-    let data = AmmoCounterData::default();
-    let display = format!("{} / {}", data.current, data.max);
-
-    let parent = world
-        .spawn((
-            Name::new("Ammo Counter"),
-            UiWidget {
-                widget_type: UiWidgetType::AmmoCounter,
-                locked: false,
-            },
-            Node {
-                width: pct_w(120.0, r),
-                height: pct_h(36.0, r),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            data,
-            UiFill::solid(Color::srgba(0.1, 0.1, 0.12, 0.8)),
-            UiBorderRadius::all(4.0),
-            UiPadding::symmetric(4.0, 8.0),
-            BackgroundColor(Color::srgba(0.1, 0.1, 0.12, 0.8)),
-        ))
-        .id();
-
-    let text = world
-        .spawn((
-            UiWidgetPart::new("text"),
-            Node::default(),
-            bevy::ui::widget::Text::new(display),
-            TextColor(Color::WHITE),
-            TextFont {
-                font_size: 18.0,
-                ..default()
-            },
-        ))
-        .id();
-
-    world.entity_mut(text).set_parent_in_place(parent);
-    parent
-}
-
-fn spawn_compass(world: &mut World, r: &Ref) -> Entity {
-    let data = CompassData::default();
-
-    let parent = world
-        .spawn((
-            Name::new("Compass"),
-            UiWidget {
-                widget_type: UiWidgetType::Compass,
-                locked: false,
-            },
-            Node {
-                width: pct_w(400.0, r),
-                height: pct_h(30.0, r),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceEvenly,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            data.clone(),
-            UiFill::solid(Color::srgba(0.1, 0.1, 0.12, 0.6)),
-            UiBorderRadius::all(2.0),
-            UiClipContent(true),
-            BackgroundColor(Color::srgba(0.1, 0.1, 0.12, 0.6)),
-        ))
-        .id();
-
-    // Spawn marker labels as children
-    for (i, marker) in data.markers.iter().enumerate() {
-        let child = world
-            .spawn((
-                UiWidgetPart::new(&format!("marker_{}", i)),
-                Node::default(),
-                bevy::ui::widget::Text::new(marker.label.clone()),
-                TextColor(marker.color),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-            ))
-            .id();
-
-        world.entity_mut(child).set_parent_in_place(parent);
-    }
-
-    parent
-}
-
-fn spawn_status_effect_bar(world: &mut World, r: &Ref) -> Entity {
-    let data = StatusEffectBarData::default();
-
-    world
-        .spawn((
-            Name::new("Status Effects"),
-            UiWidget {
-                widget_type: UiWidgetType::StatusEffectBar,
-                locked: false,
-            },
-            Node {
-                width: pct_w(200.0, r),
-                height: pct_h(data.icon_size, r),
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(data.spacing),
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            data,
-        ))
-        .id()
-}
-
-fn spawn_notification_feed(world: &mut World, r: &Ref) -> Entity {
-    let data = NotificationFeedData::default();
-
-    world
-        .spawn((
-            Name::new("Notifications"),
-            UiWidget {
-                widget_type: UiWidgetType::NotificationFeed,
-                locked: false,
-            },
-            Node {
-                width: pct_w(300.0, r),
-                height: pct_h(200.0, r),
-                position_type: PositionType::Absolute,
-                right: Val::Percent(2.0),
-                top: Val::Percent(2.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                align_items: AlignItems::FlexEnd,
-                ..default()
-            },
-            data,
-        ))
-        .id()
-}
-
-fn spawn_radial_menu(world: &mut World, r: &Ref) -> Entity {
-    let data = RadialMenuData::default();
-
-    let parent = world
-        .spawn((
-            Name::new("Radial Menu"),
-            UiWidget {
-                widget_type: UiWidgetType::RadialMenu,
-                locked: false,
-            },
-            Node {
-                width: pct_w(200.0, r),
-                height: pct_h(200.0, r),
-                position_type: PositionType::Absolute,
-                left: Val::Percent(50.0),
-                top: Val::Percent(50.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            data.clone(),
-            Visibility::Hidden,
-        ))
-        .id();
-
-    // Spawn one wedge shape per item
-    let item_count = data.items.len();
-    for (i, item) in data.items.iter().enumerate() {
-        let angle_step = std::f32::consts::TAU / item_count as f32;
-        let start_angle = i as f32 * angle_step;
-        let end_angle = start_angle + angle_step;
-
-        let shape = shapes::WedgeShape {
-            color: item.color,
-            start_angle,
-            end_angle,
-            inner_radius: data.inner_radius,
-        };
-        let handle = world
-            .resource_mut::<Assets<shapes::WedgeMaterial>>()
-            .add(shapes::WedgeMaterial::from_shape(&shape));
-
-        let wedge = world
-            .spawn((
-                UiWidgetPart::new(&format!("wedge_{}", i)),
-                UiShapeWidget,
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-                MaterialNode(handle),
-                shape,
-            ))
-            .id();
-
-        world.entity_mut(wedge).set_parent_in_place(parent);
-    }
-
-    parent
-}
-
-fn spawn_minimap(world: &mut World, r: &Ref) -> Entity {
-    let data = MinimapData::default();
-
-    let parent = world
-        .spawn((
-            Name::new("Minimap"),
-            UiWidget {
-                widget_type: UiWidgetType::Minimap,
-                locked: false,
-            },
-            Node {
-                width: pct_w(160.0, r),
-                height: pct_h(160.0, r),
-                position_type: PositionType::Absolute,
-                right: Val::Percent(2.0),
-                bottom: Val::Percent(2.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            data.clone(),
-        ))
-        .id();
-
-    // Circle frame using a CircleShape
-    let frame_shape = shapes::CircleShape {
-        color: data.bg_color,
-        stroke_color: data.border_color,
-        stroke_width: data.border_width,
-    };
-    let handle = world
-        .resource_mut::<Assets<shapes::CircleMaterial>>()
-        .add(shapes::CircleMaterial::from_shape(&frame_shape));
-
-    let frame = world
-        .spawn((
-            UiWidgetPart::new("frame"),
-            UiShapeWidget,
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            MaterialNode(handle),
-            frame_shape,
-        ))
-        .id();
-
-    world.entity_mut(frame).set_parent_in_place(parent);
-    parent
-}
-
-// ── Shape spawn functions ──────────────────────────────────────────────────
 
 fn spawn_circle(world: &mut World, r: &Ref) -> Entity {
     let shape = shapes::CircleShape::default();
@@ -1586,294 +1320,6 @@ fn spawn_wedge(world: &mut World, r: &Ref) -> Entity {
 
 // ── Menu widget spawn functions ─────────────────────────────────────────────
 
-fn spawn_inventory_grid(world: &mut World, r: &Ref) -> Entity {
-    let data = InventoryGridData::default();
-    let cols = data.columns;
-    let rows = data.rows;
-    let slot_size = data.slot_size;
-    let gap = data.gap;
-    let slot_bg = data.slot_bg_color;
-    let slot_border = data.slot_border_color;
-    let slot_border_w = data.slot_border_width;
-
-    let parent = world
-        .spawn((
-            Name::new("Inventory Grid"),
-            UiWidget {
-                widget_type: UiWidgetType::InventoryGrid,
-                locked: false,
-            },
-            Node {
-                width: pct_w(cols as f32 * (slot_size + gap) + gap, r),
-                height: pct_h(rows as f32 * (slot_size + gap) + gap, r),
-                display: Display::Grid,
-                grid_template_columns: RepeatedGridTrack::px(cols as u16, slot_size),
-                grid_template_rows: RepeatedGridTrack::px(rows as u16, slot_size),
-                column_gap: Val::Px(gap),
-                row_gap: Val::Px(gap),
-                padding: UiRect::all(Val::Px(gap)),
-                ..default()
-            },
-            data,
-            UiFill::solid(Color::srgba(0.1, 0.1, 0.12, 0.9)),
-            UiBorderRadius::all(4.0),
-            BackgroundColor(Color::srgba(0.1, 0.1, 0.12, 0.9)),
-        ))
-        .id();
-
-    for row in 0..rows {
-        for col in 0..cols {
-            let slot = world
-                .spawn((
-                    UiWidgetPart::new("slot"),
-                    InventorySlot { col, row },
-                    Node {
-                        width: Val::Px(slot_size),
-                        height: Val::Px(slot_size),
-                        border: UiRect::all(Val::Px(slot_border_w)),
-                        border_radius: BorderRadius::all(Val::Px(2.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(slot_bg),
-                    BorderColor::all(slot_border),
-                ))
-                .id();
-
-            world.entity_mut(slot).set_parent_in_place(parent);
-        }
-    }
-
-    parent
-}
-
-fn spawn_dialog_box(world: &mut World, r: &Ref) -> Entity {
-    let data = DialogBoxData::default();
-    let speaker_color = data.speaker_color;
-    let text_color = data.text_color;
-    let bg_color = data.bg_color;
-    let speaker_name = data.speaker.clone();
-
-    let parent = world
-        .spawn((
-            Name::new("Dialog Box"),
-            UiWidget {
-                widget_type: UiWidgetType::DialogBox,
-                locked: false,
-            },
-            Node {
-                width: Val::Percent(80.0),
-                position_type: PositionType::Absolute,
-                left: Val::Percent(10.0),
-                bottom: Val::Percent(5.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(16.0)),
-                row_gap: Val::Px(8.0),
-                ..default()
-            },
-            data,
-            UiFill::solid(bg_color),
-            UiBorderRadius::all(8.0),
-            BackgroundColor(bg_color),
-        ))
-        .id();
-
-    let speaker = world
-        .spawn((
-            UiWidgetPart::new("speaker"),
-            Node::default(),
-            bevy::ui::widget::Text::new(speaker_name),
-            TextColor(speaker_color),
-            TextFont {
-                font_size: 18.0,
-                ..default()
-            },
-        ))
-        .id();
-
-    let text = world
-        .spawn((
-            UiWidgetPart::new("text"),
-            Node::default(),
-            bevy::ui::widget::Text::new(""),
-            TextColor(text_color),
-            TextFont {
-                font_size: 14.0,
-                ..default()
-            },
-        ))
-        .id();
-
-    world.entity_mut(speaker).set_parent_in_place(parent);
-    world.entity_mut(text).set_parent_in_place(parent);
-    parent
-}
-
-fn spawn_objective_tracker(world: &mut World, r: &Ref) -> Entity {
-    let data = ObjectiveTrackerData::default();
-    let title_text = data.title.clone();
-    let title_color = data.title_color;
-    let objectives = data.objectives.clone();
-    let active_color = data.active_color;
-    let completed_color = data.completed_color;
-    let failed_color = data.failed_color;
-
-    let parent = world
-        .spawn((
-            Name::new("Objective Tracker"),
-            UiWidget {
-                widget_type: UiWidgetType::ObjectiveTracker,
-                locked: false,
-            },
-            Node {
-                width: pct_w(250.0, r),
-                position_type: PositionType::Absolute,
-                right: Val::Percent(2.0),
-                top: Val::Percent(10.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(12.0)),
-                row_gap: Val::Px(6.0),
-                ..default()
-            },
-            data,
-            UiFill::solid(Color::srgba(0.08, 0.08, 0.1, 0.7)),
-            UiBorderRadius::all(6.0),
-            BackgroundColor(Color::srgba(0.08, 0.08, 0.1, 0.7)),
-        ))
-        .id();
-
-    let title = world
-        .spawn((
-            UiWidgetPart::new("title"),
-            Node {
-                margin: UiRect::bottom(Val::Px(4.0)),
-                ..default()
-            },
-            bevy::ui::widget::Text::new(title_text),
-            TextColor(title_color),
-            TextFont {
-                font_size: 16.0,
-                ..default()
-            },
-        ))
-        .id();
-
-    world.entity_mut(title).set_parent_in_place(parent);
-
-    for obj in &objectives {
-        let color = match obj.status {
-            ObjectiveStatus::Active => active_color,
-            ObjectiveStatus::Completed => completed_color,
-            ObjectiveStatus::Failed => failed_color,
-        };
-        let prefix = match obj.status {
-            ObjectiveStatus::Active => "○ ",
-            ObjectiveStatus::Completed => "● ",
-            ObjectiveStatus::Failed => "✕ ",
-        };
-        let progress_str = match obj.progress {
-            Some((cur, max)) => format!(" ({}/{})", cur, max),
-            None => String::new(),
-        };
-        let label = format!("{}{}{}", prefix, obj.label, progress_str);
-
-        let child = world
-            .spawn((
-                UiWidgetPart::new("objective"),
-                Node::default(),
-                bevy::ui::widget::Text::new(label),
-                TextColor(color),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-            ))
-            .id();
-
-        world.entity_mut(child).set_parent_in_place(parent);
-    }
-
-    parent
-}
-
-fn spawn_loading_screen(world: &mut World, r: &Ref) -> Entity {
-    let data = LoadingScreenData::default();
-    let bg_color = data.bg_color;
-    let bar_color = data.bar_color;
-    let bar_bg_color = data.bar_bg_color;
-    let text_color = data.text_color;
-    let message = data.message.clone();
-    let progress = data.progress;
-
-    let parent = world
-        .spawn((
-            Name::new("Loading Screen"),
-            UiWidget {
-                widget_type: UiWidgetType::LoadingScreen,
-                locked: false,
-            },
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(24.0),
-                ..default()
-            },
-            data,
-            UiFill::solid(bg_color),
-            BackgroundColor(bg_color),
-        ))
-        .id();
-
-    let msg = world
-        .spawn((
-            UiWidgetPart::new("message"),
-            Node::default(),
-            bevy::ui::widget::Text::new(message),
-            TextColor(text_color),
-            TextFont {
-                font_size: 18.0,
-                ..default()
-            },
-        ))
-        .id();
-
-    let bar_bg = world
-        .spawn((
-            UiWidgetPart::new("bar_bg"),
-            Node {
-                width: Val::Percent(40.0),
-                height: pct_h(20.0, r),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            BackgroundColor(bar_bg_color),
-        ))
-        .id();
-
-    let bar_fill = world
-        .spawn((
-            UiWidgetPart::new("bar_fill"),
-            Node {
-                width: Val::Percent(progress.clamp(0.0, 1.0) * 100.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            BackgroundColor(bar_color),
-        ))
-        .id();
-
-    world.entity_mut(bar_fill).set_parent_in_place(bar_bg);
-    world.entity_mut(msg).set_parent_in_place(parent);
-    world.entity_mut(bar_bg).set_parent_in_place(parent);
-    parent
-}
-
 fn spawn_keybind_row(world: &mut World, r: &Ref) -> Entity {
     let data = KeybindRowData::default();
     let action = data.action.clone();
@@ -1995,6 +1441,60 @@ fn spawn_settings_row(world: &mut World, r: &Ref) -> Entity {
     world.entity_mut(label).set_parent_in_place(parent);
     world.entity_mut(control).set_parent_in_place(parent);
     parent
+}
+
+// ── Bar Fill ───────────────────────────────────────────────────────────────
+//
+// Single-entity primitive — drag inside a Container to use it as the fill of a
+// bar. The Container's size is the "track"; this widget's `Node` width/height
+// is rewritten by `apply_bar_fill` from `UiBarFill::value`.
+//
+// The defaults give 50% fill, full height, green-ish color so it's obviously
+// "alive" in the editor preview without needing the inspector to tweak.
+
+fn spawn_bar_fill(world: &mut World, _r: &Ref) -> Entity {
+    // Bar Fill defaults to **fixed pixel** sizing rather than percent of
+    // parent. Reasons:
+    //
+    // - Bevy/Taffy's percent-on-cross-axis interaction with flex parents
+    //   that themselves use percent sizing doesn't always resolve
+    //   against the immediate parent — the bar would inherit the canvas's
+    //   full height instead of the container's.
+    // - Pixel sizes are predictable and self-contained: a fresh bar is
+    //   100×20 px regardless of where it lands. Users can resize the bar
+    //   itself or switch to percent mode in inspector.
+    //
+    // `apply_bar_fill` rewrites width per `value * max_px` each tick (or
+    // per percent if `max_px == 0`); height is left alone unless direction
+    // is vertical.
+    let data = UiBarFill::default();
+    let fill_color = Color::srgba(0.3, 0.7, 0.3, 1.0);
+    let initial_width = data.fraction() * data.max_px.max(1.0);
+    world
+        .spawn((
+            Name::new("Bar Fill"),
+            UiWidget {
+                widget_type: UiWidgetType::BarFill,
+                locked: false,
+            },
+            Node {
+                width: Val::Px(initial_width),
+                height: Val::Px(20.0),
+                // `flex_shrink: 0` — Bevy's default would let the parent
+                // squash this bar down if it doesn't fit, making the
+                // inspector's height value lie about what's rendered.
+                // The bar always shows at the authored size; if it
+                // exceeds the parent it gets clipped (which is what
+                // `UiClipContent` is for).
+                flex_shrink: 0.0,
+                ..default()
+            },
+            data,
+            UiFill::solid(fill_color),
+            UiBorderRadius::all(2.0),
+            BackgroundColor(fill_color),
+        ))
+        .id()
 }
 
 // ── Separator ──────────────────────────────────────────────────────────────
@@ -2123,91 +1623,6 @@ fn spawn_number_input(world: &mut World, r: &Ref) -> Entity {
 
 // ── Vertical Slider ────────────────────────────────────────────────────────
 
-fn spawn_vertical_slider(world: &mut World, r: &Ref) -> Entity {
-    let data = VerticalSliderData::default();
-    let frac = if (data.max - data.min).abs() > f32::EPSILON {
-        ((data.value - data.min) / (data.max - data.min)).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-
-    let root = world
-        .spawn((
-            Name::new("Vertical Slider"),
-            UiWidget {
-                widget_type: UiWidgetType::VerticalSlider,
-                locked: false,
-            },
-            Node {
-                width: pct_w(24.0, r),
-                height: pct_h(150.0, r),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::End,
-                ..default()
-            },
-            data.clone(),
-            Interaction::default(),
-            RelativeCursorPosition::default(),
-            UiCursor::Pointer,
-        ))
-        .id();
-
-    // Track
-    let track = world
-        .spawn((
-            UiWidgetPart::new("track"),
-            Node {
-                width: Val::Px(6.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                overflow: Overflow::clip(),
-                align_self: AlignSelf::Center,
-                justify_content: JustifyContent::End,
-                ..default()
-            },
-            BackgroundColor(data.track_color),
-        ))
-        .id();
-
-    // Fill (grows from bottom)
-    let fill = world
-        .spawn((
-            UiWidgetPart::new("fill"),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(frac * 100.0),
-                ..default()
-            },
-            BackgroundColor(data.fill_color),
-        ))
-        .id();
-
-    // Thumb
-    let thumb = world
-        .spawn((
-            UiWidgetPart::new("thumb"),
-            Node {
-                width: Val::Px(16.0),
-                height: Val::Px(16.0),
-                position_type: PositionType::Absolute,
-                bottom: Val::Percent(frac * 100.0),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(data.thumb_color),
-        ))
-        .id();
-
-    world.entity_mut(fill).set_parent_in_place(track);
-    world.entity_mut(track).set_parent_in_place(root);
-    world.entity_mut(thumb).set_parent_in_place(root);
-    root
-}
-
-// ── Scrollbar ──────────────────────────────────────────────────────────────
-
 fn spawn_scrollbar(world: &mut World, r: &Ref) -> Entity {
     let data = ScrollbarData::default();
     let thumb_pct = data.viewport_fraction.clamp(0.05, 1.0) * 100.0;
@@ -2272,77 +1687,21 @@ fn spawn_scrollbar(world: &mut World, r: &Ref) -> Entity {
     root
 }
 
-// ── List ───────────────────────────────────────────────────────────────────
+// ── Image-at-position (drag-drop from asset browser) ──────────────────────
+//
+// Called by canvas.rs when an image file is drag-dropped onto the UI canvas.
+// Converts the file path to an asset-relative path and spawns an Image
+// widget at the drop coordinates, snapped to grid if enabled.
 
-fn spawn_list(world: &mut World, r: &Ref) -> Entity {
-    let data = ListData::default();
-
-    let root = world
-        .spawn((
-            Name::new("List"),
-            UiWidget {
-                widget_type: UiWidgetType::List,
-                locked: false,
-            },
-            Node {
-                width: pct_w(200.0, r),
-                height: pct_h(150.0, r),
-                flex_direction: FlexDirection::Column,
-                overflow: Overflow::clip(),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            UiFill::solid(data.bg_color),
-            UiBorderRadius::all(4.0),
-            BackgroundColor(data.bg_color),
-            data.clone(),
-        ))
-        .id();
-
-    for item in &data.items {
-        let bg = if item.selected {
-            data.selected_bg_color
-        } else {
-            Color::NONE
-        };
-        let row = world
-            .spawn((
-                UiWidgetPart::new("item"),
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(data.item_height),
-                    align_items: AlignItems::Center,
-                    padding: UiRect::horizontal(Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(bg),
-                Text::new(item.label.clone()),
-                TextColor(data.text_color),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-            ))
-            .id();
-        world.entity_mut(row).set_parent_in_place(root);
-    }
-
-    root
-}
-
-/// Spawn an Image widget at a specific canvas position, loading the image from an asset path.
-///
-/// Called when an image file is drag-dropped from the asset browser onto the UI canvas.
 pub fn spawn_image_at(
     world: &mut World,
-    asset_path: &Path,
+    asset_path: &std::path::Path,
     x: f32,
     y: f32,
     snap: bool,
     grid: f32,
     parent: Option<Entity>,
 ) {
-    // Find or create canvas.
     let canvas_entity = {
         let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
         match parent.or_else(|| q.iter(world).next()) {
@@ -2373,8 +1732,6 @@ pub fn spawn_image_at(
             h: 720.0,
         });
 
-    // Convert to asset-relative path (e.g. "textures/player.png") for portability.
-    // Works in editor via EmbeddedAssetReader and in standalone runtime.
     let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
         project.make_asset_relative(asset_path)
     } else {
@@ -2383,7 +1740,6 @@ pub fn spawn_image_at(
 
     let image_handle: Handle<Image> = world.resource::<AssetServer>().load(load_path.clone());
 
-    // Read actual image dimensions from disk; fall back to 128×128 if unreadable
     #[cfg(feature = "editor")]
     let (img_w, img_h) = ::image::image_dimensions(asset_path)
         .map(|(w, h)| (w as f32, h as f32))
@@ -2391,7 +1747,6 @@ pub fn spawn_image_at(
     #[cfg(not(feature = "editor"))]
     let (img_w, img_h) = (128.0_f32, 128.0_f32);
 
-    // Snap position if enabled
     let mut px = x;
     let mut py = y;
     if snap {
@@ -2433,3 +1788,4 @@ pub fn spawn_image_at(
         sel.set(Some(entity));
     }
 }
+

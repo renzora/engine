@@ -859,6 +859,86 @@ fn render_project_tab(
         },
     );
 
+    // Autoload list — scenes that load before the boot scene and persist
+    // across every load_scene() call. Used for global UI overlays
+    // (loading bar), audio managers, save-state singletons, etc.
+    render_category(
+        ui,
+        LIST_BULLETS,
+        "Autoload Scenes",
+        CategoryStyle::interface(),
+        "settings_autoload",
+        true,
+        theme,
+        |ui| {
+            // Each existing entry: path label + Remove button.
+            let mut remove_index: Option<usize> = None;
+            for (i, path) in config.autoload.iter().enumerate() {
+                settings_row(ui, i, path, theme, |ui| {
+                    let button = egui::Button::new(
+                        RichText::new(format!("{} Remove", X))
+                            .color(theme.text.primary.to_color32())
+                            .size(11.0),
+                    )
+                    .fill(theme.panels.item_bg.to_color32())
+                    .stroke(Stroke::new(1.0, theme.widgets.border.to_color32()))
+                    .corner_radius(CornerRadius::same(4))
+                    .min_size(Vec2::new(80.0, 20.0));
+                    let resp = ui.add(button);
+                    if resp.clicked() {
+                        remove_index = Some(i);
+                    }
+                    resp
+                });
+            }
+            if let Some(i) = remove_index {
+                config.autoload.remove(i);
+            }
+
+            // "Add scene…" row — combo of available scenes that aren't
+            // already in the list (and aren't the boot scene, since
+            // autoloading the same scene twice is nonsensical).
+            let candidates: Vec<&String> = scene_files
+                .iter()
+                .filter(|s| !config.autoload.contains(s) && s.as_str() != config.main_scene)
+                .collect();
+            settings_row(ui, config.autoload.len(), "Add", theme, |ui| {
+                let mut to_add: Option<String> = None;
+                let label = if candidates.is_empty() {
+                    "(no available scenes)"
+                } else {
+                    "Pick a scene…"
+                };
+                let response = egui::ComboBox::from_id_salt("autoload_add_selector")
+                    .selected_text(label)
+                    .width(240.0)
+                    .show_ui(ui, |ui| {
+                        for scene in &candidates {
+                            if ui.selectable_label(false, scene.as_str()).clicked() {
+                                to_add = Some((*scene).clone());
+                            }
+                        }
+                    })
+                    .response;
+                if let Some(scene) = to_add {
+                    config.autoload.push(scene);
+                }
+                response
+            });
+
+            // Tiny help line so users know what these are.
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(
+                    "Autoloaded scenes load first and persist across every \
+                     scene change. Their entities are auto-tagged Persistent.",
+                )
+                .size(10.5)
+                .color(theme.text.muted.to_color32()),
+            );
+        },
+    );
+
     render_category(
         ui,
         TRASH,

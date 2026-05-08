@@ -1,12 +1,25 @@
 //! Data components for each widget type.
 //!
-//! Each component stores the widget-specific state. Runtime systems read these
-//! and drive child entities (fill bars, thumbs, checkmarks, etc.).
+//! Each component stores the widget-specific state. Single-entity widgets
+//! own their state directly; runtime systems read these and update bevy_ui
+//! components on the same entity. (No more parent-walks-children-by-role
+//! patterns — those caused round-trip serialization bugs.)
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// ── Progress Bar ────────────────────────────────────────────────────────────
+// ── Bar Fill ────────────────────────────────────────────────────────────────
+//
+// Single-entity primitive that maps a `value` in `[0, max]` to its `Node`'s
+// width or height. Replaces the old ProgressBar / HealthBar / LoadingScreen
+// pattern of "widget with role-marker child entities" — that pattern relied
+// on a `bar_bg`-tagged child containing a `bar_fill`-tagged grandchild, and
+// any serialization wobble would lose the role components.
+//
+// To build a "progress bar": a Container as the track (sets background,
+// padding, border-radius) with one child entity carrying `UiBarFill`. Two
+// single-entity widgets composed in the scene hierarchy. No internal child
+// roles, nothing to lose on save/load.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 pub enum ProgressDirection {
@@ -17,51 +30,62 @@ pub enum ProgressDirection {
     TopToBottom,
 }
 
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+/// Drives the entity's `Node` width or height from a 0..=max value.
+///
+/// Two sizing modes:
+///
+/// - **Pixel mode** (`max_px > 0`): `Node.width` (or height) is written as
+///   `Val::Px(fraction * max_px)`. Works regardless of parent — the bar
+///   always grows from 0 to `max_px` pixels. Use this when the bar is
+///   positioned absolutely on the canvas alongside a visual track of the
+///   same fixed size.
+///
+/// - **Percent mode** (`max_px == 0`): `Node.width` is written as
+///   `Val::Percent(fraction * 100)`. Requires the bar to be a flex child
+///   of a parent with a known size. Use this when nested inside a
+///   Container with `position_type: Relative`.
+///
+/// Pixel mode is the default — it's robust against the canvas editor's
+/// absolute-positioning model. Switch to Percent only when you've
+/// authored a flex layout deliberately.
+///
+/// Scripting: `set_on("loadbar_fill", "UiBarFill.value", 0.42)` updates
+/// the fill in place. The `apply_bar_fill` system rewrites `Node` on the
+/// next frame.
+#[derive(Component, Clone, Copy, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
-pub struct ProgressBarData {
+pub struct UiBarFill {
+    /// Current fill amount; clamped to `[0, max]`.
     pub value: f32,
+    /// Maximum value `value` can reach. Defaults to `1.0` so callers can
+    /// just write a fraction without thinking about scaling.
     pub max: f32,
-    pub fill_color: Color,
-    pub bg_color: Color,
+    /// Which axis the fill grows along, and from which edge.
     pub direction: ProgressDirection,
+    /// When > 0, the bar's pixel size grows from 0 to `max_px` driven by
+    /// `value/max`. When 0, the bar uses Percent of its parent's size.
+    /// Default is 200px so the bar is visible without further setup.
+    pub max_px: f32,
 }
 
-impl Default for ProgressBarData {
+impl Default for UiBarFill {
     fn default() -> Self {
         Self {
             value: 0.5,
             max: 1.0,
-            fill_color: Color::srgba(0.3, 0.7, 0.3, 1.0),
-            bg_color: Color::srgba(0.2, 0.2, 0.2, 0.8),
             direction: ProgressDirection::LeftToRight,
+            max_px: 200.0,
         }
     }
 }
 
-// ── Health Bar ──────────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct HealthBarData {
-    pub current: f32,
-    pub max: f32,
-    pub low_threshold: f32,
-    pub fill_color: Color,
-    pub low_color: Color,
-    pub bg_color: Color,
-}
-
-impl Default for HealthBarData {
-    fn default() -> Self {
-        Self {
-            current: 75.0,
-            max: 100.0,
-            low_threshold: 0.25,
-            fill_color: Color::srgba(0.2, 0.8, 0.2, 1.0),
-            low_color: Color::srgba(0.9, 0.2, 0.2, 1.0),
-            bg_color: Color::srgba(0.15, 0.15, 0.15, 0.9),
+impl UiBarFill {
+    /// Fraction in `[0, 1]`. Returns `1.0` when `max <= 0` to avoid NaN.
+    pub fn fraction(&self) -> f32 {
+        if self.max <= 0.0 {
+            return 1.0;
         }
+        (self.value / self.max).clamp(0.0, 1.0)
     }
 }
 
@@ -227,46 +251,6 @@ impl Default for ScrollViewData {
     }
 }
 
-// ── Tab Bar ─────────────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct TabBarData {
-    pub tabs: Vec<String>,
-    pub active: usize,
-    pub tab_color: Color,
-    pub active_color: Color,
-}
-
-impl Default for TabBarData {
-    fn default() -> Self {
-        Self {
-            tabs: vec!["Tab 1".into(), "Tab 2".into(), "Tab 3".into()],
-            active: 0,
-            tab_color: Color::srgba(0.2, 0.2, 0.2, 1.0),
-            active_color: Color::srgba(0.3, 0.5, 0.9, 1.0),
-        }
-    }
-}
-
-// ── Spinner ─────────────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct SpinnerData {
-    pub speed: f32,
-    pub color: Color,
-}
-
-impl Default for SpinnerData {
-    fn default() -> Self {
-        Self {
-            speed: 2.0,
-            color: Color::WHITE,
-        }
-    }
-}
-
 // ── Tooltip ─────────────────────────────────────────────────────────────────
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -309,7 +293,7 @@ impl Default for ModalData {
     }
 }
 
-// ── Image ────────────────────────────────────────────────────────────
+// ── Image ──────────────────────────────────────────────────────────────────
 
 /// Serializable asset path for UI image widgets.
 ///
@@ -340,464 +324,6 @@ impl Default for DraggableWindowData {
             closable: true,
             minimizable: true,
             title_bar_color: Color::srgba(0.2, 0.2, 0.25, 1.0),
-        }
-    }
-}
-
-// ── Crosshair ──────────────────────────────────────────────────────────────
-
-/// Crosshair reticle style.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
-pub enum CrosshairStyle {
-    #[default]
-    Cross,
-    Dot,
-    CircleDot,
-    CrossDot,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct CrosshairData {
-    pub style: CrosshairStyle,
-    pub color: Color,
-    /// Total size in pixels.
-    pub size: f32,
-    /// Line length (for Cross/CrossDot styles).
-    pub line_length: f32,
-    /// Line thickness in pixels.
-    pub thickness: f32,
-    /// Gap from center in pixels (for Cross/CrossDot).
-    pub gap: f32,
-    /// Dot radius (for Dot/CircleDot/CrossDot).
-    pub dot_size: f32,
-}
-
-impl Default for CrosshairData {
-    fn default() -> Self {
-        Self {
-            style: CrosshairStyle::Cross,
-            color: Color::WHITE,
-            size: 32.0,
-            line_length: 8.0,
-            thickness: 2.0,
-            gap: 4.0,
-            dot_size: 2.0,
-        }
-    }
-}
-
-// ── Ammo Counter ───────────────────────────────────────────────────────────
-
-/// How the ammo count is displayed.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
-pub enum AmmoDisplayMode {
-    #[default]
-    Numeric,
-    Icons,
-    Both,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct AmmoCounterData {
-    pub current: u32,
-    pub max: u32,
-    pub display_mode: AmmoDisplayMode,
-    pub color: Color,
-    pub low_color: Color,
-    /// Threshold below which `low_color` is used.
-    pub low_threshold: u32,
-}
-
-impl Default for AmmoCounterData {
-    fn default() -> Self {
-        Self {
-            current: 30,
-            max: 30,
-            display_mode: AmmoDisplayMode::Numeric,
-            color: Color::WHITE,
-            low_color: Color::srgba(1.0, 0.3, 0.3, 1.0),
-            low_threshold: 5,
-        }
-    }
-}
-
-// ── Compass ────────────────────────────────────────────────────────────────
-
-/// A compass marker at a specific heading angle.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct CompassMarker {
-    /// Label text (e.g. "N", "S", "E", "W", or a custom waypoint).
-    pub label: String,
-    /// Heading angle in degrees (0 = North, 90 = East).
-    pub angle: f32,
-    pub color: Color,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct CompassData {
-    /// Current player heading in degrees (0 = North, clockwise).
-    pub heading: f32,
-    /// Field of view shown in the strip (degrees).
-    pub fov: f32,
-    pub markers: Vec<CompassMarker>,
-    pub text_color: Color,
-    pub tick_color: Color,
-}
-
-impl Default for CompassData {
-    fn default() -> Self {
-        Self {
-            heading: 0.0,
-            fov: 180.0,
-            markers: vec![
-                CompassMarker {
-                    label: "N".into(),
-                    angle: 0.0,
-                    color: Color::srgba(1.0, 0.3, 0.3, 1.0),
-                },
-                CompassMarker {
-                    label: "E".into(),
-                    angle: 90.0,
-                    color: Color::WHITE,
-                },
-                CompassMarker {
-                    label: "S".into(),
-                    angle: 180.0,
-                    color: Color::WHITE,
-                },
-                CompassMarker {
-                    label: "W".into(),
-                    angle: 270.0,
-                    color: Color::WHITE,
-                },
-            ],
-            text_color: Color::WHITE,
-            tick_color: Color::srgba(0.6, 0.6, 0.6, 1.0),
-        }
-    }
-}
-
-// ── Status Effect Bar ──────────────────────────────────────────────────────
-
-/// A single status effect (buff/debuff).
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct StatusEffect {
-    pub name: String,
-    /// Duration in seconds. 0 = permanent.
-    pub duration: f32,
-    /// Elapsed time in seconds.
-    pub elapsed: f32,
-    pub color: Color,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct StatusEffectBarData {
-    pub effects: Vec<StatusEffect>,
-    /// Size of each effect icon in pixels.
-    pub icon_size: f32,
-    /// Spacing between icons.
-    pub spacing: f32,
-}
-
-impl Default for StatusEffectBarData {
-    fn default() -> Self {
-        Self {
-            effects: Vec::new(),
-            icon_size: 32.0,
-            spacing: 4.0,
-        }
-    }
-}
-
-// ── Notification Feed ──────────────────────────────────────────────────────
-
-/// A single notification message.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct Notification {
-    pub text: String,
-    pub color: Color,
-    /// Remaining lifetime in seconds.
-    pub remaining: f32,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct NotificationFeedData {
-    pub notifications: Vec<Notification>,
-    /// Maximum number of visible notifications.
-    pub max_visible: usize,
-    /// Default lifetime for new notifications (seconds).
-    pub default_duration: f32,
-    /// Fade-out duration (seconds).
-    pub fade_duration: f32,
-}
-
-impl Default for NotificationFeedData {
-    fn default() -> Self {
-        Self {
-            notifications: Vec::new(),
-            max_visible: 5,
-            default_duration: 4.0,
-            fade_duration: 1.0,
-        }
-    }
-}
-
-// ── Radial Menu ────────────────────────────────────────────────────────────
-
-/// A single item in a radial menu.
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct RadialMenuItem {
-    pub label: String,
-    pub color: Color,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct RadialMenuData {
-    pub items: Vec<RadialMenuItem>,
-    /// Whether the menu is currently open.
-    pub open: bool,
-    /// Currently highlighted segment (-1 = none).
-    pub selected: i32,
-    /// Inner radius as fraction (0.0–1.0).
-    pub inner_radius: f32,
-    pub bg_color: Color,
-    pub highlight_color: Color,
-}
-
-impl Default for RadialMenuData {
-    fn default() -> Self {
-        Self {
-            items: vec![
-                RadialMenuItem {
-                    label: "Item 1".into(),
-                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
-                },
-                RadialMenuItem {
-                    label: "Item 2".into(),
-                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
-                },
-                RadialMenuItem {
-                    label: "Item 3".into(),
-                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
-                },
-                RadialMenuItem {
-                    label: "Item 4".into(),
-                    color: Color::srgba(0.3, 0.5, 0.9, 0.8),
-                },
-            ],
-            open: false,
-            selected: -1,
-            inner_radius: 0.3,
-            bg_color: Color::srgba(0.15, 0.15, 0.18, 0.9),
-            highlight_color: Color::srgba(0.4, 0.6, 1.0, 0.9),
-        }
-    }
-}
-
-// ── Minimap ────────────────────────────────────────────────────────────────
-
-/// Minimap rotation mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
-pub enum MinimapRotation {
-    /// North is always up.
-    #[default]
-    FixedNorth,
-    /// Map rotates with the player.
-    PlayerRelative,
-}
-
-/// Minimap frame shape.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
-pub enum MinimapShape {
-    #[default]
-    Circle,
-    Square,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct MinimapData {
-    /// Zoom level (higher = more zoomed in).
-    pub zoom: f32,
-    pub rotation_mode: MinimapRotation,
-    pub shape: MinimapShape,
-    pub border_color: Color,
-    pub border_width: f32,
-    pub bg_color: Color,
-}
-
-impl Default for MinimapData {
-    fn default() -> Self {
-        Self {
-            zoom: 1.0,
-            rotation_mode: MinimapRotation::FixedNorth,
-            shape: MinimapShape::Circle,
-            border_color: Color::srgba(0.4, 0.4, 0.45, 1.0),
-            border_width: 2.0,
-            bg_color: Color::srgba(0.1, 0.12, 0.1, 0.8),
-        }
-    }
-}
-
-// ── Inventory Grid ──────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct InventoryGridData {
-    /// Number of columns.
-    pub columns: u32,
-    /// Number of rows.
-    pub rows: u32,
-    /// Size of each slot in pixels (square).
-    pub slot_size: f32,
-    /// Gap between slots in pixels.
-    pub gap: f32,
-    pub slot_bg_color: Color,
-    pub slot_border_color: Color,
-    pub slot_border_width: f32,
-}
-
-impl Default for InventoryGridData {
-    fn default() -> Self {
-        Self {
-            columns: 6,
-            rows: 4,
-            slot_size: 48.0,
-            gap: 4.0,
-            slot_bg_color: Color::srgba(0.15, 0.15, 0.18, 0.9),
-            slot_border_color: Color::srgba(0.4, 0.4, 0.45, 0.6),
-            slot_border_width: 1.0,
-        }
-    }
-}
-
-/// Marker for individual inventory slot entities.
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct InventorySlot {
-    /// Grid position (column, row).
-    pub col: u32,
-    pub row: u32,
-}
-
-// ── Dialog Box ──────────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct DialogBoxData {
-    /// Speaker name displayed at top.
-    pub speaker: String,
-    /// Full dialog text (may type-write over time).
-    pub text: String,
-    /// Characters revealed so far (for typewriter effect).
-    pub chars_revealed: usize,
-    /// Characters per second for typewriter effect (0 = instant).
-    pub chars_per_second: f32,
-    /// Accumulated time for typewriter.
-    pub elapsed: f32,
-    pub speaker_color: Color,
-    pub text_color: Color,
-    pub bg_color: Color,
-}
-
-impl Default for DialogBoxData {
-    fn default() -> Self {
-        Self {
-            speaker: "NPC".into(),
-            text: "Hello, adventurer!".into(),
-            chars_revealed: 0,
-            chars_per_second: 30.0,
-            elapsed: 0.0,
-            speaker_color: Color::srgba(0.9, 0.8, 0.3, 1.0),
-            text_color: Color::WHITE,
-            bg_color: Color::srgba(0.08, 0.08, 0.1, 0.95),
-        }
-    }
-}
-
-// ── Objective Tracker ───────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
-pub enum ObjectiveStatus {
-    #[default]
-    Active,
-    Completed,
-    Failed,
-}
-
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct Objective {
-    pub label: String,
-    pub status: ObjectiveStatus,
-    /// Optional progress (e.g. "3/5 items collected").
-    pub progress: Option<(u32, u32)>,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct ObjectiveTrackerData {
-    pub title: String,
-    pub objectives: Vec<Objective>,
-    pub title_color: Color,
-    pub active_color: Color,
-    pub completed_color: Color,
-    pub failed_color: Color,
-}
-
-impl Default for ObjectiveTrackerData {
-    fn default() -> Self {
-        Self {
-            title: "Objectives".into(),
-            objectives: vec![
-                Objective {
-                    label: "Find the key".into(),
-                    status: ObjectiveStatus::Active,
-                    progress: None,
-                },
-                Objective {
-                    label: "Collect items".into(),
-                    status: ObjectiveStatus::Active,
-                    progress: Some((2, 5)),
-                },
-            ],
-            title_color: Color::srgba(0.9, 0.8, 0.3, 1.0),
-            active_color: Color::WHITE,
-            completed_color: Color::srgba(0.3, 0.8, 0.3, 1.0),
-            failed_color: Color::srgba(0.8, 0.3, 0.3, 1.0),
-        }
-    }
-}
-
-// ── Loading Screen ──────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct LoadingScreenData {
-    /// Loading progress 0.0–1.0.
-    pub progress: f32,
-    /// Loading message / tip text.
-    pub message: String,
-    pub bg_color: Color,
-    pub bar_color: Color,
-    pub bar_bg_color: Color,
-    pub text_color: Color,
-}
-
-impl Default for LoadingScreenData {
-    fn default() -> Self {
-        Self {
-            progress: 0.0,
-            message: "Loading...".into(),
-            bg_color: Color::srgba(0.05, 0.05, 0.07, 1.0),
-            bar_color: Color::srgba(0.3, 0.6, 1.0, 1.0),
-            bar_bg_color: Color::srgba(0.2, 0.2, 0.25, 1.0),
-            text_color: Color::WHITE,
         }
     }
 }
@@ -922,32 +448,6 @@ impl Default for NumberInputData {
     }
 }
 
-// ── Vertical Slider ────────────────────────────────────────────────────────
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct VerticalSliderData {
-    pub value: f32,
-    pub min: f32,
-    pub max: f32,
-    pub track_color: Color,
-    pub fill_color: Color,
-    pub thumb_color: Color,
-}
-
-impl Default for VerticalSliderData {
-    fn default() -> Self {
-        Self {
-            value: 0.5,
-            min: 0.0,
-            max: 1.0,
-            track_color: Color::srgba(0.2, 0.2, 0.25, 1.0),
-            fill_color: Color::srgba(0.3, 0.6, 1.0, 1.0),
-            thumb_color: Color::WHITE,
-        }
-    }
-}
-
 // ── Scrollbar ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
@@ -979,54 +479,6 @@ impl Default for ScrollbarData {
             track_color: Color::srgba(0.12, 0.12, 0.15, 0.8),
             thumb_color: Color::srgba(0.4, 0.4, 0.45, 0.8),
             thumb_hover_color: Color::srgba(0.5, 0.5, 0.55, 1.0),
-        }
-    }
-}
-
-// ── List ───────────────────────────────────────────────────────────────────
-
-#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
-pub struct ListItem {
-    pub label: String,
-    pub selected: bool,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct ListData {
-    pub items: Vec<ListItem>,
-    /// Allow multiple selection.
-    pub multi_select: bool,
-    pub item_height: f32,
-    pub text_color: Color,
-    pub selected_bg_color: Color,
-    pub hover_bg_color: Color,
-    pub bg_color: Color,
-}
-
-impl Default for ListData {
-    fn default() -> Self {
-        Self {
-            items: vec![
-                ListItem {
-                    label: "Item 1".into(),
-                    selected: false,
-                },
-                ListItem {
-                    label: "Item 2".into(),
-                    selected: false,
-                },
-                ListItem {
-                    label: "Item 3".into(),
-                    selected: false,
-                },
-            ],
-            multi_select: false,
-            item_height: 28.0,
-            text_color: Color::WHITE,
-            selected_bg_color: Color::srgba(0.2, 0.4, 0.8, 0.5),
-            hover_bg_color: Color::srgba(0.3, 0.3, 0.35, 0.5),
-            bg_color: Color::srgba(0.12, 0.12, 0.15, 0.9),
         }
     }
 }

@@ -26,39 +26,21 @@ pub enum UiWidgetType {
     TextInput,
 
     // ── Display ──
-    ProgressBar,
-    HealthBar,
-    Spinner,
-    TabBar,
+    BarFill,
 
     // ── Overlay ──
     Tooltip,
     Modal,
     DraggableWindow,
 
-    // ── HUD ──
-    Crosshair,
-    AmmoCounter,
-    Compass,
-    StatusEffectBar,
-    NotificationFeed,
-    RadialMenu,
-    Minimap,
-
     // ── Menu ──
-    InventoryGrid,
-    DialogBox,
-    ObjectiveTracker,
-    LoadingScreen,
     KeybindRow,
     SettingsRow,
 
     // ── Extra ──
     Separator,
     NumberInput,
-    VerticalSlider,
     Scrollbar,
-    List,
 
     // ── Shapes ──
     Circle,
@@ -86,31 +68,15 @@ impl UiWidgetType {
             Self::RadioButton => "Radio Button",
             Self::Dropdown => "Dropdown",
             Self::TextInput => "Text Input",
-            Self::ProgressBar => "Progress Bar",
-            Self::HealthBar => "Health Bar",
-            Self::Spinner => "Spinner",
-            Self::TabBar => "Tab Bar",
+            Self::BarFill => "Bar Fill",
             Self::Tooltip => "Tooltip",
             Self::Modal => "Modal",
             Self::DraggableWindow => "Draggable Window",
-            Self::Crosshair => "Crosshair",
-            Self::AmmoCounter => "Ammo Counter",
-            Self::Compass => "Compass",
-            Self::StatusEffectBar => "Status Effects",
-            Self::NotificationFeed => "Notifications",
-            Self::RadialMenu => "Radial Menu",
-            Self::Minimap => "Minimap",
-            Self::InventoryGrid => "Inventory Grid",
-            Self::DialogBox => "Dialog Box",
-            Self::ObjectiveTracker => "Objective Tracker",
-            Self::LoadingScreen => "Loading Screen",
             Self::KeybindRow => "Keybind Row",
             Self::SettingsRow => "Settings Row",
             Self::Separator => "Separator",
             Self::NumberInput => "Number Input",
-            Self::VerticalSlider => "Vertical Slider",
             Self::Scrollbar => "Scrollbar",
-            Self::List => "List",
             Self::Circle => "Circle",
             Self::Arc => "Arc",
             Self::RadialProgress => "Radial Progress",
@@ -138,31 +104,15 @@ impl UiWidgetType {
             Self::RadioButton => RADIO_BUTTON,
             Self::Dropdown => CARET_CIRCLE_DOWN,
             Self::TextInput => TEXT_T,
-            Self::ProgressBar => BATTERY_MEDIUM,
-            Self::HealthBar => HEART,
-            Self::Spinner => SPINNER,
-            Self::TabBar => TABS,
+            Self::BarFill => BATTERY_MEDIUM,
             Self::Tooltip => CHAT_CIRCLE_TEXT,
             Self::Modal => BROWSERS,
             Self::DraggableWindow => APP_WINDOW,
-            Self::Crosshair => CROSSHAIR,
-            Self::AmmoCounter => HASH,
-            Self::Compass => COMPASS,
-            Self::StatusEffectBar => LIGHTNING,
-            Self::NotificationFeed => BELL,
-            Self::RadialMenu => SELECTION_ALL,
-            Self::Minimap => MAP_TRIFOLD,
-            Self::InventoryGrid => GRID_FOUR,
-            Self::DialogBox => CHAT_DOTS,
-            Self::ObjectiveTracker => LIST_CHECKS,
-            Self::LoadingScreen => HOURGLASS,
             Self::KeybindRow => KEYBOARD,
             Self::SettingsRow => GEAR,
             Self::Separator => MINUS,
             Self::NumberInput => CALCULATOR,
-            Self::VerticalSlider => SLIDERS,
             Self::Scrollbar => ARROWS_DOWN_UP,
-            Self::List => LIST,
             Self::Circle => CIRCLE,
             Self::Arc => CIRCLE_DASHED,
             Self::RadialProgress => CIRCLE_NOTCH,
@@ -185,26 +135,10 @@ impl UiWidgetType {
             | Self::RadioButton
             | Self::Dropdown
             | Self::TextInput => "Input",
-            Self::ProgressBar | Self::HealthBar | Self::Spinner | Self::TabBar => "Display",
+            Self::BarFill => "Display",
             Self::Tooltip | Self::Modal | Self::DraggableWindow => "Overlay",
-            Self::Crosshair
-            | Self::AmmoCounter
-            | Self::Compass
-            | Self::StatusEffectBar
-            | Self::NotificationFeed
-            | Self::RadialMenu
-            | Self::Minimap => "HUD",
-            Self::InventoryGrid
-            | Self::DialogBox
-            | Self::ObjectiveTracker
-            | Self::LoadingScreen
-            | Self::KeybindRow
-            | Self::SettingsRow => "Menu",
-            Self::Separator
-            | Self::NumberInput
-            | Self::VerticalSlider
-            | Self::Scrollbar
-            | Self::List => "Extra",
+            Self::KeybindRow | Self::SettingsRow => "Menu",
+            Self::Separator | Self::NumberInput | Self::Scrollbar => "Extra",
             Self::Circle
             | Self::Arc
             | Self::RadialProgress

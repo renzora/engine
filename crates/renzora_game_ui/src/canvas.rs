@@ -783,22 +783,62 @@ fn rotated_corners(rect: Rect, rotation: f32) -> [Pos2; 4] {
     ]
 }
 
+/// Depth of a widget in the canvas's UI hierarchy. Counted by walking
+/// the `parent` chain inside the snapshot list — root canvas widgets are
+/// depth 0, their children are 1, grandchildren 2, etc.
+///
+/// Used by click-to-select so nested widgets win over their ancestors:
+/// clicking the inside of a Container that contains a Bar Fill should
+/// select the Bar Fill, not the Container.
+fn snapshot_depth(snapshots: &[WidgetSnapshot], target: &WidgetSnapshot) -> usize {
+    let mut depth = 0;
+    let mut cur = target.parent;
+    let mut guard = 0;
+    while let Some(parent_entity) = cur {
+        guard += 1;
+        if guard > 64 {
+            break; // pathological hierarchy guard
+        }
+        let Some(parent_snap) = snapshots.iter().find(|s| s.entity == parent_entity) else {
+            break;
+        };
+        depth += 1;
+        cur = parent_snap.parent;
+    }
+    depth
+}
+
 /// All 8 resize handle positions (corners + edges) in screen space, rotated
 /// around the rect center. Order matches `ResizeHandle` variants.
+///
+/// Handles sit `HANDLE_OFFSET` px *outside* the widget's bounds so they
+/// don't obscure the widget's content. Corners offset diagonally; edge
+/// handles offset along the edge's outward normal.
 fn handle_positions(rect: Rect, rotation: f32) -> [(ResizeHandle, Pos2); 8] {
     let center = rect.center();
-    let (w, h) = (rect.width(), rect.height());
+    let off = HANDLE_OFFSET;
     let raw = [
-        (ResizeHandle::TopLeft, Pos2::new(rect.min.x, rect.min.y)),
-        (ResizeHandle::Top, Pos2::new(center.x, rect.min.y)),
-        (ResizeHandle::TopRight, Pos2::new(rect.max.x, rect.min.y)),
-        (ResizeHandle::Right, Pos2::new(rect.max.x, center.y)),
-        (ResizeHandle::BottomRight, Pos2::new(rect.max.x, rect.max.y)),
-        (ResizeHandle::Bottom, Pos2::new(center.x, rect.max.y)),
-        (ResizeHandle::BottomLeft, Pos2::new(rect.min.x, rect.max.y)),
-        (ResizeHandle::Left, Pos2::new(rect.min.x, center.y)),
+        (
+            ResizeHandle::TopLeft,
+            Pos2::new(rect.min.x - off, rect.min.y - off),
+        ),
+        (ResizeHandle::Top, Pos2::new(center.x, rect.min.y - off)),
+        (
+            ResizeHandle::TopRight,
+            Pos2::new(rect.max.x + off, rect.min.y - off),
+        ),
+        (ResizeHandle::Right, Pos2::new(rect.max.x + off, center.y)),
+        (
+            ResizeHandle::BottomRight,
+            Pos2::new(rect.max.x + off, rect.max.y + off),
+        ),
+        (ResizeHandle::Bottom, Pos2::new(center.x, rect.max.y + off)),
+        (
+            ResizeHandle::BottomLeft,
+            Pos2::new(rect.min.x - off, rect.max.y + off),
+        ),
+        (ResizeHandle::Left, Pos2::new(rect.min.x - off, center.y)),
     ];
-    let _ = (w, h); // reserved
     let mut out: [(ResizeHandle, Pos2); 8] = raw;
     for (_, p) in out.iter_mut() {
         *p = rotate_around(*p, center, rotation);
@@ -815,14 +855,18 @@ fn rotated_rect_contains(rect: Rect, rotation: f32, point: Pos2) -> bool {
 }
 
 /// Visual handle radius (screen px). Stays constant regardless of zoom.
-const HANDLE_RADIUS: f32 = 6.5;
-/// Hit region radius (screen px) — intentionally much larger than the visible
-/// circle so grabs near the edge still register. Roughly 3× the visible area.
-const HANDLE_HIT_RADIUS: f32 = 16.0;
+const HANDLE_RADIUS: f32 = 4.0;
+/// Hit region radius (screen px) — larger than the visible circle so grabs
+/// near the handle still register. The hit area extends well past the
+/// drawn dot so users don't have to be pixel-perfect.
+const HANDLE_HIT_RADIUS: f32 = 12.0;
+/// How far outside the widget's bounds to place each handle (screen px).
+/// Handles sit just outside so they don't overlap widget content.
+const HANDLE_OFFSET: f32 = 6.0;
 /// Distance above top edge for the rotation knob (screen px).
-const ROTATE_HANDLE_OFFSET: f32 = 28.0;
+const ROTATE_HANDLE_OFFSET: f32 = 24.0;
 /// Rotation knob visual radius.
-const ROTATE_HANDLE_RADIUS: f32 = 6.5;
+const ROTATE_HANDLE_RADIUS: f32 = 4.0;
 
 impl EditorPanel for UiCanvasPanel {
     fn id(&self) -> &str {
@@ -1203,15 +1247,57 @@ impl EditorPanel for UiCanvasPanel {
                         .map(|t| (t.scale.x, t.scale.y))
                         .unwrap_or((1.0, 1.0));
 
+                    // Position/size for selection handles + drag math.
+                    //
+                    // For canvas-root (Absolute) widgets, raw `Node.left/top`
+                    // values match what bevy_ui rendered — use them.
+                    //
+                    // For flex children, `Node.left/top` is `Auto` (which
+                    // resolves to 0 here), but bevy_ui places them at flex
+                    // flow positions stored in `ComputedNode`+`UiGlobalTransform`.
+                    // Read those when available so handles align with the
+                    // actual rendered widget.
+                    //
+                    // `ComputedNode` and `UiGlobalTransform` are in
+                    // *render-space* pixels (= design × `UiScale`). The
+                    // canvas tab works in design space, so we divide back
+                    // out before storing. Without this, selection handles
+                    // would be `UiScale`× off-position.
+                    let scale = world
+                        .get_resource::<bevy::ui::UiScale>()
+                        .map(|s| s.0)
+                        .unwrap_or(1.0)
+                        .max(0.001);
+                    let computed = world.get::<bevy::ui::ComputedNode>(entity);
+                    let ui_global = world.get::<bevy::ui::UiGlobalTransform>(entity);
+
+                    let (px_x, px_y, px_w, px_h) = match (computed, ui_global) {
+                        (Some(cn), Some(ugt)) => {
+                            // UiGlobalTransform's translation is at the
+                            // *center* of the node; back it out to top-left.
+                            let cx = ugt.translation.x / scale;
+                            let cy = ugt.translation.y / scale;
+                            let w = cn.size.x / scale;
+                            let h = cn.size.y / scale;
+                            (cx - w * 0.5, cy - h * 0.5, w, h)
+                        }
+                        _ => (
+                            val_to_design_px(node.left, ref_w),
+                            val_to_design_px(node.top, ref_h),
+                            val_to_design_px(node.width, ref_w),
+                            val_to_design_px(node.height, ref_h),
+                        ),
+                    };
+
                     state.widgets.push(WidgetSnapshot {
                         entity,
                         name,
                         widget_type: widget.widget_type.clone(),
                         locked: widget.locked,
-                        x: val_to_design_px(node.left, ref_w),
-                        y: val_to_design_px(node.top, ref_h),
-                        width: val_to_design_px(node.width, ref_w),
-                        height: val_to_design_px(node.height, ref_h),
+                        x: px_x,
+                        y: px_y,
+                        width: px_w,
+                        height: px_h,
                         rotation,
                         scale_x,
                         scale_y,
@@ -1310,7 +1396,7 @@ impl EditorPanel for UiCanvasPanel {
                     UiWidgetType::TextInput,
                 ],
                 // Display
-                &[UiWidgetType::ProgressBar, UiWidgetType::HealthBar],
+                &[UiWidgetType::BarFill],
                 // Overlay
                 &[UiWidgetType::Modal, UiWidgetType::DraggableWindow],
                 // Shapes — these enter draw mode (click the button, then drag on the canvas to place)
@@ -1431,7 +1517,8 @@ impl EditorPanel for UiCanvasPanel {
                         } else {
                             let wt = wtype.clone();
                             commands.push(move |world: &mut World| {
-                                crate::spawn::spawn_widget(world, &wt, active_canvas);
+                                let parent = crate::spawn::pick_spawn_parent(world, active_canvas);
+                                crate::spawn::spawn_widget(world, &wt, parent);
                             });
                         }
                     }
@@ -1484,7 +1571,7 @@ impl EditorPanel for UiCanvasPanel {
         if scroll != 0.0 && response.hovered() {
             let factor = if scroll > 0.0 { 1.1 } else { 1.0 / 1.1 };
             let old_z = state.zoom;
-            let new_z = (old_z * factor).clamp(0.1, 5.0);
+            let new_z = (old_z * factor).clamp(0.1, 130.0);
             if (new_z - old_z).abs() > f32::EPSILON {
                 if let Some(cursor) = ui.ctx().pointer_latest_pos() {
                     // Current canvas origin (panel center + pan)
@@ -1564,6 +1651,22 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
+        // ── Real bevy_ui render ──────────────────────────────────────────
+        //
+        // This is what makes WYSIWYG actually wysiwyg: every widget under
+        // the active canvas is rendered by bevy_ui to an offscreen texture
+        // each frame (via `canvas_render::UiEditorRenderCamera`). We blit
+        // that texture into the canvas rect here. Layout, clipping, theme,
+        // visibility — all driven by bevy_ui's real render path. Selection
+        // handles + grid + alignment guides stay as egui overlays drawn on
+        // top of this image.
+        if let Some(ui_render) = world.get_resource::<crate::canvas_render::UiCanvasRender>() {
+            if let Some(tex_id) = ui_render.texture_id {
+                let uv = egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
+                painter.image(tex_id, canvas_rect, uv, Color32::WHITE);
+            }
+        }
+
         painter.rect_stroke(
             canvas_rect,
             0.0,
@@ -1629,7 +1732,22 @@ impl EditorPanel for UiCanvasPanel {
             let rect = Rect::from_center_size(layout_rect.center(), Vec2::new(visual_w, visual_h));
             let is_sel = all_sel.contains(&ws.entity);
 
-            paint_widget_preview(&painter, &ws, rect, z, is_sel, accent, text_muted);
+            // Editor chrome: only draw a selection outline. The widget
+            // itself is rendered by bevy_ui into the canvas texture above
+            // — duplicating it via egui (the old `paint_widget_preview`
+            // path) would simulate-and-mismatch what the user sees at
+            // runtime. The egui simulation has been replaced by real
+            // bevy_ui rendering.
+            if is_sel {
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    Stroke::new(1.5, accent),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            let _ = text_muted; // silence the unused binding now that
+                                // paint_widget_preview is gone
         }
 
         // ── Selection gizmo (drawn on top of all widgets) ────────────────
@@ -1825,6 +1943,13 @@ impl EditorPanel for UiCanvasPanel {
                         ny = snap(ny, grid);
                     }
                     commands.push(move |world: &mut World| {
+                        // Skip flex-flow children — their parent's flex
+                        // layout owns positioning. Writing left/top/Absolute
+                        // here would convert them back to free placement
+                        // and break auto-layout.
+                        if crate::spawn::is_flex_child(world, entity) {
+                            return;
+                        }
                         if let Ok(mut em) = world.get_entity_mut(entity) {
                             if let Some(mut node) = em.get_mut::<Node>() {
                                 node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
@@ -2053,15 +2178,20 @@ impl EditorPanel for UiCanvasPanel {
             // Suppress default select/drag behavior while a shape tool is active.
         } else if response.clicked() {
             let pointer = response.interact_pointer_pos().unwrap_or_default();
-            let mut clicked_entity = None;
 
-            for ws in widget_snapshots.iter().rev() {
-                let rect = ws_screen_rect(ws, canvas_rect, z);
-                if rotated_rect_contains(rect, ws.rotation, pointer) {
-                    clicked_entity = Some(ws.entity);
-                    break;
-                }
-            }
+            // Hit-test deepest-first: pick the most-nested widget under
+            // the pointer. Without depth-aware sorting, archetype storage
+            // order would sometimes return the parent for a click that's
+            // visually on the child. Now: gather all hits, then pick the
+            // one furthest from the canvas root.
+            let clicked_entity = widget_snapshots
+                .iter()
+                .filter(|ws| {
+                    let rect = ws_screen_rect(ws, canvas_rect, z);
+                    rotated_rect_contains(rect, ws.rotation, pointer)
+                })
+                .max_by_key(|ws| snapshot_depth(&widget_snapshots, ws))
+                .map(|ws| ws.entity);
 
             if shift {
                 // Shift+click: toggle in multi-selection
@@ -2225,6 +2355,12 @@ impl EditorPanel for UiCanvasPanel {
                             }
                             let e = *entity;
                             commands.push(move |world: &mut World| {
+                                // Don't write absolute coords onto flex
+                                // children — their parent's flex layout
+                                // owns positioning.
+                                if crate::spawn::is_flex_child(world, e) {
+                                    return;
+                                }
                                 if let Ok(mut em) = world.get_entity_mut(e) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
                                         node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
@@ -2417,13 +2553,24 @@ impl EditorPanel for UiCanvasPanel {
 
                         commands.push(move |world: &mut World| {
                             for (entity, nx, ny, nw, nh) in &entity_updates {
+                                let flex_child = crate::spawn::is_flex_child(world, *entity);
                                 if let Ok(mut em) = world.get_entity_mut(*entity) {
                                     if let Some(mut node) = em.get_mut::<Node>() {
+                                        // Width/height writes are always
+                                        // allowed — even on flex children,
+                                        // because Bevy's flex layout
+                                        // honors authored sizes (with
+                                        // `flex_shrink: 0`).
                                         node.width = bevy::ui::Val::Percent(nw / ref_w * 100.0);
                                         node.height = bevy::ui::Val::Percent(nh / ref_h * 100.0);
-                                        node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
-                                        node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
-                                        node.position_type = bevy::ui::PositionType::Absolute;
+                                        // Position writes are skipped on
+                                        // flex children — their parent's
+                                        // layout owns positioning.
+                                        if !flex_child {
+                                            node.left = bevy::ui::Val::Percent(nx / ref_w * 100.0);
+                                            node.top = bevy::ui::Val::Percent(ny / ref_h * 100.0);
+                                            node.position_type = bevy::ui::PositionType::Absolute;
+                                        }
                                     }
                                 }
                             }
@@ -2765,15 +2912,23 @@ impl EditorPanel for UiCanvasPanel {
                         let wt = widget_drag.widget_type.clone();
                         let active = state.active_canvas;
                         commands.push(move |world: &mut World| {
-                            crate::spawn::spawn_widget(world, &wt, active);
-                            // Set position on the newly spawned widget
+                            let parent = crate::spawn::pick_spawn_parent(world, active);
+                            crate::spawn::spawn_widget(world, &wt, parent);
+                            // Set drop position only for canvas-root drops
+                            // (free placement). When the widget landed
+                            // inside a Container, `spawn_widget` set it to
+                            // `Relative` flow layout — overriding to
+                            // Absolute here would break the auto-layout
+                            // and re-introduce the "child appears
+                            // outside parent" bug.
                             if let Some(sel) = world.get_resource::<EditorSelection>() {
                                 if let Some(entity) = sel.get() {
                                     if let Ok(mut em) = world.get_entity_mut(entity) {
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            node.left = bevy::ui::Val::Px(canvas_x);
-                                            node.top = bevy::ui::Val::Px(canvas_y);
-                                            node.position_type = bevy::ui::PositionType::Absolute;
+                                            if matches!(node.position_type, bevy::ui::PositionType::Absolute) {
+                                                node.left = bevy::ui::Val::Px(canvas_x);
+                                                node.top = bevy::ui::Val::Px(canvas_y);
+                                            }
                                         }
                                     }
                                 }
@@ -2950,30 +3105,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 WidgetDataSnapshot::None
             }
         }
-        UiWidgetType::ProgressBar => {
-            if let Some(d) = world.get::<ProgressBarData>(entity) {
-                WidgetDataSnapshot::ProgressBar {
-                    value: d.value,
-                    max: d.max,
-                    fill_color: c2a(d.fill_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::HealthBar => {
-            if let Some(d) = world.get::<HealthBarData>(entity) {
-                WidgetDataSnapshot::HealthBar {
-                    current: d.current,
-                    max: d.max,
-                    low_threshold: d.low_threshold,
-                    fill_color: c2a(d.fill_color),
-                    low_color: c2a(d.low_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
         UiWidgetType::Checkbox => {
             if let Some(d) = world.get::<CheckboxData>(entity) {
                 WidgetDataSnapshot::Checkbox {
@@ -3024,27 +3155,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 WidgetDataSnapshot::None
             }
         }
-        UiWidgetType::TabBar => {
-            if let Some(d) = world.get::<TabBarData>(entity) {
-                WidgetDataSnapshot::TabBar {
-                    tabs: d.tabs.clone(),
-                    active: d.active,
-                    tab_color: c2a(d.tab_color),
-                    active_color: c2a(d.active_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::Spinner => {
-            if let Some(d) = world.get::<SpinnerData>(entity) {
-                WidgetDataSnapshot::Spinner {
-                    color: c2a(d.color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
         UiWidgetType::RadioButton => {
             if let Some(d) = world.get::<RadioButtonData>(entity) {
                 WidgetDataSnapshot::RadioButton {
@@ -3070,83 +3180,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 WidgetDataSnapshot::DraggableWindow {
                     title: d.title.clone(),
                     title_bar_color: c2a(d.title_bar_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        // ── HUD ──
-        UiWidgetType::Crosshair => {
-            if let Some(d) = world.get::<CrosshairData>(entity) {
-                WidgetDataSnapshot::Crosshair {
-                    style: format!("{:?}", d.style),
-                    color: c2a(d.color),
-                    size: d.size,
-                    thickness: d.thickness,
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::AmmoCounter => {
-            if let Some(d) = world.get::<AmmoCounterData>(entity) {
-                WidgetDataSnapshot::AmmoCounter {
-                    current: d.current,
-                    max: d.max,
-                    color: c2a(d.color),
-                    low_color: c2a(d.low_color),
-                    low_threshold: d.low_threshold,
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::Compass => {
-            if let Some(d) = world.get::<CompassData>(entity) {
-                WidgetDataSnapshot::Compass {
-                    heading: d.heading,
-                    color: c2a(d.text_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::StatusEffectBar => {
-            if let Some(d) = world.get::<StatusEffectBarData>(entity) {
-                WidgetDataSnapshot::StatusEffectBar {
-                    effect_count: d.effects.len(),
-                    color: [0.3, 0.7, 1.0, 1.0],
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::NotificationFeed => {
-            if let Some(d) = world.get::<NotificationFeedData>(entity) {
-                WidgetDataSnapshot::NotificationFeed {
-                    count: d.max_visible,
-                    color: [0.9, 0.9, 0.9, 1.0],
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::RadialMenu => {
-            if let Some(d) = world.get::<RadialMenuData>(entity) {
-                WidgetDataSnapshot::RadialMenu {
-                    item_count: d.items.len().max(1),
-                    color: c2a(d.bg_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::Minimap => {
-            if let Some(d) = world.get::<MinimapData>(entity) {
-                WidgetDataSnapshot::Minimap {
-                    shape: format!("{:?}", d.shape),
-                    bg_color: c2a(d.bg_color),
-                    border_color: c2a(d.border_color),
                 }
             } else {
                 WidgetDataSnapshot::None
@@ -3241,54 +3274,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
             }
         }
         // ── Menu ──
-        UiWidgetType::InventoryGrid => {
-            if let Some(d) = world.get::<InventoryGridData>(entity) {
-                WidgetDataSnapshot::InventoryGrid {
-                    columns: d.columns,
-                    rows: d.rows,
-                    slot_size: d.slot_size,
-                    slot_bg_color: c2a(d.slot_bg_color),
-                    slot_border_color: c2a(d.slot_border_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::DialogBox => {
-            if let Some(d) = world.get::<DialogBoxData>(entity) {
-                WidgetDataSnapshot::DialogBox {
-                    speaker: d.speaker.clone(),
-                    text: d.text.clone(),
-                    bg_color: c2a(d.bg_color),
-                    speaker_color: c2a(d.speaker_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::ObjectiveTracker => {
-            if let Some(d) = world.get::<ObjectiveTrackerData>(entity) {
-                WidgetDataSnapshot::ObjectiveTracker {
-                    title: d.title.clone(),
-                    objective_count: d.objectives.len(),
-                    title_color: c2a(d.title_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::LoadingScreen => {
-            if let Some(d) = world.get::<LoadingScreenData>(entity) {
-                WidgetDataSnapshot::LoadingScreen {
-                    progress: d.progress,
-                    message: d.message.clone(),
-                    bar_color: c2a(d.bar_color),
-                    bg_color: c2a(d.bg_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
         UiWidgetType::KeybindRow => {
             if let Some(d) = world.get::<KeybindRowData>(entity) {
                 WidgetDataSnapshot::KeybindRow {
@@ -3334,20 +3319,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                 WidgetDataSnapshot::None
             }
         }
-        UiWidgetType::VerticalSlider => {
-            if let Some(d) = world.get::<VerticalSliderData>(entity) {
-                WidgetDataSnapshot::VerticalSlider {
-                    value: d.value,
-                    min: d.min,
-                    max: d.max,
-                    track_color: c2a(d.track_color),
-                    fill_color: c2a(d.fill_color),
-                    thumb_color: c2a(d.thumb_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
         UiWidgetType::Scrollbar => {
             if let Some(d) = world.get::<ScrollbarData>(entity) {
                 WidgetDataSnapshot::Scrollbar {
@@ -3356,18 +3327,6 @@ fn snapshot_widget_data(world: &World, entity: Entity, wtype: &UiWidgetType) -> 
                     position: d.position,
                     track_color: c2a(d.track_color),
                     thumb_color: c2a(d.thumb_color),
-                }
-            } else {
-                WidgetDataSnapshot::None
-            }
-        }
-        UiWidgetType::List => {
-            if let Some(d) = world.get::<ListData>(entity) {
-                WidgetDataSnapshot::ListWidget {
-                    item_count: d.items.len(),
-                    bg_color: c2a(d.bg_color),
-                    selected_bg_color: c2a(d.selected_bg_color),
-                    item_height: d.item_height,
                 }
             } else {
                 WidgetDataSnapshot::None

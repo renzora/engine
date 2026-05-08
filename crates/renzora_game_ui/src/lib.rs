@@ -21,6 +21,8 @@ pub mod systems;
 #[cfg(feature = "editor")]
 pub mod canvas;
 #[cfg(feature = "editor")]
+pub mod canvas_render;
+#[cfg(feature = "editor")]
 pub mod inspector;
 #[cfg(feature = "editor")]
 pub mod palette;
@@ -38,58 +40,31 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::UiCanvas>();
         app.register_type::<components::UiWidget>();
         app.register_type::<components::UiWidgetPart>();
-        // Widget data
-        app.register_type::<components::ProgressBarData>();
-        app.register_type::<components::HealthBarData>();
+        // Single-entity primitive (replaces ProgressBar / HealthBar / LoadingScreen)
+        app.register_type::<components::UiBarFill>();
+        app.register_type::<components::ProgressDirection>();
+        // Form inputs
         app.register_type::<components::SliderData>();
         app.register_type::<components::CheckboxData>();
         app.register_type::<components::ToggleData>();
         app.register_type::<components::RadioButtonData>();
         app.register_type::<components::DropdownData>();
         app.register_type::<components::TextInputData>();
+        app.register_type::<components::NumberInputData>();
+        // Layout / overlay primitives
         app.register_type::<components::ScrollViewData>();
-        app.register_type::<components::TabBarData>();
-        app.register_type::<components::SpinnerData>();
         app.register_type::<components::TooltipData>();
         app.register_type::<components::ModalData>();
         app.register_type::<components::DraggableWindowData>();
+        app.register_type::<components::SeparatorData>();
+        app.register_type::<components::SeparatorDirection>();
+        app.register_type::<components::ScrollbarData>();
+        app.register_type::<components::ScrollbarOrientation>();
         app.register_type::<components::UiImagePath>();
-        // HUD widget data
-        app.register_type::<components::CrosshairData>();
-        app.register_type::<components::CrosshairStyle>();
-        app.register_type::<components::AmmoCounterData>();
-        app.register_type::<components::AmmoDisplayMode>();
-        app.register_type::<components::CompassData>();
-        app.register_type::<components::CompassMarker>();
-        app.register_type::<components::StatusEffectBarData>();
-        app.register_type::<components::StatusEffect>();
-        app.register_type::<components::NotificationFeedData>();
-        app.register_type::<components::Notification>();
-        app.register_type::<components::RadialMenuData>();
-        app.register_type::<components::RadialMenuItem>();
-        app.register_type::<components::MinimapData>();
-        app.register_type::<components::MinimapRotation>();
-        app.register_type::<components::MinimapShape>();
-        // Menu widget data
-        app.register_type::<components::InventoryGridData>();
-        app.register_type::<components::InventorySlot>();
-        app.register_type::<components::DialogBoxData>();
-        app.register_type::<components::ObjectiveTrackerData>();
-        app.register_type::<components::ObjectiveStatus>();
-        app.register_type::<components::Objective>();
-        app.register_type::<components::LoadingScreenData>();
+        // Settings UI rows (used by editor settings panel)
         app.register_type::<components::KeybindRowData>();
         app.register_type::<components::SettingsRowData>();
         app.register_type::<components::SettingsControlType>();
-        // Extra widget data
-        app.register_type::<components::SeparatorData>();
-        app.register_type::<components::SeparatorDirection>();
-        app.register_type::<components::NumberInputData>();
-        app.register_type::<components::VerticalSliderData>();
-        app.register_type::<components::ScrollbarData>();
-        app.register_type::<components::ScrollbarOrientation>();
-        app.register_type::<components::ListData>();
-        app.register_type::<components::ListItem>();
         // Widget style components
         app.register_type::<components::UiFill>();
         app.register_type::<components::UiStroke>();
@@ -114,49 +89,56 @@ impl Plugin for GameUiPlugin {
         // ── Script actions (decoupled — observes ScriptAction events) ──
         app.add_observer(script_extension::handle_ui_script_actions);
 
+        // ── Auto-layout on reparent ────────────────────────────────────
+        // When a UI widget is dragged to a new parent in the hierarchy,
+        // re-apply parent-aware positioning: Container parent → Relative
+        // (flex flow), Canvas parent → Absolute (free placement).
+        app.add_systems(Update, on_widget_reparented);
+
+
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
 
-        // ── Canvas scaler ───────────────────────────────────────────────
+        // ── Canvas scaler & visibility-mode ──────────────────────────────
+        //
+        // `update_ui_scale` adjusts the global `UiScale` to fit the 3D
+        // viewport's render target. Useful in standalone runtime (UI
+        // scales with window), but in the editor it would also scale the
+        // UI rendered to our fixed 1280×720 editor render target — making
+        // a Node with `width: Px(100)` show up as some other pixel count
+        // depending on the editor window size. So in editor builds we
+        // skip it entirely; UiScale stays at the default 1.0 and our
+        // canvas tab renders 1:1 with what the user authors.
+        #[cfg(not(feature = "editor"))]
+        app.add_systems(Update, update_ui_scale);
         app.add_systems(
             Update,
-            (update_ui_scale, rehydrate_ui_images, sync_ui_zindex),
+            (
+                rehydrate_ui_images,
+                sync_ui_zindex,
+                apply_canvas_visibility_mode,
+            ),
         );
 
         // ── Runtime widget systems ──────────────────────────────────────
         app.add_systems(
             Update,
             (
-                systems::progress_bar_system,
-                systems::health_bar_system,
+                systems::apply_bar_fill,
                 systems::slider_system,
                 systems::checkbox_system,
                 systems::toggle_system,
                 systems::radio_button_system,
-                systems::tab_bar_system,
-                systems::spinner_system,
                 systems::tooltip_system,
                 systems::dropdown_system,
                 systems::dropdown_option_system,
                 systems::modal_system,
                 systems::draggable_window_system,
-                systems::dialog_box_system,
-                systems::loading_screen_system,
-                systems::objective_tracker_system,
-            ),
-        );
-        app.add_systems(
-            Update,
-            (
-                systems::ammo_counter_system,
-                systems::compass_system,
-                systems::status_effect_system,
-                systems::notification_system,
                 systems::separator_system,
                 systems::number_input_system,
-                systems::vertical_slider_system,
                 systems::scrollbar_system,
-                systems::list_system,
+                systems::keybind_row_system,
+                systems::settings_row_system,
                 systems::interaction_style_system,
                 systems::ui_theme_system,
                 systems::ui_tween_system,
@@ -201,12 +183,21 @@ impl Plugin for GameUiPlugin {
             });
 
             app.add_systems(Startup, canvas::setup_canvas_preview);
+            // Editor's dedicated bevy_ui render target — separate from the
+            // 3D scene preview camera. This is what makes the canvas tab
+            // show the *real* bevy_ui render instead of an egui simulation.
+            app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
+            app.add_systems(
+                Update,
+                canvas_render::sync_canvases_to_editor_camera
+                    .after(sync_ui_canvas_target_camera),
+            );
             app.add_systems(
                 Update,
                 (
                     canvas::update_canvas_preview,
                     ensure_ui_visibility_components,
-                    sync_ui_canvas_visibility,
+                    sync_ui_canvas_target_camera,
                     sync_canvas_sort_order_from_hierarchy,
                     sync_hierarchy_filter_for_ui_workspace,
                     register_ui_image_textures,
@@ -222,6 +213,66 @@ impl Plugin for GameUiPlugin {
         {
             info!("[runtime] GameUiPlugin");
         }
+    }
+}
+
+// ── Canvas visibility_mode → Visibility ──────────────────────────────────
+//
+// `UiCanvas.visibility_mode` is the user-facing dropdown ("always",
+// "play_only", "editor_only"). Until now it was a hint nothing read.
+// This system writes the actual Bevy `Visibility` component from it
+// whenever the canvas is freshly added or the dropdown changes.
+//
+// Runs in both editor and runtime — `PlayModeState` is optional, so in
+// runtime builds (no PlayModeState resource) `in_play` defaults to true,
+// making "play_only" canvases visible at runtime, "editor_only" hidden,
+// and "always" always visible. Scripts can still override via
+// `ui_show` / `ui_hide` afterward; the system only fires when the
+// canvas component itself changes (`Changed<UiCanvas>`), not every frame.
+
+fn apply_canvas_visibility_mode(
+    play_mode: Option<Res<renzora::PlayModeState>>,
+    mut canvases: Query<(&UiCanvas, &mut Visibility), Changed<UiCanvas>>,
+) {
+    let in_play = play_mode.map_or(true, |p| p.is_in_play_mode());
+    for (canvas, mut vis) in &mut canvases {
+        let visible = match canvas.visibility_mode.as_str() {
+            "always" => true,
+            "play_only" => in_play,
+            "editor_only" => !in_play,
+            _ => true,
+        };
+        let target = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
+    }
+}
+
+// ── Reparent system ────────────────────────────────────────────────────────
+//
+// Fires when a `ChildOf` is inserted *or* replaced on a UI widget entity
+// (drag in hierarchy → Replace; spawn → Insert; both surface as
+// `Changed<ChildOf>`). Re-runs the parent-aware layout logic so the moved
+// widget switches between Absolute (canvas root) and Relative (Container)
+// automatically.
+//
+// Originally written as an `On<Insert, ChildOf>` observer, which missed
+// the drag-in-hierarchy case because that fires `Replace` not `Insert`.
+// `Changed` filter catches both.
+
+fn on_widget_reparented(
+    mut commands: Commands,
+    changed: Query<Entity, (With<UiWidget>, Changed<ChildOf>)>,
+) {
+    for entity in &changed {
+        commands.queue(move |world: &mut World| {
+            crate::spawn::reapply_layout_from_parent(world, entity);
+        });
     }
 }
 
@@ -466,34 +517,29 @@ fn ensure_ui_visibility_components(
     }
 }
 
+/// Route UI canvases to the right camera in the editor.
+///
+/// The editor has both an editor camera (rendering to the viewport image)
+/// and a play-mode game camera. Without an explicit target, Bevy UI
+/// picks "the first Camera it finds," which is non-deterministic. This
+/// system inserts `UiTargetCamera` pointing at the active game camera
+/// while in play mode, and removes it otherwise so edit-mode renders go
+/// through whatever default Bevy picks (typically the editor camera).
+///
+/// **Does not touch `Visibility`** — that's the user's / the script's
+/// concern. Earlier versions of this system also force-hid every canvas
+/// outside of play mode, which polluted saved scenes and broke shipped
+/// runtime visibility.
 #[cfg(feature = "editor")]
-fn sync_ui_canvas_visibility(
+fn sync_ui_canvas_target_camera(
     mut commands: Commands,
     play_mode: Res<renzora::PlayModeState>,
-    mut canvases: Query<
-        (
-            Entity,
-            &mut Visibility,
-            &Name,
-            Option<&bevy::ui::UiTargetCamera>,
-        ),
-        With<UiCanvas>,
-    >,
+    canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
 ) {
     let in_play = play_mode.is_in_play_mode();
-    let target = if in_play {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-
     let game_camera = play_mode.active_game_camera;
 
-    for (entity, mut vis, name, existing_target_cam) in &mut canvases {
-        if *vis != target {
-            *vis = target;
-        }
-
+    for (entity, existing_target_cam) in &canvases {
         if in_play {
             if let Some(cam_entity) = game_camera {
                 let needs_insert = match existing_target_cam {
@@ -657,35 +703,15 @@ fn register_ui_presets(app: &mut App) {
     widget_preset!(RadioButton, "ui_radio_button", "Radio Button");
     widget_preset!(Dropdown, "ui_dropdown", "Dropdown");
     widget_preset!(TextInput, "ui_text_input", "Text Input");
-    widget_preset!(ProgressBar, "ui_progress_bar", "Progress Bar");
-    widget_preset!(HealthBar, "ui_health_bar", "Health Bar");
-    widget_preset!(Spinner, "ui_spinner", "Spinner");
-    widget_preset!(TabBar, "ui_tab_bar", "Tab Bar");
+    widget_preset!(BarFill, "ui_bar_fill", "Bar Fill");
     widget_preset!(Tooltip, "ui_tooltip", "Tooltip");
     widget_preset!(Modal, "ui_modal", "Modal");
     widget_preset!(DraggableWindow, "ui_draggable_window", "Draggable Window");
-    widget_preset!(Crosshair, "ui_crosshair", "Crosshair");
-    widget_preset!(AmmoCounter, "ui_ammo_counter", "Ammo Counter");
-    widget_preset!(Compass, "ui_compass", "Compass");
-    widget_preset!(StatusEffectBar, "ui_status_effects", "Status Effects");
-    widget_preset!(NotificationFeed, "ui_notifications", "Notifications");
-    widget_preset!(RadialMenu, "ui_radial_menu", "Radial Menu");
-    widget_preset!(Minimap, "ui_minimap", "Minimap");
-    widget_preset!(InventoryGrid, "ui_inventory_grid", "Inventory Grid");
-    widget_preset!(DialogBox, "ui_dialog_box", "Dialog Box");
-    widget_preset!(
-        ObjectiveTracker,
-        "ui_objective_tracker",
-        "Objective Tracker"
-    );
-    widget_preset!(LoadingScreen, "ui_loading_screen", "Loading Screen");
     widget_preset!(KeybindRow, "ui_keybind_row", "Keybind Row");
     widget_preset!(SettingsRow, "ui_settings_row", "Settings Row");
     widget_preset!(Separator, "ui_separator", "Separator");
     widget_preset!(NumberInput, "ui_number_input", "Number Input");
-    widget_preset!(VerticalSlider, "ui_vertical_slider", "Vertical Slider");
     widget_preset!(Scrollbar, "ui_scrollbar", "Scrollbar");
-    widget_preset!(List, "ui_list", "List");
     widget_preset!(Circle, "ui_circle", "Circle");
     widget_preset!(Arc, "ui_arc", "Arc");
     widget_preset!(RadialProgress, "ui_radial_progress", "Radial Progress");

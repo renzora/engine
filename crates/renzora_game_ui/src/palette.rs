@@ -117,10 +117,7 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
         "Display",
         regular::CHART_BAR,
         &[
-            UiWidgetType::ProgressBar,
-            UiWidgetType::HealthBar,
-            UiWidgetType::Spinner,
-            UiWidgetType::TabBar,
+            UiWidgetType::BarFill,
         ],
     ),
     (
@@ -133,26 +130,9 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
         ],
     ),
     (
-        "HUD",
-        regular::CROSSHAIR,
-        &[
-            UiWidgetType::Crosshair,
-            UiWidgetType::AmmoCounter,
-            UiWidgetType::Compass,
-            UiWidgetType::StatusEffectBar,
-            UiWidgetType::NotificationFeed,
-            UiWidgetType::RadialMenu,
-            UiWidgetType::Minimap,
-        ],
-    ),
-    (
         "Menu",
         regular::LIST_BULLETS,
         &[
-            UiWidgetType::InventoryGrid,
-            UiWidgetType::DialogBox,
-            UiWidgetType::ObjectiveTracker,
-            UiWidgetType::LoadingScreen,
             UiWidgetType::KeybindRow,
             UiWidgetType::SettingsRow,
         ],
@@ -163,9 +143,7 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
         &[
             UiWidgetType::Separator,
             UiWidgetType::NumberInput,
-            UiWidgetType::VerticalSlider,
             UiWidgetType::Scrollbar,
-            UiWidgetType::List,
         ],
     ),
     (

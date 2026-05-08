@@ -6,14 +6,19 @@
 //! action("ui_show", { name = "HUD" })
 //! action("ui_hide", { name = "PauseMenu" })
 //! action("ui_set_text", { name = "ScoreLabel", text = "Score: 100" })
-//! action("ui_set_progress", { name = "HealthBar", value = 0.75 })
 //! ```
 //!
-//! Or use the convenience stdlib functions (from `scripts/lib/ui.lua`):
+//! For widget *data* (a slider's value, a checkbox's checked state, a
+//! UiBarFill's fraction), use generic reflection from the script:
 //! ```lua
-//! ui_show("HUD")
-//! ui_set_text("ScoreLabel", "Score: 100")
+//! set_on("HealthFill", "UiBarFill.value", 0.75)
+//! set_on("VolumeSlider", "SliderData.value", 0.5)
 //! ```
+//!
+//! This file only implements the actions that target bevy_ui types we
+//! can't easily expose to script reflection (Visibility, BackgroundColor,
+//! the `Text` newtype). Anything carried by a single component → use
+//! `set_on` instead.
 
 use bevy::prelude::*;
 use renzora::ScriptAction;
@@ -26,8 +31,6 @@ pub fn handle_ui_script_actions(
     mut canvases: Query<(&Name, &mut Visibility), With<UiCanvas>>,
     mut widgets_vis: Query<(&Name, &mut Visibility), (With<UiWidget>, Without<UiCanvas>)>,
     mut texts: Query<(&Name, &mut bevy::ui::widget::Text), With<UiWidget>>,
-    mut progress_bars: Query<(&Name, &mut ProgressBarData)>,
-    mut health_bars: Query<(&Name, &mut HealthBarData)>,
     mut sliders: Query<(&Name, &mut SliderData)>,
     mut checkboxes: Query<(&Name, &mut CheckboxData)>,
     mut toggles: Query<(&Name, &mut ToggleData)>,
@@ -92,28 +95,6 @@ pub fn handle_ui_script_actions(
             for (n, mut t) in &mut texts {
                 if n.as_str() == name {
                     t.0 = text.to_string();
-                }
-            }
-        }
-        "ui_set_progress" => {
-            let Some(name) = get_str("name") else { return };
-            let Some(value) = get_f32("value") else {
-                return;
-            };
-            for (n, mut data) in &mut progress_bars {
-                if n.as_str() == name {
-                    data.value = value;
-                }
-            }
-        }
-        "ui_set_health" => {
-            let Some(name) = get_str("name") else { return };
-            let current = get_f32("current").unwrap_or(0.0);
-            let max = get_f32("max").unwrap_or(100.0);
-            for (n, mut data) in &mut health_bars {
-                if n.as_str() == name {
-                    data.current = current;
-                    data.max = max;
                 }
             }
         }

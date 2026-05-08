@@ -62,8 +62,6 @@ struct InspectorSnapshot {
     interaction_style: Option<components::UiInteractionStyle>,
     transition_duration: Option<f32>,
     // Widget-specific data snapshots
-    progress_bar: Option<components::ProgressBarData>,
-    health_bar: Option<components::HealthBarData>,
     slider: Option<components::SliderData>,
     checkbox: Option<components::CheckboxData>,
     toggle: Option<components::ToggleData>,
@@ -71,8 +69,6 @@ struct InspectorSnapshot {
     dropdown: Option<components::DropdownData>,
     text_input: Option<components::TextInputData>,
     scroll_view: Option<components::ScrollViewData>,
-    tab_bar: Option<components::TabBarData>,
-    spinner: Option<components::SpinnerData>,
     tooltip: Option<components::TooltipData>,
     modal: Option<components::ModalData>,
     draggable_window: Option<components::DraggableWindowData>,
@@ -343,8 +339,6 @@ impl EditorPanel for UiInspectorPanel {
             .map(|t| t.duration);
 
         // Widget-specific data snapshots
-        snap.progress_bar = world.get::<components::ProgressBarData>(entity).cloned();
-        snap.health_bar = world.get::<components::HealthBarData>(entity).cloned();
         snap.slider = world.get::<components::SliderData>(entity).cloned();
         snap.checkbox = world.get::<components::CheckboxData>(entity).cloned();
         snap.toggle = world.get::<components::ToggleData>(entity).cloned();
@@ -352,8 +346,6 @@ impl EditorPanel for UiInspectorPanel {
         snap.dropdown = world.get::<components::DropdownData>(entity).cloned();
         snap.text_input = world.get::<components::TextInputData>(entity).cloned();
         snap.scroll_view = world.get::<components::ScrollViewData>(entity).cloned();
-        snap.tab_bar = world.get::<components::TabBarData>(entity).cloned();
-        snap.spinner = world.get::<components::SpinnerData>(entity).cloned();
         snap.tooltip = world.get::<components::TooltipData>(entity).cloned();
         snap.modal = world.get::<components::ModalData>(entity).cloned();
         snap.draggable_window = world
@@ -1077,7 +1069,7 @@ fn stroke_section(
     collapsible_section(
         ui,
         regular::BOUNDING_BOX,
-        "Stroke",
+        "Border",
         "rendering",
         theme,
         "ui_insp_stroke",
@@ -1122,14 +1114,20 @@ fn stroke_section(
             inline_property(ui, 2, "Sides", theme, |ui| {
                 ui.horizontal(|ui| {
                     let mut changed = false;
-                    let side_labels = [
-                        ("T", &mut stroke.sides.top),
-                        ("R", &mut stroke.sides.right),
-                        ("B", &mut stroke.sides.bottom),
-                        ("L", &mut stroke.sides.left),
+                    // Arrow-to-line icons indicate which edge the border
+                    // applies to. Up = top, Down = bottom, etc. Tooltip
+                    // labels make the meaning explicit on hover.
+                    let side_buttons = [
+                        (regular::ARROW_LINE_UP, "Top", &mut stroke.sides.top),
+                        (regular::ARROW_LINE_RIGHT, "Right", &mut stroke.sides.right),
+                        (regular::ARROW_LINE_DOWN, "Bottom", &mut stroke.sides.bottom),
+                        (regular::ARROW_LINE_LEFT, "Left", &mut stroke.sides.left),
                     ];
-                    for (label, val) in side_labels {
-                        if ui.selectable_label(*val, label).clicked() {
+                    for (icon, tooltip, val) in side_buttons {
+                        let resp = ui
+                            .selectable_label(*val, icon)
+                            .on_hover_text(tooltip);
+                        if resp.clicked() {
                             *val = !*val;
                             changed = true;
                         }
@@ -2041,232 +2039,6 @@ fn widget_data_sections(
     commands: &EditorCommands,
     theme: &renzora_theme::Theme,
 ) {
-    // Progress Bar
-    if let Some(ref mut data) = snap.progress_bar {
-        collapsible_section(
-            ui,
-            regular::CHART_BAR,
-            "Progress Bar",
-            "ui",
-            theme,
-            "ui_insp_progress",
-            true,
-            |ui| {
-                let mut row = 0;
-                inline_property(ui, row, "Value", theme, |ui| {
-                    let mut v = data.value;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.01)
-                                .range(0.0..=data.max),
-                        )
-                        .changed()
-                    {
-                        data.value = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
-                                    d.value = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Max", theme, |ui| {
-                    let mut v = data.max;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.01)
-                                .range(0.001..=f32::MAX),
-                        )
-                        .changed()
-                    {
-                        data.max = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
-                                    d.max = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Direction", theme, |ui| {
-                    let labels = ["Left→Right", "Right→Left", "Bottom→Top", "Top→Bottom"];
-                    let mut idx = data.direction as usize;
-                    if egui::ComboBox::from_id_salt("prog_dir")
-                        .width(ui.available_width())
-                        .show_index(ui, &mut idx, labels.len(), |i| labels[i].to_string())
-                        .changed()
-                    {
-                        let dir = match idx {
-                            1 => components::ProgressDirection::RightToLeft,
-                            2 => components::ProgressDirection::BottomToTop,
-                            3 => components::ProgressDirection::TopToBottom,
-                            _ => components::ProgressDirection::LeftToRight,
-                        };
-                        data.direction = dir;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ProgressBarData>() {
-                                    d.direction = dir;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Fill Color",
-                    theme,
-                    &mut data.fill_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ProgressBarData>()
-                            .map(|mut p| p.fill_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Bg Color",
-                    theme,
-                    &mut data.bg_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ProgressBarData>()
-                            .map(|mut p| p.bg_color = c)
-                    },
-                );
-            },
-        );
-    }
-
-    // Health Bar
-    if let Some(ref mut data) = snap.health_bar {
-        collapsible_section(
-            ui,
-            regular::HEART,
-            "Health Bar",
-            "ui",
-            theme,
-            "ui_insp_health",
-            true,
-            |ui| {
-                let mut row = 0;
-                inline_property(ui, row, "Current", theme, |ui| {
-                    let mut v = data.current;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.5)
-                                .range(0.0..=data.max),
-                        )
-                        .changed()
-                    {
-                        data.current = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
-                                    d.current = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Max", theme, |ui| {
-                    let mut v = data.max;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.5)
-                                .range(0.001..=f32::MAX),
-                        )
-                        .changed()
-                    {
-                        data.max = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
-                                    d.max = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Low Threshold", theme, |ui| {
-                    let mut v = data.low_threshold;
-                    if ui
-                        .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0))
-                        .changed()
-                    {
-                        data.low_threshold = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::HealthBarData>() {
-                                    d.low_threshold = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Fill Color",
-                    theme,
-                    &mut data.fill_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::HealthBarData>()
-                            .map(|mut p| p.fill_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Low Color",
-                    theme,
-                    &mut data.low_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::HealthBarData>()
-                            .map(|mut p| p.low_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Bg Color",
-                    theme,
-                    &mut data.bg_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::HealthBarData>()
-                            .map(|mut p| p.bg_color = c)
-                    },
-                );
-            },
-        );
-    }
-
     // Slider
     if let Some(ref mut data) = snap.slider {
         collapsible_section(
@@ -2876,156 +2648,6 @@ fn widget_data_sections(
                         });
                     }
                 });
-            },
-        );
-    }
-
-    // Tab Bar
-    if let Some(ref mut data) = snap.tab_bar {
-        collapsible_section(
-            ui,
-            regular::TABS,
-            "Tab Bar",
-            "ui",
-            theme,
-            "ui_insp_tabbar",
-            true,
-            |ui| {
-                let mut row = 0;
-                inline_property(ui, row, "Active Tab", theme, |ui| {
-                    let mut v = data.active as i32;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .range(0..=(data.tabs.len() as i32 - 1).max(0)),
-                        )
-                        .changed()
-                    {
-                        data.active = v as usize;
-                        let active = v as usize;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TabBarData>() {
-                                    d.active = active;
-                                }
-                            }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Tab Color",
-                    theme,
-                    &mut data.tab_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::TabBarData>()
-                            .map(|mut p| p.tab_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Active Color",
-                    theme,
-                    &mut data.active_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::TabBarData>()
-                            .map(|mut p| p.active_color = c)
-                    },
-                );
-                // Tab list
-                let mut tabs_changed = false;
-                let mut new_tabs = data.tabs.clone();
-                for i in 0..new_tabs.len() {
-                    inline_property(ui, i + row + 1, &format!("#{}", i + 1), theme, |ui| {
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut new_tabs[i])
-                                    .desired_width(ui.available_width()),
-                            )
-                            .changed()
-                        {
-                            tabs_changed = true;
-                        }
-                    });
-                }
-                ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    if ui.small_button(format!("{} Add", regular::PLUS)).clicked() {
-                        new_tabs.push(format!("Tab {}", new_tabs.len() + 1));
-                        tabs_changed = true;
-                    }
-                    if new_tabs.len() > 1 {
-                        if ui
-                            .small_button(format!("{} Remove", regular::MINUS))
-                            .clicked()
-                        {
-                            new_tabs.pop();
-                            tabs_changed = true;
-                        }
-                    }
-                });
-                if tabs_changed {
-                    data.tabs = new_tabs.clone();
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut d) = em.get_mut::<components::TabBarData>() {
-                                d.tabs = new_tabs.clone();
-                            }
-                        }
-                    });
-                }
-            },
-        );
-    }
-
-    // Spinner
-    if let Some(ref mut data) = snap.spinner {
-        collapsible_section(
-            ui,
-            regular::SPINNER,
-            "Spinner",
-            "ui",
-            theme,
-            "ui_insp_spinner",
-            true,
-            |ui| {
-                inline_property(ui, 0, "Speed", theme, |ui| {
-                    let mut v = data.speed;
-                    if ui
-                        .add(egui::DragValue::new(&mut v).speed(0.1).range(0.1..=20.0))
-                        .changed()
-                    {
-                        data.speed = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::SpinnerData>() {
-                                    d.speed = v;
-                                }
-                            }
-                        });
-                    }
-                });
-                color_row(
-                    ui,
-                    1,
-                    "Color",
-                    theme,
-                    &mut data.color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::SpinnerData>()
-                            .map(|mut p| p.color = c)
-                    },
-                );
             },
         );
     }

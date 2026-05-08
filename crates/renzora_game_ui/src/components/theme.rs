@@ -224,6 +224,11 @@ impl UiTheme {
             UiWidgetType::Modal | UiWidgetType::DraggableWindow => {
                 (UiFill::Solid(self.surface_raised), self.text_primary)
             }
+            // Bar Fill is the *fill* element of a progress/health/loading
+            // bar — it needs to stand out, not blend into the container's
+            // surface color. Themed to the accent color so it's visible
+            // by default.
+            UiWidgetType::BarFill => (UiFill::Solid(self.accent), self.text_primary),
             _ => (UiFill::Solid(self.surface), self.text_primary),
         };
 
@@ -248,7 +253,7 @@ impl UiTheme {
             },
             clip_content: matches!(
                 widget_type,
-                UiWidgetType::ProgressBar | UiWidgetType::HealthBar | UiWidgetType::ScrollView
+                UiWidgetType::BarFill | UiWidgetType::ScrollView
             ),
             text: UiTextStyle {
                 color: text_color,
