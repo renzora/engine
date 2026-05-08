@@ -1442,7 +1442,18 @@ pub fn rehydrate_sprite_images(
             sprite.image = Default::default();
             continue;
         }
+        // First image assignment (sprite was using the placeholder color +
+        // default empty handle): clear custom_size so Bevy renders at the
+        // image's natural pixel dimensions once it loads. Without this the
+        // sprite stays at the preset's 100×100 placeholder, which can look
+        // identical to "image didn't render." If the user has already
+        // resized via handles (custom_size != preset placeholder), keep
+        // their choice — only auto-clear from the empty-image baseline.
+        let was_empty_image = sprite.image == Handle::<Image>::default();
         sprite.image = asset_server.load(path.0.clone());
+        if was_empty_image {
+            sprite.custom_size = None;
+        }
     }
 }
 

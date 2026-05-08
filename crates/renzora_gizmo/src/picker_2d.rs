@@ -489,18 +489,48 @@ pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::R
     );
 
     // Handles: 4 corners + 4 edge midpoints. Drawn after the outline so
-    // they paint on top of the rectangle stroke.
+    // they paint on top of the rectangle stroke. Each carries the
+    // direction it represents so we can pick the right resize cursor on
+    // hover.
     let handle_fill = egui::Color32::from_rgb(255, 255, 255);
     let handle_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50));
     let edge_n = to_screen(Vec3::new(translation.x, translation.y + half.y, z));
     let edge_s = to_screen(Vec3::new(translation.x, translation.y - half.y, z));
     let edge_w = to_screen(Vec3::new(translation.x - half.x, translation.y, z));
     let edge_e = to_screen(Vec3::new(translation.x + half.x, translation.y, z));
-    let mut handles = vec![tl, tr_corner, bl, br];
+    let mut handles: Vec<(ResizeHandle, egui::Pos2)> = vec![
+        (ResizeHandle::NW, tl),
+        (ResizeHandle::NE, tr_corner),
+        (ResizeHandle::SW, bl),
+        (ResizeHandle::SE, br),
+    ];
     if let (Some(n), Some(s), Some(w), Some(e)) = (edge_n, edge_s, edge_w, edge_e) {
-        handles.extend_from_slice(&[n, s, w, e]);
+        handles.extend_from_slice(&[
+            (ResizeHandle::N, n),
+            (ResizeHandle::S, s),
+            (ResizeHandle::W, w),
+            (ResizeHandle::E, e),
+        ]);
     }
-    for pos in handles {
+
+    // Cursor hint: if the pointer is over a handle, set the matching
+    // resize cursor so users feel the affordance before they click.
+    if let Some(cursor) = ui.ctx().pointer_hover_pos() {
+        for (handle, pos) in &handles {
+            if (*pos - cursor).length() <= HANDLE_HIT_RADIUS {
+                let icon = match handle {
+                    ResizeHandle::NW | ResizeHandle::SE => egui::CursorIcon::ResizeNwSe,
+                    ResizeHandle::NE | ResizeHandle::SW => egui::CursorIcon::ResizeNeSw,
+                    ResizeHandle::N | ResizeHandle::S => egui::CursorIcon::ResizeVertical,
+                    ResizeHandle::E | ResizeHandle::W => egui::CursorIcon::ResizeHorizontal,
+                };
+                ui.ctx().set_cursor_icon(icon);
+                break;
+            }
+        }
+    }
+
+    for (_, pos) in handles {
         let h_rect = egui::Rect::from_center_size(
             pos,
             egui::Vec2::new(HANDLE_DRAW_SIZE, HANDLE_DRAW_SIZE),
