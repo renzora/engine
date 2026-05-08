@@ -87,6 +87,7 @@ editor = [
     "renzora_network/editor",
     "renzora_animation/editor",
     "renzora_water/editor",
+    "renzora_terrain/editor",
     "renzora_game_ui/editor",
     "renzora_gauges/editor",
     "renzora_navmesh/editor",
