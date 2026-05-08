@@ -178,6 +178,13 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
+        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
+        // reference that doesn't remap across loads (e.g. an editor-only
+        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
+        // mirror — persisting either makes UI render to a dead entity in
+        // the runtime and silently disappear.
+        .deny_component::<bevy::ui::UiTargetCamera>()
+        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
@@ -321,6 +328,13 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
+        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
+        // reference that doesn't remap across loads (e.g. an editor-only
+        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
+        // mirror — persisting either makes UI render to a dead entity in
+        // the runtime and silently disappear.
+        .deny_component::<bevy::ui::UiTargetCamera>()
+        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
@@ -1168,6 +1182,13 @@ pub fn save_prefab_source(
         .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
+        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
+        // reference that doesn't remap across loads (e.g. an editor-only
+        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
+        // mirror — persisting either makes UI render to a dead entity in
+        // the runtime and silently disappear.
+        .deny_component::<bevy::ui::UiTargetCamera>()
+        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         // Children's GlobalTransform reflects the instance root's world-space
