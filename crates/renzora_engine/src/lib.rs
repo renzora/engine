@@ -156,14 +156,14 @@ impl Plugin for RuntimePlugin {
                     scene_io::finish_mesh_instance_rehydrate,
                 ),
             )
-            // Sprite image binding goes through observers rather than
-            // a Changed-filtered system: scene loads insert components
-            // via reflection, which doesn't propagate Bevy's change
-            // ticks the way `entity.insert()` does. Insert + Replace
-            // covers all the paths — fresh spawn, scene load, drag-
-            // drop replacement.
+            // Sprite image binding goes through an observer rather
+            // than a Changed-filtered system: scene loads insert
+            // components via reflection, which doesn't propagate
+            // Bevy's change ticks. `On<Insert, T>` fires for both
+            // initial add and replacement inserts, covering the
+            // scene-load, fresh-spawn, and drag-drop-replacement paths
+            // uniformly.
             .add_observer(scene_io::on_sprite_image_path_inserted)
-            .add_observer(scene_io::on_sprite_image_path_replaced)
             .add_systems(
                 Update,
                 (

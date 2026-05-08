@@ -1430,79 +1430,62 @@ pub fn rehydrate_meshes(
 /// for `UiImagePath` — `Handle<Image>` doesn't survive scene save/load
 /// (asset IDs are runtime-only), but the path string does, and the asset
 /// server re-resolves it cheaply.
-/// Apply the path → `Sprite.image` binding for one entity. Shared by
-/// the `Insert` and `Replace` observers below, called when the path
-/// component appears on or replaces an existing entry.
-///
-/// `Changed<SpriteImagePath>` would have been the natural way to do
-/// this, but `DynamicScene::write_to_world` inserts components via
-/// reflection — which doesn't propagate Bevy's change-detection ticks
-/// the same way (the same reason `rehydrate_lights` uses `Without<>`
-/// rather than `Added<>`). Observers fire reliably for all insert
-/// paths: scene load, normal `entity.insert()`, and replacement
-/// inserts via the inspector and the viewport drop handler.
-fn apply_sprite_image_path(world: &mut World, entity: Entity) {
-    let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
-    let Some(path) = world
-        .get::<renzora::core::SpriteImagePath>(entity)
-        .map(|p| p.0.clone())
-    else {
+/// Reconcile `Sprite.image` with `SpriteImagePath` whenever the path
+/// component is inserted (scene load, fresh spawn, or replacement
+/// insert from drag-drop). Observers fire reliably for reflection
+/// inserts where `Changed<>` doesn't.
+pub fn on_sprite_image_path_inserted(
+    trigger: On<Insert, renzora::core::SpriteImagePath>,
+    paths: Query<&renzora::core::SpriteImagePath>,
+    mut sprites: Query<&mut bevy::sprite::Sprite>,
+    asset_server: Res<AssetServer>,
+) {
+    let entity = trigger.entity;
+    let Ok(path) = paths.get(entity) else {
+        info!("[sprite] {:?} insert observer: no SpriteImagePath visible", entity);
         return;
     };
-    if path.is_empty() {
-        if let Some(mut sprite) = world.get_mut::<bevy::sprite::Sprite>(entity) {
-            if sprite.image != Handle::<Image>::default() {
-                info!("[sprite] {:?} cleared image (empty path)", entity);
-                sprite.image = Default::default();
-                sprite.color = placeholder_blue;
-                if sprite.custom_size.is_none() {
-                    sprite.custom_size = Some(Vec2::splat(100.0));
-                }
+    let Ok(mut sprite) = sprites.get_mut(entity) else {
+        info!(
+            "[sprite] {:?} insert observer: no Sprite component (path \"{}\")",
+            entity, path.0
+        );
+        return;
+    };
+    let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
+
+    if path.0.is_empty() {
+        if sprite.image != Handle::<Image>::default() {
+            info!("[sprite] {:?} cleared image (empty path)", entity);
+            sprite.image = Default::default();
+            sprite.color = placeholder_blue;
+            if sprite.custom_size.is_none() {
+                sprite.custom_size = Some(Vec2::splat(100.0));
             }
         }
         return;
     }
 
-    let expected = world.resource::<AssetServer>().load(&path);
-    if let Some(mut sprite) = world.get_mut::<bevy::sprite::Sprite>(entity) {
-        if sprite.image.id() != expected.id() {
-            info!(
-                "[sprite] {:?} bound image \"{}\" (replaced handle)",
-                entity, path
-            );
-            sprite.image = expected;
-            sprite.color = Color::WHITE;
-        } else if sprite.color == placeholder_blue {
-            // Migration: scenes saved before the color reset landed
-            // kept the placeholder blue tint baked in. The image is
-            // already correctly bound but the texture renders tinted.
-            info!(
-                "[sprite] {:?} migrating placeholder blue → WHITE for \"{}\"",
-                entity, path
-            );
-            sprite.color = Color::WHITE;
-        }
+    let expected = asset_server.load(&path.0);
+    if sprite.image.id() != expected.id() {
+        info!(
+            "[sprite] {:?} bound image \"{}\" (replaced handle)",
+            entity, path.0
+        );
+        sprite.image = expected;
+        sprite.color = Color::WHITE;
+    } else if sprite.color == placeholder_blue {
+        info!(
+            "[sprite] {:?} migrating placeholder blue → WHITE for \"{}\"",
+            entity, path.0
+        );
+        sprite.color = Color::WHITE;
+    } else {
+        info!(
+            "[sprite] {:?} insert observer: already in sync with \"{}\"",
+            entity, path.0
+        );
     }
-}
-
-pub fn on_sprite_image_path_inserted(
-    trigger: On<Insert, renzora::core::SpriteImagePath>,
-    mut commands: Commands,
-) {
-    let entity = trigger.entity;
-    commands.queue(move |world: &mut World| {
-        apply_sprite_image_path(world, entity);
-    });
-}
-
-pub fn on_sprite_image_path_replaced(
-    trigger: On<Replace, renzora::core::SpriteImagePath>,
-    mut commands: Commands,
-) {
-    let entity = trigger.entity;
-    commands.queue(move |world: &mut World| {
-        apply_sprite_image_path(world, entity);
-    });
 }
 
 /// Ensure parent entities have `Visibility` so transform/visibility propagation works.

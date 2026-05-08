@@ -340,6 +340,7 @@ pub fn pick_2d_system(
 /// mouse button is released or the cursor leaves the viewport.
 pub fn drag_move_2d_system(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
     mut drag: ResMut<Drag2dState>,
@@ -363,6 +364,7 @@ pub fn drag_move_2d_system(
     if !viewport.hovered {
         return;
     }
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let DragMode::Move { offset } = drag.mode else {
         // Resize handled below; None means nothing to do.
         if let DragMode::Resize {
@@ -372,8 +374,8 @@ pub fn drag_move_2d_system(
         } = drag.mode
         {
             return resize_step(
-                handle, init_min, init_max, drag.entity, &viewport, &windows, &cameras_2d,
-                &mut transforms, &mut sprites,
+                handle, init_min, init_max, shift, drag.entity, &viewport, &windows,
+                &cameras_2d, &mut transforms, &mut sprites,
             );
         }
         return;
@@ -402,6 +404,7 @@ fn resize_step(
     handle: ResizeHandle,
     init_min: Vec2,
     init_max: Vec2,
+    aspect_lock: bool,
     entity: Option<Entity>,
     viewport: &ViewportState,
     windows: &Query<&Window, With<PrimaryWindow>>,
@@ -420,7 +423,46 @@ fn resize_step(
     let Some(cursor_world) = cursor_to_world(cursor, viewport, camera, cam_gt) else {
         return;
     };
-    let (new_translation, new_size) = handle.resize(cursor_world, init_min, init_max);
+    let (mut new_translation, mut new_size) = handle.resize(cursor_world, init_min, init_max);
+
+    // Shift+drag on a corner handle locks the aspect ratio to the
+    // initial size's. Edge handles are 1D resizes — aspect lock isn't
+    // meaningful, so we leave them alone.
+    let is_corner = matches!(
+        handle,
+        ResizeHandle::NW | ResizeHandle::NE | ResizeHandle::SW | ResizeHandle::SE
+    );
+    if aspect_lock && is_corner {
+        let initial = init_max - init_min;
+        if initial.x > f32::EPSILON && initial.y > f32::EPSILON {
+            let aspect = initial.x / initial.y;
+            let new_aspect = new_size.x / new_size.y.max(f32::EPSILON);
+            if new_aspect > aspect {
+                new_size.x = new_size.y * aspect;
+            } else {
+                new_size.y = new_size.x / aspect;
+            }
+            // Recompute the center so the *opposite* corner stays
+            // anchored to its initial position — same invariant as the
+            // un-locked resize, just with the locked size.
+            let anchor = match handle {
+                ResizeHandle::NW => Vec2::new(init_max.x, init_min.y),
+                ResizeHandle::NE => Vec2::new(init_min.x, init_min.y),
+                ResizeHandle::SW => Vec2::new(init_max.x, init_max.y),
+                ResizeHandle::SE => Vec2::new(init_min.x, init_max.y),
+                _ => unreachable!(),
+            };
+            let half = new_size * 0.5;
+            new_translation = match handle {
+                ResizeHandle::NW => Vec2::new(anchor.x - half.x, anchor.y + half.y),
+                ResizeHandle::NE => Vec2::new(anchor.x + half.x, anchor.y + half.y),
+                ResizeHandle::SW => Vec2::new(anchor.x - half.x, anchor.y - half.y),
+                ResizeHandle::SE => Vec2::new(anchor.x + half.x, anchor.y - half.y),
+                _ => unreachable!(),
+            };
+        }
+    }
+
     if let Ok(mut tr) = transforms.get_mut(entity) {
         tr.translation.x = new_translation.x;
         tr.translation.y = new_translation.y;
@@ -428,6 +470,56 @@ fn resize_step(
     if let Ok(mut sprite) = sprites.get_mut(entity) {
         sprite.custom_size = Some(new_size);
     }
+}
+
+/// Arrow-key nudge for the selected 2D entity. 1 unit per press, 10
+/// units when Shift is held. Gated on viewport hover (so typing in
+/// inspector text fields doesn't move the selection) and 2D view via
+/// the system's run-condition.
+pub fn keyboard_nudge_2d(
+    selection: Res<EditorSelection>,
+    keys: Res<ButtonInput<KeyCode>>,
+    viewport: Option<Res<ViewportState>>,
+    play_mode: Option<Res<PlayModeState>>,
+    mut transforms: Query<&mut Transform>,
+) {
+    if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
+        return;
+    }
+    if !viewport.map_or(false, |v| v.hovered) {
+        return;
+    }
+    let Some(entity) = selection.get() else { return };
+
+    let mut delta = Vec2::ZERO;
+    if keys.just_pressed(KeyCode::ArrowLeft) {
+        delta.x -= 1.0;
+    }
+    if keys.just_pressed(KeyCode::ArrowRight) {
+        delta.x += 1.0;
+    }
+    if keys.just_pressed(KeyCode::ArrowDown) {
+        delta.y -= 1.0;
+    }
+    if keys.just_pressed(KeyCode::ArrowUp) {
+        delta.y += 1.0;
+    }
+    if delta == Vec2::ZERO {
+        return;
+    }
+
+    let multiplier = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+        10.0
+    } else {
+        1.0
+    };
+    delta *= multiplier;
+
+    let Ok(mut tr) = transforms.get_mut(entity) else {
+        return;
+    };
+    tr.translation.x += delta.x;
+    tr.translation.y += delta.y;
 }
 
 /// Egui overlay: paint a yellow rectangle outline + 8 handles around the

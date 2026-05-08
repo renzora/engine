@@ -14,6 +14,7 @@ pub mod modal_transform;
 mod picker_2d;
 mod plane_fill;
 mod rotation_pie;
+mod ruler_2d;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
 
@@ -375,11 +376,19 @@ impl Plugin for GizmoPlugin {
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
             .add_systems(PostStartup, setup_gizmo_meshes)
+            // Selection shortcuts (Delete / Deselect / CreateNode) aren't
+            // 3D-specific — Delete on a 2D entity should also work from
+            // any panel. Pull these out of the in_three_view chain so they
+            // run in 2D/UI views too.
+            .add_systems(
+                Update,
+                (handle_selection_shortcuts, handle_file_shortcuts)
+                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
             .add_systems(
                 Update,
                 (
-                    handle_selection_shortcuts,
-                    handle_file_shortcuts,
                     switch_gizmo_mode,
                     modal_transform::modal_transform_input_system,
                     modal_transform::modal_transform_keyboard_system,
@@ -497,6 +506,7 @@ impl Plugin for GizmoPlugin {
             (
                 picker_2d::pick_2d_system,
                 picker_2d::drag_move_2d_system,
+                picker_2d::keyboard_nudge_2d,
             )
                 .chain()
                 .run_if(in_state(renzora_editor::SplashState::Editor))
@@ -509,6 +519,12 @@ impl Plugin for GizmoPlugin {
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(140, picker_2d::draw_selection_outline_2d);
+
+        // 2D ruler at order 90 — under selection outlines and gizmos so
+        // those paint over it cleanly when they cross into the strip.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(90, ruler_2d::draw_ruler_2d);
 
         // Always-visible scene icons painted as phosphor glyphs on the
         // viewport overlay. Order 150 sits between the gizmo band (~100)
