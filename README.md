@@ -32,15 +32,15 @@ These compile for the OS you're on. Mobile crates (`renzora-ios`, `renzora-andro
 | `makers build-runtime` | Build runtime export template (no editor crates), sync to `dist/<host>/runtime/` |
 | `makers build-server` | Build dedicated server (headless), sync to `dist/<host>/server/` |
 | `makers build-web` | Build WASM runtime export template → `target/dist/renzora-runtime-web-wasm32.zip` |
-| `makers build-web-editor` | Build WASM editor → `templates/web/` (runs `wasm-bindgen` + `wasm-opt` + brotli; native-only deps make this best-effort) |
+| <nobr>`makers build-web-editor`</nobr> | Build WASM editor → `templates/web/` (runs `wasm-bindgen` + `wasm-opt` + brotli; native-only deps make this best-effort) |
 | `makers build-android` | Build all Android template APKs (ARM64 + x86_64) |
-| `makers build-android-arm64` | Build Android ARM64 template APK only |
+| <nobr>`makers build-android-arm64`</nobr> | Build Android ARM64 template APK only |
 | `makers build-ios` | Build iOS ARM64 template (macOS + Xcode only) |
 | `makers clean` | Remove final artifacts for editor + runtime + server (keeps cargo's dep cache) |
 | `makers clean-editor` | Same as `clean`, scoped to the editor target |
 | `makers clean-runtime` | Same as `clean`, scoped to the runtime target |
 | `makers clean-server` | Same as `clean`, scoped to the server target |
-| `makers upx [-- <platform>...]` | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; pass platforms to scope it. |
+| <nobr>`makers upx [-- <platform>...]`</nobr> | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; pass platforms to scope it. |
 
 ### Docker builds (cross-platform)
 
