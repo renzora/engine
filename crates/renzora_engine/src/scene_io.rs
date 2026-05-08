@@ -1432,28 +1432,43 @@ pub fn rehydrate_meshes(
 /// server re-resolves it cheaply.
 pub fn rehydrate_sprite_images(
     mut query: Query<
-        (&renzora::core::SpriteImagePath, &mut bevy::sprite::Sprite),
+        (
+            Entity,
+            &renzora::core::SpriteImagePath,
+            &mut bevy::sprite::Sprite,
+        ),
         Changed<renzora::core::SpriteImagePath>,
     >,
     asset_server: Res<AssetServer>,
 ) {
-    for (path, mut sprite) in &mut query {
+    for (entity, path, mut sprite) in &mut query {
         if path.0.is_empty() {
+            info!(
+                "[sprite] {:?} cleared image handle (empty SpriteImagePath)",
+                entity
+            );
             sprite.image = Default::default();
+            // Reset to a visible placeholder so the user gets feedback
+            // instead of an invisible Sprite when clearing the path.
+            if sprite.custom_size.is_none() {
+                sprite.custom_size = Some(Vec2::splat(100.0));
+            }
+            // Clearing the image — restore the placeholder color so the
+            // resulting blue square matches the preset's "no image yet"
+            // state.
+            sprite.color = Color::srgba(0.5, 0.7, 1.0, 1.0);
             continue;
         }
-        // First image assignment (sprite was using the placeholder color +
-        // default empty handle): clear custom_size so Bevy renders at the
-        // image's natural pixel dimensions once it loads. Without this the
-        // sprite stays at the preset's 100×100 placeholder, which can look
-        // identical to "image didn't render." If the user has already
-        // resized via handles (custom_size != preset placeholder), keep
-        // their choice — only auto-clear from the empty-image baseline.
-        let was_empty_image = sprite.image == Handle::<Image>::default();
+        info!(
+            "[sprite] {:?} loading image from path \"{}\"",
+            entity, path.0
+        );
         sprite.image = asset_server.load(path.0.clone());
-        if was_empty_image {
-            sprite.custom_size = None;
-        }
+        // Once an image is bound, drop the placeholder color tint so the
+        // texture renders at its true colors. Tinting the texture blue
+        // looked like "the image didn't load" because the placeholder
+        // colour bled through every pixel.
+        sprite.color = Color::WHITE;
     }
 }
 
