@@ -20,26 +20,37 @@ makers run
 
 Linux: `sudo apt install libwayland-dev` before building.
 
-### Local builds
+### Local builds (host OS only)
+
+These compile for the OS you're on. Mobile crates (`renzora-ios`, `renzora-android`) are excluded automatically -- they're cross-compiled via Docker or their dedicated template scripts.
 
 | Command | What it does |
 |---|---|
 | `makers run` | Build + run the editor |
-| `makers build-editor` | Build the editor + plugins |
-| `makers build-runtime` | Build runtime export template + plugins |
-| `makers build-server` | Build dedicated server + plugins |
+| `makers build` / `makers build-editor` | Build the editor + plugins, sync to `dist/<host>/editor/` |
+| `makers build-runtime` | Build runtime export template (no editor crates), sync to `dist/<host>/runtime/` |
+| `makers build-server` | Build dedicated server (headless), sync to `dist/<host>/server/` |
+| `makers clean-outputs-editor` / `-runtime` / `-server` | Remove final artifacts from `target/<target>/dist/` (keeps cargo's dep cache) |
+| `makers dist-web` | Build WASM editor → `templates/web/` (runs `wasm-bindgen` + `wasm-opt` + brotli) |
+| `makers dist-web-runtime` | Build WASM runtime export template → `target/dist/renzora-runtime-web-wasm32.zip` |
+| `makers dist-android-arm64` | Build Android ARM64 template APK |
+| `makers dist-android-all` | Build all Android template APKs |
+| `makers dist-ios` | Build iOS ARM64 template (macOS + Xcode only) |
+| `makers upx [-- <platform>...]` | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; pass platforms to scope it. |
 
-### Docker builds (all platforms)
+### Docker builds (cross-platform)
+
+One container, one bind-mount, one shared `target/` cache. Filter platforms with `--`.
 
 | Command | What it does |
 |---|---|
 | `makers docker-build` | Build the Docker image (toolchain -- first time only) |
 | `makers docker-create` | Create a persistent build container for this directory |
+| `makers docker-start` | Start the persistent container (auto-runs before `docker-run`) |
 | `makers docker-run` | Build all platforms (fast after first run -- cache persists) |
 | `makers docker-run -- <platforms>` | Build a subset, e.g. `makers docker-run -- windows linux` |
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
-| `makers upx` | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow). Pass platform paths after `--` to scope it. |
 
 Pass platforms after `--` to skip the rest. Recognized: `linux`, `windows`, `macos` (= both archs), `macos-x64`, `macos-arm64`, `wasm`, `android` (= both archs), `android-arm64`, `android-x86`, `ios`. Order doesn't matter and unknown names are silently no-ops (typo-safe).
 
