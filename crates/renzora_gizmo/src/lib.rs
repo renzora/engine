@@ -11,6 +11,7 @@ pub mod collider_gizmo;
 pub mod collider_handles;
 mod light_gizmo;
 pub mod modal_transform;
+mod picker_2d;
 mod plane_fill;
 mod rotation_pie;
 pub mod selection_visuals;
@@ -439,6 +440,14 @@ impl Plugin for GizmoPlugin {
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
+            // Always-on (no view gate): keeps the cached 2D camera entity
+            // current so the 2D selection-outline overlay can render
+            // without needing &mut World.
+            .add_systems(
+                Update,
+                light_gizmo::update_editor_camera_2d_cache
+                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+            )
             .init_resource::<rotation_pie::RotationPieState>()
             .add_systems(
                 Update,
@@ -476,6 +485,30 @@ impl Plugin for GizmoPlugin {
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             );
+
+        // 2D picker + drag systems — gated on viewport_view == Two so they
+        // don't fight the 3D camera_controller / entity_pick when the user
+        // is in 3D mode. `.chain()` enforces pick-before-drag so a fresh
+        // click selects an entity *and* captures its drag offset in the
+        // same frame.
+        app.init_resource::<picker_2d::Drag2dState>();
+        app.add_systems(
+            Update,
+            (
+                picker_2d::pick_2d_system,
+                picker_2d::drag_move_2d_system,
+            )
+                .chain()
+                .run_if(in_state(renzora_editor::SplashState::Editor))
+                .run_if(renzora::core::not_in_play_mode)
+                .run_if(renzora::core::in_two_view),
+        );
+
+        // 2D selection outline overlay — shares the gizmo band order so
+        // it paints above the rendered image but under HUDs.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(140, picker_2d::draw_selection_outline_2d);
 
         // Always-visible scene icons painted as phosphor glyphs on the
         // viewport overlay. Order 150 sits between the gizmo band (~100)

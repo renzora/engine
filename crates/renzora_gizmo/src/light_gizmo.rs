@@ -26,8 +26,24 @@ use crate::OverlayGizmoGroup;
 #[derive(Resource, Default)]
 pub struct SceneIconCache {
     pub editor_camera: Option<Entity>,
+    /// Editor 2D camera reference — same purpose as `editor_camera`, but
+    /// for the orthographic 2D editor camera. Updated by a separate
+    /// always-on system because the 3D icon-cache update only runs in 3D
+    /// view, while 2D overlays need the 2D camera looked up in 2D view.
+    pub editor_camera_2d: Option<Entity>,
     pub light_icons: Vec<(Vec3, &'static str)>,
     pub camera_icons: Vec<Vec3>,
+}
+
+/// Always-on updater that just refreshes `SceneIconCache.editor_camera_2d`.
+/// Sibling of `update_scene_icon_cache`; lives outside that system so it
+/// can run even when the viewport is in 2D view (where the 3D cache
+/// updater is gated off).
+pub fn update_editor_camera_2d_cache(
+    mut cache: ResMut<SceneIconCache>,
+    editor_camera_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
+) {
+    cache.editor_camera_2d = editor_camera_2d.single().ok();
 }
 
 #[allow(clippy::type_complexity)]

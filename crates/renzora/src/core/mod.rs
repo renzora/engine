@@ -811,6 +811,16 @@ pub fn in_three_view(
     settings.map_or(true, |s| s.viewport_view == ViewportView::Three)
 }
 
+/// Run condition: returns true when the viewport is in 2D view. Use on
+/// editor systems that pick/drag/draw 2D entities through the orthographic
+/// editor camera.
+pub fn in_two_view(
+    settings: Option<Res<crate::core::viewport_types::ViewportSettings>>,
+) -> bool {
+    use crate::core::viewport_types::ViewportView;
+    settings.map_or(false, |s| s.viewport_view == ViewportView::Two)
+}
+
 /// Marker component added to the game camera entity during play mode.
 #[derive(Component)]
 pub struct PlayModeCamera;
