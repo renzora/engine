@@ -15,6 +15,7 @@ mod picker_2d;
 mod plane_fill;
 mod rotation_pie;
 mod ruler_2d;
+mod window_bounds_2d;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
 
@@ -520,8 +521,16 @@ impl Plugin for GizmoPlugin {
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(140, picker_2d::draw_selection_outline_2d);
 
-        // 2D ruler at order 90 — under selection outlines and gizmos so
-        // those paint over it cleanly when they cross into the strip.
+        // Project window-size outline + axis lines at order 85 — drawn
+        // first so the opaque ruler strips cover them where they overlap.
+        // Only visible in 2D view.
+        app.world_mut()
+            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
+            .register(85, window_bounds_2d::draw_window_bounds_2d);
+
+        // 2D ruler at order 90 — over the window bounds / axis lines so
+        // those don't bleed across the strip, under selection outlines
+        // and gizmos so those paint cleanly on top.
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(90, ruler_2d::draw_ruler_2d);
