@@ -205,7 +205,7 @@ fn entity_translation(world: &World, entity: Entity) -> Option<Vec3> {
 /// visible feedback.
 fn entity_half_size(world: &World, entity: Entity) -> Option<Vec2> {
     if let Some(sprite) = world.get::<Sprite>(entity) {
-        let size = sprite.custom_size.unwrap_or(Vec2::ZERO);
+        let size = sprite_effective_size(world, sprite)?;
         if size.x <= 0.0 || size.y <= 0.0 {
             return None;
         }
@@ -215,6 +215,89 @@ fn entity_half_size(world: &World, entity: Entity) -> Option<Vec2> {
     } else {
         None
     }
+}
+
+/// A sprite's effective render size, in world units. Falls back from
+/// `custom_size` (explicit override) → `rect.size()` (sub-region of an
+/// atlas) → the loaded image's native pixel dimensions. Returns `None`
+/// while the image is still loading or if no image is bound — in
+/// either case there's nothing meaningful to hit-test against.
+pub fn sprite_effective_size(world: &World, sprite: &Sprite) -> Option<Vec2> {
+    let images = world.get_resource::<Assets<Image>>()?;
+    sprite_size_from_query(sprite, images)
+}
+
+/// System-friendly variant of `sprite_effective_size` — takes
+/// `Res<Assets<Image>>` directly instead of going through `&World`,
+/// so it can be called from systems that already have the asset
+/// resource.
+pub fn sprite_size_from_query(sprite: &Sprite, images: &Assets<Image>) -> Option<Vec2> {
+    if let Some(custom) = sprite.custom_size {
+        return Some(custom);
+    }
+    if let Some(rect) = sprite.rect {
+        return Some(rect.size());
+    }
+    let image = images.get(&sprite.image)?;
+    Some(image.size_f32())
+}
+
+/// Sample the sprite's alpha at a world position. Returns `None` if
+/// the image isn't loaded (caller should fall back to AABB-only),
+/// or if the cursor lands outside the sprite's UV space. Honours
+/// `flip_x` / `flip_y` and `rect` (atlas sub-region) so picking
+/// matches what the user actually sees on screen.
+fn sample_sprite_alpha(
+    sprite: &Sprite,
+    images: &Assets<Image>,
+    cursor_world: Vec2,
+    sprite_world: Vec2,
+    sprite_size: Vec2,
+) -> Option<f32> {
+    let image = images.get(&sprite.image)?;
+    let img_size = image.size_f32();
+    if img_size.x <= 0.0 || img_size.y <= 0.0 {
+        return None;
+    }
+    if sprite_size.x <= 0.0 || sprite_size.y <= 0.0 {
+        return None;
+    }
+
+    // Local position relative to sprite centre, then UV (0..1).
+    // World Y is up, texture Y is down — flip the V axis.
+    let local = cursor_world - sprite_world;
+    let mut u = local.x / sprite_size.x + 0.5;
+    let mut v = 0.5 - local.y / sprite_size.y;
+
+    if sprite.flip_x {
+        u = 1.0 - u;
+    }
+    if sprite.flip_y {
+        v = 1.0 - v;
+    }
+
+    if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+        return None;
+    }
+
+    // UV → texture pixel. If `rect` is set the sprite renders only a
+    // sub-region of the texture; map UV into that rect.
+    let (tex_x, tex_y) = if let Some(rect) = sprite.rect {
+        let rw = rect.max.x - rect.min.x;
+        let rh = rect.max.y - rect.min.y;
+        (rect.min.x + u * rw, rect.min.y + v * rh)
+    } else {
+        (u * img_size.x, v * img_size.y)
+    };
+
+    // Clamp to valid pixel index (size_f32 returns the full extent;
+    // valid indices are 0..=size-1).
+    let max_x = (img_size.x as u32).saturating_sub(1);
+    let max_y = (img_size.y as u32).saturating_sub(1);
+    let px = (tex_x as u32).min(max_x);
+    let py = (tex_y as u32).min(max_y);
+
+    image.get_color_at(px, py).ok().map(|c| c.alpha())
 }
 
 /// All eight handle positions for the entity's AABB, in world space.
@@ -241,6 +324,7 @@ pub fn pick_2d_system(
     mouse: Res<ButtonInput<MouseButton>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
+    images: Res<Assets<Image>>,
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
@@ -277,7 +361,7 @@ pub fn pick_2d_system(
         let half = sprites
             .get(entity)
             .ok()
-            .and_then(|(_, s, _)| s.custom_size)
+            .and_then(|(_, s, _)| sprite_size_from_query(s, &images))
             .map(|s| s * 0.5);
         if let (Some(t3d), Some(half)) = (translation_3d, half) {
             let translation = t3d.truncate();
@@ -302,10 +386,15 @@ pub fn pick_2d_system(
         }
     }
 
-    // --- Step 2: AABB hit-test against all sprites. ---
+    // --- Step 2: AABB hit-test against all sprites, then alpha test. ---
+    // Pixel-perfect picking: a sprite with a transparent pixel at the
+    // click position shouldn't grab the click — let it fall through to
+    // whatever's behind. Alpha == 0.0 → skipped. If the image isn't
+    // loaded yet (alpha is `None`), fall back to the AABB hit so the
+    // sprite isn't unclickable while loading.
     let mut best: Option<(Entity, f32, Vec2)> = None;
     for (entity, sprite, gt) in &sprites {
-        let Some(size) = sprite.custom_size else {
+        let Some(size) = sprite_size_from_query(sprite, &images) else {
             continue;
         };
         if size.x <= 0.0 || size.y <= 0.0 {
@@ -313,12 +402,20 @@ pub fn pick_2d_system(
         }
         let pos = gt.translation();
         let half = size * 0.5;
-        if (cursor_world.x - pos.x).abs() <= half.x && (cursor_world.y - pos.y).abs() <= half.y {
-            match best {
-                None => best = Some((entity, pos.z, pos.truncate())),
-                Some((_, z, _)) if pos.z > z => best = Some((entity, pos.z, pos.truncate())),
-                _ => {}
+        let aabb_hit = (cursor_world.x - pos.x).abs() <= half.x
+            && (cursor_world.y - pos.y).abs() <= half.y;
+        if !aabb_hit {
+            continue;
+        }
+        if let Some(alpha) = sample_sprite_alpha(sprite, &images, cursor_world, pos.truncate(), size) {
+            if alpha <= 0.0 {
+                continue;
             }
+        }
+        match best {
+            None => best = Some((entity, pos.z, pos.truncate())),
+            Some((_, z, _)) if pos.z > z => best = Some((entity, pos.z, pos.truncate())),
+            _ => {}
         }
     }
 
