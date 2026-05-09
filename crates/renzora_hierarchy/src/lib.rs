@@ -1008,6 +1008,38 @@ impl Plugin for HierarchyPanelPlugin {
                 ));
             },
         });
+
+        // 2D scene starter — spawns a Camera 2D so the project is
+        // immediately playable. The Camera2d observer in
+        // `renzora_engine::camera` sets `viewport_origin = (0, 1)` on
+        // insert, so the camera at world origin renders the
+        // Godot-style "window starts at (0, 0)" view that all the
+        // editor outlines and rulers expect. Also flips the viewport
+        // to 2D mode so the user lands in the right authoring space.
+        app.register_scene_starter(SceneStarter {
+            id: "scene_2d",
+            title: "2D Scene",
+            description: "Start with a Camera 2D — sprites, UI, retro pixel art",
+            icon: egui_phosphor::regular::IMAGE_SQUARE,
+            spawn_fn: |world: &mut World| {
+                use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+                use renzora::core::{DefaultCamera, SceneCamera};
+                world.spawn((
+                    Name::new("Camera 2D"),
+                    SceneCamera,
+                    DefaultCamera,
+                    Camera2d,
+                    Camera {
+                        is_active: false,
+                        ..default()
+                    },
+                    Transform::default(),
+                ));
+                if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
+                    settings.viewport_view = ViewportView::Two;
+                }
+            },
+        });
     }
 }
 

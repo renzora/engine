@@ -13,8 +13,8 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, CUBE, DESKTOP, FOLDER_OPEN, GAME_CONTROLLER, GAUGE, GRID_FOUR,
-    INFO, KEYBOARD, LIST_BULLETS, LIST_PLUS, PALETTE, PLUS, TEXT_AA, TRASH, VIDEO_CAMERA, WRENCH,
-    X,
+    IMAGE_SQUARE, INFO, KEYBOARD, LIST_BULLETS, LIST_PLUS, PALETTE, PLUS, TEXT_AA, TRASH,
+    VIDEO_CAMERA, WRENCH, X,
 };
 
 use renzora_editor::{
@@ -1157,6 +1157,56 @@ fn render_project_tab(
                             if r.inner.changed() {
                                 changed = true;
                             }
+                        }
+                    })
+                    .response;
+                if changed {
+                    resp.clone().mark_changed();
+                }
+                resp
+            });
+        },
+    );
+
+    render_category(
+        ui,
+        IMAGE_SQUARE,
+        "Rendering 2D",
+        CategoryStyle::interface(),
+        "settings_rendering_2d",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Image Filter", theme, |ui| {
+                use renzora::core::TextureFilter as TF;
+                let mut changed = false;
+                let resp = egui::ComboBox::from_id_salt("settings_2d_image_filter")
+                    .selected_text(match config.rendering_2d.image_filter {
+                        TF::Nearest => "Nearest",
+                        TF::Linear => "Linear",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label, hint) in [
+                            (
+                                TF::Nearest,
+                                "Nearest",
+                                "No blending — preserves pixel-art crispness. Each source pixel becomes a discrete block when scaled. Right default for retro / pixel-art games.",
+                            ),
+                            (
+                                TF::Linear,
+                                "Linear",
+                                "Bilinear smoothing between neighbouring pixels. Right for HD art that wants smooth scaling; reads as blurry on pixel art.",
+                            ),
+                        ] {
+                            let r = ui.selectable_value(
+                                &mut config.rendering_2d.image_filter,
+                                value,
+                                label,
+                            );
+                            if r.changed() {
+                                changed = true;
+                            }
+                            r.on_hover_text(hint);
                         }
                     })
                     .response;

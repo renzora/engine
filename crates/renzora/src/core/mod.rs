@@ -124,6 +124,45 @@ pub enum AspectMode {
     KeepHeight,
 }
 
+/// Texture sampling filter — affects how loaded images look when
+/// rendered at a different size than their native resolution.
+///
+/// `Nearest` preserves pixel-art crispness (each source pixel maps
+/// to a discrete block of screen pixels with no smoothing).
+/// `Linear` blends neighbouring pixels for smooth scaling, which
+/// reads as blurry on pixel art but is right for HD textures.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TextureFilter {
+    /// Nearest-neighbour sampling — no blending, crisp pixel art.
+    /// Good default for sprite-based / retro games.
+    #[default]
+    Nearest,
+    /// Bilinear sampling — smooths between neighbouring pixels.
+    /// Right for high-resolution art and smooth scaling.
+    Linear,
+}
+
+/// 2D rendering config. Currently just the default image filter for
+/// sprites; future fields (canvas blend modes, default tonemap, etc.)
+/// land here.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Rendering2dConfig {
+    /// Sampler used when loading sprite textures. Defaults to
+    /// `Nearest` so pixel-art assets render crisp out of the box.
+    /// Per-sprite overrides can come later.
+    #[serde(default)]
+    pub image_filter: TextureFilter,
+}
+
+impl Default for Rendering2dConfig {
+    fn default() -> Self {
+        Self {
+            image_filter: TextureFilter::default(),
+        }
+    }
+}
+
 /// Game render-resolution config. Sits next to [`WindowConfig`]; the
 /// window is the OS-managed surface, the viewport is the resolution the
 /// camera shoots at.
@@ -235,6 +274,9 @@ pub struct ProjectConfig {
     /// to the window, so existing projects don't change behaviour.
     #[serde(default)]
     pub viewport: ViewportConfig,
+    /// 2D rendering settings (sprite image filter, etc.).
+    #[serde(default)]
+    pub rendering_2d: Rendering2dConfig,
     /// Whether the runtime should attach a console (Windows) for `println!` /
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -258,6 +300,7 @@ impl Default for ProjectConfig {
             autoload: Vec::new(),
             window: WindowConfig::default(),
             viewport: ViewportConfig::default(),
+            rendering_2d: Rendering2dConfig::default(),
             console_logging: false,
             network: None,
             editor: None,

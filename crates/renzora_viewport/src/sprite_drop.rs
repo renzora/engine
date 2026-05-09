@@ -22,13 +22,6 @@ use crate::ViewportState;
 
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
 
-/// Default size for a freshly-spawned sprite. We can't read the image's
-/// natural dimensions until the asset finishes loading, so pick a
-/// sensible square that's visible at default zoom; the user can resize
-/// via handles or set `Sprite.custom_size = None` to use the loaded
-/// image's natural dimensions.
-const DEFAULT_SPAWN_SIZE: f32 = 200.0;
-
 /// Called from the viewport panel's `ui()` each frame. On release of an
 /// image drag-drop payload over the 2D viewport, queues a deferred
 /// command that decides whether to retarget an existing sprite or spawn
@@ -160,12 +153,16 @@ fn handle_sprite_drop(
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "Sprite".to_string());
         let world_pos = Vec3::new(world_pos_2d.x, world_pos_2d.y, 0.0);
+        // `custom_size: None` → Bevy uses the source image's native
+        // pixel dimensions for the sprite's world-space size. The
+        // observer in `scene_io::on_sprite_image_path_inserted` also
+        // sets this on path bind, so this is mostly defensive.
         world.spawn((
             Name::new(name),
             Transform::from_translation(world_pos),
             Sprite {
                 color: Color::WHITE,
-                custom_size: Some(Vec2::splat(DEFAULT_SPAWN_SIZE)),
+                custom_size: None,
                 ..default()
             },
             SpriteImagePath(path_str),

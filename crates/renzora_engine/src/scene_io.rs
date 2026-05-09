@@ -1445,16 +1445,18 @@ pub fn on_sprite_image_path_inserted(
     has_sprite: Query<(), With<bevy::sprite::Sprite>>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut commands: Commands,
 ) {
     let entity = trigger.entity;
     let Ok(path) = paths.get(entity) else {
         return;
     };
+    let filter = sprite_filter(project.as_deref());
     if has_sprite.get(entity).is_ok() {
-        apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server);
+        apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server, filter);
     } else {
-        spawn_sprite_for_path(entity, &path.0, &asset_server, &mut commands);
+        spawn_sprite_for_path(entity, &path.0, &asset_server, &mut commands, filter);
     }
 }
 
@@ -1468,12 +1470,23 @@ pub fn on_sprite_inserted_apply_image_path(
     paths: Query<&renzora::core::SpriteImagePath>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
+    project: Option<Res<renzora::CurrentProject>>,
 ) {
     let entity = trigger.entity;
     let Ok(path) = paths.get(entity) else {
         return;
     };
-    apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server);
+    let filter = sprite_filter(project.as_deref());
+    apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server, filter);
+}
+
+/// Resolve the project's configured 2D image filter. Defaults to
+/// `Nearest` when no project is loaded — keeps the behaviour
+/// pixel-perfect by default.
+fn sprite_filter(project: Option<&renzora::CurrentProject>) -> renzora::core::TextureFilter {
+    project
+        .map(|p| p.config.rendering_2d.image_filter)
+        .unwrap_or_default()
 }
 
 fn apply_sprite_image_path(
@@ -1481,6 +1494,7 @@ fn apply_sprite_image_path(
     path: &str,
     sprites_mut: &mut Query<&mut bevy::sprite::Sprite>,
     asset_server: &AssetServer,
+    filter: renzora::core::TextureFilter,
 ) {
     let Ok(mut sprite) = sprites_mut.get_mut(entity) else {
         return;
@@ -1499,17 +1513,46 @@ fn apply_sprite_image_path(
         return;
     }
 
-    let expected = asset_server.load::<Image>(path.to_owned());
+    let expected = load_sprite_image(asset_server, path, filter);
     if sprite.image.id() != expected.id() {
         info!(
-            "[sprite] {:?} bound image \"{}\" (replaced handle)",
-            entity, path
+            "[sprite] {:?} bound image \"{}\" (replaced handle, filter={:?})",
+            entity, path, filter
         );
         sprite.image = expected;
         sprite.color = Color::WHITE;
+        // Use the image's native dimensions — Bevy reads them off the
+        // loaded asset when `custom_size` is `None`. Forcing a fixed
+        // size here would silently squash a 1024×1024 source into 100
+        // world units, blowing away most of the pixel-art detail.
+        sprite.custom_size = None;
     } else if sprite.color == placeholder_blue {
         sprite.color = Color::WHITE;
+        sprite.custom_size = None;
     }
+}
+
+/// Load a sprite texture with the project's configured filter. Bevy's
+/// default ImagePlugin uses linear filtering (right for 3D PBR, wrong
+/// for pixel art — every scaled pixel becomes a smear). Per-asset
+/// override via `load_with_settings` keeps 3D textures linear while
+/// sprite textures land with whatever the project asks for.
+fn load_sprite_image(
+    asset_server: &AssetServer,
+    path: &str,
+    filter: renzora::core::TextureFilter,
+) -> Handle<Image> {
+    use bevy::image::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
+    let descriptor = match filter {
+        renzora::core::TextureFilter::Nearest => ImageSamplerDescriptor::nearest(),
+        renzora::core::TextureFilter::Linear => ImageSamplerDescriptor::linear(),
+    };
+    asset_server.load_with_settings::<Image, ImageLoaderSettings>(
+        path.to_owned(),
+        move |settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::Descriptor(descriptor.clone());
+        },
+    )
 }
 
 /// Insert a `Sprite` from scratch when one's missing. Used by the
@@ -1522,6 +1565,7 @@ fn spawn_sprite_for_path(
     path: &str,
     asset_server: &AssetServer,
     commands: &mut Commands,
+    filter: renzora::core::TextureFilter,
 ) {
     let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
     let sprite = if path.is_empty() {
@@ -1531,16 +1575,21 @@ fn spawn_sprite_for_path(
             ..Default::default()
         }
     } else {
+        // `custom_size: None` → Bevy uses the loaded image's native
+        // pixel dimensions, so a 32×32 source renders as 32 world units,
+        // a 1024×1024 source as 1024. Critical for pixel art: forcing
+        // a fixed size silently downsamples the source before our
+        // viewport upscale, killing the crisp-pixel look.
         bevy::sprite::Sprite {
             color: Color::WHITE,
-            custom_size: Some(Vec2::splat(100.0)),
-            image: asset_server.load::<Image>(path.to_owned()),
+            custom_size: None,
+            image: load_sprite_image(asset_server, path, filter),
             ..Default::default()
         }
     };
     info!(
-        "[sprite] {:?} rehydrated Sprite component (path \"{}\")",
-        entity, path
+        "[sprite] {:?} rehydrated Sprite component (path \"{}\", filter={:?})",
+        entity, path, filter
     );
     commands.entity(entity).insert(sprite);
 }
