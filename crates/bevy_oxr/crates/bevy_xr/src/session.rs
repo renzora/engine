@@ -1,6 +1,6 @@
 use std::convert::identity;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use bevy_app::{App, AppExit, MainScheduleOrder, Plugin, PostUpdate, PreUpdate};
 use bevy_camera::visibility::Visibility;
@@ -14,16 +14,17 @@ use bevy_ecs::query::{Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::common_conditions::on_message;
 use bevy_ecs::schedule::{
-    ExecutorKind, IntoScheduleConfigs as _, Schedule, ScheduleLabel, SystemCondition as _, SystemSet
+    ExecutorKind, IntoScheduleConfigs as _, Schedule, ScheduleLabel, SystemCondition as _,
+    SystemSet,
 };
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::DeferredWorld;
+#[cfg(feature = "reflect")]
+use bevy_reflect::Reflect;
 use bevy_render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy_render::{Render, RenderApp, RenderSystems};
-use bevy_transform::components::{GlobalTransform, Transform};
 use bevy_transform::TransformSystems;
-#[cfg(feature="reflect")]
-use bevy_reflect::Reflect;
+use bevy_transform::components::{GlobalTransform, Transform};
 
 /// Message sent to instruct backends to create an XR session. Only works when the [`XrState`] is [`Available`](XrState::Available).
 #[derive(Message, Clone, Copy, Default)]

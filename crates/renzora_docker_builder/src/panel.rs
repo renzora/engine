@@ -10,7 +10,7 @@ use std::sync::RwLock;
 use bevy::prelude::World;
 use bevy_egui::egui::{self, Color32, RichText, ScrollArea};
 use egui_phosphor::regular::{
-    BROOM, CUBE, ERASER, HAMMER, PLAY, SPINNER, STOP, WARNING_CIRCLE, CHECK_CIRCLE,
+    BROOM, CHECK_CIRCLE, CUBE, ERASER, HAMMER, PLAY, SPINNER, STOP, WARNING_CIRCLE,
 };
 use renzora_theme::{Theme, ThemeManager};
 use renzora_ui::{EditorPanel, PanelLocation};
@@ -100,11 +100,7 @@ impl EditorPanel for DockerBuilderPanel {
             None => return,
         };
 
-        let snap = self
-            .snapshot
-            .read()
-            .map(|s| s.clone())
-            .unwrap_or_default();
+        let snap = self.snapshot.read().map(|s| s.clone()).unwrap_or_default();
 
         let settings = self.read_settings();
 
@@ -138,11 +134,10 @@ impl DockerBuilderPanel {
             let running = snap.running;
 
             if ui
-                .add_enabled(
-                    !running,
-                    egui::Button::new(format!("{CUBE} Build Image")),
+                .add_enabled(!running, egui::Button::new(format!("{CUBE} Build Image")))
+                .on_hover_text(
+                    "docker build -f docker/engine-builder/Dockerfile -t renzora/engine .",
                 )
-                .on_hover_text("docker build -f docker/engine-builder/Dockerfile -t renzora/engine .")
                 .clicked()
             {
                 self.push_action(UiAction::BuildImage);
@@ -278,13 +273,9 @@ impl DockerBuilderPanel {
                     {
                         continue;
                     }
-                    let color = classify_line_color(line, err_c, warn_c, header_c, Color32::LIGHT_GRAY);
-                    ui.label(
-                        RichText::new(line)
-                            .monospace()
-                            .color(color)
-                            .size(11.0),
-                    );
+                    let color =
+                        classify_line_color(line, err_c, warn_c, header_c, Color32::LIGHT_GRAY);
+                    ui.label(RichText::new(line).monospace().color(color).size(11.0));
                 }
             });
     }
@@ -319,7 +310,10 @@ fn render_target_card(ui: &mut egui::Ui, target: &BuildTarget, theme: &Theme, wi
 
     egui::Frame::new()
         .fill(theme.surfaces.faint.to_color32())
-        .stroke(egui::Stroke::new(1.0, theme.widgets.border_light.to_color32()))
+        .stroke(egui::Stroke::new(
+            1.0,
+            theme.widgets.border_light.to_color32(),
+        ))
         .inner_margin(6.0)
         .show(ui, |ui| {
             ui.set_width(width);

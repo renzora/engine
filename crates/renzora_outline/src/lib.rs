@@ -1,17 +1,17 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -73,7 +73,10 @@ fn inspector_entry() -> InspectorEntry {
             world.entity_mut(entity).remove::<OutlineSettings>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<OutlineSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)
+            world
+                .get::<OutlineSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<OutlineSettings>(entity) {
@@ -83,9 +86,15 @@ fn inspector_entry() -> InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "Thickness",
-                field_type: FieldType::Float { speed: 0.05, min: 0.5, max: 5.0 },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.5,
+                    max: 5.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<OutlineSettings>(entity).map(|s| FieldValue::Float(s.thickness))
+                    world
+                        .get::<OutlineSettings>(entity)
+                        .map(|s| FieldValue::Float(s.thickness))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
@@ -97,9 +106,15 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Threshold",
-                field_type: FieldType::Float { speed: 0.005, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.005,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<OutlineSettings>(entity).map(|s| FieldValue::Float(s.threshold))
+                    world
+                        .get::<OutlineSettings>(entity)
+                        .map(|s| FieldValue::Float(s.threshold))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
@@ -113,7 +128,9 @@ fn inspector_entry() -> InspectorEntry {
                 name: "Color",
                 field_type: FieldType::Color,
                 get_fn: |world, entity| {
-                    world.get::<OutlineSettings>(entity).map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b]))
+                    world
+                        .get::<OutlineSettings>(entity)
+                        .map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b]))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Color([r, g, b]) = val {
@@ -127,9 +144,15 @@ fn inspector_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Mix Mode",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
                 get_fn: |world, entity| {
-                    world.get::<OutlineSettings>(entity).map(|s| FieldValue::Float(s.mix_mode))
+                    world
+                        .get::<OutlineSettings>(entity)
+                        .map(|s| FieldValue::Float(s.mix_mode))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {

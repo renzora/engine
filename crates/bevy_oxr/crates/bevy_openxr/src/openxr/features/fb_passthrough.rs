@@ -9,8 +9,8 @@ use bevy_log::info;
 use bevy_render::Render;
 use bevy_render::RenderApp;
 use bevy_render::RenderSystems;
-use openxr::sys::SystemPassthroughProperties2FB;
 use openxr::PassthroughCapabilityFlagsFB;
+use openxr::sys::SystemPassthroughProperties2FB;
 
 use crate::exts::OxrEnabledExtensions;
 use crate::layer_builder::PassthroughLayer;
@@ -124,9 +124,5 @@ pub fn supports_passthrough(instance: &OxrInstance, system: OxrSystemId) -> OxrR
 }
 
 fn cvt(x: openxr::sys::Result) -> openxr::Result<openxr::sys::Result> {
-    if x.into_raw() >= 0 {
-        Ok(x)
-    } else {
-        Err(x)
-    }
+    if x.into_raw() >= 0 { Ok(x) } else { Err(x) }
 }

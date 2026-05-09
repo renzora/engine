@@ -110,4 +110,3 @@ mod tests {
         assert!(store.drain_changed().contains("x"));
     }
 }
-

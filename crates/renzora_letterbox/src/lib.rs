@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
 #[renzora_macros::post_process(shader = "letterbox.wgsl", name = "Letterbox", icon = "ROWS")]
 pub struct LetterboxSettings {
@@ -10,7 +10,13 @@ pub struct LetterboxSettings {
     pub bar_height: f32,
     #[field(speed = 0.01, min = 0.0, max = 1.0, default = 0.0)]
     pub softness: f32,
-    #[field(speed = 0.01, min = 0.0, max = 3.0, default = 0.0, name = "Aspect Ratio")]
+    #[field(
+        speed = 0.01,
+        min = 0.0,
+        max = 3.0,
+        default = 0.0,
+        name = "Aspect Ratio"
+    )]
     pub aspect_ratio: f32,
 }
 

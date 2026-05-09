@@ -9,14 +9,14 @@
 //! 6. Path table (scene hierarchy as a flattened tree)
 //! 7. Spec table (associates paths with types and fieldsets)
 
-mod header;
-mod sections;
-mod tokens;
-mod paths;
-mod specs;
-mod fields;
-mod values;
 mod compression;
+mod fields;
+mod header;
+mod paths;
+mod sections;
+mod specs;
+mod tokens;
+mod values;
 
 use crate::scene::*;
 use crate::UsdResult;
@@ -41,8 +41,14 @@ pub fn parse(data: &[u8]) -> UsdResult<UsdStage> {
     let specs = specs::read_specs(data, &toc)?;
     log::warn!("USDC: read {} specs", specs.len());
 
-    log::warn!("USDC: {} tokens, {} fields, {} fieldset entries, {} paths, {} specs",
-        tokens.len(), fields.len(), field_sets.len(), paths.len(), specs.len());
+    log::warn!(
+        "USDC: {} tokens, {} fields, {} fieldset entries, {} paths, {} specs",
+        tokens.len(),
+        fields.len(),
+        field_sets.len(),
+        paths.len(),
+        specs.len()
+    );
 
     let mut stage = UsdStage {
         meters_per_unit: 0.01,
@@ -91,8 +97,14 @@ impl<'a> Resolver<'a> {
             } else {
                 "??"
             };
-            log::warn!("  raw spec[{}]: path_idx={} name='{}' fieldset_idx={} spec_type={}",
-                i, spec.path_index, path_name, spec.fieldset_index, spec.spec_type);
+            log::warn!(
+                "  raw spec[{}]: path_idx={} name='{}' fieldset_idx={} spec_type={}",
+                i,
+                spec.path_index,
+                path_name,
+                spec.fieldset_index,
+                spec.spec_type
+            );
         }
 
         // Walk all specs and extract prims based on their type
@@ -121,8 +133,13 @@ impl<'a> Resolver<'a> {
                 .and_then(|(_, v)| v.as_token())
                 .unwrap_or("");
 
-            log::warn!("USDC prim: '{}' type='{}' fields={} fieldset_idx={}",
-                full_path, type_name, field_values.len(), spec.fieldset_index);
+            log::warn!(
+                "USDC prim: '{}' type='{}' fields={} fieldset_idx={}",
+                full_path,
+                type_name,
+                field_values.len(),
+                spec.fieldset_index
+            );
 
             match type_name {
                 "Mesh" => {
@@ -177,8 +194,12 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        log::warn!("USDC summary: {} prims, {} attributes, {} meshes found",
-            prim_count, attr_count, stage.meshes.len());
+        log::warn!(
+            "USDC summary: {} prims, {} attributes, {} meshes found",
+            prim_count,
+            attr_count,
+            stage.meshes.len()
+        );
 
         // Extract stage metadata from the pseudo-root
         self.extract_stage_metadata(stage);
@@ -265,7 +286,11 @@ impl<'a> Resolver<'a> {
                     name: part.to_string(),
                     path: parts[..=i].join("/"),
                     transform: identity_matrix(),
-                    data: if is_last { data.clone() } else { NodeData::Empty },
+                    data: if is_last {
+                        data.clone()
+                    } else {
+                        NodeData::Empty
+                    },
                     children: Vec::new(),
                 };
                 if is_last {
@@ -394,10 +419,7 @@ impl<'a> Resolver<'a> {
                 for (key, value) in &fields {
                     if key == "default" || key == "timeSamples" {
                         if let Some(colors) = value.as_vec3f_array() {
-                            mesh.colors = colors
-                                .iter()
-                                .map(|c| [c[0], c[1], c[2], 1.0])
-                                .collect();
+                            mesh.colors = colors.iter().map(|c| [c[0], c[1], c[2], 1.0]).collect();
                         }
                     }
                 }
@@ -600,11 +622,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn extract_material(
-        &self,
-        path: &str,
-        _fields: &[(String, Value)],
-    ) -> UsdResult<UsdMaterial> {
+    fn extract_material(&self, path: &str, _fields: &[(String, Value)]) -> UsdResult<UsdMaterial> {
         let name = path.rsplit('/').next().unwrap_or("Material").to_string();
         let mut mat = UsdMaterial {
             name,
@@ -699,11 +717,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn extract_skeleton(
-        &self,
-        path: &str,
-        _fields: &[(String, Value)],
-    ) -> UsdResult<UsdSkeleton> {
+    fn extract_skeleton(&self, path: &str, _fields: &[(String, Value)]) -> UsdResult<UsdSkeleton> {
         let name = path.rsplit('/').next().unwrap_or("Skeleton").to_string();
         let mut skel = UsdSkeleton {
             name,
@@ -888,11 +902,7 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    fn extract_camera(
-        &self,
-        path: &str,
-        _fields: &[(String, Value)],
-    ) -> UsdResult<UsdCamera> {
+    fn extract_camera(&self, path: &str, _fields: &[(String, Value)]) -> UsdResult<UsdCamera> {
         let name = path.rsplit('/').next().unwrap_or("Camera").to_string();
         let mut cam = UsdCamera {
             name,
@@ -990,17 +1000,11 @@ impl<'a> Resolver<'a> {
     fn resolve_material_bindings(&self, stage: &mut UsdStage) {
         for mesh in &mut stage.meshes {
             if let Some(ref binding) = mesh.material_binding {
-                mesh.material_index = stage
-                    .materials
-                    .iter()
-                    .position(|m| m.path == *binding);
+                mesh.material_index = stage.materials.iter().position(|m| m.path == *binding);
             }
             for subset in &mut mesh.subsets {
                 if let Some(ref binding) = subset.material_binding {
-                    subset.material_index = stage
-                        .materials
-                        .iter()
-                        .position(|m| m.path == *binding);
+                    subset.material_index = stage.materials.iter().position(|m| m.path == *binding);
                 }
             }
         }
@@ -1009,10 +1013,7 @@ impl<'a> Resolver<'a> {
 
 fn identity_matrix() -> [f32; 16] {
     [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
 }
 

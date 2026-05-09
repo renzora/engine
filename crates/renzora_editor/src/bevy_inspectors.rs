@@ -363,7 +363,13 @@ fn sprite_image_entry() -> InspectorEntry {
             get_fn: |world, entity| {
                 let path = world
                     .get::<renzora::core::SpriteImagePath>(entity)
-                    .map(|p| if p.0.is_empty() { None } else { Some(p.0.clone()) })
+                    .map(|p| {
+                        if p.0.is_empty() {
+                            None
+                        } else {
+                            Some(p.0.clone())
+                        }
+                    })
                     .unwrap_or(None);
                 Some(FieldValue::Asset(path))
             },

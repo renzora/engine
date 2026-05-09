@@ -180,7 +180,10 @@ fn print_state(
     println!("    Alive:        {alive_val:.0}");
 
     if let Ok(life) = q_life.get(entity) {
-        println!("  Life component:  max={:.0}, current={:.1}", life.max, life.current);
+        println!(
+            "  Life component:  max={:.0}, current={:.1}",
+            life.max, life.current
+        );
     }
     if let Ok(status) = q_alive.get(entity) {
         println!("  AliveStatus:     alive={}", status.alive);

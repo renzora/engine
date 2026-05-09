@@ -2,10 +2,10 @@
 
 use bevy::prelude::*;
 
+use super::model::{ModelPreviewState, PreviewModel};
+use super::PreviewMode;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
 use crate::scene::PreviewSubject;
-use super::PreviewMode;
-use super::model::{PreviewModel, ModelPreviewState};
 
 #[derive(Resource, Default)]
 pub struct AnimationPreviewState {
@@ -79,11 +79,7 @@ fn auto_play_animations(
     }
 }
 
-fn is_descendant(
-    entity: Entity,
-    ancestor: Entity,
-    children_q: &Query<&Children>,
-) -> bool {
+fn is_descendant(entity: Entity, ancestor: Entity, children_q: &Query<&Children>) -> bool {
     if let Ok(children) = children_q.get(ancestor) {
         for child in children.iter() {
             if child == entity || is_descendant(entity, child, children_q) {
@@ -100,6 +96,9 @@ impl Plugin for AnimationPreviewPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AnimationPreviewState>()
             .add_systems(Update, handle_animation_commands)
-            .add_systems(Update, auto_play_animations.run_if(in_state(PreviewMode::Animation)));
+            .add_systems(
+                Update,
+                auto_play_animations.run_if(in_state(PreviewMode::Animation)),
+            );
     }
 }

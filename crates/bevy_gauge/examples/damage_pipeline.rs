@@ -226,17 +226,13 @@ fn resolve_attack(
     let def_name = q_name.get(defender).map(|n| n.as_str()).unwrap_or("???");
     let wpn_name = q_name.get(weapon).map(|n| n.as_str()).unwrap_or("???");
 
-    let element = q_element
-        .get(weapon)
-        .map(|d| d.0)
-        .unwrap_or(Tags::PHYSICAL);
+    let element = q_element.get(weapon).map(|d| d.0).unwrap_or(Tags::PHYSICAL);
 
     let element_name = element_name(element);
 
     // Phase 1: Calculate hit value
     let hit_value = if let Ok(ability_hit) = q_ability_hit.get(weapon) {
-        let roles: Vec<(&str, Entity)> =
-            vec![("attacker", attacker), ("weapon", weapon)];
+        let roles: Vec<(&str, Entity)> = vec![("attacker", attacker), ("weapon", weapon)];
         attributes.evaluate_expr_with_roles(&ability_hit.0, attacker, &roles)
     } else {
         let accuracy = attributes.value(attacker, "AccuracyRating");
@@ -252,8 +248,10 @@ fn resolve_attack(
     let dodge_rating = def_attrs.value("DodgeRating");
 
     if dodge_rating > 0.0 && dodge_rating > hit_value * 0.5 {
-        println!("  >> DODGED! (DodgeRating {dodge_rating:.0} > threshold {:.0})",
-            hit_value * 0.5);
+        println!(
+            "  >> DODGED! (DodgeRating {dodge_rating:.0} > threshold {:.0})",
+            hit_value * 0.5
+        );
         return;
     }
     println!("  Dodge check passed (DodgeRating {dodge_rating:.0})");
@@ -265,8 +263,10 @@ fn resolve_attack(
     let remaining_hit = if block_chance > 0.0 {
         let blocked = block_rating.min(hit_value * block_chance);
         let after_block = hit_value - blocked;
-        println!("  Block absorbed {blocked:.1} (BlockRating {block_rating:.0}, chance {:.0}%)",
-            block_chance * 100.0);
+        println!(
+            "  Block absorbed {blocked:.1} (BlockRating {block_rating:.0}, chance {:.0}%)",
+            block_chance * 100.0
+        );
         println!("  Remaining hit: {after_block:.1}");
         after_block
     } else {

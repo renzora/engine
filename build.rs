@@ -51,13 +51,18 @@ fn compile_windows_resources_with_llvm_rc() {
     let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let icon_line = if std::path::Path::new("icon.ico").exists() {
         let abs = std::fs::canonicalize("icon.ico").unwrap();
-        format!("1 ICON \"{}\"\n", abs.display().to_string().replace('\\', "/"))
+        format!(
+            "1 ICON \"{}\"\n",
+            abs.display().to_string().replace('\\', "/")
+        )
     } else {
         String::new()
     };
 
     let mut version_parts: Vec<&str> = version.split('.').collect();
-    while version_parts.len() < 4 { version_parts.push("0"); }
+    while version_parts.len() < 4 {
+        version_parts.push("0");
+    }
     let v_comma = version_parts[..4].join(",");
 
     let rc_contents = format!(
@@ -89,7 +94,12 @@ END\n"
 
     let llvm_rc = ["llvm-rc", "llvm-rc-19", "llvm-rc-20"]
         .iter()
-        .find(|name| std::process::Command::new(name).arg("--help").output().is_ok())
+        .find(|name| {
+            std::process::Command::new(name)
+                .arg("--help")
+                .output()
+                .is_ok()
+        })
         .copied()
         .expect("llvm-rc not found on PATH (tried llvm-rc, llvm-rc-19, llvm-rc-20)");
     let status = std::process::Command::new(llvm_rc)

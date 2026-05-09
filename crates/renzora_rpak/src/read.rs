@@ -109,9 +109,7 @@ impl RpakArchive {
             let start = entry.offset;
             let end = start
                 .checked_add(entry.compressed_size)
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidData, "entry size overflow")
-                })?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "entry size overflow"))?;
             if start < HEADER_LEN || end > header.index_offset {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,

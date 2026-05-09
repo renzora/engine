@@ -2,10 +2,10 @@ use bevy_camera::visibility::Visibility;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{component::Component, message::Message, resource::Resource, schedule::SystemSet};
 use bevy_math::Vec3;
+#[cfg(feature = "reflect")]
+use bevy_reflect::Reflect;
 use bevy_render::{extract_component::ExtractComponent, extract_resource::ExtractResource};
 use bevy_transform::components::Transform;
-#[cfg(feature="reflect")]
-use bevy_reflect::Reflect;
 
 use crate::session::XrTracker;
 
@@ -60,9 +60,7 @@ pub struct XrSpaceLocationFlags {
     pub rotation_tracked: bool,
 }
 
-#[derive(
-    Clone, Copy, Hash, PartialEq, Eq, Debug, Component, ExtractComponent, Default,
-)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug, Component, ExtractComponent, Default)]
 #[cfg_attr(feature = "reflect", derive(Reflect))]
 pub struct XrSpaceVelocityFlags {
     pub linear_valid: bool,

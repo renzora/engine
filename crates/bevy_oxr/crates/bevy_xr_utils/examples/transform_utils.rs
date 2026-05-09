@@ -2,10 +2,11 @@
 
 use bevy::prelude::*;
 use bevy_mod_openxr::add_xr_plugins;
-use bevy_xr_utils::transform_utils::{self, SnapToPosition, SnapToRotation};
 use bevy_xr_utils::actions::{
-    ActionType, ActiveSet, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState, XRUtilsActionSystems, XRUtilsActionsPlugin, XRUtilsBinding
+    ActionType, ActiveSet, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState,
+    XRUtilsActionSystems, XRUtilsActionsPlugin, XRUtilsBinding,
 };
+use bevy_xr_utils::transform_utils::{self, SnapToPosition, SnapToRotation};
 
 fn main() -> AppExit {
     App::new()

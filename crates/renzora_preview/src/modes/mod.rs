@@ -1,13 +1,13 @@
 //! Preview modes — each module handles a specific asset type.
 
-pub mod shader;
-pub mod model;
 pub mod animation;
+pub mod model;
 pub mod particle;
+pub mod shader;
 pub mod texture;
 
-use bevy::prelude::*;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
+use bevy::prelude::*;
 
 /// The active preview mode.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

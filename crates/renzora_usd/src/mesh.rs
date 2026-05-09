@@ -142,7 +142,11 @@ pub fn generate_tangents(
     // Gram-Schmidt orthonormalize and compute handedness
     let mut result = Vec::with_capacity(vert_count);
     for i in 0..vert_count {
-        let n = if i < normals.len() { normals[i] } else { [0.0, 1.0, 0.0] };
+        let n = if i < normals.len() {
+            normals[i]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
         let t = tangents[i];
 
         // Gram-Schmidt: t' = normalize(t - n * dot(n, t))

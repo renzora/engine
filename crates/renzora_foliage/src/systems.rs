@@ -113,7 +113,10 @@ pub fn foliage_uniform_update_system(
 /// density maps as dirty so the grass mesh rebuilds at the new heights.
 pub fn foliage_follow_terrain_system(
     mut query: Query<
-        (&renzora_terrain::data::TerrainChunkData, &mut FoliageDensityMap),
+        (
+            &renzora_terrain::data::TerrainChunkData,
+            &mut FoliageDensityMap,
+        ),
         Changed<renzora_terrain::data::TerrainChunkData>,
     >,
 ) {

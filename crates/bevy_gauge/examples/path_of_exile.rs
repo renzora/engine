@@ -149,7 +149,11 @@ fn setup_sword_attributes(mut attributes: AttributesMut, handles: Res<Entities>)
         .tagged_attribute(
             sword,
             "Damage",
-            &[("added", ReduceFn::Sum), ("increased", ReduceFn::Sum), ("more", ReduceFn::Product)],
+            &[
+                ("added", ReduceFn::Sum),
+                ("increased", ReduceFn::Sum),
+                ("more", ReduceFn::Product),
+            ],
             "added * (1 + increased) * more",
         )
         .expect("valid tagged attribute");
@@ -196,8 +200,10 @@ fn equip_warrior(mut attributes: AttributesMut, handles: Res<Entities>) {
 fn print_warrior(mut attributes: AttributesMut, handles: Res<Entities>) {
     let sword = handles.sword;
 
-    let phys_added = attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
-    let phys_inc = attributes.evaluate_tagged(sword, "Damage.increased", Tags::PHYSICAL | Tags::SWORD);
+    let phys_added =
+        attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
+    let phys_inc =
+        attributes.evaluate_tagged(sword, "Damage.increased", Tags::PHYSICAL | Tags::SWORD);
     let phys_total = attributes.evaluate_tagged(sword, "Damage", Tags::PHYSICAL | Tags::SWORD);
     let fire_added = attributes.evaluate_tagged(sword, "Damage.added", Tags::FIRE | Tags::SWORD);
     let fire_inc = attributes.evaluate_tagged(sword, "Damage.increased", Tags::FIRE | Tags::SWORD);
@@ -236,8 +242,10 @@ fn swap_to_mage(mut attributes: AttributesMut, handles: Res<Entities>) {
 fn print_mage(mut attributes: AttributesMut, handles: Res<Entities>) {
     let sword = handles.sword;
 
-    let phys_added = attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
-    let phys_inc = attributes.evaluate_tagged(sword, "Damage.increased", Tags::PHYSICAL | Tags::SWORD);
+    let phys_added =
+        attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
+    let phys_inc =
+        attributes.evaluate_tagged(sword, "Damage.increased", Tags::PHYSICAL | Tags::SWORD);
     let phys_total = attributes.evaluate_tagged(sword, "Damage", Tags::PHYSICAL | Tags::SWORD);
     let fire_added = attributes.evaluate_tagged(sword, "Damage.added", Tags::FIRE | Tags::SWORD);
     let fire_inc = attributes.evaluate_tagged(sword, "Damage.increased", Tags::FIRE | Tags::SWORD);
@@ -274,7 +282,8 @@ fn show_tag_queries(mut attributes: AttributesMut, handles: Res<Entities>) {
     // A modifier matches when ALL its tags are present in the query.
     // Broad modifiers match more queries.
 
-    let phys_sword = attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
+    let phys_sword =
+        attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
     let fire_sword = attributes.evaluate_tagged(sword, "Damage.added", Tags::FIRE | Tags::SWORD);
 
     println!("  Damage.added [PHYSICAL|SWORD]: {phys_sword:.1}  (25 physical matches)");
@@ -284,7 +293,8 @@ fn show_tag_queries(mut attributes: AttributesMut, handles: Res<Entities>) {
     println!("\n  Adding +5 generic sword damage (tagged SWORD only)...\n");
     attributes.add_modifier_tagged(sword, "Damage.added", 5.0, Tags::SWORD);
 
-    let phys_sword2 = attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
+    let phys_sword2 =
+        attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
     let fire_sword2 = attributes.evaluate_tagged(sword, "Damage.added", Tags::FIRE | Tags::SWORD);
 
     println!("  Damage.added [PHYSICAL|SWORD]: {phys_sword2:.1}  (25 physical + 5 sword)");
@@ -294,10 +304,13 @@ fn show_tag_queries(mut attributes: AttributesMut, handles: Res<Entities>) {
     println!("\n  Adding +3 global damage (untagged)...\n");
     attributes.add_modifier(sword, "Damage.added", 3.0);
 
-    let phys_sword3 = attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
+    let phys_sword3 =
+        attributes.evaluate_tagged(sword, "Damage.added", Tags::PHYSICAL | Tags::SWORD);
     let fire_sword3 = attributes.evaluate_tagged(sword, "Damage.added", Tags::FIRE | Tags::SWORD);
 
-    println!("  Damage.added [PHYSICAL|SWORD]: {phys_sword3:.1}  (25 physical + 5 sword + 3 global)");
+    println!(
+        "  Damage.added [PHYSICAL|SWORD]: {phys_sword3:.1}  (25 physical + 5 sword + 3 global)"
+    );
     println!("  Damage.added [FIRE|SWORD]:     {fire_sword3:.1}  (10 fire + 5 sword + 3 global)");
     println!();
 }
@@ -314,12 +327,17 @@ fn apply_buff_and_show(mut attributes: AttributesMut, handles: Res<Entities>) {
     };
     enchantment.apply(handles.sword, &mut attributes);
 
-    let fire_added = attributes.evaluate_tagged(handles.sword, "Damage.added", Tags::FIRE | Tags::SWORD);
+    let fire_added =
+        attributes.evaluate_tagged(handles.sword, "Damage.added", Tags::FIRE | Tags::SWORD);
     let fire_total = attributes.evaluate_tagged(handles.sword, "Damage", Tags::FIRE | Tags::SWORD);
 
     println!("  After +20 fire enchantment:");
-    println!("    Damage.added [FIRE|SWORD]: {fire_added:.1}  (10 fire + 5 sword + 3 global + 20 fire = 38)");
-    println!("    Damage [FIRE|SWORD]:       {fire_total:.2}  = 38 * (1 + 60/300) = 38 * 1.2 = 45.60");
+    println!(
+        "    Damage.added [FIRE|SWORD]: {fire_added:.1}  (10 fire + 5 sword + 3 global + 20 fire = 38)"
+    );
+    println!(
+        "    Damage [FIRE|SWORD]:       {fire_total:.2}  = 38 * (1 + 60/300) = 38 * 1.2 = 45.60"
+    );
 
     println!("\n--- Done ---");
     std::process::exit(0);

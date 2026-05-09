@@ -81,7 +81,9 @@ pub fn draw_ruler_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
         )
     };
     let panel_to_world = |panel: Vec2| -> Option<Vec2> {
-        camera.viewport_to_world_2d(cam_gt, panel_to_image(panel)).ok()
+        camera
+            .viewport_to_world_2d(cam_gt, panel_to_image(panel))
+            .ok()
     };
     let world_to_panel = |w: Vec3| -> Option<Vec2> {
         let img = camera.world_to_viewport(cam_gt, w).ok()?;
@@ -117,10 +119,8 @@ pub fn draw_ruler_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     let font = egui::FontId::monospace(9.0);
 
     // ── Horizontal ruler (top strip) ────────────────────────────────────
-    let h_rect = egui::Rect::from_min_size(
-        rect.min,
-        egui::Vec2::new(rect.width(), RULER_THICKNESS),
-    );
+    let h_rect =
+        egui::Rect::from_min_size(rect.min, egui::Vec2::new(rect.width(), RULER_THICKNESS));
     painter.rect_filled(h_rect, 0.0, bg);
 
     let minor_x = tick_x / SUBDIVISIONS as f32;
@@ -211,10 +211,8 @@ pub fn draw_ruler_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     }
 
     // Corner square so the two strips meet cleanly.
-    let corner = egui::Rect::from_min_size(
-        rect.min,
-        egui::Vec2::new(RULER_THICKNESS, RULER_THICKNESS),
-    );
+    let corner =
+        egui::Rect::from_min_size(rect.min, egui::Vec2::new(RULER_THICKNESS, RULER_THICKNESS));
     painter.rect_filled(corner, 0.0, bg);
 }
 

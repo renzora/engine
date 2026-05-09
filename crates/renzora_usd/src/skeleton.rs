@@ -35,30 +35,27 @@ fn invert_4x4(m: &[f32; 16]) -> [f32; 16] {
     let inv_det = 1.0 / det;
 
     [
-        ( m[5] * l - m[6] * k + m[7] * j) * inv_det,
+        (m[5] * l - m[6] * k + m[7] * j) * inv_det,
         (-m[1] * l + m[2] * k - m[3] * j) * inv_det,
-        ( m[13] * f - m[14] * e + m[15] * d) * inv_det,
+        (m[13] * f - m[14] * e + m[15] * d) * inv_det,
         (-m[9] * f + m[10] * e - m[11] * d) * inv_det,
         (-m[4] * l + m[6] * i - m[7] * h) * inv_det,
-        ( m[0] * l - m[2] * i + m[3] * h) * inv_det,
+        (m[0] * l - m[2] * i + m[3] * h) * inv_det,
         (-m[12] * f + m[14] * c - m[15] * b) * inv_det,
-        ( m[8] * f - m[10] * c + m[11] * b) * inv_det,
-        ( m[4] * k - m[5] * i + m[7] * g) * inv_det,
+        (m[8] * f - m[10] * c + m[11] * b) * inv_det,
+        (m[4] * k - m[5] * i + m[7] * g) * inv_det,
         (-m[0] * k + m[1] * i - m[3] * g) * inv_det,
-        ( m[12] * e - m[13] * c + m[15] * a) * inv_det,
+        (m[12] * e - m[13] * c + m[15] * a) * inv_det,
         (-m[8] * e + m[9] * c - m[11] * a) * inv_det,
         (-m[4] * j + m[5] * h - m[6] * g) * inv_det,
-        ( m[0] * j - m[1] * h + m[2] * g) * inv_det,
+        (m[0] * j - m[1] * h + m[2] * g) * inv_det,
         (-m[12] * d + m[13] * b - m[14] * a) * inv_det,
-        ( m[8] * d - m[9] * b + m[10] * a) * inv_det,
+        (m[8] * d - m[9] * b + m[10] * a) * inv_det,
     ]
 }
 
 fn identity() -> [f32; 16] {
     [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
 }

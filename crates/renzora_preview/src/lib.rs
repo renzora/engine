@@ -41,8 +41,8 @@
 //! ```
 
 pub mod bridge;
-pub mod scene;
 pub mod modes;
+pub mod scene;
 
 use bevy::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -57,31 +57,28 @@ pub fn preview_init() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
     App::new()
-        .add_plugins(DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    canvas: Some("#preview-canvas".into()),
-                    fit_canvas_to_parent: true,
-                    prevent_default_event_handling: false,
-                    composite_alpha_mode: bevy::window::CompositeAlphaMode::Opaque,
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        canvas: Some("#preview-canvas".into()),
+                        fit_canvas_to_parent: true,
+                        prevent_default_event_handling: false,
+                        composite_alpha_mode: bevy::window::CompositeAlphaMode::Opaque,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(bevy::log::LogPlugin {
+                    level: bevy::log::Level::WARN,
                     ..default()
                 }),
-                ..default()
-            })
-            .set(bevy::log::LogPlugin {
-                level: bevy::log::Level::WARN,
-                ..default()
-            })
         )
         // Engine plugins (runtime only, no editor features)
         .add_plugins(renzora_shader::ShaderPlugin)
         .add_plugins(renzora_hanabi::HanabiParticlePlugin)
         // Preview harness plugins
-        .add_plugins((
-            bridge::BridgePlugin,
-            scene::ScenePlugin,
-            modes::ModesPlugin,
-        ))
+        .add_plugins((bridge::BridgePlugin, scene::ScenePlugin, modes::ModesPlugin))
         .insert_resource(ClearColor(Color::srgb(0.06, 0.06, 0.08)))
         .add_systems(Startup, set_tonemapping)
         .run();

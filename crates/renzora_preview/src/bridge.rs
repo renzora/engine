@@ -5,8 +5,8 @@
 //! static queue, and a Bevy system drains it each frame into a Bevy Resource.
 
 use bevy::prelude::*;
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 // ── Command types ───────────────────────────────────────────────────────────
 
@@ -97,11 +97,10 @@ pub struct PreviewCommandQueue {
 
 // ── Global static queue (JS → Bevy bridge) ──────────────────────────────────
 
-use std::sync::Mutex;
 use std::sync::LazyLock;
+use std::sync::Mutex;
 
-static JS_QUEUE: LazyLock<Mutex<Vec<PreviewCommand>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
+static JS_QUEUE: LazyLock<Mutex<Vec<PreviewCommand>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
 fn push_command(cmd: PreviewCommand) {
     if let Ok(mut queue) = JS_QUEUE.lock() {
@@ -112,7 +111,9 @@ fn push_command(cmd: PreviewCommand) {
 /// Bevy system: drain the JS static queue into the Bevy Resource queue.
 pub fn drain_js_commands(mut queue: ResMut<PreviewCommandQueue>) {
     let commands: Vec<PreviewCommand> = {
-        let Ok(mut js_queue) = JS_QUEUE.lock() else { return };
+        let Ok(mut js_queue) = JS_QUEUE.lock() else {
+            return;
+        };
         std::mem::take(&mut *js_queue)
     };
     queue.commands.extend(commands);

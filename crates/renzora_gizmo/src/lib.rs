@@ -9,15 +9,16 @@
 mod camera_gizmo;
 pub mod collider_gizmo;
 pub mod collider_handles;
+mod grid_2d;
 mod light_gizmo;
 pub mod modal_transform;
 mod picker_2d;
 mod plane_fill;
 mod rotation_pie;
 mod ruler_2d;
-mod window_bounds_2d;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
+mod window_bounds_2d;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::input::mouse::MouseMotion;
@@ -520,6 +521,16 @@ impl Plugin for GizmoPlugin {
         app.world_mut()
             .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
             .register(140, picker_2d::draw_selection_outline_2d);
+
+        // 2D editor grid drawn via Bevy gizmos (not an egui overlay)
+        // so it renders into the offscreen image *under* sprites
+        // instead of being painted on top of the rendered viewport.
+        // Spacing comes from `ViewportSettings.snap.translate_snap`
+        // so it matches the toolbar's "Grid Snap" pill.
+        app.add_systems(
+            Update,
+            grid_2d::draw_grid_2d_gizmos.run_if(renzora::core::in_two_view),
+        );
 
         // Project window-size outline + axis lines at order 85 — drawn
         // first so the opaque ruler strips cover them where they overlap.

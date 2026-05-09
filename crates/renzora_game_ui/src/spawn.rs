@@ -108,8 +108,7 @@ pub fn spawn_widget(
     // Container children still use canvas-reference percentages so the
     // initial sizes are sensible (a 100×24 widget at 1280×720 reference is
     // ~7.8% × 3.3%; flex flow will then constrain it inside the parent).
-    let canvas_for_ref =
-        find_ancestor_canvas(world, parent_entity).unwrap_or(parent_entity);
+    let canvas_for_ref = find_ancestor_canvas(world, parent_entity).unwrap_or(parent_entity);
     let r = world
         .get::<UiCanvas>(canvas_for_ref)
         .map(|c| Ref {
@@ -1788,4 +1787,3 @@ pub fn spawn_image_at(
         sel.set(Some(entity));
     }
 }
-

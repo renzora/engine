@@ -55,10 +55,7 @@ mod systems {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
-    pub fn process_actions(
-        bridge: Res<ActionBridge>,
-        mut state: ResMut<DockerBuilderState>,
-    ) {
+    pub fn process_actions(bridge: Res<ActionBridge>, mut state: ResMut<DockerBuilderState>) {
         let Ok(mut queue) = bridge.actions.lock() else {
             return;
         };

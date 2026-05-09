@@ -421,7 +421,10 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
     };
     if !skipped_types.is_empty() {
         for type_path in &skipped_types {
-            warn!("[scene] string scene skipped unregistered type `{}`", type_path);
+            warn!(
+                "[scene] string scene skipped unregistered type `{}`",
+                type_path
+            );
         }
         // No path to report for string scenes — pass an empty marker.
         world.trigger(SceneLoadedWithSkippedTypes {
@@ -498,8 +501,8 @@ fn deserialize_scene_lossy(
         let scene_deserializer = bevy::scene::serde::SceneDeserializer {
             type_registry: &registry,
         };
-        let mut ron_deserializer = ron::Deserializer::from_str(&current)
-            .map_err(|e| format!("RON parse failed: {e}"))?;
+        let mut ron_deserializer =
+            ron::Deserializer::from_str(&current).map_err(|e| format!("RON parse failed: {e}"))?;
         match scene_deserializer.deserialize(&mut ron_deserializer) {
             Ok(scene) => return Ok((scene, skipped)),
             Err(e) => {

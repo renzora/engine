@@ -5,9 +5,9 @@ use renzora_shader::file::{self, ShaderType};
 use renzora_shader::registry::ShaderBackendRegistry;
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache, ShaderUniforms};
 
+use super::PreviewMode;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
 use crate::scene::PreviewSubject;
-use super::PreviewMode;
 
 #[derive(Resource, Default)]
 pub struct ShaderPreviewState {
@@ -49,7 +49,10 @@ fn handle_shader_commands(
                         if param_consts.is_empty() {
                             compiled
                         } else {
-                            renzora_shader::registry::inject_param_constants(compiled, &param_consts)
+                            renzora_shader::registry::inject_param_constants(
+                                compiled,
+                                &param_consts,
+                            )
                         }
                     }
                     Err(err) => {
@@ -69,7 +72,8 @@ fn handle_shader_commands(
                 let mat_handle = code_materials.add(material);
 
                 for entity in subject_q.iter_mut() {
-                    commands.entity(entity)
+                    commands
+                        .entity(entity)
                         .remove::<MeshMaterial3d<StandardMaterial>>()
                         .insert(MeshMaterial3d(mat_handle.clone()));
                 }
@@ -101,7 +105,10 @@ fn handle_shader_commands(
                             let wgsl = if param_consts.is_empty() {
                                 compiled
                             } else {
-                                renzora_shader::registry::inject_param_constants(compiled, &param_consts)
+                                renzora_shader::registry::inject_param_constants(
+                                    compiled,
+                                    &param_consts,
+                                )
                             };
 
                             let label = format!("preview://{language}");

@@ -102,6 +102,17 @@ impl Default for MeshDrawRecipe {
 /// Close the polyline when clicking within this world-space distance of the first point.
 const POLY_CLOSE_RADIUS: f32 = 0.25;
 
+/// Mesh-draw tools rasterise into 3D world space (ground-plane drag,
+/// vertical extrude). They have no meaning in 2D / UI viewports, so
+/// the toolbar hides them via `visible_if`.
+fn is_3d_view(world: &World) -> bool {
+    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+    world
+        .get_resource::<ViewportSettings>()
+        .map(|s| s.viewport_view == ViewportView::Three)
+        .unwrap_or(true)
+}
+
 // ── Plugin ─────────────────────────────────────────────────────────────────
 
 #[derive(Default)]
@@ -120,6 +131,7 @@ impl Plugin for MeshDrawPlugin {
                     ToolSection::Custom("mesh_draw"),
                 )
                 .order(0)
+                .visible_if(is_3d_view)
                 .active_if(|w| is_active_with(w, ToolMode::Box))
                 .on_activate(|w| toggle_tool(w, ToolMode::Box)),
             )
@@ -131,6 +143,7 @@ impl Plugin for MeshDrawPlugin {
                     ToolSection::Custom("mesh_draw"),
                 )
                 .order(1)
+                .visible_if(is_3d_view)
                 .active_if(|w| is_active_with(w, ToolMode::Polyline))
                 .on_activate(|w| toggle_tool(w, ToolMode::Polyline)),
             )

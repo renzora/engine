@@ -1093,8 +1093,7 @@ fn render_project_tab(
             // the camera is actually rendering offscreen — show them
             // disabled (greyed out) when stretch is `Disabled` so the
             // user sees the fields exist but understands they're inert.
-            let is_disabled =
-                config.viewport.stretch_mode == renzora::core::StretchMode::Disabled;
+            let is_disabled = config.viewport.stretch_mode == renzora::core::StretchMode::Disabled;
 
             settings_row(ui, 1, "Width", theme, |ui| {
                 ui.add_enabled(
@@ -1453,6 +1452,17 @@ fn render_viewport_tab(
             });
             settings_row(ui, 2, "Axis Gizmo", theme, |ui| {
                 ui.checkbox(&mut viewport.show_axis_gizmo, "")
+            });
+            settings_row(ui, 3, "2D Grid Color", theme, |ui| {
+                // [u8; 4] color picker — RGBA. Major lines auto-bump
+                // alpha ~3× for hierarchy, so this controls the
+                // base / minor-line opacity.
+                let mut rgba = viewport.grid_color_2d;
+                let resp = ui.color_edit_button_srgba_unmultiplied(&mut rgba);
+                if resp.changed() {
+                    viewport.grid_color_2d = rgba;
+                }
+                resp
             });
         },
     );

@@ -18,14 +18,14 @@
 
 use std::borrow::Cow;
 
-use bevy::prelude::*;
 use bevy::core_pipeline::Skybox;
+use bevy::prelude::*;
 use bevy::window::PresentMode;
-use bevy_mod_xr::session::XrTrackingRoot;
 use bevy_mod_xr::camera::XrCamera;
+use bevy_mod_xr::session::XrTrackingRoot;
 use bevy_xr_utils::actions::{
-    ActionType, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState,
-    XRUtilsActionsPlugin, XRUtilsActionSystems,
+    ActionType, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState, XRUtilsActionSystems,
+    XRUtilsActionsPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -75,10 +75,7 @@ pub unsafe extern "C" fn xr_init_rendering(app_ptr: *mut std::ffi::c_void) {
         },
         ..default()
     })
-    .set(bevy_mod_openxr::init::OxrInitPlugin {
-        exts,
-        ..default()
-    });
+    .set(bevy_mod_openxr::init::OxrInitPlugin { exts, ..default() });
 
     app.add_plugins(plugins);
     app.add_plugins(XRUtilsActionsPlugin);
@@ -138,8 +135,7 @@ impl Plugin for XrPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] XrPlugin");
 
-        app.init_resource::<VrConfig>()
-            .init_resource::<VrInput>();
+        app.init_resource::<VrConfig>().init_resource::<VrInput>();
 
         // OpenXR action setup — runs at startup to create controller bindings
         app.add_systems(
@@ -156,9 +152,7 @@ impl Plugin for XrPlugin {
         // Locomotion — thumbstick movement and turning
         app.add_systems(
             Update,
-            (smooth_locomotion, snap_turn)
-                .chain()
-                .after(sync_input),
+            (smooth_locomotion, snap_turn).chain().after(sync_input),
         );
 
         // Skybox sync — copy from desktop viewport camera to XR cameras
@@ -333,10 +327,7 @@ fn setup_action_sets(mut commands: Commands) {
 // Input Sync
 // ===========================================================================
 
-fn sync_input(
-    actions: Query<(&VrAction, &XRUtilsActionState)>,
-    mut input: ResMut<VrInput>,
-) {
+fn sync_input(actions: Query<(&VrAction, &XRUtilsActionState)>, mut input: ResMut<VrInput>) {
     for (vr_action, state) in actions.iter() {
         match vr_action.0.as_ref() {
             "left_thumbstick" => {
@@ -429,9 +420,8 @@ fn smooth_locomotion(
     };
 
     let head_right = Vec3::new(-head_forward.z, 0.0, head_forward.x);
-    let movement = (head_forward * stick.y + head_right * stick.x)
-        * config.move_speed
-        * time.delta_secs();
+    let movement =
+        (head_forward * stick.y + head_right * stick.x) * config.move_speed * time.delta_secs();
 
     root_tf.translation += movement;
 }

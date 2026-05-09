@@ -31,6 +31,9 @@ fn main() {
     for w in &result.warnings {
         println!("  WARN: {}", w);
     }
-    println!("\n=== fragment_shader ({} bytes) ===", result.fragment_shader.len());
+    println!(
+        "\n=== fragment_shader ({} bytes) ===",
+        result.fragment_shader.len()
+    );
     println!("{}", result.fragment_shader);
 }

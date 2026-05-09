@@ -25,7 +25,7 @@
 use bevy::ecs::query::QueryFilter;
 use bevy::prelude::*;
 
-use crate::attribute_id::{global_rodeo, AttributeId};
+use crate::attribute_id::{AttributeId, global_rodeo};
 use crate::attributes::Attributes;
 use crate::attributes_mut::AttributesMut;
 use crate::context::AttributeContext;
@@ -178,9 +178,7 @@ pub trait AttributeQueries {
 
         let role_map: Vec<(AttributeId, Entity)> = roles
             .iter()
-            .filter_map(|&(name, entity)| {
-                rodeo.get(name).map(|spur| (AttributeId(spur), entity))
-            })
+            .filter_map(|&(name, entity)| rodeo.get(name).map(|spur| (AttributeId(spur), entity)))
             .collect();
 
         let mut ctx: AttributeContext = self
@@ -313,10 +311,7 @@ impl<'w, 's, F: QueryFilter> InstantExt for AttributesMut<'w, 's, F> {
             let value = match &entry.value {
                 ModifierValue::Literal(v) => *v,
                 ModifierValue::ExprSource(src) => {
-                    let expr = crate::expr::Expr::compile(
-                        src,
-                        Some(self.tag_resolver()),
-                    );
+                    let expr = crate::expr::Expr::compile(src, Some(self.tag_resolver()));
                     match expr {
                         Ok(compiled) => {
                             self.cache_expr_source_values(target_entity, &compiled);
@@ -360,7 +355,12 @@ impl<'w, 's, F: QueryFilter> InstantExt for AttributesMut<'w, 's, F> {
                 }
                 (InstantOp::Add, Some(tag)) => {
                     let current = self.evaluate_tagged(target_entity, &entry.attribute, tag);
-                    self.set_base_tagged(target_entity, &entry.attribute, current + entry.value, tag);
+                    self.set_base_tagged(
+                        target_entity,
+                        &entry.attribute,
+                        current + entry.value,
+                        tag,
+                    );
                 }
                 (InstantOp::Add, None) => {
                     let current = self.evaluate(target_entity, &entry.attribute);
@@ -368,7 +368,12 @@ impl<'w, 's, F: QueryFilter> InstantExt for AttributesMut<'w, 's, F> {
                 }
                 (InstantOp::Sub, Some(tag)) => {
                     let current = self.evaluate_tagged(target_entity, &entry.attribute, tag);
-                    self.set_base_tagged(target_entity, &entry.attribute, current - entry.value, tag);
+                    self.set_base_tagged(
+                        target_entity,
+                        &entry.attribute,
+                        current - entry.value,
+                        tag,
+                    );
                 }
                 (InstantOp::Sub, None) => {
                     let current = self.evaluate(target_entity, &entry.attribute);
@@ -406,7 +411,8 @@ impl<'w, 's, F: QueryFilter> InstantExt for AttributesMut<'w, 's, F> {
         tag_params: &[(&str, TagMask)],
         target_entity: Entity,
     ) -> Result<(), CompileError> {
-        let evaluated = self.evaluate_instant_with_tags(instant, roles, tag_params, target_entity)?;
+        let evaluated =
+            self.evaluate_instant_with_tags(instant, roles, tag_params, target_entity)?;
         self.apply_evaluated_instant(&evaluated, target_entity);
         Ok(())
     }
@@ -445,10 +451,7 @@ fn parse_attribute_tag(
             Some(m) => mask = mask | m,
             None => {
                 if let Some(alts) = resolver.ambiguous_alternatives(trimmed) {
-                    return Err(CompileError::AmbiguousTag(
-                        trimmed.to_uppercase(),
-                        alts,
-                    ));
+                    return Err(CompileError::AmbiguousTag(trimmed.to_uppercase(), alts));
                 }
                 return Err(CompileError::UnknownTag(trimmed.to_string()));
             }
@@ -577,12 +580,8 @@ mod tests {
             ModifierValue::ExprSource("Damage{%element%}@weapon".into()),
         );
 
-        let result = substitute_tag_params(
-            &instant,
-            &[("element", TagMask::bit(0))],
-            &resolver,
-        )
-        .unwrap();
+        let result =
+            substitute_tag_params(&instant, &[("element", TagMask::bit(0))], &resolver).unwrap();
 
         match &result.entries[0].value {
             ModifierValue::ExprSource(s) => {
@@ -645,12 +644,8 @@ mod tests {
             ),
         );
 
-        let result = substitute_tag_params(
-            &instant,
-            &[("element", TagMask::bit(0))],
-            &resolver,
-        )
-        .unwrap();
+        let result =
+            substitute_tag_params(&instant, &[("element", TagMask::bit(0))], &resolver).unwrap();
 
         match &result.entries[0].value {
             ModifierValue::ExprSource(s) => {
@@ -670,11 +665,7 @@ mod tests {
             ModifierValue::ExprSource("Damage{%element%}@weapon".into()),
         );
 
-        let result = substitute_tag_params(
-            &instant,
-            &[("element", TagMask::bit(5))],
-            &resolver,
-        );
+        let result = substitute_tag_params(&instant, &[("element", TagMask::bit(5))], &resolver);
         assert!(matches!(result, Err(CompileError::UnresolvableTagMask(_))));
     }
 
@@ -724,12 +715,8 @@ mod tests {
         let mut instant = InstantModifierSet::new();
         instant.push_add("Status{%status%}", 10.0f32);
 
-        let result = substitute_tag_params(
-            &instant,
-            &[("status", TagMask::bit(0))],
-            &resolver,
-        )
-        .unwrap();
+        let result =
+            substitute_tag_params(&instant, &[("status", TagMask::bit(0))], &resolver).unwrap();
 
         assert_eq!(result.entries[0].attribute, "Status{POISON}");
     }

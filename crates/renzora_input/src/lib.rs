@@ -107,4 +107,3 @@ pub fn save_input_map(
     info!("[InputPlugin] Saved input map to {}", path.display());
     Ok(())
 }
-

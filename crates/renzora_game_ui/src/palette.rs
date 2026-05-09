@@ -113,13 +113,7 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
             UiWidgetType::TextInput,
         ],
     ),
-    (
-        "Display",
-        regular::CHART_BAR,
-        &[
-            UiWidgetType::BarFill,
-        ],
-    ),
+    ("Display", regular::CHART_BAR, &[UiWidgetType::BarFill]),
     (
         "Overlay",
         regular::STACK,
@@ -132,10 +126,7 @@ const CATEGORIES: &[(&str, &str, &[UiWidgetType])] = &[
     (
         "Menu",
         regular::LIST_BULLETS,
-        &[
-            UiWidgetType::KeybindRow,
-            UiWidgetType::SettingsRow,
-        ],
+        &[UiWidgetType::KeybindRow, UiWidgetType::SettingsRow],
     ),
     (
         "Extra",

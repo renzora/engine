@@ -134,10 +134,7 @@ fn register_tags(mut resolver: ResMut<TagResolver>) {
 
 fn spawn_entities(mut commands: Commands) {
     let sword = commands
-        .spawn((
-            Name::new("Flaming Greatsword"),
-            Attributes::new(),
-        ))
+        .spawn((Name::new("Flaming Greatsword"), Attributes::new()))
         .id();
 
     commands.insert_resource(Entities { sword });
@@ -162,10 +159,7 @@ fn configure_sword(handles: Res<Entities>, mut attributes: AttributesMut) {
 // Demo: read damage using both typed and string-key APIs
 // ---------------------------------------------------------------------------
 
-fn demo(
-    handles: Res<Entities>,
-    mut attributes: AttributesMut,
-) {
+fn demo(handles: Res<Entities>, mut attributes: AttributesMut) {
     let sword = handles.sword;
 
     // --- Read via typed API on AttributesMut ---

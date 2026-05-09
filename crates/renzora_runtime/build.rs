@@ -18,15 +18,16 @@ fn main() {
     let manifest = fs::read_to_string("Cargo.toml").expect("read Cargo.toml");
     let toml: toml::Value = toml::from_str(&manifest).expect("parse Cargo.toml");
 
-    let deps = toml.get("dependencies").and_then(|v| v.as_table())
+    let deps = toml
+        .get("dependencies")
+        .and_then(|v| v.as_table())
         .expect("[dependencies] table");
 
     // Engine plugins: non-optional deps named `renzora_*`. Skip the runtime
     // crate itself if it's somehow listed.
-    let mut engine: Vec<&str> = deps.iter()
-        .filter(|(name, _)| {
-            name.starts_with("renzora_") && name.as_str() != "renzora_runtime"
-        })
+    let mut engine: Vec<&str> = deps
+        .iter()
+        .filter(|(name, _)| name.starts_with("renzora_") && name.as_str() != "renzora_runtime")
         .filter(|(_, v)| {
             !v.as_table()
                 .and_then(|t| t.get("optional"))
@@ -39,12 +40,14 @@ fn main() {
 
     // Editor plugins: walk the `features.editor` array, pick up `dep:foo`
     // entries that target a `renzora_*` crate.
-    let editor_feat = toml.get("features")
+    let editor_feat = toml
+        .get("features")
         .and_then(|f| f.get("editor"))
         .and_then(|e| e.as_array())
         .map(|a| a.as_slice())
         .unwrap_or(&[]);
-    let mut editor: Vec<&str> = editor_feat.iter()
+    let mut editor: Vec<&str> = editor_feat
+        .iter()
         .filter_map(|v| v.as_str())
         .filter_map(|s| s.strip_prefix("dep:"))
         .filter(|s| s.starts_with("renzora_"))
@@ -54,13 +57,15 @@ fn main() {
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
 
-    let engine_src = engine.iter()
+    let engine_src = engine
+        .iter()
         .map(|n| format!("pub use {};\n", n))
         .collect::<String>();
     fs::write(Path::new(&out_dir).join("engine_reexports.rs"), engine_src)
         .expect("write engine_reexports.rs");
 
-    let editor_src = editor.iter()
+    let editor_src = editor
+        .iter()
         .map(|n| format!("pub use {};\n", n))
         .collect::<String>();
     fs::write(Path::new(&out_dir).join("editor_reexports.rs"), editor_src)

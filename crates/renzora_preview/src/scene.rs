@@ -1,7 +1,7 @@
 //! Shared preview scene — camera, lighting, orbit controls, mesh primitives.
 
-use bevy::prelude::*;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
+use bevy::prelude::*;
 
 // ── Components ──────────────────────────────────────────────────────────────
 
@@ -122,7 +122,9 @@ pub fn update_orbit_camera(
         orbit.azimuth += orbit.auto_rotate * time.delta_secs();
     }
 
-    let Ok(mut transform) = camera_q.single_mut() else { return };
+    let Ok(mut transform) = camera_q.single_mut() else {
+        return;
+    };
 
     let x = orbit.distance * orbit.elevation.cos() * orbit.azimuth.sin();
     let y = orbit.distance * orbit.elevation.sin();
@@ -150,7 +152,9 @@ pub fn handle_scene_commands(
                 orbit.auto_rotate = 0.0;
             }
             PreviewCommand::SetMesh(c) => {
-                let Ok(mut mesh_handle) = subject_q.single_mut() else { continue };
+                let Ok(mut mesh_handle) = subject_q.single_mut() else {
+                    continue;
+                };
                 let new_mesh = match c.shape.as_str() {
                     "sphere" => Sphere::new(0.8).mesh().ico(5).unwrap(),
                     "cube" => Cuboid::new(1.2, 1.2, 1.2).into(),

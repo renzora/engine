@@ -372,7 +372,11 @@ pub fn render_layout_inspector(
     inline_property(ui, row, "Width", &theme, |ui| {
         let mut v = width;
         if ui
-            .add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=f32::MAX))
+            .add(
+                egui::DragValue::new(&mut v)
+                    .speed(1.0)
+                    .range(0.0..=f32::MAX),
+            )
             .changed()
         {
             commands.push(move |world: &mut World| {
@@ -388,7 +392,11 @@ pub fn render_layout_inspector(
     inline_property(ui, row, "Height", &theme, |ui| {
         let mut v = height;
         if ui
-            .add(egui::DragValue::new(&mut v).speed(1.0).range(0.0..=f32::MAX))
+            .add(
+                egui::DragValue::new(&mut v)
+                    .speed(1.0)
+                    .range(0.0..=f32::MAX),
+            )
             .changed()
         {
             commands.push(move |world: &mut World| {
@@ -734,9 +742,7 @@ pub fn render_stroke_inspector(
                         (regular::ARROW_LINE_LEFT, "Left", &mut stroke.sides.left),
                     ];
                     for (icon, tooltip, val) in side_buttons {
-                        let resp = ui
-                            .selectable_label(*val, icon)
-                            .on_hover_text(tooltip);
+                        let resp = ui.selectable_label(*val, icon).on_hover_text(tooltip);
                         if resp.clicked() {
                             *val = !*val;
                             changed = true;
@@ -767,9 +773,7 @@ pub fn render_border_radius_inspector(
     commands: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(mut border_radius_owned) = world
-        .get::<components::UiBorderRadius>(entity)
-        .cloned()
+    let Some(mut border_radius_owned) = world.get::<components::UiBorderRadius>(entity).cloned()
     else {
         return;
     };
@@ -1251,9 +1255,7 @@ pub fn render_interaction_inspector(
     commands: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(mut istyle_owned) = world
-        .get::<components::UiInteractionStyle>(entity)
-        .cloned()
+    let Some(mut istyle_owned) = world.get::<components::UiInteractionStyle>(entity).cloned()
     else {
         return;
     };
@@ -1613,118 +1615,118 @@ pub fn render_slider_data_inspector(
     let data: &mut components::SliderData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Value", theme, |ui| {
-                    let mut v = data.value;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.01)
-                                .range(data.min..=data.max),
-                        )
-                        .changed()
-                    {
-                        data.value = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::SliderData>() {
-                                    d.value = v;
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Value", theme, |ui| {
+                let mut v = data.value;
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut v)
+                            .speed(0.01)
+                            .range(data.min..=data.max),
+                    )
+                    .changed()
+                {
+                    data.value = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                                d.value = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Min", theme, |ui| {
-                    let mut v = data.min;
-                    if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
-                        data.min = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::SliderData>() {
-                                    d.min = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Min", theme, |ui| {
+                let mut v = data.min;
+                if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
+                    data.min = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                                d.min = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Max", theme, |ui| {
-                    let mut v = data.max;
-                    if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
-                        data.max = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::SliderData>() {
-                                    d.max = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Max", theme, |ui| {
+                let mut v = data.max;
+                if ui.add(egui::DragValue::new(&mut v).speed(0.1)).changed() {
+                    data.max = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                                d.max = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Step", theme, |ui| {
-                    let mut v = data.step;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut v)
-                                .speed(0.01)
-                                .range(0.0..=f32::MAX),
-                        )
-                        .changed()
-                    {
-                        data.step = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::SliderData>() {
-                                    d.step = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Step", theme, |ui| {
+                let mut v = data.step;
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut v)
+                            .speed(0.01)
+                            .range(0.0..=f32::MAX),
+                    )
+                    .changed()
+                {
+                    data.step = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::SliderData>() {
+                                d.step = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Track Color",
-                    theme,
-                    &mut data.track_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::SliderData>()
-                            .map(|mut p| p.track_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Fill Color",
-                    theme,
-                    &mut data.fill_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::SliderData>()
-                            .map(|mut p| p.fill_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Thumb Color",
-                    theme,
-                    &mut data.thumb_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::SliderData>()
-                            .map(|mut p| p.thumb_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Track Color",
+                theme,
+                &mut data.track_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::SliderData>()
+                        .map(|mut p| p.track_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Fill Color",
+                theme,
+                &mut data.fill_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::SliderData>()
+                        .map(|mut p| p.fill_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Thumb Color",
+                theme,
+                &mut data.thumb_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::SliderData>()
+                        .map(|mut p| p.thumb_color = c)
+                },
+            );
         }
     }
 }
@@ -1742,65 +1744,65 @@ pub fn render_checkbox_data_inspector(
     let data: &mut components::CheckboxData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Checked", theme, |ui| {
-                    let mut v = data.checked;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.checked = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
-                                    d.checked = v;
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Checked", theme, |ui| {
+                let mut v = data.checked;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.checked = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
+                                d.checked = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Label", theme, |ui| {
-                    let mut v = data.label.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.label = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
-                                    d.label = v.clone();
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Label", theme, |ui| {
+                let mut v = data.label.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.label = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::CheckboxData>() {
+                                d.label = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Check Color",
-                    theme,
-                    &mut data.check_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::CheckboxData>()
-                            .map(|mut p| p.check_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Box Color",
-                    theme,
-                    &mut data.box_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::CheckboxData>()
-                            .map(|mut p| p.box_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Check Color",
+                theme,
+                &mut data.check_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::CheckboxData>()
+                        .map(|mut p| p.check_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Box Color",
+                theme,
+                &mut data.box_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::CheckboxData>()
+                        .map(|mut p| p.box_color = c)
+                },
+            );
         }
     }
 }
@@ -1818,79 +1820,79 @@ pub fn render_toggle_data_inspector(
     let data: &mut components::ToggleData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "On", theme, |ui| {
-                    let mut v = data.on;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.on = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ToggleData>() {
-                                    d.on = v;
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "On", theme, |ui| {
+                let mut v = data.on;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.on = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ToggleData>() {
+                                d.on = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Label", theme, |ui| {
-                    let mut v = data.label.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.label = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ToggleData>() {
-                                    d.label = v.clone();
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Label", theme, |ui| {
+                let mut v = data.label.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.label = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ToggleData>() {
+                                d.label = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "On Color",
-                    theme,
-                    &mut data.on_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ToggleData>()
-                            .map(|mut p| p.on_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Off Color",
-                    theme,
-                    &mut data.off_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ToggleData>()
-                            .map(|mut p| p.off_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Knob Color",
-                    theme,
-                    &mut data.knob_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ToggleData>()
-                            .map(|mut p| p.knob_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "On Color",
+                theme,
+                &mut data.on_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::ToggleData>()
+                        .map(|mut p| p.on_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Off Color",
+                theme,
+                &mut data.off_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::ToggleData>()
+                        .map(|mut p| p.off_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Knob Color",
+                theme,
+                &mut data.knob_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::ToggleData>()
+                        .map(|mut p| p.knob_color = c)
+                },
+            );
         }
     }
 }
@@ -1908,68 +1910,68 @@ pub fn render_radio_data_inspector(
     let data: &mut components::RadioButtonData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Group", theme, |ui| {
-                    let mut v = data.group.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.group = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
-                                    d.group = v.clone();
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Group", theme, |ui| {
+                let mut v = data.group.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.group = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                                d.group = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Selected", theme, |ui| {
-                    let mut v = data.selected;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.selected = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
-                                    d.selected = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Selected", theme, |ui| {
+                let mut v = data.selected;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.selected = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                                d.selected = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Label", theme, |ui| {
-                    let mut v = data.label.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.label = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
-                                    d.label = v.clone();
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Label", theme, |ui| {
+                let mut v = data.label.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.label = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::RadioButtonData>() {
+                                d.label = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Active Color",
-                    theme,
-                    &mut data.active_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::RadioButtonData>()
-                            .map(|mut p| p.active_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Active Color",
+                theme,
+                &mut data.active_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::RadioButtonData>()
+                        .map(|mut p| p.active_color = c)
+                },
+            );
         }
     }
 }
@@ -1987,97 +1989,97 @@ pub fn render_dropdown_data_inspector(
     let data: &mut components::DropdownData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Placeholder", theme, |ui| {
-                    let mut v = data.placeholder.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.placeholder = v.clone();
+            let mut row = 0;
+            inline_property(ui, row, "Placeholder", theme, |ui| {
+                let mut v = data.placeholder.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.placeholder = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::DropdownData>() {
+                                d.placeholder = v.clone();
+                            }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Selected", theme, |ui| {
+                let mut v = data.selected;
+                let options = &data.options;
+                let label = if v >= 0 && (v as usize) < options.len() {
+                    options[v as usize].clone()
+                } else {
+                    data.placeholder.clone()
+                };
+                if egui::ComboBox::from_id_salt("dropdown_sel")
+                    .width(ui.available_width())
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        for (i, opt) in options.iter().enumerate() {
+                            ui.selectable_value(&mut v, i as i32, opt);
+                        }
+                    })
+                    .inner
+                    .is_some()
+                {
+                    if v != data.selected {
+                        data.selected = v;
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
                                 if let Some(mut d) = em.get_mut::<components::DropdownData>() {
-                                    d.placeholder = v.clone();
+                                    d.selected = v;
                                 }
                             }
                         });
                     }
-                });
-                row += 1;
-                inline_property(ui, row, "Selected", theme, |ui| {
-                    let mut v = data.selected;
-                    let options = &data.options;
-                    let label = if v >= 0 && (v as usize) < options.len() {
-                        options[v as usize].clone()
-                    } else {
-                        data.placeholder.clone()
-                    };
-                    if egui::ComboBox::from_id_salt("dropdown_sel")
-                        .width(ui.available_width())
-                        .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            for (i, opt) in options.iter().enumerate() {
-                                ui.selectable_value(&mut v, i as i32, opt);
-                            }
-                        })
-                        .inner
-                        .is_some()
-                    {
-                        if v != data.selected {
-                            data.selected = v;
-                            commands.push(move |world: &mut World| {
-                                if let Ok(mut em) = world.get_entity_mut(entity) {
-                                    if let Some(mut d) = em.get_mut::<components::DropdownData>() {
-                                        d.selected = v;
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-                // Options list
-                let mut options_changed = false;
-                let mut new_options = data.options.clone();
-                for i in 0..new_options.len() {
-                    inline_property(ui, i + 2, &format!("#{}", i + 1), theme, |ui| {
-                        if ui
-                            .add(
-                                egui::TextEdit::singleline(&mut new_options[i])
-                                    .desired_width(ui.available_width()),
-                            )
-                            .changed()
-                        {
-                            options_changed = true;
-                        }
-                    });
                 }
-                ui.horizontal(|ui| {
-                    ui.add_space(8.0);
-                    if ui.small_button(format!("{} Add", regular::PLUS)).clicked() {
-                        new_options.push(format!("Option {}", new_options.len() + 1));
+            });
+            // Options list
+            let mut options_changed = false;
+            let mut new_options = data.options.clone();
+            for i in 0..new_options.len() {
+                inline_property(ui, i + 2, &format!("#{}", i + 1), theme, |ui| {
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(&mut new_options[i])
+                                .desired_width(ui.available_width()),
+                        )
+                        .changed()
+                    {
                         options_changed = true;
                     }
-                    if new_options.len() > 1 {
-                        if ui
-                            .small_button(format!("{} Remove", regular::MINUS))
-                            .clicked()
-                        {
-                            new_options.pop();
-                            options_changed = true;
+                });
+            }
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                if ui.small_button(format!("{} Add", regular::PLUS)).clicked() {
+                    new_options.push(format!("Option {}", new_options.len() + 1));
+                    options_changed = true;
+                }
+                if new_options.len() > 1 {
+                    if ui
+                        .small_button(format!("{} Remove", regular::MINUS))
+                        .clicked()
+                    {
+                        new_options.pop();
+                        options_changed = true;
+                    }
+                }
+            });
+            if options_changed {
+                data.options = new_options.clone();
+                commands.push(move |world: &mut World| {
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        if let Some(mut d) = em.get_mut::<components::DropdownData>() {
+                            d.options = new_options.clone();
                         }
                     }
                 });
-                if options_changed {
-                    data.options = new_options.clone();
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(entity) {
-                            if let Some(mut d) = em.get_mut::<components::DropdownData>() {
-                                d.options = new_options.clone();
-                            }
-                        }
-                    });
-                }
+            }
         }
     }
 }
@@ -2095,72 +2097,72 @@ pub fn render_text_input_data_inspector(
     let data: &mut components::TextInputData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Text", theme, |ui| {
-                    let mut v = data.text.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.text = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TextInputData>() {
-                                    d.text = v.clone();
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Text", theme, |ui| {
+                let mut v = data.text.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.text = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                                d.text = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Placeholder", theme, |ui| {
-                    let mut v = data.placeholder.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.placeholder = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TextInputData>() {
-                                    d.placeholder = v.clone();
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Placeholder", theme, |ui| {
+                let mut v = data.placeholder.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.placeholder = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                                d.placeholder = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Max Length", theme, |ui| {
-                    let mut v = data.max_length as i32;
-                    if ui
-                        .add(egui::DragValue::new(&mut v).range(1..=10000))
-                        .changed()
-                    {
-                        data.max_length = v as usize;
-                        let len = v as usize;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TextInputData>() {
-                                    d.max_length = len;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Max Length", theme, |ui| {
+                let mut v = data.max_length as i32;
+                if ui
+                    .add(egui::DragValue::new(&mut v).range(1..=10000))
+                    .changed()
+                {
+                    data.max_length = v as usize;
+                    let len = v as usize;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                                d.max_length = len;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Password", theme, |ui| {
-                    let mut v = data.password;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.password = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TextInputData>() {
-                                    d.password = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Password", theme, |ui| {
+                let mut v = data.password;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.password = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TextInputData>() {
+                                d.password = v;
                             }
-                        });
-                    }
-                });
+                        }
+                    });
+                }
+            });
         }
     }
 }
@@ -2178,51 +2180,51 @@ pub fn render_scroll_view_data_inspector(
     let data: &mut components::ScrollViewData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Scroll Speed", theme, |ui| {
-                    let mut v = data.scroll_speed;
-                    if ui
-                        .add(egui::DragValue::new(&mut v).speed(0.5).range(1.0..=200.0))
-                        .changed()
-                    {
-                        data.scroll_speed = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
-                                    d.scroll_speed = v;
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Scroll Speed", theme, |ui| {
+                let mut v = data.scroll_speed;
+                if ui
+                    .add(egui::DragValue::new(&mut v).speed(0.5).range(1.0..=200.0))
+                    .changed()
+                {
+                    data.scroll_speed = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                                d.scroll_speed = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Horizontal", theme, |ui| {
-                    let mut v = data.show_horizontal;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.show_horizontal = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
-                                    d.show_horizontal = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Horizontal", theme, |ui| {
+                let mut v = data.show_horizontal;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.show_horizontal = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                                d.show_horizontal = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Vertical", theme, |ui| {
-                    let mut v = data.show_vertical;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.show_vertical = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
-                                    d.show_vertical = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Vertical", theme, |ui| {
+                let mut v = data.show_vertical;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.show_vertical = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ScrollViewData>() {
+                                d.show_vertical = v;
                             }
-                        });
-                    }
-                });
+                        }
+                    });
+                }
+            });
         }
     }
 }
@@ -2240,69 +2242,69 @@ pub fn render_tooltip_data_inspector(
     let data: &mut components::TooltipData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Text", theme, |ui| {
-                    let mut v = data.text.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.text = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TooltipData>() {
-                                    d.text = v.clone();
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Text", theme, |ui| {
+                let mut v = data.text.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.text = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TooltipData>() {
+                                d.text = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Delay (ms)", theme, |ui| {
-                    let mut v = data.delay_ms as i32;
-                    if ui
-                        .add(egui::DragValue::new(&mut v).range(0..=5000))
-                        .changed()
-                    {
-                        data.delay_ms = v as u32;
-                        let delay = v as u32;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::TooltipData>() {
-                                    d.delay_ms = delay;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Delay (ms)", theme, |ui| {
+                let mut v = data.delay_ms as i32;
+                if ui
+                    .add(egui::DragValue::new(&mut v).range(0..=5000))
+                    .changed()
+                {
+                    data.delay_ms = v as u32;
+                    let delay = v as u32;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::TooltipData>() {
+                                d.delay_ms = delay;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Bg Color",
-                    theme,
-                    &mut data.bg_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::TooltipData>()
-                            .map(|mut p| p.bg_color = c)
-                    },
-                );
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Text Color",
-                    theme,
-                    &mut data.text_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::TooltipData>()
-                            .map(|mut p| p.text_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Bg Color",
+                theme,
+                &mut data.bg_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::TooltipData>()
+                        .map(|mut p| p.bg_color = c)
+                },
+            );
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Text Color",
+                theme,
+                &mut data.text_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::TooltipData>()
+                        .map(|mut p| p.text_color = c)
+                },
+            );
         }
     }
 }
@@ -2320,51 +2322,51 @@ pub fn render_modal_data_inspector(
     let data: &mut components::ModalData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Title", theme, |ui| {
-                    let mut v = data.title.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.title = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ModalData>() {
-                                    d.title = v.clone();
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Title", theme, |ui| {
+                let mut v = data.title.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.title = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ModalData>() {
+                                d.title = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Closable", theme, |ui| {
-                    let mut v = data.closable;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.closable = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::ModalData>() {
-                                    d.closable = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Closable", theme, |ui| {
+                let mut v = data.closable;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.closable = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::ModalData>() {
+                                d.closable = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Backdrop",
-                    theme,
-                    &mut data.backdrop_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::ModalData>()
-                            .map(|mut p| p.backdrop_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Backdrop",
+                theme,
+                &mut data.backdrop_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::ModalData>()
+                        .map(|mut p| p.backdrop_color = c)
+                },
+            );
         }
     }
 }
@@ -2376,74 +2378,74 @@ pub fn render_draggable_window_data_inspector(
     commands: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(mut data_owned) = world.get::<components::DraggableWindowData>(entity).cloned() else {
+    let Some(mut data_owned) = world
+        .get::<components::DraggableWindowData>(entity)
+        .cloned()
+    else {
         return;
     };
     let data: &mut components::DraggableWindowData = &mut data_owned;
     {
         {
-                let mut row = 0;
-                inline_property(ui, row, "Title", theme, |ui| {
-                    let mut v = data.title.clone();
-                    if ui
-                        .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
-                        .changed()
-                    {
-                        data.title = v.clone();
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::DraggableWindowData>()
-                                {
-                                    d.title = v.clone();
-                                }
+            let mut row = 0;
+            inline_property(ui, row, "Title", theme, |ui| {
+                let mut v = data.title.clone();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut v).desired_width(ui.available_width()))
+                    .changed()
+                {
+                    data.title = v.clone();
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                                d.title = v.clone();
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Closable", theme, |ui| {
-                    let mut v = data.closable;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.closable = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::DraggableWindowData>()
-                                {
-                                    d.closable = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Closable", theme, |ui| {
+                let mut v = data.closable;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.closable = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                                d.closable = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                inline_property(ui, row, "Minimizable", theme, |ui| {
-                    let mut v = data.minimizable;
-                    if ui.checkbox(&mut v, "").changed() {
-                        data.minimizable = v;
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(entity) {
-                                if let Some(mut d) = em.get_mut::<components::DraggableWindowData>()
-                                {
-                                    d.minimizable = v;
-                                }
+                        }
+                    });
+                }
+            });
+            row += 1;
+            inline_property(ui, row, "Minimizable", theme, |ui| {
+                let mut v = data.minimizable;
+                if ui.checkbox(&mut v, "").changed() {
+                    data.minimizable = v;
+                    commands.push(move |world: &mut World| {
+                        if let Ok(mut em) = world.get_entity_mut(entity) {
+                            if let Some(mut d) = em.get_mut::<components::DraggableWindowData>() {
+                                d.minimizable = v;
                             }
-                        });
-                    }
-                });
-                row += 1;
-                color_row(
-                    ui,
-                    row,
-                    "Title Bar",
-                    theme,
-                    &mut data.title_bar_color,
-                    entity,
-                    commands,
-                    |d, c| {
-                        d.get_mut::<components::DraggableWindowData>()
-                            .map(|mut p| p.title_bar_color = c)
-                    },
-                );
+                        }
+                    });
+                }
+            });
+            row += 1;
+            color_row(
+                ui,
+                row,
+                "Title Bar",
+                theme,
+                &mut data.title_bar_color,
+                entity,
+                commands,
+                |d, c| {
+                    d.get_mut::<components::DraggableWindowData>()
+                        .map(|mut p| p.title_bar_color = c)
+                },
+            );
         }
     }
 }

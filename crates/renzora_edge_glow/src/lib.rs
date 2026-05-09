@@ -1,17 +1,17 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -66,28 +66,81 @@ fn inspector_entry() -> InspectorEntry {
         icon: regular::SPARKLE,
         category: "post_process",
         has_fn: |world, entity| world.get::<EdgeGlowSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(EdgeGlowSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<EdgeGlowSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<EdgeGlowSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(EdgeGlowSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<EdgeGlowSettings>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<EdgeGlowSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) {
+                s.enabled = if val { 1.0 } else { 0.0 };
+            }
+        }),
         fields: vec![
             FieldDef {
                 name: "Threshold",
-                field_type: FieldType::Float { speed: 0.005, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<EdgeGlowSettings>(entity).map(|s| FieldValue::Float(s.threshold)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) { s.threshold = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.005,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<EdgeGlowSettings>(entity)
+                        .map(|s| FieldValue::Float(s.threshold))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) {
+                            s.threshold = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Glow Intensity",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 5.0 },
-                get_fn: |world, entity| world.get::<EdgeGlowSettings>(entity).map(|s| FieldValue::Float(s.glow_intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) { s.glow_intensity = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 5.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<EdgeGlowSettings>(entity)
+                        .map(|s| FieldValue::Float(s.glow_intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) {
+                            s.glow_intensity = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Color",
                 field_type: FieldType::Color,
-                get_fn: |world, entity| world.get::<EdgeGlowSettings>(entity).map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b])),
-                set_fn: |world, entity, val| { if let FieldValue::Color([r, g, b]) = val { if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) { s.color_r = r; s.color_g = g; s.color_b = b; } } },
+                get_fn: |world, entity| {
+                    world
+                        .get::<EdgeGlowSettings>(entity)
+                        .map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b]))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut s) = world.get_mut::<EdgeGlowSettings>(entity) {
+                            s.color_r = r;
+                            s.color_g = g;
+                            s.color_b = b;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,

@@ -26,7 +26,13 @@ pub fn parse(path: &Path) -> UsdResult<UsdStage> {
         let name = entry.name().to_string();
         let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
 
-        log::debug!("USDZ entry [{}]: '{}' ({} bytes, ext='{}')", i, name, entry.size(), ext);
+        log::debug!(
+            "USDZ entry [{}]: '{}' ({} bytes, ext='{}')",
+            i,
+            name,
+            entry.size(),
+            ext
+        );
 
         match ext.as_str() {
             "usda" => {
@@ -75,9 +81,7 @@ pub fn parse(path: &Path) -> UsdResult<UsdStage> {
         Some(UsdContent::Text(text)) => crate::usda::parse(&text)?,
         Some(UsdContent::Binary(data)) => crate::crate_format::parse(&data)?,
         None => {
-            return Err(UsdError::Parse(
-                "No USD file found in USDZ archive".into(),
-            ));
+            return Err(UsdError::Parse("No USD file found in USDZ archive".into()));
         }
     };
 
@@ -105,11 +109,7 @@ enum UsdContent {
     Binary(Vec<u8>),
 }
 
-fn resolve_texture_ref(
-    tex_ref: &mut Option<TextureRef>,
-    textures: &[UsdTexture],
-    offset: usize,
-) {
+fn resolve_texture_ref(tex_ref: &mut Option<TextureRef>, textures: &[UsdTexture], offset: usize) {
     if let Some(ref mut tr) = tex_ref {
         if let TextureSource::File(ref path) = tr.source {
             // Try to find a matching embedded texture by filename

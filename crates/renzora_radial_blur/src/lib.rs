@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "radial_blur.wgsl", name = "Radial Blur", icon = "CIRCLE_DASHED")]
+#[renzora_macros::post_process(
+    shader = "radial_blur.wgsl",
+    name = "Radial Blur",
+    icon = "CIRCLE_DASHED"
+)]
 pub struct RadialBlurSettings {
     #[field(speed = 0.001, min = 0.0, max = 0.2, default = 0.02)]
     pub intensity: f32,

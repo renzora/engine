@@ -2,9 +2,9 @@
 
 use bevy::prelude::*;
 
+use super::PreviewMode;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
 use crate::scene::PreviewSubject;
-use super::PreviewMode;
 
 #[derive(Resource, Default)]
 pub struct TexturePreviewState {

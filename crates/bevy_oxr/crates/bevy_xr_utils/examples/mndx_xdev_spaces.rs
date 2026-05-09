@@ -1,5 +1,7 @@
 use bevy::prelude::*;
-use bevy_mod_openxr::{add_xr_plugins, exts::OxrExtensions, init::OxrInitPlugin, resources::OxrSessionConfig};
+use bevy_mod_openxr::{
+    add_xr_plugins, exts::OxrExtensions, init::OxrInitPlugin, resources::OxrSessionConfig,
+};
 use bevy_mod_xr::hand_debug_gizmos::HandGizmosPlugin;
 use bevy_xr_utils::{
     generic_tracker::GenericTrackerGizmoPlugin, mndx_xdev_spaces_trackers::MonadoXDevSpacesPlugin,
@@ -11,7 +13,8 @@ fn main() -> AppExit {
             exts: {
                 let mut exts = OxrExtensions::default();
                 exts.enable_hand_tracking();
-                exts.other.push(c"XR_MNDX_xdev_space".to_bytes_with_nul().to_vec());
+                exts.other
+                    .push(c"XR_MNDX_xdev_space".to_bytes_with_nul().to_vec());
                 exts
             },
             ..Default::default()

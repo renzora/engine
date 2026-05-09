@@ -970,4 +970,3 @@ fn assemble_graph_material(
 
     (materials.add(mat), parameters)
 }
-

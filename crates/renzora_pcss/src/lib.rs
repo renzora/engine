@@ -42,7 +42,9 @@ fn sync_pcss_camera(
                     break;
                 }
                 if settings.enabled {
-                    commands.entity(*target).insert(ShadowFilteringMethod::Temporal);
+                    commands
+                        .entity(*target)
+                        .insert(ShadowFilteringMethod::Temporal);
                 } else {
                     commands.entity(*target).remove::<ShadowFilteringMethod>();
                 }
@@ -76,7 +78,9 @@ fn sync_pcss_lights(
                 break;
             }
         }
-        if pcss_enabled { break; }
+        if pcss_enabled {
+            break;
+        }
     }
 
     if pcss_enabled {
@@ -121,19 +125,36 @@ fn pcss_entry() -> InspectorEntry {
             world.entity_mut(entity).remove::<PcssSettings>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<PcssSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<PcssSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<PcssSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<PcssSettings>(entity) {
+                s.enabled = val;
+            }
         }),
-        fields: vec![
-            FieldDef {
-                name: "Soft Shadow Size",
-                field_type: FieldType::Float { speed: 0.5, min: 0.1, max: 100.0 },
-                get_fn: |world, entity| world.get::<PcssSettings>(entity).map(|s| FieldValue::Float(s.soft_shadow_size)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PcssSettings>(entity) { s.soft_shadow_size = v; } } },
+        fields: vec![FieldDef {
+            name: "Soft Shadow Size",
+            field_type: FieldType::Float {
+                speed: 0.5,
+                min: 0.1,
+                max: 100.0,
             },
-        ],
+            get_fn: |world, entity| {
+                world
+                    .get::<PcssSettings>(entity)
+                    .map(|s| FieldValue::Float(s.soft_shadow_size))
+            },
+            set_fn: |world, entity, val| {
+                if let FieldValue::Float(v) = val {
+                    if let Some(mut s) = world.get_mut::<PcssSettings>(entity) {
+                        s.soft_shadow_size = v;
+                    }
+                }
+            },
+        }],
         custom_ui_fn: None,
     }
 }

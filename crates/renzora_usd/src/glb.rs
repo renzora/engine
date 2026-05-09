@@ -136,8 +136,12 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
         let mut max = [f32::MIN; 3];
         for p in &usd_mesh.positions {
             for c in 0..3 {
-                if p[c] < min[c] { min[c] = p[c]; }
-                if p[c] > max[c] { max[c] = p[c]; }
+                if p[c] < min[c] {
+                    min[c] = p[c];
+                }
+                if p[c] > max[c] {
+                    max[c] = p[c];
+                }
             }
         }
 
@@ -363,9 +367,7 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
     }
 
     // Scene
-    let node_indices: Vec<Index<Node>> = (0..gltf_nodes.len() as u32)
-        .map(Index::new)
-        .collect();
+    let node_indices: Vec<Index<Node>> = (0..gltf_nodes.len() as u32).map(Index::new).collect();
 
     // Buffer
     root.buffers.push(buffer::Buffer {
@@ -417,20 +419,20 @@ fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     let mut out = Vec::with_capacity(total);
 
     // GLB header
-    out.extend_from_slice(b"glTF");                           // magic
-    out.extend_from_slice(&2u32.to_le_bytes());                // version
-    out.extend_from_slice(&(total as u32).to_le_bytes());      // length
+    out.extend_from_slice(b"glTF"); // magic
+    out.extend_from_slice(&2u32.to_le_bytes()); // version
+    out.extend_from_slice(&(total as u32).to_le_bytes()); // length
 
     // JSON chunk
-    out.extend_from_slice(&(json_len as u32).to_le_bytes());   // chunk length
-    out.extend_from_slice(&0x4E4F534Au32.to_le_bytes());       // chunk type "JSON"
+    out.extend_from_slice(&(json_len as u32).to_le_bytes()); // chunk length
+    out.extend_from_slice(&0x4E4F534Au32.to_le_bytes()); // chunk type "JSON"
     out.extend_from_slice(json);
     out.extend(std::iter::repeat(b' ').take(json_pad));
 
     // BIN chunk
     if !bin_data.is_empty() {
         out.extend_from_slice(&(bin_len as u32).to_le_bytes()); // chunk length
-        out.extend_from_slice(&0x004E4942u32.to_le_bytes());    // chunk type "BIN\0"
+        out.extend_from_slice(&0x004E4942u32.to_le_bytes()); // chunk type "BIN\0"
         out.extend_from_slice(bin_data);
         out.extend(std::iter::repeat(0u8).take(bin_pad));
     }

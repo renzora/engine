@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "night_vision.wgsl", name = "Night Vision", icon = "BINOCULARS")]
+#[renzora_macros::post_process(
+    shader = "night_vision.wgsl",
+    name = "Night Vision",
+    icon = "BINOCULARS"
+)]
 pub struct NightVisionSettings {
     #[field(speed = 0.01, min = 0.0, max = 1.0, default = 1.0)]
     pub intensity: f32,

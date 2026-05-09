@@ -3,7 +3,8 @@ use bevy::{math::vec3, prelude::*};
 use bevy_mod_openxr::{add_xr_plugins, helper_traits::ToQuat, resources::OxrViews};
 use bevy_mod_xr::session::XrTrackingRoot;
 use bevy_xr_utils::actions::{
-    ActionType, ActiveSet, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState, XRUtilsActionSystems, XRUtilsActionsPlugin, XRUtilsBinding
+    ActionType, ActiveSet, XRUtilsAction, XRUtilsActionSet, XRUtilsActionState,
+    XRUtilsActionSystems, XRUtilsActionsPlugin, XRUtilsBinding,
 };
 
 fn main() {

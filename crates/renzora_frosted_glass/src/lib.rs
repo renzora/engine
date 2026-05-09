@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "frosted_glass.wgsl", name = "Frosted Glass", icon = "SNOWFLAKE")]
+#[renzora_macros::post_process(
+    shader = "frosted_glass.wgsl",
+    name = "Frosted Glass",
+    icon = "SNOWFLAKE"
+)]
 pub struct FrostedGlassSettings {
     #[field(speed = 0.001, min = 0.0, max = 0.05, default = 0.01)]
     pub intensity: f32,

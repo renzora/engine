@@ -47,11 +47,7 @@ fn parse_target_header(line: &str) -> Option<(String, String)> {
     }
 }
 
-fn forward_stream<R: BufRead>(
-    reader: R,
-    tx: mpsc::Sender<WorkerMsg>,
-    stop_flag: Arc<AtomicBool>,
-) {
+fn forward_stream<R: BufRead>(reader: R, tx: mpsc::Sender<WorkerMsg>, stop_flag: Arc<AtomicBool>) {
     for line in reader.lines().map_while(Result::ok) {
         if stop_flag.load(Ordering::Relaxed) {
             break;

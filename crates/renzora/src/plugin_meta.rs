@@ -155,19 +155,15 @@ macro_rules! add {
         // host as rlibs and never enable the feature.
         #[cfg(all(
             feature = "dlopen",
-            not(any(
-                target_os = "ios",
-                target_os = "android",
-                target_arch = "wasm32",
-            ))
+            not(any(target_os = "ios", target_os = "android", target_arch = "wasm32",))
         ))]
         const _: () = {
             #[no_mangle]
             pub extern "C" fn plugin_create() -> *mut dyn $crate::bevy::app::Plugin {
-                ::std::boxed::Box::into_raw(
-                    ::std::boxed::Box::new(<$plugin_type as ::std::default::Default>::default())
-                        as ::std::boxed::Box<dyn $crate::bevy::app::Plugin>,
+                ::std::boxed::Box::into_raw(::std::boxed::Box::new(
+                    <$plugin_type as ::std::default::Default>::default(),
                 )
+                    as ::std::boxed::Box<dyn $crate::bevy::app::Plugin>)
             }
 
             #[no_mangle]

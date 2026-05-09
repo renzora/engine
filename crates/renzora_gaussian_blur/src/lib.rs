@@ -1,17 +1,17 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -66,22 +66,65 @@ fn inspector_entry() -> InspectorEntry {
         icon: regular::DROP_HALF_BOTTOM,
         category: "post_process",
         has_fn: |world, entity| world.get::<GaussianBlurSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(GaussianBlurSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<GaussianBlurSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<GaussianBlurSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(GaussianBlurSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<GaussianBlurSettings>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<GaussianBlurSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) {
+                s.enabled = if val { 1.0 } else { 0.0 };
+            }
+        }),
         fields: vec![
             FieldDef {
                 name: "Sigma",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 20.0 },
-                get_fn: |world, entity| world.get::<GaussianBlurSettings>(entity).map(|s| FieldValue::Float(s.sigma)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) { s.sigma = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.1,
+                    max: 20.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GaussianBlurSettings>(entity)
+                        .map(|s| FieldValue::Float(s.sigma))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) {
+                            s.sigma = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Kernel Size",
-                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 64.0 },
-                get_fn: |world, entity| world.get::<GaussianBlurSettings>(entity).map(|s| FieldValue::Float(s.kernel_size as f32)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) { s.kernel_size = v as u32; } } },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 1.0,
+                    max: 64.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GaussianBlurSettings>(entity)
+                        .map(|s| FieldValue::Float(s.kernel_size as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GaussianBlurSettings>(entity) {
+                            s.kernel_size = v as u32;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,
@@ -96,9 +139,7 @@ impl Plugin for GaussianBlurPlugin {
         info!("[runtime] GaussianBlurPlugin");
         bevy::asset::embedded_asset!(app, "gaussian_blur.wgsl");
         app.register_type::<GaussianBlurSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<GaussianBlurSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<GaussianBlurSettings>::default());
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

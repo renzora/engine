@@ -7,8 +7,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::format::{
-    encode_footer, encode_index, Compression, Header, PakEntry, FOOTER_LEN,
-    FORMAT_VERSION, HEADER_FLAG_INDEX_COMPRESSED, HEADER_LEN,
+    encode_footer, encode_index, Compression, Header, PakEntry, FOOTER_LEN, FORMAT_VERSION,
+    HEADER_FLAG_INDEX_COMPRESSED, HEADER_LEN,
 };
 
 /// Collects files and writes them into an `.rpak` archive.
@@ -257,8 +257,7 @@ where
                             if let Some(meta_disk) = resolve(&meta_key) {
                                 if let Some(meta_actual) = archive_key_for(&meta_disk) {
                                     if visited.insert(meta_actual.clone()) {
-                                        let _ =
-                                            packer.add_from_disk(project_dir, &meta_disk);
+                                        let _ = packer.add_from_disk(project_dir, &meta_disk);
                                         on_packed(&meta_actual);
                                         queue.push_back(meta_actual);
                                     }
@@ -1021,8 +1020,14 @@ mod tests {
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
 
         assert_eq!(archive.len(), 3);
-        assert_eq!(archive.get("scenes/main.ron").as_deref(), Some(scene.as_slice()));
-        assert_eq!(archive.get("models/car.glb").as_deref(), Some(model.as_slice()));
+        assert_eq!(
+            archive.get("scenes/main.ron").as_deref(),
+            Some(scene.as_slice())
+        );
+        assert_eq!(
+            archive.get("models/car.glb").as_deref(),
+            Some(model.as_slice())
+        );
         assert_eq!(
             archive.get("textures/wall.png").as_deref(),
             Some(&[0xff, 0xee, 0xdd][..])
@@ -1037,7 +1042,10 @@ mod tests {
         p.add_file("models/car.glb", vec![1, 2, 3]);
         let bytes = p.finish(3).expect("finish");
         let archive = RpakArchive::from_bytes(&bytes).expect("read");
-        assert_eq!(archive.get("models\\car.glb").as_deref(), Some(&[1u8, 2, 3][..]));
+        assert_eq!(
+            archive.get("models\\car.glb").as_deref(),
+            Some(&[1u8, 2, 3][..])
+        );
         assert!(archive.contains("models\\car.glb"));
     }
 
@@ -1093,7 +1101,9 @@ mod tests {
         let mut rnd = 0xdeadbeefu64;
         let random: Vec<u8> = (0..4096)
             .map(|_| {
-                rnd = rnd.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rnd = rnd
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 (rnd >> 33) as u8
             })
             .collect();
@@ -1121,7 +1131,10 @@ mod tests {
         combined.extend_from_slice(&crate::format::encode_footer(rpak.len() as u64));
 
         let archive = RpakArchive::from_bytes(&combined).expect("read");
-        assert_eq!(archive.get("hello.txt").as_deref(), Some(b"world".as_slice()));
+        assert_eq!(
+            archive.get("hello.txt").as_deref(),
+            Some(b"world".as_slice())
+        );
     }
 
     #[test]
@@ -1186,8 +1199,7 @@ mod tests {
         let json_pad = (4 - (json_bytes.len() % 4)) % 4;
         let json_chunk_len = json_bytes.len() + json_pad;
         let bin: [u8; 8] = [0xff, 0x00, 0xfe, 0x80, 0x00, 0xc0, 0xff, 0xee];
-        let total =
-            12 + 8 + json_chunk_len + 8 + bin.len();
+        let total = 12 + 8 + json_chunk_len + 8 + bin.len();
 
         let mut out = Vec::with_capacity(total);
         out.extend_from_slice(b"glTF");

@@ -1,5 +1,9 @@
 use bevy_app::{App, Plugin, PostUpdate};
-use bevy_ecs::{message::{Message, MessageReader}, query::With, system::{Query, ResMut}};
+use bevy_ecs::{
+    message::{Message, MessageReader},
+    query::With,
+    system::{Query, ResMut},
+};
 use bevy_log::debug;
 use bevy_math::{Quat, Vec3};
 use bevy_mod_openxr::{

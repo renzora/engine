@@ -37,7 +37,6 @@ use renzora_lighting::Sun;
 #[derive(Default)]
 pub struct RuntimePlugin;
 
-
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] RuntimePlugin");
@@ -109,8 +108,7 @@ impl Plugin for RuntimePlugin {
                             // Same timing fix as the disk path below: set
                             // the asset reader path before Startup so
                             // observer-driven asset loads resolve correctly.
-                            if let Some(asset_path) =
-                                app.world().get_resource::<ProjectAssetPath>()
+                            if let Some(asset_path) = app.world().get_resource::<ProjectAssetPath>()
                             {
                                 asset_path.set(project_path.clone());
                             }
@@ -166,8 +164,7 @@ impl Plugin for RuntimePlugin {
                             // sprites render invisibly. The Update-time
                             // `sync_project_asset_path` system also runs,
                             // but only after the damage is done.
-                            if let Some(asset_path) =
-                                app.world().get_resource::<ProjectAssetPath>()
+                            if let Some(asset_path) = app.world().get_resource::<ProjectAssetPath>()
                             {
                                 asset_path.set(project.path.clone());
                             }

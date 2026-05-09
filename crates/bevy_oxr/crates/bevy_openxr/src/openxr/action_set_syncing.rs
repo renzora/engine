@@ -1,5 +1,9 @@
 use bevy_app::{App, Plugin, PreUpdate};
-use bevy_ecs::{message::{Message, MessageReader}, schedule::{IntoScheduleConfigs as _, SystemSet}, system::Res};
+use bevy_ecs::{
+    message::{Message, MessageReader},
+    schedule::{IntoScheduleConfigs as _, SystemSet},
+    system::Res,
+};
 use bevy_log::warn;
 
 use crate::{openxr_session_running, session::OxrSession};

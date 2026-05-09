@@ -2926,7 +2926,10 @@ impl EditorPanel for UiCanvasPanel {
                                 if let Some(entity) = sel.get() {
                                     if let Ok(mut em) = world.get_entity_mut(entity) {
                                         if let Some(mut node) = em.get_mut::<Node>() {
-                                            if matches!(node.position_type, bevy::ui::PositionType::Absolute) {
+                                            if matches!(
+                                                node.position_type,
+                                                bevy::ui::PositionType::Absolute
+                                            ) {
                                                 node.left = bevy::ui::Val::Px(canvas_x);
                                                 node.top = bevy::ui::Val::Px(canvas_y);
                                             }

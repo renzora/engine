@@ -183,14 +183,8 @@ impl AttributesAppExt for App {
     }
 
     fn register_write_back<T: WriteBack>(&mut self) -> &mut Self {
-        self.add_systems(
-            PreUpdate,
-            update_write_back::<T>.in_set(WriteBackSet),
-        )
-        .add_systems(
-            PostUpdate,
-            update_write_back::<T>.in_set(WriteBackSet),
-        )
+        self.add_systems(PreUpdate, update_write_back::<T>.in_set(WriteBackSet))
+            .add_systems(PostUpdate, update_write_back::<T>.in_set(WriteBackSet))
     }
 }
 

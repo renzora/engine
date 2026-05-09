@@ -1,7 +1,7 @@
 //! USDC table of contents and section parsing.
 
-use crate::{UsdError, UsdResult};
 use super::header::Header;
+use crate::{UsdError, UsdResult};
 
 /// Known section names in a USDC file.
 pub const SECTION_TOKENS: &str = "TOKENS";
@@ -57,10 +57,8 @@ impl TableOfContents {
                 .unwrap_or("")
                 .to_string();
 
-            let sec_offset =
-                u64::from_le_bytes(data[pos + 16..pos + 24].try_into().unwrap());
-            let sec_size =
-                u64::from_le_bytes(data[pos + 24..pos + 32].try_into().unwrap());
+            let sec_offset = u64::from_le_bytes(data[pos + 16..pos + 24].try_into().unwrap());
+            let sec_size = u64::from_le_bytes(data[pos + 24..pos + 32].try_into().unwrap());
 
             log::warn!(
                 "Section '{}': offset={}, size={}",
@@ -88,15 +86,18 @@ impl TableOfContents {
 
     /// Get section data slice.
     pub fn section_data<'a>(&self, data: &'a [u8], name: &str) -> UsdResult<&'a [u8]> {
-        let section = self.find(name).ok_or_else(|| {
-            UsdError::Parse(format!("Missing section: {}", name))
-        })?;
+        let section = self
+            .find(name)
+            .ok_or_else(|| UsdError::Parse(format!("Missing section: {}", name)))?;
         let start = section.offset as usize;
         let end = start + section.size as usize;
         if end > data.len() {
             return Err(UsdError::Parse(format!(
                 "Section '{}' extends beyond file (offset={}, size={}, file_len={})",
-                name, start, section.size, data.len()
+                name,
+                start,
+                section.size,
+                data.len()
             )));
         }
         Ok(&data[start..end])

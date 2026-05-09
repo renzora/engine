@@ -92,7 +92,10 @@ impl ModifierSet {
 
     /// Add an untagged expression modifier from a source string.
     pub fn add_expr(&mut self, attribute: &str, expr_source: &str) {
-        self.add(attribute, ModifierValue::ExprSource(expr_source.to_string()));
+        self.add(
+            attribute,
+            ModifierValue::ExprSource(expr_source.to_string()),
+        );
     }
 
     /// Add a tagged expression modifier from a source string.
@@ -119,7 +122,12 @@ impl ModifierSet {
                     if entry.tag.is_empty() {
                         let _ = attributes.add_expr_modifier(entity, &entry.attribute, src);
                     } else {
-                        let _ = attributes.add_expr_modifier_tagged(entity, &entry.attribute, src, entry.tag);
+                        let _ = attributes.add_expr_modifier_tagged(
+                            entity,
+                            &entry.attribute,
+                            src,
+                            entry.tag,
+                        );
                     }
                 }
             }
@@ -141,7 +149,12 @@ impl ModifierSet {
                     if entry.tag.is_empty() {
                         attributes.add_expr_modifier(entity, &entry.attribute, src)?;
                     } else {
-                        attributes.add_expr_modifier_tagged(entity, &entry.attribute, src, entry.tag)?;
+                        attributes.add_expr_modifier_tagged(
+                            entity,
+                            &entry.attribute,
+                            src,
+                            entry.tag,
+                        )?;
                     }
                 }
             }
@@ -154,20 +167,33 @@ impl ModifierSet {
     /// This is the inverse of [`apply`](Self::apply). Literal values are removed
     /// as flat modifiers. Expression strings are recompiled and removed as
     /// expression modifiers (compilation errors are silently ignored).
-    pub fn remove<F: QueryFilter>(&self, entity: Entity, attributes: &mut AttributesMut<'_, '_, F>) {
+    pub fn remove<F: QueryFilter>(
+        &self,
+        entity: Entity,
+        attributes: &mut AttributesMut<'_, '_, F>,
+    ) {
         for entry in &self.entries {
             match &entry.value {
                 ModifierValue::Literal(val) => {
                     let modifier = crate::modifier::Modifier::Flat(*val);
-                    attributes.remove_modifier_tagged(entity, &entry.attribute, &modifier, entry.tag);
+                    attributes.remove_modifier_tagged(
+                        entity,
+                        &entry.attribute,
+                        &modifier,
+                        entry.tag,
+                    );
                 }
                 ModifierValue::ExprSource(src) => {
-                    if let Ok(expr) = crate::expr::Expr::compile(
-                        src,
-                        Some(attributes.tag_resolver()),
-                    ) {
+                    if let Ok(expr) =
+                        crate::expr::Expr::compile(src, Some(attributes.tag_resolver()))
+                    {
                         let modifier = crate::modifier::Modifier::Expr(expr);
-                        attributes.remove_modifier_tagged(entity, &entry.attribute, &modifier, entry.tag);
+                        attributes.remove_modifier_tagged(
+                            entity,
+                            &entry.attribute,
+                            &modifier,
+                            entry.tag,
+                        );
                     }
                 }
             }
@@ -184,15 +210,22 @@ impl ModifierSet {
             match &entry.value {
                 ModifierValue::Literal(val) => {
                     let modifier = crate::modifier::Modifier::Flat(*val);
-                    attributes.remove_modifier_tagged(entity, &entry.attribute, &modifier, entry.tag);
+                    attributes.remove_modifier_tagged(
+                        entity,
+                        &entry.attribute,
+                        &modifier,
+                        entry.tag,
+                    );
                 }
                 ModifierValue::ExprSource(src) => {
-                    let expr = crate::expr::Expr::compile(
-                        src,
-                        Some(attributes.tag_resolver()),
-                    )?;
+                    let expr = crate::expr::Expr::compile(src, Some(attributes.tag_resolver()))?;
                     let modifier = crate::modifier::Modifier::Expr(expr);
-                    attributes.remove_modifier_tagged(entity, &entry.attribute, &modifier, entry.tag);
+                    attributes.remove_modifier_tagged(
+                        entity,
+                        &entry.attribute,
+                        &modifier,
+                        entry.tag,
+                    );
                 }
             }
         }

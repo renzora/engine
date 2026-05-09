@@ -180,9 +180,8 @@ fn apply_window_config(
         }
         renzora::WindowMode::Fullscreen => {
             window.decorations = false;
-            window.mode = BevyWindowMode::BorderlessFullscreen(
-                bevy::window::MonitorSelection::Current,
-            );
+            window.mode =
+                BevyWindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current);
         }
         renzora::WindowMode::Borderless => {
             window.decorations = false;

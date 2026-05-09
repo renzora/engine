@@ -105,7 +105,6 @@ impl Plugin for GameUiPlugin {
         // load when reflection inserts skip change-tick propagation.
         app.add_observer(on_canvas_inserted);
 
-
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
 
@@ -265,9 +264,7 @@ impl Plugin for GameUiPlugin {
                 display_name: "UI Border Radius",
                 icon: egui_phosphor::regular::FRAME_CORNERS,
                 category: "ui",
-                has_fn: |world, entity| {
-                    world.get::<components::UiBorderRadius>(entity).is_some()
-                },
+                has_fn: |world, entity| world.get::<components::UiBorderRadius>(entity).is_some(),
                 add_fn: Some(|world, entity| {
                     world
                         .entity_mut(entity)
@@ -295,9 +292,7 @@ impl Plugin for GameUiPlugin {
                         .insert(components::UiTextStyle::default());
                 }),
                 remove_fn: Some(|world, entity| {
-                    world
-                        .entity_mut(entity)
-                        .remove::<components::UiTextStyle>();
+                    world.entity_mut(entity).remove::<components::UiTextStyle>();
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
@@ -330,9 +325,7 @@ impl Plugin for GameUiPlugin {
                 category: "ui",
                 has_fn: |world, entity| world.get::<components::UiOpacity>(entity).is_some(),
                 add_fn: Some(|world, entity| {
-                    world
-                        .entity_mut(entity)
-                        .insert(components::UiOpacity(1.0));
+                    world.entity_mut(entity).insert(components::UiOpacity(1.0));
                 }),
                 remove_fn: Some(|world, entity| {
                     world.entity_mut(entity).remove::<components::UiOpacity>();
@@ -354,9 +347,7 @@ impl Plugin for GameUiPlugin {
                         .insert(components::UiBoxShadow::default());
                 }),
                 remove_fn: Some(|world, entity| {
-                    world
-                        .entity_mut(entity)
-                        .remove::<components::UiBoxShadow>();
+                    world.entity_mut(entity).remove::<components::UiBoxShadow>();
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
@@ -368,9 +359,7 @@ impl Plugin for GameUiPlugin {
                 display_name: "UI Clip Content",
                 icon: egui_phosphor::regular::CROP,
                 category: "ui",
-                has_fn: |world, entity| {
-                    world.get::<components::UiClipContent>(entity).is_some()
-                },
+                has_fn: |world, entity| world.get::<components::UiClipContent>(entity).is_some(),
                 add_fn: Some(|world, entity| {
                     world
                         .entity_mut(entity)
@@ -497,9 +486,7 @@ impl Plugin for GameUiPlugin {
                 display_name: "Radio Button",
                 icon: egui_phosphor::regular::RADIO_BUTTON,
                 category: "ui",
-                has_fn: |world, entity| {
-                    world.get::<components::RadioButtonData>(entity).is_some()
-                },
+                has_fn: |world, entity| world.get::<components::RadioButtonData>(entity).is_some(),
                 add_fn: Some(|world, entity| {
                     world
                         .entity_mut(entity)
@@ -590,9 +577,7 @@ impl Plugin for GameUiPlugin {
                         .insert(components::TooltipData::default());
                 }),
                 remove_fn: Some(|world, entity| {
-                    world
-                        .entity_mut(entity)
-                        .remove::<components::TooltipData>();
+                    world.entity_mut(entity).remove::<components::TooltipData>();
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
@@ -673,8 +658,7 @@ impl Plugin for GameUiPlugin {
             app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
             app.add_systems(
                 Update,
-                canvas_render::sync_canvases_to_editor_camera
-                    .after(sync_ui_canvas_target_camera),
+                canvas_render::sync_canvases_to_editor_camera.after(sync_ui_canvas_target_camera),
             );
             app.add_systems(Update, sync_ui_scale_to_canvas_reference);
             app.add_systems(
@@ -820,7 +804,11 @@ fn on_widget_reparented(
 /// from a saved scene wouldn't have their parent-aware layout applied
 /// (Container parent → Relative, Canvas root → Absolute) until the user
 /// touched them.
-fn on_childof_inserted(trigger: On<Insert, ChildOf>, mut commands: Commands, widgets: Query<(), With<UiWidget>>) {
+fn on_childof_inserted(
+    trigger: On<Insert, ChildOf>,
+    mut commands: Commands,
+    widgets: Query<(), With<UiWidget>>,
+) {
     let entity = trigger.entity;
     if widgets.get(entity).is_err() {
         return;

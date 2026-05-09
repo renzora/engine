@@ -1,7 +1,7 @@
-use bevy::prelude::*;
-use bevy::image::{Image, ImageSampler, ImageAddressMode, ImageFilterMode};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::asset::RenderAssetUsages;
+use bevy::image::{Image, ImageAddressMode, ImageFilterMode, ImageSampler};
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 /// CPU-side heightfield water simulation.
 /// Uses the wave equation with velocity verlet integration,
@@ -32,7 +32,13 @@ pub struct WaterSim {
 }
 
 impl WaterSim {
-    pub fn new(width: usize, height: usize, damping: f32, speed: f32, images: &mut Assets<Image>) -> Self {
+    pub fn new(
+        width: usize,
+        height: usize,
+        damping: f32,
+        speed: f32,
+        images: &mut Assets<Image>,
+    ) -> Self {
         let n = width * height;
         let texture_handle = images.add(Self::create_image(width, height));
         Self {
@@ -109,10 +115,26 @@ impl WaterSim {
                     let idx = y * w + x;
 
                     // Sample neighbors with clamped boundaries
-                    let left = if x > 0 { self.heights[idx - 1] } else { self.heights[idx] };
-                    let right = if x < w - 1 { self.heights[idx + 1] } else { self.heights[idx] };
-                    let up = if y > 0 { self.heights[idx - w] } else { self.heights[idx] };
-                    let down = if y < h - 1 { self.heights[idx + w] } else { self.heights[idx] };
+                    let left = if x > 0 {
+                        self.heights[idx - 1]
+                    } else {
+                        self.heights[idx]
+                    };
+                    let right = if x < w - 1 {
+                        self.heights[idx + 1]
+                    } else {
+                        self.heights[idx]
+                    };
+                    let up = if y > 0 {
+                        self.heights[idx - w]
+                    } else {
+                        self.heights[idx]
+                    };
+                    let down = if y < h - 1 {
+                        self.heights[idx + w]
+                    } else {
+                        self.heights[idx]
+                    };
 
                     let average = (left + right + up + down) * 0.25;
                     self.velocity[idx] += (average - self.heights[idx]) * self.speed;
@@ -135,8 +157,16 @@ impl WaterSim {
                 let idx = y * w + x;
                 let val = self.heights[idx];
 
-                let val_right = if x < w - 1 { self.heights[idx + 1] } else { val };
-                let val_down = if y < h - 1 { self.heights[idx + w] } else { val };
+                let val_right = if x < w - 1 {
+                    self.heights[idx + 1]
+                } else {
+                    val
+                };
+                let val_down = if y < h - 1 {
+                    self.heights[idx + w]
+                } else {
+                    val
+                };
 
                 // Tangent vectors
                 let dx = Vec3::new(inv_w, val_right - val, 0.0);
@@ -151,7 +181,9 @@ impl WaterSim {
 
     /// Upload current simulation state to GPU texture.
     pub fn upload(&self, images: &mut Assets<Image>) {
-        let Some(image) = images.get_mut(&self.texture_handle) else { return };
+        let Some(image) = images.get_mut(&self.texture_handle) else {
+            return;
+        };
         let data = image.data.as_mut().expect("image data");
         let n = self.width * self.height;
 

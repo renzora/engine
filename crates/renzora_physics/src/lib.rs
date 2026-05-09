@@ -515,4 +515,3 @@ pub fn pause(world: &mut World) {
         // TODO: rapier pause
     }
 }
-

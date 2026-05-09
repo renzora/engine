@@ -22,8 +22,7 @@ pub fn decompress_lz4(compressed: &[u8], max_output: usize) -> UsdResult<Vec<u8>
     }
 
     // TfFastCompression prepends i64 uncompressed size
-    let uncompressed_size =
-        i64::from_le_bytes(compressed[0..8].try_into().unwrap()) as usize;
+    let uncompressed_size = i64::from_le_bytes(compressed[0..8].try_into().unwrap()) as usize;
     let lz4_data = &compressed[8..];
 
     let output_size = uncompressed_size.min(max_output);
@@ -57,7 +56,9 @@ pub fn read_compressed_ints_with_count(
 
     // Read u64 compressed size prefix
     if *pos + 8 > data.len() {
-        return Err(UsdError::Parse("Compressed ints: truncated size prefix".into()));
+        return Err(UsdError::Parse(
+            "Compressed ints: truncated size prefix".into(),
+        ));
     }
 
     let comp_size = u64::from_le_bytes(data[*pos..*pos + 8].try_into().unwrap()) as usize;
@@ -70,7 +71,9 @@ pub fn read_compressed_ints_with_count(
     if *pos + comp_size > data.len() {
         return Err(UsdError::Parse(format!(
             "Compressed ints: need {} compressed bytes at {}, have {}",
-            comp_size, *pos, data.len() - *pos
+            comp_size,
+            *pos,
+            data.len() - *pos
         )));
     }
 
@@ -169,9 +172,8 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
             2 => {
                 // Medium: i16
                 if vint_pos + 2 <= vints.len() {
-                    let v = i16::from_le_bytes(
-                        vints[vint_pos..vint_pos + 2].try_into().unwrap(),
-                    ) as i32;
+                    let v = i16::from_le_bytes(vints[vint_pos..vint_pos + 2].try_into().unwrap())
+                        as i32;
                     vint_pos += 2;
                     v
                 } else {
@@ -181,9 +183,7 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
             3 => {
                 // Large: i32
                 if vint_pos + 4 <= vints.len() {
-                    let v = i32::from_le_bytes(
-                        vints[vint_pos..vint_pos + 4].try_into().unwrap(),
-                    );
+                    let v = i32::from_le_bytes(vints[vint_pos..vint_pos + 4].try_into().unwrap());
                     vint_pos += 4;
                     v
                 } else {

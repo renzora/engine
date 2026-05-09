@@ -38,13 +38,7 @@ fn main() {
     App::new()
         .add_plugins(MinimalPlugins)
         .add_plugins(AttributesPlugin)
-        .add_systems(
-            Startup,
-            (
-                spawn,
-                demo.after(spawn),
-            ),
-        )
+        .add_systems(Startup, (spawn, demo.after(spawn)))
         .run();
 }
 
@@ -128,7 +122,11 @@ fn demo(handles: Res<Entities>, mut attributes: AttributesMut) {
     println!("=== Necromancer equips Crown ===\n");
     attributes.register_source(necro, "Equipment", crown);
     attributes
-        .add_expr_modifier(necro, "IncreasedMinionLife", "IncreasedMinionLife@Equipment")
+        .add_expr_modifier(
+            necro,
+            "IncreasedMinionLife",
+            "IncreasedMinionLife@Equipment",
+        )
         .expect("valid expression");
 
     let necro_bonus = attributes.evaluate(necro, "IncreasedMinionLife");
@@ -165,7 +163,11 @@ fn demo(handles: Res<Entities>, mut attributes: AttributesMut) {
     // Equip on warlock
     attributes.register_source(warlock, "Equipment", crown);
     attributes
-        .add_expr_modifier(warlock, "IncreasedMinionLife", "IncreasedMinionLife@Equipment")
+        .add_expr_modifier(
+            warlock,
+            "IncreasedMinionLife",
+            "IncreasedMinionLife@Equipment",
+        )
         .expect("valid expression");
 
     // Re-point the skeleton's owner

@@ -122,8 +122,7 @@ fn handle_sprite_drop(
             }
             let pos = gt.translation();
             let half = size * 0.5;
-            if (world_pos_2d.x - pos.x).abs() <= half.x
-                && (world_pos_2d.y - pos.y).abs() <= half.y
+            if (world_pos_2d.x - pos.x).abs() <= half.x && (world_pos_2d.y - pos.y).abs() <= half.y
             {
                 match best {
                     None => best = Some((entity, pos.z)),

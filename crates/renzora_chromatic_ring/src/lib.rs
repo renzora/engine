@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "chromatic_ring.wgsl", name = "Chromatic Ring", icon = "CIRCLE")]
+#[renzora_macros::post_process(
+    shader = "chromatic_ring.wgsl",
+    name = "Chromatic Ring",
+    icon = "CIRCLE"
+)]
 pub struct ChromaticRingSettings {
     #[field(speed = 0.001, min = 0.0, max = 0.05, default = 0.008)]
     pub intensity: f32,
@@ -22,7 +26,9 @@ impl Plugin for ChromaticRingPlugin {
         info!("[runtime] ChromaticRingPlugin");
         bevy::asset::embedded_asset!(app, "chromatic_ring.wgsl");
         app.register_type::<ChromaticRingSettings>();
-        app.add_plugins(renzora_postprocess::PostProcessPlugin::<ChromaticRingSettings>::default());
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<
+            ChromaticRingSettings,
+        >::default());
         #[cfg(feature = "editor")]
         app.register_inspectable::<ChromaticRingSettings>();
     }

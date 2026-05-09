@@ -105,9 +105,7 @@ pub enum DragMode {
     None,
     /// Translate the entity. `offset` is `entity_translation - cursor_world`
     /// captured at drag start so the entity stays pinned to the grab point.
-    Move {
-        offset: Vec2,
-    },
+    Move { offset: Vec2 },
     /// Resize via one of the eight handles. Initial bounds are captured
     /// at drag start so the math doesn't accumulate float drift.
     Resize {
@@ -368,9 +366,12 @@ pub fn pick_2d_system(
             let init_min = translation - half;
             let init_max = translation + half;
             for (handle, world_pos) in handle_world_positions(translation, half) {
-                let Some(panel_pos) =
-                    world_to_panel(Vec3::new(world_pos.x, world_pos.y, t3d.z), &viewport, camera, cam_gt)
-                else {
+                let Some(panel_pos) = world_to_panel(
+                    Vec3::new(world_pos.x, world_pos.y, t3d.z),
+                    &viewport,
+                    camera,
+                    cam_gt,
+                ) else {
                     continue;
                 };
                 if (panel_pos - cursor_panel).length() <= HANDLE_HIT_RADIUS {
@@ -402,12 +403,14 @@ pub fn pick_2d_system(
         }
         let pos = gt.translation();
         let half = size * 0.5;
-        let aabb_hit = (cursor_world.x - pos.x).abs() <= half.x
-            && (cursor_world.y - pos.y).abs() <= half.y;
+        let aabb_hit =
+            (cursor_world.x - pos.x).abs() <= half.x && (cursor_world.y - pos.y).abs() <= half.y;
         if !aabb_hit {
             continue;
         }
-        if let Some(alpha) = sample_sprite_alpha(sprite, &images, cursor_world, pos.truncate(), size) {
+        if let Some(alpha) =
+            sample_sprite_alpha(sprite, &images, cursor_world, pos.truncate(), size)
+        {
             if alpha <= 0.0 {
                 continue;
             }
@@ -431,14 +434,28 @@ pub fn pick_2d_system(
     }
 }
 
+/// Snap a value to the nearest multiple of `grid`. Returns the value
+/// unchanged when `grid <= 0`.
+#[inline]
+fn snap_to_grid(value: f32, grid: f32) -> f32 {
+    if grid <= 0.0 {
+        value
+    } else {
+        (value / grid).round() * grid
+    }
+}
+
 /// Execute the active drag: Move snaps `Transform.translation` to
 /// `cursor_world + offset`; Resize recomputes size + translation from
-/// the captured AABB and the moving cursor. Releases drag when the
-/// mouse button is released or the cursor leaves the viewport.
+/// the captured AABB and the moving cursor. When the viewport's
+/// translate-snap toggle is on, both modes snap to its grid step so
+/// sprites land on whole pixel / tile boundaries. Releases drag when
+/// the mouse button is released or the cursor leaves the viewport.
 pub fn drag_move_2d_system(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     play_mode: Option<Res<PlayModeState>>,
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -471,8 +488,16 @@ pub fn drag_move_2d_system(
         } = drag.mode
         {
             return resize_step(
-                handle, init_min, init_max, shift, drag.entity, &viewport, &windows,
-                &cameras_2d, &mut transforms, &mut sprites,
+                handle,
+                init_min,
+                init_max,
+                shift,
+                drag.entity,
+                &viewport,
+                &windows,
+                &cameras_2d,
+                &mut transforms,
+                &mut sprites,
             );
         }
         return;
@@ -492,8 +517,16 @@ pub fn drag_move_2d_system(
     let Ok(mut tr) = transforms.get_mut(entity) else {
         return;
     };
-    tr.translation.x = cursor_world.x + offset.x;
-    tr.translation.y = cursor_world.y + offset.y;
+    let mut new_x = cursor_world.x + offset.x;
+    let mut new_y = cursor_world.y + offset.y;
+    if let Some(s) = settings.as_deref() {
+        if s.snap.translate_enabled {
+            new_x = snap_to_grid(new_x, s.snap.translate_snap);
+            new_y = snap_to_grid(new_y, s.snap.translate_snap);
+        }
+    }
+    tr.translation.x = new_x;
+    tr.translation.y = new_y;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -586,7 +619,9 @@ pub fn keyboard_nudge_2d(
     if !viewport.map_or(false, |v| v.hovered) {
         return;
     }
-    let Some(entity) = selection.get() else { return };
+    let Some(entity) = selection.get() else {
+        return;
+    };
 
     let mut delta = Vec2::ZERO;
     if keys.just_pressed(KeyCode::ArrowLeft) {
@@ -720,10 +755,8 @@ pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::R
     }
 
     for (_, pos) in handles {
-        let h_rect = egui::Rect::from_center_size(
-            pos,
-            egui::Vec2::new(HANDLE_DRAW_SIZE, HANDLE_DRAW_SIZE),
-        );
+        let h_rect =
+            egui::Rect::from_center_size(pos, egui::Vec2::new(HANDLE_DRAW_SIZE, HANDLE_DRAW_SIZE));
         painter.rect_filled(h_rect, 1.0, handle_fill);
         painter.rect_stroke(h_rect, 1.0, handle_stroke, egui::StrokeKind::Inside);
     }

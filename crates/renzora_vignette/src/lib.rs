@@ -1,18 +1,18 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
+use serde::{Deserialize, Serialize};
 
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -67,34 +67,101 @@ fn inspector_entry() -> InspectorEntry {
         icon: regular::APERTURE,
         category: "post_process",
         has_fn: |world, entity| world.get::<VignetteSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(VignetteSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<VignetteSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<VignetteSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(VignetteSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<VignetteSettings>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<VignetteSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
+                s.enabled = if val { 1.0 } else { 0.0 };
+            }
+        }),
         fields: vec![
             FieldDef {
                 name: "Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 5.0 },
-                get_fn: |world, entity| world.get::<VignetteSettings>(entity).map(|s| FieldValue::Float(s.intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) { s.intensity = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 5.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<VignetteSettings>(entity)
+                        .map(|s| FieldValue::Float(s.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
+                            s.intensity = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Radius",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<VignetteSettings>(entity).map(|s| FieldValue::Float(s.radius)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) { s.radius = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<VignetteSettings>(entity)
+                        .map(|s| FieldValue::Float(s.radius))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
+                            s.radius = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Smoothness",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<VignetteSettings>(entity).map(|s| FieldValue::Float(s.smoothness)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) { s.smoothness = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<VignetteSettings>(entity)
+                        .map(|s| FieldValue::Float(s.smoothness))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
+                            s.smoothness = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Color",
                 field_type: FieldType::Color,
-                get_fn: |world, entity| world.get::<VignetteSettings>(entity).map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b])),
-                set_fn: |world, entity, val| { if let FieldValue::Color([r, g, b]) = val { if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) { s.color_r = r; s.color_g = g; s.color_b = b; } } },
+                get_fn: |world, entity| {
+                    world
+                        .get::<VignetteSettings>(entity)
+                        .map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b]))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
+                            s.color_r = r;
+                            s.color_g = g;
+                            s.color_b = b;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,
@@ -109,9 +176,7 @@ impl Plugin for VignettePlugin {
         info!("[runtime] VignettePlugin");
         bevy::asset::embedded_asset!(app, "vignette.wgsl");
         app.register_type::<VignetteSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<VignetteSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<VignetteSettings>::default());
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

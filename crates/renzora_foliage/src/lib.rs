@@ -3,8 +3,8 @@ pub mod material;
 pub mod mesh_gen;
 pub mod systems;
 
-use bevy::prelude::*;
 use bevy::pbr::MaterialPlugin;
+use bevy::prelude::*;
 
 pub struct FoliagePlugin;
 

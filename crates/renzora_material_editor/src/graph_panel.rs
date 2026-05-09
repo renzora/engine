@@ -220,8 +220,9 @@ impl EditorPanel for MaterialGraphPanel {
                     // Save the initial file. Clone the graph for the save so
                     // the outer binding stays alive — editor state below
                     // mirrors back the (newly-linked) graph.
-                    if let Some(project_root) =
-                        world.get_resource::<CurrentProject>().map(|p| p.path.clone())
+                    if let Some(project_root) = world
+                        .get_resource::<CurrentProject>()
+                        .map(|p| p.path.clone())
                     {
                         let dir = project_root.join("materials");
                         let _ = std::fs::create_dir_all(&dir);

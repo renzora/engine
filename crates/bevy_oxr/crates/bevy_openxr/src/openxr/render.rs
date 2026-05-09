@@ -319,7 +319,11 @@ pub fn insert_texture_views(
     }
 }
 
-pub fn wait_image(mut swapchain: ResMut<OxrSwapchain>, state: Res<OxrFrameState>, active: Res<OxrFrameActive>) {
+pub fn wait_image(
+    mut swapchain: ResMut<OxrSwapchain>,
+    state: Res<OxrFrameState>,
+    active: Res<OxrFrameActive>,
+) {
     if active.0 && state.should_render {
         if let Err(e) = swapchain.wait_image(openxr::Duration::INFINITE) {
             warn!("XR wait_image failed (session may have ended): {e}");
@@ -352,14 +356,20 @@ pub fn add_texture_view(
 pub fn begin_frame(mut frame_stream: ResMut<OxrFrameStream>, mut active: ResMut<OxrFrameActive>) {
     active.0 = false;
     match frame_stream.begin() {
-        Ok(()) => { active.0 = true; }
+        Ok(()) => {
+            active.0 = true;
+        }
         Err(e) => {
             warn!("XR begin_frame failed (session may have ended): {e}");
         }
     }
 }
 
-pub fn release_image(mut swapchain: ResMut<OxrSwapchain>, state: Res<OxrFrameState>, active: Res<OxrFrameActive>) {
+pub fn release_image(
+    mut swapchain: ResMut<OxrSwapchain>,
+    state: Res<OxrFrameState>,
+    active: Res<OxrFrameActive>,
+) {
     if !active.0 || !state.should_render {
         return;
     }

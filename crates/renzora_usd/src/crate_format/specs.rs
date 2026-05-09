@@ -6,9 +6,9 @@
 //!   [u64 compSize][data]: integer-coded u32 fieldset indices
 //!   [u64 compSize][data]: integer-coded u32 spec types
 
-use crate::UsdResult;
 use super::compression;
 use super::sections::{TableOfContents, SECTION_SPECS};
+use crate::UsdResult;
 
 pub const SPEC_TYPE_PRIM: u32 = 1;
 pub const SPEC_TYPE_ATTRIBUTE: u32 = 2;
@@ -29,13 +29,19 @@ pub fn read_specs(data: &[u8], toc: &TableOfContents) -> UsdResult<Vec<Spec>> {
 
     let s = section.offset as usize;
     let e = s + section.size as usize;
-    if e > data.len() { return Err(crate::UsdError::Parse("SPECS truncated".into())); }
+    if e > data.len() {
+        return Err(crate::UsdError::Parse("SPECS truncated".into()));
+    }
     let sd = &data[s..e];
-    if sd.len() < 8 { return Ok(Vec::new()); }
+    if sd.len() < 8 {
+        return Ok(Vec::new());
+    }
 
     let num_specs = u64::from_le_bytes(sd[0..8].try_into().unwrap()) as usize;
     let mut pos = 8usize;
-    if num_specs == 0 { return Ok(Vec::new()); }
+    if num_specs == 0 {
+        return Ok(Vec::new());
+    }
 
     let path_indices = compression::read_compressed_ints_with_count(sd, &mut pos, num_specs)?;
     let fieldset_indices = compression::read_compressed_ints_with_count(sd, &mut pos, num_specs)?;

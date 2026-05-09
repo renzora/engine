@@ -2,9 +2,9 @@
 
 use bevy::prelude::*;
 
+use super::PreviewMode;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
 use crate::scene::PreviewSubject;
-use super::PreviewMode;
 
 #[derive(Component)]
 pub struct PreviewParticle;
@@ -34,7 +34,9 @@ fn handle_particle_commands(
                     commands.entity(entity).insert(Visibility::Hidden);
                 }
 
-                match serde_json::from_str::<renzora_hanabi::HanabiEffectDefinition>(&event.definition) {
+                match serde_json::from_str::<renzora_hanabi::HanabiEffectDefinition>(
+                    &event.definition,
+                ) {
                     Ok(definition) => {
                         commands.spawn((
                             Transform::IDENTITY,

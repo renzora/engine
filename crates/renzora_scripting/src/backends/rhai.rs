@@ -686,12 +686,27 @@ fn register_api(engine: &mut Engine) {
         };
         let mut m = Map::new();
         m.insert("state".into(), Dynamic::from(snapshot.state.to_string()));
-        m.insert("total_files".into(), Dynamic::from(snapshot.total_files as i64));
-        m.insert("loaded_files".into(), Dynamic::from(snapshot.loaded_files as i64));
-        m.insert("total_bytes".into(), Dynamic::from(snapshot.total_bytes as i64));
-        m.insert("loaded_bytes".into(), Dynamic::from(snapshot.loaded_bytes as i64));
+        m.insert(
+            "total_files".into(),
+            Dynamic::from(snapshot.total_files as i64),
+        );
+        m.insert(
+            "loaded_files".into(),
+            Dynamic::from(snapshot.loaded_files as i64),
+        );
+        m.insert(
+            "total_bytes".into(),
+            Dynamic::from(snapshot.total_bytes as i64),
+        );
+        m.insert(
+            "loaded_bytes".into(),
+            Dynamic::from(snapshot.loaded_bytes as i64),
+        );
         m.insert("fraction".into(), Dynamic::from(snapshot.fraction as f64));
-        m.insert("elapsed_secs".into(), Dynamic::from(snapshot.elapsed_secs as f64));
+        m.insert(
+            "elapsed_secs".into(),
+            Dynamic::from(snapshot.elapsed_secs as f64),
+        );
         match snapshot.current_path {
             Some(p) => m.insert("current_path".into(), Dynamic::from(p)),
             None => m.insert("current_path".into(), Dynamic::UNIT),

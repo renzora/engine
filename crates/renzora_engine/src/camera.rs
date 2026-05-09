@@ -102,10 +102,7 @@ pub fn spawn_editor_camera(
 ///
 /// Only one of the two editor cameras is ever active at a time, so they
 /// can safely share the render target.
-pub fn spawn_editor_2d_camera(
-    mut commands: Commands,
-    render_target: Res<ViewportRenderTarget>,
-) {
+pub fn spawn_editor_2d_camera(mut commands: Commands, render_target: Res<ViewportRenderTarget>) {
     let mut entity = commands.spawn((
         Camera2d,
         Camera {
@@ -243,30 +240,28 @@ pub fn editor_2d_camera_controller(
                 // Capture cursor world position BEFORE scale change so we
                 // can adjust the camera translation to keep that world
                 // point under the cursor.
-                let cursor_world_before = viewport
-                    .as_deref()
-                    .and_then(|vs| {
-                        let window = windows.single().ok()?;
-                        let cursor = window.cursor_position()?;
-                        let in_rect = cursor - vs.screen_position;
-                        if in_rect.x < 0.0
-                            || in_rect.y < 0.0
-                            || in_rect.x >= vs.screen_size.x
-                            || in_rect.y >= vs.screen_size.y
-                        {
-                            return None;
-                        }
-                        let image_size = vs.current_size.as_vec2();
-                        if image_size.x <= 0.0 || image_size.y <= 0.0 {
-                            return None;
-                        }
-                        let scaled = Vec2::new(
-                            in_rect.x * image_size.x / vs.screen_size.x,
-                            in_rect.y * image_size.y / vs.screen_size.y,
-                        );
-                        let cam_gt = GlobalTransform::from(*transform);
-                        camera.viewport_to_world_2d(&cam_gt, scaled).ok()
-                    });
+                let cursor_world_before = viewport.as_deref().and_then(|vs| {
+                    let window = windows.single().ok()?;
+                    let cursor = window.cursor_position()?;
+                    let in_rect = cursor - vs.screen_position;
+                    if in_rect.x < 0.0
+                        || in_rect.y < 0.0
+                        || in_rect.x >= vs.screen_size.x
+                        || in_rect.y >= vs.screen_size.y
+                    {
+                        return None;
+                    }
+                    let image_size = vs.current_size.as_vec2();
+                    if image_size.x <= 0.0 || image_size.y <= 0.0 {
+                        return None;
+                    }
+                    let scaled = Vec2::new(
+                        in_rect.x * image_size.x / vs.screen_size.x,
+                        in_rect.y * image_size.y / vs.screen_size.y,
+                    );
+                    let cam_gt = GlobalTransform::from(*transform);
+                    camera.viewport_to_world_2d(&cam_gt, scaled).ok()
+                });
 
                 let old_scale = o.scale;
                 let step: f32 = 0.9;

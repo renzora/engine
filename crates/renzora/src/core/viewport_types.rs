@@ -314,6 +314,10 @@ pub struct ViewportSettings {
     pub visualization_mode: VisualizationMode,
     pub show_grid: bool,
     pub show_subgrid: bool,
+    /// 2D grid line colour (R, G, B, A in 0–255). Alpha controls the
+    /// minor-line opacity; major lines auto-bump the alpha by ~3× for
+    /// the typical Photoshop-style minor/major hierarchy.
+    pub grid_color_2d: [u8; 4],
     pub show_axis_gizmo: bool,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
@@ -338,6 +342,7 @@ impl Default for ViewportSettings {
             visualization_mode: VisualizationMode::default(),
             show_grid: true,
             show_subgrid: true,
+            grid_color_2d: [255, 255, 255, 18],
             show_axis_gizmo: true,
             show_scene_icons: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
@@ -370,6 +375,11 @@ pub struct PersistedViewportSettings {
     pub visualization_mode: String,
     pub show_grid: bool,
     pub show_subgrid: bool,
+    /// 2D grid line colour (R, G, B, A in 0–255). Defaults to subtle
+    /// white when missing; major / minor split is automatic in the
+    /// drawer.
+    #[serde(default = "default_grid_color_2d")]
+    pub grid_color_2d: [u8; 4],
     pub show_axis_gizmo: bool,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
@@ -412,6 +422,7 @@ impl PersistedViewportSettings {
             visualization_mode: format!("{:?}", s.visualization_mode),
             show_grid: s.show_grid,
             show_subgrid: s.show_subgrid,
+            grid_color_2d: s.grid_color_2d,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
             collision_always: matches!(
@@ -460,6 +471,7 @@ impl PersistedViewportSettings {
         };
         s.show_grid = self.show_grid;
         s.show_subgrid = self.show_subgrid;
+        s.grid_color_2d = self.grid_color_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_scene_icons = self.show_scene_icons;
         s.collision_gizmo_visibility = if self.collision_always {
@@ -503,6 +515,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_grid_color_2d() -> [u8; 4] {
+    [255, 255, 255, 18]
+}
+
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
 /// The runtime ignores this section, and `renzora_export` strips it from
 /// shipped builds.
@@ -531,6 +547,7 @@ mod tests {
             visualization_mode: VisualizationMode::Normals,
             show_grid: false,
             show_subgrid: false,
+            grid_color_2d: [128, 200, 255, 60],
             show_axis_gizmo: false,
             show_scene_icons: false,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,

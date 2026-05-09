@@ -2,9 +2,9 @@
 
 use bevy::prelude::*;
 
-use crate::bridge::{PreviewCommand, PreviewCommandQueue};
-use crate::scene::{PreviewSubject, OrbitState};
 use super::PreviewMode;
+use crate::bridge::{PreviewCommand, PreviewCommandQueue};
+use crate::scene::{OrbitState, PreviewSubject};
 
 #[derive(Resource, Default)]
 pub struct ModelPreviewState {
@@ -91,7 +91,10 @@ fn auto_fit_model(
     orbit.elevation = 0.4;
     state.fitted = true;
 
-    info!("[preview] Model auto-fit: size={size:.2}, distance={:.2}", orbit.distance);
+    info!(
+        "[preview] Model auto-fit: size={size:.2}, distance={:.2}",
+        orbit.distance
+    );
 }
 
 fn on_exit_model(

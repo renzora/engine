@@ -25,4 +25,3 @@ pub use extension::*;
 pub use get_handler::{AssetProgressBridge, AssetProgressSnapshot};
 pub use input::*;
 pub use plugin::*;
-

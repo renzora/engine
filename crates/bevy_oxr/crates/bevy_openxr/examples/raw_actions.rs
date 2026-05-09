@@ -11,7 +11,7 @@ use bevy_mod_openxr::{
     spaces::OxrSpaceExt,
 };
 use bevy_mod_xr::{
-    session::{session_available, XrSessionCreated},
+    session::{XrSessionCreated, session_available},
     spaces::XrSpace,
 };
 use openxr::Posef;
@@ -118,11 +118,7 @@ fn spawn_hands(
     let left_space = XrSpace::from_openxr_space(
         actions
             .left
-            .create_space(
-                session.deref().deref(),
-                openxr::Path::NULL,
-                Posef::IDENTITY,
-            )
+            .create_space(session.deref().deref(), openxr::Path::NULL, Posef::IDENTITY)
             .unwrap(),
     );
     let right_space = session

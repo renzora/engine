@@ -38,7 +38,7 @@ pub use core::*;
 // `.dylib`. Originally lived in a separate `dynamic_plugin_meta` crate;
 // folded in here so plugin authors only ever need `bevy` + `renzora`.
 mod plugin_meta;
-pub use plugin_meta::{PluginScope, StaticPlugin, for_each_static_plugin};
+pub use plugin_meta::{for_each_static_plugin, PluginScope, StaticPlugin};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
 // ── App lifecycle state ──────────────────────────────────────────────────

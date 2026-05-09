@@ -1,8 +1,13 @@
 use std::{mem, ptr};
 
 use bevy_app::{App, First, Plugin};
-use bevy_ecs::{message::{Message, MessageWriter}, resource::Resource, schedule::IntoScheduleConfigs as _, system::{NonSendMut, Res}};
-use openxr::{sys, Event};
+use bevy_ecs::{
+    message::{Message, MessageWriter},
+    resource::Resource,
+    schedule::IntoScheduleConfigs as _,
+    system::{NonSendMut, Res},
+};
+use openxr::{Event, sys};
 
 use crate::{
     next_chain::{OxrNextChainStructBase, OxrNextChainStructProvider},

@@ -54,7 +54,15 @@
 //!
 //!
 use bevy_app::{App, Plugin, PreUpdate, Startup, Update};
-use bevy_ecs::{component::Component, entity::Entity, hierarchy::Children, message::MessageWriter, query::With, schedule::{IntoScheduleConfigs as _, SystemSet}, system::{Commands, Query, Res, ResMut}};
+use bevy_ecs::{
+    component::Component,
+    entity::Entity,
+    hierarchy::Children,
+    message::MessageWriter,
+    query::With,
+    schedule::{IntoScheduleConfigs as _, SystemSet},
+    system::{Commands, Query, Res, ResMut},
+};
 use bevy_log::info;
 use bevy_mod_openxr::{
     action_binding::OxrSuggestActionBinding,

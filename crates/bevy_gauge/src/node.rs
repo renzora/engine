@@ -91,7 +91,10 @@ impl AttributeNode {
 
     /// Evaluate this node: evaluate **all** modifiers (ignoring tags), then reduce.
     pub fn evaluate(&self, context: &AttributeContext) -> f32 {
-        let iter = self.modifiers.iter().map(|tm| tm.modifier.evaluate(context));
+        let iter = self
+            .modifiers
+            .iter()
+            .map(|tm| tm.modifier.evaluate(context));
         self.reduce_iter(iter)
     }
 
@@ -211,10 +214,7 @@ mod tests {
         assert_eq!(node.evaluate_tagged(&ctx, melee), 5.0);
 
         // FIRE|PHYSICAL|MELEE: all three match = 25 + 10 + 5 = 40
-        assert_eq!(
-            node.evaluate_tagged(&ctx, fire | physical | melee),
-            40.0
-        );
+        assert_eq!(node.evaluate_tagged(&ctx, fire | physical | melee), 40.0);
     }
 
     #[test]

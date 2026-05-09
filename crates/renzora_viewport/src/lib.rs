@@ -396,7 +396,8 @@ impl EditorPanel for ViewportPanel {
             renzora::core::viewport_types::ViewportView::Three
             | renzora::core::viewport_types::ViewportView::Two => {}
             renzora::core::viewport_types::ViewportView::Ui => {
-                if let Some(panel) = world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>() {
+                if let Some(panel) = world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>()
+                {
                     panel.ui(ui, world);
                 }
                 return;
@@ -1248,17 +1249,11 @@ fn sync_viewport_camera_activation(
     settings: Option<Res<ViewportSettings>>,
     mut cameras_3d: Query<
         &mut Camera,
-        (
-            With<EditorCamera>,
-            Without<renzora::core::EditorCamera2d>,
-        ),
+        (With<EditorCamera>, Without<renzora::core::EditorCamera2d>),
     >,
     mut cameras_2d: Query<
         &mut Camera,
-        (
-            With<renzora::core::EditorCamera2d>,
-            Without<EditorCamera>,
-        ),
+        (With<renzora::core::EditorCamera2d>, Without<EditorCamera>),
     >,
 ) {
     use renzora::core::viewport_types::ViewportView;

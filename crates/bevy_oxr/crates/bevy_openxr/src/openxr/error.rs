@@ -33,9 +33,7 @@ pub enum OxrError {
     UnavailableExtensions(UnavailableExts),
     #[error("Could not meet graphics requirements for platform. See console for details")]
     FailedGraphicsRequirements,
-    #[error(
-        "Tried to use item {item} with backend {backend}. Expected backend {expected_backend}"
-    )]
+    #[error("Tried to use item {item} with backend {backend}. Expected backend {expected_backend}")]
     GraphicsBackendMismatch {
         item: &'static str,
         backend: &'static str,

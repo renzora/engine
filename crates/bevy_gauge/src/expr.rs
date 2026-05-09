@@ -1,7 +1,7 @@
 use std::fmt;
 
+use crate::attribute_id::{AttributeId, Interner};
 use crate::context::AttributeContext;
-use crate::attribute_id::{Interner, AttributeId};
 use crate::tags::{TagMask, TagResolver};
 
 // ---------------------------------------------------------------------------
@@ -100,9 +100,16 @@ pub enum Dependency {
     /// A local attribute reference (e.g., `Strength`).
     Local(AttributeId),
     /// A cross-entity attribute reference (e.g., `Strength@Wielder`).
-    Source { alias: AttributeId, attribute: AttributeId },
+    Source {
+        alias: AttributeId,
+        attribute: AttributeId,
+    },
     /// A cross-entity attribute reference filtered by tags (e.g., `Damage{FIRE}@weapon`).
-    SourceTagQuery { alias: AttributeId, attribute: AttributeId, mask: TagMask },
+    SourceTagQuery {
+        alias: AttributeId,
+        attribute: AttributeId,
+        mask: TagMask,
+    },
     /// A local attribute reference filtered by tags (e.g., `Damage.Added{FIRE|SPELL}`).
     ///
     /// The expression depends on the synthetic tag-query node. The synthetic
@@ -161,7 +168,11 @@ impl fmt::Display for CompileError {
             CompileError::UnexpectedEof => write!(f, "unexpected end of expression"),
             CompileError::Expected(msg) => write!(f, "expected {}", msg),
             CompileError::UnknownFunction(name) => write!(f, "unknown function '{}'", name),
-            CompileError::UnknownTag(name) => write!(f, "unknown tag '{}' (is it registered in TagResolver?)", name),
+            CompileError::UnknownTag(name) => write!(
+                f,
+                "unknown tag '{}' (is it registered in TagResolver?)",
+                name
+            ),
             CompileError::EmptyExpression => write!(f, "empty expression"),
             CompileError::UnresolvableTagMask(mask) => write!(
                 f,
@@ -196,12 +207,12 @@ enum Token {
     LParen,
     RParen,
     Comma,
-    At,           // @ for cross-entity references
-    Dot,          // . for attribute path separators
-    LBrace,       // { for tag query open
-    RBrace,       // } for tag query close
-    Pipe,         // | for tag OR within braces
-    ColonColon,   // :: for namespaced tags
+    At,         // @ for cross-entity references
+    Dot,        // . for attribute path separators
+    LBrace,     // { for tag query open
+    RBrace,     // } for tag query close
+    Pipe,       // | for tag OR within braces
+    ColonColon, // :: for namespaced tags
     // Comparison
     GreaterThan,  // >
     LessThan,     // <
@@ -210,8 +221,8 @@ enum Token {
     EqualEqual,   // ==
     BangEqual,    // !=
     // Logical
-    AmpAmp,       // &&
-    PipePipe,     // ||
+    AmpAmp,   // &&
+    PipePipe, // ||
     Eof,
 }
 
@@ -243,45 +254,94 @@ impl Tokenizer {
 
         let ch = self.chars[self.pos];
         match ch {
-            '+' => { self.pos += 1; Ok(Token::Plus) }
-            '-' => { self.pos += 1; Ok(Token::Minus) }
-            '*' => { self.pos += 1; Ok(Token::Star) }
-            '/' => { self.pos += 1; Ok(Token::Slash) }
-            '(' => { self.pos += 1; Ok(Token::LParen) }
-            ')' => { self.pos += 1; Ok(Token::RParen) }
-            ',' => { self.pos += 1; Ok(Token::Comma) }
-            '@' => { self.pos += 1; Ok(Token::At) }
-            '{' => { self.pos += 1; Ok(Token::LBrace) }
-            '}' => { self.pos += 1; Ok(Token::RBrace) }
-            '|' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '|' => {
-                self.pos += 2; Ok(Token::PipePipe)
+            '+' => {
+                self.pos += 1;
+                Ok(Token::Plus)
             }
-            '|' => { self.pos += 1; Ok(Token::Pipe) }
+            '-' => {
+                self.pos += 1;
+                Ok(Token::Minus)
+            }
+            '*' => {
+                self.pos += 1;
+                Ok(Token::Star)
+            }
+            '/' => {
+                self.pos += 1;
+                Ok(Token::Slash)
+            }
+            '(' => {
+                self.pos += 1;
+                Ok(Token::LParen)
+            }
+            ')' => {
+                self.pos += 1;
+                Ok(Token::RParen)
+            }
+            ',' => {
+                self.pos += 1;
+                Ok(Token::Comma)
+            }
+            '@' => {
+                self.pos += 1;
+                Ok(Token::At)
+            }
+            '{' => {
+                self.pos += 1;
+                Ok(Token::LBrace)
+            }
+            '}' => {
+                self.pos += 1;
+                Ok(Token::RBrace)
+            }
+            '|' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '|' => {
+                self.pos += 2;
+                Ok(Token::PipePipe)
+            }
+            '|' => {
+                self.pos += 1;
+                Ok(Token::Pipe)
+            }
             '&' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '&' => {
-                self.pos += 2; Ok(Token::AmpAmp)
+                self.pos += 2;
+                Ok(Token::AmpAmp)
             }
             '>' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '=' => {
-                self.pos += 2; Ok(Token::GreaterEqual)
+                self.pos += 2;
+                Ok(Token::GreaterEqual)
             }
-            '>' => { self.pos += 1; Ok(Token::GreaterThan) }
+            '>' => {
+                self.pos += 1;
+                Ok(Token::GreaterThan)
+            }
             '<' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '=' => {
-                self.pos += 2; Ok(Token::LessEqual)
+                self.pos += 2;
+                Ok(Token::LessEqual)
             }
-            '<' => { self.pos += 1; Ok(Token::LessThan) }
+            '<' => {
+                self.pos += 1;
+                Ok(Token::LessThan)
+            }
             '=' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '=' => {
-                self.pos += 2; Ok(Token::EqualEqual)
+                self.pos += 2;
+                Ok(Token::EqualEqual)
             }
             '!' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '=' => {
-                self.pos += 2; Ok(Token::BangEqual)
+                self.pos += 2;
+                Ok(Token::BangEqual)
             }
             ':' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == ':' => {
-                self.pos += 2; Ok(Token::ColonColon)
+                self.pos += 2;
+                Ok(Token::ColonColon)
             }
             '.' if self.pos + 1 < self.chars.len() && self.chars[self.pos + 1].is_ascii_digit() => {
                 // Decimal number starting with '.' like .5
                 self.read_number()
             }
-            '.' => { self.pos += 1; Ok(Token::Dot) }
+            '.' => {
+                self.pos += 1;
+                Ok(Token::Dot)
+            }
             c if c.is_ascii_digit() => self.read_number(),
             c if c.is_ascii_alphabetic() || c == '_' => self.read_ident(),
             c => Err(CompileError::UnexpectedChar(c, self.pos)),
@@ -354,7 +414,10 @@ impl<'a> Parser<'a> {
         if &tok == expected {
             Ok(())
         } else {
-            Err(CompileError::Expected(format!("{:?}, got {:?}", expected, tok)))
+            Err(CompileError::Expected(format!(
+                "{:?}, got {:?}",
+                expected, tok
+            )))
         }
     }
 
@@ -483,7 +546,8 @@ impl<'a> Parser<'a> {
                     let alias_id = self.interner.get_or_intern(&alias_name);
 
                     if let Some(mask) = tag_mask {
-                        let tagged_composite = format!("\0tag:{}@{}:{}", full_name, alias_name, mask.0);
+                        let tagged_composite =
+                            format!("\0tag:{}@{}:{}", full_name, alias_name, mask.0);
                         let cache_key = self.interner.get_or_intern(&tagged_composite);
                         self.dependencies.push(Dependency::SourceTagQuery {
                             alias: alias_id,
@@ -548,7 +612,8 @@ impl<'a> Parser<'a> {
 
         let tags = self.tags.ok_or_else(|| {
             CompileError::Expected(
-                "TagResolver required for {TAG} syntax — pass Some(&resolver) to Expr::compile".to_string(),
+                "TagResolver required for {TAG} syntax — pass Some(&resolver) to Expr::compile"
+                    .to_string(),
             )
         })?;
 
@@ -675,10 +740,7 @@ impl Expr {
     ///     Some(&tag_resolver),
     /// )?;
     /// ```
-    pub fn compile(
-        source: &str,
-        tags: Option<&TagResolver>,
-    ) -> Result<Self, CompileError> {
+    pub fn compile(source: &str, tags: Option<&TagResolver>) -> Result<Self, CompileError> {
         let interner = Interner::global();
         let trimmed = source.trim();
         if trimmed.is_empty() {
@@ -775,44 +837,76 @@ impl Expr {
                 }
                 // Comparison
                 Op::Gt => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] > b { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] > b { 1.0 } else { 0.0 };
                     sp += 1;
                 }
                 Op::Lt => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] < b { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] < b { 1.0 } else { 0.0 };
                     sp += 1;
                 }
                 Op::Ge => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] >= b { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] >= b { 1.0 } else { 0.0 };
                     sp += 1;
                 }
                 Op::Le => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] <= b { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] <= b { 1.0 } else { 0.0 };
                     sp += 1;
                 }
                 Op::Eq => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if (stack[sp] - b).abs() < f32::EPSILON { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if (stack[sp] - b).abs() < f32::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    };
                     sp += 1;
                 }
                 Op::Ne => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if (stack[sp] - b).abs() >= f32::EPSILON { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if (stack[sp] - b).abs() >= f32::EPSILON {
+                        1.0
+                    } else {
+                        0.0
+                    };
                     sp += 1;
                 }
                 // Logical
                 Op::And => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] != 0.0 && b != 0.0 { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] != 0.0 && b != 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    };
                     sp += 1;
                 }
                 Op::Or => {
-                    sp -= 1; let b = stack[sp];
-                    sp -= 1; stack[sp] = if stack[sp] != 0.0 || b != 0.0 { 1.0 } else { 0.0 };
+                    sp -= 1;
+                    let b = stack[sp];
+                    sp -= 1;
+                    stack[sp] = if stack[sp] != 0.0 || b != 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    };
                     sp += 1;
                 }
                 Op::Max => {
@@ -857,18 +951,23 @@ impl Expr {
     /// Used by `AttributesMut` to know which composite keys to populate
     /// in the local context when a source alias is set/changed. When
     /// `tag_mask` is `Some`, the value should be read via `get_tagged`.
-    pub fn source_cache_keys(&self) -> impl Iterator<Item = (AttributeId, AttributeId, AttributeId, Option<TagMask>)> + '_ {
-        self.ops
-            .iter()
-            .filter_map(|op| match op {
-                Op::LoadSource { alias, attribute, cache_key } => {
-                    Some((*alias, *attribute, *cache_key, None))
-                }
-                Op::LoadSourceTagged { alias, attribute, cache_key, mask } => {
-                    Some((*alias, *attribute, *cache_key, Some(*mask)))
-                }
-                _ => None,
-            })
+    pub fn source_cache_keys(
+        &self,
+    ) -> impl Iterator<Item = (AttributeId, AttributeId, AttributeId, Option<TagMask>)> + '_ {
+        self.ops.iter().filter_map(|op| match op {
+            Op::LoadSource {
+                alias,
+                attribute,
+                cache_key,
+            } => Some((*alias, *attribute, *cache_key, None)),
+            Op::LoadSourceTagged {
+                alias,
+                attribute,
+                cache_key,
+                mask,
+            } => Some((*alias, *attribute, *cache_key, Some(*mask))),
+            _ => None,
+        })
     }
 
     /// Get the source string this expression was compiled from.
@@ -1067,16 +1166,16 @@ mod tests {
         tags.register("FIRE", fire);
         tags.register("SPELL", spell);
 
-        let expr = Expr::compile(
-            "Damage.Added{FIRE|SPELL} * 2.0",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage.Added{FIRE|SPELL} * 2.0", Some(&tags)).unwrap();
 
         // Should have one TagQuery dependency
         assert_eq!(expr.dependencies.len(), 1);
         match &expr.dependencies[0] {
-            Dependency::TagQuery { attribute, mask, synthetic } => {
+            Dependency::TagQuery {
+                attribute,
+                mask,
+                synthetic,
+            } => {
                 assert_eq!(interner.resolve(*attribute), "Damage.Added");
                 assert_eq!(*mask, fire | spell);
                 // Synthetic ID should be interned
@@ -1094,11 +1193,7 @@ mod tests {
         let fire = TagMask::bit(0);
         tags.register("FIRE", fire);
 
-        let expr = Expr::compile(
-            "Damage.Added{FIRE} * 2.0",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage.Added{FIRE} * 2.0", Some(&tags)).unwrap();
 
         // Pre-populate the synthetic node's value in the context
         let synthetic_name = format!("\0tag:Damage.Added:{}", fire.0);
@@ -1122,10 +1217,7 @@ mod tests {
     fn tag_query_unknown_tag_errors() {
         test_interner();
         let tags = TagResolver::new(); // empty — no tags registered
-        let result = Expr::compile(
-            "Damage{FIRE}",
-            Some(&tags),
-        );
+        let result = Expr::compile("Damage{FIRE}", Some(&tags));
         assert!(matches!(result, Err(CompileError::UnknownTag(_))));
     }
 
@@ -1254,11 +1346,7 @@ mod tests {
         let physical = TagMask::bit(1);
         tags.register("PHYSICAL", physical);
 
-        let expr = Expr::compile(
-            "Damage{PHYSICAL}",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{PHYSICAL}", Some(&tags)).unwrap();
 
         match &expr.dependencies[0] {
             Dependency::TagQuery { mask, .. } => {
@@ -1277,15 +1365,15 @@ mod tests {
         let fire = TagMask::bit(0);
         tags.register("FIRE", fire);
 
-        let expr = Expr::compile(
-            "Damage{FIRE}@weapon * 2.0",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{FIRE}@weapon * 2.0", Some(&tags)).unwrap();
 
         assert_eq!(expr.dependencies.len(), 1);
         match &expr.dependencies[0] {
-            Dependency::SourceTagQuery { alias, attribute, mask } => {
+            Dependency::SourceTagQuery {
+                alias,
+                attribute,
+                mask,
+            } => {
                 assert_eq!(interner.resolve(*alias), "weapon");
                 assert_eq!(interner.resolve(*attribute), "Damage");
                 assert_eq!(*mask, fire);
@@ -1301,11 +1389,7 @@ mod tests {
         let fire = TagMask::bit(0);
         tags.register("FIRE", fire);
 
-        let expr = Expr::compile(
-            "Damage{FIRE}@weapon",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{FIRE}@weapon", Some(&tags)).unwrap();
 
         let entries: Vec<_> = expr.source_cache_keys().collect();
         assert_eq!(entries.len(), 1);
@@ -1324,11 +1408,7 @@ mod tests {
         let fire = TagMask::bit(0);
         tags.register("FIRE", fire);
 
-        let expr = Expr::compile(
-            "Damage{FIRE}@weapon * 2.0",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{FIRE}@weapon * 2.0", Some(&tags)).unwrap();
 
         let cache_key_str = format!("\0tag:Damage@weapon:{}", fire.0);
         let cache_key_id = interner.get_or_intern(&cache_key_str);
@@ -1346,14 +1426,13 @@ mod tests {
         let fire = TagMask::bit(0);
         tags.register("FIRE", fire);
 
-        let expr = Expr::compile(
-            "Damage{FIRE}@weapon + Strength@attacker",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{FIRE}@weapon + Strength@attacker", Some(&tags)).unwrap();
 
         assert_eq!(expr.dependencies.len(), 2);
-        assert!(matches!(&expr.dependencies[0], Dependency::SourceTagQuery { .. }));
+        assert!(matches!(
+            &expr.dependencies[0],
+            Dependency::SourceTagQuery { .. }
+        ));
         assert!(matches!(&expr.dependencies[1], Dependency::Source { .. }));
 
         let entries: Vec<_> = expr.source_cache_keys().collect();
@@ -1371,11 +1450,7 @@ mod tests {
         tags.register("FIRE", fire);
         tags.register("SPELL", spell);
 
-        let expr = Expr::compile(
-            "Damage{FIRE|SPELL}@weapon",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{FIRE|SPELL}@weapon", Some(&tags)).unwrap();
 
         match &expr.dependencies[0] {
             Dependency::SourceTagQuery { mask, .. } => {
@@ -1409,11 +1484,7 @@ mod tests {
         tags.register_namespaced("Element", "FIRE", TagMask::bit(0));
         tags.register_namespaced("Weapon", "FIRE", TagMask::bit(4));
 
-        let expr = Expr::compile(
-            "Damage{Element::FIRE}",
-            Some(&tags),
-        )
-        .unwrap();
+        let expr = Expr::compile("Damage{Element::FIRE}", Some(&tags)).unwrap();
 
         match &expr.dependencies[0] {
             Dependency::TagQuery { mask, .. } => {

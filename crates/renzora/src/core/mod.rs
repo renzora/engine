@@ -943,9 +943,7 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
 /// Run condition: returns true when the viewport is in 3D view. Use on
 /// editor systems whose visuals (transform gizmo arrows, collider wireframes,
 /// rotation pies, etc.) only make sense projecting through a 3D camera.
-pub fn in_three_view(
-    settings: Option<Res<crate::core::viewport_types::ViewportSettings>>,
-) -> bool {
+pub fn in_three_view(settings: Option<Res<crate::core::viewport_types::ViewportSettings>>) -> bool {
     use crate::core::viewport_types::ViewportView;
     settings.map_or(true, |s| s.viewport_view == ViewportView::Three)
 }
@@ -953,9 +951,7 @@ pub fn in_three_view(
 /// Run condition: returns true when the viewport is in 2D view. Use on
 /// editor systems that pick/drag/draw 2D entities through the orthographic
 /// editor camera.
-pub fn in_two_view(
-    settings: Option<Res<crate::core::viewport_types::ViewportSettings>>,
-) -> bool {
+pub fn in_two_view(settings: Option<Res<crate::core::viewport_types::ViewportSettings>>) -> bool {
     use crate::core::viewport_types::ViewportView;
     settings.map_or(false, |s| s.viewport_view == ViewportView::Two)
 }

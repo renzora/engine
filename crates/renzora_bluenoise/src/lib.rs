@@ -38,9 +38,9 @@ fn sync_bluenoise(
                     break;
                 }
                 if settings.enabled {
-                    commands.entity(*target).insert(
-                        ShadowFilteringMethod::Temporal,
-                    );
+                    commands
+                        .entity(*target)
+                        .insert(ShadowFilteringMethod::Temporal);
                 } else {
                     commands.entity(*target).remove::<ShadowFilteringMethod>();
                 }
@@ -79,16 +79,23 @@ fn bluenoise_entry() -> InspectorEntry {
         category: "rendering",
         has_fn: |world, entity| world.get::<BlueNoiseSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(BlueNoiseSettings::default());
+            world
+                .entity_mut(entity)
+                .insert(BlueNoiseSettings::default());
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<BlueNoiseSettings>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<BlueNoiseSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<BlueNoiseSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<BlueNoiseSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<BlueNoiseSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: None,

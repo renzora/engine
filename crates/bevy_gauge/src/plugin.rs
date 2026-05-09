@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 
+use crate::attribute_id::Interner;
 use crate::attributes::Attributes;
-use crate::derived::{AttributeRegistration, AttributeDerivedSet, WriteBackSet};
+use crate::derived::{AttributeDerivedSet, AttributeRegistration, WriteBackSet};
 use crate::graph::DependencyGraph;
 use crate::modifier_set::apply_initial_attributes;
-use crate::attribute_id::Interner;
-use crate::tags::{TagResolver, TagRegistration};
+use crate::tags::{TagRegistration, TagResolver};
 
 /// The main plugin.
 ///
@@ -37,14 +37,8 @@ impl Plugin for AttributesPlugin {
 
         app.add_observer(on_attributes_removed)
             .add_observer(apply_initial_attributes)
-            .configure_sets(
-                PreUpdate,
-                (WriteBackSet, AttributeDerivedSet).chain(),
-            )
-            .configure_sets(
-                PostUpdate,
-                (WriteBackSet, AttributeDerivedSet).chain(),
-            );
+            .configure_sets(PreUpdate, (WriteBackSet, AttributeDerivedSet).chain())
+            .configure_sets(PostUpdate, (WriteBackSet, AttributeDerivedSet).chain());
 
         for reg in inventory::iter::<AttributeRegistration> {
             (reg.register_fn)(app);
@@ -54,10 +48,7 @@ impl Plugin for AttributesPlugin {
 
 /// Observer that fires when an entity with `Attributes` is removed/despawned.
 /// Cleans up all dependency edges in the global graph.
-fn on_attributes_removed(
-    trigger: On<Remove, Attributes>,
-    mut graph: ResMut<DependencyGraph>,
-) {
+fn on_attributes_removed(trigger: On<Remove, Attributes>, mut graph: ResMut<DependencyGraph>) {
     let entity = trigger.entity;
     graph.remove_entity(entity);
 }

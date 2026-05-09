@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "oil_painting.wgsl", name = "Oil Painting", icon = "PAINT_BUCKET")]
+#[renzora_macros::post_process(
+    shader = "oil_painting.wgsl",
+    name = "Oil Painting",
+    icon = "PAINT_BUCKET"
+)]
 pub struct OilPaintingSettings {
     #[field(speed = 0.1, min = 1.0, max = 8.0, default = 3.0)]
     pub radius: f32,

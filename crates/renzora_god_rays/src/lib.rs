@@ -1,17 +1,17 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -66,46 +66,143 @@ fn inspector_entry() -> InspectorEntry {
         icon: regular::SUN_HORIZON,
         category: "post_process",
         has_fn: |world, entity| world.get::<GodRaysSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(GodRaysSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<GodRaysSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<GodRaysSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(GodRaysSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<GodRaysSettings>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<GodRaysSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                s.enabled = if val { 1.0 } else { 0.0 };
+            }
+        }),
         fields: vec![
             FieldDef {
                 name: "Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.intensity = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.intensity = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Decay",
-                field_type: FieldType::Float { speed: 0.001, min: 0.9, max: 1.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.decay)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.decay = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.001,
+                    min: 0.9,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.decay))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.decay = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Density",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.density)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.density = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.density))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.density = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Num Samples",
-                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 256.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.num_samples as f32)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.num_samples = v as u32; } } },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 1.0,
+                    max: 256.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.num_samples as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.num_samples = v as u32;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Light Pos X",
-                field_type: FieldType::Float { speed: 0.01, min: -1.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.light_pos_x)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.light_pos_x = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: -1.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.light_pos_x))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.light_pos_x = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Light Pos Y",
-                field_type: FieldType::Float { speed: 0.01, min: -1.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<GodRaysSettings>(entity).map(|s| FieldValue::Float(s.light_pos_y)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) { s.light_pos_y = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: -1.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GodRaysSettings>(entity)
+                        .map(|s| FieldValue::Float(s.light_pos_y))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<GodRaysSettings>(entity) {
+                            s.light_pos_y = v;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,
@@ -120,9 +217,7 @@ impl Plugin for GodRaysPlugin {
         info!("[runtime] GodRaysPlugin");
         bevy::asset::embedded_asset!(app, "god_rays.wgsl");
         app.register_type::<GodRaysSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<GodRaysSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<GodRaysSettings>::default());
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

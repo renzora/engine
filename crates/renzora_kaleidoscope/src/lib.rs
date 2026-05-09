@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "kaleidoscope.wgsl", name = "Kaleidoscope", icon = "FLOWER_LOTUS")]
+#[renzora_macros::post_process(
+    shader = "kaleidoscope.wgsl",
+    name = "Kaleidoscope",
+    icon = "FLOWER_LOTUS"
+)]
 pub struct KaleidoscopeSettings {
     #[field(speed = 0.1, min = 2.0, max = 32.0, default = 6.0)]
     pub segments: f32,

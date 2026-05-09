@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
-use bevy_gauge::prelude::*;
 use bevy_gauge::attribute_id::Interner;
+use bevy_gauge::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,11 +86,8 @@ pub fn bench_dependent_stats(c: &mut Criterion) {
                                 format!("Level{}", i - 1)
                             };
                             let curr = format!("Level{}", i);
-                            let _ = stats.add_expr_modifier(
-                                entity,
-                                &curr,
-                                &format!("{prev} * 1.1"),
-                            );
+                            let _ =
+                                stats.add_expr_modifier(entity, &curr, &format!("{prev} * 1.1"));
                         }
                     })
                     .unwrap();
@@ -192,12 +189,7 @@ pub fn bench_tag_based_stats(c: &mut Criterion) {
                         stats.add_modifier(el, "Damage.base", 10.0);
                         for i in 0..tc {
                             let tag = TagMask::bit(i as u32);
-                            stats.add_modifier_tagged(
-                                el,
-                                "Damage.base",
-                                5.0 + i as f32,
-                                tag,
-                            );
+                            stats.add_modifier_tagged(el, "Damage.base", 5.0 + i as f32, tag);
                             stats.add_modifier_tagged(
                                 el,
                                 "Damage.increased",
@@ -360,36 +352,31 @@ pub fn bench_complex_expression_evaluation(c: &mut Criterion) {
     ];
 
     for (i, expr_str) in expressions.iter().enumerate() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(i),
-            expr_str,
-            |b, &expr_src| {
-                let (mut app, entity) = setup_app_with_entity();
-                let expr_owned = expr_src.to_string();
+        group.bench_with_input(BenchmarkId::from_parameter(i), expr_str, |b, &expr_src| {
+            let (mut app, entity) = setup_app_with_entity();
+            let expr_owned = expr_src.to_string();
 
+            app.world_mut()
+                .run_system_once(move |mut stats: AttributesMut| {
+                    stats.add_modifier(entity, "Base", 100.0);
+                    stats.add_modifier(entity, "Added", 50.0);
+                    stats.add_modifier(entity, "Increased", 0.3);
+                    stats.add_modifier(entity, "More", 0.2);
+                    stats.add_modifier(entity, "Taken", 25.0);
+                    stats.add_modifier(entity, "Cap", 200.0);
+                    let _ = stats.add_expr_modifier(entity, "Result", &expr_owned);
+                })
+                .unwrap();
+            app.update();
+
+            b.iter(|| {
                 app.world_mut()
                     .run_system_once(move |mut stats: AttributesMut| {
-                        stats.add_modifier(entity, "Base", 100.0);
-                        stats.add_modifier(entity, "Added", 50.0);
-                        stats.add_modifier(entity, "Increased", 0.3);
-                        stats.add_modifier(entity, "More", 0.2);
-                        stats.add_modifier(entity, "Taken", 25.0);
-                        stats.add_modifier(entity, "Cap", 200.0);
-                        let _ =
-                            stats.add_expr_modifier(entity, "Result", &expr_owned);
+                        black_box(stats.evaluate(entity, "Result"));
                     })
                     .unwrap();
-                app.update();
-
-                b.iter(|| {
-                    app.world_mut()
-                        .run_system_once(move |mut stats: AttributesMut| {
-                            black_box(stats.evaluate(entity, "Result"));
-                        })
-                        .unwrap();
-                });
-            },
-        );
+            });
+        });
     }
     group.finish();
 }
@@ -447,11 +434,7 @@ pub fn bench_many_distinct_stats(c: &mut Criterion) {
                 app.world_mut()
                     .run_system_once(move |mut stats: AttributesMut| {
                         for i in 0..sc {
-                            stats.add_modifier(
-                                entity,
-                                &format!("Stat{i}.value"),
-                                i as f32,
-                            );
+                            stats.add_modifier(entity, &format!("Stat{i}.value"), i as f32);
                         }
                     })
                     .unwrap();
@@ -483,24 +466,26 @@ pub fn bench_expression_compilation(c: &mut Criterion) {
     let expressions = [
         ("simple", "Base + Added"),
         ("medium", "Base * (1.0 + Increased) + Added"),
-        ("complex", "(Base * (1.0 + Increased) + Added) * (1.0 + More) - Taken"),
-        ("with_functions", "clamp(min(Base * (1.0 + Increased), Cap) + Added, 0.0, 9999.0)"),
+        (
+            "complex",
+            "(Base * (1.0 + Increased) + Added) * (1.0 + More) - Taken",
+        ),
+        (
+            "with_functions",
+            "clamp(min(Base * (1.0 + Increased), Cap) + Added, 0.0, 9999.0)",
+        ),
     ];
 
     for (label, expr_str) in expressions {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(label),
-            &expr_str,
-            |b, &src| {
-                let interner = Interner::global();
-                for name in ["Base", "Added", "Increased", "More", "Taken", "Cap"] {
-                    interner.get_or_intern(name);
-                }
-                b.iter(|| {
-                    black_box(Expr::compile(src, None).unwrap());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(label), &expr_str, |b, &src| {
+            let interner = Interner::global();
+            for name in ["Base", "Added", "Increased", "More", "Taken", "Cap"] {
+                interner.get_or_intern(name);
+            }
+            b.iter(|| {
+                black_box(Expr::compile(src, None).unwrap());
+            });
+        });
     }
     group.finish();
 }

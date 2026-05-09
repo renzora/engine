@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use crate::expr::Dependency;
 use crate::attribute_id::AttributeId;
+use crate::expr::Dependency;
 
 /// A node in the dependency graph: an (Entity, AttributeId) pair.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -219,10 +219,7 @@ impl DependencyGraph {
         local_attribute: AttributeId,
         source_attribute: AttributeId,
     ) {
-        let usage = self
-            .alias_usage
-            .entry((entity, alias))
-            .or_default();
+        let usage = self.alias_usage.entry((entity, alias)).or_default();
         let deps = usage.attribute_deps.entry(local_attribute).or_default();
         if !deps.contains(&source_attribute) {
             deps.push(source_attribute);
@@ -351,7 +348,9 @@ pub fn register_expr_deps(
                 graph.add_edge(source, dependent);
             }
             Dependency::Source { alias, attribute }
-            | Dependency::SourceTagQuery { alias, attribute, .. } => {
+            | Dependency::SourceTagQuery {
+                alias, attribute, ..
+            } => {
                 graph.record_alias_usage(entity, *alias, attribute_id, *attribute);
 
                 if let Some(source_entity) = graph.resolve_alias(entity, *alias) {
@@ -383,7 +382,9 @@ pub fn unregister_expr_deps(
                 graph.remove_edge(source, dependent);
             }
             Dependency::Source { alias, attribute }
-            | Dependency::SourceTagQuery { alias, attribute, .. } => {
+            | Dependency::SourceTagQuery {
+                alias, attribute, ..
+            } => {
                 graph.remove_alias_usage(entity, *alias, attribute_id, *attribute);
 
                 if let Some(source_entity) = graph.resolve_alias(entity, *alias) {
@@ -513,7 +514,11 @@ mod tests {
         let affected = graph.set_alias(sword, wielder, player_b);
         assert!(affected.contains(&attack));
         // Old edge gone
-        assert!(graph.dependents(DepNode::new(player_a, strength)).is_empty());
+        assert!(
+            graph
+                .dependents(DepNode::new(player_a, strength))
+                .is_empty()
+        );
         // New edge present
         assert_eq!(
             graph.dependents(DepNode::new(player_b, strength)),

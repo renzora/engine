@@ -1,17 +1,17 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
-use serde::{Serialize, Deserialize};
 use bevy::render::{
     extract_component::ExtractComponent,
     render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
-use renzora_postprocess::PostProcessEffect;
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
 use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_postprocess::PostProcessEffect;
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -66,22 +66,67 @@ fn inspector_entry() -> InspectorEntry {
         icon: regular::PALETTE,
         category: "post_process",
         has_fn: |world, entity| world.get::<PaletteQuantizationSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| { world.entity_mut(entity).insert(PaletteQuantizationSettings::default()); }),
-        remove_fn: Some(|world, entity| { world.entity_mut(entity).remove::<PaletteQuantizationSettings>(); }),
-        is_enabled_fn: Some(|world, entity| world.get::<PaletteQuantizationSettings>(entity).map(|s| s.enabled > 0.5).unwrap_or(false)),
-        set_enabled_fn: Some(|world, entity, val| { if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) { s.enabled = if val { 1.0 } else { 0.0 }; } }),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(PaletteQuantizationSettings::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .remove::<PaletteQuantizationSettings>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<PaletteQuantizationSettings>(entity)
+                .map(|s| s.enabled > 0.5)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) {
+                s.enabled = if val { 1.0 } else { 0.0 };
+            }
+        }),
         fields: vec![
             FieldDef {
                 name: "Num Colors",
-                field_type: FieldType::Float { speed: 1.0, min: 2.0, max: 256.0 },
-                get_fn: |world, entity| world.get::<PaletteQuantizationSettings>(entity).map(|s| FieldValue::Float(s.num_colors as f32)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) { s.num_colors = v as u32; } } },
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 2.0,
+                    max: 256.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PaletteQuantizationSettings>(entity)
+                        .map(|s| FieldValue::Float(s.num_colors as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) {
+                            s.num_colors = v as u32;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Dithering",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<PaletteQuantizationSettings>(entity).map(|s| FieldValue::Float(s.dithering)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) { s.dithering = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PaletteQuantizationSettings>(entity)
+                        .map(|s| FieldValue::Float(s.dithering))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PaletteQuantizationSettings>(entity) {
+                            s.dithering = v;
+                        }
+                    }
+                },
             },
         ],
         custom_ui_fn: None,
@@ -96,9 +141,9 @@ impl Plugin for PaletteQuantizationPlugin {
         info!("[runtime] PaletteQuantizationPlugin");
         bevy::asset::embedded_asset!(app, "palette_quantization.wgsl");
         app.register_type::<PaletteQuantizationSettings>();
-        app.add_plugins(
-            renzora_postprocess::PostProcessPlugin::<PaletteQuantizationSettings>::default(),
-        );
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<
+            PaletteQuantizationSettings,
+        >::default());
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

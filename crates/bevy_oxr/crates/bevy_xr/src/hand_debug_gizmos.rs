@@ -1,8 +1,8 @@
 use crate::hands::{HandBone, XrHandBoneRadius};
 use crate::spaces::XrSpaceLocationFlags;
 use bevy_app::{App, Plugin, PostUpdate};
-use bevy_color::palettes::css;
 use bevy_color::Srgba;
+use bevy_color::palettes::css;
 use bevy_ecs::schedule::IntoScheduleConfigs as _;
 use bevy_ecs::system::Query;
 use bevy_gizmos::gizmos::Gizmos;

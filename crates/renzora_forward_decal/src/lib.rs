@@ -1,8 +1,6 @@
-use bevy::prelude::*;
 use bevy::core_pipeline::prepass::DepthPrepass;
-use bevy::pbr::decal::{
-    ForwardDecal, ForwardDecalMaterial, ForwardDecalMaterialExt,
-};
+use bevy::pbr::decal::{ForwardDecal, ForwardDecalMaterial, ForwardDecalMaterialExt};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -79,10 +77,7 @@ fn sync_decals(
     }
 }
 
-fn cleanup_decals(
-    mut commands: Commands,
-    mut removed: RemovedComponents<DecalSettings>,
-) {
+fn cleanup_decals(mut commands: Commands, mut removed: RemovedComponents<DecalSettings>) {
     for entity in removed.read() {
         if let Ok(mut ec) = commands.get_entity(entity) {
             ec.remove::<(
@@ -127,17 +122,20 @@ fn decal_entry() -> InspectorEntry {
             world.entity_mut(entity).insert(DecalSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(
-                DecalSettings,
-                ForwardDecal,
-                DecalMaterialHandle,
-            )>();
+            world
+                .entity_mut(entity)
+                .remove::<(DecalSettings, ForwardDecal, DecalMaterialHandle)>();
         }),
         is_enabled_fn: Some(|world, entity| {
-            world.get::<DecalSettings>(entity).map(|s| s.enabled).unwrap_or(false)
+            world
+                .get::<DecalSettings>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DecalSettings>(entity) { s.enabled = val; }
+            if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
+                s.enabled = val;
+            }
         }),
         fields: vec![],
         custom_ui_fn: Some(decal_custom_ui),
@@ -152,7 +150,9 @@ fn decal_custom_ui(
     cmds: &EditorCommands,
     theme: &Theme,
 ) {
-    let Some(settings) = world.get::<DecalSettings>(entity) else { return };
+    let Some(settings) = world.get::<DecalSettings>(entity) else {
+        return;
+    };
     let mut row = 0;
 
     // Base color
@@ -164,7 +164,9 @@ fn decal_custom_ui(
         if rgba != orig {
             let c = Color::srgba(rgba[0], rgba[1], rgba[2], rgba[3]);
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) { s.base_color = c; }
+                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
+                    s.base_color = c;
+                }
             });
         }
     });
@@ -174,10 +176,16 @@ fn decal_custom_ui(
     let mut fade = settings.depth_fade_factor;
     inline_property(ui, row, "Depth Fade", theme, |ui| {
         let orig = fade;
-        ui.add(egui::DragValue::new(&mut fade).speed(0.1).range(0.01..=50.0));
+        ui.add(
+            egui::DragValue::new(&mut fade)
+                .speed(0.1)
+                .range(0.01..=50.0),
+        );
         if fade != orig {
             cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) { s.depth_fade_factor = fade; }
+                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
+                    s.depth_fade_factor = fade;
+                }
             });
         }
     });

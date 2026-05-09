@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "chromatic_aberration.wgsl", name = "Chromatic Aberration", icon = "RAINBOW")]
+#[renzora_macros::post_process(
+    shader = "chromatic_aberration.wgsl",
+    name = "Chromatic Aberration",
+    icon = "RAINBOW"
+)]
 pub struct ChromaticAberrationSettings {
     #[field(speed = 0.001, min = 0.0, max = 0.1, default = 0.005)]
     pub intensity: f32,
@@ -24,7 +28,9 @@ impl Plugin for ChromaticAberrationPlugin {
         info!("[runtime] ChromaticAberrationPlugin");
         bevy::asset::embedded_asset!(app, "chromatic_aberration.wgsl");
         app.register_type::<ChromaticAberrationSettings>();
-        app.add_plugins(renzora_postprocess::PostProcessPlugin::<ChromaticAberrationSettings>::default());
+        app.add_plugins(renzora_postprocess::PostProcessPlugin::<
+            ChromaticAberrationSettings,
+        >::default());
         #[cfg(feature = "editor")]
         app.register_inspectable::<ChromaticAberrationSettings>();
     }

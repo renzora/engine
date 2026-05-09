@@ -365,10 +365,15 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             .get::<Name>(*entity)
             .map(|n| n.to_string())
             .unwrap_or_else(|| "unnamed".into());
-        console_info("PlayMode", format!(
-            "Tearing down play camera {:?} \"{}\" mode={}",
-            entity, name, if *is_2d { "2D" } else { "3D" }
-        ));
+        console_info(
+            "PlayMode",
+            format!(
+                "Tearing down play camera {:?} \"{}\" mode={}",
+                entity,
+                name,
+                if *is_2d { "2D" } else { "3D" }
+            ),
+        );
     }
 
     for (entity, is_2d) in play_cam_kinds {

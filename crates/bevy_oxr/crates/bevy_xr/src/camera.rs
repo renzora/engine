@@ -6,9 +6,9 @@ use bevy_ecs::{component::Component, schedule::SystemSet};
 use bevy_math::{Mat4, Vec3A, Vec4};
 // use bevy::prelude::SystemSet;
 #[cfg(feature = "reflect")]
-use bevy_reflect::std_traits::ReflectDefault;
-#[cfg(feature = "reflect")]
 use bevy_reflect::Reflect;
+#[cfg(feature = "reflect")]
+use bevy_reflect::std_traits::ReflectDefault;
 use bevy_render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 
 use crate::session::XrTracker;
@@ -108,7 +108,7 @@ pub fn calculate_projection(near_z: f32, fov: Fov) -> Mat4 {
     // return Mat4::perspective_infinite_reverse_rh(y_fov, x_fov / y_fov, self.near);
 
     let far_z = -1.; //   use infinite proj
-                     // let far_z = self.far;
+    // let far_z = self.far;
 
     let tan_angle_left = fov.angle_left.tan();
     let tan_angle_right = fov.angle_right.tan();
@@ -196,8 +196,8 @@ pub fn calculate_projection(near_z: f32, fov: Fov) -> Mat4 {
 mod tests {
     use std::f32::{self, consts::PI};
 
-    use bevy_math::{Mat4,Vec3A};
     use bevy_camera::{CameraProjection, PerspectiveProjection};
+    use bevy_math::{Mat4, Vec3A};
 
     const TEST_VALUES: &[(f32, f32)] = &[(0.5, 100.0), (50.0, 200.0)];
 

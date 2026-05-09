@@ -14,9 +14,7 @@ use renzora_rpak::{
 };
 use renzora_theme::ThemeManager;
 
-use crate::download::{
-    self, DownloadProgress, DownloadTask, ReleaseInfo,
-};
+use crate::download::{self, DownloadProgress, DownloadTask, ReleaseInfo};
 use crate::templates::{Platform, TemplateManager};
 
 /// Packaging mode for the exported build.
@@ -223,7 +221,10 @@ fn poll_release_fetch(world: &mut World) {
 
 /// Drain progress messages from the runtime download thread.
 fn poll_download_task(world: &mut World) {
-    let has_task = world.resource::<ExportOverlayState>().download_task.is_some();
+    let has_task = world
+        .resource::<ExportOverlayState>()
+        .download_task
+        .is_some();
     if !has_task {
         return;
     }
@@ -378,8 +379,7 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
                 let project_name = world.resource::<CurrentProject>().config.name.clone();
 
                 // ===== Two-column layout: platform sidebar + per-platform settings =====
-                let selected_platform =
-                    world.resource::<ExportOverlayState>().platform;
+                let selected_platform = world.resource::<ExportOverlayState>().platform;
                 let is_desktop = matches!(
                     selected_platform,
                     Platform::WindowsX64
@@ -393,177 +393,160 @@ pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
 
                 // Reserve space at the bottom for Output + Progress + Export button.
                 let footer_reserved = 120.0;
-                let content_height =
-                    (ui.available_height() - footer_reserved).max(200.0);
+                let content_height = (ui.available_height() - footer_reserved).max(200.0);
                 let right_pane_width = window_width - sidebar_width - 32.0;
 
                 ui.allocate_ui_with_layout(
                     egui::vec2(window_width, content_height),
                     egui::Layout::left_to_right(egui::Align::Min),
                     |ui| {
-                    // ----- LEFT RAIL: platform list -----
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(sidebar_width, content_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            ui.set_width(sidebar_width);
+                        // ----- LEFT RAIL: platform list -----
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(sidebar_width, content_height),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                ui.set_width(sidebar_width);
 
-                            section_label(
-                                ui,
-                                regular::DESKTOP_TOWER,
-                                "Platform",
-                                text_primary,
-                            );
-                            ui.add_space(6.0);
+                                section_label(ui, regular::DESKTOP_TOWER, "Platform", text_primary);
+                                ui.add_space(6.0);
 
-                            // Snapshot release info / current selection so we can
-                            // mutate ExportOverlayState below without holding refs
-                            // across iterations.
-                            let release_info = world
-                                .resource::<ExportOverlayState>()
-                                .release_info
-                                .clone();
-                            let release_fetching = world
-                                .resource::<ExportOverlayState>()
-                                .release_fetch_rx
-                                .is_some();
-                            let release_error = world
-                                .resource::<ExportOverlayState>()
-                                .release_fetch_error
-                                .clone();
-                            let current = world
-                                .resource::<ExportOverlayState>()
-                                .platform;
+                                // Snapshot release info / current selection so we can
+                                // mutate ExportOverlayState below without holding refs
+                                // across iterations.
+                                let release_info =
+                                    world.resource::<ExportOverlayState>().release_info.clone();
+                                let release_fetching = world
+                                    .resource::<ExportOverlayState>()
+                                    .release_fetch_rx
+                                    .is_some();
+                                let release_error = world
+                                    .resource::<ExportOverlayState>()
+                                    .release_fetch_error
+                                    .clone();
+                                let current = world.resource::<ExportOverlayState>().platform;
 
-                            for p in Platform::ALL {
-                                let installed = world
-                                    .resource::<TemplateManager>()
-                                    .is_installed(*p);
-                                let available = release_info
-                                    .as_ref()
-                                    .map(|i| i.available_platforms.contains(p))
-                                    .unwrap_or(false);
-                                let selected = current == *p;
-                                let resp = platform_sidebar_button(
+                                for p in Platform::ALL {
+                                    let installed =
+                                        world.resource::<TemplateManager>().is_installed(*p);
+                                    let available = release_info
+                                        .as_ref()
+                                        .map(|i| i.available_platforms.contains(p))
+                                        .unwrap_or(false);
+                                    let selected = current == *p;
+                                    let resp = platform_sidebar_button(
+                                        ui,
+                                        *p,
+                                        selected,
+                                        installed,
+                                        available,
+                                        accent,
+                                        text_primary,
+                                        text_secondary,
+                                        surface_mid,
+                                        border_color,
+                                    );
+                                    if resp.clicked() && !selected {
+                                        world.resource_mut::<ExportOverlayState>().platform = *p;
+                                    }
+                                }
+
+                                ui.add_space(8.0);
+
+                                if release_fetching {
+                                    ui.horizontal(|ui| {
+                                        ui.spinner();
+                                        ui.label(
+                                            egui::RichText::new("Loading release...")
+                                                .size(11.0)
+                                                .color(text_secondary),
+                                        );
+                                    });
+                                } else if let Some(info) = &release_info {
+                                    ui.label(
+                                        egui::RichText::new(format!("Latest: {}", info.tag_name))
+                                            .size(11.0)
+                                            .color(text_secondary),
+                                    );
+                                } else if let Some(err) = &release_error {
+                                    ui.label(
+                                        egui::RichText::new(err.as_str())
+                                            .size(10.0)
+                                            .color(error_color),
+                                    );
+                                }
+                            },
+                        );
+
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+
+                        // ----- RIGHT PANE: settings for selected platform -----
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(right_pane_width, content_height),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                // Platform header
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(platform_icon(selected_platform))
+                                            .size(20.0)
+                                            .color(text_primary),
+                                    );
+                                    ui.add_space(4.0);
+                                    ui.vertical(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(selected_platform.display_name())
+                                                .size(15.0)
+                                                .color(text_primary)
+                                                .strong(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(
+                                                selected_platform.supported_devices(),
+                                            )
+                                            .size(11.0)
+                                            .color(text_secondary),
+                                        );
+                                    });
+                                });
+
+                                ui.add_space(8.0);
+
+                                // Runtime template status + install/download buttons
+                                draw_runtime_status(
                                     ui,
-                                    *p,
-                                    selected,
-                                    installed,
-                                    available,
+                                    world,
+                                    selected_platform,
+                                    template_installed,
                                     accent,
                                     text_primary,
                                     text_secondary,
                                     surface_mid,
-                                    border_color,
+                                    error_color,
                                 );
-                                if resp.clicked() && !selected {
-                                    world
-                                        .resource_mut::<ExportOverlayState>()
-                                        .platform = *p;
-                                }
-                            }
 
-                            ui.add_space(8.0);
+                                ui.add_space(12.0);
 
-                            if release_fetching {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(
-                                        egui::RichText::new("Loading release...")
-                                            .size(11.0)
-                                            .color(text_secondary),
-                                    );
-                                });
-                            } else if let Some(info) = &release_info {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "Latest: {}",
-                                        info.tag_name
-                                    ))
-                                    .size(11.0)
-                                    .color(text_secondary),
-                                );
-                            } else if let Some(err) = &release_error {
-                                ui.label(
-                                    egui::RichText::new(err.as_str())
-                                        .size(10.0)
-                                        .color(error_color),
-                                );
-                            }
-                        },
-                    );
-
-                    ui.add_space(4.0);
-                    ui.separator();
-                    ui.add_space(8.0);
-
-                    // ----- RIGHT PANE: settings for selected platform -----
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(right_pane_width, content_height),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            // Platform header
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(platform_icon(selected_platform))
-                                        .size(20.0)
-                                        .color(text_primary),
-                                );
-                                ui.add_space(4.0);
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(
-                                            selected_platform.display_name(),
-                                        )
-                                        .size(15.0)
-                                        .color(text_primary)
-                                        .strong(),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(
-                                            selected_platform.supported_devices(),
-                                        )
-                                        .size(11.0)
-                                        .color(text_secondary),
-                                    );
-                                });
-                            });
-
-                            ui.add_space(8.0);
-
-                            // Runtime template status + install/download buttons
-                            draw_runtime_status(
-                                ui,
-                                world,
-                                selected_platform,
-                                template_installed,
-                                accent,
-                                text_primary,
-                                text_secondary,
-                                surface_mid,
-                                error_color,
-                            );
-
-                            ui.add_space(12.0);
-
-                            egui::ScrollArea::vertical()
-                                .id_salt("export_settings_scroll")
-                                .max_height(420.0)
-                                .auto_shrink([false, true])
-                                .show(ui, |ui| {
-                                    draw_settings_panel(
-                                        ui,
-                                        world,
-                                        selected_platform,
-                                        is_desktop,
-                                        text_primary,
-                                        text_secondary,
-                                        surface_mid,
-                                    );
-                                });
-                        },
-                    );
-                });
+                                egui::ScrollArea::vertical()
+                                    .id_salt("export_settings_scroll")
+                                    .max_height(420.0)
+                                    .auto_shrink([false, true])
+                                    .show(ui, |ui| {
+                                        draw_settings_panel(
+                                            ui,
+                                            world,
+                                            selected_platform,
+                                            is_desktop,
+                                            text_primary,
+                                            text_secondary,
+                                            surface_mid,
+                                        );
+                                    });
+                            },
+                        );
+                    },
+                );
 
                 ui.add_space(12.0);
 
@@ -778,10 +761,7 @@ fn draw_runtime_status(
     let _ = text_primary;
     let runtime_dir = world.resource::<TemplateManager>().runtime_dir();
 
-    let release_info = world
-        .resource::<ExportOverlayState>()
-        .release_info
-        .clone();
+    let release_info = world.resource::<ExportOverlayState>().release_info.clone();
     let download_status = world
         .resource::<ExportOverlayState>()
         .download_status
@@ -810,8 +790,7 @@ fn draw_runtime_status(
             );
         } else {
             ui.label(
-                egui::RichText::new(regular::WARNING)
-                    .color(egui::Color32::from_rgb(242, 166, 64)),
+                egui::RichText::new(regular::WARNING).color(egui::Color32::from_rgb(242, 166, 64)),
             );
             ui.label(
                 egui::RichText::new("Runtime template not installed")
@@ -830,17 +809,16 @@ fn draw_runtime_status(
         } else {
             format!("{} Not yet released", regular::DOWNLOAD_SIMPLE)
         };
-        let download_button = egui::Button::new(
-            egui::RichText::new(download_label)
-                .size(12.0)
-                .color(if asset_available {
+        let download_button =
+            egui::Button::new(egui::RichText::new(download_label).size(12.0).color(
+                if asset_available {
                     egui::Color32::WHITE
                 } else {
                     text_secondary
-                }),
-        )
-        .fill(if asset_available { accent } else { surface_mid })
-        .min_size(egui::vec2(180.0, 26.0));
+                },
+            ))
+            .fill(if asset_available { accent } else { surface_mid })
+            .min_size(egui::vec2(180.0, 26.0));
 
         let download_enabled = asset_available && !download_active;
         if ui.add_enabled(download_enabled, download_button).clicked() {
@@ -961,8 +939,7 @@ fn draw_settings_panel(
                     .color(text_secondary),
             );
             ui.add(
-                egui::Slider::new(&mut export_state.compression_level, 1..=19)
-                    .text("zstd level"),
+                egui::Slider::new(&mut export_state.compression_level, 1..=19).text("zstd level"),
             );
         });
         drop(export_state);
@@ -1150,10 +1127,7 @@ fn draw_settings_panel(
                                         let _ = std::fs::create_dir_all(&server_dir);
                                         let dest = server_dir.join(server_name);
                                         if let Err(e) = std::fs::copy(&path, &dest) {
-                                            warn!(
-                                                "Failed to install server template: {}",
-                                                e
-                                            );
+                                            warn!("Failed to install server template: {}", e);
                                         }
                                         mgr.scan();
                                     }
@@ -1203,9 +1177,7 @@ fn draw_settings_panel(
                         if ui
                             .checkbox(
                                 &mut checked,
-                                egui::RichText::new(label)
-                                    .size(12.0)
-                                    .color(text_primary),
+                                egui::RichText::new(label).size(12.0).color(text_primary),
                             )
                             .changed()
                         {
@@ -1237,10 +1209,7 @@ fn draw_settings_panel(
                         .color(text_primary),
                 );
                 if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new(regular::X).size(12.0))
-                            .frame(false),
-                    )
+                    .add(egui::Button::new(egui::RichText::new(regular::X).size(12.0)).frame(false))
                     .clicked()
                 {
                     export_state.icon_path = None;
@@ -1566,7 +1535,12 @@ fn run_export(world: &mut World, project_name: &str) {
     let window_height = export_state.window_height;
     let console_logging = export_state.console_logging;
     let include_server = export_state.include_server;
-    let icon_path = if export_state.icon_path.as_deref().map(str::is_empty).unwrap_or(true) {
+    let icon_path = if export_state
+        .icon_path
+        .as_deref()
+        .map(str::is_empty)
+        .unwrap_or(true)
+    {
         None
     } else {
         export_state.icon_path.clone()

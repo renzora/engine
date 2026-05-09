@@ -61,13 +61,7 @@ fn main() {
     App::new()
         .add_plugins(MinimalPlugins)
         .add_plugins(AttributesPlugin)
-        .add_systems(
-            Startup,
-            (
-                spawn_entities,
-                run_demo.after(spawn_entities),
-            ),
-        )
+        .add_systems(Startup, (spawn_entities, run_demo.after(spawn_entities)))
         .add_observer(handle_equip)
         .add_observer(handle_unequip)
         .run();
@@ -156,12 +150,7 @@ fn run_demo(
 
     // --- Unequip ---
     println!("=== Wizard unequips Staff of Wisdom ===\n");
-    unequip(
-        handles.staff,
-        &mut attributes,
-        &mut q_equipment,
-        &q_name,
-    );
+    unequip(handles.staff, &mut attributes, &mut q_equipment, &q_name);
 
     println!("\n=== After Wizard unequips ===\n");
     print_stats("Wizard", handles.wizard, &mut attributes);
@@ -216,8 +205,10 @@ fn equip(
 
     if !reqs.met(wielder_attrs) {
         println!("  BLOCKED: {wielder_name} does not meet requirements for {item_name}");
-        println!("    Requirements: {:?}",
-            reqs.0.iter().map(|r| r.source()).collect::<Vec<_>>());
+        println!(
+            "    Requirements: {:?}",
+            reqs.0.iter().map(|r| r.source()).collect::<Vec<_>>()
+        );
         let int_val = wielder_attrs.value("Intelligence");
         println!("    {wielder_name}'s Intelligence: {int_val:.0}");
         return;
@@ -307,12 +298,7 @@ fn handle_unequip(
     )>,
     q_name: Query<&Name>,
 ) {
-    unequip(
-        try_unequip.item,
-        &mut attributes,
-        &mut q_equipment,
-        &q_name,
-    );
+    unequip(try_unequip.item, &mut attributes, &mut q_equipment, &q_name);
 }
 
 // ---------------------------------------------------------------------------

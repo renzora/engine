@@ -21,9 +21,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ClearColorConfig, RenderTarget};
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
-use bevy::render::render_resource::{
-    Extent3d, TextureDimension, TextureFormat, TextureUsages,
-};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::window::{PrimaryWindow, WindowResized};
 
 use renzora::core::{AspectMode, StretchMode};
@@ -59,10 +57,7 @@ impl Plugin for ViewportStretchPlugin {
             .add_systems(Startup, spawn_blit_pass)
             .add_systems(
                 Update,
-                (
-                    redirect_game_cameras_to_offscreen,
-                    update_blit_layout,
-                ),
+                (redirect_game_cameras_to_offscreen, update_blit_layout),
             )
             .add_observer(on_camera_2d_added_redirect);
     }
@@ -86,9 +81,7 @@ fn setup_stretch(
         return;
     }
     if cfg.width == 0 || cfg.height == 0 {
-        warn!(
-            "[viewport_stretch] viewport.width/height is 0 — falling back to disabled"
-        );
+        warn!("[viewport_stretch] viewport.width/height is 0 — falling back to disabled");
         return;
     }
 
@@ -110,9 +103,8 @@ fn setup_stretch(
         TextureFormat::Bgra8UnormSrgb,
         bevy::asset::RenderAssetUsages::default(),
     );
-    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
-        | TextureUsages::COPY_DST
-        | TextureUsages::RENDER_ATTACHMENT;
+    image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
     // Nearest-neighbour sampler: the whole point of viewport stretch
     // for pixel art. Linear here would smear every pixel block.
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::nearest());
@@ -133,10 +125,7 @@ fn setup_stretch(
 /// image to the OS window. A dedicated `Camera2d` on a high render
 /// layer views a sprite that displays the offscreen image. Only runs
 /// when `ViewportStretchImage` exists (i.e. stretch mode is Viewport).
-fn spawn_blit_pass(
-    stretch: Option<Res<ViewportStretchImage>>,
-    mut commands: Commands,
-) {
+fn spawn_blit_pass(stretch: Option<Res<ViewportStretchImage>>, mut commands: Commands) {
     let Some(stretch) = stretch else {
         return;
     };
@@ -199,8 +188,7 @@ fn redirect_game_cameras_to_offscreen(
         // Only redirect cameras that render the default game layer (0).
         // RenderLayers::default() is layer 0; treat missing component
         // the same way.
-        let on_game_layer =
-            layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
+        let on_game_layer = layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
         if !on_game_layer {
             continue;
         }
@@ -212,10 +200,9 @@ fn redirect_game_cameras_to_offscreen(
         // get blown up into full-size dark borders around every sprite
         // — exactly what kills the look for pixel-art games. Force Off
         // on every camera that renders into the offscreen image.
-        commands.entity(entity).insert((
-            RenderTarget::Image(stretch.image.clone().into()),
-            Msaa::Off,
-        ));
+        commands
+            .entity(entity)
+            .insert((RenderTarget::Image(stretch.image.clone().into()), Msaa::Off));
     }
 }
 
@@ -242,15 +229,13 @@ fn on_camera_2d_added_redirect(
     let Ok(layers) = cameras.get(entity) else {
         return;
     };
-    let on_game_layer =
-        layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
+    let on_game_layer = layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
     if !on_game_layer {
         return;
     }
-    commands.entity(entity).insert((
-        RenderTarget::Image(stretch.image.clone().into()),
-        Msaa::Off,
-    ));
+    commands
+        .entity(entity)
+        .insert((RenderTarget::Image(stretch.image.clone().into()), Msaa::Off));
 }
 
 /// Resize the blit sprite each frame to fit the current window with

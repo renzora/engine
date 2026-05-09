@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
 #[renzora_macros::post_process(shader = "dithering.wgsl", name = "Dithering", icon = "GRID_FOUR")]
 pub struct DitheringSettings {

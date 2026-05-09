@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 
+use crate::attribute_id::{AttributeId, global_rodeo};
 use crate::context::AttributeContext;
-use crate::node::{ReduceFn, AttributeNode};
-use crate::attribute_id::{global_rodeo, AttributeId};
+use crate::node::{AttributeNode, ReduceFn};
 use crate::tags::TagMask;
 
 /// Template for lazy materialization of tagged complex attributes.
@@ -133,7 +133,9 @@ impl Attributes {
     /// Ensure a node exists for the given attribute, creating one with the given
     /// reduce function if absent.
     pub(crate) fn ensure_node(&mut self, id: AttributeId, reduce: ReduceFn) -> &mut AttributeNode {
-        self.nodes.entry(id).or_insert_with(|| AttributeNode::new(reduce))
+        self.nodes
+            .entry(id)
+            .or_insert_with(|| AttributeNode::new(reduce))
     }
 
     /// Re-evaluate a attribute node and update the context. Returns the new value.

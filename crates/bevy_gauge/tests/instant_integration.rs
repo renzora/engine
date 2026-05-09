@@ -6,7 +6,8 @@ use bevy_gauge::prelude::*;
 
 fn test_app() -> App {
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins).add_plugins(AttributesPlugin);
+    app.add_plugins(MinimalPlugins)
+        .add_plugins(AttributesPlugin);
     app
 }
 
@@ -15,20 +16,20 @@ fn evaluate_instant_resolves_cross_entity_roles() {
     let mut app = test_app();
 
     app.add_systems(Startup, |mut commands: Commands| {
-        let archer = commands
-            .spawn(attributes! { "Agility" => 30.0 })
-            .id();
+        let archer = commands.spawn(attributes! { "Agility" => 30.0 }).id();
         let target = commands
             .spawn(attributes! {
                 "Life" => 100.0,
                 "Life.current" => 100.0,
             })
             .id();
-        let arrow = commands
-            .spawn(attributes! { "Damage" => 15.0 })
-            .id();
+        let arrow = commands.spawn(attributes! { "Damage" => 15.0 }).id();
 
-        commands.insert_resource(TestEntities { archer, target, arrow });
+        commands.insert_resource(TestEntities {
+            archer,
+            target,
+            arrow,
+        });
     });
 
     app.add_systems(
@@ -38,10 +39,8 @@ fn evaluate_instant_resolves_cross_entity_roles() {
                 "Life.current" -= "Damage@arrow + Agility@attacker * 0.1",
             };
 
-            let roles: &[(&str, Entity)] = &[
-                ("arrow", handles.arrow),
-                ("attacker", handles.archer),
-            ];
+            let roles: &[(&str, Entity)] =
+                &[("arrow", handles.arrow), ("attacker", handles.archer)];
 
             let preview = attributes.evaluate_instant(&on_hit, roles, handles.target);
             assert_eq!(preview.len(), 1);
@@ -54,10 +53,7 @@ fn evaluate_instant_resolves_cross_entity_roles() {
 
             attributes.apply_evaluated_instant(&preview, handles.target);
             let life = attributes.evaluate(handles.target, "Life.current");
-            assert!(
-                (life - 82.0).abs() < 0.01,
-                "expected life 82.0, got {life}"
-            );
+            assert!((life - 82.0).abs() < 0.01, "expected life 82.0, got {life}");
 
             std::process::exit(0);
         },
@@ -71,9 +67,7 @@ fn apply_instant_resolves_cross_entity_roles() {
     let mut app = test_app();
 
     app.add_systems(Startup, |mut commands: Commands| {
-        let attacker = commands
-            .spawn(attributes! { "Strength" => 20.0 })
-            .id();
+        let attacker = commands.spawn(attributes! { "Strength" => 20.0 }).id();
         let target = commands
             .spawn(attributes! {
                 "Life" => 100.0,
@@ -96,10 +90,7 @@ fn apply_instant_resolves_cross_entity_roles() {
 
             let life = attributes.evaluate(handles.target, "Life.current");
             // 100 - 20 = 80
-            assert!(
-                (life - 80.0).abs() < 0.01,
-                "expected life 80.0, got {life}"
-            );
+            assert!((life - 80.0).abs() < 0.01, "expected life 80.0, got {life}");
 
             std::process::exit(0);
         },
@@ -135,10 +126,7 @@ fn evaluate_instant_with_literal_values() {
 
             attributes.apply_evaluated_instant(&preview, handles.0);
             let life = attributes.evaluate(handles.0, "Life.current");
-            assert!(
-                (life - 75.0).abs() < 0.01,
-                "expected life 75.0, got {life}"
-            );
+            assert!((life - 75.0).abs() < 0.01, "expected life 75.0, got {life}");
 
             std::process::exit(0);
         },

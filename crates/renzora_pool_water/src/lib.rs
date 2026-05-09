@@ -1,12 +1,12 @@
 pub mod material;
 pub mod simulation;
 
-use bevy::prelude::*;
 use bevy::asset::embedded_asset;
+use bevy::asset::RenderAssetUsages;
 use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use bevy::asset::RenderAssetUsages;
 use bevy::pbr::MaterialPlugin;
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use material::{PoolWaterMaterial, PoolWaterUniforms};
@@ -111,7 +111,11 @@ fn generate_pool_water_mesh(half_x: f32, half_z: f32, subdivisions: u32) -> Mesh
         for x in 0..verts_per_edge {
             let fx = x as f32 / subdivisions as f32;
             let fz = z as f32 / subdivisions as f32;
-            positions.push([-half_x + fx * half_x * 2.0, 0.0, -half_z + fz * half_z * 2.0]);
+            positions.push([
+                -half_x + fx * half_x * 2.0,
+                0.0,
+                -half_z + fz * half_z * 2.0,
+            ]);
             normals.push([0.0, 1.0, 0.0]);
             uvs.push([fx, fz]);
         }
@@ -173,14 +177,17 @@ fn setup_pool_water(
         // Spawn water surface as a child, positioned at the top face of the pool.
         // Uses a unit-sized plane (1x1) so it inherits the parent's XZ scale.
         // Positioned at y=0.5 (top of a unit cube) with a tiny offset to avoid z-fight.
-        let surface_id = commands.spawn((
-            Name::new("Water Surface"),
-            Mesh3d(mesh),
-            MeshMaterial3d(mat),
-            Transform::from_translation(Vec3::new(0.0, 0.5 - pool.water_level, 0.0)),
-            sim,
-            PoolWaterSurface(entity),
-        )).set_parent_in_place(entity).id();
+        let surface_id = commands
+            .spawn((
+                Name::new("Water Surface"),
+                Mesh3d(mesh),
+                MeshMaterial3d(mat),
+                Transform::from_translation(Vec3::new(0.0, 0.5 - pool.water_level, 0.0)),
+                sim,
+                PoolWaterSurface(entity),
+            ))
+            .set_parent_in_place(entity)
+            .id();
 
         commands.entity(entity).insert(PoolWaterLink(surface_id));
     }
@@ -210,7 +217,9 @@ fn ensure_depth_prepass(
     cameras: Query<Entity, (With<Camera3d>, Without<DepthPrepass>)>,
     pool_exists: Query<(), With<PoolWater>>,
 ) {
-    if pool_exists.is_empty() { return; }
+    if pool_exists.is_empty() {
+        return;
+    }
     for entity in cameras.iter() {
         commands.entity(entity).insert(DepthPrepass);
     }
@@ -232,12 +241,16 @@ fn update_pool_water(
     let t = time.elapsed_secs();
     let dt = time.delta_secs();
 
-    let sun_dir = sun_query.iter().next()
+    let sun_dir = sun_query
+        .iter()
+        .next()
         .map(|tr| tr.forward().as_vec3())
         .unwrap_or(Vec3::new(-0.3, -0.7, -0.4).normalize());
 
     for (mut sim, mat_handle, surface) in surface_query.iter_mut() {
-        let Ok((pool, _)) = pool_query.get(surface.0) else { continue };
+        let Ok((pool, _)) = pool_query.get(surface.0) else {
+            continue;
+        };
 
         // Step simulation
         sim.step();
@@ -301,7 +314,7 @@ fn hash_f32(x: f32) -> f32 {
 
 #[cfg(feature = "editor")]
 fn pool_water_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{InspectorEntry, FieldDef, FieldType, FieldValue};
+    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "pool_water",
@@ -321,87 +334,271 @@ fn pool_water_inspector_entry() -> renzora_editor::InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "Water Level",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 0.5 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.water_level)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.water_level = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 0.5,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.water_level))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.water_level = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "IOR",
-                field_type: FieldType::Float { speed: 0.01, min: 1.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.ior)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.ior = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 1.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.ior))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.ior = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Fresnel Min",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.fresnel_min)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.fresnel_min = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 1.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.fresnel_min))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.fresnel_min = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Caustic Intensity",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 2.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.caustic_intensity)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.caustic_intensity = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.caustic_intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.caustic_intensity = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Deep Color",
                 field_type: FieldType::Color,
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Color(s.deep_color)),
-                set_fn: |world, entity, val| { if let FieldValue::Color(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.deep_color = v; } } },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Color(s.deep_color))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.deep_color = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Shallow Color",
                 field_type: FieldType::Color,
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Color(s.shallow_color)),
-                set_fn: |world, entity, val| { if let FieldValue::Color(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.shallow_color = v; } } },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Color(s.shallow_color))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.shallow_color = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Foam Color",
                 field_type: FieldType::Color,
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Color(s.foam_color)),
-                set_fn: |world, entity, val| { if let FieldValue::Color(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.foam_color = v; } } },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Color(s.foam_color))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.foam_color = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Refraction Strength",
-                field_type: FieldType::Float { speed: 0.005, min: 0.0, max: 0.2 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.refraction_strength)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.refraction_strength = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.005,
+                    min: 0.0,
+                    max: 0.2,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.refraction_strength))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.refraction_strength = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Max Depth",
-                field_type: FieldType::Float { speed: 0.1, min: 0.5, max: 50.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.max_depth)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.max_depth = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.5,
+                    max: 50.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.max_depth))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.max_depth = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Foam Depth",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 5.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.foam_depth)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.foam_depth = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 5.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.foam_depth))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.foam_depth = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Damping",
-                field_type: FieldType::Float { speed: 0.001, min: 0.9, max: 0.999 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.damping)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.damping = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.001,
+                    min: 0.9,
+                    max: 0.999,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.damping))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.damping = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Wave Speed",
-                field_type: FieldType::Float { speed: 0.1, min: 0.1, max: 5.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.wave_speed)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.wave_speed = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.1,
+                    max: 5.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.wave_speed))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.wave_speed = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Height Scale",
-                field_type: FieldType::Float { speed: 0.01, min: 0.01, max: 2.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.height_scale)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.height_scale = v; } } },
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.01,
+                    max: 2.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.height_scale))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.height_scale = v;
+                        }
+                    }
+                },
             },
             FieldDef {
                 name: "Specular Power",
-                field_type: FieldType::Float { speed: 100.0, min: 100.0, max: 10000.0 },
-                get_fn: |world, entity| world.get::<PoolWater>(entity).map(|s| FieldValue::Float(s.specular_power)),
-                set_fn: |world, entity, val| { if let FieldValue::Float(v) = val { if let Some(mut s) = world.get_mut::<PoolWater>(entity) { s.specular_power = v; } } },
+                field_type: FieldType::Float {
+                    speed: 100.0,
+                    min: 100.0,
+                    max: 10000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<PoolWater>(entity)
+                        .map(|s| FieldValue::Float(s.specular_power))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut s) = world.get_mut::<PoolWater>(entity) {
+                            s.specular_power = v;
+                        }
+                    }
+                },
             },
         ],
     }
@@ -420,7 +617,15 @@ impl Plugin for PoolWaterPlugin {
 
         app.add_plugins(MaterialPlugin::<PoolWaterMaterial>::default())
             .register_type::<PoolWater>()
-            .add_systems(Update, (ensure_depth_prepass, setup_pool_water, update_pool_water, cleanup_pool_water));
+            .add_systems(
+                Update,
+                (
+                    ensure_depth_prepass,
+                    setup_pool_water,
+                    update_pool_water,
+                    cleanup_pool_water,
+                ),
+            );
 
         #[cfg(feature = "editor")]
         app.register_inspector(pool_water_inspector_entry());

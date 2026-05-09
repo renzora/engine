@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "film_grain.wgsl", name = "Film Grain", icon = "FILM_STRIP")]
+#[renzora_macros::post_process(
+    shader = "film_grain.wgsl",
+    name = "Film Grain",
+    icon = "FILM_STRIP"
+)]
 pub struct FilmGrainSettings {
     #[field(speed = 0.01, min = 0.0, max = 2.0, default = 0.3)]
     pub intensity: f32,

@@ -10,19 +10,19 @@
 //! The output is a [`UsdStage`] containing the full scene graph with meshes,
 //! materials, textures, skeletons, animations, lights, and cameras.
 
+pub mod animation;
+pub mod camera;
 pub mod crate_format;
+mod glb;
+pub mod lights;
+pub mod material;
+pub mod mesh;
+pub mod scene;
+pub mod skeleton;
+pub mod texture;
 pub mod usda;
 mod usdz;
-pub mod scene;
-pub mod mesh;
-pub mod material;
-pub mod skeleton;
-pub mod animation;
-pub mod lights;
-pub mod camera;
 pub mod xform;
-pub mod texture;
-mod glb;
 
 use std::path::Path;
 

@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "tilt_shift.wgsl", name = "Tilt Shift", icon = "BINOCULARS")]
+#[renzora_macros::post_process(
+    shader = "tilt_shift.wgsl",
+    name = "Tilt Shift",
+    icon = "BINOCULARS"
+)]
 pub struct TiltShiftSettings {
     #[field(speed = 0.1, min = 0.0, max = 10.0, default = 3.0)]
     pub blur_amount: f32,

@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "fog_overlay.wgsl", name = "Fog Overlay", icon = "CLOUD_FOG")]
+#[renzora_macros::post_process(
+    shader = "fog_overlay.wgsl",
+    name = "Fog Overlay",
+    icon = "CLOUD_FOG"
+)]
 pub struct FogOverlaySettings {
     #[field(speed = 0.01, min = 0.0, max = 1.0, default = 0.3)]
     pub density: f32,

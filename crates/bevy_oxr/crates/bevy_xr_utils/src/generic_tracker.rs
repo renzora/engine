@@ -1,8 +1,13 @@
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_color::palettes::css;
-use bevy_ecs::{component::Component, query::With, schedule::IntoScheduleConfigs as _, system::Query};
+use bevy_ecs::{
+    component::Component, query::With, schedule::IntoScheduleConfigs as _, system::Query,
+};
 use bevy_gizmos::gizmos::Gizmos;
-use bevy_transform::{TransformSystems, components::{GlobalTransform, Transform}};
+use bevy_transform::{
+    TransformSystems,
+    components::{GlobalTransform, Transform},
+};
 
 #[derive(Clone, Copy, Component)]
 #[require(Transform)]

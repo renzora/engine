@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "color_grading.wgsl", name = "Color Grading", icon = "PALETTE")]
+#[renzora_macros::post_process(
+    shader = "color_grading.wgsl",
+    name = "Color Grading",
+    icon = "PALETTE"
+)]
 pub struct ColorGradingSettings {
     #[field(speed = 0.01, min = 0.0, max = 3.0, default = 1.0)]
     pub brightness: f32,

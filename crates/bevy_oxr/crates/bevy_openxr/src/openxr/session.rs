@@ -7,7 +7,7 @@ use bevy_derive::Deref;
 use bevy_ecs::resource::Resource;
 use openxr::AnyGraphics;
 
-use crate::graphics::{graphics_match, GraphicsExt, GraphicsType, GraphicsWrap};
+use crate::graphics::{GraphicsExt, GraphicsType, GraphicsWrap, graphics_match};
 
 /// Graphics agnostic wrapper around [openxr::Session].
 ///

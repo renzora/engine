@@ -35,13 +35,7 @@ fn main() {
     App::new()
         .add_plugins(MinimalPlugins)
         .add_plugins(AttributesPlugin)
-        .add_systems(
-            Startup,
-            (
-                spawn,
-                demo.after(spawn),
-            ),
-        )
+        .add_systems(Startup, (spawn, demo.after(spawn)))
         .run();
 }
 
@@ -70,31 +64,19 @@ fn spawn(mut commands: Commands) {
         .id();
 
     let iron_arrow = commands
-        .spawn((
-            Name::new("Iron Arrow"),
-            attributes! { "Damage" => 15.0 },
-        ))
+        .spawn((Name::new("Iron Arrow"), attributes! { "Damage" => 15.0 }))
         .id();
 
     let fire_arrow = commands
-        .spawn((
-            Name::new("Fire Arrow"),
-            attributes! { "Damage" => 25.0 },
-        ))
+        .spawn((Name::new("Fire Arrow"), attributes! { "Damage" => 25.0 }))
         .id();
 
     let shortbow = commands
-        .spawn((
-            Name::new("Shortbow"),
-            attributes! { "Damage" => 10.0 },
-        ))
+        .spawn((Name::new("Shortbow"), attributes! { "Damage" => 10.0 }))
         .id();
 
     let longbow = commands
-        .spawn((
-            Name::new("Longbow"),
-            attributes! { "Damage" => 20.0 },
-        ))
+        .spawn((Name::new("Longbow"), attributes! { "Damage" => 20.0 }))
         .id();
 
     commands.insert_resource(Entities {
@@ -128,7 +110,10 @@ fn demo(handles: Res<Entities>, mut attributes: AttributesMut) {
 
     let preview = attributes.evaluate_instant(&on_hit, roles, handles.target);
     for entry in &preview {
-        println!("  Preview: {} {:?} {:.1}", entry.attribute, entry.op, entry.value);
+        println!(
+            "  Preview: {} {:?} {:.1}",
+            entry.attribute, entry.op, entry.value
+        );
     }
     println!("  Expected: 15 (arrow) + 10 (bow) + 30*0.1 (agility) = 28.0\n");
 
@@ -146,7 +131,10 @@ fn demo(handles: Res<Entities>, mut attributes: AttributesMut) {
 
     let preview = attributes.evaluate_instant(&on_hit, roles, handles.target);
     for entry in &preview {
-        println!("  Preview: {} {:?} {:.1}", entry.attribute, entry.op, entry.value);
+        println!(
+            "  Preview: {} {:?} {:.1}",
+            entry.attribute, entry.op, entry.value
+        );
     }
     println!("  Expected: 25 (arrow) + 20 (bow) + 30*0.1 (agility) = 48.0\n");
 

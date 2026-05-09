@@ -1864,4 +1864,3 @@ fn process_play_mode_requests(world: &mut World) {
         world.trigger(renzora::ResetScriptStates);
     }
 }
-

@@ -219,4 +219,3 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
         );
     }
 }
-

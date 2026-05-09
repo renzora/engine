@@ -4,12 +4,12 @@ use bevy::ecs::query::QueryFilter;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
+use crate::attribute_id::{AttributeId, global_rodeo};
 use crate::attributes::Attributes;
 use crate::expr::{Dependency, Expr};
-use crate::graph::{register_expr_deps, unregister_expr_deps, DepNode, DependencyGraph};
+use crate::graph::{DepNode, DependencyGraph, register_expr_deps, unregister_expr_deps};
 use crate::modifier::Modifier;
 use crate::node::ReduceFn;
-use crate::attribute_id::{global_rodeo, AttributeId};
 use crate::tags::{TagMask, TagResolver};
 
 /// System parameter for mutating entity attributes.
@@ -45,7 +45,11 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     }
 
     pub fn value(&self, entity: Entity, attribute: &str) -> f32 {
-        self.query.get(entity).ok().map(|a| a.value(attribute)).unwrap_or(0.0)
+        self.query
+            .get(entity)
+            .ok()
+            .map(|a| a.value(attribute))
+            .unwrap_or(0.0)
     }
 
     /// Get read-only access to an entity's [`Attributes`].
@@ -65,12 +69,7 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     /// The attribute node is created with `ReduceFn::Sum` if it doesn't exist.
     /// If the modifier is an `Expr`, dependency edges are registered in the
     /// global graph. The attribute is then re-evaluated and changes propagate.
-    pub fn add_modifier(
-        &mut self,
-        entity: Entity,
-        attribute: &str,
-        modifier: impl Into<Modifier>,
-    ) {
+    pub fn add_modifier(&mut self, entity: Entity, attribute: &str, modifier: impl Into<Modifier>) {
         self.add_modifier_tagged(entity, attribute, modifier, TagMask::NONE);
     }
 
@@ -94,7 +93,10 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
             // Ensure any tag-query dependencies are materialized before
             // registering edges (so the synthetic nodes exist in the graph).
             for dep in expr.dependencies() {
-                if let Dependency::TagQuery { attribute, mask, .. } = dep {
+                if let Dependency::TagQuery {
+                    attribute, mask, ..
+                } = dep
+                {
                     self.ensure_tag_query(entity, *attribute, *mask);
                 }
             }
@@ -139,7 +141,10 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
 
         if let Modifier::Expr(expr) = &modifier {
             for dep in expr.dependencies() {
-                if let Dependency::TagQuery { attribute, mask, .. } = dep {
+                if let Dependency::TagQuery {
+                    attribute, mask, ..
+                } = dep
+                {
                     self.ensure_tag_query(entity, *attribute, *mask);
                 }
             }
@@ -168,8 +173,7 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
         attribute: &str,
         expr_source: &str,
     ) -> Result<(), crate::expr::CompileError> {
-        let expr =
-            Expr::compile(expr_source, Some(&self.tag_resolver))?;
+        let expr = Expr::compile(expr_source, Some(&self.tag_resolver))?;
         self.add_modifier(entity, attribute, Modifier::Expr(expr));
         Ok(())
     }
@@ -186,19 +190,13 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
         expr_source: &str,
         tag: TagMask,
     ) -> Result<(), crate::expr::CompileError> {
-        let expr =
-            Expr::compile(expr_source, Some(&self.tag_resolver))?;
+        let expr = Expr::compile(expr_source, Some(&self.tag_resolver))?;
         self.add_modifier_tagged(entity, attribute, Modifier::Expr(expr), tag);
         Ok(())
     }
 
     /// Remove a modifier from a attribute on an entity (matches by value, ignores tags).
-    pub fn remove_modifier(
-        &mut self,
-        entity: Entity,
-        attribute: &str,
-        modifier: &Modifier,
-    ) {
+    pub fn remove_modifier(&mut self, entity: Entity, attribute: &str, modifier: &Modifier) {
         let attribute_id = self.intern(attribute);
 
         if let Modifier::Expr(expr) = modifier {
@@ -259,9 +257,8 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
 
         if let Ok(mut attrs) = self.query.get_mut(entity) {
             let node = attrs.ensure_node(attribute_id, ReduceFn::Sum);
-            node.modifiers.retain(|tm| {
-                !(tm.tag.is_empty() && matches!(tm.modifier, Modifier::Flat(_)))
-            });
+            node.modifiers
+                .retain(|tm| !(tm.tag.is_empty() && matches!(tm.modifier, Modifier::Flat(_))));
             node.modifiers
                 .push(crate::modifier::TaggedModifier::global(Modifier::Flat(
                     value,
@@ -276,13 +273,7 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     /// Like [`set_base`](Self::set_base), but targets modifiers with an exact
     /// tag match instead of untagged modifiers. Expression modifiers and
     /// modifiers with different tags are preserved.
-    pub fn set_base_tagged(
-        &mut self,
-        entity: Entity,
-        attribute: &str,
-        value: f32,
-        tag: TagMask,
-    ) {
+    pub fn set_base_tagged(&mut self, entity: Entity, attribute: &str, value: f32, tag: TagMask) {
         if tag.is_empty() {
             return self.set_base(entity, attribute, value);
         }
@@ -291,9 +282,8 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
 
         if let Ok(mut attrs) = self.query.get_mut(entity) {
             let node = attrs.ensure_node(attribute_id, ReduceFn::Sum);
-            node.modifiers.retain(|tm| {
-                !(tm.tag == tag && matches!(tm.modifier, Modifier::Flat(_)))
-            });
+            node.modifiers
+                .retain(|tm| !(tm.tag == tag && matches!(tm.modifier, Modifier::Flat(_))));
             node.modifiers.push(crate::modifier::TaggedModifier::new(
                 Modifier::Flat(value),
                 tag,
@@ -427,12 +417,7 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     ///
     /// If the alias was already pointing to a different entity, edges are
     /// automatically rewired and affected attributes are re-evaluated.
-    pub fn register_source(
-        &mut self,
-        entity: Entity,
-        alias: &str,
-        source_entity: Entity,
-    ) {
+    pub fn register_source(&mut self, entity: Entity, alias: &str, source_entity: Entity) {
         let alias_id = self.intern(alias);
 
         // Rewire edges and get affected attributes
@@ -519,12 +504,7 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     /// the given tag combo is evaluated, a tagged expression modifier is
     /// auto-generated from the stored template. No need to enumerate combos
     /// up front.
-    pub fn evaluate_tagged(
-        &mut self,
-        entity: Entity,
-        attribute: &str,
-        query: TagMask,
-    ) -> f32 {
+    pub fn evaluate_tagged(&mut self, entity: Entity, attribute: &str, query: TagMask) -> f32 {
         if query.is_empty() {
             return self.evaluate(entity, attribute);
         }
@@ -561,11 +541,8 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
         mask: TagMask,
     ) {
         // Check if there's a template and whether this combo is new
-        let template_info: Option<(String, Vec<String>, String)> = self
-            .query
-            .get(entity)
-            .ok()
-            .and_then(|attrs| {
+        let template_info: Option<(String, Vec<String>, String)> =
+            self.query.get(entity).ok().and_then(|attrs| {
                 let tmpl = attrs.templates.get(&attribute_id)?;
                 if tmpl.materialized.contains(&mask) {
                     return None; // already done
@@ -676,8 +653,12 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     /// modifiers on a attribute that reference cross-entity aliases.
     fn cache_source_values(&mut self, entity: Entity, attribute_id: AttributeId) {
         let cache_entries: Vec<(AttributeId, AttributeId, AttributeId, Option<TagMask>)> = {
-            let Ok(attrs) = self.query.get(entity) else { return };
-            let Some(node) = attrs.nodes.get(&attribute_id) else { return };
+            let Ok(attrs) = self.query.get(entity) else {
+                return;
+            };
+            let Some(node) = attrs.nodes.get(&attribute_id) else {
+                return;
+            };
             node.modifiers
                 .iter()
                 .filter_map(|tm| match &tm.modifier {
@@ -712,18 +693,24 @@ impl<'w, 's, F: QueryFilter> AttributesMut<'w, 's, F> {
     fn clear_source_cache(&mut self, entity: Entity, alias_id: AttributeId) {
         // Collect all (attribute_id, cache_keys) for modifiers that reference this alias
         let clear_keys: Vec<AttributeId> = {
-            let Ok(attrs) = self.query.get(entity) else { return };
-            attrs.nodes.values()
+            let Ok(attrs) = self.query.get(entity) else {
+                return;
+            };
+            attrs
+                .nodes
+                .values()
                 .flat_map(|node| {
-                    node.modifiers.iter().filter_map(|tm| match &tm.modifier {
-                        Modifier::Expr(expr) => Some(
-                            expr.source_cache_keys()
-                                .filter(|(a, _, _, _)| *a == alias_id)
-                                .map(|(_, _, ck, _)| ck)
-                        ),
-                        _ => None,
-                    })
-                    .flatten()
+                    node.modifiers
+                        .iter()
+                        .filter_map(|tm| match &tm.modifier {
+                            Modifier::Expr(expr) => Some(
+                                expr.source_cache_keys()
+                                    .filter(|(a, _, _, _)| *a == alias_id)
+                                    .map(|(_, _, ck, _)| ck),
+                            ),
+                            _ => None,
+                        })
+                        .flatten()
                 })
                 .collect()
         };
@@ -845,10 +832,7 @@ mod qualify_tests {
             "base * (1 + increased) * more",
             None,
         );
-        assert_eq!(
-            result,
-            "Damage.base * (1 + Damage.increased) * Damage.more"
-        );
+        assert_eq!(result, "Damage.base * (1 + Damage.increased) * Damage.more");
     }
 
     #[test]
@@ -867,24 +851,14 @@ mod qualify_tests {
 
     #[test]
     fn non_part_identifiers_unchanged() {
-        let result = qualify_expression(
-            "Damage",
-            &["base"],
-            "max(base, Strength) + 1.0",
-            None,
-        );
+        let result = qualify_expression("Damage", &["base"], "max(base, Strength) + 1.0", None);
         assert_eq!(result, "max(Damage.base, Strength) + 1.0");
     }
 
     #[test]
     fn no_false_partial_match() {
         // "base_extra" should NOT be treated as "base" + "extra"
-        let result = qualify_expression(
-            "Attribute",
-            &["base"],
-            "base_extra + base",
-            None,
-        );
+        let result = qualify_expression("Attribute", &["base"], "base_extra + base", None);
         assert_eq!(result, "base_extra + Attribute.base");
     }
 

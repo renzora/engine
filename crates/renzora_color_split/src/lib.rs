@@ -1,10 +1,14 @@
 use bevy::prelude::*;
-use serde;
-use renzora_postprocess;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
+use renzora_postprocess;
+use serde;
 
-#[renzora_macros::post_process(shader = "color_split.wgsl", name = "Color Split", icon = "SQUARES_FOUR")]
+#[renzora_macros::post_process(
+    shader = "color_split.wgsl",
+    name = "Color Split",
+    icon = "SQUARES_FOUR"
+)]
 pub struct ColorSplitSettings {
     #[field(speed = 0.001, min = 0.0, max = 0.05, default = 0.005)]
     pub offset_r: f32,

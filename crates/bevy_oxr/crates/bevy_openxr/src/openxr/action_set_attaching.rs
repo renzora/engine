@@ -1,6 +1,10 @@
 use crate::{action_binding::run_action_binding_sugestion, session::OxrSession};
 use bevy_app::{App, Plugin, PostUpdate};
-use bevy_ecs::{message::{Message, MessageReader}, schedule::{IntoScheduleConfigs as _, common_conditions::on_message}, system::Res};
+use bevy_ecs::{
+    message::{Message, MessageReader},
+    schedule::{IntoScheduleConfigs as _, common_conditions::on_message},
+    system::Res,
+};
 use bevy_log::{error, info};
 use bevy_mod_xr::session::XrSessionCreatedMessage;
 

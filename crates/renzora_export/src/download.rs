@@ -37,10 +37,7 @@ pub fn release_asset_name(platform: Platform) -> &'static str {
 fn extract_into_runtime_dir(platform: Platform) -> bool {
     matches!(
         platform,
-        Platform::WindowsX64
-            | Platform::LinuxX64
-            | Platform::MacOSX64
-            | Platform::MacOSArm64
+        Platform::WindowsX64 | Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64
     )
 }
 
@@ -183,8 +180,7 @@ fn download_and_install(
             runtime_dir.display()
         )));
         let cursor = std::io::Cursor::new(&bytes);
-        let mut archive =
-            zip::ZipArchive::new(cursor).map_err(|e| format!("Bad zip: {}", e))?;
+        let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Bad zip: {}", e))?;
         archive
             .extract(runtime_dir)
             .map_err(|e| format!("Extract failed: {}", e))?;

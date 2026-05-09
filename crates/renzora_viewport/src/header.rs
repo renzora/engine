@@ -190,12 +190,19 @@ fn render_strip_contents(
         return;
     }
 
-    // ── Inline snapping: T / R / S toggles with inline value editors ─────────
+    // ── Inline snapping ─────────────────────────────────────────────────────
+    // The translate-snap pair doubles as the 2D grid-snap toggle —
+    // value = grid step in world units. The rotate / scale snaps and
+    // the camera-speed widget below are 3D-only conveniences; in 2D
+    // mode they're hidden to keep the toolbar focused.
+    use renzora::core::viewport_types::ViewportView;
+    let in_2d = settings.viewport_view == ViewportView::Two;
     let snap = settings.snap;
+    let translate_label = if in_2d { "Grid Snap" } else { "Translate" };
     snap_pair(
         ui,
         ARROWS_OUT_CARDINAL,
-        "Translate",
+        translate_label,
         snap.translate_enabled,
         snap.translate_snap,
         0.01..=100.0,
@@ -208,42 +215,47 @@ fn render_strip_contents(
         |s, on| s.snap.translate_enabled = on,
         |s, v| s.snap.translate_snap = v,
     );
-    snap_pair(
-        ui,
-        ARROW_CLOCKWISE,
-        "Rotate",
-        snap.rotate_enabled,
-        snap.rotate_snap,
-        1.0..=90.0,
-        0.2,
-        0,
-        active,
-        inactive,
-        hovered,
-        cmds,
-        |s, on| s.snap.rotate_enabled = on,
-        |s, v| s.snap.rotate_snap = v,
-    );
-    snap_pair(
-        ui,
-        ARROWS_OUT,
-        "Scale",
-        snap.scale_enabled,
-        snap.scale_snap,
-        0.01..=10.0,
-        0.01,
-        2,
-        active,
-        inactive,
-        hovered,
-        cmds,
-        |s, on| s.snap.scale_enabled = on,
-        |s, v| s.snap.scale_snap = v,
-    );
+    if !in_2d {
+        snap_pair(
+            ui,
+            ARROW_CLOCKWISE,
+            "Rotate",
+            snap.rotate_enabled,
+            snap.rotate_snap,
+            1.0..=90.0,
+            0.2,
+            0,
+            active,
+            inactive,
+            hovered,
+            cmds,
+            |s, on| s.snap.rotate_enabled = on,
+            |s, v| s.snap.rotate_snap = v,
+        );
+        snap_pair(
+            ui,
+            ARROWS_OUT,
+            "Scale",
+            snap.scale_enabled,
+            snap.scale_snap,
+            0.01..=10.0,
+            0.01,
+            2,
+            active,
+            inactive,
+            hovered,
+            cmds,
+            |s, on| s.snap.scale_enabled = on,
+            |s, v| s.snap.scale_snap = v,
+        );
+    }
 
     separator(ui);
 
-    // ── Camera speed inline drag (rendered as a pill to match snap groups) ─
+    // ── Camera speed inline drag (3D fly-cam only — 2D uses pan + zoom) ──
+    if in_2d {
+        return;
+    }
     let mut cam_speed = settings.camera.move_speed;
     egui::Frame::default()
         .fill(inactive)
@@ -861,10 +873,15 @@ fn render_right_dropdowns(
     theme: &renzora_theme::Theme,
     inner: Rect,
 ) -> f32 {
+    use renzora::core::viewport_types::ViewportView;
+    let in_2d = settings.viewport_view == ViewportView::Two;
+
     const DROP_W: f32 = 40.0;
     const GAP: f32 = 3.0;
-    const COUNT: f32 = 3.0;
-    let total_w = DROP_W * COUNT + GAP * (COUNT - 1.0);
+    // Snap (object-snap) and Camera (projection / FOV) dropdowns are
+    // 3D-only. In 2D mode show only the Display dropdown.
+    let count: f32 = if in_2d { 1.0 } else { 3.0 };
+    let total_w = DROP_W * count + GAP * (count - 1.0).max(0.0);
 
     let strip_rect = Rect::from_min_max(
         Pos2::new(inner.max.x - total_w, inner.min.y),
@@ -888,12 +905,14 @@ fn render_right_dropdowns(
     display_dropdown(
         &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
     );
-    snap_dropdown(
-        &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
-    );
-    camera_dropdown(
-        &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
-    );
+    if !in_2d {
+        snap_dropdown(
+            &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
+        );
+        camera_dropdown(
+            &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
+        );
+    }
 
     total_w
 }

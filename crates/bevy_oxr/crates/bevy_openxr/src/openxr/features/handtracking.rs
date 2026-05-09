@@ -8,8 +8,8 @@ use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::World;
 use bevy_log::{debug, error, warn};
 use bevy_mod_xr::hands::{
-    spawn_hand_bones, HandBone, HandSide, SpawnHandTracker, SpawnHandTrackerCommandExecutor,
-    XrHandBoneRadius,
+    HandBone, HandSide, SpawnHandTracker, SpawnHandTrackerCommandExecutor, XrHandBoneRadius,
+    spawn_hand_bones,
 };
 use bevy_mod_xr::hands::{LeftHand, RightHand, XrHandBoneEntities};
 use bevy_mod_xr::session::{XrPreDestroySession, XrSessionCreated};
@@ -247,15 +247,21 @@ fn locate_hands(
             let joint = joints[*bone as usize];
             if let Some(mut velocity) = velocity {
                 let Some(vels) = vels.as_ref() else {
-                    error!("somehow got a hand bone with an XrVelocity component, but there are no velocities");
+                    error!(
+                        "somehow got a hand bone with an XrVelocity component, but there are no velocities"
+                    );
                     continue;
                 };
                 let Some(mut vel_flags) = velocity_flags else {
-                    error!("somehow got a hand bone with an XrVelocity component, but without velocity flags");
+                    error!(
+                        "somehow got a hand bone with an XrVelocity component, but without velocity flags"
+                    );
                     continue;
                 };
                 let Some(mut xr_vel_flags) = xr_velocity_flags else {
-                    error!("somehow got a hand bone with an XrVelocity component, but without velocity flags");
+                    error!(
+                        "somehow got a hand bone with an XrVelocity component, but without velocity flags"
+                    );
                     continue;
                 };
                 let vel = vels[*bone as usize];

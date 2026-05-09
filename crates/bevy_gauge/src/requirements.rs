@@ -55,18 +55,19 @@ impl AttributeRequirement {
     pub fn met(&mut self, attrs: &Attributes) -> bool {
         let expr = match &self.compiled {
             Some(expr) => expr,
-            None => {
-                match Expr::compile(&self.source, None) {
-                    Ok(expr) => {
-                        self.compiled = Some(expr);
-                        self.compiled.as_ref().unwrap()
-                    }
-                    Err(err) => {
-                        warn!("AttributeRequirement compile error for '{}': {}", self.source, err);
-                        return false;
-                    }
+            None => match Expr::compile(&self.source, None) {
+                Ok(expr) => {
+                    self.compiled = Some(expr);
+                    self.compiled.as_ref().unwrap()
                 }
-            }
+                Err(err) => {
+                    warn!(
+                        "AttributeRequirement compile error for '{}': {}",
+                        self.source, err
+                    );
+                    return false;
+                }
+            },
         };
         expr.evaluate(&attrs.context) != 0.0
     }
