@@ -1426,35 +1426,68 @@ pub fn rehydrate_meshes(
 }
 
 /// Loads `Sprite.image` from `SpriteImagePath` whenever the path
-/// component is added or its string changes. Mirrors `rehydrate_ui_images`
-/// for `UiImagePath` — `Handle<Image>` doesn't survive scene save/load
-/// (asset IDs are runtime-only), but the path string does, and the asset
-/// server re-resolves it cheaply.
-/// Reconcile `Sprite.image` with `SpriteImagePath` whenever the path
-/// component is inserted (scene load, fresh spawn, or replacement
-/// insert from drag-drop). Observers fire reliably for reflection
-/// inserts where `Changed<>` doesn't.
+/// component is added or its string changes.
+///
+/// Two responsibilities:
+/// 1. **Update existing sprite**: bind / clear the image handle and
+///    swap placeholder-blue ↔ white as appropriate.
+/// 2. **Re-create missing sprite**: Bevy 0.18's `Sprite` doesn't have
+///    `#[reflect(Serialize, Deserialize)]`, so scene save drops it
+///    entirely. On load, an entity carries `SpriteImagePath` and the
+///    required components (Anchor, Transform, Visibility), but no
+///    `Sprite` — nothing renders. Inserting a fresh `Sprite` with the
+///    bound image (or placeholder colour for an empty path) restores
+///    rendering. This is the rehydration path mirroring
+///    `rehydrate_meshes` for `MeshPrimitive`.
 pub fn on_sprite_image_path_inserted(
     trigger: On<Insert, renzora::core::SpriteImagePath>,
     paths: Query<&renzora::core::SpriteImagePath>,
-    mut sprites: Query<&mut bevy::sprite::Sprite>,
+    has_sprite: Query<(), With<bevy::sprite::Sprite>>,
+    mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
+    asset_server: Res<AssetServer>,
+    mut commands: Commands,
+) {
+    let entity = trigger.entity;
+    let Ok(path) = paths.get(entity) else {
+        return;
+    };
+    if has_sprite.get(entity).is_ok() {
+        apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server);
+    } else {
+        spawn_sprite_for_path(entity, &path.0, &asset_server, &mut commands);
+    }
+}
+
+/// Companion observer: when `Sprite` is inserted on an entity that
+/// already has `SpriteImagePath`, bind the image. Catches the
+/// reverse insert order — preset spawns and drag-drop both insert
+/// Sprite and SpriteImagePath in the same bundle, so whichever
+/// observer fires last finds the other component already present.
+pub fn on_sprite_inserted_apply_image_path(
+    trigger: On<Insert, bevy::sprite::Sprite>,
+    paths: Query<&renzora::core::SpriteImagePath>,
+    mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
 ) {
     let entity = trigger.entity;
     let Ok(path) = paths.get(entity) else {
-        info!("[sprite] {:?} insert observer: no SpriteImagePath visible", entity);
         return;
     };
-    let Ok(mut sprite) = sprites.get_mut(entity) else {
-        info!(
-            "[sprite] {:?} insert observer: no Sprite component (path \"{}\")",
-            entity, path.0
-        );
+    apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server);
+}
+
+fn apply_sprite_image_path(
+    entity: Entity,
+    path: &str,
+    sprites_mut: &mut Query<&mut bevy::sprite::Sprite>,
+    asset_server: &AssetServer,
+) {
+    let Ok(mut sprite) = sprites_mut.get_mut(entity) else {
         return;
     };
     let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
 
-    if path.0.is_empty() {
+    if path.is_empty() {
         if sprite.image != Handle::<Image>::default() {
             info!("[sprite] {:?} cleared image (empty path)", entity);
             sprite.image = Default::default();
@@ -1466,26 +1499,50 @@ pub fn on_sprite_image_path_inserted(
         return;
     }
 
-    let expected = asset_server.load(&path.0);
+    let expected = asset_server.load::<Image>(path.to_owned());
     if sprite.image.id() != expected.id() {
         info!(
             "[sprite] {:?} bound image \"{}\" (replaced handle)",
-            entity, path.0
+            entity, path
         );
         sprite.image = expected;
         sprite.color = Color::WHITE;
     } else if sprite.color == placeholder_blue {
-        info!(
-            "[sprite] {:?} migrating placeholder blue → WHITE for \"{}\"",
-            entity, path.0
-        );
         sprite.color = Color::WHITE;
-    } else {
-        info!(
-            "[sprite] {:?} insert observer: already in sync with \"{}\"",
-            entity, path.0
-        );
     }
+}
+
+/// Insert a `Sprite` from scratch when one's missing. Used by the
+/// rehydration path — reflection-loaded entities carry
+/// `SpriteImagePath` but not `Sprite`. Defaults match the editor's
+/// preset: 100×100 placeholder for empty path, white-tinted with
+/// the loaded texture for a bound path.
+fn spawn_sprite_for_path(
+    entity: Entity,
+    path: &str,
+    asset_server: &AssetServer,
+    commands: &mut Commands,
+) {
+    let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
+    let sprite = if path.is_empty() {
+        bevy::sprite::Sprite {
+            color: placeholder_blue,
+            custom_size: Some(Vec2::splat(100.0)),
+            ..Default::default()
+        }
+    } else {
+        bevy::sprite::Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::splat(100.0)),
+            image: asset_server.load::<Image>(path.to_owned()),
+            ..Default::default()
+        }
+    };
+    info!(
+        "[sprite] {:?} rehydrated Sprite component (path \"{}\")",
+        entity, path
+    );
+    commands.entity(entity).insert(sprite);
 }
 
 /// Ensure parent entities have `Visibility` so transform/visibility propagation works.

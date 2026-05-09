@@ -70,6 +70,19 @@ impl Plugin for RuntimePlugin {
         app.add_observer(camera::on_camera_2d_inserted);
         app.add_observer(camera::on_projection_inserted_for_2d);
 
+        // Sprite image binding — needs to run in both editor and runtime
+        // builds. In the editor it picks up drag-drop / inspector edits;
+        // in the runtime it re-binds Handle<Image> from the path string
+        // after scene reflection load (Handle IDs don't survive saves).
+        // The observer pattern catches reflection inserts where
+        // `Changed<>` doesn't. Two observers cover both insert orders:
+        // the path-insert observer fires when `SpriteImagePath` arrives
+        // (post-Sprite case), and the sprite-insert observer catches
+        // the reverse order (Sprite arrives after the path is already
+        // there — common with reflection scene loads).
+        app.add_observer(scene_io::on_sprite_image_path_inserted);
+        app.add_observer(scene_io::on_sprite_inserted_apply_image_path);
+
         app.add_plugins(debug_log::DebugLogPlugin);
 
         #[cfg(not(feature = "editor"))]
@@ -93,6 +106,14 @@ impl Plugin for RuntimePlugin {
                             info!("Loaded project from rpak: {}", config.name);
                             // Use a sentinel path — scene_io reads from Vfs, not disk.
                             let project_path = std::path::PathBuf::from(".");
+                            // Same timing fix as the disk path below: set
+                            // the asset reader path before Startup so
+                            // observer-driven asset loads resolve correctly.
+                            if let Some(asset_path) =
+                                app.world().get_resource::<ProjectAssetPath>()
+                            {
+                                asset_path.set(project_path.clone());
+                            }
                             app.insert_resource(CurrentProject {
                                 path: project_path,
                                 config,
@@ -135,6 +156,21 @@ impl Plugin for RuntimePlugin {
                                 project.config.name,
                                 project.path.display()
                             );
+                            // Set the asset reader path *immediately*,
+                            // before any Startup system runs. Otherwise
+                            // `load_current_scene` (Startup) fires
+                            // observers like `on_sprite_image_path_inserted`
+                            // which call `asset_server.load(...)` while
+                            // the asset reader still has no project_path
+                            // — the load resolves to "not found" and
+                            // sprites render invisibly. The Update-time
+                            // `sync_project_asset_path` system also runs,
+                            // but only after the damage is done.
+                            if let Some(asset_path) =
+                                app.world().get_resource::<ProjectAssetPath>()
+                            {
+                                asset_path.set(project.path.clone());
+                            }
                             app.insert_resource(project);
                         }
                         Err(e) => {
@@ -164,14 +200,6 @@ impl Plugin for RuntimePlugin {
                     scene_io::finish_mesh_instance_rehydrate,
                 ),
             )
-            // Sprite image binding goes through an observer rather
-            // than a Changed-filtered system: scene loads insert
-            // components via reflection, which doesn't propagate
-            // Bevy's change ticks. `On<Insert, T>` fires for both
-            // initial add and replacement inserts, covering the
-            // scene-load, fresh-spawn, and drag-drop-replacement paths
-            // uniformly.
-            .add_observer(scene_io::on_sprite_image_path_inserted)
             .add_systems(
                 Update,
                 (
