@@ -20,6 +20,9 @@ use bevy::prelude::*;
 
 pub use renzora;
 
+#[cfg(not(feature = "editor"))]
+mod viewport_stretch;
+
 // Dylib keepalive: `pub use` every plugin crate so cargo emits a real
 // dependency edge into this rlib's metadata, which propagates to the
 // final binary's DT_NEEDED entries. The plugin dylibs need to actually
@@ -317,6 +320,16 @@ pub fn add_engine_plugins(app: &mut App) {
     app.add_plugins(renzora_scripting::ScriptingPlugin::default());
     info!("[runtime] foundation: PhysicsPlugin");
     app.add_plugins(renzora_physics::PhysicsPlugin::default());
+
+    // Viewport stretch: pixel-art game scaling. Only meaningful in
+    // runtime builds (the editor renders to its own offscreen image
+    // via `ViewportRenderTarget`, separate concern). The plugin is
+    // a no-op when `project.viewport.stretch_mode == Disabled`.
+    #[cfg(not(feature = "editor"))]
+    {
+        info!("[runtime] foundation: ViewportStretchPlugin");
+        app.add_plugins(viewport_stretch::ViewportStretchPlugin);
+    }
 
     // ── Auto-discovered (any order) ────────────────────────────────────
     renzora::for_each_static_plugin(renzora::PluginScope::Runtime, |plugin| {

@@ -81,6 +81,82 @@ impl Default for WindowConfig {
     }
 }
 
+/// How the game's render viewport scales to fill the OS window.
+///
+/// Mirrors Godot's stretch modes — the *render resolution* (what the
+/// camera shoots) and the *window size* (what the OS displays) are
+/// independent concerns. Pixel-art games typically render at a small
+/// fixed resolution (320×180, 480×270, etc.) and let the GPU upscale
+/// to whatever window the player has, with nearest-neighbor sampling
+/// preserving crisp pixels.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StretchMode {
+    /// Camera renders directly to the window. `viewport.width/height` is
+    /// ignored; the visible world matches the OS window pixel-for-pixel.
+    /// This is the default — same behaviour as before viewport mode existed.
+    #[default]
+    Disabled,
+    /// Camera renders to an offscreen image at `viewport.width/height`,
+    /// then the GPU upscales that image to fill the OS window with
+    /// nearest-neighbour sampling. Letterbox/pillarbox depending on
+    /// `aspect_mode` when the window aspect doesn't match the viewport.
+    Viewport,
+}
+
+/// How the viewport image fills the OS window when their aspect ratios
+/// differ. Only meaningful when [`StretchMode::Viewport`] is in use.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AspectMode {
+    /// Preserve viewport aspect — black bars (letterbox / pillarbox) fill
+    /// the gap. Pixel-perfect; what most retro games ship with.
+    #[default]
+    Keep,
+    /// Stretch the viewport non-uniformly to fill the window. Distorts
+    /// pixels — almost never what you want, but matches some legacy ports.
+    Expand,
+    /// Pin width to the window; viewport may letterbox top/bottom if
+    /// the window is taller than the viewport's aspect.
+    KeepWidth,
+    /// Pin height to the window; viewport may pillarbox left/right if
+    /// the window is wider than the viewport's aspect.
+    KeepHeight,
+}
+
+/// Game render-resolution config. Sits next to [`WindowConfig`]; the
+/// window is the OS-managed surface, the viewport is the resolution the
+/// camera shoots at.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ViewportConfig {
+    /// Game render width in pixels. Only honoured when `stretch_mode`
+    /// is `Viewport`. For pixel art, a low value (e.g. 320) gives
+    /// chunky pixels when upscaled to a 1080p window.
+    pub width: u32,
+    /// Game render height in pixels.
+    pub height: u32,
+    /// How to scale the rendered image to fit the window.
+    #[serde(default)]
+    pub stretch_mode: StretchMode,
+    /// How to handle aspect mismatch between viewport and window.
+    #[serde(default)]
+    pub aspect_mode: AspectMode,
+}
+
+impl Default for ViewportConfig {
+    fn default() -> Self {
+        // Defaults match `WindowConfig` so a fresh project with
+        // `stretch_mode: Disabled` (the default) acts identically
+        // to projects authored before this field existed.
+        Self {
+            width: 1280,
+            height: 720,
+            stretch_mode: StretchMode::default(),
+            aspect_mode: AspectMode::default(),
+        }
+    }
+}
+
 /// Network configuration stored in `[network]` section of project.toml.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct NetworkProjectConfig {
@@ -152,6 +228,13 @@ pub struct ProjectConfig {
     pub autoload: Vec<String>,
     #[serde(default)]
     pub window: WindowConfig,
+    /// Game render-resolution config. Independent of `window` — the
+    /// camera renders at `viewport.width × viewport.height`, then the
+    /// `stretch_mode` controls how that image fills the window. Default
+    /// `Disabled` ignores the viewport resolution and renders straight
+    /// to the window, so existing projects don't change behaviour.
+    #[serde(default)]
+    pub viewport: ViewportConfig,
     /// Whether the runtime should attach a console (Windows) for `println!` /
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -174,6 +257,7 @@ impl Default for ProjectConfig {
             icon: None,
             autoload: Vec::new(),
             window: WindowConfig::default(),
+            viewport: ViewportConfig::default(),
             console_logging: false,
             network: None,
             editor: None,

@@ -29,12 +29,26 @@ pub fn draw_window_bounds_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect)
         return;
     }
 
-    // Project must be loaded; window dimensions come from project config.
+    // Project must be loaded. The outline shows the **game render
+    // region** — what the user's Camera 2D will actually shoot, not
+    // the OS window. With stretch mode `Disabled` those are the same.
+    // With stretch mode `Viewport` the camera renders to a smaller
+    // offscreen image at viewport dimensions and the runtime upscales
+    // it to the OS window, so authoring must happen against the
+    // viewport size.
     let Some(project) = world.get_resource::<CurrentProject>() else {
         return;
     };
-    let w = project.config.window.width as f32;
-    let h = project.config.window.height as f32;
+    let (w, h) = match project.config.viewport.stretch_mode {
+        renzora::core::StretchMode::Viewport => (
+            project.config.viewport.width as f32,
+            project.config.viewport.height as f32,
+        ),
+        renzora::core::StretchMode::Disabled => (
+            project.config.window.width as f32,
+            project.config.window.height as f32,
+        ),
+    };
     if w <= 0.0 || h <= 0.0 {
         return;
     }
@@ -111,7 +125,9 @@ pub fn draw_window_bounds_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect)
 
     // Label in the top-left corner of the window rect, just inside, so
     // the user knows what the box represents at a glance.
-    let label = format!("{}×{}", project.config.window.width, project.config.window.height);
+    // Label matches the dimensions the rect was drawn with — viewport
+    // size in stretch mode, window size otherwise.
+    let label = format!("{}×{}", w as u32, h as u32);
     let label_pos = egui::Pos2::new(tl.x + 4.0, tl.y + 2.0);
     painter.text(
         label_pos + egui::vec2(1.0, 1.0),

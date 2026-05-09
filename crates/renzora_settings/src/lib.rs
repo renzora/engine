@@ -1040,6 +1040,133 @@ fn render_project_tab(
             });
         },
     );
+
+    render_category(
+        ui,
+        VIDEO_CAMERA,
+        "Viewport",
+        CategoryStyle::interface(),
+        "settings_viewport",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Stretch Mode", theme, |ui| {
+                use renzora::core::StretchMode as SM;
+                let mut changed = false;
+                let resp = egui::ComboBox::from_id_salt("settings_stretch_mode")
+                    .selected_text(match config.viewport.stretch_mode {
+                        SM::Disabled => "Disabled",
+                        SM::Viewport => "Viewport",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label, hint) in [
+                            (
+                                SM::Disabled,
+                                "Disabled",
+                                "Camera renders directly to the OS window. Resizing shows more or less world.",
+                            ),
+                            (
+                                SM::Viewport,
+                                "Viewport",
+                                "Camera renders to an offscreen image at viewport size, GPU upscales to the window with nearest-neighbour. Pixel-art friendly.",
+                            ),
+                        ] {
+                            let r = ui.selectable_value(
+                                &mut config.viewport.stretch_mode,
+                                value,
+                                label,
+                            );
+                            if r.changed() {
+                                changed = true;
+                            }
+                            r.on_hover_text(hint);
+                        }
+                    })
+                    .response;
+                if changed {
+                    resp.clone().mark_changed();
+                }
+                resp
+            });
+
+            // The viewport size + aspect-mode rows only matter when
+            // the camera is actually rendering offscreen — show them
+            // disabled (greyed out) when stretch is `Disabled` so the
+            // user sees the fields exist but understands they're inert.
+            let is_disabled =
+                config.viewport.stretch_mode == renzora::core::StretchMode::Disabled;
+
+            settings_row(ui, 1, "Width", theme, |ui| {
+                ui.add_enabled(
+                    !is_disabled,
+                    egui::DragValue::new(&mut config.viewport.width)
+                        .range(16..=7680)
+                        .speed(1),
+                )
+            });
+            settings_row(ui, 2, "Height", theme, |ui| {
+                ui.add_enabled(
+                    !is_disabled,
+                    egui::DragValue::new(&mut config.viewport.height)
+                        .range(16..=4320)
+                        .speed(1),
+                )
+            });
+
+            settings_row(ui, 3, "Aspect Mode", theme, |ui| {
+                use renzora::core::AspectMode as AM;
+                let mut changed = false;
+                let resp = egui::ComboBox::from_id_salt("settings_aspect_mode")
+                    .selected_text(match config.viewport.aspect_mode {
+                        AM::Keep => "Keep",
+                        AM::Expand => "Expand",
+                        AM::KeepWidth => "Keep Width",
+                        AM::KeepHeight => "Keep Height",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label, hint) in [
+                            (
+                                AM::Keep,
+                                "Keep",
+                                "Letterbox / pillarbox to preserve viewport aspect ratio. Standard for retro pixel art.",
+                            ),
+                            (
+                                AM::Expand,
+                                "Expand",
+                                "Stretch non-uniformly to fill the window. Distorts pixels.",
+                            ),
+                            (
+                                AM::KeepWidth,
+                                "Keep Width",
+                                "Pin width to the window; may letterbox top/bottom.",
+                            ),
+                            (
+                                AM::KeepHeight,
+                                "Keep Height",
+                                "Pin height to the window; may pillarbox left/right.",
+                            ),
+                        ] {
+                            let r = ui.add_enabled_ui(!is_disabled, |ui| {
+                                ui.selectable_value(
+                                    &mut config.viewport.aspect_mode,
+                                    value,
+                                    label,
+                                )
+                                .on_hover_text(hint)
+                            });
+                            if r.inner.changed() {
+                                changed = true;
+                            }
+                        }
+                    })
+                    .response;
+                if changed {
+                    resp.clone().mark_changed();
+                }
+                resp
+            });
+        },
+    );
 }
 
 fn render_interface_tab(
