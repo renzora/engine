@@ -485,6 +485,14 @@ pub struct SceneCamera;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DefaultCamera;
 
+/// Live scene EV-100, written each frame by `renzora_auto_exposure`'s
+/// GPU luminance readback system. `0.0` until the first readback completes
+/// (or if auto-exposure isn't enabled). Read by scripting / debug HUDs.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct CameraExposureState {
+    pub ev100: f32,
+}
+
 /// Maps each rendering camera to its effect source entities.
 ///
 /// Each route is `(target_camera, [source_entities])`. For a given Settings

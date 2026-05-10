@@ -1,6 +1,18 @@
-use bevy::post_process::auto_exposure::AutoExposure;
+use bevy::math::cubic_splines::LinearSpline;
+use bevy::post_process::auto_exposure::{AutoExposure, AutoExposureCompensationCurve};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+
+mod luminance;
+pub use luminance::LuminanceReadbackPlugin;
+
+/// Holds a flat, no-op compensation curve. Bevy's auto-exposure render
+/// node requires a *resolved* `AutoExposureCompensationCurve` asset and
+/// silently bails if the handle is null (the `Default` for the field on
+/// `AutoExposure`). We create one curve at startup and reuse it for every
+/// camera so AE actually runs.
+#[derive(Resource)]
+struct DefaultCompensationCurve(Handle<AutoExposureCompensationCurve>);
 
 #[cfg(feature = "editor")]
 use {
@@ -32,10 +44,25 @@ impl Default for AutoExposureSettings {
     }
 }
 
+fn init_default_compensation_curve(
+    mut commands: Commands,
+    mut curves: ResMut<Assets<AutoExposureCompensationCurve>>,
+) {
+    // Flat zero compensation across the full ±8 EV range. Means AE
+    // targets middle gray everywhere with no per-luminance bias.
+    let curve = AutoExposureCompensationCurve::from_curve(LinearSpline::new([
+        Vec2::new(-8.0, 0.0),
+        Vec2::new(8.0, 0.0),
+    ]))
+    .expect("flat 2-point compensation curve always builds");
+    commands.insert_resource(DefaultCompensationCurve(curves.add(curve)));
+}
+
 fn sync_auto_exposure(
     mut commands: Commands,
     sources: Query<(Entity, Ref<AutoExposureSettings>)>,
     routing: Res<renzora::EffectRouting>,
+    default_curve: Res<DefaultCompensationCurve>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -51,6 +78,7 @@ fn sync_auto_exposure(
                         range: settings.range_min..=settings.range_max,
                         speed_brighten: settings.speed_brighten,
                         speed_darken: settings.speed_darken,
+                        compensation_curve: default_curve.0.clone(),
                         ..default()
                     });
                 } else {
@@ -203,7 +231,16 @@ pub struct AutoExposurePlugin;
 impl Plugin for AutoExposurePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] AutoExposurePlugin");
+        // Bevy's `AutoExposurePlugin` wires the histogram compute pipeline
+        // and the render-graph node. Without it the `AutoExposure`
+        // component this crate inserts is inert — that's the no-op the
+        // user was hitting before.
+        app.add_plugins(bevy::post_process::auto_exposure::AutoExposurePlugin);
+        // CPU readback path — exposes `CameraExposureState` to the main
+        // world so scripting can read the live EV.
+        app.add_plugins(LuminanceReadbackPlugin);
         app.register_type::<AutoExposureSettings>();
+        app.add_systems(Startup, init_default_compensation_curve);
         app.add_systems(Update, (sync_auto_exposure, cleanup_auto_exposure));
         #[cfg(feature = "editor")]
         app.register_inspector(auto_exposure_entry());
