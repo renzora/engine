@@ -1,21 +1,17 @@
-// Screen-space GI with temporal accumulation.
+// Screen-space GI with temporal accumulation + motion-vector reprojection.
 //
 // Pipeline per pixel:
 //   1. Trace N hemisphere rays, march in view space, sample scene at hit.
-//   2. Read previous-frame indirect from history; reject if depth diverged
-//      (history alpha stores last-frame linear view-z).
+//   2. Sample motion vectors → reproject UV to where this surface was last
+//      frame; sample history there. Reject if reprojected UV is off-screen
+//      or stored linear depth disagrees with the current pixel's depth.
 //   3. Blend current trace with valid history.
 //   4. Output 0: scene + blended indirect (composited into HDR).
 //      Output 1: blended indirect + current linear depth → next-frame history.
 //
-// Notes:
-//   - No motion vectors: history is sampled at the same UV. Camera motion
-//     reads stale geometry and the depth check rejects it; history rebuilds
-//     over a few frames once you stop moving. Acceptable trade for now;
-//     Phase 6 of the Lumen plan adds motion-vector reprojection.
-//   - Random ray directions are decorrelated across frames via
-//     `config.frame_count`, which is why temporal accumulation actually
-//     converges instead of staying noisy.
+// Bevy's motion-vector convention (from `bevy_pbr/.../prepass.wgsl`):
+//   `motion_vector = (clip - prev_clip) * vec2(0.5, -0.5)`, i.e. UV-space
+//   delta from previous to current. So `history_uv = uv - motion_vector`.
 
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 #import bevy_render::view::View
@@ -32,8 +28,9 @@ struct RtConfig {
 @group(0) @binding(2) var depth_tex: texture_depth_2d;
 @group(0) @binding(3) var normal_tex: texture_2d<f32>;
 @group(0) @binding(4) var history_tex: texture_2d<f32>;
-@group(0) @binding(5) var<uniform> view: View;
-@group(0) @binding(6) var<uniform> config: RtConfig;
+@group(0) @binding(5) var motion_tex: texture_2d<f32>;
+@group(0) @binding(6) var<uniform> view: View;
+@group(0) @binding(7) var<uniform> config: RtConfig;
 
 const SAMPLES: u32 = 4u;
 const MARCH_STEPS: u32 = 12u;
@@ -41,6 +38,15 @@ const STEP_SIZE: f32 = 0.35;
 const NORMAL_BIAS: f32 = 0.05;
 const HIT_TOLERANCE: f32 = 0.6;
 const PI: f32 = 3.14159265359;
+
+// Maximum per-sample luminance contribution (in HDR units). Bright
+// surfaces — sunlit billboards, specular highlights, the sky — produce
+// pixels with luminance in the dozens, and a single ray hitting one
+// dominates a 4-sample average → bright "fireflies" that temporal then
+// propagates. Clamping per-sample radiance to a sane ceiling kills the
+// fireflies at the cost of slightly underestimating bounce from very
+// bright sources, which is a much better trade than visible sparkle.
+const MAX_SAMPLE_LUMINANCE: f32 = 4.0;
 
 // How fast we accept new samples vs trust history.
 // 0.05 = 95% history / 5% current → very stable but slow to react.
@@ -154,28 +160,39 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         }
 
         if (hit) {
-            indirect = indirect + hit_color * cos_term;
+            // Per-sample luminance clamp: scale hit color down so its
+            // luminance is at most MAX_SAMPLE_LUMINANCE. Preserves color
+            // (we scale, not clip) while bounding the contribution.
+            let lum = max(max(hit_color.r, hit_color.g), hit_color.b);
+            let scale = min(1.0, MAX_SAMPLE_LUMINANCE / max(lum, 1e-4));
+            indirect = indirect + hit_color * scale * cos_term;
         }
     }
     indirect = indirect / f32(SAMPLES);
 
-    // Temporal blend. Sample history at the same UV (no motion-vec
-    // reprojection yet) and reject if the stored linear depth differs
-    // from the current pixel's linear depth — that means the surface
-    // shown at this pixel is different from last frame (camera moved
-    // past it, geometry changed, or this pixel was sky last frame).
+    // Temporal blend. Reproject this pixel's UV to where the same surface
+    // was last frame using the motion-vector prepass, sample history there,
+    // and only trust it if it lands on-screen and the stored linear depth
+    // matches what we have now (otherwise the surface changed: occlusion,
+    // sky last frame, or the prepass missed something).
     let current_linear_depth = view_pos.z;
-    let history = textureSampleLevel(history_tex, scene_sampler, in.uv, 0.0);
-    let history_indirect = history.rgb;
-    let history_depth = history.a;
-    let depth_delta = abs(current_linear_depth - history_depth);
+    let motion_vector = textureLoad(motion_tex, pixel, 0).rg;
+    let history_uv = in.uv - motion_vector;
 
     var blended_indirect: vec3<f32>;
-    if (history_depth >= 0.0 || depth_delta > DEPTH_DISOCCLUSION) {
-        // History invalid (sky last frame, or disoccluded): use current only.
+    if (history_uv.x < 0.0 || history_uv.x > 1.0 || history_uv.y < 0.0 || history_uv.y > 1.0) {
+        // Reprojected off-screen — no valid history available.
         blended_indirect = indirect;
     } else {
-        blended_indirect = mix(history_indirect, indirect, TEMPORAL_ALPHA);
+        let history = textureSampleLevel(history_tex, scene_sampler, history_uv, 0.0);
+        let history_indirect = history.rgb;
+        let history_depth = history.a;
+        let depth_delta = abs(current_linear_depth - history_depth);
+        if (history_depth >= 0.0 || depth_delta > DEPTH_DISOCCLUSION) {
+            blended_indirect = indirect;
+        } else {
+            blended_indirect = mix(history_indirect, indirect, TEMPORAL_ALPHA);
+        }
     }
 
     out.composite = vec4<f32>(scene.rgb + blended_indirect * config.intensity, scene.a);

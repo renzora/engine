@@ -1,7 +1,7 @@
 //! Play mode — switches from editor camera to game camera for in-editor playtesting.
 
 use bevy::camera::RenderTarget;
-use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass};
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::prelude::*;
@@ -306,10 +306,12 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         world.entity_mut(cam_entity).insert((
             Hdr,
             NormalPrepass,
-            // Mirrors the editor camera: DepthPrepass at spawn so SSGI /
-            // Lumen `ScreenSpace` can read depth (see `renzora_engine::camera`
-            // for the Bevy 0.18 prepass-specialization rationale).
+            // Mirrors the editor camera: depth + motion vectors at spawn so
+            // SSGI / Lumen `ScreenSpace` can read them (see
+            // `renzora_engine::camera` for the Bevy 0.18
+            // prepass-specialization rationale).
             DepthPrepass,
+            MotionVectorPrepass,
             Atmosphere {
                 bottom_radius: 6_360_000.0,
                 top_radius: 6_460_000.0,
@@ -397,6 +399,7 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             e.remove::<Hdr>();
             e.remove::<NormalPrepass>();
             e.remove::<DepthPrepass>();
+            e.remove::<MotionVectorPrepass>();
             e.remove::<Atmosphere>();
             e.remove::<AtmosphereSettings>();
             e.remove::<AtmosphereEnvironmentMapLight>();

@@ -45,6 +45,7 @@ impl ViewNode for RtNode {
         };
         let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
         let Some(normal_view) = prepass.normal_view() else { return Ok(()); };
+        let Some(motion_view) = prepass.motion_vectors_view() else { return Ok(()); };
 
         // Frame-count parity decides which history view is "previous"
         // (read) and which is "next" (written this frame). We use the
@@ -69,6 +70,7 @@ impl ViewNode for RtNode {
                 depth_view,
                 normal_view,
                 read_history,
+                motion_view,
                 view_binding.clone(),
                 resources.config_buffer.as_entire_binding(),
             )),

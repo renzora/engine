@@ -69,9 +69,11 @@ impl FromWorld for RtPipeline {
                     texture_2d(TextureSampleType::Float { filterable: false }),
                     // 4: previous-frame history (RGB = indirect, A = linear depth)
                     texture_2d(TextureSampleType::Float { filterable: true }),
-                    // 5: view uniform
+                    // 5: motion vectors prepass (Rg16Float, NDC-space delta)
+                    texture_2d(TextureSampleType::Float { filterable: false }),
+                    // 6: view uniform
                     uniform_buffer::<ViewUniform>(true),
-                    // 6: rt config
+                    // 7: rt config
                     uniform_buffer::<RtConfig>(false),
                 ),
             ),

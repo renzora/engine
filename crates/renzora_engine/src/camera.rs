@@ -3,7 +3,7 @@
 use crate::{EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, RenderTarget};
-use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass};
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
@@ -77,15 +77,16 @@ pub fn spawn_editor_camera(
         // Atmosphere/sky binds depth as non-multisampled (binding 13);
         // any MSAA on the same camera trips a wgpu validation crash.
         Msaa::Off,
-        // Force the prepass to carry world normals + depth. NormalPrepass
-        // is required for `pbr_fragment.wgsl::pbr_input_from_vertex_output`
-        // to compile against `alpha_mode = Mask` materials (the prepass
-        // gates `world_normal` behind `NORMAL_PREPASS_OR_DEFERRED_PREPASS`).
-        // DepthPrepass is required for SSGI / Lumen `ScreenSpace`. Bevy 0.18
-        // specializes the prepass pipeline once on first render; both must
-        // be present at spawn — adding either at runtime trips a wgpu
-        // validation crash on the prepass attachment list.
-        (NormalPrepass, DepthPrepass),
+        // Force the prepass to carry world normals, depth, and motion
+        // vectors. NormalPrepass is required for `pbr_input_from_vertex_output`
+        // to compile against `alpha_mode = Mask` materials. DepthPrepass +
+        // MotionVectorPrepass are required for SSGI / Lumen `ScreenSpace`
+        // temporal reprojection. Bevy 0.18 specializes the prepass pipeline
+        // once on first render; all three must be present at spawn — adding
+        // any later trips a wgpu validation crash on the prepass attachment
+        // list. (TAA also auto-attaches MotionVectorPrepass; doing it here
+        // means the layout doesn't change when the user toggles TAA.)
+        (NormalPrepass, DepthPrepass, MotionVectorPrepass),
     ));
 
     if let Some(ref image) = render_target.image {
