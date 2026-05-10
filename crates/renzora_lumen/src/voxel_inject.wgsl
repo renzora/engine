@@ -63,10 +63,12 @@ fn inject(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let res = grid.resolution;
     let voxel_idx = u32(idx.x) + u32(idx.y) * res + u32(idx.z) * res * res;
-    let base = voxel_idx * 4u;
+    let base = voxel_idx * 5u;
 
     atomicAdd(&accum[base], r_fp);
     atomicAdd(&accum[base + 1u], g_fp);
     atomicAdd(&accum[base + 2u], b_fp);
     atomicAdd(&accum[base + 3u], 1u);
+    // Visible-surface inject does NOT touch geom_count at [4u] — only
+    // geometry voxelization contributes to the occupancy signal.
 }

@@ -26,12 +26,6 @@ const FIXED_POINT_SCALE: f32 = 256.0;
 // clamp than the visible-surface inject works fine here.
 const MAX_CHANNEL: f32 = 4.0;
 
-// Each geometry sample contributes WEIGHT entries to the accumulation
-// buffer, so it doesn't get drowned out by hundreds of visible-surface
-// pixels writing to the same voxel. Tunable — boost for "geometry
-// dominates" debug, lower toward 1 for proportional averaging.
-const GEO_WEIGHT: u32 = 20u;
-
 @compute @workgroup_size(64, 1, 1)
 fn inject(@builtin(global_invocation_id) gid: vec3<u32>) {
     let n = arrayLength(&samples);
@@ -51,10 +45,16 @@ fn inject(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let res = grid.resolution;
     let voxel_idx = u32(idx.x) + u32(idx.y) * res + u32(idx.z) * res * res;
-    let base = voxel_idx * 4u;
+    let base = voxel_idx * 5u;
 
-    atomicAdd(&accum[base], r_fp * GEO_WEIGHT);
-    atomicAdd(&accum[base + 1u], g_fp * GEO_WEIGHT);
-    atomicAdd(&accum[base + 2u], b_fp * GEO_WEIGHT);
-    atomicAdd(&accum[base + 3u], GEO_WEIGHT);
+    // Radiance contributions at 1× weight — the resolve pass already
+    // averages sums by total_count, and occupancy is tracked separately
+    // at slot [4u] so geometry doesn't need to "out-shout" visible
+    // pixels to be visible in the debug view.
+    atomicAdd(&accum[base], r_fp);
+    atomicAdd(&accum[base + 1u], g_fp);
+    atomicAdd(&accum[base + 2u], b_fp);
+    atomicAdd(&accum[base + 3u], 1u);
+    // Occupancy: every geometry sample marks the voxel as "has geometry".
+    atomicAdd(&accum[base + 4u], 1u);
 }

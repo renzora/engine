@@ -123,9 +123,11 @@ pub struct VoxelCacheResources {
     pub radiance: TextureView,
     /// Per-frame uniform with the snapped origin.
     pub uniform_buffer: Buffer,
-    /// Per-frame accumulation buffer: 4 u32s per voxel (sum_r, sum_g,
-    /// sum_b in fixed-point ×256, plus contributor count). Cleared
-    /// before inject, drained by resolve.
+    /// Per-frame accumulation buffer: 5 u32s per voxel. Layout:
+    ///   [0..3] sum_r, sum_g, sum_b (fixed-point ×256)
+    ///   [3]    total_count (visible-surface + geometry inject)
+    ///   [4]    geom_count  (geometry inject only — feeds occupancy)
+    /// Cleared before each frame's inject pipeline, drained by resolve.
     pub accum_buffer: Buffer,
 }
 
@@ -134,8 +136,11 @@ impl FromWorld for VoxelCachePipelines {
         let render_device = world.resource::<RenderDevice>();
         let asset_server = world.resource::<AssetServer>();
 
-        // Accumulation buffer is 64³ × 4 u32s = 4 MB. Bind size matches.
-        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4 * 4) as u64;
+        // Accumulation buffer is 64³ × 5 u32s = 5 MB.
+        //   [0..3] sum_r, sum_g, sum_b (fixed-point ×256)
+        //   [3]    total_count (visible-surface + geometry inject)
+        //   [4]    geom_count  (geometry inject only — feeds occupancy)
+        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
         let accum_size_nz = std::num::NonZeroU64::new(accum_size).unwrap();
 
         // ── inject ───────────────────────────────────────────────────
@@ -334,7 +339,7 @@ pub fn prepare_voxel_resources(
     });
     render_queue.write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(&uniform));
 
-    let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4 * 4) as u64;
+    let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
     let accum_buffer = render_device.create_buffer(&BufferDescriptor {
         label: Some("voxel_accum"),
         size: accum_size,
@@ -399,7 +404,7 @@ impl ViewNode for VoxelClearNode {
             });
         pass.set_pipeline(clear_pl);
         pass.set_bind_group(0, &bg, &[]);
-        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4) / 64;
+        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5) / 64;
         pass.dispatch_workgroups(entries, 1, 1);
         Ok(())
     }

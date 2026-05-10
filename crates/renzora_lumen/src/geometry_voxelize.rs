@@ -34,15 +34,16 @@ use bytemuck::{Pod, Zeroable};
 use crate::voxel_cache::{VoxelCacheResources, VoxelCacheView, VoxelGridUniform, VOXEL_RES};
 
 /// Approximate spacing between sample points along a triangle's
-/// surface, in world units. Larger spacing = less CPU/GPU work for
-/// city-scale scenes. 1.5m means each voxel (0.5m) gets at most ~1
-/// sample per triangle face passing through it; voxel coverage relies
-/// on the fact that most surfaces have multiple triangles per voxel.
-const SAMPLE_SPACING: f32 = 1.5;
+/// surface, in world units. 0.75m = half the voxel size (0.5m), so
+/// every voxel a sufficiently-large triangle passes through gets at
+/// least one sample with high probability. Combined with the resolve
+/// pass's neighbor dilation this gives Phase 5's ray tracer enough
+/// coverage to hit visible-from-anywhere geometry.
+const SAMPLE_SPACING: f32 = 0.75;
 
 /// Hard cap on samples per mesh so a particularly dense mesh doesn't
 /// blow out the per-frame buffer.
-const MAX_SAMPLES_PER_MESH: usize = 512;
+const MAX_SAMPLES_PER_MESH: usize = 2048;
 
 /// Beyond this distance from the camera, entities are skipped at
 /// extract time. The voxel grid extends 16m from camera so 24m gives
@@ -51,9 +52,9 @@ const MAX_SAMPLES_PER_MESH: usize = 512;
 const CULL_RADIUS: f32 = 24.0;
 
 /// Cap on total samples uploaded per frame across all entities. Each
-/// sample is 32 bytes; 100k samples = 3.2 MB/frame upload, plenty for
-/// the cache resolution.
-const MAX_SAMPLES_PER_FRAME: usize = 100_000;
+/// sample is 32 bytes; 200k samples = 6.4 MB/frame upload. Bumped from
+/// 100k together with sample density so denser scenes get covered.
+const MAX_SAMPLES_PER_FRAME: usize = 200_000;
 
 /// Per-mesh-instance baked sample list. Lives on the entity (not the
 /// asset) so per-instance albedo overrides work cleanly. Re-baked when
@@ -253,8 +254,8 @@ pub struct GeometryInjectPipeline {
 
 impl FromWorld for GeometryInjectPipeline {
     fn from_world(world: &mut World) -> Self {
-        // 4 MB matches the accum buffer in voxel_cache.
-        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4 * 4) as u64;
+        // Matches the accum buffer in voxel_cache (5 u32 per voxel).
+        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
         let accum_size_nz = std::num::NonZeroU64::new(accum_size).unwrap();
 
         let layout = BindGroupLayoutDescriptor::new(
