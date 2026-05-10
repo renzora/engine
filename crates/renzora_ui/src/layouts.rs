@@ -278,51 +278,54 @@ impl LayoutManager {
     }
 }
 
-/// Scene: Hierarchy+Shapes | Viewport+BottomTabs | Inspector+History
+/// Scene: Viewport+BottomTabs | (Hierarchy/Scenes/Shapes) over (Inspector/Gamepad/History)
+///
+/// No left column — main area gets the full width minus the right
+/// column. Right column stacks hierarchy/scenes/shape_library tabs on
+/// top of inspector/gamepad/history tabs.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        // Left column: hierarchy+scenes tabbed on top, shape library below
+        // Main area: viewport on top, assets/console/etc tabbed below
         DockTree::vertical(
             DockTree::Leaf {
-                tabs: vec!["hierarchy".into(), "scenes".into()],
+                tabs: vec![
+                    "viewport".into(),
+                    "code_editor".into(),
+                    "node_explorer".into(),
+                ],
                 active_tab: 0,
             },
-            DockTree::leaf("shape_library"),
-            0.6,
+            DockTree::Leaf {
+                tabs: vec![
+                    "assets".into(),
+                    "hub_store".into(),
+                    "console".into(),
+                    "mixer".into(),
+                    "sequencer".into(),
+                    "timeline".into(),
+                    "record".into(),
+                ],
+                active_tab: 0,
+            },
+            0.72,
         ),
-        DockTree::horizontal(
-            // Center: viewport on top, assets/console/properties/mixer tabbed below
-            DockTree::vertical(
-                DockTree::Leaf {
-                    tabs: vec![
-                        "viewport".into(),
-                        "code_editor".into(),
-                        "node_explorer".into(),
-                    ],
-                    active_tab: 0,
-                },
-                DockTree::Leaf {
-                    tabs: vec![
-                        "assets".into(),
-                        "hub_store".into(),
-                        "console".into(),
-                        "mixer".into(),
-                        "sequencer".into(),
-                        "timeline".into(),
-                        "record".into(),
-                    ],
-                    active_tab: 0,
-                },
-                0.72,
-            ),
-            // Right column: inspector with history + gamepad as sibling tabs
+        // Right column: hierarchy/scenes/shapes tabs on top, inspector/gamepad/history below
+        DockTree::vertical(
+            DockTree::Leaf {
+                tabs: vec![
+                    "hierarchy".into(),
+                    "scenes".into(),
+                    "shape_library".into(),
+                ],
+                active_tab: 0,
+            },
             DockTree::Leaf {
                 tabs: vec!["inspector".into(), "gamepad".into(), "history".into()],
                 active_tab: 0,
             },
-            0.78,
+            0.4,
         ),
-        0.15,
+        0.82,
     )
 }
 
