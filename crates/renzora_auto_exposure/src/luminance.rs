@@ -26,7 +26,16 @@ use bevy::render::{Render, RenderApp, RenderSystems};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use renzora::core::CameraExposureState;
+/// Raw output of the GPU luminance reducer: average log-luminance over
+/// the view target, refreshed every ~2-3 frames as the readback completes.
+/// `valid` flips to true on the first successful map; until then,
+/// downstream systems should treat the value as unset and not drive
+/// camera exposure.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct SceneLuminance {
+    pub avg_log_lum: f32,
+    pub valid: bool,
+}
 
 /// Cross-world channel for the readback callback to deliver values.
 ///
@@ -221,14 +230,16 @@ pub fn poll_readback(
     });
 }
 
-/// Main-world system: decode the latest channel value into EV-100.
-pub fn update_camera_exposure_state(
+/// Main-world system: decode the latest channel value into raw average
+/// log-luminance. The actual EV (with middle-gray bias and smoothing) is
+/// computed downstream by `drive_auto_exposure` in `lib.rs`.
+pub fn update_scene_luminance(
     channel: Res<LuminanceChannel>,
-    mut state: ResMut<CameraExposureState>,
+    mut lum: ResMut<SceneLuminance>,
 ) {
     let packed = channel.0.load(Ordering::Acquire);
     if packed == u64::MAX {
-        return; // no readback yet
+        return;
     }
     let sum = (packed & 0xFFFF_FFFF) as u32;
     let count = (packed >> 32) as u32;
@@ -237,10 +248,8 @@ pub fn update_camera_exposure_state(
     }
     // Decode: avg log_lum (shifted by +10) × 1000.
     let avg_log_lum_shifted = sum as f32 / (count as f32 * 1000.0);
-    let avg_log_lum = avg_log_lum_shifted - 10.0;
-    // EV-100 from average log-luminance, calibrated against middle gray
-    // (0.18 reflectance under standard illuminance).
-    state.ev100 = avg_log_lum + std::f32::consts::LOG2_E.recip() * 1.0986; // log2(0.18 ⁻¹) ≈ 2.470
+    lum.avg_log_lum = avg_log_lum_shifted - 10.0;
+    lum.valid = true;
 }
 
 pub struct LuminanceReadbackPlugin;
@@ -251,8 +260,8 @@ impl Plugin for LuminanceReadbackPlugin {
 
         let channel = LuminanceChannel::default();
         app.insert_resource(channel.clone());
-        app.init_resource::<CameraExposureState>();
-        app.add_systems(Update, update_camera_exposure_state);
+        app.init_resource::<SceneLuminance>();
+        app.add_systems(Update, update_scene_luminance);
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app.insert_resource(channel);
