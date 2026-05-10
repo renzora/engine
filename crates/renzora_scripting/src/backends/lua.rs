@@ -1364,6 +1364,9 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     );
     let _ = g.set("mouse_scroll", ctx.mouse_scroll as f64);
 
+    // Camera state — live scene EV-100 from auto-exposure readback.
+    let _ = g.set("camera_ev", ctx.camera_ev as f64);
+
     // Gamepad
     let _ = g.set("gamepad_left_x", ctx.gamepad_left_stick.x as f64);
     let _ = g.set("gamepad_left_y", ctx.gamepad_left_stick.y as f64);

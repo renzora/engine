@@ -808,6 +808,9 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     );
     scope.push("mouse_scroll", ctx.mouse_scroll as f64);
 
+    // Camera state — live scene EV-100 from auto-exposure readback.
+    scope.push("camera_ev", ctx.camera_ev as f64);
+
     // Entity
     scope.push("self_entity_id", ctx.self_entity_id as i64);
     scope.push("self_entity_name", ctx.self_entity_name.clone());

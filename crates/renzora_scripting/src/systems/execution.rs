@@ -304,6 +304,10 @@ pub fn run_scripts(world: &mut World) {
             ctx.mouse_position = input.mouse_position;
             ctx.mouse_delta = input.mouse_delta;
             ctx.mouse_scroll = input.scroll_delta.y;
+            ctx.camera_ev = world
+                .get_resource::<renzora::core::CameraExposureState>()
+                .map(|s| s.ev100)
+                .unwrap_or(0.0);
             ctx.keys_pressed = keys_pressed.clone();
             ctx.keys_just_pressed = keys_just_pressed.clone();
             ctx.keys_just_released = keys_just_released.clone();

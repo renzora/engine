@@ -105,6 +105,12 @@ pub struct ScriptContext {
     pub mouse_buttons_just_pressed: [bool; 5],
     pub mouse_scroll: f32,
 
+    // Camera state
+    /// Live scene EV-100 from the auto-exposure readback (computed by
+    /// `renzora_auto_exposure`'s GPU luminance reducer). 0.0 if AE isn't
+    /// active or hasn't read back a value yet.
+    pub camera_ev: f32,
+
     // Gamepad
     pub gamepad_left_stick: Vec2,
     pub gamepad_right_stick: Vec2,
@@ -207,6 +213,7 @@ impl ScriptContext {
             mouse_buttons_pressed: [false; 5],
             mouse_buttons_just_pressed: [false; 5],
             mouse_scroll: 0.0,
+            camera_ev: 0.0,
             gamepad_left_stick: Vec2::ZERO,
             gamepad_right_stick: Vec2::ZERO,
             gamepad_left_trigger: 0.0,
