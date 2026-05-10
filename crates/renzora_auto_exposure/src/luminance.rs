@@ -20,7 +20,7 @@ use bevy::render::render_graph::{
 };
 use bevy::render::render_resource::binding_types::{storage_buffer, texture_2d};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::renderer::{RenderContext, RenderDevice};
 use bevy::render::view::ViewTarget;
 use bevy::render::{Render, RenderApp, RenderSystems};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -125,6 +125,18 @@ impl ViewNode for LuminanceNode {
     ) -> Result<(), NodeRunError> {
         let pipeline = world.resource::<LuminancePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
+
+        // Skip both the dispatch and the buffer copy if a readback is
+        // already in flight — copying into a buffer that's been queued
+        // for `map_async` is a wgpu validation error. Effectively rate-
+        // limits the readback to ~once every 2-3 frames once we hit
+        // steady state, which is plenty for an EV HUD at 60fps.
+        if pipeline
+            .readback_pending
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Ok(());
+        }
 
         let Some(compute) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
             return Ok(());
