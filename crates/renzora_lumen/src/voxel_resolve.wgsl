@@ -17,6 +17,11 @@ const TEMPORAL_ALPHA: f32 = 0.25;
 const OCCUPANCY_DECAY: f32 = 0.97;
 const DILATED_OCCUPANCY: f32 = 0.7;
 const DILATION_MIN_NEIGHBORS: u32 = 2u;
+// Dilation reads 24 atomic values per empty voxel — ~10M ops/frame for
+// a 2-cascade cache. We can pay that to fill small holes left by
+// stochastic sampling, but Phase 5's cone marcher should absorb the
+// sparseness for cheaper. Off by default; flip to enable.
+const ENABLE_DILATION: bool = false;
 
 fn voxel_buffer_base(cascade: u32, local_idx: u32, voxels_per_cascade: u32) -> u32 {
     return (cascade * voxels_per_cascade + local_idx) * 5u;
@@ -80,7 +85,7 @@ fn resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     if (geom_count > 0u) {
         occupancy = 1.0;
-    } else {
+    } else if (ENABLE_DILATION) {
         let i = vec3<i32>(local);
         var n_occupied = 0u;
         var n_color = vec3<f32>(0.0);

@@ -65,16 +65,22 @@ pub struct MeshVoxelSamples {
     pub albedo: LinearRgba,
 }
 
+/// Maximum number of entities that get their samples baked in a single
+/// frame. Bake walks the mesh's triangle list which can be expensive
+/// (a 4k-triangle mesh at 0.75m spacing can produce thousands of
+/// samples). Without a cap, the first time the user flies into a new
+/// area we'd bake hundreds of newly-visible entities in one frame,
+/// stalling the main loop for seconds and the OS would release mouse
+/// capture as a not-responding recovery.
+const MAX_BAKES_PER_FRAME: usize = 4;
+
 /// Bakes voxel samples for `Mesh3d` entities backed by either:
 ///   - `MeshMaterial3d<StandardMaterial>` directly, or
 ///   - `MeshMaterial3d<GraphMaterial>` (renzora_shader's node-graph
 ///     wrapper, which is `ExtendedMaterial<StandardMaterial, ...>`).
 ///
-/// Bake runs when samples are missing or the mesh/material handle
-/// changes. We pull `base_color` from the underlying `StandardMaterial`
-/// — for the graph wrapper that's `.base.base_color` since the wrapper
-/// composes albedo procedurally and a single representative is enough
-/// for V1.
+/// Throttled to `MAX_BAKES_PER_FRAME` entities; the rest get picked
+/// up on subsequent frames as the query keeps yielding them.
 fn bake_mesh_samples(
     mut commands: Commands,
     meshes: Res<Assets<Mesh>>,
@@ -103,22 +109,27 @@ fn bake_mesh_samples(
         )>,
     >,
 ) {
+    let mut budget = MAX_BAKES_PER_FRAME;
     for (entity, mesh_handle, mat_handle, existing) in &standard_query {
+        if budget == 0 { return; }
         let Some(mesh) = meshes.get(&mesh_handle.0) else { continue; };
         let albedo = standard_materials
             .get(&mat_handle.0)
             .map(|m| m.base_color.to_linear())
             .unwrap_or(LinearRgba::WHITE);
         bake_one(&mut commands, entity, mesh, albedo, existing);
+        budget -= 1;
     }
 
     for (entity, mesh_handle, mat_handle, existing) in &graph_query {
+        if budget == 0 { return; }
         let Some(mesh) = meshes.get(&mesh_handle.0) else { continue; };
         let albedo = graph_materials
             .get(&mat_handle.0)
             .map(|m| m.base.base_color.to_linear())
             .unwrap_or(LinearRgba::WHITE);
         bake_one(&mut commands, entity, mesh, albedo, existing);
+        budget -= 1;
     }
 }
 
