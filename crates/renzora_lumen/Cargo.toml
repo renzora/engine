@@ -1,0 +1,21 @@
+[package]
+name = "renzora_lumen"
+version = "0.1.0"
+edition = "2021"
+description = "Lumen-inspired global illumination for Renzora. Phase 1 scaffold; ScreenSpace tier delegates to renzora_rt."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora" }
+renzora_rt = { path = "../renzora_rt" }
+renzora_editor = { path = "../renzora_editor", optional = true }
+renzora_theme = { path = "../renzora_theme", optional = true }
+bevy_egui = { workspace = true, optional = true }
+egui-phosphor = { workspace = true, optional = true }
+serde = { version = "1.0", features = ["derive"] }
+
+[features]
+editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor", "renzora_rt/editor"]
+
+[lints]
+workspace = true

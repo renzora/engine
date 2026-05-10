@@ -3,7 +3,7 @@
 use crate::{EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, RenderTarget};
-use bevy::core_pipeline::prepass::NormalPrepass;
+use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
@@ -77,12 +77,15 @@ pub fn spawn_editor_camera(
         // Atmosphere/sky binds depth as non-multisampled (binding 13);
         // any MSAA on the same camera trips a wgpu validation crash.
         Msaa::Off,
-        // Force the prepass to carry world normals. Without this,
-        // `pbr_fragment.wgsl::pbr_input_from_vertex_output` fails to compile
-        // for any material with `alpha_mode = Mask` because the prepass
-        // calls into it to do alpha cutout, but the prepass `VertexOutput`
-        // gates `world_normal` behind `NORMAL_PREPASS_OR_DEFERRED_PREPASS`.
-        NormalPrepass,
+        // Force the prepass to carry world normals + depth. NormalPrepass
+        // is required for `pbr_fragment.wgsl::pbr_input_from_vertex_output`
+        // to compile against `alpha_mode = Mask` materials (the prepass
+        // gates `world_normal` behind `NORMAL_PREPASS_OR_DEFERRED_PREPASS`).
+        // DepthPrepass is required for SSGI / Lumen `ScreenSpace`. Bevy 0.18
+        // specializes the prepass pipeline once on first render; both must
+        // be present at spawn — adding either at runtime trips a wgpu
+        // validation crash on the prepass attachment list.
+        (NormalPrepass, DepthPrepass),
     ));
 
     if let Some(ref image) = render_target.image {

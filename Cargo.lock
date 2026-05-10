@@ -9769,6 +9769,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_lumen"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_rt",
+ "renzora_theme",
+ "serde",
+]
+
+[[package]]
 name = "renzora_macros"
 version = "0.1.0"
 dependencies = [
@@ -10190,6 +10204,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_rt"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "bytemuck",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
+ "serde",
+]
+
+[[package]]
 name = "renzora_runtime"
 version = "0.1.0"
 dependencies = [
@@ -10239,6 +10267,7 @@ dependencies = [
  "renzora_keybindings",
  "renzora_level_presets",
  "renzora_lighting",
+ "renzora_lumen",
  "renzora_material_editor",
  "renzora_mesh_draw",
  "renzora_mesh_edit",
@@ -10253,6 +10282,7 @@ dependencies = [
  "renzora_physics",
  "renzora_physics_playground",
  "renzora_postprocess",
+ "renzora_rt",
  "renzora_scene",
  "renzora_script_variables",
  "renzora_scripting",
