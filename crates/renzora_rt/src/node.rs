@@ -5,6 +5,7 @@ use bevy::render::render_graph::{NodeRunError, RenderGraphContext, ViewNode};
 use bevy::render::render_resource::*;
 use bevy::render::renderer::RenderContext;
 use bevy::render::view::{ViewTarget, ViewUniformOffset, ViewUniforms};
+use std::sync::atomic::Ordering;
 
 use crate::prepare::{RtPipeline, RtViewResources};
 use crate::RtLighting;
@@ -45,9 +46,18 @@ impl ViewNode for RtNode {
         let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
         let Some(normal_view) = prepass.normal_view() else { return Ok(()); };
 
-        // post_process_write swaps source/destination each frame to support
-        // read-then-write of the same logical view target. Build the bind
-        // group fresh every frame against the current source.
+        // Frame-count parity decides which history view is "previous"
+        // (read) and which is "next" (written this frame). We use the
+        // most-recent value the prepare system stamped: it incremented
+        // before writing the uniform, so frame_count - 1 matches what
+        // the shader sees in `config.frame_count`.
+        let frame = pipeline.frame_count.load(Ordering::Relaxed).wrapping_sub(1);
+        let (read_history, write_history) = if frame % 2 == 0 {
+            (&resources.history_a, &resources.history_b)
+        } else {
+            (&resources.history_b, &resources.history_a)
+        };
+
         let post_process = view_target.post_process_write();
 
         let bind_group = render_context.render_device().create_bind_group(
@@ -58,6 +68,7 @@ impl ViewNode for RtNode {
                 &pipeline.sampler,
                 depth_view,
                 normal_view,
+                read_history,
                 view_binding.clone(),
                 resources.config_buffer.as_entire_binding(),
             )),
@@ -65,12 +76,22 @@ impl ViewNode for RtNode {
 
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
             label: Some("rt_ssgi_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: post_process.destination,
-                depth_slice: None,
-                resolve_target: None,
-                ops: Operations::default(),
-            })],
+            color_attachments: &[
+                // Target 0: composite — scene + indirect → view target dest.
+                Some(RenderPassColorAttachment {
+                    view: post_process.destination,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: Operations::default(),
+                }),
+                // Target 1: new history — indirect.rgb in RGB, linear depth in A.
+                Some(RenderPassColorAttachment {
+                    view: write_history,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: Operations::default(),
+                }),
+            ],
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
