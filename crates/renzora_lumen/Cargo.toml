@@ -13,6 +13,7 @@ renzora_theme = { path = "../renzora_theme", optional = true }
 bevy_egui = { workspace = true, optional = true }
 egui-phosphor = { workspace = true, optional = true }
 serde = { version = "1.0", features = ["derive"] }
+bytemuck = { version = "1.5", features = ["derive"] }
 
 [features]
 editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor", "renzora_rt/editor"]

@@ -13,6 +13,9 @@ use bevy::prelude::*;
 use renzora_rt::{RtDebugMode, RtLighting, RtLightingExternallyManaged};
 use serde::{Deserialize, Serialize};
 
+mod voxel_cache;
+pub use voxel_cache::VoxelCachePlugin;
+
 #[cfg(feature = "editor")]
 use {
     bevy_egui::egui,
@@ -45,6 +48,10 @@ pub enum LumenDebug {
     /// Show only the indirect-light contribution, without the scene
     /// composite. Available in `ScreenSpace` tier today.
     IndirectOnly,
+    /// Visualize the voxel radiance cache — each on-screen surface
+    /// shows the color stored in its containing voxel. Available
+    /// independent of quality (Phase 2+).
+    VoxelCache,
 }
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -72,6 +79,7 @@ impl Plugin for LumenPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<LumenLighting>();
         app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
+        app.add_plugins(VoxelCachePlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
@@ -120,8 +128,11 @@ fn apply_quality(commands: &mut Commands, target: Entity, settings: &LumenLighti
     match settings.quality {
         LumenQuality::ScreenSpace => {
             let rt_debug = match settings.debug {
-                LumenDebug::None => RtDebugMode::Composite,
                 LumenDebug::IndirectOnly => RtDebugMode::IndirectOnly,
+                // VoxelCache is a Lumen-only debug view; SSGI keeps
+                // composite output and the voxel debug pass overlays
+                // on top.
+                LumenDebug::None | LumenDebug::VoxelCache => RtDebugMode::Composite,
             };
             commands.entity(target).insert(RtLighting {
                 enabled: true,
@@ -237,6 +248,7 @@ fn lumen_custom_ui(
             .selected_text(match data.debug {
                 LumenDebug::None => "None",
                 LumenDebug::IndirectOnly => "Indirect Only",
+                LumenDebug::VoxelCache => "Voxel Cache",
             })
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut data.debug, LumenDebug::None, "None");
@@ -244,6 +256,11 @@ fn lumen_custom_ui(
                     &mut data.debug,
                     LumenDebug::IndirectOnly,
                     "Indirect Only",
+                );
+                ui.selectable_value(
+                    &mut data.debug,
+                    LumenDebug::VoxelCache,
+                    "Voxel Cache",
                 );
             });
         if data.debug != orig {
