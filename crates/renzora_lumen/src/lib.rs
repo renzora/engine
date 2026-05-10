@@ -13,7 +13,9 @@ use bevy::prelude::*;
 use renzora_rt::{RtDebugMode, RtLighting, RtLightingExternallyManaged};
 use serde::{Deserialize, Serialize};
 
+mod geometry_voxelize;
 mod voxel_cache;
+pub use geometry_voxelize::GeometryVoxelizePlugin;
 pub use voxel_cache::VoxelCachePlugin;
 
 #[cfg(feature = "editor")]
@@ -80,6 +82,7 @@ impl Plugin for LumenPlugin {
         app.register_type::<LumenLighting>();
         app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
         app.add_plugins(VoxelCachePlugin);
+        app.add_plugins(GeometryVoxelizePlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());

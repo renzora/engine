@@ -9779,6 +9779,7 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_rt",
+ "renzora_shader",
  "renzora_theme",
  "serde",
 ]

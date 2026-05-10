@@ -350,10 +350,108 @@ pub fn prepare_voxel_resources(
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct VoxelClearLabel;
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 pub struct VoxelInjectLabel;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+pub struct VoxelResolveLabel;
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 pub struct VoxelDebugLabel;
+
+/// Clear pass — zeros the per-frame accumulation buffer. Split from
+/// the visible-surface inject so other writers (e.g. geometry
+/// voxelization) can land between clear and resolve.
+#[derive(Default)]
+pub struct VoxelClearNode;
+
+impl ViewNode for VoxelClearNode {
+    type ViewQuery = &'static VoxelCacheView;
+
+    fn run(
+        &self,
+        _graph: &mut RenderGraphContext,
+        render_context: &mut RenderContext,
+        view: QueryItem<Self::ViewQuery>,
+        world: &World,
+    ) -> Result<(), NodeRunError> {
+        if !view.inject_active { return Ok(()); }
+        let pipelines = world.resource::<VoxelCachePipelines>();
+        let pipeline_cache = world.resource::<PipelineCache>();
+        let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
+            return Ok(());
+        };
+        let Some(clear_pl) = pipeline_cache.get_compute_pipeline(pipelines.clear_pipeline) else {
+            return Ok(());
+        };
+        let bg = render_context.render_device().create_bind_group(
+            "voxel_clear_bg",
+            &pipeline_cache.get_bind_group_layout(&pipelines.clear_layout),
+            &BindGroupEntries::sequential((resources.accum_buffer.as_entire_binding(),)),
+        );
+        let mut pass = render_context
+            .command_encoder()
+            .begin_compute_pass(&ComputePassDescriptor {
+                label: Some("voxel_clear_accum"),
+                timestamp_writes: None,
+            });
+        pass.set_pipeline(clear_pl);
+        pass.set_bind_group(0, &bg, &[]);
+        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4) / 64;
+        pass.dispatch_workgroups(entries, 1, 1);
+        Ok(())
+    }
+}
+
+/// Resolve pass — drains the accumulation buffer into the persistent
+/// radiance texture as sum/count averages with temporal blending.
+/// Runs AFTER both the visible-surface inject and the geometry inject
+/// so all contributions for the frame are baked together.
+#[derive(Default)]
+pub struct VoxelResolveNode;
+
+impl ViewNode for VoxelResolveNode {
+    type ViewQuery = &'static VoxelCacheView;
+
+    fn run(
+        &self,
+        _graph: &mut RenderGraphContext,
+        render_context: &mut RenderContext,
+        view: QueryItem<Self::ViewQuery>,
+        world: &World,
+    ) -> Result<(), NodeRunError> {
+        if !view.inject_active { return Ok(()); }
+        let pipelines = world.resource::<VoxelCachePipelines>();
+        let pipeline_cache = world.resource::<PipelineCache>();
+        let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
+            return Ok(());
+        };
+        let Some(resolve_pl) = pipeline_cache.get_compute_pipeline(pipelines.resolve_pipeline)
+        else {
+            return Ok(());
+        };
+        let bg = render_context.render_device().create_bind_group(
+            "voxel_resolve_bg",
+            &pipeline_cache.get_bind_group_layout(&pipelines.resolve_layout),
+            &BindGroupEntries::sequential((
+                resources.accum_buffer.as_entire_binding(),
+                &resources.radiance,
+            )),
+        );
+        let mut pass = render_context
+            .command_encoder()
+            .begin_compute_pass(&ComputePassDescriptor {
+                label: Some("voxel_resolve"),
+                timestamp_writes: None,
+            });
+        pass.set_pipeline(resolve_pl);
+        pass.set_bind_group(0, &bg, &[]);
+        pass.dispatch_workgroups(VOXEL_RES / 4, VOXEL_RES / 4, VOXEL_RES / 4);
+        Ok(())
+    }
+}
 
 #[derive(Default)]
 pub struct VoxelInjectNode;
@@ -389,27 +487,8 @@ impl ViewNode for VoxelInjectNode {
         };
         let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
 
-        // ── Pass 1: clear accumulation buffer ────────────────────────
-        if let Some(clear_pl) = pipeline_cache.get_compute_pipeline(pipelines.clear_pipeline) {
-            let clear_bg = render_context.render_device().create_bind_group(
-                "voxel_clear_bg",
-                &pipeline_cache.get_bind_group_layout(&pipelines.clear_layout),
-                &BindGroupEntries::sequential((resources.accum_buffer.as_entire_binding(),)),
-            );
-            let mut pass = render_context
-                .command_encoder()
-                .begin_compute_pass(&ComputePassDescriptor {
-                    label: Some("voxel_clear_accum"),
-                    timestamp_writes: None,
-                });
-            pass.set_pipeline(clear_pl);
-            pass.set_bind_group(0, &clear_bg, &[]);
-            // 64³ × 4 = 1M u32 entries; workgroup_size 64 → 16384 groups.
-            let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 4) / 64;
-            pass.dispatch_workgroups(entries, 1, 1);
-        }
-
-        // ── Pass 2: inject visible-surface contributions ─────────────
+        // Visible-surface inject only — clear runs before us, resolve
+        // runs after us (and after the geometry inject between).
         if let Some(inject_pl) = pipeline_cache.get_compute_pipeline(pipelines.inject_pipeline) {
             let inject_bg = render_context.render_device().create_bind_group(
                 "voxel_inject_bg",
@@ -433,28 +512,6 @@ impl ViewNode for VoxelInjectNode {
             let size = view_target.main_texture().size();
             pass.dispatch_workgroups((size.width + 7) / 8, (size.height + 7) / 8, 1);
         }
-
-        // ── Pass 3: resolve sums into the radiance texture ───────────
-        if let Some(resolve_pl) = pipeline_cache.get_compute_pipeline(pipelines.resolve_pipeline) {
-            let resolve_bg = render_context.render_device().create_bind_group(
-                "voxel_resolve_bg",
-                &pipeline_cache.get_bind_group_layout(&pipelines.resolve_layout),
-                &BindGroupEntries::sequential((
-                    resources.accum_buffer.as_entire_binding(),
-                    &resources.radiance,
-                )),
-            );
-            let mut pass = render_context
-                .command_encoder()
-                .begin_compute_pass(&ComputePassDescriptor {
-                    label: Some("voxel_resolve"),
-                    timestamp_writes: None,
-                });
-            pass.set_pipeline(resolve_pl);
-            pass.set_bind_group(0, &resolve_bg, &[]);
-            pass.dispatch_workgroups(VOXEL_RES / 4, VOXEL_RES / 4, VOXEL_RES / 4);
-        }
-
         Ok(())
     }
 }
@@ -549,14 +606,26 @@ impl Plugin for VoxelCachePlugin {
                     Render,
                     prepare_voxel_resources.in_set(RenderSystems::PrepareResources),
                 )
+                .add_render_graph_node::<ViewNodeRunner<VoxelClearNode>>(Core3d, VoxelClearLabel)
                 .add_render_graph_node::<ViewNodeRunner<VoxelInjectNode>>(Core3d, VoxelInjectLabel)
+                .add_render_graph_node::<ViewNodeRunner<VoxelResolveNode>>(
+                    Core3d,
+                    VoxelResolveLabel,
+                )
                 .add_render_graph_node::<ViewNodeRunner<VoxelDebugNode>>(Core3d, VoxelDebugLabel)
-                // Inject runs after EndMainPass so we have a lit scene
-                // texture to read from. Debug runs after Tonemapping so
-                // it bypasses tonemap/AE just like the normals/depth viz.
+                // Pipeline: EndMainPass → Clear → Inject → (Geometry)
+                // → Resolve → Tonemapping → Debug. Geometry inject (in
+                // geometry_voxelize.rs) inserts itself between Inject
+                // and Resolve via its own edges.
                 .add_render_graph_edges(
                     Core3d,
-                    (Node3d::EndMainPass, VoxelInjectLabel, Node3d::Tonemapping),
+                    (
+                        Node3d::EndMainPass,
+                        VoxelClearLabel,
+                        VoxelInjectLabel,
+                        VoxelResolveLabel,
+                        Node3d::Tonemapping,
+                    ),
                 )
                 .add_render_graph_edges(
                     Core3d,

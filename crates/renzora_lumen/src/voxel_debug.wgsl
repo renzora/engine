@@ -1,11 +1,15 @@
-// Voxel cache debug visualization.
+// Voxel cache debug — ray-march from the camera through the cache
+// volume and display the first non-empty voxel hit. Two polish moves
+// over the basic ray-marcher:
 //
-// For each on-screen pixel, reconstruct its world-space surface
-// position from the depth prepass and read the voxel at that position.
-// The result: a chunky low-res "voxelized" version of the scene that
-// shows what the cache currently holds. Voxels outside the cache
-// volume or below the alpha threshold pass through to the scene
-// texture so you can still see context (sky, foreground objects).
+//   1. Nearest-neighbor sampling (`textureLoad` not `textureSample`)
+//      so voxel cubes have crisp boundaries — the linear-filter
+//      version smoothed everything into bubbles and lost structure.
+//   2. Ray-march bounded by the depth prepass surface — once we'd
+//      hit visible geometry, stop. So we see voxels *in front of*
+//      the visible scene (off-screen / through-walls content) but
+//      not voxels behind. Makes "where is the cache populated"
+//      legible instead of just a wall of cache colors.
 
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 #import bevy_render::view::View
@@ -26,43 +30,94 @@ struct VoxelGrid {
 @group(0) @binding(4) var<uniform> view: View;
 @group(0) @binding(5) var<uniform> grid: VoxelGrid;
 
+const HIT_ALPHA: f32 = 0.5;
+
 fn uv_to_ndc(uv: vec2<f32>) -> vec2<f32> {
     return uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
 }
 
-fn world_pos_from_depth(uv: vec2<f32>, depth: f32) -> vec3<f32> {
+fn reconstruct_world_ray(uv: vec2<f32>) -> vec3<f32> {
+    // Near-plane unproject only (NDC.z=1) — far plane in Bevy's
+    // infinite reverse-Z perspective is at w=0 and would NaN out.
+    let ndc_xy = uv_to_ndc(uv);
+    let near_clip = vec4<f32>(ndc_xy, 1.0, 1.0);
+    let near_h = view.world_from_clip * near_clip;
+    let near_pos = near_h.xyz / near_h.w;
+    return normalize(near_pos - view.world_position);
+}
+
+// World-space distance from camera to the visible surface at this
+// pixel, or a very large number if the pixel is sky.
+fn surface_distance(pixel: vec2<i32>, uv: vec2<f32>) -> f32 {
+    let depth = textureLoad(depth_tex, pixel, 0);
+    if (depth <= 0.0) {
+        return 1.0e6; // unbounded — sky / nothing in front
+    }
+    // Reconstruct the world position of the visible fragment, take
+    // the distance to the camera.
     let ndc = vec3<f32>(uv_to_ndc(uv), depth);
     let world_h = view.world_from_clip * vec4<f32>(ndc, 1.0);
-    return world_h.xyz / world_h.w;
+    let world_pos = world_h.xyz / world_h.w;
+    return length(world_pos - view.world_position);
+}
+
+struct RayAabbHit {
+    enter: f32,
+    exit: f32,
+    valid: bool,
+};
+
+fn ray_aabb(origin: vec3<f32>, dir: vec3<f32>, box_min: vec3<f32>, box_max: vec3<f32>) -> RayAabbHit {
+    let inv = 1.0 / dir;
+    let t1 = (box_min - origin) * inv;
+    let t2 = (box_max - origin) * inv;
+    let tmin = min(t1, t2);
+    let tmax = max(t1, t2);
+    let enter = max(max(tmin.x, tmin.y), tmin.z);
+    let exit = min(min(tmax.x, tmax.y), tmax.z);
+    var hit: RayAabbHit;
+    hit.enter = enter;
+    hit.exit = exit;
+    hit.valid = exit >= enter && exit >= 0.0;
+    return hit;
 }
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let scene = textureSample(scene_tex, voxel_sampler, in.uv);
     let pixel = vec2<i32>(in.position.xy);
-    let depth = textureLoad(depth_tex, pixel, 0);
-    if (depth <= 0.0) {
-        // Sky — keep scene.
-        return textureSample(scene_tex, voxel_sampler, in.uv);
+
+    let ray_dir = reconstruct_world_ray(in.uv);
+    let camera = view.world_position;
+
+    let extent = f32(grid.resolution) * grid.voxel_size;
+    let box_max = grid.origin + vec3<f32>(extent, extent, extent);
+    let hit = ray_aabb(camera, ray_dir, grid.origin, box_max);
+    if (!hit.valid) {
+        return scene;
     }
 
-    let world_pos = world_pos_from_depth(in.uv, depth);
-    let local = (world_pos - grid.origin) / grid.voxel_size;
-    let extent = f32(grid.resolution);
-    if (any(local < vec3<f32>(0.0)) || any(local >= vec3<f32>(extent))) {
-        // Outside cache volume — fall back to scene so you can see how
-        // far the cache reaches.
-        return textureSample(scene_tex, voxel_sampler, in.uv);
+    let surface_t = surface_distance(pixel, in.uv);
+    let step_size = grid.voxel_size;
+    var t = max(hit.enter, 0.0);
+    let max_t = min(hit.exit, surface_t);
+
+    for (var i: u32 = 0u; i < 128u; i = i + 1u) {
+        if (t > max_t) { break; }
+        let p = camera + ray_dir * t;
+        let local = (p - grid.origin) / grid.voxel_size;
+        let idx = vec3<i32>(local);
+        let res = i32(grid.resolution);
+        if (idx.x < 0 || idx.x >= res || idx.y < 0 || idx.y >= res || idx.z < 0 || idx.z >= res) {
+            t += step_size;
+            continue;
+        }
+        let voxel = textureLoad(voxels, idx, 0);
+        if (voxel.a > HIT_ALPHA) {
+            return vec4<f32>(voxel.rgb, 1.0);
+        }
+        t += step_size;
     }
 
-    // Sample with linear filter for a slightly smoother chunky look.
-    // The +0.5 keeps texel centers aligned with voxel centers.
-    let uvw = (local + 0.5) / extent;
-    let voxel = textureSampleLevel(voxels, voxel_sampler, uvw, 0.0);
-    if (voxel.a < 0.01) {
-        // No data injected here — scene fallback (probably a
-        // disocclusion the inject pass skipped because of sky).
-        return textureSample(scene_tex, voxel_sampler, in.uv);
-    }
-
-    return vec4<f32>(voxel.rgb, 1.0);
+    return scene;
 }
