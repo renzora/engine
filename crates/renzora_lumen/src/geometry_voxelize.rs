@@ -31,7 +31,7 @@ use bevy::render::Extract;
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bytemuck::{Pod, Zeroable};
 
-use crate::voxel_cache::{VoxelCacheResources, VoxelCacheView, VoxelGridUniform, VOXEL_RES};
+use crate::voxel_cache::{VoxelCacheResources, VoxelCacheView, VoxelGridUniform, CASCADE_COUNT, VOXEL_RES};
 
 /// Approximate spacing between sample points along a triangle's
 /// surface, in world units. 0.75m = half the voxel size (0.5m), so
@@ -254,8 +254,9 @@ pub struct GeometryInjectPipeline {
 
 impl FromWorld for GeometryInjectPipeline {
     fn from_world(world: &mut World) -> Self {
-        // Matches the accum buffer in voxel_cache (5 u32 per voxel).
-        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
+        // Matches the accum buffer in voxel_cache (5 u32 per voxel per
+        // cascade — geometry inject loops over cascades in the shader).
+        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5 * 4) as u64;
         let accum_size_nz = std::num::NonZeroU64::new(accum_size).unwrap();
 
         let layout = BindGroupLayoutDescriptor::new(

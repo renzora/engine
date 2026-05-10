@@ -41,7 +41,13 @@ use bytemuck::{Pod, Zeroable};
 use crate::{LumenDebug, LumenLighting, LumenQuality};
 
 pub const VOXEL_RES: u32 = 64;
-pub const VOXEL_SIZE: f32 = 0.5;
+pub const VOXEL_SIZE_BASE: f32 = 0.5;
+/// Number of clipmap cascades stacked in the voxel texture along Z.
+/// Cascade N has voxel size `VOXEL_SIZE_BASE * 2^N`, giving extent
+/// `VOXEL_RES * size`. Two cascades = 32m + 64m = 64m total reach.
+pub const CASCADE_COUNT: u32 = 2;
+/// Total Z extent of the mega-texture: cascades stacked along Z.
+pub const VOXEL_RES_Z: u32 = VOXEL_RES * CASCADE_COUNT;
 
 /// Per-camera component carried into the render world by extraction.
 /// Drives whether the voxel inject + debug passes execute for this view.
@@ -89,18 +95,25 @@ pub fn sync_voxel_cache_views(
     }
 }
 
-/// World-space origin + voxel size for the current frame's grid. Sent
-/// to GPU as the only uniform the voxel shaders need (camera/view
-/// matrices come from the standard `ViewUniform`).
+/// Per-cascade origin + voxel size. Padded to 16-byte alignment so
+/// the WGSL `array<CascadeData, N>` layout matches the host.
+#[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
+#[repr(C)]
+pub struct VoxelCascadeData {
+    pub origin: Vec3,
+    pub voxel_size: f32,
+}
+
+/// World-space cascade origins + per-cascade voxel sizes for the
+/// current frame's clipmap.
 #[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct VoxelGridUniform {
-    pub origin: Vec3,
-    pub voxel_size: f32,
+    pub cascades: [VoxelCascadeData; 2],
     pub resolution: u32,
+    pub cascade_count: u32,
     pub _pad0: u32,
     pub _pad1: u32,
-    pub _pad2: u32,
 }
 
 #[derive(Resource)]
@@ -140,7 +153,7 @@ impl FromWorld for VoxelCachePipelines {
         //   [0..3] sum_r, sum_g, sum_b (fixed-point ×256)
         //   [3]    total_count (visible-surface + geometry inject)
         //   [4]    geom_count  (geometry inject only — feeds occupancy)
-        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
+        let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5 * 4) as u64;
         let accum_size_nz = std::num::NonZeroU64::new(accum_size).unwrap();
 
         // ── inject ───────────────────────────────────────────────────
@@ -296,19 +309,30 @@ pub fn prepare_voxel_resources(
         .map(|v| v.world_from_view.translation())
         .unwrap_or(Vec3::ZERO);
 
-    // Snap origin to voxel-size increments so half-voxel camera motion
-    // is invisible. Centered on the camera (origin = corner of grid).
-    let snapped_center = (camera_pos / VOXEL_SIZE).floor() * VOXEL_SIZE;
-    let half_extent = (VOXEL_RES as f32 * VOXEL_SIZE) * 0.5;
-    let origin = snapped_center - Vec3::splat(half_extent);
+    // Each cascade snaps its origin to its own voxel grid (size 2^N ×
+    // base). The outer cascade has coarser snapping, so it shifts less
+    // often as the camera moves; the inner cascade tracks the camera
+    // more closely with finer voxel detail. Both centered on the camera.
+    let mut cascades = [VoxelCascadeData {
+        origin: Vec3::ZERO,
+        voxel_size: 0.0,
+    }; 2];
+    for c in 0..CASCADE_COUNT as usize {
+        let voxel_size = VOXEL_SIZE_BASE * (1u32 << c as u32) as f32;
+        let snapped_center = (camera_pos / voxel_size).floor() * voxel_size;
+        let half_extent = (VOXEL_RES as f32 * voxel_size) * 0.5;
+        cascades[c] = VoxelCascadeData {
+            origin: snapped_center - Vec3::splat(half_extent),
+            voxel_size,
+        };
+    }
 
     let uniform = VoxelGridUniform {
-        origin,
-        voxel_size: VOXEL_SIZE,
+        cascades,
         resolution: VOXEL_RES,
+        cascade_count: CASCADE_COUNT,
         _pad0: 0,
         _pad1: 0,
-        _pad2: 0,
     };
 
     if let Some(res) = existing {
@@ -321,7 +345,9 @@ pub fn prepare_voxel_resources(
         size: Extent3d {
             width: VOXEL_RES,
             height: VOXEL_RES,
-            depth_or_array_layers: VOXEL_RES,
+            // Cascades stacked along Z. Cascade C occupies
+            // Z range [C * VOXEL_RES, (C+1) * VOXEL_RES).
+            depth_or_array_layers: VOXEL_RES_Z,
         },
         mip_level_count: 1,
         sample_count: 1,
@@ -339,7 +365,7 @@ pub fn prepare_voxel_resources(
     });
     render_queue.write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(&uniform));
 
-    let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5 * 4) as u64;
+    let accum_size = (VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5 * 4) as u64;
     let accum_buffer = render_device.create_buffer(&BufferDescriptor {
         label: Some("voxel_accum"),
         size: accum_size,
@@ -404,7 +430,7 @@ impl ViewNode for VoxelClearNode {
             });
         pass.set_pipeline(clear_pl);
         pass.set_bind_group(0, &bg, &[]);
-        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * 5) / 64;
+        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5) / 64;
         pass.dispatch_workgroups(entries, 1, 1);
         Ok(())
     }
@@ -453,7 +479,8 @@ impl ViewNode for VoxelResolveNode {
             });
         pass.set_pipeline(resolve_pl);
         pass.set_bind_group(0, &bg, &[]);
-        pass.dispatch_workgroups(VOXEL_RES / 4, VOXEL_RES / 4, VOXEL_RES / 4);
+        // Z dimension covers all cascades (each `VOXEL_RES` deep, stacked).
+        pass.dispatch_workgroups(VOXEL_RES / 4, VOXEL_RES / 4, VOXEL_RES_Z / 4);
         Ok(())
     }
 }
