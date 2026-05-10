@@ -19,8 +19,9 @@
 struct RtConfig {
     intensity: f32,
     frame_count: u32,
+    // 0 = scene + indirect (composite). 1 = indirect only (debug).
+    debug_mode: u32,
     _pad0: f32,
-    _pad1: f32,
 };
 
 @group(0) @binding(0) var scene_tex: texture_2d<f32>;
@@ -114,7 +115,12 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
     var out: FragOut;
     if (depth <= 0.0) {
         // Sky / no surface: pass scene through, clear history at this pixel.
-        out.composite = scene;
+        // In indirect-only debug mode show black — no bounce on sky.
+        if (config.debug_mode == 1u) {
+            out.composite = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        } else {
+            out.composite = scene;
+        }
         out.history = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         return out;
     }
@@ -195,7 +201,14 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         }
     }
 
-    out.composite = vec4<f32>(scene.rgb + blended_indirect * config.intensity, scene.a);
+    let scaled_indirect = blended_indirect * config.intensity;
+    if (config.debug_mode == 1u) {
+        // Indirect-only debug view: show the bounce contribution alone,
+        // with no scene composite. Tonemapping etc. still process this.
+        out.composite = vec4<f32>(scaled_indirect, 1.0);
+    } else {
+        out.composite = vec4<f32>(scene.rgb + scaled_indirect, scene.a);
+    }
     out.history = vec4<f32>(blended_indirect, current_linear_depth);
     return out;
 }

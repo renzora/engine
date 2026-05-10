@@ -10,7 +10,7 @@
 //! `Off`; Phases 2-6 of `renzora_lumen_plan.md` fill them in.
 
 use bevy::prelude::*;
-use renzora_rt::{RtLighting, RtLightingExternallyManaged};
+use renzora_rt::{RtDebugMode, RtLighting, RtLightingExternallyManaged};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
@@ -34,16 +34,34 @@ pub enum LumenQuality {
     Hwrt,
 }
 
+/// Debug visualization mode. Currently routes to `RtLighting.debug` when
+/// the active quality tier is `ScreenSpace`. Future Lumen-specific
+/// variants (`VoxelCache`, `GlobalSdf`, etc.) will get their own paths
+/// in Phases 2-4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
+pub enum LumenDebug {
+    #[default]
+    None,
+    /// Show only the indirect-light contribution, without the scene
+    /// composite. Available in `ScreenSpace` tier today.
+    IndirectOnly,
+}
+
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct LumenLighting {
     pub quality: LumenQuality,
     pub intensity: f32,
+    pub debug: LumenDebug,
 }
 
 impl Default for LumenLighting {
     fn default() -> Self {
-        Self { quality: LumenQuality::ScreenSpace, intensity: 1.0 }
+        Self {
+            quality: LumenQuality::ScreenSpace,
+            intensity: 1.0,
+            debug: LumenDebug::None,
+        }
     }
 }
 
@@ -101,9 +119,14 @@ fn apply_quality(commands: &mut Commands, target: Entity, settings: &LumenLighti
 
     match settings.quality {
         LumenQuality::ScreenSpace => {
+            let rt_debug = match settings.debug {
+                LumenDebug::None => RtDebugMode::Composite,
+                LumenDebug::IndirectOnly => RtDebugMode::IndirectOnly,
+            };
             commands.entity(target).insert(RtLighting {
                 enabled: true,
                 intensity: settings.intensity,
+                debug: rt_debug,
             });
         }
         LumenQuality::Off | LumenQuality::SdfLow | LumenQuality::SdfHigh | LumenQuality::Hwrt => {
@@ -204,6 +227,26 @@ fn lumen_custom_ui(
         let orig = data.intensity;
         ui.add(egui::DragValue::new(&mut data.intensity).speed(0.05).range(0.0..=5.0));
         if data.intensity != orig {
+            changed = true;
+        }
+    });
+
+    inline_property(ui, 2, "Debug", theme, |ui| {
+        let orig = data.debug;
+        egui::ComboBox::from_id_salt("lumen_debug")
+            .selected_text(match data.debug {
+                LumenDebug::None => "None",
+                LumenDebug::IndirectOnly => "Indirect Only",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut data.debug, LumenDebug::None, "None");
+                ui.selectable_value(
+                    &mut data.debug,
+                    LumenDebug::IndirectOnly,
+                    "Indirect Only",
+                );
+            });
+        if data.debug != orig {
             changed = true;
         }
     });

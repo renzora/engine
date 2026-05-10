@@ -26,11 +26,34 @@ use {
     renzora_theme::Theme,
 };
 
+/// Output mode for the SSGI pass. Drives a uniform that the shader
+/// branches on at composite time. Reusable for future debug views;
+/// new variants append at the end so existing serialized values stay valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
+pub enum RtDebugMode {
+    /// scene + indirect — normal output.
+    #[default]
+    Composite,
+    /// Indirect contribution only — no scene. Useful for tuning intensity
+    /// and seeing where bounce light is / isn't.
+    IndirectOnly,
+}
+
+impl RtDebugMode {
+    pub fn as_u32(self) -> u32 {
+        match self {
+            RtDebugMode::Composite => 0,
+            RtDebugMode::IndirectOnly => 1,
+        }
+    }
+}
+
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct RtLighting {
     pub enabled: bool,
     pub intensity: f32,
+    pub debug: RtDebugMode,
 }
 
 /// Marker placed on a target camera to tell `sync_rt_lighting` and
@@ -46,7 +69,11 @@ pub struct RtLightingExternallyManaged;
 
 impl Default for RtLighting {
     fn default() -> Self {
-        Self { enabled: true, intensity: 1.0 }
+        Self {
+            enabled: true,
+            intensity: 1.0,
+            debug: RtDebugMode::Composite,
+        }
     }
 }
 
@@ -204,6 +231,27 @@ fn rt_custom_ui(
             cmds.push(move |world: &mut World| {
                 if let Some(mut s) = world.get_mut::<RtLighting>(entity) {
                     s.intensity = intensity;
+                }
+            });
+        }
+    });
+
+    let mut debug = settings.debug;
+    inline_property(ui, 1, "Debug", theme, |ui| {
+        let orig = debug;
+        egui::ComboBox::from_id_salt("rt_debug")
+            .selected_text(match debug {
+                RtDebugMode::Composite => "Composite",
+                RtDebugMode::IndirectOnly => "Indirect Only",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut debug, RtDebugMode::Composite, "Composite");
+                ui.selectable_value(&mut debug, RtDebugMode::IndirectOnly, "Indirect Only");
+            });
+        if debug != orig {
+            cmds.push(move |world: &mut World| {
+                if let Some(mut s) = world.get_mut::<RtLighting>(entity) {
+                    s.debug = debug;
                 }
             });
         }

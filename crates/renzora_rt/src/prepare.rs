@@ -21,8 +21,10 @@ pub struct RtConfig {
     /// average, and (b) match the CPU-side ping-pong index so the shader
     /// knows which history target it's reading vs writing.
     pub frame_count: u32,
+    /// Debug output mode: 0 = composite, 1 = indirect only.
+    /// See `RtDebugMode` in `lib.rs`.
+    pub debug_mode: u32,
     pub _pad0: f32,
-    pub _pad1: f32,
 }
 
 #[derive(Resource)]
@@ -147,8 +149,8 @@ pub fn prepare_rt_uniforms(
         let config = RtConfig {
             intensity: if settings.enabled { settings.intensity } else { 0.0 },
             frame_count,
+            debug_mode: settings.debug.as_u32(),
             _pad0: 0.0,
-            _pad1: 0.0,
         };
 
         // Reuse existing resources if size still matches; otherwise
