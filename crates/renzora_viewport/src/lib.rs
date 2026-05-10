@@ -5,6 +5,7 @@
 
 pub mod camera_preview;
 pub mod debug_material;
+pub mod debug_viz;
 pub mod effect_routing;
 pub mod external_runtime;
 pub mod glb_compat;
@@ -60,6 +61,9 @@ impl Plugin for ViewportPlugin {
         embedded_asset!(app, "viewport_debug.wgsl");
         app.add_plugins(WireframePlugin::default())
             .add_plugins(MaterialPlugin::<debug_material::ViewportDebugMaterial>::default())
+            // Post-tonemap debug visualization for normals + linear depth.
+            // Bypasses tonemap/AE so the colors come out as authored.
+            .add_plugins(debug_viz::DebugVizPlugin)
             .insert_resource(WireframeConfig {
                 global: false,
                 default_color: bevy::color::Color::WHITE,

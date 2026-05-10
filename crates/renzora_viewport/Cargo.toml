@@ -22,6 +22,7 @@ renzora_engine = { path = "../renzora_engine" }
 renzora_import = { path = "../renzora_import" }
 renzora_game_ui = { path = "../renzora_game_ui", features = ["editor"] }
 serde_json = "1"
+bytemuck = { version = "1.5", features = ["derive"] }
 
 [lints]
 workspace = true
