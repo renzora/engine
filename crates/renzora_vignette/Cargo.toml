@@ -8,6 +8,12 @@ edition = "2021"
 # directory at startup. cdylib keeps the export surface to the
 # unmangled `extern "C"` symbols emitted by `renzora::add!` under
 # the `dlopen` feature.
+#
+# Stays cdylib-only on purpose: producing an `rlib` alongside lets
+# other crates link `VignetteSettings` directly, but the
+# `renzora::add!` registration then fires twice (once from the rlib
+# link, once when `dynamic_plugin_loader` dlopens the cdylib), and
+# `App::add_plugins` panics on a duplicate add.
 [lib]
 crate-type = ["cdylib"]
 

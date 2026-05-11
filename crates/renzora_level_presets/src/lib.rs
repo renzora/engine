@@ -1392,24 +1392,129 @@ fn spawn_terrain(
 
 // ── Self-registered spawn presets ──────────────────────────────────────────
 
+/// Spawn a "World Environment" entity bundling every effect that can
+/// be routed from a single source onto cameras. Some default to off but
+/// are still attached so the inspector lists them for a quick toggle.
+///
+/// Conflict notes:
+/// - `LumenLighting` and `RtLighting` are mutually exclusive — Lumen
+///   takes ownership of the RT channel via `RtLightingExternallyManaged`
+///   when present. RT is included disabled so the inspector shows it,
+///   but flipping it on while Lumen is present has no visible effect.
+/// - `SsrSettings` is included disabled because Bevy 0.18's
+///   `ScreenSpaceReflections` requires `DeferredPrepass`; the editor
+///   camera uses forward rendering. Toggling SSR on currently does
+///   nothing — left visible in the inspector pending a deferred path.
+/// - `AutoExposureSettings` and `TonemappingSettings` both write the
+///   camera's `Exposure.ev100`. AE wins per-frame; Tonemapping's value
+///   is just the at-spawn baseline.
+/// - `VolumetricLight` is the marker that turns the sun into a god-ray
+///   source — paired with `VolumetricFogSettings` on the same entity
+///   so the routed-to camera gets the fog and the light source has the
+///   marker simultaneously.
 fn spawn_world_environment(world: &mut World) -> Entity {
     let sun = renzora_lighting::Sun::default();
     let dir = sun.direction();
+
+    // SDF Low + intensity 0.4 is the night-scene-friendly default tuned
+    // alongside Phase 7 cone trace + distance falloff in renzora_lumen.
+    let lumen = renzora_lumen::LumenLighting {
+        quality: renzora_lumen::LumenQuality::SdfLow,
+        intensity: 0.4,
+        debug: renzora_lumen::LumenDebug::None,
+    };
+
+    // RT (SSGI) — disabled by default; Lumen owns the GI channel when
+    // both are present, but the inspector entry should still appear so
+    // users can experiment with screen-space-only GI.
+    let rt = renzora_rt::RtLighting {
+        enabled: false,
+        intensity: 1.0,
+        debug: renzora_rt::RtDebugMode::Composite,
+    };
+
+    // SSR disabled — requires DeferredPrepass which we don't currently
+    // attach to the editor camera. Inspector shows it; toggling on
+    // simply has no effect until the deferred path lands.
+    let ssr = renzora_ssr::SsrSettings { enabled: false };
+
+    // Stylistic / situational effects — off by default, available via
+    // the inspector toggle.
+    let motion_blur = renzora_motion_blur::MotionBlurSettings {
+        enabled: false,
+        ..default()
+    };
+    let dof = renzora_dof::DepthOfFieldSettings {
+        enabled: false,
+        ..default()
+    };
+    // Vignette omitted from the spawn -- it's a cdylib distribution
+    // plugin and can't be linked here without triggering a duplicate
+    // `App::add_plugins` panic. Users can still add it via the
+    // inspector's "Add Component" overlay; the inspector entry is
+    // registered by the dlopen path.
+    let night_stars = renzora_night_stars::NightStarsData {
+        enabled: false,
+        ..default()
+    };
+
+    // Bevy's `Bundle` impl only goes up to a 16-element tuple, and
+    // we're well past that — split into nested tuples grouped by
+    // concern. Each inner tuple is itself a Bundle so cargo treats
+    // the outer as a Bundle of Bundles.
     world
         .spawn((
-            Name::new("World Environment"),
-            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
-            DirectionalLight {
-                color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
-                illuminance: sun.illuminance,
-                shadows_enabled: sun.shadows_enabled,
-                ..default()
-            },
-            sun,
-            renzora_bloom_effect::BloomSettings::default(),
-            renzora_atmosphere::AtmosphereComponentSettings::default(),
-            renzora_clouds::CloudsData::default(),
-            renzora_distance_fog::DistanceFogSettings::default(),
+            // ── Identity / transform / sun ───────────────────────────
+            (
+                Name::new("World Environment"),
+                Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
+                DirectionalLight {
+                    color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+                    illuminance: sun.illuminance,
+                    shadows_enabled: sun.shadows_enabled,
+                    ..default()
+                },
+                sun,
+                // Marker that lets this directional light cast god rays
+                // through any `VolumetricFog` camera.
+                bevy::light::VolumetricLight,
+            ),
+            // ── Lighting / GI ────────────────────────────────────────
+            (
+                renzora_environment_map::EnvironmentMapComponentSettings::default(),
+                rt,
+                lumen,
+            ),
+            // ── Atmosphere / sky ─────────────────────────────────────
+            (
+                renzora_atmosphere::AtmosphereComponentSettings::default(),
+                renzora_clouds::CloudsData::default(),
+                renzora_distance_fog::DistanceFogSettings::default(),
+                renzora_volumetric_fog::VolumetricFogSettings::default(),
+                night_stars,
+            ),
+            // ── Camera response ──────────────────────────────────────
+            (
+                // AE re-enabled: now wraps Bevy's histogram-based AE
+                // (filters out darkest 10% / brightest 10% of pixels),
+                // which handles dark/sparse scenes properly. The old
+                // log-average driver would peg dark scenes at range_min
+                // and blow the frame to white; the histogram approach
+                // sees a properly-distributed mid-band and converges.
+                renzora_auto_exposure::AutoExposureSettings::default(),
+                renzora_tonemapping::TonemappingSettings::default(),
+                renzora_tonemapping::DebandDitherSettings::default(),
+            ),
+            // ── Image quality / post ─────────────────────────────────
+            (
+                renzora_bloom_effect::BloomSettings::default(),
+                renzora_ssao::SsaoSettings::default(),
+                ssr,
+                renzora_antialiasing::TaaSettings::default(),
+                renzora_antialiasing::CasSettings::default(),
+                motion_blur,
+                dof,
+            ),
         ))
         .id()
 }
