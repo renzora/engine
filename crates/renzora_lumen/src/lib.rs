@@ -64,6 +64,13 @@ pub enum LumenDebug {
 pub struct LumenLighting {
     pub quality: LumenQuality,
     pub intensity: f32,
+    /// Multiplier on the specular voxel-cone trace contribution.
+    /// Voxel-cone specular fills the off-screen and behind-camera
+    /// reflection gaps that screen-space SSR can't reach. Layered
+    /// additively over Bevy's IBL specular and any SSR; tune low to
+    /// avoid double-counting if SSR is also active. 0.0 disables
+    /// specular tracing entirely.
+    pub specular_intensity: f32,
     pub debug: LumenDebug,
 }
 
@@ -71,10 +78,14 @@ impl Default for LumenLighting {
     fn default() -> Self {
         Self {
             quality: LumenQuality::ScreenSpace,
-            // 0.4 reads as natural ambient bounce. 1.0+ looks "milky"
-            // because every surface accepts bounce at full strength --
-            // we don't do albedo modulation yet (Phase 7).
             intensity: 0.4,
+            // 1.0 means "voxel-cone specular contributes at full
+            // intensity, attenuated only by Fresnel + roughness via
+            // cone width." If SSR is also enabled this will
+            // double-count on-screen reflections; dial to ~0.3 in
+            // that case. With SSR off (voxel-only path), 1.0 is the
+            // natural setting.
+            specular_intensity: 1.0,
             debug: LumenDebug::None,
         }
     }

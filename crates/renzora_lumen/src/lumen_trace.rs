@@ -63,8 +63,10 @@ pub struct TraceConfig {
     /// is available — Forward mode falls back to the 1x1 uint dummy
     /// texture and this flag stays 0.
     pub use_albedo_modulation: u32,
+    /// Multiplier applied to the voxel-cone specular trace. 0 disables
+    /// specular entirely. Defaults to `LumenLighting.specular_intensity`.
+    pub specular_intensity: f32,
     pub _pad0: u32,
-    pub _pad1: u32,
 }
 
 /// Mirrors the camera's `EnvironmentMapLight` into a render-world-
@@ -325,6 +327,14 @@ pub fn prepare_lumen_trace_uniforms(
         } else {
             0
         };
+        // Specular contribution disabled in indirect-only debug view —
+        // it'd dominate the visualization and obscure the diffuse trace
+        // we're trying to inspect.
+        let specular_intensity = if debug_mode == 1 {
+            0.0
+        } else {
+            lighting.specular_intensity
+        };
         let config = TraceConfig {
             intensity: lighting.intensity,
             frame_count: frame,
@@ -332,8 +342,8 @@ pub fn prepare_lumen_trace_uniforms(
             quality_tier,
             sky_intensity,
             use_albedo_modulation,
+            specular_intensity,
             _pad0: 0,
-            _pad1: 0,
         };
 
         let target_size = view_target.main_texture().size();

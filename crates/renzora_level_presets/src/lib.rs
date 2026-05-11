@@ -1421,6 +1421,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     let lumen = renzora_lumen::LumenLighting {
         quality: renzora_lumen::LumenQuality::SdfLow,
         intensity: 0.4,
+        specular_intensity: 1.0,
         debug: renzora_lumen::LumenDebug::None,
     };
 

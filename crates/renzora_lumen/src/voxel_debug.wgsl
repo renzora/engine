@@ -13,7 +13,7 @@ struct CascadeData {
 };
 
 struct VoxelGrid {
-    cascades: array<CascadeData, 2>,
+    cascades: array<CascadeData, 4>,
     resolution: u32,
     cascade_count: u32,
     _pad0: u32,

@@ -27,7 +27,7 @@ struct CascadeData {
 };
 
 struct VoxelGrid {
-    cascades: array<CascadeData, 2>,
+    cascades: array<CascadeData, 4>,
     resolution: u32,
     cascade_count: u32,
     _pad0: u32,
@@ -41,8 +41,8 @@ struct TraceConfig {
     quality_tier: u32, // 0 = SdfLow, 1 = SdfHigh
     sky_intensity: f32, // multiplier for sky cubemap on cone miss
     use_albedo_modulation: u32, // 0 = receiver albedo = white, 1 = read G-buffer
+    specular_intensity: f32, // 0 = no specular cone trace; >0 enables it
     _pad0: u32,
-    _pad1: u32,
 };
 
 @group(0) @binding(0) var scene_tex: texture_2d<f32>;
@@ -85,9 +85,19 @@ const DISTANCE_FALLOFF: f32 = 0.15;
 
 // Half-angle tangent for the diffuse cone. 0.577 ≈ tan(30°), giving a
 // 60° cone — same value Godot's SDFGI uses for its 6-cone diffuse
-// gather. Step size = half the cone diameter at the current distance,
-// so adjacent steps overlap by 50% (no gaps, minimal redundant work).
-const TAN_HALF_ANGLE: f32 = 0.577;
+// gather. Specular cones use a much narrower angle derived from
+// surface roughness (see fragment shader). Step size = half the cone
+// diameter at the current distance, so adjacent steps overlap by 50%
+// (no gaps, minimal redundant work).
+const TAN_HALF_ANGLE_DIFFUSE: f32 = 0.577;
+// Specular cone width is clamped so the trace never degenerates to
+// a sub-voxel ray (which would alias against the voxel grid). 0.05 ≈
+// tan(2.86°), narrow enough for "glossy" but still wider than one
+// voxel at our typical view distance.
+const TAN_HALF_ANGLE_SPEC_MIN: f32 = 0.05;
+// Specular cones also cap at the diffuse cone width — anything wider
+// than 30° half-angle is effectively diffuse anyway.
+const TAN_HALF_ANGLE_SPEC_MAX: f32 = 0.577;
 // Push the ray origin a full voxel along the normal so the very first
 // march step doesn't immediately self-hit the surface voxel.
 const NORMAL_BIAS: f32 = 1.5;
@@ -207,7 +217,7 @@ fn cascade_voxel_sample(p: vec3<f32>, cascade: u32) -> vec4<f32> {
 // facing surfaces ambient sky bounce when no voxel cache content is
 // available — without it, sky-facing rays return pure black and the
 // scene loses outdoor ambient.
-fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f32> {
+fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32, tan_half_angle: f32) -> vec3<f32> {
     var p = origin;
     var acc_color = vec3<f32>(0.0);
     var acc_alpha = 0.0;
@@ -232,7 +242,7 @@ fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f
         // successive samples — no gaps). Clamped to one inner voxel so
         // we don't take sub-voxel steps near the origin.
         let inner_size = grid.cascades[0].voxel_size;
-        let diameter = max(inner_size, 2.0 * TAN_HALF_ANGLE * distance_travelled);
+        let diameter = max(inner_size, 2.0 * tan_half_angle * distance_travelled);
         let step_dist = diameter * 0.5;
         p = p + dir * step_dist;
         distance_travelled = distance_travelled + step_dist;
@@ -298,7 +308,7 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
     var indirect = vec3<f32>(0.0);
     for (var i: u32 = 0u; i < samples; i = i + 1u) {
         let dir = hemisphere_dir(normal_world, seed_base + i * 31u);
-        var hit_rgb = trace_voxel_cone(origin, dir, max_steps);
+        var hit_rgb = trace_voxel_cone(origin, dir, max_steps, TAN_HALF_ANGLE_DIFFUSE);
         // Per-sample luminance clamp: scale (not clip) so color is
         // preserved while bounding contribution.
         let lum = max(max(hit_rgb.r, hit_rgb.g), hit_rgb.b);
@@ -328,39 +338,94 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         }
     }
 
-    // Receiver-albedo modulation. The cone trace returns "bounced
-    // light reaching this point" — already coloured by whatever
-    // surfaces it bounced off. Multiplying by the receiver's diffuse
-    // albedo is what makes a dark surface absorb most of that light
-    // and a coloured surface tint its own re-emission. Without this
-    // step every receiver gets the same uniform bounce intensity
-    // regardless of its material, which is what makes pre-modulation
-    // Lumen look "grey-washed".
-    //
-    // The deferred G-buffer's R channel packs
-    // `(base_color_srgb, perceptual_roughness)` as unorm4x8. We unpack,
-    // throw away roughness, and sRGB→linear via gamma 2.2 (Bevy's
-    // approximation when reading back from the G-buffer — see
-    // `bevy_pbr/.../deferred/pbr_deferred_functions.wgsl`). Gated on
-    // `use_albedo_modulation` so Forward-mode views (no real G-buffer
-    // bound) skip the read and behave like before.
+    // Unpack G-buffer once: R channel packs
+    // `(base_color_srgb, perceptual_roughness)` as unorm4x8. We use
+    // `.rgb` for receiver albedo (diffuse modulation) and `.a` for
+    // roughness (specular cone width). Gated on `use_albedo_modulation`
+    // since Forward views have a dummy 1x1 uint texture bound.
     var albedo = vec3<f32>(1.0);
+    var perceptual_roughness = 1.0;
     if (config.use_albedo_modulation == 1u) {
         let gb = textureLoad(gbuffer, pixel, 0).r;
         let base_rough = unpack4x8unorm(gb);
         albedo = pow(base_rough.rgb, vec3<f32>(2.2));
+        perceptual_roughness = base_rough.a;
+    }
+
+    // ── Specular voxel-cone trace ────────────────────────────────
+    // One cone in the reflection direction, cone width derived from
+    // surface roughness. Single ray suffices because the cone integral
+    // already does the BRDF lobe integration — a wider cone IS a
+    // rougher reflection. Sharp surfaces get a narrow cone, rough
+    // surfaces get a wide one that converges with the diffuse trace.
+    //
+    // Why this exists at all: screen-space reflections (Bevy's SSR)
+    // can only reflect on-screen content. The far/left/right edges of
+    // reflective surfaces fall back to IBL because SSR has nothing to
+    // march into. Voxel-cone specular reads from the same world-space
+    // voxel cache as the diffuse trace, so it covers off-screen and
+    // behind-camera reflections that SSR can't reach.
+    //
+    // v1 caveats:
+    //   * Dielectric F0 = 0.04 (no metallic from G-buffer yet).
+    //   * No temporal accumulation; one fresh trace per frame.
+    //   * Layered ADDITIVELY on top of Bevy's IBL specular and any
+    //     active SSR. `specular_intensity` (default 0.3) tunes the
+    //     amount; crank to 1.0 with SSR off for "voxel only" mode.
+    var specular = vec3<f32>(0.0);
+    if (config.specular_intensity > 0.0) {
+        // `roughness²` is Bevy's convention for the BRDF roughness
+        // input (perceptual is roughly "what an artist sets"). Cone
+        // half-angle scales with that — quadratic falloff matches the
+        // GGX lobe broadening, narrow at low roughness, wide at high.
+        let linear_roughness = perceptual_roughness * perceptual_roughness;
+        let spec_tan_half = clamp(
+            linear_roughness,
+            TAN_HALF_ANGLE_SPEC_MIN,
+            TAN_HALF_ANGLE_SPEC_MAX,
+        );
+
+        // View-space reflection vector. world_pos and view position
+        // give us the incoming direction; reflect across the surface
+        // normal to get the outgoing reflection ray.
+        let view_dir = normalize(view.world_position.xyz - world_pos);
+        let reflect_dir = reflect(-view_dir, normal_world);
+
+        // Trace from the same biased origin as the diffuse pass to
+        // avoid self-hits on the surface voxel.
+        let spec_steps = select(MAX_STEPS_LOW, MAX_STEPS_HIGH, config.quality_tier == 1u);
+        let spec_rgb = trace_voxel_cone(origin, reflect_dir, spec_steps, spec_tan_half);
+
+        // Schlick Fresnel: F0 + (1 - F0)(1 - cos_theta)^5. For
+        // dielectrics F0 ≈ 0.04. View-angle dependent: grazing angles
+        // get near-full reflection, head-on surfaces show base F0
+        // only. This is what makes reflective surfaces look properly
+        // shiny at edges and matte facing the camera. Fresnel alone
+        // is the correct attenuation — earlier `smoothness`
+        // multiplier was double-counting roughness (cone width
+        // already widens with roughness, integrating over more
+        // surface area, so adding another factor crushed the signal).
+        let f0 = 0.04;
+        let cos_theta = max(dot(view_dir, normal_world), 0.0);
+        let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_theta, 5.0);
+
+        specular = spec_rgb * fresnel * config.specular_intensity;
     }
 
     let scaled_indirect = blended_indirect * albedo * config.intensity;
     if (config.debug_mode == 1u) {
+        // Debug view shows diffuse only — specular is suppressed by
+        // setting `specular_intensity` to 0 host-side in that mode.
         out.composite = vec4<f32>(scaled_indirect, 1.0);
     } else {
-        out.composite = vec4<f32>(scene.rgb + scaled_indirect, scene.a);
+        out.composite = vec4<f32>(scene.rgb + scaled_indirect + specular, scene.a);
     }
     // Keep history un-modulated. Albedo can change frame to frame (e.g.
     // texture animation, light-color changes); storing pre-albedo
     // indirect lets temporal accumulation operate on a stable signal
-    // and re-modulate fresh each frame.
+    // and re-modulate fresh each frame. Specular intentionally not in
+    // history — reflection direction is view-dependent, so reprojected
+    // specular is almost always invalid.
     out.history = vec4<f32>(blended_indirect, current_linear_depth);
     return out;
 }

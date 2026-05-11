@@ -44,8 +44,13 @@ pub const VOXEL_RES: u32 = 64;
 pub const VOXEL_SIZE_BASE: f32 = 0.5;
 /// Number of clipmap cascades stacked in the voxel texture along Z.
 /// Cascade N has voxel size `VOXEL_SIZE_BASE * 2^N`, giving extent
-/// `VOXEL_RES * size`. Two cascades = 32m + 64m = 64m total reach.
-pub const CASCADE_COUNT: u32 = 2;
+/// `VOXEL_RES * size` (32m / 64m / 128m / 256m for cascades 0-3).
+/// Cone trace tests cascades inner-out and uses the first one
+/// containing the sampled point, so smaller voxels win where they
+/// overlap. Four cascades = ~128m radius of reach around the camera,
+/// enough to fill mid-distance buildings without sky fallback. Memory
+/// cost: 64³ × 4 × 8B (radiance Rgba16F) ≈ 8MB + 20MB accum.
+pub const CASCADE_COUNT: u32 = 4;
 /// Total Z extent of the mega-texture: cascades stacked along Z.
 pub const VOXEL_RES_Z: u32 = VOXEL_RES * CASCADE_COUNT;
 
@@ -105,11 +110,12 @@ pub struct VoxelCascadeData {
 }
 
 /// World-space cascade origins + per-cascade voxel sizes for the
-/// current frame's clipmap.
+/// current frame's clipmap. Array size must match `CASCADE_COUNT` and
+/// the matching WGSL `array<CascadeData, N>` in every shader file.
 #[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
 #[repr(C)]
 pub struct VoxelGridUniform {
-    pub cascades: [VoxelCascadeData; 2],
+    pub cascades: [VoxelCascadeData; 4],
     pub resolution: u32,
     pub cascade_count: u32,
     pub _pad0: u32,
@@ -316,7 +322,7 @@ pub fn prepare_voxel_resources(
     let mut cascades = [VoxelCascadeData {
         origin: Vec3::ZERO,
         voxel_size: 0.0,
-    }; 2];
+    }; 4];
     for c in 0..CASCADE_COUNT as usize {
         let voxel_size = VOXEL_SIZE_BASE * (1u32 << c as u32) as f32;
         let snapped_center = (camera_pos / voxel_size).floor() * voxel_size;
@@ -430,8 +436,12 @@ impl ViewNode for VoxelClearNode {
             });
         pass.set_pipeline(clear_pl);
         pass.set_bind_group(0, &bg, &[]);
-        let entries = (VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5) / 64;
-        pass.dispatch_workgroups(entries, 1, 1);
+        // Divisor must match `voxel_clear.wgsl` workgroup_size(256,1,1).
+        // ceil-div handles the (currently exact) edge case where future
+        // resolution/cascade tweaks make the entry count non-multiple.
+        let entries = VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5;
+        let groups = (entries + 255) / 256;
+        pass.dispatch_workgroups(groups, 1, 1);
         Ok(())
     }
 }
