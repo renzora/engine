@@ -71,7 +71,10 @@ impl Default for LumenLighting {
     fn default() -> Self {
         Self {
             quality: LumenQuality::ScreenSpace,
-            intensity: 1.0,
+            // 0.4 reads as natural ambient bounce. 1.0+ looks "milky"
+            // because every surface accepts bounce at full strength --
+            // we don't do albedo modulation yet (Phase 7).
+            intensity: 0.4,
             debug: LumenDebug::None,
         }
     }
