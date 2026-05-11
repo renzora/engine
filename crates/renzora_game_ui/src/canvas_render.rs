@@ -70,17 +70,21 @@ pub fn setup_ui_canvas_render(
     // `Camera` + render target — Camera2d is the lightest setup that
     // satisfies bevy_ui's render graph requirements.
     //
-    // `is_active = true` so it always renders while the editor is up; the
-    // canvas tab shows the texture, other tabs ignore it. The `order = -10`
-    // keeps it draw-order-before the editor camera and play-mode camera so
-    // it doesn't fight them when multiple targets are active.
+    // Spawned `is_active = false`. `sync_viewport_camera_activation` in
+    // `renzora_viewport` flips it on only while the Viewport panel is
+    // mounted and its view is set to `ViewportView::Ui`. That's the
+    // single source of truth for which of the three viewport-hosted
+    // editor cameras (3D / 2D / UI) is rendering at any moment, so the
+    // GPU doesn't pay for an unused canvas pass on every frame. The
+    // `order = -10` keeps it draw-order-before the editor camera and
+    // play-mode camera if they ever happen to be on simultaneously.
     let camera_entity = commands
         .spawn((
             Camera2d,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.10, 0.0)),
                 order: -10,
-                is_active: true,
+                is_active: false,
                 ..default()
             },
             RenderTarget::Image(image_handle.clone().into()),

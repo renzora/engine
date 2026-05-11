@@ -23,172 +23,21 @@ use crate::components::*;
 use crate::palette::WidgetDragPayload;
 use crate::shapes::*;
 
-// ── Canvas Preview (render selected camera behind UI canvas) ─────────────────
+// ── Canvas backdrop toggle ───────────────────────────────────────────────────
 
-const CANVAS_PREVIEW_WIDTH: u32 = 1280;
-const CANVAS_PREVIEW_HEIGHT: u32 = 720;
-
-/// Resource holding the canvas preview render target and camera.
-#[derive(Resource)]
-pub struct UiCanvasPreview {
-    pub image_handle: Handle<Image>,
-    pub texture_id: Option<egui::TextureId>,
-    /// The preview camera entity we spawned.
-    pub camera_entity: Option<Entity>,
-    /// The scene camera entity we're currently previewing.
-    pub previewing: Option<Entity>,
-}
-
-/// Whether the game viewport preview is shown behind the UI canvas. Set by
-/// the toolbar toggle and reset from `EditorSettings::ui_preview_by_default`
-/// whenever the UI workspace is entered.
+/// Whether the editor viewport's 3D render is shown behind the UI canvas.
+/// Toggled by the canvas panel toolbar; the backdrop image comes from
+/// `ViewportRenderTarget` (same render the 3D viewport tab displays), so
+/// flipping this off just hides the blit — no camera spawn/despawn.
+///
+/// Default reset from `EditorSettings::ui_preview_by_default` whenever the
+/// UI workspace is entered.
 #[derive(Resource)]
 pub struct UiCanvasPreviewEnabled(pub bool);
 
 impl Default for UiCanvasPreviewEnabled {
     fn default() -> Self {
         Self(true)
-    }
-}
-
-use renzora::UiCanvasPreviewCamera;
-
-/// Sets up the canvas preview render target. Called once from GameUiPlugin build.
-pub fn setup_canvas_preview(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
-) {
-    let size = Extent3d {
-        width: CANVAS_PREVIEW_WIDTH,
-        height: CANVAS_PREVIEW_HEIGHT,
-        depth_or_array_layers: 1,
-    };
-
-    let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
-        ..default()
-    };
-    image.texture_descriptor.size = size;
-    image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-    image.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
-
-    let image_handle = images.add(image);
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-    let texture_id = user_textures.image_id(image_handle.id());
-
-    commands.insert_resource(UiCanvasPreview {
-        image_handle,
-        texture_id,
-        camera_entity: None,
-        previewing: None,
-    });
-}
-
-/// Updates the canvas preview camera to match the selected/default scene camera.
-///
-/// Priority: selected Camera3d in hierarchy → DefaultCamera → first scene Camera3d → nothing.
-pub fn update_canvas_preview(
-    mut commands: Commands,
-    selection: Res<EditorSelection>,
-    mut preview: ResMut<UiCanvasPreview>,
-    scene_cameras: Query<
-        (
-            Entity,
-            &GlobalTransform,
-            &Projection,
-            Option<&renzora::DefaultCamera>,
-        ),
-        (
-            With<Camera3d>,
-            Without<UiCanvasPreviewCamera>,
-            Without<renzora::EditorCamera>,
-        ),
-    >,
-    mut preview_cameras: Query<
-        (Entity, &mut Transform, &mut Projection),
-        With<UiCanvasPreviewCamera>,
-    >,
-    editor_cameras: Query<
-        (Option<&bevy::core_pipeline::Skybox>, &Camera),
-        (With<renzora::EditorCamera>, Without<UiCanvasPreviewCamera>),
-    >,
-) {
-    let selected = selection.get();
-
-    // Pick target camera: selected Camera3d → DefaultCamera → first scene Camera3d
-    let target = selected
-        .and_then(|e| scene_cameras.get(e).ok())
-        .map(|(e, gt, p, _)| (e, gt, p))
-        .or_else(|| {
-            scene_cameras
-                .iter()
-                .find(|(_, _, _, dc)| dc.is_some())
-                .map(|(e, gt, p, _)| (e, gt, p))
-        })
-        .or_else(|| scene_cameras.iter().next().map(|(e, gt, p, _)| (e, gt, p)));
-
-    let existing = preview_cameras.iter_mut().next();
-
-    let (editor_skybox, editor_clear) = editor_cameras
-        .iter()
-        .next()
-        .map(|(skybox, cam)| (skybox.cloned(), cam.clear_color.clone()))
-        .unwrap_or((None, ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12))));
-
-    if let Some((cam_entity, cam_gt, cam_proj)) = target {
-        preview.previewing = Some(cam_entity);
-        let (scale, rotation, translation) = cam_gt.to_scale_rotation_translation();
-        let cam_transform = Transform {
-            translation,
-            rotation,
-            scale,
-        };
-
-        match existing {
-            Some((entity, mut t, mut p)) => {
-                *t = cam_transform;
-                *p = cam_proj.clone();
-                if let Some(ref skybox) = editor_skybox {
-                    commands.entity(entity).try_insert(skybox.clone());
-                } else {
-                    commands
-                        .entity(entity)
-                        .remove::<bevy::core_pipeline::Skybox>();
-                }
-            }
-            None => {
-                let mut ecmds = commands.spawn((
-                    Camera3d::default(),
-                    Msaa::Off,
-                    Camera {
-                        clear_color: editor_clear,
-                        order: -3,
-                        is_active: false,
-                        ..default()
-                    },
-                    RenderTarget::Image(preview.image_handle.clone().into()),
-                    cam_proj.clone(),
-                    cam_transform,
-                    UiCanvasPreviewCamera,
-                    renzora::IsolatedCamera,
-                    renzora::HideInHierarchy,
-                    renzora::EditorLocked,
-                    Name::new("UI Canvas Preview Camera"),
-                ));
-                if let Some(skybox) = editor_skybox {
-                    ecmds.insert(skybox);
-                }
-                preview.camera_entity = Some(ecmds.id());
-            }
-        }
-    } else {
-        preview.previewing = None;
-        if let Some((entity, _, _)) = existing {
-            commands.entity(entity).despawn();
-            preview.camera_entity = None;
-        }
     }
 }
 
@@ -1607,48 +1456,28 @@ impl EditorPanel for UiCanvasPanel {
         );
         painter.rect_filled(canvas_rect, 0.0, Color32::from_rgb(20, 20, 24));
 
-        // ── Camera preview (game render behind the canvas) ─────────────
+        // ── Game render backdrop (editor camera) ───────────────────────
+        // The 3D editor camera renders to `ViewportRenderTarget` while
+        // the Viewport panel is mounted in `Three` or `Ui` view (see
+        // `sync_viewport_camera_activation` in renzora_viewport). We
+        // blit that same image here so the canvas designer sees the
+        // current scene framed through the editor view as a backdrop —
+        // no second camera, no extra full-scene render.
         if world
             .get_resource::<UiCanvasPreviewEnabled>()
             .map_or(true, |r| r.0)
         {
-            // Activate the preview camera
-            if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
-                if preview.previewing.is_some() {
-                    // Use the preview texture
-                    let tex_id = preview.texture_id;
-                    if let Some(tex_id) = tex_id {
-                        let uv = egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
-                        painter.image(tex_id, canvas_rect, uv, Color32::WHITE);
-                    }
-                    // Ensure camera is active
-                    if let Some(cam_entity) = preview.camera_entity {
-                        commands.push(move |world: &mut World| {
-                            if let Ok(mut em) = world.get_entity_mut(cam_entity) {
-                                if let Some(mut cam) = em.get_mut::<Camera>() {
-                                    if !cam.is_active {
-                                        cam.is_active = true;
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        } else {
-            // Deactivate the preview camera when not showing
-            if let Some(preview) = world.get_resource::<UiCanvasPreview>() {
-                if let Some(cam_entity) = preview.camera_entity {
-                    commands.push(move |world: &mut World| {
-                        if let Ok(mut em) = world.get_entity_mut(cam_entity) {
-                            if let Some(mut cam) = em.get_mut::<Camera>() {
-                                if cam.is_active {
-                                    cam.is_active = false;
-                                }
-                            }
-                        }
-                    });
-                }
+            let tex_id = world
+                .get_resource::<renzora::ViewportRenderTarget>()
+                .and_then(|rt| rt.image.as_ref())
+                .and_then(|handle| {
+                    world
+                        .get_resource::<EguiUserTextures>()
+                        .and_then(|ut| ut.image_id(handle.id()))
+                });
+            if let Some(tex_id) = tex_id {
+                let uv = egui::Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
+                painter.image(tex_id, canvas_rect, uv, Color32::WHITE);
             }
         }
 

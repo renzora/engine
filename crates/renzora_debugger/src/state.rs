@@ -325,6 +325,10 @@ pub struct CameraDebugState {
     pub frustum_color: Color,
     pub update_interval: f32,
     pub time_since_update: f32,
+    /// Entities the UI wants to flip `Camera::is_active` on. Populated
+    /// by the panel when the toggle button is clicked; drained by
+    /// `apply_camera_toggles` in the same frame.
+    pub pending_toggles: Vec<Entity>,
 }
 
 impl Default for CameraDebugState {
@@ -338,6 +342,7 @@ impl Default for CameraDebugState {
             frustum_color: Color::srgba(1.0, 1.0, 0.0, 0.5),
             update_interval: 0.2,
             time_since_update: 0.0,
+            pending_toggles: Vec::new(),
         }
     }
 }

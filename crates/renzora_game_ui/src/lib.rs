@@ -651,10 +651,11 @@ impl Plugin for GameUiPlugin {
                 }),
             });
 
-            app.add_systems(Startup, canvas::setup_canvas_preview);
-            // Editor's dedicated bevy_ui render target — separate from the
-            // 3D scene preview camera. This is what makes the canvas tab
-            // show the *real* bevy_ui render instead of an egui simulation.
+            // Editor's dedicated bevy_ui render target — what the UI
+            // viewport mode displays for the *real* bevy_ui render
+            // (not an egui simulation). The 3D backdrop behind it is
+            // borrowed from `ViewportRenderTarget` (editor camera), so
+            // we don't spawn or maintain a second 3D preview camera.
             app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
             app.add_systems(
                 Update,
@@ -664,7 +665,6 @@ impl Plugin for GameUiPlugin {
             app.add_systems(
                 Update,
                 (
-                    canvas::update_canvas_preview,
                     ensure_ui_visibility_components,
                     sync_ui_canvas_target_camera,
                     sync_canvas_sort_order_from_hierarchy,

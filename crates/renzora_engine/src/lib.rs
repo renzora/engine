@@ -30,6 +30,7 @@ pub use renzora_audio;
 // Re-export physics crate for downstream access
 pub use renzora_physics;
 
+use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::prelude::*;
 use renzora_lighting::Sun;
@@ -49,6 +50,49 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
         _ => {
             app.insert_resource(DefaultOpaqueRendererMethod::forward());
         }
+    }
+}
+
+/// Safety net: when the project is in Deferred mode, every `Camera3d`
+/// in the scene needs `DeferredPrepass` so its prepass queue has the
+/// deferred opaque phase. The main editor camera attaches it explicitly
+/// at spawn (see `spawn_editor_camera`), but the editor also spins up
+/// many auxiliary 3D cameras — material previews, particle/shader
+/// previews, model+camera+canvas previews, animation studio, asset-
+/// browser and material-editor thumbnails — each in its own crate.
+/// Without DeferredPrepass on every one of them, `queue_prepass_material_meshes`
+/// panics when a material's `OpaqueRendererMethod::Auto` resolves to
+/// Deferred via the global default but the view has no deferred phase.
+///
+/// We also force `Msaa::Off` on each one. Deferred shading writes the
+/// G-buffer at 1× while the depth attachment would be MSAA-resolved —
+/// wgpu rejects the mismatched sample counts ("depth view count 4 but
+/// color view count 1"). Several thumbnail / preview cameras opt into
+/// 4× MSAA for crisper small-resolution renders; in Deferred mode they
+/// have to give it up. The visual cost on a 128px thumbnail is minor.
+///
+/// We deliberately do NOT use an `Added<Camera3d>` filter. The resolved
+/// rendering mode is `Forward` at app startup (default) and only flips
+/// to `Deferred` once the project loads via `sync_rendering_mode_from_project`
+/// at `OnEnter(SplashState::Editor)`. Any `Camera3d` spawned *before*
+/// that moment (asset-browser/material thumbnails during splash, GLB-
+/// embedded camera nodes added by scene rehydration during `Loading`,
+/// etc.) was seen by an `Added<>` query when the mode check still
+/// returned `false`, and would never be revisited. The `Without<DeferredPrepass>`
+/// filter is what makes scanning every frame cheap: as soon as the
+/// marker is on an entity, the query stops returning it.
+fn ensure_deferred_prepass_on_cameras(
+    rendering_mode: Res<ResolvedRenderingMode>,
+    cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
+    mut commands: Commands,
+) {
+    if !rendering_mode.is_deferred() {
+        return;
+    }
+    for entity in &cameras {
+        commands
+            .entity(entity)
+            .try_insert((DeferredPrepass, Msaa::Off));
     }
 }
 
@@ -274,6 +318,12 @@ impl Plugin for RuntimePlugin {
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
         // always resolves from the correct project directory.
         app.add_systems(Update, sync_project_asset_path);
+
+        // Safety net: in Deferred mode, ensure every 3D camera carries
+        // DeferredPrepass so its prepass queue includes the deferred
+        // opaque phase. Covers editor previews/thumbnails that spawn
+        // their own Camera3d entities without our explicit attachment.
+        app.add_systems(PostUpdate, ensure_deferred_prepass_on_cameras);
 
         app.init_resource::<ViewportRenderTarget>()
             .init_resource::<scene_io::SceneLoadState>()

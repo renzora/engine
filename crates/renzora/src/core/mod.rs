@@ -1050,10 +1050,6 @@ pub fn in_two_view(settings: Option<Res<crate::core::viewport_types::ViewportSet
 #[derive(Component)]
 pub struct PlayModeCamera;
 
-/// Marker component for the UI canvas preview camera.
-#[derive(Component)]
-pub struct UiCanvasPreviewCamera;
-
 /// Lightweight network status bridge — updated by the network crate,
 /// read by blueprint and other crates that need connection info without
 /// depending on renzora_network.

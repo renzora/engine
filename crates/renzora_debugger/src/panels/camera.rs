@@ -1,5 +1,6 @@
 //! Camera debug panel
 
+use bevy::prelude::Entity;
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText};
 use renzora_theme::Theme;
 
@@ -66,6 +67,11 @@ fn render_camera_list(ui: &mut egui::Ui, state: &mut CameraDebugState, theme: &T
         .corner_radius(4.0)
         .inner_margin(egui::Margin::same(4))
         .show(ui, |ui| {
+            // Collect entity decisions in a separate pass so we don't
+            // hold `&state.cameras` while pushing to `state.pending_toggles`.
+            let mut clicked_select: Option<Entity> = None;
+            let mut clicked_toggle: Option<Entity> = None;
+
             for camera in &state.cameras {
                 let is_selected = state.selected_camera == Some(camera.entity);
                 let bg_color = if is_selected {
@@ -95,6 +101,28 @@ fn render_camera_list(ui: &mut egui::Ui, state: &mut CameraDebugState, theme: &T
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
+                                    // Toggle pill — flips `Camera::is_active`
+                                    // on click via the debug bridge. Sized
+                                    // small so it fits the existing row.
+                                    let (label, fg, bg) = if camera.is_active {
+                                        ("ON", Color32::from_rgb(20, 40, 20), Color32::from_rgb(120, 210, 120))
+                                    } else {
+                                        ("OFF", Color32::from_rgb(220, 220, 220), Color32::from_rgb(70, 70, 78))
+                                    };
+                                    let btn = egui::Button::new(
+                                        RichText::new(label).size(9.0).color(fg).monospace().strong(),
+                                    )
+                                    .fill(bg)
+                                    .corner_radius(2.0)
+                                    .min_size(egui::vec2(28.0, 14.0));
+                                    let resp = ui.add(btn);
+                                    if resp.hovered() {
+                                        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                                    }
+                                    if resp.clicked() {
+                                        clicked_toggle = Some(camera.entity);
+                                    }
+
                                     let proj_text = match camera.projection_type {
                                         CameraProjectionType::Perspective => "P",
                                         CameraProjectionType::Orthographic => "O",
@@ -119,9 +147,16 @@ fn render_camera_list(ui: &mut egui::Ui, state: &mut CameraDebugState, theme: &T
                             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
                         }
                         if interact.clicked() {
-                            state.selected_camera = Some(camera.entity);
+                            clicked_select = Some(camera.entity);
                         }
                     });
+            }
+
+            if let Some(entity) = clicked_select {
+                state.selected_camera = Some(entity);
+            }
+            if let Some(entity) = clicked_toggle {
+                state.pending_toggles.push(entity);
             }
         });
 }

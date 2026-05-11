@@ -2,12 +2,17 @@
 
 //! Shared scene load/save and rehydration — used by both editor and runtime.
 
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::ecs::world::FilteredEntityRef;
+use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::prelude::*;
+use bevy::render::view::Hdr;
 use renzora::console_log::*;
 use renzora::{
     CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData,
-    MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry, ViewportRenderTarget,
+    MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry,
+    ViewportRenderTarget,
 };
 use renzora_lighting::Sun;
 use serde::de::DeserializeSeed;
@@ -1626,16 +1631,27 @@ pub fn rehydrate_cameras(
         (Entity, Option<&DefaultCamera>),
         (With<SceneCamera>, Without<Camera3d>, Without<Camera2d>),
     >,
-    editor_camera: Query<(), With<EditorCamera>>,
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
+    mut mediums: Option<ResMut<Assets<ScatteringMedium>>>,
 ) {
     if query.is_empty() {
         return;
     }
 
     let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-    let is_editor = !editor_camera.is_empty() && !in_play_mode;
+    // We're in editor mode if this binary was compiled with the `editor`
+    // feature, regardless of whether the `EditorCamera` entity has been
+    // spawned yet. Previously this used `!editor_camera.is_empty()`,
+    // but rehydrate runs during `SplashState::Loading` — BEFORE the
+    // editor camera spawns at `OnEnter(SplashState::Editor)`. That race
+    // made rehydrate think the loading scene was a runtime export and
+    // set `is_active: true` on the default scene camera. By the time
+    // the editor camera actually spawned, the `Without<Camera3d>` filter
+    // skipped re-running, so the wrong value stuck — causing the scene
+    // to render twice in editor mode (once via editor camera, once via
+    // scene camera) for a ~33% frame-time regression with shadows on.
+    let is_editor = cfg!(feature = "editor") && !in_play_mode;
 
     // Find which entity should be the active camera in runtime mode
     let default_entity = query
@@ -1654,6 +1670,43 @@ pub fn rehydrate_cameras(
                 ..default()
             },
         ));
+
+        // When this scene camera will be the active runtime camera (i.e.
+        // we're not in editor mode and this is the default camera), it
+        // needs the full prepass + atmosphere stack the editor camera
+        // has. `Msaa::Off` is required because atmosphere binds depth
+        // as non-multisampled. `DeferredPrepass` is added separately by
+        // `ensure_deferred_prepass_on_cameras` (the single source of
+        // truth for the Forward/Deferred toggle across editor, play
+        // mode, and runtime) — that's why it's not in this tuple.
+        //
+        // Mirrors `renzora_viewport::play_mode::enter_play_mode` for the
+        // 3D-only setup. (See `renzora_engine::camera::spawn_editor_camera`
+        // for why all other prepass markers must be attached at spawn.)
+        if is_active {
+            let medium_handle = mediums
+                .as_mut()
+                .map(|m| m.add(ScatteringMedium::default()))
+                .unwrap_or_default();
+            commands.entity(entity).try_insert((
+                Hdr,
+                NormalPrepass,
+                DepthPrepass,
+                MotionVectorPrepass,
+                Atmosphere {
+                    bottom_radius: 6_360_000.0,
+                    top_radius: 6_460_000.0,
+                    ground_albedo: Vec3::splat(0.3),
+                    medium: medium_handle,
+                },
+                AtmosphereSettings::default(),
+                AtmosphereEnvironmentMapLight {
+                    intensity: 0.0,
+                    ..default()
+                },
+                Msaa::Off,
+            ));
+        }
 
         // During play mode, configure the default camera as the play mode camera
         // with the viewport render target (mirrors what enter_play_mode does).
@@ -1709,15 +1762,35 @@ pub fn sync_play_mode_camera(
 pub fn enforce_single_active_camera(
     mut cameras: Query<(Entity, &mut Camera, Option<&DefaultCamera>), With<SceneCamera>>,
     editor_camera: Query<(), With<EditorCamera>>,
+    play_mode: Option<Res<PlayModeState>>,
 ) {
-    if !editor_camera.is_empty() {
-        return;
-    }
     if cameras.is_empty() {
         return;
     }
 
-    // Find which entity should be active: DefaultCamera > first
+    let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+    let in_editor = !editor_camera.is_empty() && !in_play_mode;
+
+    if in_editor {
+        // Editor view: every scene camera should be inactive — the
+        // editor camera owns the viewport. Without this pin, the
+        // SceneCamera authored in `main.ron` ends up `is_active: true`
+        // because Bevy auto-inserts a default `Camera` (which defaults
+        // to active) when the scene reflects in its required-component
+        // graph, and `try_insert` in `rehydrate_cameras` doesn't
+        // always win that race. With this enforced, the whole scene
+        // stops rendering twice in editor — recovers ~33% frame time
+        // in heavy scenes with shadows on.
+        for (_, mut camera, _) in &mut cameras {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        return;
+    }
+
+    // Runtime / play mode: pick the DefaultCamera (or first scene
+    // camera) and make sure only it is active.
     let default_entity = cameras
         .iter()
         .find(|(_, _, dc)| dc.is_some())

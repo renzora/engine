@@ -26,6 +26,11 @@ use state::*;
 #[derive(Default, Clone)]
 struct DebugBridgeInner {
     camera: Option<CameraDebugState>,
+    /// Per-frame queue: each entry is a `Camera` entity whose
+    /// `is_active` should flip. Populated by the camera-debug panel
+    /// when its toggle button is clicked, drained by
+    /// `apply_camera_toggles` the same frame.
+    camera_toggles: Vec<Entity>,
     culling: Option<CullingDebugState>,
 }
 
@@ -196,6 +201,15 @@ impl EditorPanel for CameraDebugPanel {
 
         if let Ok(mut local) = self.local.write() {
             panels::camera::render_camera_debug_content(ui, &mut local, &theme);
+
+            // Move any toggle clicks from this frame's UI pass into the
+            // bridge, so `apply_camera_toggles` can flip `is_active` on
+            // the matching Camera entities.
+            if !local.pending_toggles.is_empty() {
+                if let Ok(mut pending) = self.bridge.lock() {
+                    pending.camera_toggles.append(&mut local.pending_toggles);
+                }
+            }
         }
 
         if let Ok(mut pending) = self.bridge.lock() {
@@ -209,6 +223,7 @@ impl EditorPanel for CameraDebugPanel {
                     frustum_color: local.frustum_color,
                     update_interval: local.update_interval,
                     time_since_update: local.time_since_update,
+                    pending_toggles: Vec::new(),
                 });
             }
         }
@@ -527,6 +542,24 @@ fn sync_debug_bridge(
     }
 }
 
+/// Drain queued toggles from the debug bridge and flip the matching
+/// `Camera::is_active` flags. Used by the Camera Debug panel's per-row
+/// ON/OFF button so the user can A/B which cameras are alive while
+/// watching the frame counter.
+fn apply_camera_toggles(bridge: Res<DebugBridge>, mut cameras: Query<&mut bevy::camera::Camera>) {
+    let Ok(mut pending) = bridge.pending.lock() else {
+        return;
+    };
+    if pending.camera_toggles.is_empty() {
+        return;
+    }
+    for entity in pending.camera_toggles.drain(..) {
+        if let Ok(mut cam) = cameras.get_mut(entity) {
+            cam.is_active = !cam.is_active;
+        }
+    }
+}
+
 // ============================================================================
 // Plugin
 // ============================================================================
@@ -572,6 +605,7 @@ impl Plugin for DebuggerPlugin {
                 update_culling_debug_state,
                 update_render_pipeline_timing,
                 sync_debug_bridge,
+                apply_camera_toggles,
             )
                 .run_if(in_state(SplashState::Editor)),
         );

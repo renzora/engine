@@ -1246,18 +1246,36 @@ fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Re
 }
 
 /// Toggles editor camera `is_active` based on whether the Viewport panel is
-/// mounted *and* which view (3D / 2D / UI) is selected. Only one editor
-/// camera renders at a time so the shared offscreen target stays clean.
+/// mounted *and* which view (3D / 2D / UI) is selected. The viewport hosts
+/// all three exclusively — switching tabs is a mode change, not a
+/// multi-camera composition — so only one renders at a time and the rest
+/// stay off to keep the shared offscreen target clean and the GPU idle.
 fn sync_viewport_camera_activation(
     docking: Option<Res<DockingState>>,
     settings: Option<Res<ViewportSettings>>,
     mut cameras_3d: Query<
         &mut Camera,
-        (With<EditorCamera>, Without<renzora::core::EditorCamera2d>),
+        (
+            With<EditorCamera>,
+            Without<renzora::core::EditorCamera2d>,
+            Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+        ),
     >,
     mut cameras_2d: Query<
         &mut Camera,
-        (With<renzora::core::EditorCamera2d>, Without<EditorCamera>),
+        (
+            With<renzora::core::EditorCamera2d>,
+            Without<EditorCamera>,
+            Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+        ),
+    >,
+    mut cameras_ui: Query<
+        &mut Camera,
+        (
+            With<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+            Without<EditorCamera>,
+            Without<renzora::core::EditorCamera2d>,
+        ),
     >,
 ) {
     use renzora::core::viewport_types::ViewportView;
@@ -1265,8 +1283,14 @@ fn sync_viewport_camera_activation(
     let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
 
-    let want_3d = mounted && view == ViewportView::Three;
+    // The 3D editor camera also serves as the *backdrop* in UI authoring
+    // mode (the canvas panel blits `ViewportRenderTarget` underneath the
+    // UI widgets so designers get a "game feel" while laying out the
+    // interface). So `Three` and `Ui` both keep it active; only `Two`
+    // turns it off in favour of the 2D camera.
+    let want_3d = mounted && (view == ViewportView::Three || view == ViewportView::Ui);
     let want_2d = mounted && view == ViewportView::Two;
+    let want_ui = mounted && view == ViewportView::Ui;
 
     for mut camera in cameras_3d.iter_mut() {
         if camera.is_active != want_3d {
@@ -1276,6 +1300,11 @@ fn sync_viewport_camera_activation(
     for mut camera in cameras_2d.iter_mut() {
         if camera.is_active != want_2d {
             camera.is_active = want_2d;
+        }
+    }
+    for mut camera in cameras_ui.iter_mut() {
+        if camera.is_active != want_ui {
+            camera.is_active = want_ui;
         }
     }
 }
