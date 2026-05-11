@@ -303,6 +303,25 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         let medium_handle = world
             .resource_mut::<Assets<ScatteringMedium>>()
             .add(ScatteringMedium::default());
+        // Match the editor camera's far plane (100km, see
+        // `renzora_engine::camera::spawn_editor_camera`). Default
+        // Bevy `PerspectiveProjection` has `far: 1000.0`, which clips
+        // atmosphere / sky / distant terrain in play mode and is the
+        // main reason "play view looks totally different to editor".
+        // Preserve any other authored projection fields the user set
+        // (fov, aspect, near) — just override the far.
+        if let Some(mut proj) = world.get_mut::<Projection>(cam_entity) {
+            if let Projection::Perspective(ref mut p) = *proj {
+                p.far = 100_000.0;
+            }
+        } else {
+            world
+                .entity_mut(cam_entity)
+                .insert(Projection::Perspective(PerspectiveProjection {
+                    far: 100_000.0,
+                    ..default()
+                }));
+        }
         world.entity_mut(cam_entity).insert((
             Hdr,
             NormalPrepass,

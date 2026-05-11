@@ -86,6 +86,14 @@ pub fn spawn_editor_camera(
         // any later trips a wgpu validation crash on the prepass attachment
         // list. (TAA also auto-attaches MotionVectorPrepass; doing it here
         // means the layout doesn't change when the user toggles TAA.)
+        //
+        // DeferredPrepass is intentionally NOT here: in Bevy 0.18 it
+        // isn't truly hybrid — attaching it switches the camera into a
+        // deferred-shading path that forward shadows don't carry into,
+        // and the engine's custom material extensions aren't all
+        // deferred-capable. SSR (which needs the G-buffer) is therefore
+        // unavailable on this camera; switching is a Phase X effort
+        // that needs the material extensions migrated first.
         (NormalPrepass, DepthPrepass, MotionVectorPrepass),
     ));
 

@@ -1,3 +1,4 @@
+use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,7 @@ impl Default for SsrSettings {
 fn sync_ssr(
     mut commands: Commands,
     sources: Query<(Entity, Ref<SsrSettings>)>,
+    deferred_cameras: Query<(), With<DeferredPrepass>>,
     routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
@@ -35,9 +37,27 @@ fn sync_ssr(
                     break;
                 }
                 if settings.enabled {
-                    commands
-                        .entity(*target)
-                        .insert(ScreenSpaceReflections::default());
+                    // Bevy 0.18's SSR is part of the deferred lighting
+                    // path: inserting `ScreenSpaceReflections` switches
+                    // the camera into deferred shading, which needs
+                    // `DeferredPrepass` to supply the G-buffer
+                    // (base color, normals, MR maps). On a forward-only
+                    // camera the prepass isn't there, so shading
+                    // collapses (shadows disappear, GI compositing
+                    // breaks). Refuse to insert in that case.
+                    if !deferred_cameras.contains(*target) {
+                        warn!(
+                            "SSR enabled but camera lacks DeferredPrepass; \
+                             skipping (forward rendering path doesn't support SSR). \
+                             Disable SSR in the inspector or wire up the deferred \
+                             renderer."
+                        );
+                        commands.entity(*target).remove::<ScreenSpaceReflections>();
+                    } else {
+                        commands
+                            .entity(*target)
+                            .insert(ScreenSpaceReflections::default());
+                    }
                 } else {
                     commands.entity(*target).remove::<ScreenSpaceReflections>();
                 }
