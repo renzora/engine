@@ -1,31 +1,27 @@
-//! Renzora's own auto-exposure: CPU-side EV driver fed by the scene
-//! luminance readback.
+//! Renzora Auto Exposure — settings wrapper for Bevy's
+//! `bevy_post_process::auto_exposure::AutoExposure`.
 //!
-//! Bevy's `bevy_post_process::auto_exposure` works fine but its
-//! `AutoExposureCompensationCurve` is `RenderAssetUsages::RENDER_WORLD`
-//! only, which means after first extract the main-world copy is dropped
-//! and any subsequent re-extraction logs a loud `cannot be extracted`
-//! error. Rather than fight that, we drive `Camera::Exposure.ev100`
-//! ourselves on the CPU using the luminance readback we already have.
+//! Bevy's AE is histogram-based with percentile filtering: it builds a
+//! 64-bin luminance histogram each frame, ignores the darkest N% and
+//! brightest M% of pixels, and animates the camera's exposure so the
+//! remaining "metered" pixels average to middle gray. This handles
+//! dark/sparse scenes properly (the old log-average implementation
+//! would max out exposure when the scene was mostly empty, blowing the
+//! frame to white).
 //!
-//! Pipeline:
-//!   1. `LuminanceReadbackPlugin` (in `luminance.rs`) dispatches a tiny
-//!      compute reduce on the view target, async-maps the result, and
-//!      writes the raw average log-luminance into `SceneLuminance`.
-//!   2. `drive_auto_exposure` reads that, computes a target EV that
-//!      compensates the average toward 18% middle gray, smooths
-//!      towards it at the user's brighten/darken speeds, clamps to the
-//!      configured range, and writes the result into the camera's
-//!      `bevy::camera::Exposure` component (inserting one if needed).
-//!   3. `CameraExposureState.ev100` is mirrored from the live value so
-//!      scripting (`camera_ev` Lua global) can display it.
+//! This crate just authors user-facing settings on a `WorldEnvironment`
+//! source entity and routes them onto every camera via `EffectRouting`.
+//! The compute shader, smoothing, percentile filter, and exponential
+//! anti-jitter all live in Bevy.
+//!
+//! Note: Bevy's AE doesn't add itself via `DefaultPlugins` — its
+//! `AutoExposurePlugin` is opt-in. We add it from our `build` hook so
+//! enabling AutoExposureSettings on any entity Just Works.
 
 use bevy::camera::Exposure;
+use bevy::post_process::auto_exposure::{AutoExposure, AutoExposurePlugin as BevyAePlugin};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-
-mod luminance;
-pub use luminance::{LuminanceReadbackPlugin, SceneLuminance};
 
 #[cfg(feature = "editor")]
 use {
@@ -38,114 +34,127 @@ use {
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct AutoExposureSettings {
+    /// How fast the camera adapts to brighter scenes, in F-stops/second.
+    /// Bevy's default is 3.0 (eye adapts to bright quickly).
     pub speed_brighten: f32,
+    /// How fast the camera adapts to darker scenes, in F-stops/second.
+    /// Bevy's default is 1.0 (eye adapts to dark slowly).
     pub speed_darken: f32,
+    /// Minimum EV the metering can drive towards. Bevy default: -8.
     pub range_min: f32,
+    /// Maximum EV the metering can drive towards. Bevy default: +8.
     pub range_max: f32,
+    /// Lower percentile cutoff (0..1). Pixels darker than this fraction
+    /// of the histogram are excluded from metering. 0.10 = ignore the
+    /// darkest 10%. This is what stops a dark/empty scene from pulling
+    /// the average toward zero and blowing the frame to white.
+    pub filter_low: f32,
+    /// Upper percentile cutoff. 0.90 = ignore brightest 10% (specular
+    /// highlights, sun disk, etc.).
+    pub filter_high: f32,
+    /// Anti-jitter band in F-stops. Small frame-to-frame changes within
+    /// this band animate exponentially (slow, smooth); larger changes
+    /// use the linear `speed_*` rates. 1.5 = Bevy default.
+    pub exponential_transition_distance: f32,
     pub enabled: bool,
 }
 
 impl Default for AutoExposureSettings {
     fn default() -> Self {
-        // Wide EV range so moody night scenes stay genuinely dark
-        // (range_min -6 caps the maximum dark-area "lifting") and very
-        // bright daytime scenes don't blow out (range_max +6 cap).
-        // -2..+4 was too narrow: at night the average luminance pushed
-        // EV to range_min, dragging dark cobblestone up to mid-gray and
-        // washing the scene out.
+        // Mirrors Bevy's `AutoExposure::default()` field-for-field —
+        // these are the values the Bevy team picked after testing
+        // against real scenes.
         Self {
-            speed_brighten: 2.0,
+            speed_brighten: 3.0,
             speed_darken: 1.0,
-            range_min: -6.0,
-            range_max: 6.0,
+            range_min: -8.0,
+            range_max: 8.0,
+            filter_low: 0.10,
+            filter_high: 0.90,
+            exponential_transition_distance: 1.5,
             enabled: true,
         }
     }
 }
 
-/// Drives `Exposure.ev100` on every routed target camera based on the
-/// scene luminance readback.
-fn drive_auto_exposure(
-    time: Res<Time>,
-    lum: Res<SceneLuminance>,
-    sources: Query<&AutoExposureSettings>,
-    routing: Res<renzora::EffectRouting>,
+/// Route AutoExposureSettings from a `WorldEnvironment` source onto
+/// every active camera. When disabled, the Bevy `AutoExposure`
+/// component is removed and the camera reverts to its static
+/// `Exposure.ev100` (typically driven by `TonemappingSettings`).
+fn sync_auto_exposure(
     mut commands: Commands,
-    mut exposures: Query<&mut Exposure>,
-    mut state: ResMut<renzora::core::CameraExposureState>,
+    sources: Query<(Entity, Ref<AutoExposureSettings>)>,
+    routing: Res<renzora::EffectRouting>,
 ) {
-    if !lum.valid {
-        return;
-    }
-
-    // Target EV that maps the scene's average luminance to ~18% middle
-    // gray under Bevy's `exposure() = exp2(-ev) / 1.2` formula. The
-    // constant is `-log2(0.18 * 1.2)` ≈ 2.21.
-    const MID_GRAY_BIAS: f32 = 2.21;
-    let raw_target = lum.avg_log_lum + MID_GRAY_BIAS;
-    let dt = time.delta_secs().min(0.1);
-
+    let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
-        let settings = source_list
-            .iter()
-            .find_map(|&src| sources.get(src).ok())
-            .filter(|s| s.enabled);
-        let Some(settings) = settings else { continue; };
-
-        let target_ev = raw_target.clamp(settings.range_min, settings.range_max);
-
-        let current_ev = exposures
-            .get(*target)
-            .map(|e| e.ev100)
-            // First-frame fallback: skip the smoothing transient by
-            // starting at the target.
-            .unwrap_or(target_ev);
-
-        let diff = target_ev - current_ev;
-        let speed = if diff >= 0.0 {
-            settings.speed_brighten
-        } else {
-            settings.speed_darken
-        };
-        let step = diff.clamp(-speed * dt, speed * dt);
-        let new_ev = current_ev + step;
-
-        if let Ok(mut exposure) = exposures.get_mut(*target) {
-            if (exposure.ev100 - new_ev).abs() > 1e-4 {
-                exposure.ev100 = new_ev;
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target).insert(AutoExposure {
+                        range: settings.range_min..=settings.range_max,
+                        filter: settings.filter_low..=settings.filter_high,
+                        speed_brighten: settings.speed_brighten,
+                        speed_darken: settings.speed_darken,
+                        exponential_transition_distance: settings.exponential_transition_distance,
+                        ..default()
+                    });
+                } else {
+                    commands.entity(*target).remove::<AutoExposure>();
+                }
+                found = true;
+                break;
             }
-        } else {
-            commands.entity(*target).insert(Exposure { ev100: new_ev });
         }
-        state.ev100 = new_ev;
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<AutoExposure>();
+            }
+        }
     }
 }
 
-/// Strips `Exposure` overrides from cameras whose source no longer has
-/// `AutoExposureSettings` (component removed via inspector). Without
-/// this the camera would stick at the last AE-driven EV instead of
-/// falling back to its baseline.
 fn cleanup_auto_exposure(
     mut commands: Commands,
     mut removed: RemovedComponents<AutoExposureSettings>,
     routing: Res<renzora::EffectRouting>,
-    sources: Query<&AutoExposureSettings>,
 ) {
-    if removed.read().next().is_none() {
-        return;
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<AutoExposure>();
+            }
+        }
     }
-    for (target, source_list) in routing.iter() {
-        let still_has = source_list
-            .iter()
-            .any(|&src| sources.get(src).is_ok());
-        if !still_has {
-            commands.entity(*target).remove::<Exposure>();
+}
+
+/// Mirror the camera's `Exposure.ev100` into `CameraExposureState` so
+/// scripting (`camera_ev` Lua/Rhai global) and HUDs can display it.
+///
+/// Caveat: with Bevy's AE active, the metering result lives in a GPU
+/// state buffer, not in `Exposure.ev100` — that component carries the
+/// pre-AE baseline (typically what `TonemappingSettings` set). So this
+/// reading is the *manual* EV, not the live AE-adjusted value. Fixing
+/// that would require a GPU→CPU readback of Bevy's internal state,
+/// which is non-trivial; the manual EV is good enough for HUD use.
+fn mirror_camera_ev(
+    cameras: Query<&Exposure, With<Camera3d>>,
+    mut state: ResMut<renzora::core::CameraExposureState>,
+) {
+    if let Some(exposure) = cameras.iter().next() {
+        if (state.ev100 - exposure.ev100).abs() > 1e-4 {
+            state.ev100 = exposure.ev100;
         }
     }
 }
 
 #[cfg(feature = "editor")]
-fn auto_exposure_entry() -> InspectorEntry {
+fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "auto_exposure",
         display_name: "Auto Exposure",
@@ -158,7 +167,9 @@ fn auto_exposure_entry() -> InspectorEntry {
                 .insert(AutoExposureSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<AutoExposureSettings>();
+            world
+                .entity_mut(entity)
+                .remove::<(AutoExposureSettings, AutoExposure)>();
         }),
         is_enabled_fn: Some(|world, entity| {
             world
@@ -193,7 +204,11 @@ fn auto_exposure_custom_ui(
 
     inline_property(ui, row, "Speed Brighten", theme, |ui| {
         let orig = data.speed_brighten;
-        ui.add(egui::DragValue::new(&mut data.speed_brighten).speed(0.1).range(0.0..=10.0));
+        ui.add(
+            egui::DragValue::new(&mut data.speed_brighten)
+                .speed(0.1)
+                .range(0.0..=10.0),
+        );
         if data.speed_brighten != orig {
             changed = true;
         }
@@ -201,7 +216,11 @@ fn auto_exposure_custom_ui(
     row += 1;
     inline_property(ui, row, "Speed Darken", theme, |ui| {
         let orig = data.speed_darken;
-        ui.add(egui::DragValue::new(&mut data.speed_darken).speed(0.1).range(0.0..=10.0));
+        ui.add(
+            egui::DragValue::new(&mut data.speed_darken)
+                .speed(0.1)
+                .range(0.0..=10.0),
+        );
         if data.speed_darken != orig {
             changed = true;
         }
@@ -209,7 +228,11 @@ fn auto_exposure_custom_ui(
     row += 1;
     inline_property(ui, row, "Range Min (EV)", theme, |ui| {
         let orig = data.range_min;
-        ui.add(egui::DragValue::new(&mut data.range_min).speed(0.1).range(-16.0..=8.0));
+        ui.add(
+            egui::DragValue::new(&mut data.range_min)
+                .speed(0.1)
+                .range(-16.0..=8.0),
+        );
         if data.range_min != orig {
             changed = true;
         }
@@ -217,8 +240,48 @@ fn auto_exposure_custom_ui(
     row += 1;
     inline_property(ui, row, "Range Max (EV)", theme, |ui| {
         let orig = data.range_max;
-        ui.add(egui::DragValue::new(&mut data.range_max).speed(0.1).range(-8.0..=16.0));
+        ui.add(
+            egui::DragValue::new(&mut data.range_max)
+                .speed(0.1)
+                .range(-8.0..=16.0),
+        );
         if data.range_max != orig {
+            changed = true;
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Filter Low (%)", theme, |ui| {
+        let orig = data.filter_low;
+        ui.add(
+            egui::DragValue::new(&mut data.filter_low)
+                .speed(0.01)
+                .range(0.0..=0.5),
+        );
+        if data.filter_low != orig {
+            changed = true;
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Filter High (%)", theme, |ui| {
+        let orig = data.filter_high;
+        ui.add(
+            egui::DragValue::new(&mut data.filter_high)
+                .speed(0.01)
+                .range(0.5..=1.0),
+        );
+        if data.filter_high != orig {
+            changed = true;
+        }
+    });
+    row += 1;
+    inline_property(ui, row, "Anti-Jitter Band", theme, |ui| {
+        let orig = data.exponential_transition_distance;
+        ui.add(
+            egui::DragValue::new(&mut data.exponential_transition_distance)
+                .speed(0.05)
+                .range(0.0..=5.0),
+        );
+        if data.exponential_transition_distance != orig {
             changed = true;
         }
     });
@@ -238,13 +301,26 @@ pub struct AutoExposurePlugin;
 impl Plugin for AutoExposurePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] AutoExposurePlugin");
-        app.add_plugins(LuminanceReadbackPlugin);
+        // Bevy's AutoExposurePlugin is opt-in (not part of DefaultPlugins).
+        // Adding it here means `AutoExposure` components are actually
+        // honored by the render graph.
+        if !app.is_plugin_added::<BevyAePlugin>() {
+            app.add_plugins(BevyAePlugin);
+        }
         app.init_resource::<renzora::core::CameraExposureState>();
         app.register_type::<AutoExposureSettings>();
-        app.add_systems(Update, (drive_auto_exposure, cleanup_auto_exposure));
+        app.add_systems(
+            Update,
+            (sync_auto_exposure, cleanup_auto_exposure, mirror_camera_ev),
+        );
         #[cfg(feature = "editor")]
         app.register_inspector(auto_exposure_entry());
     }
+}
+
+#[cfg(feature = "editor")]
+fn auto_exposure_entry() -> InspectorEntry {
+    inspector_entry()
 }
 
 renzora::add!(AutoExposurePlugin);
