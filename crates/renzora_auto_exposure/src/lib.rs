@@ -47,11 +47,17 @@ pub struct AutoExposureSettings {
 
 impl Default for AutoExposureSettings {
     fn default() -> Self {
+        // Wide EV range so moody night scenes stay genuinely dark
+        // (range_min -6 caps the maximum dark-area "lifting") and very
+        // bright daytime scenes don't blow out (range_max +6 cap).
+        // -2..+4 was too narrow: at night the average luminance pushed
+        // EV to range_min, dragging dark cobblestone up to mid-gray and
+        // washing the scene out.
         Self {
             speed_brighten: 2.0,
             speed_darken: 1.0,
-            range_min: -2.0,
-            range_max: 4.0,
+            range_min: -6.0,
+            range_max: 6.0,
             enabled: true,
         }
     }

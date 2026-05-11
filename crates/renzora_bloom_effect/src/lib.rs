@@ -21,11 +21,15 @@ pub struct BloomSettings {
 
 impl Default for BloomSettings {
     fn default() -> Self {
+        // Tuned to match Bevy's `Bloom::NATURAL` preset more closely:
+        // intensity 0.15 ≈ NATURAL, threshold 0.5 lets a bit more of the
+        // mid-bright content bloom (the previous 0.8 was very strict and
+        // killed the "emissive feel" on most lit surfaces).
         Self {
-            intensity: 0.08,
+            intensity: 0.15,
             low_frequency_boost: 0.5,
             high_pass_frequency: 0.8,
-            threshold: 0.8,
+            threshold: 0.5,
             threshold_softness: 0.3,
             enabled: true,
         }

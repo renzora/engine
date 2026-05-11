@@ -75,6 +75,7 @@ editor = [
     "renzora_motion_blur/editor",
     "renzora_antialiasing/editor",
     "renzora_distance_fog/editor",
+    "renzora_volumetric_fog/editor",
     "renzora_atmosphere/editor",
     "renzora_environment_map/editor",
     "renzora_ssao/editor",
@@ -139,6 +140,7 @@ renzora_oit = { path = "../renzora_oit" }
 renzora_dof = { path = "../renzora_dof" }
 renzora_motion_blur = { path = "../renzora_motion_blur" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }
+renzora_volumetric_fog = { path = "../renzora_volumetric_fog" }
 
 # Environment
 renzora_atmosphere = { path = "../renzora_atmosphere" }

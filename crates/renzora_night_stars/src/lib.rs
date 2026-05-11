@@ -39,6 +39,10 @@ pub struct NightStarsData {
     pub horizon_fade: f32,
     /// Star color tint (RGB)
     pub color: (f32, f32, f32),
+    /// When disabled the sky dome is despawned (no draw cost) and
+    /// re-spawned on enable — same as removing the component, but lets
+    /// the inspector keep the settings around for a quick toggle.
+    pub enabled: bool,
 }
 
 impl Default for NightStarsData {
@@ -51,6 +55,7 @@ impl Default for NightStarsData {
             twinkle_amount: 0.35,
             horizon_fade: 0.08,
             color: (1.0, 0.97, 0.9),
+            enabled: true,
         }
     }
 }
@@ -134,6 +139,17 @@ fn sync_night_stars(
     let Some(data) = stars_query.iter().next() else {
         return;
     };
+
+    // Toggle off → tear down the dome but keep the settings component so
+    // the user can re-enable in one click.
+    if !data.enabled {
+        if let Some(ent) = state.entity.take() {
+            commands.entity(ent).despawn();
+            state.material_handle = None;
+            state.mesh_handle = None;
+        }
+        return;
+    }
 
     let Some(camera_transform) = camera_query.iter().next() else {
         return;
@@ -334,8 +350,17 @@ fn inspector_entry() -> InspectorEntry {
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<NightStarsData>();
         }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<NightStarsData>(entity)
+                .map(|s| s.enabled)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut s) = world.get_mut::<NightStarsData>(entity) {
+                s.enabled = val;
+            }
+        }),
         fields: vec![],
         custom_ui_fn: Some(night_stars_custom_ui),
     }

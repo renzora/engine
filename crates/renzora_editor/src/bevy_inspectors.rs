@@ -4,7 +4,7 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricFog, VolumetricLight,
+    EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -324,7 +324,10 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(irradiance_volume_entry());
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
-    registry.register(volumetric_fog_entry());
+    // `volumetric_fog_entry()` removed -- `renzora_volumetric_fog` now
+    // provides the inspector entry (same `type_id: "volumetric_fog"`)
+    // backed by a Settings wrapper that routes from the
+    // WorldEnvironment entity to all active cameras via EffectRouting.
     registry.register(sprite_image_entry());
 }
 
@@ -1318,100 +1321,8 @@ fn volumetric_light_entry() -> InspectorEntry {
     }
 }
 
-fn volumetric_fog_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "volumetric_fog",
-        display_name: "Volumetric Fog",
-        icon: regular::CLOUD_FOG,
-        category: "lighting",
-        has_fn: |world, entity| world.get::<VolumetricFog>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(VolumetricFog::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<VolumetricFog>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Ambient Color",
-                field_type: FieldType::Color,
-                get_fn: |world, entity| {
-                    world.get::<VolumetricFog>(entity).map(|f| {
-                        let c = f.ambient_color.to_srgba();
-                        FieldValue::Color([c.red, c.green, c.blue])
-                    })
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Color([r, g, b]) = val {
-                        if let Some(mut f) = world.get_mut::<VolumetricFog>(entity) {
-                            f.ambient_color = Color::srgb(r, g, b);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Ambient Intensity",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VolumetricFog>(entity)
-                        .map(|f| FieldValue::Float(f.ambient_intensity))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut f) = world.get_mut::<VolumetricFog>(entity) {
-                            f.ambient_intensity = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Step Count",
-                field_type: FieldType::Float {
-                    speed: 1.0,
-                    min: 1.0,
-                    max: 256.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VolumetricFog>(entity)
-                        .map(|f| FieldValue::Float(f.step_count as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut f) = world.get_mut::<VolumetricFog>(entity) {
-                            f.step_count = v as u32;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Jitter",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VolumetricFog>(entity)
-                        .map(|f| FieldValue::Float(f.jitter))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut f) = world.get_mut::<VolumetricFog>(entity) {
-                            f.jitter = v;
-                        }
-                    }
-                },
-            },
-        ],
-        custom_ui_fn: None,
-    }
-}
+// `volumetric_fog_entry` removed -- now provided by
+// `renzora_volumetric_fog::inspector_entry`, which routes settings
+// from a WorldEnvironment-style source onto every active camera via
+// `EffectRouting`. Keeping the direct-on-camera variant here would
+// create a duplicate inspector entry with the same `type_id`.

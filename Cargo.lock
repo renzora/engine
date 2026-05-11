@@ -10307,6 +10307,7 @@ dependencies = [
  "renzora_tutorial",
  "renzora_undo",
  "renzora_viewport",
+ "renzora_volumetric_fog",
  "renzora_vst",
  "renzora_water",
  "renzora_widget_gallery",
@@ -10825,6 +10826,19 @@ dependencies = [
  "renzora_editor",
  "renzora_macros",
  "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
+name = "renzora_volumetric_fog"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_egui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_theme",
  "serde",
 ]
 

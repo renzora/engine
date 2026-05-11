@@ -65,7 +65,11 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "vignette",
         display_name: "Vignette",
         icon: regular::APERTURE,
-        category: "post_process",
+        // "post_process" isn't in the theme's category color map — it
+        // falls through to the "transform" color. "effects" matches the
+        // theme and visually groups Vignette with the other stylistic
+        // post-process effects.
+        category: "effects",
         has_fn: |world, entity| world.get::<VignetteSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(VignetteSettings::default());
