@@ -10,12 +10,15 @@
 //! `Off`; Phases 2-6 of `renzora_lumen_plan.md` fill them in.
 
 use bevy::prelude::*;
+use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use renzora_rt::{RtDebugMode, RtLighting, RtLightingExternallyManaged};
 use serde::{Deserialize, Serialize};
 
 mod geometry_voxelize;
+mod lumen_trace;
 mod voxel_cache;
 pub use geometry_voxelize::GeometryVoxelizePlugin;
+pub use lumen_trace::LumenTracePlugin;
 pub use voxel_cache::VoxelCachePlugin;
 
 #[cfg(feature = "editor")]
@@ -74,6 +77,16 @@ impl Default for LumenLighting {
     }
 }
 
+impl ExtractComponent for LumenLighting {
+    type QueryData = &'static LumenLighting;
+    type QueryFilter = ();
+    type Out = LumenLighting;
+
+    fn extract_component(item: bevy::ecs::query::QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
+        Some(item.clone())
+    }
+}
+
 #[derive(Default)]
 pub struct LumenPlugin;
 
@@ -81,8 +94,10 @@ impl Plugin for LumenPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<LumenLighting>();
         app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
+        app.add_plugins(ExtractComponentPlugin::<LumenLighting>::default());
         app.add_plugins(VoxelCachePlugin);
         app.add_plugins(GeometryVoxelizePlugin);
+        app.add_plugins(LumenTracePlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
