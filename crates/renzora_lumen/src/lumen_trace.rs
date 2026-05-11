@@ -13,15 +13,19 @@
 use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
 use bevy::ecs::query::QueryItem;
+use bevy::light::EnvironmentMapLight;
 use bevy::prelude::*;
+use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
+use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_graph::{
     NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
 };
 use bevy::render::render_resource::binding_types::{
-    sampler, texture_2d, texture_3d, texture_depth_2d, uniform_buffer,
+    sampler, texture_2d, texture_3d, texture_cube, texture_depth_2d, uniform_buffer,
 };
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::texture::{FallbackImage, GpuImage};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::utils::default;
@@ -47,6 +51,59 @@ pub struct TraceConfig {
     /// and travels far enough to fill more of the swiss-cheese pattern
     /// from sparse voxel content.
     pub quality_tier: u32,
+    /// Multiplier applied to sky-cubemap contribution when a cone ray
+    /// leaves the voxel cache without accumulating full alpha. Mirrors
+    /// the EnvironmentMapLight intensity on the camera, so the sky
+    /// fades to 0 at night automatically.
+    pub sky_intensity: f32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+    pub _pad2: u32,
+}
+
+/// Mirrors the camera's `EnvironmentMapLight` into a render-world-
+/// extractable component holding just what the cone trace needs to
+/// sample the sky on miss. The main-world sync system populates it
+/// from `EnvironmentMapLight`; `ExtractComponentPlugin` mirrors it to
+/// the render world so `LumenTraceNode` can look up the cubemap.
+#[derive(Component, Clone, Default)]
+pub struct LumenSkyCubemap {
+    pub diffuse_map: Handle<Image>,
+    pub intensity: f32,
+}
+
+impl ExtractComponent for LumenSkyCubemap {
+    type QueryData = &'static LumenSkyCubemap;
+    type QueryFilter = ();
+    type Out = LumenSkyCubemap;
+    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
+        Some(item.clone())
+    }
+}
+
+/// Main-world system: any camera with `EnvironmentMapLight` gets a
+/// matching `LumenSkyCubemap` (re)attached when the env map changes.
+/// We can't impl `ExtractComponent` for `EnvironmentMapLight` from
+/// here (orphan rule) so this wrapper is the bridge.
+pub fn sync_lumen_sky_cubemap(
+    mut commands: Commands,
+    cameras: Query<
+        (Entity, &EnvironmentMapLight, Option<&LumenSkyCubemap>),
+        Changed<EnvironmentMapLight>,
+    >,
+) {
+    for (entity, em, existing) in &cameras {
+        let needs_update = match existing {
+            Some(sc) => sc.diffuse_map != em.diffuse_map || sc.intensity != em.intensity,
+            None => true,
+        };
+        if needs_update {
+            commands.entity(entity).insert(LumenSkyCubemap {
+                diffuse_map: em.diffuse_map.clone(),
+                intensity: em.intensity,
+            });
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -55,6 +112,7 @@ pub struct LumenTracePipeline {
     pub pipeline_id: CachedRenderPipelineId,
     pub voxel_sampler: Sampler,
     pub scene_sampler: Sampler,
+    pub sky_sampler: Sampler,
     pub frame_count: AtomicU32,
 }
 
@@ -114,6 +172,10 @@ impl FromWorld for LumenTracePipeline {
                     uniform_buffer::<VoxelGridUniform>(false),
                     // 10: trace config
                     uniform_buffer::<TraceConfig>(false),
+                    // 11: sky cubemap (diffuse-prefiltered env map)
+                    texture_cube(TextureSampleType::Float { filterable: true }),
+                    // 12: sky sampler
+                    sampler(SamplerBindingType::Filtering),
                 ),
             ),
         );
@@ -124,6 +186,14 @@ impl FromWorld for LumenTracePipeline {
             ..default()
         });
         let voxel_sampler = render_device.create_sampler(&SamplerDescriptor::default());
+        let sky_sampler = render_device.create_sampler(&SamplerDescriptor {
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            ..default()
+        });
 
         let asset_server = world.resource::<AssetServer>();
         let shader = asset_server.load("embedded://renzora_lumen/lumen_trace.wgsl");
@@ -165,6 +235,7 @@ impl FromWorld for LumenTracePipeline {
             pipeline_id,
             voxel_sampler,
             scene_sampler,
+            sky_sampler,
             frame_count: AtomicU32::new(0),
         }
     }
@@ -176,12 +247,18 @@ pub fn prepare_lumen_trace_uniforms(
     render_queue: Res<RenderQueue>,
     pipeline: Res<LumenTracePipeline>,
     views: Query<
-        (Entity, &LumenLighting, &ViewTarget, Option<&LumenTraceResources>),
+        (
+            Entity,
+            &LumenLighting,
+            &ViewTarget,
+            Option<&LumenSkyCubemap>,
+            Option<&LumenTraceResources>,
+        ),
         With<VoxelCacheView>,
     >,
 ) {
     let frame = pipeline.frame_count.fetch_add(1, Ordering::Relaxed);
-    for (entity, lighting, view_target, existing) in &views {
+    for (entity, lighting, view_target, sky, existing) in &views {
         let debug_mode = match lighting.debug {
             crate::LumenDebug::IndirectOnly => 1,
             _ => 0,
@@ -190,11 +267,21 @@ pub fn prepare_lumen_trace_uniforms(
             crate::LumenQuality::SdfHigh => 1,
             _ => 0,
         };
+        // Sky intensity rides along with whatever the camera's
+        // `EnvironmentMapLight.intensity` currently is — the WE entity
+        // routes this through, and our `sun_horizon_factor` fade in
+        // `renzora_environment_map` makes it taper to 0 at night.
+        // Cone rays that miss the voxel cache get this much sky.
+        let sky_intensity = sky.map(|s| s.intensity).unwrap_or(0.0);
         let config = TraceConfig {
             intensity: lighting.intensity,
             frame_count: frame,
             debug_mode,
             quality_tier,
+            sky_intensity,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
         };
 
         let target_size = view_target.main_texture().size();
@@ -260,13 +347,14 @@ impl ViewNode for LumenTraceNode {
         &'static ViewPrepassTextures,
         &'static VoxelCacheView,
         &'static LumenTraceResources,
+        Option<&'static LumenSkyCubemap>,
     );
 
     fn run(
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, view, resources): QueryItem<Self::ViewQuery>,
+        (view_target, view_offset, prepass, view, resources, sky): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         // inject_active is true exactly when LumenQuality >= SdfLow,
@@ -287,6 +375,17 @@ impl ViewNode for LumenTraceNode {
         let Some(cache_res) = world.get_resource::<VoxelCacheResources>() else {
             return Ok(());
         };
+
+        // Look up the sky cubemap. If the env map isn't ready yet (first
+        // few frames, missing texture, etc.) fall back to Bevy's black
+        // fallback cube — `config.sky_intensity` will be 0 in that case
+        // anyway, so the sample contributes nothing.
+        let fallback = world.resource::<FallbackImage>();
+        let gpu_images = world.resource::<RenderAssets<GpuImage>>();
+        let sky_view = sky
+            .and_then(|sc| gpu_images.get(&sc.diffuse_map))
+            .map(|img| &img.texture_view)
+            .unwrap_or(&fallback.cube.texture_view);
 
         // Frame-count parity decides which history texture is "previous"
         // (read) and which is "next" (written this frame). The prepare
@@ -316,6 +415,8 @@ impl ViewNode for LumenTraceNode {
                 view_binding.clone(),
                 cache_res.uniform_buffer.as_entire_binding(),
                 resources.config_buffer.as_entire_binding(),
+                sky_view,
+                &pipeline.sky_sampler,
             )),
         );
 
@@ -355,6 +456,14 @@ pub struct LumenTracePlugin;
 impl Plugin for LumenTracePlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "lumen_trace.wgsl");
+
+        // Mirror the camera's `EnvironmentMapLight` into a
+        // `LumenSkyCubemap` and extract that to the render world so the
+        // trace node can sample the sky cubemap on cone miss. Bevy's
+        // EnvironmentMapLight isn't extractable from our crate (orphan
+        // rule) so this thin wrapper bridges main → render.
+        app.add_systems(Update, sync_lumen_sky_cubemap);
+        app.add_plugins(ExtractComponentPlugin::<LumenSkyCubemap>::default());
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app

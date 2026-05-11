@@ -39,6 +39,10 @@ struct TraceConfig {
     frame_count: u32,
     debug_mode: u32, // 0 = composite, 1 = indirect-only
     quality_tier: u32, // 0 = SdfLow, 1 = SdfHigh
+    sky_intensity: f32, // multiplier for sky cubemap on cone miss
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
 @group(0) @binding(0) var scene_tex: texture_2d<f32>;
@@ -52,6 +56,8 @@ struct TraceConfig {
 @group(0) @binding(8) var<uniform> view: View;
 @group(0) @binding(9) var<uniform> grid: VoxelGrid;
 @group(0) @binding(10) var<uniform> config: TraceConfig;
+@group(0) @binding(11) var sky_cube: texture_cube<f32>;
+@group(0) @binding(12) var sky_sampler: sampler;
 
 // SdfLow defaults; SdfHigh upgrades these via `config.quality_tier == 1u`.
 // Lower step counts than Phase 6's first-hit march: each cone step is
@@ -90,6 +96,14 @@ const PI: f32 = 3.14159265359;
 // a very bright voxel can dominate the 2-sample average and become a
 // persistent bright dot once temporal kicks in.
 const MAX_SAMPLE_LUMINANCE: f32 = 4.0;
+// Per-ray sky contribution ceiling. Tighter than the general per-sample
+// clamp because (a) Bevy's diffuse-prefiltered daytime sky can hit
+// 10-50 HDR units, and (b) in open urban scenes nearly every cone ray
+// escapes to open sky, so the sum stacks fast and the scene goes
+// uniformly bluish-white. 1.0 is conservative enough to keep sky an
+// "ambient fill" rather than a primary light source. Until we have
+// proper albedo modulation, this is the cleanest gate.
+const MAX_SKY_LUMINANCE: f32 = 1.0;
 // 0.08 = 8% current / 92% history → ~12-frame half-life. Slow accumulation
 // kills the noise hard; the cost is response lag for moving lights.
 const TEMPORAL_ALPHA: f32 = 0.08;
@@ -185,6 +199,13 @@ fn cascade_voxel_sample(p: vec3<f32>, cascade: u32) -> vec4<f32> {
 // attenuated: a wall 5m away still blocks bounce from further behind it,
 // it just doesn't contribute as much of its own light back to the
 // shaded surface.
+//
+// On miss (cone leaves the clipmap or runs out of steps with remaining
+// alpha budget), fills the unfilled portion with the prefiltered sky
+// cubemap sampled in the cone direction. This is what gives upward-
+// facing surfaces ambient sky bounce when no voxel cache content is
+// available — without it, sky-facing rays return pure black and the
+// scene loses outdoor ambient.
 fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f32> {
     var p = origin;
     var acc_color = vec3<f32>(0.0);
@@ -215,6 +236,25 @@ fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f
         p = p + dir * step_dist;
         distance_travelled = distance_travelled + step_dist;
     }
+
+    // Sky-cubemap fallback for the remaining unfilled cone budget.
+    // `sky_intensity` is 0 when the WE entity has no env map (or when
+    // sun_horizon_factor faded it to 0 for night), so this term
+    // disappears cleanly without needing a runtime branch.
+    //
+    // Per-channel luminance clamp at MAX_SKY_LUMINANCE — preserves
+    // colour ratio (scale, don't clip) so blue sky still reads blue,
+    // but ceilinged so an open-sky scene doesn't stack to white. Until
+    // we have albedo modulation, this is a conservative "ambient fill"
+    // contribution rather than a primary light source.
+    if (acc_alpha < 0.95) {
+        let sky_raw = textureSampleLevel(sky_cube, sky_sampler, dir, 0.0).rgb;
+        let sky_lum = max(max(sky_raw.r, sky_raw.g), sky_raw.b);
+        let sky_scale = min(1.0, MAX_SKY_LUMINANCE / max(sky_lum, 1e-4));
+        let sky = sky_raw * sky_scale;
+        acc_color = acc_color + (1.0 - acc_alpha) * sky * config.sky_intensity;
+    }
+
     return acc_color;
 }
 
