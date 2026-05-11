@@ -71,6 +71,22 @@ impl Sun {
 // Sync system — keeps DirectionalLight + Transform in sync with Sun
 // ============================================================================
 
+/// Sun-brightness multiplier as a function of elevation above the horizon.
+/// Fades smoothly from 0 at -1° to 1 at +5° so dawn/dusk has a soft
+/// transition rather than the directional light snapping on/off. Returns
+/// 0 for any negative elevation past -1° — the sun is "set" and shouldn't
+/// be casting downward-then-upward light into the scene.
+///
+/// Public so other crates (e.g. `renzora_environment_map`) can scale
+/// atmospheric IBL by the same factor — when the sun is below the
+/// horizon the procedural sky cubemap is dark anyway, and applying the
+/// same horizon fade ensures no residual ambient leaks in.
+pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
+    const FADE_START_DEG: f32 = -1.0;
+    const FADE_END_DEG: f32 = 5.0;
+    ((elevation_deg - FADE_START_DEG) / (FADE_END_DEG - FADE_START_DEG)).clamp(0.0, 1.0)
+}
+
 fn sync_sun(
     mut commands: Commands,
     mut query: Query<
@@ -79,14 +95,20 @@ fn sync_sun(
     >,
 ) {
     for (entity, sun, mut light, mut transform) in &mut query {
+        // Below the horizon, fade illuminance and disable shadows. Keeps
+        // the authored `sun.illuminance` value intact in the inspector
+        // while the *effective* light goes to 0 — matches the physical
+        // model where the sun is below the horizon and the scene goes
+        // dark (until a moon / other key light fills in).
+        let factor = sun_horizon_factor(sun.elevation);
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
-        light.illuminance = sun.illuminance;
-        light.shadows_enabled = sun.shadows_enabled;
+        light.illuminance = sun.illuminance * factor;
+        light.shadows_enabled = sun.shadows_enabled && factor > 0.0;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
         commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
-            intensity: sun.sun_disk_intensity,
+            intensity: sun.sun_disk_intensity * factor,
         });
     }
 }

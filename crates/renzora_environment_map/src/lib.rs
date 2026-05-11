@@ -21,7 +21,7 @@
 //! `EffectRouting`. `enabled = false` collapses intensity to 0 — visually
 //! "off" without touching the bindings.
 
-use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -57,21 +57,39 @@ impl Default for EnvironmentMapComponentSettings {
 
 fn sync_environment_map(
     mut commands: Commands,
-    sources: Query<Ref<EnvironmentMapComponentSettings>>,
+    sources: Query<(
+        Ref<EnvironmentMapComponentSettings>,
+        Option<Ref<renzora_lighting::Sun>>,
+    )>,
+    mut env_lights: Query<&mut EnvironmentMapLight>,
     routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
-        // Find a source on the routing list that has the settings.
-        let source_settings = source_list.iter().find_map(|&src| sources.get(src).ok());
+        // Find a source on the routing list that has the settings, and
+        // (optionally) a Sun on the same entity for day-night fading.
+        let source = source_list.iter().find_map(|&src| sources.get(src).ok());
 
-        match source_settings {
-            Some(settings) => {
-                if !routing_changed && !settings.is_changed() {
+        match source {
+            Some((settings, sun)) => {
+                // Re-sync whenever routing, settings, or sun change so
+                // the IBL fades smoothly across the horizon.
+                let sun_changed = sun.as_ref().map(|s| s.is_changed()).unwrap_or(false);
+                if !routing_changed && !settings.is_changed() && !sun_changed {
                     continue;
                 }
+                // Scale by sun elevation: at night the procedural sky
+                // cubemap is dark so IBL is already low, but applying
+                // the same horizon fade as the directional light keeps
+                // the scene from being "vaguely lit" by residual
+                // atmospheric scatter when there's no sun. Eyes-only
+                // realism — relying on actual lights, not engine fakes.
+                let sun_factor = sun
+                    .as_ref()
+                    .map(|s| renzora_lighting::sun_horizon_factor(s.elevation))
+                    .unwrap_or(1.0);
                 let intensity = if settings.enabled {
-                    settings.intensity
+                    settings.intensity * sun_factor
                 } else {
                     0.0
                 };
@@ -84,6 +102,25 @@ fn sync_environment_map(
                         intensity,
                         ..default()
                     });
+                // CRITICAL: Bevy chains IBL intensity through three
+                // components, each gated by `Without<NextOne>` so it
+                // bakes once per camera:
+                //   AtmosphereEnvironmentMapLight
+                //     → GeneratedEnvironmentMapLight (frame 1)
+                //     → EnvironmentMapLight (frame 2)
+                // The PBR shader reads from `EnvironmentMapLight`, NOT
+                // from the upstream two. After frame 2 the chain is
+                // locked — the `AtmosphereEnvironmentMapLight` write
+                // above only matters if our sync happens to run before
+                // the first prepare (which it does in the runtime case
+                // where the WE entity is already in the scene file).
+                // The write below is what makes the editor case work,
+                // where the EditorCamera is spawned long before any WE
+                // entity exists and the chain bakes intensity 0 before
+                // routing has anything to set.
+                if let Ok(mut env) = env_lights.get_mut(*target) {
+                    env.intensity = intensity;
+                }
             }
             None => {
                 // No source for this target — only push the "off" value
@@ -97,6 +134,9 @@ fn sync_environment_map(
                             intensity: 0.0,
                             ..default()
                         });
+                    if let Ok(mut env) = env_lights.get_mut(*target) {
+                        env.intensity = 0.0;
+                    }
                 }
             }
         }
@@ -110,6 +150,7 @@ fn sync_environment_map(
 fn cleanup_environment_map(
     mut commands: Commands,
     mut removed: RemovedComponents<EnvironmentMapComponentSettings>,
+    mut env_lights: Query<&mut EnvironmentMapLight>,
     routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
@@ -120,6 +161,9 @@ fn cleanup_environment_map(
                     intensity: 0.0,
                     ..default()
                 });
+            if let Ok(mut env) = env_lights.get_mut(*target) {
+                env.intensity = 0.0;
+            }
         }
     }
 }
