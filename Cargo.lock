@@ -9286,6 +9286,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_editor",
+ "renzora_lighting",
  "renzora_theme",
  "serde",
 ]
@@ -9752,7 +9753,6 @@ dependencies = [
  "renzora_terrain",
  "renzora_theme",
  "renzora_tonemapping",
- "renzora_vignette",
  "renzora_volumetric_fog",
 ]
 
