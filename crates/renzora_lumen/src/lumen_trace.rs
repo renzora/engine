@@ -42,7 +42,11 @@ pub struct TraceConfig {
     /// shows just the trace contribution). Driven by
     /// `LumenLighting.debug == LumenDebug::IndirectOnly`.
     pub debug_mode: u32,
-    pub _pad0: u32,
+    /// 0 = SdfLow (2 samples, 20 steps), 1 = SdfHigh (4 samples, 32
+    /// steps). High roughly doubles trace cost; smooths noise faster
+    /// and travels far enough to fill more of the swiss-cheese pattern
+    /// from sparse voxel content.
+    pub quality_tier: u32,
 }
 
 #[derive(Resource)]
@@ -182,11 +186,15 @@ pub fn prepare_lumen_trace_uniforms(
             crate::LumenDebug::IndirectOnly => 1,
             _ => 0,
         };
+        let quality_tier = match lighting.quality {
+            crate::LumenQuality::SdfHigh => 1,
+            _ => 0,
+        };
         let config = TraceConfig {
             intensity: lighting.intensity,
             frame_count: frame,
             debug_mode,
-            _pad0: 0,
+            quality_tier,
         };
 
         let target_size = view_target.main_texture().size();

@@ -162,8 +162,10 @@ fn apply_quality(commands: &mut Commands, target: Entity, settings: &LumenLighti
             });
         }
         LumenQuality::Off | LumenQuality::SdfLow | LumenQuality::SdfHigh | LumenQuality::Hwrt => {
-            // Nothing higher than ScreenSpace is wired yet. Strip RtLighting
-            // so the camera renders unaltered.
+            // SdfLow / SdfHigh are handled by the Lumen voxel-cache trace
+            // pipeline (`LumenTracePlugin`); it reads quality off the
+            // mirrored `LumenLighting` directly. RtLighting (SSGI) must be
+            // stripped here so the two GI paths don't double-apply.
             commands.entity(target).remove::<RtLighting>();
         }
     }

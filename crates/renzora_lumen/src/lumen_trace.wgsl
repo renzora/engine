@@ -37,7 +37,7 @@ struct TraceConfig {
     intensity: f32,
     frame_count: u32,
     debug_mode: u32, // 0 = composite, 1 = indirect-only
-    _pad0: u32,
+    quality_tier: u32, // 0 = SdfLow, 1 = SdfHigh
 };
 
 @group(0) @binding(0) var scene_tex: texture_2d<f32>;
@@ -52,8 +52,11 @@ struct TraceConfig {
 @group(0) @binding(9) var<uniform> grid: VoxelGrid;
 @group(0) @binding(10) var<uniform> config: TraceConfig;
 
-const SAMPLES: u32 = 2u;
-const MAX_STEPS: u32 = 20u;
+// SdfLow defaults; SdfHigh upgrades these via `config.quality_tier == 1u`.
+const SAMPLES_LOW: u32 = 2u;
+const SAMPLES_HIGH: u32 = 4u;
+const MAX_STEPS_LOW: u32 = 20u;
+const MAX_STEPS_HIGH: u32 = 32u;
 const HIT_ALPHA: f32 = 0.5;
 // Push the ray origin a full voxel along the normal so the very first
 // march step doesn't immediately self-hit the surface voxel.
@@ -131,9 +134,9 @@ fn cascade_voxel_load(p: vec3<f32>, cascade: u32) -> vec4<f32> {
     return textureLoad(voxels, idx, 0);
 }
 
-fn trace_voxel_ray(origin: vec3<f32>, dir: vec3<f32>) -> vec3<f32> {
+fn trace_voxel_ray(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f32> {
     var p = origin;
-    for (var i: u32 = 0u; i < MAX_STEPS; i = i + 1u) {
+    for (var i: u32 = 0u; i < max_steps; i = i + 1u) {
         let cascade = select_cascade(p);
         if (cascade < 0) { return vec3<f32>(0.0); }
         let voxel = cascade_voxel_load(p, u32(cascade));
@@ -178,17 +181,20 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
     let seed_base =
         u32(pixel.x) * 1973u + u32(pixel.y) * 9277u + config.frame_count * 26699u;
 
+    let samples = select(SAMPLES_LOW, SAMPLES_HIGH, config.quality_tier == 1u);
+    let max_steps = select(MAX_STEPS_LOW, MAX_STEPS_HIGH, config.quality_tier == 1u);
+
     var indirect = vec3<f32>(0.0);
-    for (var i: u32 = 0u; i < SAMPLES; i = i + 1u) {
+    for (var i: u32 = 0u; i < samples; i = i + 1u) {
         let dir = hemisphere_dir(normal_world, seed_base + i * 31u);
-        var hit_rgb = trace_voxel_ray(origin, dir);
+        var hit_rgb = trace_voxel_ray(origin, dir, max_steps);
         // Per-sample luminance clamp: scale (not clip) so color is
         // preserved while bounding contribution.
         let lum = max(max(hit_rgb.r, hit_rgb.g), hit_rgb.b);
         let scale = min(1.0, MAX_SAMPLE_LUMINANCE / max(lum, 1e-4));
         indirect = indirect + hit_rgb * scale;
     }
-    indirect = indirect / f32(SAMPLES);
+    indirect = indirect / f32(samples);
 
     let current_linear_depth = view_pos.z;
     let motion_vector = textureLoad(motion_tex, pixel, 0).rg;
