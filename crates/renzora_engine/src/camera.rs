@@ -3,7 +3,10 @@
 use crate::{EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, ViewportRenderTarget};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, RenderTarget};
-use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
+use bevy::core_pipeline::prepass::{
+    DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
+};
+use renzora::ResolvedRenderingMode;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
@@ -36,6 +39,7 @@ pub fn spawn_editor_camera(
     mut commands: Commands,
     render_target: Res<ViewportRenderTarget>,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
+    rendering_mode: Res<ResolvedRenderingMode>,
 ) {
     let default_medium = mediums.add(ScatteringMedium::default());
 
@@ -87,15 +91,20 @@ pub fn spawn_editor_camera(
         // list. (TAA also auto-attaches MotionVectorPrepass; doing it here
         // means the layout doesn't change when the user toggles TAA.)
         //
-        // DeferredPrepass is intentionally NOT here: in Bevy 0.18 it
-        // isn't truly hybrid — attaching it switches the camera into a
-        // deferred-shading path that forward shadows don't carry into,
-        // and the engine's custom material extensions aren't all
-        // deferred-capable. SSR (which needs the G-buffer) is therefore
-        // unavailable on this camera; switching is a Phase X effort
-        // that needs the material extensions migrated first.
+        // DeferredPrepass is attached conditionally below based on the
+        // resolved rendering mode. With Forward mode (default / mobile),
+        // it's absent — Lumen reads the standard prepass attachments
+        // and shading is forward. With Deferred mode (desktop opt-in
+        // via `rendering.mode = "deferred"` or `"auto"`), it's present
+        // and Bevy generates the G-buffer alongside depth/normal; SSR
+        // works and Lumen can read base_color for albedo modulation.
         (NormalPrepass, DepthPrepass, MotionVectorPrepass),
     ));
+
+    if rendering_mode.is_deferred() {
+        info!("[camera] Attaching DeferredPrepass to editor camera (Deferred mode)");
+        entity.insert(DeferredPrepass);
+    }
 
     if let Some(ref image) = render_target.image {
         info!("[camera] Editor camera spawned with offscreen render target");

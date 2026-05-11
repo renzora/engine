@@ -244,6 +244,83 @@ impl Default for NetworkProjectConfig {
     }
 }
 
+/// Which rendering path the engine should use. See `crates/renzora_engine`
+/// `RenderingModePlugin` for what each value does.
+///
+/// `Auto` picks per platform — desktop builds get `Deferred` (G-buffer +
+/// SSR + proper albedo), mobile gets `Forward` (TBDR-friendly, lighter
+/// memory bandwidth). Most projects should leave this on `Auto`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderingMode {
+    /// Detect from platform: Deferred on desktop, Forward on mobile / web.
+    #[default]
+    Auto,
+    /// Forward + prepass. Lighting computed inline per mesh. Cheaper on
+    /// memory bandwidth, mobile-GPU friendly, MSAA easy. No SSR.
+    Forward,
+    /// Deferred shading via Bevy's G-buffer. Decoupled lighting,
+    /// many-lights efficient, unlocks SSR + free albedo prepass.
+    /// Higher memory cost; transparency needs a separate forward pass.
+    Deferred,
+}
+
+impl RenderingMode {
+    /// Resolve `Auto` to a concrete mode based on the build target.
+    /// Returns `self` unchanged for explicit `Forward` / `Deferred`.
+    ///
+    /// Currently `Auto` always resolves to `Forward` — the Deferred
+    /// path works in Bevy 0.18 but enabling it surfaces breakage in
+    /// custom material extensions (Lumen / SSGI normals corrupted,
+    /// custom forward shaders without deferred output, etc.). Users
+    /// opt into Deferred explicitly via `project.toml`:
+    /// `[rendering] mode = "deferred"`.
+    ///
+    /// Once Phase 10b/10c land deferred-compatible versions of every
+    /// material extension, this will flip to: Deferred on desktop,
+    /// Forward on mobile / web (TBDR-friendly).
+    pub fn resolve(self) -> Self {
+        match self {
+            Self::Auto => Self::Forward,
+            other => other,
+        }
+    }
+}
+
+/// Renderer-level settings stored in project.toml.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct RenderingConfig {
+    /// Forward vs. Deferred shading path. See [`RenderingMode`].
+    #[serde(default)]
+    pub mode: RenderingMode,
+}
+
+/// Resolved rendering mode for this run. Inserted as a resource at
+/// engine init from the project config's [`RenderingConfig::mode`]
+/// (with `Auto` resolved via [`RenderingMode::resolve`]). Plugins and
+/// camera-spawn code read this to decide whether to attach
+/// `DeferredPrepass`, route SSR, sample G-buffer for albedo, etc.
+///
+/// Never contains `Auto` — by the time it's inserted, the abstract
+/// preference has been resolved to a concrete `Forward` or `Deferred`.
+#[derive(bevy::prelude::Resource, Clone, Copy, Debug)]
+pub struct ResolvedRenderingMode(pub RenderingMode);
+
+impl Default for ResolvedRenderingMode {
+    fn default() -> Self {
+        Self(RenderingMode::default().resolve())
+    }
+}
+
+impl ResolvedRenderingMode {
+    pub fn is_deferred(&self) -> bool {
+        matches!(self.0, RenderingMode::Deferred)
+    }
+    pub fn is_forward(&self) -> bool {
+        matches!(self.0, RenderingMode::Forward)
+    }
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
@@ -277,6 +354,10 @@ pub struct ProjectConfig {
     /// 2D rendering settings (sprite image filter, etc.).
     #[serde(default)]
     pub rendering_2d: Rendering2dConfig,
+    /// 3D rendering pipeline settings (forward vs. deferred). See
+    /// [`RenderingConfig`].
+    #[serde(default)]
+    pub rendering: RenderingConfig,
     /// Whether the runtime should attach a console (Windows) for `println!` /
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -301,6 +382,7 @@ impl Default for ProjectConfig {
             window: WindowConfig::default(),
             viewport: ViewportConfig::default(),
             rendering_2d: Rendering2dConfig::default(),
+            rendering: RenderingConfig::default(),
             console_logging: false,
             network: None,
             editor: None,

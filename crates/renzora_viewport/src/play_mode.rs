@@ -1,7 +1,9 @@
 //! Play mode — switches from editor camera to game camera for in-editor playtesting.
 
 use bevy::camera::RenderTarget;
-use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
+use bevy::core_pipeline::prepass::{
+    DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
+};
 use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::prelude::*;
@@ -344,6 +346,18 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             },
             Msaa::Off,
         ));
+
+        // DeferredPrepass attached only in Deferred rendering mode -- mirrors
+        // the editor camera. With Forward mode, it stays absent and shading
+        // runs forward; with Deferred, the G-buffer gets generated and SSR
+        // / albedo-prepass-readers work.
+        let deferred = world
+            .get_resource::<renzora::ResolvedRenderingMode>()
+            .map(|m| m.is_deferred())
+            .unwrap_or(false);
+        if deferred {
+            world.entity_mut(cam_entity).insert(DeferredPrepass);
+        }
     }
 
     world.entity_mut(cam_entity).insert(PlayModeCamera);
@@ -419,6 +433,7 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             e.remove::<NormalPrepass>();
             e.remove::<DepthPrepass>();
             e.remove::<MotionVectorPrepass>();
+            e.remove::<DeferredPrepass>();
             e.remove::<Atmosphere>();
             e.remove::<AtmosphereSettings>();
             e.remove::<AtmosphereEnvironmentMapLight>();

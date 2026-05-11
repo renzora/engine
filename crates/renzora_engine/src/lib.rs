@@ -20,7 +20,8 @@ pub use renzora::{
     open_project, CurrentProject, DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked,
     EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
     PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
-    SceneCamera, ShapeEntry, ShapeRegistry, ViewportRenderTarget, WindowConfig,
+    RenderingMode, ResolvedRenderingMode, SceneCamera, ShapeEntry, ShapeRegistry,
+    ViewportRenderTarget, WindowConfig,
 };
 pub use vfs::Vfs;
 
@@ -29,8 +30,50 @@ pub use renzora_audio;
 // Re-export physics crate for downstream access
 pub use renzora_physics;
 
+use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::prelude::*;
 use renzora_lighting::Sun;
+
+/// Set `DefaultOpaqueRendererMethod` to match the resolved rendering
+/// mode. Bevy's PbrPlugin inserts a Forward default during its own
+/// build; we override here so materials follow our resolved choice.
+/// `insert_resource` is idempotent, so calling this multiple times is
+/// safe.
+fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
+    match mode {
+        RenderingMode::Deferred => {
+            app.insert_resource(DefaultOpaqueRendererMethod::deferred());
+        }
+        // Auto should already be resolved at this point — treat any
+        // non-Deferred as Forward (which it semantically is).
+        _ => {
+            app.insert_resource(DefaultOpaqueRendererMethod::forward());
+        }
+    }
+}
+
+/// Pull the rendering mode from the just-loaded project and propagate
+/// it to `ResolvedRenderingMode` + `DefaultOpaqueRendererMethod`
+/// **before** the editor camera spawns. Runs as the first step of
+/// `OnEnter(SplashState::Editor)`, chained ahead of camera spawn so
+/// the prepass attachments reflect the project's choice.
+///
+/// No-op when there's no project (engine started without one — splash
+/// keeps spinning or the user backed out).
+pub fn sync_rendering_mode_from_project(
+    project: Option<Res<CurrentProject>>,
+    mut resolved: ResMut<ResolvedRenderingMode>,
+    mut default_method: ResMut<DefaultOpaqueRendererMethod>,
+) {
+    let Some(project) = project else { return; };
+    let mode = project.config.rendering.mode.resolve();
+    resolved.0 = mode;
+    *default_method = match mode {
+        RenderingMode::Deferred => DefaultOpaqueRendererMethod::deferred(),
+        _ => DefaultOpaqueRendererMethod::forward(),
+    };
+    info!("[runtime] rendering mode synced from project: {:?}", mode);
+}
 
 /// Plugin that adds the game runtime: camera, scene, and core systems.
 /// In non-editor mode, also handles project loading from CLI args.
@@ -40,6 +83,14 @@ pub struct RuntimePlugin;
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] RuntimePlugin");
+        // Default rendering mode (auto-resolved by platform). Gets
+        // overridden below if `project.toml` specifies an explicit
+        // mode. Must exist before camera spawn so the spawn site can
+        // decide whether to attach `DeferredPrepass`.
+        app.init_resource::<ResolvedRenderingMode>();
+        let initial_mode = app.world().resource::<ResolvedRenderingMode>().0;
+        info!("[runtime] default rendering mode: {:?}", initial_mode);
+        apply_rendering_mode(app, initial_mode);
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
             .register_type::<MeshInstanceData>()
@@ -112,6 +163,13 @@ impl Plugin for RuntimePlugin {
                             {
                                 asset_path.set(project_path.clone());
                             }
+                            // Override the default rendering mode if the
+                            // project explicitly specifies one. `Auto`
+                            // (default) resolves to platform-appropriate.
+                            let resolved = config.rendering.mode.resolve();
+                            info!("[runtime] rendering mode (rpak): {:?}", resolved);
+                            app.insert_resource(ResolvedRenderingMode(resolved));
+                            apply_rendering_mode(app, resolved);
                             app.insert_resource(CurrentProject {
                                 path: project_path,
                                 config,
@@ -168,6 +226,12 @@ impl Plugin for RuntimePlugin {
                             {
                                 asset_path.set(project.path.clone());
                             }
+                            // Override default rendering mode if the
+                            // project specifies one.
+                            let resolved = project.config.rendering.mode.resolve();
+                            info!("[runtime] rendering mode (disk): {:?}", resolved);
+                            app.insert_resource(ResolvedRenderingMode(resolved));
+                            apply_rendering_mode(app, resolved);
                             app.insert_resource(project);
                         }
                         Err(e) => {
@@ -495,11 +559,33 @@ impl Plugin for RuntimePlugin {
 
         #[cfg(feature = "editor")]
         {
+            // Editor camera spawn deferred until the loading screen
+            // hands off to the editor view (`OnEnter(SplashState::Editor)`).
+            // By then the user has picked a project, its assets are
+            // loaded, and crucially `project.toml` has been read so the
+            // `ResolvedRenderingMode` resource reflects the project's
+            // choice. Spawning at Startup (the old behaviour) was too
+            // early -- no project loaded yet, so the camera always got
+            // the default (Forward) regardless of `rendering.mode` in
+            // the project. Bevy 0.18 specializes the prepass pipeline at
+            // first render, so the prepass attachments must be correct
+            // *at spawn time* -- we can't retrofit `DeferredPrepass`
+            // later. Deferring to `OnEnter(Editor)` is the only place
+            // both conditions hold.
             app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
                 .init_resource::<camera::LastSelectionForView2dSwitch>()
                 .add_systems(
-                    Startup,
-                    (camera::spawn_editor_camera, camera::spawn_editor_2d_camera),
+                    OnEnter(renzora::SplashState::Editor),
+                    (
+                        // MUST run before camera spawn -- updates
+                        // `ResolvedRenderingMode` from the loaded
+                        // project so the camera attaches the right
+                        // prepass attachments at spawn time.
+                        sync_rendering_mode_from_project,
+                        camera::spawn_editor_camera,
+                        camera::spawn_editor_2d_camera,
+                    )
+                        .chain(),
                 )
                 .add_systems(
                     Update,

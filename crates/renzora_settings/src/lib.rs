@@ -13,7 +13,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
 
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CODE, CUBE, DESKTOP, FOLDER_OPEN, GAME_CONTROLLER, GAUGE, GRID_FOUR,
-    IMAGE_SQUARE, INFO, KEYBOARD, LIST_BULLETS, LIST_PLUS, PALETTE, PLUS, TEXT_AA, TRASH,
+    IMAGE_SQUARE, INFO, KEYBOARD, LIST_BULLETS, LIST_PLUS, MONITOR, PALETTE, PLUS, TEXT_AA, TRASH,
     VIDEO_CAMERA, WRENCH, X,
 };
 
@@ -980,6 +980,64 @@ fn render_project_tab(
                 }
                 ui.label(RichText::new("").size(1.0)) // keep settings_row's return type happy
             });
+        },
+    );
+
+    render_category(
+        ui,
+        MONITOR,
+        "Rendering",
+        CategoryStyle::interface(),
+        "settings_rendering",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Mode", theme, |ui| {
+                use renzora::RenderingMode as RM;
+                let mut changed = false;
+                let resp = egui::ComboBox::from_id_salt("settings_rendering_mode")
+                    .selected_text(match config.rendering.mode {
+                        RM::Auto => "Auto (per platform)",
+                        RM::Forward => "Forward",
+                        RM::Deferred => "Deferred",
+                    })
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [
+                            (RM::Auto, "Auto (per platform)"),
+                            (RM::Forward, "Forward"),
+                            (RM::Deferred, "Deferred"),
+                        ] {
+                            if ui
+                                .selectable_value(&mut config.rendering.mode, value, label)
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        }
+                    })
+                    .response;
+                if changed {
+                    resp.clone().mark_changed();
+                }
+                resp
+            });
+
+            // Hint text — rendering mode is a restart-required change
+            // because Bevy specialises the prepass pipeline at first
+            // render and the camera spawn site reads the resolved mode
+            // when attaching `DeferredPrepass`.
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(
+                    "Requires project reload to apply. Forward: lighter, mobile-friendly, \
+                     no SSR. Deferred: unlocks SSR and proper albedo prepass, higher \
+                     memory cost. Auto: picks Forward today (deferred path still being \
+                     stabilised; opt in explicitly to test).",
+                )
+                .size(10.5)
+                .color(theme.text.muted.to_color32()),
+            );
         },
     );
 
