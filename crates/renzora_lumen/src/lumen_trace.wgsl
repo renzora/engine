@@ -40,9 +40,9 @@ struct TraceConfig {
     debug_mode: u32, // 0 = composite, 1 = indirect-only
     quality_tier: u32, // 0 = SdfLow, 1 = SdfHigh
     sky_intensity: f32, // multiplier for sky cubemap on cone miss
+    use_albedo_modulation: u32, // 0 = receiver albedo = white, 1 = read G-buffer
     _pad0: u32,
     _pad1: u32,
-    _pad2: u32,
 };
 
 @group(0) @binding(0) var scene_tex: texture_2d<f32>;
@@ -58,6 +58,7 @@ struct TraceConfig {
 @group(0) @binding(10) var<uniform> config: TraceConfig;
 @group(0) @binding(11) var sky_cube: texture_cube<f32>;
 @group(0) @binding(12) var sky_sampler: sampler;
+@group(0) @binding(13) var gbuffer: texture_2d<u32>;
 
 // SdfLow defaults; SdfHigh upgrades these via `config.quality_tier == 1u`.
 // Lower step counts than Phase 6's first-hit march: each cone step is
@@ -327,12 +328,39 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         }
     }
 
-    let scaled_indirect = blended_indirect * config.intensity;
+    // Receiver-albedo modulation. The cone trace returns "bounced
+    // light reaching this point" — already coloured by whatever
+    // surfaces it bounced off. Multiplying by the receiver's diffuse
+    // albedo is what makes a dark surface absorb most of that light
+    // and a coloured surface tint its own re-emission. Without this
+    // step every receiver gets the same uniform bounce intensity
+    // regardless of its material, which is what makes pre-modulation
+    // Lumen look "grey-washed".
+    //
+    // The deferred G-buffer's R channel packs
+    // `(base_color_srgb, perceptual_roughness)` as unorm4x8. We unpack,
+    // throw away roughness, and sRGB→linear via gamma 2.2 (Bevy's
+    // approximation when reading back from the G-buffer — see
+    // `bevy_pbr/.../deferred/pbr_deferred_functions.wgsl`). Gated on
+    // `use_albedo_modulation` so Forward-mode views (no real G-buffer
+    // bound) skip the read and behave like before.
+    var albedo = vec3<f32>(1.0);
+    if (config.use_albedo_modulation == 1u) {
+        let gb = textureLoad(gbuffer, pixel, 0).r;
+        let base_rough = unpack4x8unorm(gb);
+        albedo = pow(base_rough.rgb, vec3<f32>(2.2));
+    }
+
+    let scaled_indirect = blended_indirect * albedo * config.intensity;
     if (config.debug_mode == 1u) {
         out.composite = vec4<f32>(scaled_indirect, 1.0);
     } else {
         out.composite = vec4<f32>(scene.rgb + scaled_indirect, scene.a);
     }
+    // Keep history un-modulated. Albedo can change frame to frame (e.g.
+    // texture animation, light-color changes); storing pre-albedo
+    // indirect lets temporal accumulation operate on a stable signal
+    // and re-modulate fresh each frame.
     out.history = vec4<f32>(blended_indirect, current_linear_depth);
     return out;
 }

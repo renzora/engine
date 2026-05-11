@@ -56,9 +56,15 @@ pub struct TraceConfig {
     /// the EnvironmentMapLight intensity on the camera, so the sky
     /// fades to 0 at night automatically.
     pub sky_intensity: f32,
+    /// 0 = no modulation (multiply indirect by white). 1 = read the
+    /// deferred G-buffer's base_color at the shaded pixel and modulate
+    /// the integrated indirect by it. Only set to 1 when the camera
+    /// actually has `DeferredPrepass` and `ViewPrepassTextures::deferred_view`
+    /// is available — Forward mode falls back to the 1x1 uint dummy
+    /// texture and this flag stays 0.
+    pub use_albedo_modulation: u32,
     pub _pad0: u32,
     pub _pad1: u32,
-    pub _pad2: u32,
 }
 
 /// Mirrors the camera's `EnvironmentMapLight` into a render-world-
@@ -114,6 +120,14 @@ pub struct LumenTracePipeline {
     pub scene_sampler: Sampler,
     pub sky_sampler: Sampler,
     pub frame_count: AtomicU32,
+    /// 1x1 Rgba32Uint texture bound to the G-buffer slot when the view
+    /// has no `DeferredPrepass`. The pipeline layout requires a uint
+    /// texture there even in Forward mode; we suppress the read with
+    /// `TraceConfig.use_albedo_modulation = 0` so the value is never
+    /// actually sampled. The standard `FallbackImage` is Rgba8Unorm
+    /// which doesn't satisfy `texture_2d<u32>`, hence this dedicated
+    /// fallback.
+    pub gbuffer_fallback: TextureView,
 }
 
 #[derive(Component)]
@@ -176,6 +190,13 @@ impl FromWorld for LumenTracePipeline {
                     texture_cube(TextureSampleType::Float { filterable: true }),
                     // 12: sky sampler
                     sampler(SamplerBindingType::Filtering),
+                    // 13: deferred G-buffer (Rgba32Uint). R channel is
+                    // `pack_unorm4x8_(vec4(base_color_srgb, perceptual_roughness))`
+                    // — we unpack R in WGSL to get the receiver's
+                    // albedo and modulate the integrated indirect by
+                    // it. Falls back to a 1x1 uint dummy in Forward
+                    // mode; `config.use_albedo_modulation = 0` then.
+                    texture_2d(TextureSampleType::Uint),
                 ),
             ),
         );
@@ -194,6 +215,26 @@ impl FromWorld for LumenTracePipeline {
             address_mode_w: AddressMode::ClampToEdge,
             ..default()
         });
+
+        // 1x1 Rgba32Uint dummy for Forward-mode views that have no
+        // G-buffer. Pipeline layout requires *some* uint texture in
+        // slot 13 even when we won't sample from it.
+        let gbuffer_fallback = render_device
+            .create_texture(&TextureDescriptor {
+                label: Some("lumen_trace_gbuffer_fallback"),
+                size: Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rgba32Uint,
+                usage: TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&TextureViewDescriptor::default());
 
         let asset_server = world.resource::<AssetServer>();
         let shader = asset_server.load("embedded://renzora_lumen/lumen_trace.wgsl");
@@ -237,6 +278,7 @@ impl FromWorld for LumenTracePipeline {
             scene_sampler,
             sky_sampler,
             frame_count: AtomicU32::new(0),
+            gbuffer_fallback,
         }
     }
 }
@@ -251,6 +293,7 @@ pub fn prepare_lumen_trace_uniforms(
             Entity,
             &LumenLighting,
             &ViewTarget,
+            &ViewPrepassTextures,
             Option<&LumenSkyCubemap>,
             Option<&LumenTraceResources>,
         ),
@@ -258,7 +301,7 @@ pub fn prepare_lumen_trace_uniforms(
     >,
 ) {
     let frame = pipeline.frame_count.fetch_add(1, Ordering::Relaxed);
-    for (entity, lighting, view_target, sky, existing) in &views {
+    for (entity, lighting, view_target, prepass, sky, existing) in &views {
         let debug_mode = match lighting.debug {
             crate::LumenDebug::IndirectOnly => 1,
             _ => 0,
@@ -273,15 +316,24 @@ pub fn prepare_lumen_trace_uniforms(
         // `renzora_environment_map` makes it taper to 0 at night.
         // Cone rays that miss the voxel cache get this much sky.
         let sky_intensity = sky.map(|s| s.intensity).unwrap_or(0.0);
+        // Only enable albedo modulation when the camera actually has a
+        // deferred G-buffer. In Forward mode the binding is the 1x1
+        // uint dummy and reading it would yield zero/garbage, so we
+        // gate the WGSL multiply behind this flag.
+        let use_albedo_modulation = if prepass.deferred_view().is_some() {
+            1
+        } else {
+            0
+        };
         let config = TraceConfig {
             intensity: lighting.intensity,
             frame_count: frame,
             debug_mode,
             quality_tier,
             sky_intensity,
+            use_albedo_modulation,
             _pad0: 0,
             _pad1: 0,
-            _pad2: 0,
         };
 
         let target_size = view_target.main_texture().size();
@@ -400,6 +452,13 @@ impl ViewNode for LumenTraceNode {
 
         let post_process = view_target.post_process_write();
 
+        // Deferred G-buffer for receiver-albedo modulation. Falls back
+        // to a 1x1 uint dummy when the view is Forward; the WGSL gates
+        // its actual sampling on `config.use_albedo_modulation`.
+        let gbuffer_view = prepass
+            .deferred_view()
+            .unwrap_or(&pipeline.gbuffer_fallback);
+
         let bind_group = render_context.render_device().create_bind_group(
             "lumen_trace_bind_group",
             &pipeline_cache.get_bind_group_layout(&pipeline.layout),
@@ -417,6 +476,7 @@ impl ViewNode for LumenTraceNode {
                 resources.config_buffer.as_entire_binding(),
                 sky_view,
                 &pipeline.sky_sampler,
+                gbuffer_view,
             )),
         );
 
