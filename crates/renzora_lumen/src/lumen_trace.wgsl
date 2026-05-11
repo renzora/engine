@@ -1,10 +1,11 @@
-// Phase 6: voxel-cache GI trace with temporal accumulation.
+// Phase 7: voxel-cache GI cone trace with temporal accumulation.
 //
 // Pipeline per pixel:
 //   1. Read depth + normal. Sky → pass scene through, clear history.
-//   2. Reconstruct world position; trace N cosine-weighted hemisphere
-//      rays through the voxel clipmap. First voxel with alpha > 0.5
-//      counts as a hit.
+//   2. Reconstruct world position; cast N cosine-weighted cones
+//      through the voxel clipmap. Each cone is a front-to-back
+//      alpha-integrated march with manual trilinear voxel sampling
+//      and a step size that grows with distance (widening cone).
 //   3. Sample motion vectors → reproject UV to where this surface was
 //      last frame; sample history there. Reject if off-screen or the
 //      stored linear depth disagrees with the current pixel's depth.
@@ -53,11 +54,33 @@ struct TraceConfig {
 @group(0) @binding(10) var<uniform> config: TraceConfig;
 
 // SdfLow defaults; SdfHigh upgrades these via `config.quality_tier == 1u`.
+// Lower step counts than Phase 6's first-hit march: each cone step is
+// ~8x heavier (manual trilinear) but covers more distance (step-size
+// grows ~10% per iteration) and often early-exits on full alpha.
 const SAMPLES_LOW: u32 = 2u;
 const SAMPLES_HIGH: u32 = 4u;
-const MAX_STEPS_LOW: u32 = 20u;
-const MAX_STEPS_HIGH: u32 = 32u;
-const HIT_ALPHA: f32 = 0.5;
+const MAX_STEPS_LOW: u32 = 12u;
+const MAX_STEPS_HIGH: u32 = 20u;
+
+// Distance falloff for the cone trace. Bounce radiance from a voxel at
+// distance `d` from the surface is attenuated by `1 / (1 + k * d²)`.
+// k = 0.15 is mild compared to physical inverse-square (k = 1.0) but
+// enough to localise bounce near sources — voxel-cache sparseness means
+// strict 1/d² leaves the scene mostly dark. Tune up for darker scenes,
+// down for brighter / more diffuse bounce.
+//
+// This compensates for the fact that we don't yet have a voxel mipmap
+// chain: a proper Lumen/SDFGI cone trace would sample at LOD =
+// log2(diameter), so distant content is naturally averaged into wider
+// taps without needing this hack. Phase 8 task to do that properly and
+// remove this constant.
+const DISTANCE_FALLOFF: f32 = 0.15;
+
+// Half-angle tangent for the diffuse cone. 0.577 ≈ tan(30°), giving a
+// 60° cone — same value Godot's SDFGI uses for its 6-cone diffuse
+// gather. Step size = half the cone diameter at the current distance,
+// so adjacent steps overlap by 50% (no gaps, minimal redundant work).
+const TAN_HALF_ANGLE: f32 = 0.577;
 // Push the ray origin a full voxel along the normal so the very first
 // march step doesn't immediately self-hit the surface voxel.
 const NORMAL_BIAS: f32 = 1.5;
@@ -126,26 +149,73 @@ fn select_cascade(p: vec3<f32>) -> i32 {
     return -1;
 }
 
-fn cascade_voxel_load(p: vec3<f32>, cascade: u32) -> vec4<f32> {
+// Manual trilinear voxel sample. Clamps within the current cascade's Z
+// slice so we never blend across the cascade boundary in the stacked
+// mega-texture — adjacent cascades have different voxel sizes and the
+// blend would be physically meaningless.
+fn cascade_voxel_sample(p: vec3<f32>, cascade: u32) -> vec4<f32> {
     let info = grid.cascades[cascade];
-    let local = (p - info.origin) / info.voxel_size;
-    let idx_local = vec3<i32>(local);
-    let idx = vec3<i32>(idx_local.x, idx_local.y, idx_local.z + i32(cascade * grid.resolution));
-    return textureLoad(voxels, idx, 0);
+    let res_i = i32(grid.resolution);
+    let z_base = i32(cascade) * res_i;
+    // Voxel-space position, biased by 0.5 so integer lattice sits at
+    // voxel centers (matches how `cascade_voxel_load` indexed before).
+    let local = (p - info.origin) / info.voxel_size - vec3<f32>(0.5);
+    let i0 = vec3<i32>(floor(local));
+    let frac = local - vec3<f32>(i0);
+
+    var sum = vec4<f32>(0.0);
+    for (var k: i32 = 0; k < 8; k = k + 1) {
+        let d = vec3<i32>(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+        let i = clamp(i0 + d, vec3<i32>(0), vec3<i32>(res_i - 1));
+        let w = mix(1.0 - frac.x, frac.x, f32(d.x))
+              * mix(1.0 - frac.y, frac.y, f32(d.y))
+              * mix(1.0 - frac.z, frac.z, f32(d.z));
+        sum = sum + textureLoad(voxels, vec3<i32>(i.x, i.y, i.z + z_base), 0) * w;
+    }
+    return sum;
 }
 
-fn trace_voxel_ray(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f32> {
+// Cone trace: front-to-back alpha integration with step size that grows
+// with distance to approximate a widening cone. Stops on full coverage
+// or when the march leaves the clipmap.
+//
+// Distance falloff attenuates the radiance contribution from each voxel
+// based on how far the cone has travelled — bounce localises near the
+// shaded surface. Note the occlusion accumulator (acc_alpha) is *not*
+// attenuated: a wall 5m away still blocks bounce from further behind it,
+// it just doesn't contribute as much of its own light back to the
+// shaded surface.
+fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32) -> vec3<f32> {
     var p = origin;
+    var acc_color = vec3<f32>(0.0);
+    var acc_alpha = 0.0;
+    var distance_travelled = 0.0;
+
     for (var i: u32 = 0u; i < max_steps; i = i + 1u) {
         let cascade = select_cascade(p);
-        if (cascade < 0) { return vec3<f32>(0.0); }
-        let voxel = cascade_voxel_load(p, u32(cascade));
-        if (voxel.a > HIT_ALPHA) {
-            return voxel.rgb;
-        }
-        p = p + dir * grid.cascades[cascade].voxel_size;
+        if (cascade < 0) { break; }
+        let voxel = cascade_voxel_sample(p, u32(cascade));
+
+        // Coverage = how much of the remaining cone budget this voxel
+        // fills. Drives both how much light we accept and how much of
+        // the cone is "blocked" going further.
+        let coverage = voxel.a * (1.0 - acc_alpha);
+        let falloff = 1.0 / (1.0 + DISTANCE_FALLOFF * distance_travelled * distance_travelled);
+        acc_color = acc_color + voxel.rgb * coverage * falloff;
+        acc_alpha = acc_alpha + coverage;
+        if (acc_alpha >= 0.95) { break; }
+
+        // Proper cone step: diameter widens linearly with distance from
+        // the cone origin, step = diameter / 2 (50% overlap between
+        // successive samples — no gaps). Clamped to one inner voxel so
+        // we don't take sub-voxel steps near the origin.
+        let inner_size = grid.cascades[0].voxel_size;
+        let diameter = max(inner_size, 2.0 * TAN_HALF_ANGLE * distance_travelled);
+        let step_dist = diameter * 0.5;
+        p = p + dir * step_dist;
+        distance_travelled = distance_travelled + step_dist;
     }
-    return vec3<f32>(0.0);
+    return acc_color;
 }
 
 struct FragOut {
@@ -187,7 +257,7 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
     var indirect = vec3<f32>(0.0);
     for (var i: u32 = 0u; i < samples; i = i + 1u) {
         let dir = hemisphere_dir(normal_world, seed_base + i * 31u);
-        var hit_rgb = trace_voxel_ray(origin, dir, max_steps);
+        var hit_rgb = trace_voxel_cone(origin, dir, max_steps);
         // Per-sample luminance clamp: scale (not clip) so color is
         // preserved while bounding contribution.
         let lum = max(max(hit_rgb.r, hit_rgb.g), hit_rgb.b);
