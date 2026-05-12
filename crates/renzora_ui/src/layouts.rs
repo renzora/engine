@@ -290,6 +290,7 @@ pub fn scene_layout() -> DockTree {
             DockTree::Leaf {
                 tabs: vec![
                     "viewport".into(),
+                    "render_pipeline".into(),
                     "code_editor".into(),
                     "node_explorer".into(),
                 ],

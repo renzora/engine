@@ -418,7 +418,7 @@ impl EditorPanel for RenderPipelinePanel {
         "Debug"
     }
     fn default_location(&self) -> PanelLocation {
-        PanelLocation::Bottom
+        PanelLocation::Center
     }
     fn min_size(&self) -> [f32; 2] {
         [400.0, 300.0]
