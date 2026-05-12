@@ -80,6 +80,13 @@ pub struct ScreenReflectionResources {
     /// at full res in `lumen_trace`. Encoded as a float in [0, N]
     /// where N = REFLECTION_MIP_COUNT - 1.
     pub mip_level_view: TextureView,
+    /// Full-res bilaterally-upsampled reflection buffer — Stage 4
+    /// output. `screen_reflection_resolve` reads the pyramid + mip_level
+    /// + depth/normal/roughness at full res and writes here. This is
+    /// what `lumen_trace` actually samples for the final composite;
+    /// the pyramid and mip_level are intermediate state.
+    pub resolved_view: TextureView,
+    pub resolved_size: Extent3d,
     /// Cached half-res size so we can detect view-target resizes and
     /// recreate the buffer.
     pub size: Extent3d,
@@ -92,6 +99,8 @@ impl Clone for ScreenReflectionResources {
             color_view_all_mips: self.color_view_all_mips.clone(),
             color_view_per_mip: self.color_view_per_mip.clone(),
             mip_level_view: self.mip_level_view.clone(),
+            resolved_view: self.resolved_view.clone(),
+            resolved_size: self.resolved_size,
             size: self.size,
         }
     }
@@ -259,11 +268,28 @@ pub fn prepare_screen_reflection_resources(
             view_formats: &[],
         });
 
+        // Full-res resolved reflection — Stage 4 output. The bilateral
+        // upsample reads the half-res pyramid + mip_level and writes
+        // a clean, edge-preserving full-res result into this texture.
+        // `lumen_trace` samples this directly.
+        let resolved_tex = render_device.create_texture(&TextureDescriptor {
+            label: Some("screen_reflection_resolved"),
+            size: target_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
         commands.entity(entity).insert(ScreenReflectionResources {
             color: color_tex,
             color_view_all_mips,
             color_view_per_mip,
             mip_level_view: mip_level_tex.create_view(&TextureViewDescriptor::default()),
+            resolved_view: resolved_tex.create_view(&TextureViewDescriptor::default()),
+            resolved_size: target_size,
             size: half_size,
         });
     }

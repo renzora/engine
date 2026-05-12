@@ -200,19 +200,13 @@ impl FromWorld for LumenTracePipeline {
                     // it. Falls back to a 1x1 uint dummy in Forward
                     // mode; `config.use_albedo_modulation = 0` then.
                     texture_2d(TextureSampleType::Uint),
-                    // 14: half-res resolved reflection pyramid
-                    // (Rgba16Float, N mip levels). Mip 0 is the raw
-                    // trace, mips 1..N are the progressively blurrier
-                    // levels built by `screen_reflection_blur`.
-                    // Sampled with `textureSampleLevel(..., uv,
-                    // mip_level)` — `lumen_trace.wgsl` picks the LOD
-                    // per pixel from the mip_level buffer (slot 15).
-                    texture_2d(TextureSampleType::Float { filterable: true }),
-                    // 15: per-pixel mip-level scalar (R16Float,
-                    // half-res). Bilinear sampled to full res, used
-                    // as the LOD when reading the reflection pyramid.
-                    // Output by the trace pass via Godot's cone-of-
-                    // confusion math from roughness × ray_length.
+                    // 14: full-res bilaterally-resolved reflection
+                    // (Rgba16Float). Stage 4 output of the filter
+                    // pipeline — the half-res pyramid + mip_level
+                    // chain ends here, upsampled with edge-preserving
+                    // bilateral weights. `lumen_trace.wgsl` mixes
+                    // this directly with the voxel-cone fallback
+                    // without further LOD picking.
                     texture_2d(TextureSampleType::Float { filterable: true }),
                 ),
             ),
@@ -505,8 +499,7 @@ impl ViewNode for LumenTraceNode {
                 sky_view,
                 &pipeline.sky_sampler,
                 gbuffer_view,
-                &screen_reflection.color_view_all_mips,
-                &screen_reflection.mip_level_view,
+                &screen_reflection.resolved_view,
             )),
         );
 

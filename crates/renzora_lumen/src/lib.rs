@@ -18,11 +18,13 @@ mod geometry_voxelize;
 mod lumen_trace;
 mod screen_reflection;
 mod screen_reflection_blur;
+mod screen_reflection_resolve;
 mod voxel_cache;
 pub use geometry_voxelize::GeometryVoxelizePlugin;
 pub use lumen_trace::LumenTracePlugin;
 pub use screen_reflection::ScreenReflectionPlugin;
 pub use screen_reflection_blur::ScreenReflectionBlurPlugin;
+pub use screen_reflection_resolve::ScreenReflectionResolvePlugin;
 pub use voxel_cache::{VoxelCachePlugin, VoxelCacheView};
 
 #[cfg(feature = "editor")]
@@ -128,6 +130,10 @@ impl Plugin for LumenPlugin {
         // and `LumenTraceLabel`, so it must register after both
         // labels exist.
         app.add_plugins(ScreenReflectionBlurPlugin);
+        // Resolve sits between blur and lumen_trace: blur fills the
+        // pyramid, resolve bilateral-upsamples it to full res, trace
+        // reads the resolved buffer.
+        app.add_plugins(ScreenReflectionResolvePlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
