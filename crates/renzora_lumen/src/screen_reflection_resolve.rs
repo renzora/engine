@@ -128,6 +128,7 @@ impl ViewNode for ScreenReflectionResolveNode {
         if !view.inject_active {
             return Ok(());
         }
+        let _span = info_span!("lumen.specular_resolve").entered();
 
         let pipeline = world.resource::<ScreenReflectionResolvePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();

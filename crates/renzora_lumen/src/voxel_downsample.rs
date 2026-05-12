@@ -118,6 +118,7 @@ impl ViewNode for VoxelDownsampleNode {
         if !view.inject_active {
             return Ok(());
         }
+        let _span = info_span!("voxel.downsample").entered();
 
         let pipeline = world.resource::<VoxelDownsamplePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();

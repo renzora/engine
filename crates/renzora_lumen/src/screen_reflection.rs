@@ -320,6 +320,7 @@ impl ViewNode for ScreenReflectionTraceNode {
         if !view.inject_active {
             return Ok(());
         }
+        let _span = info_span!("lumen.specular_trace").entered();
 
         let pipeline = world.resource::<ScreenReflectionPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();

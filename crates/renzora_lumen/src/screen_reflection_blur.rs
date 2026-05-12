@@ -217,6 +217,7 @@ impl ViewNode for ScreenReflectionBlurNode {
         if !view.inject_active {
             return Ok(());
         }
+        let _span = info_span!("lumen.specular_blur").entered();
 
         let pipeline = world.resource::<ScreenReflectionBlurPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
