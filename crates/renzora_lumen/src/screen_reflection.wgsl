@@ -31,7 +31,15 @@
 @group(0) @binding(2) var depth_tex: texture_depth_2d;
 @group(0) @binding(3) var normal_tex: texture_2d<f32>;
 @group(0) @binding(4) var<uniform> view: View;
-@group(0) @binding(5) var output_color: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(5) var gbuffer: texture_2d<u32>;
+@group(0) @binding(6) var output_color: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(7) var output_mip_level: texture_storage_2d<r32float, write>;
+
+// Max mip level we can write — matches `REFLECTION_MIP_COUNT - 1` on
+// the host. Used to clamp the computed Godot-style mip level so the
+// resolve pass never tries to sample beyond the pyramid.
+const MAX_MIP_LEVEL: f32 = 4.0;
+const PI: f32 = 3.14159265359;
 
 // 32 steps × 0.5m = 16m of reach. Matches the inline trace we're
 // replacing — keep visual parity, then we'll tune in later stages.
@@ -73,6 +81,7 @@ fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
     let depth = textureLoad(depth_tex, full_pixel, 0);
     if (depth <= 0.0) {
         textureStore(output_color, vec2<i32>(gid.xy), vec4<f32>(0.0));
+        textureStore(output_mip_level, vec2<i32>(gid.xy), vec4<f32>(0.0));
         return;
     }
 
@@ -80,6 +89,14 @@ fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
     let normal_world = normalize(textureLoad(normal_tex, full_pixel, 0).xyz * 2.0 - 1.0);
     let view_dir = normalize(view.world_position.xyz - world_pos);
     let reflect_dir = reflect(-view_dir, normal_world);
+
+    // Unpack perceptual roughness from the G-buffer R channel
+    // (`pack_unorm4x8_(vec4(base_color_srgb, perceptual_roughness))`).
+    // Drives the mip_level computation below — rougher surfaces or
+    // longer rays produce wider cones, which we encode as higher mip.
+    let gb = textureLoad(gbuffer, full_pixel, 0).r;
+    let base_rough = unpack4x8unorm(gb);
+    let perceptual_roughness = base_rough.a;
 
     // Tiny bias along the normal so the first step doesn't immediately
     // self-hit the surface voxel we're shading.
@@ -89,6 +106,9 @@ fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
     var p = origin;
     var hit_color = vec3<f32>(0.0);
     var validity = 0.0;
+    // World-space distance the ray traveled before hitting (used in
+    // the mip_level cone-of-confusion math below).
+    var ray_length = 0.0;
 
     for (var i: u32 = 0u; i < MAX_STEPS; i = i + 1u) {
         p = p + reflect_dir * STEP_DIST;
@@ -114,9 +134,40 @@ fn trace(@builtin(global_invocation_id) gid: vec3<u32>) {
             hit_color = textureSampleLevel(scene_tex, scene_sampler, sample_uv, 0.0).rgb;
             let edge_dist = min(min(sample_uv.x, 1.0 - sample_uv.x), min(sample_uv.y, 1.0 - sample_uv.y));
             validity = smoothstep(0.0, EDGE_FADE, edge_dist);
+            ray_length = length(p - origin);
             break;
         }
     }
 
+    // ── mip_level computation (roughness × distance) ────────────
+    // Pick a pyramid level whose effective blur radius roughly
+    // matches the GGX lobe footprint at the hit point. Godot's
+    // cone-of-confusion math is more rigorous but expects ray_length
+    // in screen-UV (0-1) space; we trace in world-space meters here,
+    // so the literal port over-blurs.
+    //
+    // The mapping that actually looks right in practice:
+    //   * squared roughness — matches how artists perceive "rough" vs
+    //     "smooth" (linear roughness feels weighted toward the rough
+    //     end of the slider). Glass at perceptual 0.05 stays sharp;
+    //     concrete at 0.6 lands around mip 1.4.
+    //   * mild distance modulation — far reflections are already
+    //     covered by fewer pixels of the half-res buffer so they need
+    //     less explicit blur than the formula suggests. 20m ramp.
+    //
+    // No-hit (ray_length == 0) writes mip 0, which the resolve stage
+    // ignores anyway because validity = 0 there.
+    var mip_level = 0.0;
+    if (perceptual_roughness > 0.001 && ray_length > 0.001) {
+        let roughness_factor = perceptual_roughness * perceptual_roughness * MAX_MIP_LEVEL;
+        let distance_factor = clamp(ray_length / 20.0, 0.0, 1.0) * 0.5;
+        mip_level = clamp(
+            roughness_factor + roughness_factor * distance_factor,
+            0.0,
+            MAX_MIP_LEVEL,
+        );
+    }
+
     textureStore(output_color, vec2<i32>(gid.xy), vec4<f32>(hit_color, validity));
+    textureStore(output_mip_level, vec2<i32>(gid.xy), vec4<f32>(mip_level, 0.0, 0.0, 0.0));
 }

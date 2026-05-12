@@ -310,16 +310,21 @@ impl FromWorld for GeometryInjectPipeline {
 pub fn extract_geometry_samples(
     mut commands: Commands,
     query: Extract<Query<(&MeshVoxelSamples, &GlobalTransform)>>,
-    cameras: Extract<Query<&GlobalTransform, With<Camera3d>>>,
+    cameras: Extract<Query<(&GlobalTransform, &VoxelCacheView), With<Camera3d>>>,
 ) {
-    // Use the first 3D camera's position as the cull pivot. Voxel
-    // grid follows whichever camera ends up active; even if multiple
-    // cameras exist this is a reasonable approximation since the
-    // grid is small.
+    // Pick the camera that actually wants GI as the cull pivot — the
+    // one with `VoxelCacheView.inject_active = true`. Used to be
+    // `cameras.iter().next()` on all Camera3d, which was
+    // non-deterministic: ECS archetype storage order could put a
+    // preview/thumbnail camera at default position (0,0,0) first, the
+    // 24m cull sphere then landed on empty space, and every mesh got
+    // culled → cache empty. Symptom: SDF GI silently broken until the
+    // user toggled some other camera, which shifted archetype order
+    // and accidentally selected a useful pivot.
     let camera_pos = cameras
         .iter()
-        .next()
-        .map(|t| t.translation())
+        .find(|(_, v)| v.inject_active)
+        .map(|(t, _)| t.translation())
         .unwrap_or(Vec3::ZERO);
     let cull_sq = CULL_RADIUS * CULL_RADIUS;
 

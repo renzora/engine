@@ -17,11 +17,13 @@ use serde::{Deserialize, Serialize};
 mod geometry_voxelize;
 mod lumen_trace;
 mod screen_reflection;
+mod screen_reflection_blur;
 mod voxel_cache;
 pub use geometry_voxelize::GeometryVoxelizePlugin;
 pub use lumen_trace::LumenTracePlugin;
 pub use screen_reflection::ScreenReflectionPlugin;
-pub use voxel_cache::VoxelCachePlugin;
+pub use screen_reflection_blur::ScreenReflectionBlurPlugin;
+pub use voxel_cache::{VoxelCachePlugin, VoxelCacheView};
 
 #[cfg(feature = "editor")]
 use {
@@ -122,6 +124,10 @@ impl Plugin for LumenPlugin {
         // does not exist".
         app.add_plugins(LumenTracePlugin);
         app.add_plugins(ScreenReflectionPlugin);
+        // Blur plugin slots its render-graph node between the trace
+        // and `LumenTraceLabel`, so it must register after both
+        // labels exist.
+        app.add_plugins(ScreenReflectionBlurPlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());

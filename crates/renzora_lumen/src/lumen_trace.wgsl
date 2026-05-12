@@ -59,11 +59,18 @@ struct TraceConfig {
 @group(0) @binding(11) var sky_cube: texture_cube<f32>;
 @group(0) @binding(12) var sky_sampler: sampler;
 @group(0) @binding(13) var gbuffer: texture_2d<u32>;
-// Half-res reflection buffer written by the screen_reflection compute
-// pass earlier in the frame. RGB = traced colour, A = validity
-// (0 = miss / off-screen, 1 = solid hit). Sample with linear filter
-// for a 2× bilinear upsample to full res.
+// Half-res reflection pyramid (Rgba16Float, N mip levels). Mip 0 is
+// the raw screen-space trace; mips 1..N are progressively blurrier
+// (built by `screen_reflection_blur` as a separable Gaussian + 2×
+// downsample per level). Sampled with `textureSampleLevel(..., uv,
+// mip_level)` — bilinear in XY, point-wise across mips. The blur
+// pyramid is what makes roughness-aware reflections cheap.
 @group(0) @binding(14) var reflection_tex: texture_2d<f32>;
+// Per-pixel mip level scalar (R16Float, half-res). Sampled bilinearly
+// to full res so the upsampled LOD reads smoothly across the pyramid.
+// Encodes blur radius via Godot's cone-of-confusion → log mip formula
+// in `screen_reflection.wgsl`.
+@group(0) @binding(15) var mip_level_tex: texture_2d<f32>;
 
 // SdfLow defaults; SdfHigh upgrades these via `config.quality_tier == 1u`.
 // Lower step counts than Phase 6's first-hit march: each cone step is
@@ -403,18 +410,20 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         let view_dir = normalize(view.world_position.xyz - world_pos);
         let reflect_dir = reflect(-view_dir, normal_world);
 
-        // Hybrid: half-res screen-space reflection (resolved earlier
-        // in the frame by `screen_reflection.wgsl`) blended with a
-        // world-space voxel cone for off-screen / behind-camera
-        // coverage. Stage 1 of the Godot-style filter pipeline —
-        // stages 2-4 will replace this simple linear-filter sample
-        // with a roughness-aware mip-pyramid lookup + bilateral
-        // upsample.
+        // Hybrid: half-res screen-space reflection pyramid (built by
+        // `screen_reflection` + `screen_reflection_blur` earlier in
+        // the frame) blended with a world-space voxel cone for
+        // off-screen / behind-camera coverage. The per-pixel mip_level
+        // — computed from roughness × ray_length in the trace stage,
+        // bilinearly upsampled here — picks how blurry to read the
+        // pyramid. Mip 0 = sharp screen-space hit (mirror-like
+        // surfaces), mip N = wide cone integration (rough surfaces).
         //
         // Trace from the same biased origin as the diffuse pass to
         // avoid self-hits on the surface voxel.
         let spec_steps = select(MAX_STEPS_LOW, MAX_STEPS_HIGH, config.quality_tier == 1u);
-        let screen = textureSampleLevel(reflection_tex, scene_sampler, in.uv, 0.0);
+        let mip_level_pixel = textureSampleLevel(mip_level_tex, scene_sampler, in.uv, 0.0).r;
+        let screen = textureSampleLevel(reflection_tex, scene_sampler, in.uv, mip_level_pixel);
         let voxel_spec = trace_voxel_cone(origin, reflect_dir, spec_steps, spec_tan_half);
         let spec_rgb = mix(voxel_spec, screen.rgb, screen.a);
 
