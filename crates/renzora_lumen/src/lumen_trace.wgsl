@@ -98,6 +98,99 @@ const TAN_HALF_ANGLE_SPEC_MIN: f32 = 0.05;
 // Specular cones also cap at the diffuse cone width — anything wider
 // than 30° half-angle is effectively diffuse anyway.
 const TAN_HALF_ANGLE_SPEC_MAX: f32 = 0.577;
+
+// ── Screen-space hybrid specular trace ───────────────────────────
+// March the reflection ray in world space, project per step to UV,
+// depth-test against the prepass. On hit, sample scene_tex — that's
+// the sharp on-screen reflection. On miss (off-screen / past-far /
+// over-step-count), confidence is 0 and the caller falls back to
+// voxel cone for off-screen coverage. Mirrors UE5 Lumen's "Hit
+// Lighting Reflections" hybrid: screen-space for the part of the
+// ray that's visible, world-space voxel for the rest.
+
+// Step count vs cost: 32 is conservative. Each step is one matrix
+// multiply + a depth load + a comparison. At 32 steps × 0.5m = 16m
+// of screen-space reach before falling back to voxel — enough that
+// most on-screen reflective content gets sharp SSR-quality hits.
+const SCREEN_TRACE_MAX_STEPS: u32 = 32u;
+// World-space step distance. Smaller = more samples per ray = more
+// accurate hit detection but more cost. 0.5m matches our finest
+// voxel cascade so we don't under-sample relative to the voxel path.
+const SCREEN_TRACE_STEP: f32 = 0.5;
+// View-space depth tolerance for the "did we hit a surface" test.
+// Generous enough to handle the marched-Z vs surface-Z mismatch
+// from coarse step size, tight enough that we don't tunnel through
+// thin objects (lampposts, signs).
+const SCREEN_TRACE_HIT_THRESHOLD: f32 = 0.5;
+// Fade screen-trace confidence toward voxel fallback within 10% of
+// each screen edge, so off-screen ray transitions aren't a hard
+// boundary visible in the final reflection.
+const SCREEN_TRACE_EDGE_FADE: f32 = 0.1;
+
+struct ScreenTraceResult {
+    color: vec3<f32>,
+    /// 0 = miss / off-screen; 1 = solid hit far from any edge;
+    /// in-between = hit near the edge, will be blended with voxel.
+    confidence: f32,
+};
+
+fn trace_screen_space(origin: vec3<f32>, dir: vec3<f32>) -> ScreenTraceResult {
+    var result: ScreenTraceResult;
+    result.color = vec3<f32>(0.0);
+    result.confidence = 0.0;
+
+    let depth_size = vec2<f32>(textureDimensions(depth_tex));
+    var p = origin;
+
+    for (var i: u32 = 0u; i < SCREEN_TRACE_MAX_STEPS; i = i + 1u) {
+        p = p + dir * SCREEN_TRACE_STEP;
+
+        // Project marched world position to clip space.
+        let clip = view.clip_from_world * vec4<f32>(p, 1.0);
+        if (clip.w <= 0.0) { return result; } // behind camera
+        let ndc = clip.xyz / clip.w;
+
+        // Bail when the ray leaves the on-screen frustum.
+        if (any(abs(ndc.xy) > vec2<f32>(1.0))) { return result; }
+        if (ndc.z < 0.0 || ndc.z > 1.0) { return result; }
+
+        // Convert NDC → UV (note y flip — Bevy NDC y is up,
+        // texture UV y is down).
+        let uv = ndc.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+        let sample_pixel = vec2<i32>(uv * depth_size);
+
+        // Depth at this pixel. 0 means sky — nothing to reflect, keep
+        // marching in case we hit something past it (shouldn't happen
+        // for a single-surface scene but cheap to handle).
+        let scene_depth = textureLoad(depth_tex, sample_pixel, 0);
+        if (scene_depth <= 0.0) { continue; }
+
+        // View-space Z of the surface at that UV vs view-space Z of
+        // our marched point. Bevy looks down -Z in view space, so
+        // both are negative. If marched is more negative than the
+        // surface by a small amount, we just crossed it = hit.
+        let surface_world = world_pos_from_depth(uv, scene_depth);
+        let marched_view_z = (view.view_from_world * vec4<f32>(p, 1.0)).z;
+        let surface_view_z = (view.view_from_world * vec4<f32>(surface_world, 1.0)).z;
+        let depth_diff = surface_view_z - marched_view_z;
+
+        if (depth_diff > 0.0 && depth_diff < SCREEN_TRACE_HIT_THRESHOLD) {
+            let color = textureSampleLevel(scene_tex, scene_sampler, uv, 0.0).rgb;
+
+            // Edge fade: drop confidence as the hit UV approaches
+            // any screen edge. Avoids a hard line where screen-space
+            // results stop and voxel fallback begins.
+            let edge_dist = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+            let fade = smoothstep(0.0, SCREEN_TRACE_EDGE_FADE, edge_dist);
+
+            result.color = color;
+            result.confidence = fade;
+            return result;
+        }
+    }
+
+    return result;
+}
 // Push the ray origin a full voxel along the normal so the very first
 // march step doesn't immediately self-hit the surface voxel.
 const NORMAL_BIAS: f32 = 1.5;
@@ -391,25 +484,43 @@ fn fragment(in: FullscreenVertexOutput) -> FragOut {
         let view_dir = normalize(view.world_position.xyz - world_pos);
         let reflect_dir = reflect(-view_dir, normal_world);
 
+        // Hybrid trace: screen-space first for sharp on-screen hits
+        // (SSR-quality), voxel cone for whatever's off-screen or
+        // behind camera. `screen.confidence` smoothly blends between
+        // the two near screen edges so the boundary isn't visible.
+        // This is the UE5 Lumen "Hit Lighting Reflections" pattern —
+        // best-of-both: SSR sharpness where it works, world-space
+        // coverage where it doesn't.
+        //
         // Trace from the same biased origin as the diffuse pass to
         // avoid self-hits on the surface voxel.
         let spec_steps = select(MAX_STEPS_LOW, MAX_STEPS_HIGH, config.quality_tier == 1u);
-        let spec_rgb = trace_voxel_cone(origin, reflect_dir, spec_steps, spec_tan_half);
+        let screen = trace_screen_space(origin, reflect_dir);
+        let voxel_spec = trace_voxel_cone(origin, reflect_dir, spec_steps, spec_tan_half);
+        let spec_rgb = mix(voxel_spec, screen.color, screen.confidence);
 
         // Schlick Fresnel: F0 + (1 - F0)(1 - cos_theta)^5. For
         // dielectrics F0 ≈ 0.04. View-angle dependent: grazing angles
         // get near-full reflection, head-on surfaces show base F0
-        // only. This is what makes reflective surfaces look properly
-        // shiny at edges and matte facing the camera. Fresnel alone
-        // is the correct attenuation — earlier `smoothness`
-        // multiplier was double-counting roughness (cone width
-        // already widens with roughness, integrating over more
-        // surface area, so adding another factor crushed the signal).
+        // only.
         let f0 = 0.04;
         let cos_theta = max(dot(view_dir, normal_world), 0.0);
         let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_theta, 5.0);
 
-        specular = spec_rgb * fresnel * config.specular_intensity;
+        // Smoothness attenuation: rough surfaces shouldn't get
+        // directional specular — their reflection is already
+        // scattered diffusely by the wide-hemisphere diffuse cone
+        // trace. Without this attenuation, even at perceptual
+        // roughness = 1.0 the cone width caps at 30° half-angle, so
+        // tarmac/concrete/matte materials would still show mirror-like
+        // reflection at grazing angles where Fresnel is strong. The
+        // `(1 - roughness)²` curve matches how GGX lobes vanish into
+        // the hemisphere as roughness increases. Glass at 0.0 keeps
+        // full specular; tarmac at ~0.9 contributes ~1%.
+        let smoothness = 1.0 - perceptual_roughness;
+        let smoothness_factor = smoothness * smoothness;
+
+        specular = spec_rgb * fresnel * smoothness_factor * config.specular_intensity;
     }
 
     let scaled_indirect = blended_indirect * albedo * config.intensity;
