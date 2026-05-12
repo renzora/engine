@@ -11,6 +11,11 @@ bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# GI-related component types we want to show values for in the camera
+# debug panel (LumenLighting, VoxelCacheView). Editor-only crate so this
+# isn't a runtime cost.
+renzora_lumen = { path = "../renzora_lumen" }
+renzora_rt = { path = "../renzora_rt" }
 memory-stats = "1"
 
 [lints]

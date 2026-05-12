@@ -200,7 +200,7 @@ impl EditorPanel for CameraDebugPanel {
             .unwrap_or_default();
 
         if let Ok(mut local) = self.local.write() {
-            panels::camera::render_camera_debug_content(ui, &mut local, &theme);
+            panels::camera::render_camera_debug_content(ui, &mut local, &theme, world);
 
             // Move any toggle clicks from this frame's UI pass into the
             // bridge, so `apply_camera_toggles` can flip `is_active` on
