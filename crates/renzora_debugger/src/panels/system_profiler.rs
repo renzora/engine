@@ -320,10 +320,9 @@ fn render_profiler_links(ui: &mut egui::Ui, theme: &Theme) {
                     .color(theme.text.muted.to_color32()),
             );
             ui.label(
-                RichText::new("cargo run --features renzora_debugger/tracy")
+                RichText::new("Launch Tracy GUI 0.11.x and connect to localhost")
                     .size(9.0)
-                    .color(Color32::from_gray(100))
-                    .monospace(),
+                    .color(Color32::from_gray(180)),
             );
 
             ui.add_space(8.0);

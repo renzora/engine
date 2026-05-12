@@ -35,6 +35,7 @@ editor = [
     "dep:renzora_context_menu",
     "dep:renzora_daw",
     "dep:renzora_debugger",
+    "renzora_tracy/editor",
     "dep:renzora_export",
     "dep:renzora_foliage_editor",
     "dep:renzora_gamepad",
@@ -141,6 +142,9 @@ renzora_dof = { path = "../renzora_dof" }
 renzora_motion_blur = { path = "../renzora_motion_blur" }
 renzora_distance_fog = { path = "../renzora_distance_fog" }
 renzora_volumetric_fog = { path = "../renzora_volumetric_fog" }
+
+# Profiling
+renzora_tracy = { path = "../renzora_tracy" }
 
 # Environment
 renzora_atmosphere = { path = "../renzora_atmosphere" }

@@ -312,6 +312,7 @@ pub fn extract_geometry_samples(
     query: Extract<Query<(&MeshVoxelSamples, &GlobalTransform)>>,
     cameras: Extract<Query<(&GlobalTransform, &VoxelCacheView), With<Camera3d>>>,
 ) {
+    let _span = info_span!("geometry.extract_samples").entered();
     // Pick the camera that actually wants GI as the cull pivot — the
     // one with `VoxelCacheView.inject_active = true`. Used to be
     // `cameras.iter().next()` on all Camera3d, which was
@@ -436,6 +437,7 @@ impl ViewNode for GeometryInjectNode {
             return Ok(());
         }
         let Some(sample_buf) = buffer.buffer.as_ref() else { return Ok(()); };
+        let _span = info_span!("geometry.inject").entered();
 
         let pipeline = world.resource::<GeometryInjectPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();

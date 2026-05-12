@@ -51,6 +51,20 @@ pub const VOXEL_SIZE_BASE: f32 = 0.5;
 /// enough to fill mid-distance buildings without sky fallback. Memory
 /// cost: 64³ × 4 × 8B (radiance Rgba16F) ≈ 8MB + 20MB accum.
 pub const CASCADE_COUNT: u32 = 4;
+/// Voxel cache mip levels. Mip 0 is the inject/resolve target (1×
+/// base voxel size). Mips 1..MIP_COUNT are downsampled box-filter
+/// averages — 2³ source voxels per destination voxel. The cone
+/// trace picks a mip per step proportional to cone diameter at that
+/// step, so a widening cone naturally samples coarser pre-averaged
+/// content instead of doing many sharp taps. Replaces the previous
+/// `DISTANCE_FALLOFF` hack with physically meaningful averaging.
+///
+/// Cascade stack-along-Z layout stays compatible: each cascade has
+/// 64 voxels in Z at mip 0, 32 at mip 1, 16 at mip 2, 8 at mip 3 —
+/// powers of two so the 2× boxfilter never reads across a cascade
+/// boundary (`mip[N].cascade[C]` covers Z = [C*(64/2^N), (C+1)*(64/2^N))
+/// and the source mip's `2k, 2k+1` neighbours stay within that range).
+pub const VOXEL_MIP_COUNT: u32 = 4;
 /// Total Z extent of the mega-texture: cascades stacked along Z.
 pub const VOXEL_RES_Z: u32 = VOXEL_RES * CASCADE_COUNT;
 
@@ -137,9 +151,15 @@ pub struct VoxelCachePipelines {
 
 #[derive(Resource)]
 pub struct VoxelCacheResources {
-    /// Persistent storage texture holding the resolved per-voxel
-    /// radiance. Read by the debug view + later phases' tracers.
+    /// Persistent voxel radiance pyramid. Mip 0 is the inject/resolve
+    /// destination; mips 1..VOXEL_MIP_COUNT are generated each frame
+    /// by `voxel_downsample`. Standard mip view (covers all levels),
+    /// what `lumen_trace` binds and samples per-step with `textureLoad(..., mip)`.
     pub radiance: TextureView,
+    /// Per-mip single-level views — `voxel_downsample` binds these as
+    /// storage for the destination mip. Index 0 is the mip 0 view
+    /// (used by inject/resolve as the storage write target).
+    pub radiance_mip_views: Vec<TextureView>,
     /// Per-frame uniform with the snapped origin.
     pub uniform_buffer: Buffer,
     /// Per-frame accumulation buffer: 5 u32s per voxel. Layout:
@@ -355,13 +375,36 @@ pub fn prepare_voxel_resources(
             // Z range [C * VOXEL_RES, (C+1) * VOXEL_RES).
             depth_or_array_layers: VOXEL_RES_Z,
         },
-        mip_level_count: 1,
+        mip_level_count: VOXEL_MIP_COUNT,
         sample_count: 1,
         dimension: TextureDimension::D3,
         format: TextureFormat::Rgba16Float,
         usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
+
+    // View covering all mips — what `lumen_trace`'s `voxels` binding
+    // gets. WGSL `textureLoad(voxels, coords, mip)` picks per-step.
+    let radiance = texture.create_view(&TextureViewDescriptor {
+        label: Some("voxel_radiance_all_mips"),
+        base_mip_level: 0,
+        mip_level_count: Some(VOXEL_MIP_COUNT),
+        ..default()
+    });
+
+    // Single-level views — `voxel_downsample` binds these as the
+    // write storage target for each mip. Inject + resolve also use
+    // mip 0 (index 0) as their write target.
+    let radiance_mip_views: Vec<TextureView> = (0..VOXEL_MIP_COUNT)
+        .map(|mip| {
+            texture.create_view(&TextureViewDescriptor {
+                label: Some("voxel_radiance_mip"),
+                base_mip_level: mip,
+                mip_level_count: Some(1),
+                ..default()
+            })
+        })
+        .collect();
 
     let uniform_buffer = render_device.create_buffer(&BufferDescriptor {
         label: Some("voxel_grid_uniform"),
@@ -380,7 +423,8 @@ pub fn prepare_voxel_resources(
     });
 
     commands.insert_resource(VoxelCacheResources {
-        radiance: texture.create_view(&TextureViewDescriptor::default()),
+        radiance,
+        radiance_mip_views,
         uniform_buffer,
         accum_buffer,
     });
@@ -415,6 +459,7 @@ impl ViewNode for VoxelClearNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         if !view.inject_active { return Ok(()); }
+        let _span = info_span!("voxel.clear").entered();
         let pipelines = world.resource::<VoxelCachePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
@@ -464,6 +509,7 @@ impl ViewNode for VoxelResolveNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         if !view.inject_active { return Ok(()); }
+        let _span = info_span!("voxel.resolve").entered();
         let pipelines = world.resource::<VoxelCachePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
@@ -478,7 +524,10 @@ impl ViewNode for VoxelResolveNode {
             &pipeline_cache.get_bind_group_layout(&pipelines.resolve_layout),
             &BindGroupEntries::sequential((
                 resources.accum_buffer.as_entire_binding(),
-                &resources.radiance,
+                // Mip 0 — resolve writes the freshly-accumulated
+                // radiance into the pyramid's base level. The
+                // downsample pass then builds mips 1..N from this.
+                &resources.radiance_mip_views[0],
             )),
         );
         let mut pass = render_context
@@ -516,6 +565,7 @@ impl ViewNode for VoxelInjectNode {
         if !view.inject_active {
             return Ok(());
         }
+        let _span = info_span!("voxel.inject").entered();
 
         let pipelines = world.resource::<VoxelCachePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();

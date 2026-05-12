@@ -1,7 +1,7 @@
 //! Debugging panels and profiling support for the Renzora editor.
 //!
 //! Panels: System Profiler, Memory Profiler, Camera Debug, Physics Debug, Culling Debug.
-//! Enable the `tracy` feature for Tracy profiler integration.
+//! For Tracy profiler integration see the `renzora_tracy` crate.
 
 pub mod panels;
 pub mod state;

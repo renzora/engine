@@ -77,19 +77,11 @@ const SAMPLES_HIGH: u32 = 4u;
 const MAX_STEPS_LOW: u32 = 12u;
 const MAX_STEPS_HIGH: u32 = 20u;
 
-// Distance falloff for the cone trace. Bounce radiance from a voxel at
-// distance `d` from the surface is attenuated by `1 / (1 + k * d²)`.
-// k = 0.15 is mild compared to physical inverse-square (k = 1.0) but
-// enough to localise bounce near sources — voxel-cache sparseness means
-// strict 1/d² leaves the scene mostly dark. Tune up for darker scenes,
-// down for brighter / more diffuse bounce.
-//
-// This compensates for the fact that we don't yet have a voxel mipmap
-// chain: a proper Lumen/SDFGI cone trace would sample at LOD =
-// log2(diameter), so distant content is naturally averaged into wider
-// taps without needing this hack. Phase 8 task to do that properly and
-// remove this constant.
-const DISTANCE_FALLOFF: f32 = 0.15;
+// Phase 9 removed the previous `DISTANCE_FALLOFF` constant. Per-step
+// mip selection (see `trace_voxel_cone`) now picks coarser pyramid
+// levels for wider cone footprints, so distant taps are pre-averaged
+// over the cone neighbourhood instead of being a single sharp voxel
+// scaled by a hand-tuned 1/(1 + k·d²) factor. Cleaner and correct.
 
 // Half-angle tangent for the diffuse cone. 0.577 ≈ tan(30°), giving a
 // 60° cone — same value Godot's SDFGI uses for its 6-cone diffuse
@@ -189,20 +181,32 @@ fn select_cascade(p: vec3<f32>) -> i32 {
     return -1;
 }
 
-// Manual trilinear voxel sample. Clamps within the current cascade's Z
-// slice so we never blend across the cascade boundary in the stacked
-// mega-texture — adjacent cascades have different voxel sizes and the
-// blend would be physically meaningless.
-fn cascade_voxel_sample(p: vec3<f32>, cascade: u32) -> vec4<f32> {
+// Maximum mip level the voxel pyramid supports. Mirrors
+// `VOXEL_MIP_COUNT - 1` on the host. Cone trace clamps mip selection
+// to this value so it never asks for a mip past the chain.
+const VOXEL_MAX_MIP: f32 = 3.0;
+
+// Manual trilinear voxel sample at a specific mip level. Clamps
+// within the current cascade's Z slice so we never blend across the
+// cascade boundary — adjacent cascades have different voxel sizes
+// and the blend would be physically meaningless. At mip M, both the
+// XY resolution and per-cascade Z extent are `RESOLUTION >> M`,
+// power-of-two-clean so cascade Z bases scale cleanly.
+fn cascade_voxel_sample(p: vec3<f32>, cascade: u32, mip: u32) -> vec4<f32> {
     let info = grid.cascades[cascade];
-    let res_i = i32(grid.resolution);
+    // Resolution + cascade Z extent both halve per mip level.
+    let res_mip = max(grid.resolution >> mip, 1u);
+    let res_i = i32(res_mip);
     let z_base = i32(cascade) * res_i;
+    // Voxel size grows with mip — mip M voxel covers 2^M base voxels.
+    let voxel_size_mip = info.voxel_size * f32(1u << mip);
     // Voxel-space position, biased by 0.5 so integer lattice sits at
-    // voxel centers (matches how `cascade_voxel_load` indexed before).
-    let local = (p - info.origin) / info.voxel_size - vec3<f32>(0.5);
+    // voxel centres.
+    let local = (p - info.origin) / voxel_size_mip - vec3<f32>(0.5);
     let i0 = vec3<i32>(floor(local));
     let frac = local - vec3<f32>(i0);
 
+    let mip_i = i32(mip);
     var sum = vec4<f32>(0.0);
     for (var k: i32 = 0; k < 8; k = k + 1) {
         let d = vec3<i32>(k & 1, (k >> 1) & 1, (k >> 2) & 1);
@@ -210,7 +214,7 @@ fn cascade_voxel_sample(p: vec3<f32>, cascade: u32) -> vec4<f32> {
         let w = mix(1.0 - frac.x, frac.x, f32(d.x))
               * mix(1.0 - frac.y, frac.y, f32(d.y))
               * mix(1.0 - frac.z, frac.z, f32(d.z));
-        sum = sum + textureLoad(voxels, vec3<i32>(i.x, i.y, i.z + z_base), 0) * w;
+        sum = sum + textureLoad(voxels, vec3<i32>(i.x, i.y, i.z + z_base), mip_i) * w;
     }
     return sum;
 }
@@ -241,14 +245,41 @@ fn trace_voxel_cone(origin: vec3<f32>, dir: vec3<f32>, max_steps: u32, tan_half_
     for (var i: u32 = 0u; i < max_steps; i = i + 1u) {
         let cascade = select_cascade(p);
         if (cascade < 0) { break; }
-        let voxel = cascade_voxel_sample(p, u32(cascade));
+        let cascade_u = u32(cascade);
+        let cascade_voxel_size = grid.cascades[cascade_u].voxel_size;
+
+        // Mip selection: cone diameter at this distance is the size
+        // we want a single tap to cover. Picking mip M where the
+        // mip-M voxel ≈ cone diameter means each tap returns a
+        // pre-averaged neighbourhood that matches the cone footprint
+        // — no per-sample falloff hack needed.
+        //
+        //   mip = log2(cone_diameter / cascade_base_voxel)
+        //
+        // Clamped to [0, VOXEL_MAX_MIP]. Floor (cast to u32) for
+        // integer mip selection — Phase 9 v1 doesn't blend between
+        // mips. Trilinear-in-mip would smooth the cone transition
+        // through the pyramid at extra cost.
+        let cone_diameter = 2.0 * tan_half_angle * distance_travelled;
+        let mip_f = clamp(
+            log2(max(cone_diameter / cascade_voxel_size, 1.0)),
+            0.0,
+            VOXEL_MAX_MIP,
+        );
+        let mip_u = u32(mip_f);
+        let voxel = cascade_voxel_sample(p, cascade_u, mip_u);
 
         // Coverage = how much of the remaining cone budget this voxel
         // fills. Drives both how much light we accept and how much of
-        // the cone is "blocked" going further.
+        // the cone is "blocked" going further. The cone widening into
+        // a coarser mip is what handles the "distant voxels contribute
+        // less" behaviour — wider mips average occlusion + emission
+        // over the larger neighbourhood, so distant taps naturally
+        // produce more diluted contributions without an extra falloff
+        // term. This replaces the `DISTANCE_FALLOFF = 0.15` hack the
+        // pre-pyramid trace used.
         let coverage = voxel.a * (1.0 - acc_alpha);
-        let falloff = 1.0 / (1.0 + DISTANCE_FALLOFF * distance_travelled * distance_travelled);
-        acc_color = acc_color + voxel.rgb * coverage * falloff;
+        acc_color = acc_color + voxel.rgb * coverage;
         acc_alpha = acc_alpha + coverage;
         if (acc_alpha >= 0.95) { break; }
 

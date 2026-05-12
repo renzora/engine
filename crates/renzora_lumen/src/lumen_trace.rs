@@ -435,6 +435,7 @@ impl ViewNode for LumenTraceNode {
         // which is also when the cache is being maintained and we
         // want this trace running.
         if !view.inject_active { return Ok(()); }
+        let _span = info_span!("lumen.trace").entered();
 
         let pipeline = world.resource::<LumenTracePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();

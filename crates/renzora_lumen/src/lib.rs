@@ -20,12 +20,14 @@ mod screen_reflection;
 mod screen_reflection_blur;
 mod screen_reflection_resolve;
 mod voxel_cache;
+mod voxel_downsample;
 pub use geometry_voxelize::GeometryVoxelizePlugin;
 pub use lumen_trace::LumenTracePlugin;
 pub use screen_reflection::ScreenReflectionPlugin;
 pub use screen_reflection_blur::ScreenReflectionBlurPlugin;
 pub use screen_reflection_resolve::ScreenReflectionResolvePlugin;
 pub use voxel_cache::{VoxelCachePlugin, VoxelCacheView};
+pub use voxel_downsample::VoxelDownsamplePlugin;
 
 #[cfg(feature = "editor")]
 use {
@@ -116,6 +118,10 @@ impl Plugin for LumenPlugin {
         app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
         app.add_plugins(ExtractComponentPlugin::<LumenLighting>::default());
         app.add_plugins(VoxelCachePlugin);
+        // Mipmap pyramid generation for the voxel radiance texture.
+        // Slots after `VoxelResolveLabel` (defined by VoxelCachePlugin)
+        // so the resolved mip 0 is ready when we downsample mips 1..N.
+        app.add_plugins(VoxelDownsamplePlugin);
         app.add_plugins(GeometryVoxelizePlugin);
         // LumenTracePlugin must register *before* ScreenReflectionPlugin
         // — ScreenReflectionPlugin's render-graph edge references

@@ -151,8 +151,9 @@ impl Default for SystemTimingState {
             schedule_timings: Vec::new(),
             update_interval: 0.5,
             time_since_update: 0.0,
-            limitation_note: "Per-system timing requires Tracy integration. \
-                Run with --features tracy for detailed profiling."
+            limitation_note: "Per-system timing comes from Tracy. Launch Tracy GUI \
+                0.11.x and connect to localhost — Tracy is compiled into every build \
+                and stays dormant until a GUI attaches."
                 .to_string(),
         }
     }
