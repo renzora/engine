@@ -16,9 +16,11 @@ use serde::{Deserialize, Serialize};
 
 mod geometry_voxelize;
 mod lumen_trace;
+mod screen_reflection;
 mod voxel_cache;
 pub use geometry_voxelize::GeometryVoxelizePlugin;
 pub use lumen_trace::LumenTracePlugin;
+pub use screen_reflection::ScreenReflectionPlugin;
 pub use voxel_cache::VoxelCachePlugin;
 
 #[cfg(feature = "editor")]
@@ -111,7 +113,15 @@ impl Plugin for LumenPlugin {
         app.add_plugins(ExtractComponentPlugin::<LumenLighting>::default());
         app.add_plugins(VoxelCachePlugin);
         app.add_plugins(GeometryVoxelizePlugin);
+        // LumenTracePlugin must register *before* ScreenReflectionPlugin
+        // — ScreenReflectionPlugin's render-graph edge references
+        // `LumenTraceLabel`, and Bevy resolves labels at edge-add
+        // time (no lazy lookup). With this order, `LumenTraceLabel`
+        // exists in the graph by the time ScreenReflection asks for
+        // it. The reverse order panics with "node LumenTraceLabel
+        // does not exist".
         app.add_plugins(LumenTracePlugin);
+        app.add_plugins(ScreenReflectionPlugin);
 
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());

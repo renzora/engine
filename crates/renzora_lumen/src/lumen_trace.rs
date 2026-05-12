@@ -32,6 +32,7 @@ use bevy::utils::default;
 use bytemuck::{Pod, Zeroable};
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use crate::screen_reflection::ScreenReflectionResources;
 use crate::voxel_cache::{
     VoxelCacheResources, VoxelCacheView, VoxelGridUniform, VoxelResolveLabel,
 };
@@ -199,6 +200,14 @@ impl FromWorld for LumenTracePipeline {
                     // it. Falls back to a 1x1 uint dummy in Forward
                     // mode; `config.use_albedo_modulation = 0` then.
                     texture_2d(TextureSampleType::Uint),
+                    // 14: half-res resolved reflection buffer
+                    // (Rgba16Float). Written by `ScreenReflectionPlugin`'s
+                    // compute pass earlier in the frame; RGB = traced
+                    // colour, A = validity (0 = miss / off-screen,
+                    // 1 = solid hit well inside the screen margin).
+                    // Sampled with linear filtering for the implicit
+                    // 2× bilinear upscale to full res.
+                    texture_2d(TextureSampleType::Float { filterable: true }),
                 ),
             ),
         );
@@ -409,6 +418,7 @@ impl ViewNode for LumenTraceNode {
         &'static ViewPrepassTextures,
         &'static VoxelCacheView,
         &'static LumenTraceResources,
+        &'static ScreenReflectionResources,
         Option<&'static LumenSkyCubemap>,
     );
 
@@ -416,7 +426,9 @@ impl ViewNode for LumenTraceNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, view, resources, sky): QueryItem<Self::ViewQuery>,
+        (view_target, view_offset, prepass, view, resources, screen_reflection, sky): QueryItem<
+            Self::ViewQuery,
+        >,
         world: &World,
     ) -> Result<(), NodeRunError> {
         // inject_active is true exactly when LumenQuality >= SdfLow,
@@ -487,6 +499,7 @@ impl ViewNode for LumenTraceNode {
                 sky_view,
                 &pipeline.sky_sampler,
                 gbuffer_view,
+                &screen_reflection.color,
             )),
         );
 
