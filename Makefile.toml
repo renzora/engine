@@ -277,29 +277,34 @@ script = 'docker rm -f "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
 # =============================================================================
 # UPX compression — `--brute` shrink of host binary, SDK dylibs, plugins
 # =============================================================================
-# Pass platform paths after `--` to scope it (e.g. `makers upx -- dist/windows-x64`).
-# No args = compress every platform under dist/. Requires `upx` on PATH;
-# install via `scoop install upx` (Windows), `apt install upx-ucl` (Linux),
-# or `brew install upx` (macOS).
+# Runs inside the build container (upx is installed in the image), so no host
+# `upx`/`bash` is needed. Pass platforms after `--` to scope it — short names
+# (`windows`, `linux`, `macos`, `macos-x64`, ...) or full paths
+# (`dist/windows-x64`) both work. No args = compress every platform under
+# dist/. Auto-runs docker-init. Slow: `--brute` is minutes per file.
 [tasks.upx]
-description = "UPX --brute compress host + SDK + plugins. Slow (minutes per file)."
+description = "UPX --brute compress host + SDK + plugins via the container (e.g. `makers upx -- windows`); no args = all. Slow."
+dependencies = ["docker-init"]
 [tasks.upx.windows]
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
+$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
 $platforms = if ($env:CARGO_MAKE_TASK_ARGS) { $env:CARGO_MAKE_TASK_ARGS -replace ';', ' ' } else { "" }
-bash -c "scripts/upx-compress.sh $platforms"
+docker exec "renzora-$hash" bash -c "/app/src/scripts/upx-compress.sh $platforms"
 '''
 [tasks.upx.linux]
 script = '''
 PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
-bash scripts/upx-compress.sh $PLATFORMS
+docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/upx-compress.sh $PLATFORMS"
 '''
 [tasks.upx.mac]
 script = '''
 PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
-bash scripts/upx-compress.sh $PLATFORMS
+docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/upx-compress.sh $PLATFORMS"
 '''
 
 

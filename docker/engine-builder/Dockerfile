@@ -219,6 +219,20 @@ EOF
 ENV BASH_ENV=/etc/osxcross-env.sh
 SHELL ["/bin/bash", "-c"]
 
+# ── UPX (binary compression for `makers upx`) ────────────────────────────────
+# Installed here as a late, cheap layer so adding it doesn't invalidate the
+# expensive osxcross/xwin/NDK layers above. The official static binary (not the
+# `upx-ucl` apt package, which isn't in this image's sources). UPX packs
+# PE/ELF/Mach-O regardless of host OS, so the Linux container can compress
+# Windows/macOS binaries too.
+ENV UPX_VERSION=4.2.4
+RUN curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz" \
+    -o /tmp/upx.tar.xz \
+    && tar -xJf /tmp/upx.tar.xz -C /tmp \
+    && mv /tmp/upx-${UPX_VERSION}-amd64_linux/upx /usr/local/bin/upx \
+    && chmod +x /usr/local/bin/upx \
+    && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-amd64_linux
+
 # ── Cargo linker config ─────────────────────────────────────────────────────
 WORKDIR /app
 RUN DARWIN_VER=$(cat /tmp/darwin_ver) && \

@@ -40,7 +40,6 @@ These compile for the OS you're on. Mobile crates (`renzora-ios`, `renzora-andro
 | `makers clean-editor` | Same as `clean`, scoped to the editor target |
 | `makers clean-runtime` | Same as `clean`, scoped to the runtime target |
 | `makers clean-server` | Same as `clean`, scoped to the server target |
-| <nobr>`makers upx [-- <platform>...]`</nobr> | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; pass platforms to scope it. |
 
 ### Docker builds (cross-platform)
 
@@ -51,6 +50,7 @@ One container, one bind-mount, one shared `target/` cache. Filter platforms with
 | `makers docker-init` | Set up Docker: build image + create container + start. Idempotent -- skips any step already done. |
 | `makers docker-build` | Build all platforms (auto-runs `docker-init`; parallel lanes, fast after first run -- cache persists) |
 | `makers docker-build -- <platforms>` | Build a subset, e.g. `makers docker-build -- windows linux` |
+| <nobr>`makers upx [-- <platforms>]`</nobr> | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; scope with the same names below or paths (`dist/windows-x64`). |
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
 

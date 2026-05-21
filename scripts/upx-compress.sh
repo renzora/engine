@@ -27,11 +27,27 @@ if ! command -v upx >/dev/null 2>&1; then
     exit 1
 fi
 
-# Default to every platform dir under dist/ if no args.
+# Default to every platform dir under dist/ if no args. Otherwise accept either
+# short platform names (matching `build-all.sh` / `makers docker-build`) or
+# explicit paths. `wasm`/`ios` have no UPX-compressible binaries (.wasm/.a), so
+# they're intentionally not mapped — pass a path if you really want to try.
 if [ $# -eq 0 ]; then
     PLATFORMS=(dist/*/)
 else
-    PLATFORMS=("$@")
+    PLATFORMS=()
+    for arg in "$@"; do
+        case "$arg" in
+            linux)         PLATFORMS+=("dist/linux-x64") ;;
+            windows)       PLATFORMS+=("dist/windows-x64") ;;
+            macos)         PLATFORMS+=("dist/macos-x64" "dist/macos-arm64") ;;
+            macos-x64)     PLATFORMS+=("dist/macos-x64") ;;
+            macos-arm64)   PLATFORMS+=("dist/macos-arm64") ;;
+            android)       PLATFORMS+=("dist/android-arm64" "dist/android-x86") ;;
+            android-arm64) PLATFORMS+=("dist/android-arm64") ;;
+            android-x86)   PLATFORMS+=("dist/android-x86") ;;
+            *)             PLATFORMS+=("$arg") ;;  # treat as an explicit path
+        esac
+    done
 fi
 
 # Specific binaries we care about, by basename. The `bevy_dylib*` and
