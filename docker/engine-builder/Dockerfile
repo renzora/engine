@@ -5,14 +5,14 @@
 # Provides the build toolchain for all supported platforms. No source code
 # baked in — the repo is mounted at runtime via a persistent container.
 #
-# Build image:
-#   makers docker-build
-#
-# Create persistent container:
-#   makers docker-create
+# Set up (build image + create + start container; idempotent):
+#   makers docker-init
 #
 # Build all platforms:
-#   makers docker-run
+#   makers docker-build
+#
+# Build a subset:
+#   makers docker-build -- windows linux
 
 FROM --platform=linux/amd64 rust:1.93.0-bookworm
 
@@ -130,8 +130,17 @@ RUN curl -sL "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSI
     && rm -rf /root/.cache/xwin
 
 RUN git clone --depth 1 https://github.com/tpoechtrager/osxcross /opt/osxcross
-COPY docker/sdk/${OSXCROSS_SDK}.tar.xz /opt/osxcross/tarballs/
-COPY docker/sdk/${OSXCROSS_IOS_SDK}.tar.xz /opt/osxcross/tarballs/
+
+# Fetch the macOS + iOS SDKs at build time instead of vendoring them into
+# docker/sdk/, so `makers docker-build` is self-contained. These URLs point to
+# community mirrors that redistribute Apple-licensed SDK content; use at your
+# own discretion. To pin different versions, update these URLs together with
+# the OSXCROSS_SDK / OSXCROSS_IOS_SDK names above.
+ENV OSXCROSS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/26.1/MacOSX26.1.sdk.tar.xz
+ENV OSXCROSS_IOS_SDK_URL=https://github.com/growtopiajaw/iPhoneOS-SDK/releases/download/v1.0/iPhoneOS15.5.sdk.tar.xz
+RUN mkdir -p /opt/osxcross/tarballs && \
+    curl -fSL "${OSXCROSS_SDK_URL}" -o "/opt/osxcross/tarballs/${OSXCROSS_SDK}.tar.xz" && \
+    curl -fSL "${OSXCROSS_IOS_SDK_URL}" -o "/opt/osxcross/tarballs/${OSXCROSS_IOS_SDK}.tar.xz"
 RUN cd /opt/osxcross && \
     LLVM_CONFIG=/usr/bin/llvm-config-19 \
     UNATTENDED=1 TARGET_DIR=/opt/osxcross/target ./build.sh

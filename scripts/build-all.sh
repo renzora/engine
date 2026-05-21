@@ -19,6 +19,25 @@
 #   android-arm64
 #   android-x86
 #   ios          iOS arm64 staticlib
+#
+# ── Parallelism ──────────────────────────────────────────────────────────────
+# Builds run as concurrent "lanes". The contention-free unit is the FEATURE,
+# not the platform: editor/runtime/server each use their own `--target-dir`
+# (target/editor, target/runtime, target/server), while every desktop platform
+# for one feature shares that dir (different triple subdirs inside it). So we
+# run one lane per feature, plus one each for wasm / android / ios. Lanes never
+# share a target-dir, so cargo's per-target-dir build lock never serialises
+# them — and the on-disk cache layout is identical to a sequential build.
+#
+# Within a feature lane, desktop platforms still build sequentially (they share
+# that feature's target-dir and reuse its host-side proc-macro/build-script
+# artifacts), exactly as before — only the lanes themselves overlap.
+#
+# Concurrency is capped by BUILD_JOBS (env). Default is derived from container
+# memory (~4 GB per concurrent lane) and clamped to the CPU count, because the
+# real ceiling on parallel bevy builds is RAM during codegen/link, not cores.
+# On a memory-tight machine, set BUILD_JOBS=1 or 2. On a big build server, set
+# it as high as the lane count (6) to overlap everything.
 
 set -euo pipefail
 
@@ -51,6 +70,13 @@ should_build() {
     for p in "${PLATFORMS[@]}"; do
         [ "$p" = "$target" ] && return 0
     done
+    return 1
+}
+
+array_contains() {
+    local needle="$1"; shift
+    local x
+    for x in "$@"; do [ "$x" = "$needle" ] && return 0; done
     return 1
 }
 
@@ -103,10 +129,24 @@ copy_shared_libs() {
         [[ "$base" == renzora_preview."$EXT" ]] && continue
         cp "$f" "$OUT/plugins/"
     done
+    return 0
+}
+
+# ── Helper: copy the matching Rust std shared lib for a platform ─────────────
+# Usage: copy_std <output-platform> <feature> <rust-triple> <glob>
+copy_std() {
+    local PLATFORM="$1" FEATURE="$2" TRIPLE="$3" GLOB="$4"
+    local SYSROOT; SYSROOT=$(rustc --print sysroot)
+    local f
+    for f in "$SYSROOT"/lib/rustlib/"$TRIPLE"/lib/$GLOB; do
+        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/$PLATFORM/$FEATURE/"
+    done
+    return 0
 }
 
 # ── Build a desktop target ───────────────────────────────────────────────────
 # Usage: build_desktop <feature> <rust-target|native> <platform-name> <ext>
+# Returns non-zero if the cargo compile fails.
 build_desktop() {
     local FEATURE="$1"
     local RUST_TARGET="$2"
@@ -138,10 +178,10 @@ build_desktop() {
     if [ "$FEATURE" = "editor" ]; then
         cargo build --profile dist --workspace \
             --exclude renzora-android --exclude renzora-ios \
-            $TARGET_DIR_FLAG $TARGET_FLAG
+            $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     else
         cargo build --profile dist --bin renzora --no-default-features \
-            --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG
+            --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     fi
 
     local OUT="$OUTPUT_DIR/$PLATFORM/$FEATURE"
@@ -162,25 +202,39 @@ build_desktop() {
     fi
 
     copy_shared_libs "$SRC" "$OUT" "$EXT"
+    return 0
 }
 
-# ── Linux ────────────────────────────────────────────────────────────────────
+# ── Build one (platform, feature) pair, incl. its Rust std ───────────────────
+build_one() {
+    local PLATFORM="$1" FEATURE="$2"
+    case "$PLATFORM" in
+        linux-x64)
+            build_desktop "$FEATURE" native               "linux-x64"   "so"    || return 1
+            copy_std "linux-x64"   "$FEATURE" "x86_64-unknown-linux-gnu" "libstd-*.so" ;;
+        windows-x64)
+            build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
+            # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
+            # Win10/11 ship by default (or via the VC++ Redistributable).
+            copy_std "windows-x64" "$FEATURE" "x86_64-pc-windows-msvc"    "std-*.dll" ;;
+        macos-x64)
+            build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
+            copy_std "macos-x64"   "$FEATURE" "x86_64-apple-darwin"       "libstd-*.dylib" ;;
+        macos-arm64)
+            build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
+            copy_std "macos-arm64" "$FEATURE" "aarch64-apple-darwin"      "libstd-*.dylib" ;;
+        *)
+            echo "WARN: unknown desktop platform '$PLATFORM'"; return 1 ;;
+    esac
+    return 0
+}
 
-if should_build linux; then
-for feature in editor runtime server; do
-    build_desktop "$feature" "native" "linux-x64" "so"
+# ── Wrap the Linux editor output into an AppDir + AppImage ────────────────────
+wrap_linux_appimage() {
+    local EDITOR_DIR="$OUTPUT_DIR/linux-x64/editor"
+    [ -f "$EDITOR_DIR/renzora" ] || return 0
 
-    # Rust std
-    SYSROOT=$(rustc --print sysroot)
-    for f in "$SYSROOT"/lib/rustlib/x86_64-unknown-linux-gnu/lib/libstd-*.so; do
-        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/linux-x64/$feature/"
-    done
-done
-
-# Wrap the editor output into an AppDir + AppImage
-EDITOR_DIR="$OUTPUT_DIR/linux-x64/editor"
-if [ -f "$EDITOR_DIR/renzora" ]; then
-    APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
+    local APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
     rm -rf "$APPDIR"
     mkdir -p "$APPDIR/plugins"
     # Move all artifacts into the AppDir
@@ -221,142 +275,198 @@ DESKTOP
     else
         echo "WARN: appimagetool not found; AppDir left at $APPDIR"
     fi
-fi
-fi  # should_build linux
+    return 0
+}
 
-# ── Windows (cross-compile via xwin + clang-cl + lld-link) ───────────────────
-# MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which Win10/11
-# ship with by default (or via the VC++ Redistributable). No mingw runtime
-# DLLs to bundle.
-
-if should_build windows; then
-for feature in editor runtime server; do
-    build_desktop "$feature" "x86_64-pc-windows-msvc" "windows-x64" "dll"
-
-    OUT="$OUTPUT_DIR/windows-x64/$feature"
-
-    # Rust std for Windows
-    SYSROOT=$(rustc --print sysroot)
-    for f in "$SYSROOT"/lib/rustlib/x86_64-pc-windows-msvc/lib/std-*.dll; do
-        [ -f "$f" ] && cp "$f" "$OUT/"
+# ── Lane: build one feature across every requested desktop platform ──────────
+lane_desktop_feature() {
+    local FEATURE="$1" p
+    for p in "${DESKTOP_PLATFORMS[@]}"; do
+        build_one "$p" "$FEATURE" || return 1
     done
-done
-fi  # should_build windows
+    # AppImage wrapping only applies to the editor on Linux.
+    if [ "$FEATURE" = "editor" ] && array_contains "linux-x64" "${DESKTOP_PLATFORMS[@]}"; then
+        wrap_linux_appimage || return 1
+    fi
+    return 0
+}
 
-# ── macOS (cross-compile via osxcross) ───────────────────────────────────────
-
-OSXCROSS_CLANG=$(ls /opt/osxcross/target/bin/x86_64-apple-darwin*-clang 2>/dev/null | head -1 || true)
-
-if [ -n "$OSXCROSS_CLANG" ]; then
-    if should_build macos-x64; then
-    for feature in editor runtime server; do
-        build_desktop "$feature" "x86_64-apple-darwin" "macos-x64" "dylib"
-
-        SYSROOT=$(rustc --print sysroot)
-        for f in "$SYSROOT"/lib/rustlib/x86_64-apple-darwin/lib/libstd-*.dylib; do
-            [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-x64/$feature/"
-        done
-    done
-    fi  # should_build macos-x64
-
-    if should_build macos-arm64; then
-    for feature in editor runtime server; do
-        build_desktop "$feature" "aarch64-apple-darwin" "macos-arm64" "dylib"
-
-        SYSROOT=$(rustc --print sysroot)
-        for f in "$SYSROOT"/lib/rustlib/aarch64-apple-darwin/lib/libstd-*.dylib; do
-            [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/macos-arm64/$feature/"
-        done
-    done
-    fi  # should_build macos-arm64
-elif should_build macos-x64 || should_build macos-arm64; then
-    echo "WARN: osxcross not found, skipping macOS builds"
-fi
-
-# ── WASM ─────────────────────────────────────────────────────────────────────
+# ── Lane: WASM ───────────────────────────────────────────────────────────────
 # WASM bundles plugins statically (no dlopen). Native plugin crates compile
 # as rlib for wasm — Cargo silently skips their dylib output for this target.
-
-if should_build wasm; then
-echo "=== Building WASM Runtime ==="
-cargo build --profile dist -p renzora_app --no-default-features --features wasm --target wasm32-unknown-unknown --target-dir target/wasm
-WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
-if [ -n "$WASM_FILE" ]; then
-    mkdir -p "$OUTPUT_DIR/web-wasm32/runtime"
-    wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/runtime" --out-name renzora-runtime --target web "$WASM_FILE"
-    if command -v wasm-opt &>/dev/null; then
-        wasm-opt -Oz \
-            --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
-            --enable-mutable-globals --enable-reference-types --enable-multivalue \
-            "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm" \
-            -o "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm"
-    fi
-fi
-
-# NOTE: Editor-on-web is incomplete — many editor deps are native-only sys
-# crates (lzma-sys, coreaudio-sys, cpal, arboard, rfd, ...) that can't
-# cross-compile to wasm32-unknown-unknown. Each needs a pure-rust alternative
-# or a `cfg(not(target_arch = "wasm32"))` gate before the editor wasm bundle
-# can succeed. Left as non-fatal so the rest of the build completes.
-echo "=== Building WASM Editor (best-effort) ==="
-WASM_EDITOR_LOG="$OUTPUT_DIR/wasm-editor-build.log"
-if cargo build --profile dist -p renzora_app --no-default-features --features editor,wasm --target wasm32-unknown-unknown --target-dir target/wasm-editor >"$WASM_EDITOR_LOG" 2>&1; then
-    WASM_EDITOR_FILE=$(find target/wasm-editor/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
-    if [ -n "$WASM_EDITOR_FILE" ]; then
-        mkdir -p "$OUTPUT_DIR/web-wasm32/editor"
-        wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/editor" --out-name renzora-editor --target web "$WASM_EDITOR_FILE"
+build_wasm() {
+    echo "=== Building WASM Runtime ==="
+    cargo build --profile dist -p renzora_app --no-default-features --features wasm \
+        --target wasm32-unknown-unknown --target-dir target/wasm || return 1
+    local WASM_FILE
+    WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
+    if [ -n "$WASM_FILE" ]; then
+        mkdir -p "$OUTPUT_DIR/web-wasm32/runtime"
+        wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/runtime" --out-name renzora-runtime --target web "$WASM_FILE"
         if command -v wasm-opt &>/dev/null; then
             wasm-opt -Oz \
                 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
                 --enable-mutable-globals --enable-reference-types --enable-multivalue \
-                "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm" \
-                -o "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm"
+                "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm" \
+                -o "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm"
         fi
-        rm -f "$WASM_EDITOR_LOG"
     fi
-else
-    echo "WARN: WASM editor build failed — see $WASM_EDITOR_LOG for details"
-    echo "      (most likely: native-only sys crates like lzma-sys/bzip2-sys/ufbx"
-    echo "       can't cross-compile to wasm32-unknown-unknown without a sysroot)"
+
+    # NOTE: Editor-on-web is incomplete — many editor deps are native-only sys
+    # crates (lzma-sys, coreaudio-sys, cpal, arboard, rfd, ...) that can't
+    # cross-compile to wasm32-unknown-unknown. Each needs a pure-rust alternative
+    # or a `cfg(not(target_arch = "wasm32"))` gate before the editor wasm bundle
+    # can succeed. Left as non-fatal so the lane still reports success.
+    echo "=== Building WASM Editor (best-effort) ==="
+    local WASM_EDITOR_LOG="$OUTPUT_DIR/wasm-editor-build.log"
+    if cargo build --profile dist -p renzora_app --no-default-features --features editor,wasm --target wasm32-unknown-unknown --target-dir target/wasm-editor >"$WASM_EDITOR_LOG" 2>&1; then
+        local WASM_EDITOR_FILE
+        WASM_EDITOR_FILE=$(find target/wasm-editor/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
+        if [ -n "$WASM_EDITOR_FILE" ]; then
+            mkdir -p "$OUTPUT_DIR/web-wasm32/editor"
+            wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/editor" --out-name renzora-editor --target web "$WASM_EDITOR_FILE"
+            if command -v wasm-opt &>/dev/null; then
+                wasm-opt -Oz \
+                    --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
+                    --enable-mutable-globals --enable-reference-types --enable-multivalue \
+                    "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm" \
+                    -o "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm"
+            fi
+            rm -f "$WASM_EDITOR_LOG"
+        fi
+    else
+        echo "WARN: WASM editor build failed — see $WASM_EDITOR_LOG for details"
+        echo "      (most likely: native-only sys crates like lzma-sys/bzip2-sys/ufbx"
+        echo "       can't cross-compile to wasm32-unknown-unknown without a sysroot)"
+    fi
+    return 0
+}
+
+# ── Lane: Android (runtime only) ─────────────────────────────────────────────
+# Both archs share target/android (sequential within this lane); best-effort.
+build_android() {
+    if should_build android-arm64; then
+        echo "=== Building Android ARM64 Runtime ==="
+        cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
+        if [ -f target/android/aarch64-linux-android/dist/libmain.so ]; then
+            mkdir -p "$OUTPUT_DIR/android-arm64/runtime"
+            cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/runtime/"
+        fi
+    fi
+    if should_build android-x86; then
+        echo "=== Building Android x86_64 Runtime ==="
+        cargo build --profile dist -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
+        if [ -f target/android/x86_64-linux-android/dist/libmain.so ]; then
+            mkdir -p "$OUTPUT_DIR/android-x86/runtime"
+            cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/runtime/"
+        fi
+    fi
+    return 0
+}
+
+# ── Lane: iOS (runtime only) ─────────────────────────────────────────────────
+build_ios() {
+    echo "=== Building iOS ARM64 Runtime ==="
+    # SDKROOT bypasses cc-rs's call to `xcrun --show-sdk-path --sdk iphoneos`,
+    # which fails because osxcross's xcrun only knows the macOS SDK.
+    # BINDGEN_EXTRA_CLANG_ARGS gives bindgen's libclang the iOS target + sysroot
+    # so it can find framework headers like <AudioUnit/AudioUnit.h>.
+    SDKROOT=/opt/iphoneos.sdk \
+    BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios14.0 -isysroot /opt/iphoneos.sdk" \
+    cargo build --profile dist -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
+    if [ -f target/ios/aarch64-apple-ios/dist/librenzora_ios.a ]; then
+        mkdir -p "$OUTPUT_DIR/ios-arm64/runtime"
+        cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/runtime/"
+    fi
+    return 0
+}
+
+# =============================================================================
+# Parallel lane orchestration
+# =============================================================================
+
+# Which desktop platforms are in scope (filter + osxcross availability).
+OSXCROSS_CLANG=$(ls /opt/osxcross/target/bin/x86_64-apple-darwin*-clang 2>/dev/null | head -1 || true)
+DESKTOP_PLATFORMS=()
+if should_build linux;   then DESKTOP_PLATFORMS+=("linux-x64"); fi
+if should_build windows; then DESKTOP_PLATFORMS+=("windows-x64"); fi
+if [ -n "$OSXCROSS_CLANG" ]; then
+    if should_build macos-x64;   then DESKTOP_PLATFORMS+=("macos-x64"); fi
+    if should_build macos-arm64; then DESKTOP_PLATFORMS+=("macos-arm64"); fi
+elif should_build macos-x64 || should_build macos-arm64; then
+    echo "WARN: osxcross not found, skipping macOS builds"
 fi
-fi  # should_build wasm
 
-# ── Android (runtime only) ──────────────────────────────────────────────────
+# Concurrency cap. Each parallel bevy lane peaks at a few GB during codegen and
+# link, so memory — not cores — is the real ceiling. Derive a default from
+# container RAM (~4 GB/lane), clamp to nproc, and let BUILD_JOBS override.
+NPROC=$(nproc 2>/dev/null || echo 4)
+MEM_GB=$(awk '/MemTotal/{printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 8)
+DEFAULT_JOBS=$(( MEM_GB / 4 ))
+[ "$DEFAULT_JOBS" -lt 1 ] && DEFAULT_JOBS=1
+[ "$DEFAULT_JOBS" -gt "$NPROC" ] && DEFAULT_JOBS="$NPROC"
+JOBS="${BUILD_JOBS:-$DEFAULT_JOBS}"
+echo "=== Parallel build: up to $JOBS concurrent lane(s) (cores=$NPROC, mem=${MEM_GB}GB; override with BUILD_JOBS) ==="
 
-if should_build android-arm64; then
-echo "=== Building Android ARM64 Runtime ==="
-cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
-if [ -f target/android/aarch64-linux-android/dist/libmain.so ]; then
-    mkdir -p "$OUTPUT_DIR/android-arm64/runtime"
-    cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/runtime/"
+STATUS_DIR=$(mktemp -d)
+trap 'rm -rf "$STATUS_DIR"' EXIT
+
+# Launch a lane in the background: prefix its output with the lane name, and
+# record its exit status to a file (pre-seeded with 255 so a lane that gets
+# killed — e.g. OOM — before completing is counted as a failure, not a pass).
+run_lane() {
+    local name="$1" required="$2"; shift 2
+    echo "$required" > "$STATUS_DIR/$name.required"
+    echo "255" > "$STATUS_DIR/$name.status"
+    ( set +e; "$@"; echo $? > "$STATUS_DIR/$name.status" ) 2>&1 | sed -u "s/^/[$name] /" &
+}
+
+# Block until fewer than $JOBS lanes are running.
+throttle() {
+    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do
+        wait -n 2>/dev/null || true
+    done
+}
+
+# Desktop feature lanes — each owns its own target-dir, so they never contend.
+if [ ${#DESKTOP_PLATFORMS[@]} -gt 0 ]; then
+    throttle; run_lane "editor"  required lane_desktop_feature editor
+    throttle; run_lane "runtime" required lane_desktop_feature runtime
+    throttle; run_lane "server"  required lane_desktop_feature server
 fi
-fi  # should_build android-arm64
-
-if should_build android-x86; then
-echo "=== Building Android x86_64 Runtime ==="
-cargo build --profile dist -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
-if [ -f target/android/x86_64-linux-android/dist/libmain.so ]; then
-    mkdir -p "$OUTPUT_DIR/android-x86/runtime"
-    cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/runtime/"
+if should_build wasm; then
+    throttle; run_lane "wasm" required build_wasm
 fi
-fi  # should_build android-x86
-
-# ── iOS (runtime only) ──────────────────────────────────────────────────────
-
+if should_build android-arm64 || should_build android-x86; then
+    throttle; run_lane "android" optional build_android
+fi
 if should_build ios; then
-echo "=== Building iOS ARM64 Runtime ==="
-# SDKROOT bypasses cc-rs's call to `xcrun --show-sdk-path --sdk iphoneos`,
-# which fails because osxcross's xcrun only knows the macOS SDK.
-# BINDGEN_EXTRA_CLANG_ARGS gives bindgen's libclang the iOS target + sysroot
-# so it can find framework headers like <AudioUnit/AudioUnit.h>.
-SDKROOT=/opt/iphoneos.sdk \
-BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios14.0 -isysroot /opt/iphoneos.sdk" \
-cargo build --profile dist -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
-if [ -f target/ios/aarch64-apple-ios/dist/librenzora_ios.a ]; then
-    mkdir -p "$OUTPUT_DIR/ios-arm64/runtime"
-    cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/runtime/"
+    throttle; run_lane "ios" optional build_ios
 fi
-fi  # should_build ios
 
+# Wait for every lane to finish.
+wait || true
+
+# ── Summary + overall exit code ──────────────────────────────────────────────
+echo ""
+echo "=== Lane summary ==="
+overall=0
+shopt -s nullglob
+for s in "$STATUS_DIR"/*.status; do
+    name=$(basename "$s" .status)
+    rc=$(cat "$s" 2>/dev/null || echo 1)
+    req=$(cat "$STATUS_DIR/$name.required" 2>/dev/null || echo optional)
+    if [ "$rc" = "0" ]; then
+        printf "  PASS  %-8s (%s)\n" "$name" "$req"
+    else
+        printf "  FAIL  %-8s (%s, exit %s)\n" "$name" "$req" "$rc"
+        [ "$req" = "required" ] && overall=1
+    fi
+done
+shopt -u nullglob
+
+echo ""
 echo "=== Build complete ==="
 find "$OUTPUT_DIR" -type f | sort
+
+exit $overall

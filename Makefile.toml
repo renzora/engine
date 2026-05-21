@@ -129,59 +129,95 @@ args = ["scripts/remove-plugin.sh", "${@}"]
 # Docker — cross-platform release builds
 # =============================================================================
 
-[tasks.docker-build]
-description = "Build the Docker image"
-command = "docker"
-args = ["build", "-f", "docker/engine-builder/Dockerfile", "-t", "renzora/engine", "."]
-
-[tasks.docker-create]
-description = "Create a persistent build container (first time only)"
-[tasks.docker-create.windows]
+# makers docker-init — one-time (idempotent) setup: build the toolchain image
+# if missing, create the per-directory persistent container if missing, then
+# start it. Safe to re-run; each step is skipped when already done.
+[tasks.docker-init]
+description = "Set up Docker: build image (if missing) + create container (if missing) + start. Idempotent."
+[tasks.docker-init.windows]
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
 script = '''
+$ErrorActionPreference = "Stop"
+
+# 1. Image — build only if it doesn't exist yet.
+if (-not (docker images -q renzora/engine)) {
+    Write-Output "Building Docker image renzora/engine (first time, this takes a while)..."
+    docker build -f docker/engine-builder/Dockerfile -t renzora/engine .
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    Write-Output "Image renzora/engine already exists - skipping build."
+}
+
+# 2. Container — create only if it doesn't exist yet.
 $md5 = [System.Security.Cryptography.MD5]::Create()
 $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
 $hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
 $name = "renzora-$hash"
-docker create --name $name -v "${PWD}:/app/src" -w /app/src renzora/engine sleep infinity
-Write-Output "Created container: $name"
+if (-not (docker ps -aq -f "name=^$name$")) {
+    Write-Output "Creating container $name..."
+    docker create --name $name -v "${PWD}:/app/src" -w /app/src renzora/engine sleep infinity | Out-Null
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    Write-Output "Container $name already exists - skipping create."
+}
+
+# 3. Start (no-op if already running).
+docker start $name | Out-Null
+Write-Output "Container $name is running."
 '''
-[tasks.docker-create.linux]
+[tasks.docker-init.linux]
 script = '''
+set -e
+if [ -z "$(docker images -q renzora/engine)" ]; then
+    echo "Building Docker image renzora/engine (first time, this takes a while)..."
+    docker build -f docker/engine-builder/Dockerfile -t renzora/engine .
+else
+    echo "Image renzora/engine already exists - skipping build."
+fi
+
 NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
-docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
-echo "Created container: $NAME"
+if [ -z "$(docker ps -aq -f "name=^${NAME}$")" ]; then
+    echo "Creating container $NAME..."
+    docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
+else
+    echo "Container $NAME already exists - skipping create."
+fi
+
+docker start "$NAME" >/dev/null
+echo "Container $NAME is running."
 '''
-[tasks.docker-create.mac]
+[tasks.docker-init.mac]
 script = '''
+set -e
+if [ -z "$(docker images -q renzora/engine)" ]; then
+    echo "Building Docker image renzora/engine (first time, this takes a while)..."
+    docker build -f docker/engine-builder/Dockerfile -t renzora/engine .
+else
+    echo "Image renzora/engine already exists - skipping build."
+fi
+
 NAME="renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"
-docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
-echo "Created container: $NAME"
+if [ -z "$(docker ps -aq -f "name=^${NAME}$")" ]; then
+    echo "Creating container $NAME..."
+    docker create --name "$NAME" -v "$PWD:/app/src" -w /app/src renzora/engine sleep infinity
+else
+    echo "Container $NAME already exists - skipping create."
+fi
+
+docker start "$NAME" >/dev/null
+echo "Container $NAME is running."
 '''
 
-[tasks.docker-start]
-description = "Start the build container"
-[tasks.docker-start.windows]
-script_runner = "powershell.exe"
-script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
-script_extension = "ps1"
-script = '''
-$md5 = [System.Security.Cryptography.MD5]::Create()
-$bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Location).Path)
-$hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-","").Substring(0,8).ToLower()
-docker start "renzora-$hash"
-'''
-[tasks.docker-start.linux]
-script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
-[tasks.docker-start.mac]
-script = 'docker start "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)"'
-
-[tasks.docker-run]
-description = "Build via persistent container. Pass platforms after `--` to filter (e.g. `makers docker-run -- windows linux`); no args = build all."
-dependencies = ["docker-start"]
-[tasks.docker-run.windows]
+# makers docker-build [-- <platforms>] — compile for one or more platforms via
+# the persistent container. Auto-runs docker-init first (idempotent), so this
+# works from a fresh checkout. Pass platforms after `--` to filter
+# (e.g. `makers docker-build -- windows linux`); no args = build all.
+[tasks.docker-build]
+description = "Build engine binaries for platforms via the container (e.g. `makers docker-build -- windows`); no args = all. Auto-runs docker-init."
+dependencies = ["docker-init"]
+[tasks.docker-build.windows]
 script_runner = "powershell.exe"
 script_runner_args = ["-ExecutionPolicy", "Bypass", "-File"]
 script_extension = "ps1"
@@ -192,12 +228,12 @@ $hash = [System.BitConverter]::ToString($md5.ComputeHash($bytes)).Replace("-",""
 $platforms = if ($env:CARGO_MAKE_TASK_ARGS) { $env:CARGO_MAKE_TASK_ARGS -replace ';', ' ' } else { "" }
 docker exec "renzora-$hash" bash -c "/app/src/scripts/build-all.sh dist $platforms"
 '''
-[tasks.docker-run.linux]
+[tasks.docker-build.linux]
 script = '''
 PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
 docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/build-all.sh dist $PLATFORMS"
 '''
-[tasks.docker-run.mac]
+[tasks.docker-build.mac]
 script = '''
 PLATFORMS=$(echo "${CARGO_MAKE_TASK_ARGS:-}" | tr ';' ' ')
 docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/scripts/build-all.sh dist $PLATFORMS"

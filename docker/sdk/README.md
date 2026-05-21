@@ -1,41 +1,41 @@
-SDKs required for the Docker cross-compile builder.
+SDKs for the Docker cross-compile builder.
 
-# macOS — `MacOSX26.1.sdk.tar.xz`
+The macOS and iOS SDKs are **downloaded automatically at image-build time** by
+`docker/engine-builder/Dockerfile`, so you normally don't need to place anything
+here. The download URLs and versions live in the Dockerfile:
 
-Required for macOS x86_64 + arm64 builds.
+```
+ENV OSXCROSS_SDK=MacOSX26.1.sdk
+ENV OSXCROSS_IOS_SDK=iPhoneOS15.5.sdk
+ENV OSXCROSS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/26.1/MacOSX26.1.sdk.tar.xz
+ENV OSXCROSS_IOS_SDK_URL=https://github.com/growtopiajaw/iPhoneOS-SDK/releases/download/v1.0/iPhoneOS15.5.sdk.tar.xz
+```
 
+These URLs point to community mirrors that redistribute Apple-licensed SDK
+content; use at your own discretion. To pin a different version, update the
+`*_URL` and matching `OSXCROSS_SDK` / `OSXCROSS_IOS_SDK` names together.
+
+Deployment targets (set in the Dockerfile): macOS 11.0 (covers all Apple
+Silicon Macs and Intel Macs on Big Sur+) and iOS 14.0 (iPhone 6s and later —
+every device with the Metal features Bevy/wgpu uses). A newer SDK with an older
+deployment target is fine.
+
+## Generating license-clean SDKs yourself (optional)
+
+If you'd rather not use the community mirrors, generate the tarballs from your
+own Xcode on a Mac and host them somewhere the build can reach (or revert the
+Dockerfile to `COPY` them from this directory):
+
+macOS:
 ```
 git clone --depth 1 https://github.com/tpoechtrager/osxcross /tmp/osxcross
 cd /tmp/osxcross
 XCODEDIR=/Applications/Xcode.app/Contents/Developer ./tools/gen_sdk_package.sh
-mv MacOSX26.1.sdk.tar.xz /path/to/repo/docker/sdk/
 ```
 
-Deployment target is set to 11.0 in the Dockerfile, so binaries built
-against this SDK still run on macOS 11+ (covers all Apple Silicon Macs
-and Intel Macs running Big Sur or later).
-
-# iOS — `iPhoneOS15.5.sdk.tar.xz`
-
-Required for iOS arm64 builds. Two ways to obtain it:
-
-**Option A: Download a community build** (fastest, doesn't need a Mac):
-- https://github.com/growtopiajaw/iPhoneOS-SDK/releases
-- Grab `iPhoneOS15.5.sdk.tar.xz` (or any version ≥ deployment target).
-- These repos redistribute Apple-licensed content. The clean path is
-  generating from your own Xcode (Option B); the SDKs are at-your-own-risk.
-
-**Option B: Generate from Xcode** (license-clean):
+iOS:
 ```
 git clone --depth 1 https://github.com/tpoechtrager/osxcross /tmp/osxcross
 cd /tmp/osxcross
 XCODEDIR=/Applications/Xcode.app/Contents/Developer ./tools/gen_sdk_package_p.sh iPhoneOS
-mv iPhoneOS*.sdk.tar.xz /path/to/repo/docker/sdk/iPhoneOS15.5.sdk.tar.xz
 ```
-
-If your iOS SDK version is different (e.g. 18.x from current Xcode), update
-`OSXCROSS_IOS_SDK` in the Dockerfile to match the filename.
-
-Deployment target is set to 14.0 in the Dockerfile (covers iPhone 6s and
-later — every device that supports Metal API features used by Bevy/wgpu).
-Newer SDK + older deployment target is fine.

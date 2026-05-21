@@ -48,11 +48,9 @@ One container, one bind-mount, one shared `target/` cache. Filter platforms with
 
 | Command | What it does |
 |---|---|
-| `makers docker-build` | Build the Docker image (toolchain -- first time only) |
-| `makers docker-create` | Create a persistent build container for this directory |
-| `makers docker-start` | Start the persistent container (auto-runs before `docker-run`) |
-| `makers docker-run` | Build all platforms (fast after first run -- cache persists) |
-| `makers docker-run -- <platforms>` | Build a subset, e.g. `makers docker-run -- windows linux` |
+| `makers docker-init` | Set up Docker: build image + create container + start. Idempotent -- skips any step already done. |
+| `makers docker-build` | Build all platforms (auto-runs `docker-init`; parallel lanes, fast after first run -- cache persists) |
+| `makers docker-build -- <platforms>` | Build a subset, e.g. `makers docker-build -- windows linux` |
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
 
@@ -245,30 +243,32 @@ The catch: **plugins must be built with the same compiler, same Bevy version, an
 
 ## Per-Project Docker Builds
 
-Docker builds are scoped per directory. Running `makers docker-create` creates a persistent container named after a hash of your directory path. This means:
+Docker builds are scoped per directory. Running `makers docker-init` creates a persistent container named after a hash of your directory path. This means:
 
 - Two engine forks in different directories get separate containers with separate build caches
-- The container persists between builds -- first `makers docker-run` compiles everything, subsequent runs only recompile what changed
+- The container persists between builds -- first `makers docker-build` compiles everything, subsequent runs only recompile what changed
 - Each fork produces its own editor, runtime, and server binaries with its own plugin hashes
 - No cross-contamination between forks, even if they share the same Docker image
 
-The Docker **image** (`makers docker-build`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross for macOS/iOS, xwin for Windows MSVC, Android NDK, Clang 19 with LLD for everything), and system dependencies. The **container** is your build environment with cached compilation artifacts.
+The Docker **image** (built by `makers docker-init`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross for macOS/iOS, xwin for Windows MSVC, Android NDK, Clang 19 with LLD for everything), and system dependencies. The **container** is your build environment with cached compilation artifacts.
+
+Within a build, platforms compile as parallel **lanes** (one per feature: editor / runtime / server, plus wasm / android / ios), so a full build overlaps instead of running back-to-back. Concurrency is auto-tuned from container RAM (~4 GB per lane); override with `BUILD_JOBS` if needed (lower on memory-tight machines, higher on big build servers).
 
 ```bash
 # In ~/projects/my-rpg-engine/
-makers docker-create    # container: renzora-a3f1b2c4
-makers docker-run       # builds all platforms for this fork
+makers docker-init     # image + container: renzora-a3f1b2c4 (idempotent)
+makers docker-build    # builds all platforms for this fork
 
 # In ~/projects/my-racing-engine/
-makers docker-create    # container: renzora-7e9d0f12
-makers docker-run       # builds all platforms for this fork
+makers docker-init     # image + container: renzora-7e9d0f12 (idempotent)
+makers docker-build    # builds all platforms for this fork
 ```
 
 ## Exporting
 
 The editor packages your game for any supported platform. It scans referenced assets, strips editor-only components, compresses everything into an `.rpak`, and bundles it with a pre-built runtime template.
 
-Export templates are built via `makers build-runtime` (current platform) or Docker (`makers docker-run`, all platforms). The editor finds templates in the `runtime/` sibling directory next to its own folder. You can also install templates manually from the export overlay.
+Export templates are built via `makers build-runtime` (current platform) or Docker (`makers docker-build`, all platforms). The editor finds templates in the `runtime/` sibling directory next to its own folder. You can also install templates manually from the export overlay.
 
 ### Supported Platforms
 
