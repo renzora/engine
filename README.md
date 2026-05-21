@@ -10,9 +10,10 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Getting Started
 
-**Prerequisites:** [Rust](https://rustup.rs/), then `cargo install cargo-make`
+**Prerequisites:** [Rust](https://rustup.rs/)
 
 ```bash
+cargo install cargo-make
 git clone https://github.com/renzora/engine
 cd engine
 makers run
@@ -59,29 +60,21 @@ Each build target (editor, runtime, server) is isolated with its own feature fla
 
 Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins. macOS builds produce `.app` bundles; Linux editor builds produce `.AppImage`.
 
-#### Prerequisites for Docker builds
+#### Host setup for Docker builds
 
-The image cross-compiles to all platforms from a single `linux/amd64` container. A few one-time setup steps depending on your host:
+Everything cross-compiles from one `linux/amd64` container. The macOS/iOS SDKs are fetched automatically when the image builds (see `docker/sdk/README.md` to pin versions or self-host); Windows and x86_64 Linux hosts need nothing extra.
 
-- **macOS cross-compilation**: Apple's SDK isn't redistributable, so you extract it from your own Xcode install once and drop the tarball at `docker/sdk/MacOSX26.1.sdk.tar.xz`. See `docker/sdk/README.md` for the extraction command.
-- **iOS cross-compilation**: same story for iPhoneOS — drop `docker/sdk/iPhoneOS15.5.sdk.tar.xz`. The README links to a community-maintained SDK release if you don't have a Mac handy.
-- **Apple Silicon hosts (M1/M2/M3/M4)**: Docker Desktop's default QEMU emulation is flaky with `apt-get` (you'll see random I/O errors mid-install). Enable Rosetta instead: **Docker Desktop → Settings → General → Use Virtualization framework**, then **Features in development → Use Rosetta for x86_64/amd64 emulation**. [OrbStack](https://orbstack.dev) is a lighter alternative that handles this out of the box.
-- **Windows / x86_64 Linux hosts**: no extra setup — the image builds natively.
+On **Apple Silicon**, enable Rosetta (Docker Desktop → Settings → Use Virtualization framework + Rosetta for x86_64 emulation) — the default QEMU path throws random `apt` errors mid-build. [OrbStack](https://orbstack.dev) handles this out of the box.
 
 ## Architecture
 
-One entry point, three build targets:
+One binary (`src/main.rs`), feature-gated into three targets:
 
-- **`src/main.rs`** -- Single binary, feature-gated for editor, runtime, or server.
-- **`src/runtime.rs`** -- Shared library. Core engine setup functions used by all targets.
+- **`editor`** -- full editor: panels, project selection, dynamic plugin loading.
+- **`runtime`** -- lean game runtime, no editor UI.
+- **`server`** -- headless: no window, rendering, or audio.
 
-Build targets:
-
-- **`--features editor`** -- Full editor with splash screen, project selection, editor panels, and dynamic plugin loading.
-- **`--features runtime`** -- Lean game runtime. No editor UI. Loads runtime-scoped plugins only.
-- **`--features server`** -- Headless dedicated server. No window, no rendering, no audio.
-
-Core editor infrastructure (viewport, camera, gizmo, grid, scene, keybindings, console) is statically linked into the binary -- not loaded as plugins. All other editor panels are standalone dylib plugins in `plugins/`.
+Core editor infrastructure (viewport, camera, gizmo, grid, scene, keybindings, console) is statically linked; other panels are dylib plugins in `plugins/`.
 
 ## Plugin SDK
 
@@ -232,36 +225,15 @@ This works for any component from any plugin. If someone publishes a `Sun` plugi
 
 ## Workspaces and Stable ABI
 
-Rust does not have a stable ABI. Two Rust binaries compiled separately cannot safely share types across a DLL boundary -- even with the same source code, different compilations can produce different memory layouts, vtable offsets, and `TypeId` values.
+Rust has no stable ABI, so the engine and its plugins must be compiled together to share types safely. Each target builds with `--workspace` into its own directory (`target/{editor,runtime,server}/`), compiling Bevy once into a shared `bevy_dylib` that everything links against — giving identical `TypeId`s. Separate directories also mean switching targets doesn't invalidate the others' caches.
 
-Renzora solves this with **isolated workspace builds**. The engine and all plugins are members of the same Cargo workspace. Each target (editor, runtime, server) is built separately with `--workspace` and a single feature flag, into its own target directory (`target/editor/`, `target/runtime/`, `target/server/`). Within each build, Cargo compiles Bevy exactly once into `bevy_dylib`, and both the engine and plugins link against that same shared library. This gives them identical type layouts and `TypeId`s.
-
-Separate target directories mean switching between targets doesn't invalidate the other's cache. After the first build of each target, subsequent builds only recompile what changed.
-
-The catch: **plugins must be built with the same compiler, same Bevy version, and same build profile as the engine.** If any of these differ, the `TypeId`s won't match. The engine checks this at load time -- each plugin exports a `plugin_bevy_hash()` function that returns the `TypeId` of `bevy::ecs::world::World`, and the loader compares it against the engine's own hash. Mismatched plugins are rejected with a warning.
+Distribution plugins are checked at load time: each exports a `plugin_bevy_hash()`, and the loader rejects any whose hash doesn't match the engine's (i.e. built with a different compiler, Bevy version, or profile).
 
 ## Per-Project Docker Builds
 
-Docker builds are scoped per directory. Running `makers docker-init` creates a persistent container named after a hash of your directory path. This means:
+Each directory gets its own container, named after a hash of its path — so forks in different directories keep separate build caches and never cross-contaminate. The **image** is the shared toolchain (Rust + osxcross/xwin/NDK/Clang); the **container** holds the cached build artifacts.
 
-- Two engine forks in different directories get separate containers with separate build caches
-- The container persists between builds -- first `makers docker-build` compiles everything, subsequent runs only recompile what changed
-- Each fork produces its own editor, runtime, and server binaries with its own plugin hashes
-- No cross-contamination between forks, even if they share the same Docker image
-
-The Docker **image** (built by `makers docker-init`) is the shared toolchain -- Rust compiler, cross-compilation tools (osxcross for macOS/iOS, xwin for Windows MSVC, Android NDK, Clang 19 with LLD for everything), and system dependencies. The **container** is your build environment with cached compilation artifacts.
-
-Within a build, platforms compile as parallel **lanes** (one per feature: editor / runtime / server, plus wasm / android / ios), so a full build overlaps instead of running back-to-back. Concurrency is auto-tuned from container RAM (~4 GB per lane); override with `BUILD_JOBS` if needed (lower on memory-tight machines, higher on big build servers).
-
-```bash
-# In ~/projects/my-rpg-engine/
-makers docker-init     # image + container: renzora-a3f1b2c4 (idempotent)
-makers docker-build    # builds all platforms for this fork
-
-# In ~/projects/my-racing-engine/
-makers docker-init     # image + container: renzora-7e9d0f12 (idempotent)
-makers docker-build    # builds all platforms for this fork
-```
+A build runs platforms as parallel **lanes** (editor/runtime/server + wasm/android/ios), auto-tuned to ~4 GB RAM per lane — override with `BUILD_JOBS` on tight or beefy machines.
 
 ## Exporting
 
