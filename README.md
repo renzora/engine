@@ -54,27 +54,7 @@ One container, one bind-mount, one shared `target/` cache. Filter platforms with
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
 
-Pass platforms after `--` to skip the rest. Recognized: `linux`, `windows`, `macos` (= both archs), `macos-x64`, `macos-arm64`, `wasm`, `android` (= both archs), `android-arm64`, `android-x86`, `ios`. Order doesn't matter and unknown names are silently no-ops (typo-safe).
-
-Each build target (editor, runtime, server) is isolated with its own feature flag and target directory. No feature unification, no hash mixing. Switching between local targets is instant after the first build of each.
-
-Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). Each folder is self-contained with the binary, SDK DLL, shared libraries, and plugins. macOS builds produce `.app` bundles; Linux editor builds produce `.AppImage`.
-
-#### Host setup for Docker builds
-
-Everything cross-compiles from one `linux/amd64` container. The macOS/iOS SDKs are fetched automatically when the image builds (see `docker/sdk/README.md` to pin versions or self-host); Windows and x86_64 Linux hosts need nothing extra.
-
-On **Apple Silicon**, enable Rosetta (Docker Desktop → Settings → Use Virtualization framework + Rosetta for x86_64 emulation) — the default QEMU path throws random `apt` errors mid-build. [OrbStack](https://orbstack.dev) handles this out of the box.
-
-## Architecture
-
-One binary (`src/main.rs`), feature-gated into three targets:
-
-- **`editor`** -- full editor: panels, project selection, dynamic plugin loading.
-- **`runtime`** -- lean game runtime, no editor UI.
-- **`server`** -- headless: no window, rendering, or audio.
-
-Core editor infrastructure (viewport, camera, gizmo, grid, scene, keybindings, console) is statically linked; other panels are dylib plugins in `plugins/`.
+Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`).
 
 ## Plugin SDK
 
@@ -229,19 +209,7 @@ Rust has no stable ABI, so the engine and its plugins must be compiled together 
 
 Distribution plugins are checked at load time: each exports a `plugin_bevy_hash()`, and the loader rejects any whose hash doesn't match the engine's (i.e. built with a different compiler, Bevy version, or profile).
 
-## Per-Project Docker Builds
-
-Each directory gets its own container, named after a hash of its path — so forks in different directories keep separate build caches and never cross-contaminate. The **image** is the shared toolchain (Rust + osxcross/xwin/NDK/Clang); the **container** holds the cached build artifacts.
-
-A build runs platforms as parallel **lanes** (editor/runtime/server + wasm/android/ios), auto-tuned to ~4 GB RAM per lane — override with `BUILD_JOBS` on tight or beefy machines.
-
-## Exporting
-
-The editor packages your game for any supported platform. It scans referenced assets, strips editor-only components, compresses everything into an `.rpak`, and bundles it with a pre-built runtime template.
-
-Export templates are built via `makers build-runtime` (current platform) or Docker (`makers docker-build`, all platforms). The editor finds templates in the `runtime/` sibling directory next to its own folder. You can also install templates manually from the export overlay.
-
-### Supported Platforms
+## Supported Platforms
 
 | Platform | Devices |
 |----------|---------|
