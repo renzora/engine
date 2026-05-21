@@ -48,8 +48,7 @@ One container, one bind-mount, one shared `target/` cache. Filter platforms with
 | Command | What it does |
 |---|---|
 | `makers docker-init` | Set up Docker: build image + create container + start. Idempotent -- skips any step already done. |
-| `makers docker-build` | Build all platforms (auto-runs `docker-init`; parallel lanes, fast after first run -- cache persists) |
-| `makers docker-build -- <platforms>` | Build a subset, e.g. `makers docker-build -- windows linux` |
+| <nobr>`makers docker-build [-- <platforms>]`</nobr> | Build in parallel lanes (auto-runs `docker-init`; fast after first run -- cache persists). No args = all platforms; pass platforms after `--` to build a subset, e.g. `makers docker-build -- windows linux`. |
 | <nobr>`makers upx [-- <platforms>]`</nobr> | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). No args = every platform under `dist/`; scope with the same names below or paths (`dist/windows-x64`). |
 | `makers docker-clean` | Wipe the container's build cache |
 | `makers docker-destroy` | Remove the container entirely |
