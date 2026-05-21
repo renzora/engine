@@ -134,21 +134,7 @@ makers add cool_fx --dylib
 
 That scaffold uses `crate-type = ["cdylib"]` and enables the `renzora/dlopen` feature, which makes `renzora::add!` emit unmangled `extern "C"` exports (`plugin_create`, `plugin_scope`, `plugin_bevy_hash`). Build with `cargo build -p renzora_cool_fx --profile dist` and copy the resulting `.dll`/`.so`/`.dylib` into the engine's `plugins/` directory. The host's `dynamic_plugin_loader` finds it at startup, validates the bevy ABI hash, and loads it. The plugin must be built against the same bevy + renzora versions as the host -- otherwise the hash check rejects it.
 
-### Loading
-
-**Desktop**: workspace plugins are baked into the binary (rlib). Distribution plugins are dlopen'd at startup from:
-- `plugins/` -- next to the binary
-- `<project>/plugins/` -- project-specific plugins (editor only)
-
-Restart the editor to pick up new distribution plugins.
-
-**Mobile / WASM**: there's no runtime plugin loading (Apple/Google Play forbid it; WASM has no dlopen). All plugins are statically linked at build time, registered through the same `inventory` ctor path. From the plugin author's view, the `renzora::add!` call site is identical to desktop.
-
 ### Building
-
-For desktop development, just `makers run` -- workspace builds compile the engine + every plugin together with matching `bevy_dylib` hashes.
-
-For per-target builds: `makers build-editor`, `makers build-runtime`, or `makers build-server`. Plugin DLLs land in `dist/<platform>/<target>/plugins/`.
 
 Don't build plugins standalone (`cargo build -p my_plugin` from outside `--workspace`) -- it may produce a different `bevy_dylib` hash and the plugin won't load. Stay inside `--workspace`.
 
