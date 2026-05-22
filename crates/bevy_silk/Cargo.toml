@@ -2,6 +2,10 @@
 name = "bevy_silk"
 version = "0.10.0"
 edition = "2021"
+# Only the explicitly-listed `[[example]]` targets below are real examples;
+# `examples/camera_plugin.rs` is a shared `mod`, not a target. Disable
+# autodiscovery so cargo doesn't try to build it as a standalone example.
+autoexamples = false
 authors = ["Felix de Maneville <felix.maneville@gmail.com>"]
 repository = "https://github.com/ManevilleF/bevy_silk"
 license = "MIT"
@@ -98,12 +102,12 @@ required-features = ["avian_collisions"]
 name = "anchors"
 path = "examples/anchors_example.rs"
 
-[[example]]
-name = "camera_plugin"
-path = "examples/camera_plugin.rs"
-crate-type = ["staticlib"]
-
-
+# `examples/camera_plugin.rs` is a shared helper pulled in via `mod
+# camera_plugin;`, not a runnable example. Upstream compiled it as a
+# `staticlib` example to keep it main-less, but that needs `bevy` in rlib
+# form — which this workspace never produces because it forces
+# `dynamic_linking` (bevy is a dylib). So it is deliberately not a target;
+# `autoexamples = false` (in `[package]`) stops cargo re-discovering it.
 
 [lints]
 workspace = true

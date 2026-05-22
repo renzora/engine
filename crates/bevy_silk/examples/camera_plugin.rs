@@ -29,7 +29,7 @@ impl Plugin for CameraPlugin {
     }
 }
 
-pub fn setup(mut commands: Commands, ambient: Res<AmbientBrightness>) {
+fn setup(mut commands: Commands, ambient: Res<AmbientBrightness>) {
     commands
         .spawn((
             Transform::from_rotation(Quat::from_rotation_z(-1.0)),
