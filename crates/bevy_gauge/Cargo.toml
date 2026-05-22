@@ -44,9 +44,17 @@ path = "examples/damage_pipeline.rs"
 name = "dependency_chains"
 path = "examples/dependency_chains.rs"
 
-[[example]]
-name = "derived_components"
-path = "examples/derived_components.rs"
+# `derived_components` is not built: it uses `#[derive(AttributeComponent)]`,
+# whose codegen comes from `bevy_gauge_macros`. This vendored crate is 0.4.2
+# but its caret macro dep floats to 0.4.5, which emits code for a newer lib
+# API (`RegistrationKind`, `AttributeRegistration { kind, .. }`) absent from
+# this 0.4.2 source, so the example fails to compile under `cargo test
+# --workspace`. The crate is orphaned anyway (renzora_gauges uses the
+# crates.io 0.4.5), so the example is dropped rather than churning the macro
+# pin (which would force-downgrade the crates.io bevy_gauge for everyone).
+# [[example]]
+# name = "derived_components"
+# path = "examples/derived_components.rs"
 
 [[example]]
 name = "equipment"

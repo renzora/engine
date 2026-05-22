@@ -774,6 +774,14 @@ mod tests {
     use bevy::prelude::*;
 
     use super::*;
+    // With `bevy_ui` enabled, `bevy::prelude::*` re-exports a `Node` (the UI
+    // component) that collides with this crate's `Node` trait pulled in via
+    // `super::*`, hiding its `eval` method behind glob ambiguity. Import the
+    // trait explicitly to disambiguate. Under minimal features (no `bevy_ui`,
+    // e.g. `cargo test -p bevy_hanabi`) there is no collision so the import
+    // looks unused — hence the `allow`, since the crate denies warnings.
+    #[allow(unused_imports)]
+    use crate::node::Node as _;
     use crate::{
         EvalContext, ModifierContext, ParticleLayout, PropertyLayout, ShaderWriter,
     };
