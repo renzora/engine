@@ -775,7 +775,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        node::Node as _, EvalContext, ModifierContext, ParticleLayout, PropertyLayout, ShaderWriter,
+        EvalContext, ModifierContext, ParticleLayout, PropertyLayout, ShaderWriter,
     };
 
     #[test]
