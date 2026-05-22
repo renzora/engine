@@ -1066,7 +1066,7 @@ fn draw_settings_panel(
     );
 
     if is_desktop {
-        let server_available = selected_platform.server_template_filename().is_some();
+        let server_available = selected_platform.supports_dedicated_server();
         if server_available {
             ui.checkbox(
                 &mut export_state.include_server,
@@ -1075,9 +1075,12 @@ fn draw_settings_panel(
 
             if export_state.include_server {
                 drop(export_state);
+                // The dedicated server reuses the game binary (run with
+                // `--server`), so it just needs the platform's template
+                // installed — same as a normal export.
                 let server_installed = world
                     .resource::<TemplateManager>()
-                    .is_server_installed(selected_platform);
+                    .is_installed(selected_platform);
                 ui.indent("server_template_status", |ui| {
                     if server_installed {
                         ui.horizontal(|ui| {
@@ -1086,7 +1089,7 @@ fn draw_settings_panel(
                                     .color(egui::Color32::from_rgb(89, 191, 115)),
                             );
                             ui.label(
-                                egui::RichText::new("Server template installed")
+                                egui::RichText::new("Adds server.bat + server.rpak")
                                     .size(11.0)
                                     .color(text_secondary),
                             );
@@ -1098,41 +1101,10 @@ fn draw_settings_panel(
                                     .color(egui::Color32::from_rgb(242, 166, 64)),
                             );
                             ui.label(
-                                egui::RichText::new("Server template not installed")
+                                egui::RichText::new("Runtime template not installed")
                                     .size(11.0)
                                     .color(text_secondary),
                             );
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(format!(
-                                            "{} Install from file...",
-                                            regular::FOLDER_OPEN
-                                        ))
-                                        .size(11.0),
-                                    )
-                                    .fill(surface_mid),
-                                )
-                                .clicked()
-                            {
-                                if let Some(path) = rfd::FileDialog::new()
-                                    .set_title("Select server template binary")
-                                    .pick_file()
-                                {
-                                    let mut mgr = world.resource_mut::<TemplateManager>();
-                                    if let Some(server_name) =
-                                        selected_platform.server_binary_name_in_dir()
-                                    {
-                                        let server_dir = mgr.dist_dir.join("server");
-                                        let _ = std::fs::create_dir_all(&server_dir);
-                                        let dest = server_dir.join(server_name);
-                                        if let Err(e) = std::fs::copy(&path, &dest) {
-                                            warn!("Failed to install server template: {}", e);
-                                        }
-                                        mgr.scan();
-                                    }
-                                }
-                            }
                         });
                     }
                 });
@@ -1579,15 +1551,8 @@ fn run_export(world: &mut World, project_name: &str) {
         }
     };
 
-    // Get server template path if needed
-    let server_template = if include_server {
-        world
-            .resource::<TemplateManager>()
-            .get_server(platform)
-            .map(|t| t.path.clone())
-    } else {
-        None
-    };
+    // The dedicated server reuses the game binary (run with `--server`), so
+    // there's no separate server template to resolve here.
 
     let (tx, rx) = mpsc::channel();
 
@@ -1621,7 +1586,6 @@ fn run_export(world: &mut World, project_name: &str) {
             mesh_generate_lods,
             mesh_lod_levels,
             template_path,
-            server_template,
             selected_plugins,
             runtime_dir,
         );
@@ -1651,7 +1615,6 @@ fn export_worker(
     mesh_generate_lods: bool,
     mesh_lod_levels: u32,
     template_path: std::path::PathBuf,
-    server_template: Option<std::path::PathBuf>,
     selected_plugins: Vec<std::path::PathBuf>,
     runtime_dir: std::path::PathBuf,
 ) {
@@ -1910,10 +1873,8 @@ fn export_worker(
                     &project,
                     binary_stem,
                     platform,
-                    packaging_mode,
                     compression_level,
                     &output_dir,
-                    server_template.as_deref(),
                 );
                 match server_result {
                     Ok(server_files) => {
@@ -1947,25 +1908,21 @@ fn export_worker(
     }
 }
 
-/// Export the dedicated server binary with stripped assets (no World access).
+/// Write the dedicated-server data bundle and launcher alongside the game
+/// export. The server reuses the **game binary** (run with `--server`) — no
+/// separate server executable is produced. Output:
+///   - `server.rpak` — project assets stripped for server use (no visuals).
+///   - `server.bat` / `server.sh` — runs the game binary in server mode,
+///     pointed at `server.rpak` via `--rpak`.
 fn export_server_standalone(
     tx: &mpsc::Sender<ExportMsg>,
     project: &CurrentProject,
-    project_name: &str,
+    binary_stem: &str,
     platform: Platform,
-    packaging_mode: PackagingMode,
     compression_level: i32,
     output_dir: &std::path::Path,
-    server_template: Option<&std::path::Path>,
 ) -> Result<usize, String> {
     let _ = tx.send(ExportMsg::Progress("Packing server assets...".into()));
-
-    let server_template = server_template
-        .ok_or_else(|| "No server template installed for this platform".to_string())?;
-
-    let server_binary_name = platform
-        .server_binary_name(project_name)
-        .ok_or_else(|| "Server not supported on this platform".to_string())?;
 
     let mut server_packer = pack_project_filtered(&project.path, SERVER_EXTENSIONS)
         .map_err(|e| format!("Failed to pack server assets: {}", e))?;
@@ -1974,43 +1931,56 @@ fn export_server_standalone(
 
     let server_file_count = server_packer.len();
 
-    let _ = tx.send(ExportMsg::Progress("Writing server output...".into()));
+    let _ = tx.send(ExportMsg::Progress("Writing server bundle...".into()));
 
-    match packaging_mode {
-        PackagingMode::SeparateFiles => {
-            let rpak_path = output_dir.join(format!("{}-server.rpak", project_name));
-            let binary_dest = output_dir.join(&server_binary_name);
+    // Always a standalone `server.rpak`; the launcher points the game binary at
+    // it with `--rpak`, so the client's packaging mode doesn't matter here.
+    let rpak_path = output_dir.join("server.rpak");
+    server_packer
+        .write_to_file(&rpak_path, compression_level)
+        .map_err(|e| format!("Failed to write server.rpak: {}", e))?;
 
-            server_packer
-                .write_to_file(&rpak_path, compression_level)
-                .and_then(|_| std::fs::copy(server_template, &binary_dest).map(|_| ()))
-                .and_then(|_| {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let perms = std::fs::Permissions::from_mode(0o755);
-                        std::fs::set_permissions(&binary_dest, perms)?;
-                    }
-                    Ok(())
-                })
-                .map_err(|e| format!("Server export failed: {}", e))?;
-        }
-        PackagingMode::SingleBinary => {
-            let binary_dest = output_dir.join(&server_binary_name);
-            server_packer
-                .append_to_binary(server_template, &binary_dest, compression_level)
-                .and_then(|_| {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let perms = std::fs::Permissions::from_mode(0o755);
-                        std::fs::set_permissions(&binary_dest, perms)?;
-                    }
-                    Ok(())
-                })
-                .map_err(|e| format!("Server export failed: {}", e))?;
-        }
-    }
+    let game_binary = platform.binary_name(binary_stem);
+    write_server_launcher(output_dir, &game_binary, platform)
+        .map_err(|e| format!("Failed to write server launcher: {}", e))?;
 
     Ok(server_file_count)
+}
+
+/// Write a `server.bat` (Windows) / `server.sh` (Linux/macOS) launcher that runs
+/// the game binary in dedicated-server mode against `server.rpak`.
+fn write_server_launcher(
+    output_dir: &std::path::Path,
+    game_binary: &str,
+    platform: Platform,
+) -> std::io::Result<()> {
+    match platform {
+        Platform::WindowsX64 => {
+            let path = output_dir.join("server.bat");
+            std::fs::write(
+                path,
+                format!(
+                    "@echo off\r\n\"%~dp0{}\" --server --rpak \"%~dp0server.rpak\" %*\r\n",
+                    game_binary
+                ),
+            )?;
+        }
+        Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64 => {
+            let path = output_dir.join("server.sh");
+            std::fs::write(
+                &path,
+                format!(
+                    "#!/bin/sh\ndir=\"$(dirname \"$0\")\"\nexec \"$dir/{}\" --server --rpak \"$dir/server.rpak\" \"$@\"\n",
+                    game_binary
+                ),
+            )?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }

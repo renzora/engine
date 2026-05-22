@@ -73,16 +73,6 @@ impl Platform {
         }
     }
 
-    /// Server binary name within the server/ directory.
-    pub fn server_binary_name_in_dir(&self) -> Option<&'static str> {
-        match self {
-            Platform::WindowsX64 => Some("renzora-server.exe"),
-            Platform::LinuxX64 => Some("renzora-server"),
-            Platform::MacOSX64 | Platform::MacOSArm64 => Some("renzora-server"),
-            _ => None,
-        }
-    }
-
     pub fn template_filename(&self) -> &'static str {
         match self {
             Platform::WindowsX64 => "renzora-runtime-windows-x64.exe",
@@ -98,26 +88,17 @@ impl Platform {
         }
     }
 
-    /// Server template filename for this platform (desktop only).
-    pub fn server_template_filename(&self) -> Option<&'static str> {
-        match self {
-            Platform::WindowsX64 => Some("renzora-server-windows-x64.exe"),
-            Platform::LinuxX64 => Some("renzora-server-linux-x64"),
-            Platform::MacOSX64 => Some("renzora-server-macos-x64"),
-            Platform::MacOSArm64 => Some("renzora-server-macos-arm64"),
-            _ => None, // No server for mobile/web
-        }
-    }
-
-    /// Server binary output name.
-    pub fn server_binary_name(&self, project_name: &str) -> Option<String> {
-        match self {
-            Platform::WindowsX64 => Some(format!("{}-server.exe", project_name)),
-            Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64 => {
-                Some(format!("{}-server", project_name))
-            }
-            _ => None,
-        }
+    /// Whether this platform can run a dedicated server. Desktop only — the
+    /// server is the runtime binary launched with `--server`, so there's no
+    /// separate template; mobile/web don't ship a headless server.
+    pub fn supports_dedicated_server(&self) -> bool {
+        matches!(
+            self,
+            Platform::WindowsX64
+                | Platform::LinuxX64
+                | Platform::MacOSX64
+                | Platform::MacOSArm64
+        )
     }
 
     pub fn supported_devices(&self) -> &'static str {
@@ -158,18 +139,18 @@ impl Platform {
     }
 }
 
-/// A downloaded/available runtime or server template.
+/// A downloaded/available runtime template.
 #[derive(Debug, Clone)]
 pub struct ExportTemplate {
     pub platform: Platform,
     pub path: PathBuf,
     pub version: String,
-    pub is_server: bool,
 }
 
 /// Manages export templates from dist/{platform}/{target}/ directories.
 ///
-/// Each target (runtime, server) is built separately with its own hash.
+/// One runtime template per platform; the dedicated server reuses it (launched
+/// with `--server`), so there's no separate server template.
 /// Templates are found as sibling directories to the editor's folder.
 #[derive(Resource)]
 pub struct TemplateManager {
@@ -196,11 +177,13 @@ impl Default for TemplateManager {
 }
 
 impl TemplateManager {
-    /// Scan for templates in runtime/ and server/ sibling directories.
+    /// Scan for templates in the runtime/ sibling directory.
     pub fn scan(&mut self) {
         self.templates.clear();
 
-        // Check runtime/ directory
+        // Check runtime/ directory. The dedicated server isn't a separate
+        // build — it's the runtime binary launched with `--server` — so the
+        // runtime template is all that's needed for both client and server.
         let runtime_dir = self.dist_dir.join("runtime");
         if runtime_dir.exists() {
             for platform in Platform::ALL {
@@ -208,28 +191,9 @@ impl TemplateManager {
                 if path.exists() {
                     self.templates.push(ExportTemplate {
                         platform: *platform,
-                        path: path.clone(),
+                        path,
                         version: "local".to_string(),
-                        is_server: false,
                     });
-                }
-            }
-        }
-
-        // Check server/ directory
-        let server_dir = self.dist_dir.join("server");
-        if server_dir.exists() {
-            for platform in Platform::ALL {
-                if let Some(name) = platform.server_binary_name_in_dir() {
-                    let path = server_dir.join(name);
-                    if path.exists() {
-                        self.templates.push(ExportTemplate {
-                            platform: *platform,
-                            path,
-                            version: "local".to_string(),
-                            is_server: true,
-                        });
-                    }
                 }
             }
         }
@@ -247,25 +211,11 @@ impl TemplateManager {
 
     /// Check if a template is available for the given platform.
     pub fn get(&self, platform: Platform) -> Option<&ExportTemplate> {
-        self.templates
-            .iter()
-            .find(|t| t.platform == platform && !t.is_server)
-    }
-
-    /// Check if a server template is available for the given platform.
-    pub fn get_server(&self, platform: Platform) -> Option<&ExportTemplate> {
-        self.templates
-            .iter()
-            .find(|t| t.platform == platform && t.is_server)
+        self.templates.iter().find(|t| t.platform == platform)
     }
 
     /// Check if a template is installed for the given platform.
     pub fn is_installed(&self, platform: Platform) -> bool {
         self.get(platform).is_some()
-    }
-
-    /// Check if a server template is installed for the given platform.
-    pub fn is_server_installed(&self, platform: Platform) -> bool {
-        self.get_server(platform).is_some()
     }
 }

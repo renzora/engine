@@ -54,7 +54,7 @@ impl BuildTarget {
 pub fn default_targets() -> Vec<BuildTarget> {
     let mut v = Vec::new();
     for p in &["linux-x64", "windows-x64", "macos-x64", "macos-arm64"] {
-        for f in &["editor", "runtime", "server"] {
+        for f in &["editor", "runtime"] {
             v.push(BuildTarget::new(p, f));
         }
     }

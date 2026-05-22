@@ -16,14 +16,9 @@ description = "Clean runtime build outputs"
 env = { CLEAN_TARGET = "runtime" }
 run_task = "clean-outputs"
 
-[tasks.clean-server]
-description = "Clean server build outputs"
-env = { CLEAN_TARGET = "server" }
-run_task = "clean-outputs"
-
 [tasks.clean]
-description = "Clean editor + runtime + server build outputs"
-dependencies = ["clean-editor", "clean-runtime", "clean-server"]
+description = "Clean editor + runtime build outputs"
+dependencies = ["clean-editor", "clean-runtime"]
 
 [tasks.clean-outputs]
 description = "Remove final artifacts from target/{target}/dist/ (keeps dep cache)"
@@ -77,16 +72,6 @@ dependencies = ["clean-runtime", "build-runtime-cargo", "sync-dist-runtime"]
 description = "Compile the runtime binary (no editor crates in the dep tree)"
 command = "cargo"
 args = ["build", "--profile", "dist", "--bin", "renzora", "--no-default-features", "--features", "runtime", "--target-dir", "target/runtime"]
-
-# makers build-server — compile server + plugins
-[tasks.build-server]
-description = "Build server and sync to dist/"
-dependencies = ["clean-server", "build-server-cargo", "sync-dist-server"]
-
-[tasks.build-server-cargo]
-description = "Compile the server binary (no editor crates in the dep tree)"
-command = "cargo"
-args = ["build", "--profile", "dist", "--bin", "renzora", "--no-default-features", "--features", "server", "--target-dir", "target/server"]
 
 # makers run — build + run the editor from dist/
 [tasks.run]
@@ -310,7 +295,7 @@ docker exec "renzora-$(echo -n "$PWD" | md5sum | cut -c1-8)" bash -c "/app/src/s
 
 # =============================================================================
 # Sync dist/ — copy build outputs to a clean distributable folder
-# Each target (editor/runtime/server) gets its own subfolder per platform
+# Each target (editor/runtime) gets its own subfolder per platform
 # =============================================================================
 
 [tasks.sync-dist-editor]
@@ -321,11 +306,6 @@ run_task = "sync-dist"
 [tasks.sync-dist-runtime]
 description = "Sync runtime build to dist/"
 env = { SYNC_TARGET = "runtime" }
-run_task = "sync-dist"
-
-[tasks.sync-dist-server]
-description = "Sync server build to dist/"
-env = { SYNC_TARGET = "server" }
 run_task = "sync-dist"
 
 [tasks.sync-dist]
@@ -355,7 +335,6 @@ $srcBin = "$src/renzora.exe"
 switch ($target) {
     "editor"  { $destBin = "renzora.exe" }
     "runtime" { $destBin = "renzora-runtime.exe" }
-    "server"  { $destBin = "renzora-server.exe" }
 }
 if (Test-Path $srcBin) { Copy-Item $srcBin "$dir/$destBin" -Force }
 
@@ -388,7 +367,7 @@ PLATFORM="linux-x64"
 SRC="target/$TARGET/dist"
 BASE="dist/$PLATFORM/$TARGET"
 
-# For editor, layout is an AppDir wrapped into AppImage; for runtime/server, loose dir.
+# For editor, layout is an AppDir wrapped into AppImage; for runtime, loose dir.
 if [ "$TARGET" = "editor" ]; then
     APPDIR="$BASE/Renzora Engine.AppDir"
     rm -rf "$APPDIR" "$BASE"/*.AppImage
@@ -396,13 +375,12 @@ if [ "$TARGET" = "editor" ]; then
     ROOT="$APPDIR"
     BIN_NAME="renzora"
 else
-    rm -f "$BASE"/*.so "$BASE"/renzora "$BASE"/renzora-runtime "$BASE"/renzora-server
+    rm -f "$BASE"/*.so "$BASE"/renzora "$BASE"/renzora-runtime
     rm -f "$BASE"/plugins/*.so
     mkdir -p "$BASE/plugins"
     ROOT="$BASE"
     case "$TARGET" in
         runtime) BIN_NAME="renzora-runtime" ;;
-        server)  BIN_NAME="renzora-server" ;;
     esac
 fi
 
@@ -482,7 +460,6 @@ BASE="dist/$PLATFORM/$TARGET"
 case "$TARGET" in
     editor)  APP_NAME="Renzora Engine.app";   BIN_NAME="renzora";         DISPLAY_NAME="Renzora Engine" ;;
     runtime) APP_NAME="Renzora Runtime.app";  BIN_NAME="renzora-runtime"; DISPLAY_NAME="Renzora Runtime" ;;
-    server)  APP_NAME="Renzora Server.app";   BIN_NAME="renzora-server";  DISPLAY_NAME="Renzora Server" ;;
 esac
 
 APP="$BASE/$APP_NAME"

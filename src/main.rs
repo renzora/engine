@@ -8,7 +8,6 @@
         target_os = "windows",
         feature = "runtime",
         not(feature = "editor"),
-        not(feature = "server"),
         not(debug_assertions)
     ),
     windows_subsystem = "windows"
@@ -20,8 +19,10 @@ use bevy::prelude::*;
 //
 // Most setup lives in `renzora_runtime` (the shared meta-crate). The two
 // items below stay here because they are binary-level deployment decisions:
-// `add_default_rendering` swaps in a no-window plugin set for the dedicated
-// server, and `build_runtime_app` is the entry point WASM bindings call.
+// `add_default_rendering` installs the windowed client plugin set, and
+// `build_runtime_app` is the entry point WASM bindings call. The dedicated
+// server is no longer a separate binary — it's the runtime launched with
+// `--server`, which swaps in a windowless plugin set inline in `main`.
 
 pub fn init_app() -> App {
     renzora_runtime::init_app()
@@ -32,20 +33,10 @@ pub fn add_engine_plugins(app: &mut App) {
 }
 
 pub fn add_default_rendering(app: &mut App) {
-    #[cfg(any(feature = "editor", not(feature = "server")))]
     renzora_runtime::add_default_rendering(app);
-
-    #[cfg(all(feature = "server", not(feature = "editor")))]
-    {
-        app.add_plugins(DefaultPlugins.set(bevy::window::WindowPlugin {
-            primary_window: None,
-            exit_condition: bevy::window::ExitCondition::DontExit,
-            ..default()
-        }));
-    }
 }
 
-/// Build the full runtime app (used by WASM `start` and the dedicated server).
+/// Build the full runtime app (used by WASM `start`).
 pub fn build_runtime_app() -> App {
     let mut app = init_app();
     add_default_rendering(&mut app);
@@ -127,30 +118,49 @@ fn main() {
     }
 
     // ── Runtime ──────────────────────────────────────────────────────
+    //
+    // One binary, two modes. With `--server` the runtime boots headless as a
+    // dedicated server: no window, the renderer stays uninitialized past the
+    // windowless plugin set, and the network server plugin drives the loop.
+    // Without it, the normal windowed client launches. There is no separate
+    // server template — the dedicated server IS the runtime in server mode.
     #[cfg(feature = "runtime")]
     {
+        let server_mode = std::env::args().any(|a| a == "--server");
+
         let mut app = init_app();
-        add_default_rendering(&mut app);
+
+        // Load the server config up front so the headless runner and the
+        // network server plugin share one tick rate.
+        let server_config = server_mode.then(load_server_config);
+
+        if let Some(net_config) = &server_config {
+            // Windows release runtime is `windows_subsystem = "windows"`, so
+            // grab a console for the server's log output.
+            renzora_runtime::attach_console();
+            // Mark server mode before engine plugins build, so client/render-
+            // only plugins (NetworkPlugin's client setup, bevy_hanabi) opt out.
+            app.init_resource::<renzora_runtime::renzora::DedicatedServer>();
+            // Headless: no GPU, no window, no winit — driven by a fixed-rate
+            // runner at the network tick. See `add_headless_rendering`.
+            renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate);
+        } else {
+            add_default_rendering(&mut app);
+        }
+
         add_engine_plugins(&mut app);
         app.add_plugins(renzora_runtime::renzora_engine::crash::CrashReportPlugin);
-        load_global_plugins(&mut app, false);
-        app.run();
-    }
 
-    // ── Server ───────────────────────────────────────────────────────
-    #[cfg(feature = "server")]
-    {
-        let mut app = build_runtime_app();
-        app.add_plugins(renzora_runtime::renzora_engine::crash::CrashReportPlugin);
+        if let Some(net_config) = server_config {
+            info!(
+                "[server] Starting dedicated server on {}:{}",
+                net_config.server_addr, net_config.port
+            );
+            app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(
+                net_config,
+            ));
+        }
 
-        let net_config = load_server_config();
-        info!(
-            "[server] Starting dedicated server on {}:{}",
-            net_config.server_addr, net_config.port
-        );
-        app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(
-            net_config,
-        ));
         load_global_plugins(&mut app, false);
         app.run();
     }
@@ -166,7 +176,7 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
 
 // ── Server config ────────────────────────────────────────────────────────
 
-#[cfg(feature = "server")]
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 fn load_server_config() -> renzora_runtime::renzora_network::NetworkConfig {
     use renzora_runtime::renzora;
     use renzora_runtime::renzora_network;

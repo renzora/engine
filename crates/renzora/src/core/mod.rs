@@ -1063,6 +1063,15 @@ pub struct NetworkBridge {
     pub player_count: i32,
 }
 
+/// Marker resource: present when the runtime is running as a dedicated server
+/// (`renzora-runtime --server`). Inserted before engine plugins build so they
+/// can opt out of client/render-only setup. A dedicated server has no render
+/// world (`backends: None`), so GPU-only plugins (e.g. `bevy_hanabi`) must
+/// check this and skip their render-side initialization to avoid panicking on
+/// the absent `RenderApp`. Networking uses it to skip client-side setup.
+#[derive(Resource, Default)]
+pub struct DedicatedServer;
+
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]
@@ -1663,12 +1672,16 @@ mod tests {
             main_scene: "scenes/intro.ron".into(),
             editor_last_scene: Some("scenes/wip.ron".into()),
             icon: Some("assets/icon.png".into()),
+            autoload: vec!["scenes/loader.ron".into()],
             window: WindowConfig {
                 width: 1920,
                 height: 1080,
                 resizable: false,
                 mode: WindowMode::Fullscreen,
             },
+            viewport: ViewportConfig::default(),
+            rendering_2d: Rendering2dConfig::default(),
+            rendering: RenderingConfig::default(),
             console_logging: false,
             network: None,
             editor: Some(crate::core::viewport_types::EditorPrefs::default()),

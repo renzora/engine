@@ -1,19 +1,19 @@
 # Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
 # Run
-renzora = "run --profile dist --bin renzora --no-default-features --features editor,runtime,server"
-runtime = "run --profile dist --bin renzora-runtime --no-default-features --features editor,runtime,server"
-server = "run --profile dist --bin renzora-server --no-default-features --features editor,runtime,server"
+renzora = "run --profile dist --bin renzora --no-default-features --features editor"
+runtime = "run --profile dist --bin renzora --no-default-features --features runtime"
+# Dedicated server = the runtime binary launched with `--server`.
+server = "run --profile dist --bin renzora --no-default-features --features runtime -- --server"
 
 # Build
-build-editor = "build --profile dist --bin renzora --no-default-features --features editor,runtime,server"
-build-runtime = "build --profile dist --bin renzora-runtime --no-default-features --features editor,runtime,server"
-build-server = "build --profile dist --bin renzora-server --no-default-features --features editor,runtime,server"
+build-editor = "build --profile dist --bin renzora --no-default-features --features editor"
+build-runtime = "build --profile dist --bin renzora --no-default-features --features runtime"
 build-all = "build --profile dist --workspace"
-build-plugins = "build --profile dist --workspace --no-default-features --features editor,runtime,server"
+build-plugins = "build --profile dist --workspace --no-default-features --features editor,runtime"
 
 # WASM
-build-web = "build --profile dist --bin renzora-runtime --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
+build-web = "build --profile dist --bin renzora --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
 build-web-editor = "build --profile dist --bin renzora --no-default-features --features editor,wasm --target wasm32-unknown-unknown"
 
 # Android

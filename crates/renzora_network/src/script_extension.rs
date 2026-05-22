@@ -63,7 +63,7 @@ pub fn handle_network_script_actions(
             let max_clients = get_i64("max_clients") as u16;
             log::info!(
                 "[network] Host server request (port={}, max={}). \
-                 Use renzora-server binary for dedicated servers.",
+                 Run the runtime with `--server` for a dedicated server.",
                 port,
                 max_clients
             );

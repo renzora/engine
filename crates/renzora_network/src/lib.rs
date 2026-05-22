@@ -67,6 +67,14 @@ impl Plugin for NetworkPlugin {
         app.register_type::<components::Networked>();
         app.register_type::<components::NetworkId>();
 
+        // A dedicated server adds `ServerPlugins` + protocol via
+        // `NetworkServerPlugin`; skip the client setup here so the protocol
+        // isn't registered twice.
+        if app.world().contains_resource::<renzora::DedicatedServer>() {
+            info!("[network] Dedicated server mode — skipping client setup");
+            return;
+        }
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             // Lightyear client infrastructure

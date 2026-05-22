@@ -30,17 +30,15 @@ These compile for the OS you're on. Mobile crates (`renzora-ios`, `renzora-andro
 | `makers run` | Build + run the editor |
 | `makers build` | Alias for `makers build-editor` |
 | `makers build-editor` | Build the editor + plugins, sync to `dist/<host>/editor/` |
-| `makers build-runtime` | Build runtime export template (no editor crates), sync to `dist/<host>/runtime/` |
-| `makers build-server` | Build dedicated server (headless), sync to `dist/<host>/server/` |
+| `makers build-runtime` | Build runtime export template (no editor crates), sync to `dist/<host>/runtime/`. Doubles as the dedicated server — run it with `--server`. |
 | `makers build-web` | Build WASM runtime export template → `target/dist/renzora-runtime-web-wasm32.zip` |
 | <nobr>`makers build-web-editor`</nobr> | Build WASM editor → `templates/web/` (runs `wasm-bindgen` + `wasm-opt` + brotli; native-only deps make this best-effort) |
 | `makers build-android` | Build all Android template APKs (ARM64 + x86_64) |
 | <nobr>`makers build-android-arm64`</nobr> | Build Android ARM64 template APK only |
 | `makers build-ios` | Build iOS ARM64 template (macOS + Xcode only) |
-| `makers clean` | Remove final artifacts for editor + runtime + server (keeps cargo's dep cache) |
+| `makers clean` | Remove final artifacts for editor + runtime (keeps cargo's dep cache) |
 | `makers clean-editor` | Same as `clean`, scoped to the editor target |
 | `makers clean-runtime` | Same as `clean`, scoped to the runtime target |
-| `makers clean-server` | Same as `clean`, scoped to the server target |
 
 ### Docker builds (cross-platform)
 

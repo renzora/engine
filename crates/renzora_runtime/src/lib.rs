@@ -134,6 +134,71 @@ pub fn add_default_rendering(app: &mut App) {
     }
 }
 
+/// Headless plugin set for the dedicated server (`renzora-runtime --server`).
+///
+/// Same `DefaultPlugins` as the client so every engine plugin still finds the
+/// types and resources it expects, but with three changes for headless:
+///
+/// - `backends: None` — Bevy detects no wgpu backend and skips renderer
+///   initialization entirely (no adapter request, no `RenderDevice`, no
+///   `RenderApp` sub-app), so it boots on machines with no GPU.
+/// - `primary_window: None` — no surface.
+/// - `WinitPlugin` disabled + `ScheduleRunnerPlugin` added — winit's event loop
+///   fails to initialize on a headless Linux box (no X/Wayland), even with no
+///   window. Dropping it and driving the app with a fixed-rate runner is what
+///   makes the server actually deployable on a bare cloud VM.
+///
+/// This mirrors Godot's `--headless` (full renderer present, no driver active).
+/// Plugins that touch the render sub-app must guard for its absence
+/// (`get_sub_app_mut(RenderApp)`), exactly as Bevy's own render plugins do.
+///
+/// `tick_rate` (Hz) sets the runner's loop rate; it matches the network tick so
+/// the server loop runs at the simulation cadence.
+pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
+    use bevy::app::ScheduleRunnerPlugin;
+    use bevy::log::LogPlugin;
+    use bevy::render::{
+        settings::{RenderCreation, WgpuSettings},
+        RenderPlugin,
+    };
+    use bevy::window::{ExitCondition, WindowPlugin};
+    use core::time::Duration;
+
+    app.add_plugins(
+        DefaultPlugins
+            .set(RenderPlugin {
+                render_creation: RenderCreation::Automatic(WgpuSettings {
+                    backends: None,
+                    ..default()
+                }),
+                ..default()
+            })
+            .set(WindowPlugin {
+                primary_window: None,
+                exit_condition: ExitCondition::DontExit,
+                ..default()
+            })
+            // Silence the noise that's expected with no render world: Bevy's
+            // render plugins log loudly when the `RenderApp` is absent, and the
+            // compiled-in Tracy layer warns it's active. None of it matters on a
+            // headless server. Keeps the rest of the default INFO logging.
+            .set(LogPlugin {
+                filter: "wgpu=error,naga=warn,\
+                         bevy_log=error,\
+                         bevy_render::extract_resource=off,\
+                         bevy_gizmos_render=off,\
+                         bevy_render::texture=off,\
+                         bevy_gltf=off"
+                    .to_string(),
+                ..default()
+            })
+            .disable::<bevy::winit::WinitPlugin>(),
+    );
+
+    let wait = Duration::from_secs_f64(1.0 / tick_rate.max(1) as f64);
+    app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));
+}
+
 #[cfg(feature = "editor")]
 fn maximize_primary_window(
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
@@ -196,8 +261,8 @@ fn apply_window_config(
 /// `AttachConsole(ATTACH_PARENT_PROCESS)` first so launching from cmd.exe pipes
 /// output to that terminal; if there's no parent console we fall back to
 /// `AllocConsole`. No-op on platforms where stdout already works.
-#[cfg(all(target_os = "windows", not(feature = "editor")))]
-fn attach_console() {
+#[cfg(target_os = "windows")]
+pub fn attach_console() {
     use std::sync::atomic::{AtomicBool, Ordering};
     static ATTACHED: AtomicBool = AtomicBool::new(false);
     if ATTACHED.swap(true, Ordering::SeqCst) {
@@ -218,11 +283,8 @@ fn attach_console() {
     }
 }
 
-#[cfg(all(
-    not(feature = "editor"),
-    not(all(target_os = "windows", not(feature = "editor")))
-))]
-fn attach_console() {
+#[cfg(not(target_os = "windows"))]
+pub fn attach_console() {
     // stdout is always live on Linux/macOS; no console to allocate.
 }
 

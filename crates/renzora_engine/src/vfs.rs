@@ -21,6 +21,18 @@ pub fn set_wasm_rpak(bytes: Vec<u8>) {
     let _ = WASM_RPAK_BYTES.set(bytes);
 }
 
+/// Parse `--rpak <path>` from the process arguments, if present.
+#[cfg(not(target_arch = "wasm32"))]
+fn rpak_path_arg() -> Option<PathBuf> {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
+        if arg == "--rpak" {
+            return args.next().map(PathBuf::from);
+        }
+    }
+    None
+}
+
 /// Bevy resource providing a virtual filesystem backed by an `.rpak` archive.
 ///
 /// When no archive is loaded, all reads go through the normal filesystem.
@@ -73,6 +85,28 @@ impl Vfs {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            // 0. Explicit `--rpak <path>` override. The dedicated-server
+            //    launcher (`server.bat`) uses this to point the game binary at
+            //    the server-stripped `server.rpak` instead of its own bundle.
+            if let Some(path) = rpak_path_arg() {
+                match RpakArchive::from_file(&path) {
+                    Ok(archive) => {
+                        info!(
+                            "Loaded --rpak override: {} ({} files)",
+                            path.display(),
+                            archive.len()
+                        );
+                        return Self {
+                            archive: Some(Arc::new(archive)),
+                            project_root: None,
+                        };
+                    }
+                    Err(e) => {
+                        error!("Failed to load --rpak {}: {}", path.display(), e);
+                    }
+                }
+            }
+
             // 1. Check for embedded rpak in current exe
             match RpakArchive::from_current_exe() {
                 Ok(Some(archive)) => {

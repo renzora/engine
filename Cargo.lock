@@ -1553,6 +1553,7 @@ dependencies = [
  "bitflags 2.11.1",
  "bytemuck",
  "fixedbitset 0.5.7",
+ "futures",
  "naga",
  "naga_oil",
  "rand 0.9.2",

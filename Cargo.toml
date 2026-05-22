@@ -73,8 +73,9 @@ editor = [
     "renzora_runtime/lua",
     "renzora_runtime/editor",
 ]
+# The runtime binary is also the dedicated server: launch it with `--server`
+# to boot headless. No separate `server` feature/binary exists.
 runtime = ["dep:renzora_runtime", "renzora_runtime/lua"]
-server = ["dep:renzora_runtime"]
 wasm = [
     "runtime",
     "bevy/webgpu",

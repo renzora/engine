@@ -301,9 +301,18 @@ impl Plugin for RuntimePlugin {
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,
                     scene_io::rehydrate_visibility,
+                ),
+            )
+            // Loading glTF models is purely visual — a dedicated server has no
+            // render world and its `server.rpak` strips meshes, so skip it
+            // there (otherwise it logs "Path not found" for every model).
+            .add_systems(
+                Update,
+                (
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
-                ),
+                )
+                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
             )
             .add_systems(
                 Update,

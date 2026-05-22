@@ -5,8 +5,10 @@
 #
 # Usage: ./scripts/build-all.sh <output-dir> [platform ...]
 #
-# Each target (editor, runtime, server) is built in isolation with its own
+# Each target (editor, runtime) is built in isolation with its own
 # feature flag and target directory. No feature unification, no hash mixing.
+# The dedicated server is not a separate target — it's the runtime launched
+# with `--server`.
 #
 # Platforms (positional args after <output-dir>; pass none to build all):
 #   linux        Linux x86_64 (native in container)
@@ -22,8 +24,8 @@
 #
 # ── Parallelism ──────────────────────────────────────────────────────────────
 # Builds run as concurrent "lanes". The contention-free unit is the FEATURE,
-# not the platform: editor/runtime/server each use their own `--target-dir`
-# (target/editor, target/runtime, target/server), while every desktop platform
+# not the platform: editor/runtime each use their own `--target-dir`
+# (target/editor, target/runtime), while every desktop platform
 # for one feature shares that dir (different triple subdirs inside it). So we
 # run one lane per feature, plus one each for wasm / android / ios. Lanes never
 # share a target-dir, so cargo's per-target-dir build lock never serialises
@@ -81,8 +83,8 @@ array_contains() {
 }
 
 # Editor crates aren't workspace members anymore — they're transitive
-# path-deps of the binary, gated behind the `editor` feature. Runtime and
-# server builds drop `--workspace` (build the binary's dep tree only) so
+# path-deps of the binary, gated behind the `editor` feature. The runtime
+# build drops `--workspace` (build the binary's dep tree only) so
 # editor crates never enter the build graph.
 
 # ── Helper: copy shared libraries for a platform ────────────────────────────
@@ -169,7 +171,7 @@ build_desktop() {
     # `renzora_app`'s own default IS `editor`, so dropping the flag still
     # builds the right host configuration.
     #
-    # Runtime/server: only the host binary, with controlled features. No
+    # Runtime: only the host binary, with controlled features. No
     # editor-only crates and no distribution plugins enter the build.
     #
     # `renzora-android` (cdylib) and `renzora-ios` (staticlib) are
@@ -191,7 +193,6 @@ build_desktop() {
     case "$FEATURE" in
         editor)  DEST="renzora" ;;
         runtime) DEST="renzora-runtime" ;;
-        server)  DEST="renzora-server" ;;
     esac
 
     if [ "$EXT" = "dll" ]; then
@@ -432,7 +433,6 @@ throttle() {
 if [ ${#DESKTOP_PLATFORMS[@]} -gt 0 ]; then
     throttle; run_lane "editor"  required lane_desktop_feature editor
     throttle; run_lane "runtime" required lane_desktop_feature runtime
-    throttle; run_lane "server"  required lane_desktop_feature server
 fi
 if should_build wasm; then
     throttle; run_lane "wasm" required build_wasm

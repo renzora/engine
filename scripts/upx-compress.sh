@@ -6,8 +6,8 @@
 #   ./scripts/upx-compress.sh dist/windows-x64      # just one platform
 #   ./scripts/upx-compress.sh dist/windows-x64 dist/linux-x64
 #
-# Targets per build (editor / runtime / server):
-#   - host binary (renzora{,.exe} / renzora-runtime{,.exe} / renzora-server{,.exe})
+# Targets per build (editor / runtime):
+#   - host binary (renzora{,.exe} / renzora-runtime{,.exe})
 #   - SDK dylibs (renzora, renzora_editor, renzora_postprocess) on whatever
 #     extension the platform produces
 #   - bevy_dylib (any hashed name)
@@ -55,7 +55,6 @@ fi
 SDK_NAMES=(
     "renzora" "renzora.exe"
     "renzora-runtime" "renzora-runtime.exe"
-    "renzora-server" "renzora-server.exe"
     "renzora.dll" "librenzora.so" "librenzora.dylib"
     "renzora_editor.dll" "librenzora_editor.so" "librenzora_editor.dylib"
     "renzora_postprocess.dll" "librenzora_postprocess.so" "librenzora_postprocess.dylib"

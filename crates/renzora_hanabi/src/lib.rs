@@ -23,11 +23,23 @@ pub struct HanabiParticlePlugin;
 impl Plugin for HanabiParticlePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] HanabiParticlePlugin");
-        app.add_plugins(HanabiPlugin);
+
+        // `bevy_hanabi` is GPU-only and unwraps the `RenderApp` in its
+        // `finish()`, so it panics on a dedicated server (no render world).
+        // Particles are purely visual — skip the GPU plugin and the runtime
+        // sync systems on the server. Type registration still runs below so
+        // scenes carrying particle components deserialize consistently.
+        let headless = app
+            .world()
+            .contains_resource::<renzora::DedicatedServer>();
+
+        if !headless {
+            app.add_plugins(HanabiPlugin);
+            app.init_resource::<ParticleCommandQueue>();
+        }
 
         app.init_resource::<ParticleEditorState>();
         app.init_resource::<ParticlePreviewState>();
-        app.init_resource::<ParticleCommandQueue>();
 
         app.register_type::<HanabiEffect>()
             .register_type::<HanabiEffectDefinition>()
@@ -59,16 +71,20 @@ impl Plugin for HanabiParticlePlugin {
             .register_type::<node_graph::NodeConnection>()
             .register_type::<node_graph::ParticleNodeGraph>();
 
-        app.add_systems(
-            PostUpdate,
-            (
-                systems::hot_reload_saved_effects,
-                systems::sync_hanabi_effects,
-                systems::apply_runtime_overrides,
-                systems::process_particle_commands,
-            )
-                .chain(),
-        );
+        // Sync systems drive `bevy_hanabi` assets/components, which only exist
+        // when the GPU plugin is present.
+        if !headless {
+            app.add_systems(
+                PostUpdate,
+                (
+                    systems::hot_reload_saved_effects,
+                    systems::sync_hanabi_effects,
+                    systems::apply_runtime_overrides,
+                    systems::process_particle_commands,
+                )
+                    .chain(),
+            );
+        }
 
         #[cfg(feature = "editor")]
         inspector::register_inspector(app);
