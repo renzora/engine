@@ -37,7 +37,25 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # renzora_shader has 9 pre-existing test failures from the material-graph
-      # rework era (see commit 5370748). Excluded until that suite is cleaned up.
+      # CI tests the engine's own crates only. The vendored Bevy-ecosystem
+      # crates (bevy_*, vleue_navigator) are third-party code copied into the
+      # tree; running their test suites and examples just re-tests upstream
+      # against our Bevy version and breaks on every API drift — noise, not
+      # signal. They are still built as dependencies; we just don't run their
+      # tests. New first-party crates stay covered automatically via --workspace.
+      #
+      # renzora_shader is first-party but has 9 pre-existing test failures from
+      # the material-graph rework era (see commit 5370748); excluded until that
+      # suite is cleaned up.
       - name: Run tests
-        run: cargo test --workspace --exclude renzora_shader
+        run: |
+          cargo test --workspace \
+            --exclude renzora_shader \
+            --exclude bevy_gauge \
+            --exclude bevy_hanabi \
+            --exclude bevy_mod_outline \
+            --exclude bevy_silk \
+            --exclude vleue_navigator \
+            --exclude bevy_mod_openxr \
+            --exclude bevy_mod_xr \
+            --exclude bevy_xr_utils
