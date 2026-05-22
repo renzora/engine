@@ -12,17 +12,14 @@ mod camera_plugin;
 
 fn main() {
     App::new()
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 100.0,
-            ..default()
-        })
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin::default())
         .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ResourceInspectorPlugin::<Winds>::new())
         .add_plugins(ResourceInspectorPlugin::<ClothConfig>::new())
-        .add_plugins(camera_plugin::CameraPlugin)
+        .add_plugins(camera_plugin::CameraPlugin {
+            ambient_brightness: 100.0,
+        })
         .insert_resource(Winds::from(vec![
             Wind::SinWave {
                 max_velocity: Vec3::new(20.0, 15.0, 0.0),

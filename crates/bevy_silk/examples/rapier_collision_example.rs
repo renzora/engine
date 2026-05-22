@@ -23,18 +23,15 @@ struct ClothMovement {
 
 fn main() {
     App::new()
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 100.0,
-            ..default()
-        })
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(EguiPlugin::default())
         .add_plugins(ResourceInspectorPlugin::<ClothConfig>::new())
         .add_plugins(WorldInspectorPlugin::default())
         .add_plugins(ClothPlugin)
-        .add_plugins(camera_plugin::CameraPlugin)
+        .add_plugins(camera_plugin::CameraPlugin {
+            ambient_brightness: 100.0,
+        })
         .insert_resource(ClothMovement { sign: -1.0, t: 0.0 })
         .add_systems(Startup, (spawn_cloth, setup))
         .add_systems(

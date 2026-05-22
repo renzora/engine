@@ -12,16 +12,13 @@ mod camera_plugin;
 
 fn main() {
     App::new()
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 500.0,
-            ..default()
-        })
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin::default())
         .add_plugins(ResourceInspectorPlugin::<ClothConfig>::new())
         .add_plugins(WorldInspectorPlugin::default())
-        .add_plugins(camera_plugin::CameraPlugin)
+        .add_plugins(camera_plugin::CameraPlugin {
+            ambient_brightness: 500.0,
+        })
         .add_plugins(ClothPlugin)
         .add_systems(Startup, (spawn_cloth, setup))
         .run();
