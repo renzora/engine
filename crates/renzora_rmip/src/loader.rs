@@ -8,7 +8,7 @@ use bevy::render::render_resource::{
 };
 use thiserror::Error;
 
-use crate::{HEADER_LEN, MAGIC, VERSION};
+use crate::{RmipFormat, HEADER_LEN, MAGIC, VERSION};
 
 /// AssetLoader implementation for `.rmip` files. Registered via
 /// `app.init_asset_loader::<RmipAssetLoader>()`. Bevy uploads
@@ -65,8 +65,10 @@ impl AssetLoader for RmipAssetLoader {
             return Err(RmipLoadError::BadMagic);
         }
 
+        // v1 was uncompressed-only; v2 added block-compressed formats. Both
+        // share the same header + payload layout, so accept either.
         let version = u32_le(&bytes, 4);
-        if version != VERSION {
+        if version != 1 && version != VERSION {
             return Err(RmipLoadError::UnsupportedVersion(version, VERSION));
         }
 
@@ -79,19 +81,13 @@ impl AssetLoader for RmipAssetLoader {
             return Err(RmipLoadError::ZeroSize);
         }
 
-        let format = match format_code {
-            0 => TextureFormat::Rgba8UnormSrgb,
-            1 => TextureFormat::Rgba8Unorm,
-            other => return Err(RmipLoadError::UnknownFormat(other)),
-        };
+        let rmip_format =
+            RmipFormat::from_code(format_code).ok_or(RmipLoadError::UnknownFormat(format_code))?;
+        let format = wgpu_format(rmip_format);
 
-        // Compute expected payload size — sum of every mip level's byte size.
-        let mut expected: usize = 0;
-        for level in 0..mip_count {
-            let w = (width >> level).max(1) as usize;
-            let h = (height >> level).max(1) as usize;
-            expected += w * h * 4;
-        }
+        // Expected payload = sum of every mip level's byte size, computed with
+        // block granularity for the compressed formats.
+        let expected = rmip_format.payload_size(width, height, mip_count);
         let actual = bytes.len() - HEADER_LEN;
         if actual < expected {
             return Err(RmipLoadError::Truncated { expected, actual });
@@ -133,6 +129,24 @@ impl AssetLoader for RmipAssetLoader {
 
     fn extensions(&self) -> &[&str] {
         &["rmip"]
+    }
+}
+
+/// Map a `.rmip` storage format to its wgpu `TextureFormat`. The BC formats
+/// require the adapter's `TEXTURE_COMPRESSION_BC` feature, which Bevy enables
+/// by default on any desktop GPU that supports it.
+fn wgpu_format(format: RmipFormat) -> TextureFormat {
+    match format {
+        RmipFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
+        RmipFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
+        RmipFormat::Bc7RgbaUnormSrgb => TextureFormat::Bc7RgbaUnormSrgb,
+        RmipFormat::Bc7RgbaUnorm => TextureFormat::Bc7RgbaUnorm,
+        RmipFormat::Bc5RgUnorm => TextureFormat::Bc5RgUnorm,
+        RmipFormat::Bc1RgbaUnormSrgb => TextureFormat::Bc1RgbaUnormSrgb,
+        RmipFormat::Bc1RgbaUnorm => TextureFormat::Bc1RgbaUnorm,
+        RmipFormat::Bc3RgbaUnormSrgb => TextureFormat::Bc3RgbaUnormSrgb,
+        RmipFormat::Bc3RgbaUnorm => TextureFormat::Bc3RgbaUnorm,
+        RmipFormat::Bc4RUnorm => TextureFormat::Bc4RUnorm,
     }
 }
 

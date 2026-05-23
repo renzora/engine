@@ -33,6 +33,10 @@ half = "2"
 # Mesh optimization
 meshopt = "0.3"
 
+# Parallel texture baking — BC compression is the import-time bottleneck for
+# texture-heavy models; rayon spreads it across all cores.
+rayon = "1"
+
 # Compression (legacy FBX binary arrays)
 flate2 = "1"
 

@@ -3,16 +3,18 @@ name = "renzora_postprocess"
 version = "0.1.0"
 edition = "2021"
 
-# Ships as a desktop dylib so the ~50 post-process effect distribution
-# plugins link to one shared compiled copy instead of each embedding
-# the framework (PostProcessPlugin<T>, render-graph wiring, etc.).
+# Thin re-export shim. The framework itself now lives in `renzora`
+# (module `renzora::postprocess`, behind its `postprocess` feature) so it
+# ships inside `renzora.dll` rather than a separate dylib. This crate is a
+# zero-symbol `rlib` that just re-exports that module, keeping every existing
+# `renzora_postprocess::…` path (effect plugins + the `post_process` macro)
+# compiling unchanged. Because the real types belong to `renzora`, all
+# plugins still share one `PostProcessRegistry` / one `TypeId` via `renzora.dll`.
 [lib]
-crate-type = ["dylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
-renzora_macros = { path = "../renzora_macros" }
-bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
 
 [lints]
 workspace = true

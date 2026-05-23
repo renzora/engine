@@ -21,6 +21,13 @@ default = []
 # resource — landing here in a follow-up). Runtime / server builds leave
 # this off so the shipped binary carries no editor surface area.
 editor = []
+# Pulls in the post-process framework module (`renzora::postprocess`):
+# `PostProcessPlugin<T>`, `PostProcessEffect`, the unified render node and
+# the shared `PostProcessRegistry`. Enabled (transitively) by the
+# `renzora_postprocess` shim crate and by the editor/runtime desktop hosts.
+# Off by default so mobile/wasm/server builds keep the lean contracts-only
+# base — they never link the render-graph surface.
+postprocess = []
 # Note on the `dlopen` mechanism: distribution plugins (cdylib + dlopen)
 # need the FFI exports `plugin_create`, `plugin_scope`, `plugin_bevy_hash`
 # from `renzora::add!`. The macro gates those exports behind

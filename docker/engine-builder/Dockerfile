@@ -225,7 +225,7 @@ SHELL ["/bin/bash", "-c"]
 # `upx-ucl` apt package, which isn't in this image's sources). UPX packs
 # PE/ELF/Mach-O regardless of host OS, so the Linux container can compress
 # Windows/macOS binaries too.
-ENV UPX_VERSION=4.2.4
+ENV UPX_VERSION=5.1.1
 RUN curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz" \
     -o /tmp/upx.tar.xz \
     && tar -xJf /tmp/upx.tar.xz -C /tmp \

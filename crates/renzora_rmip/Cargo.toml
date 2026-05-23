@@ -9,12 +9,16 @@ default = []
 # Pulls in the `image` crate so import-side code can encode .rmip files.
 # Editor/runtime crates only need the loader and stay lightweight without
 # this feature.
-bake = ["dep:image"]
+bake = ["dep:image", "dep:intel_tex_2"]
 
 [dependencies]
 bevy = { workspace = true }
 thiserror = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"], optional = true }
+# GPU block compression (BC1/3/4/5/6H/7) via Intel's ISPC texture compressor.
+# Ships precompiled ISPC kernels — no ISPC toolchain needed at build time.
+# Baker-only, so loader consumers stay lightweight.
+intel_tex_2 = { version = "0.4", optional = true }
 
 [lints]
 workspace = true

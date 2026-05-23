@@ -2,29 +2,23 @@
 
 use std::path::Path;
 
-use renzora_rmip::RmipFormat;
+use renzora_rmip::bake::TextureRole;
 
 use crate::convert::{
     ExtractedAlphaMode, ExtractedPbrMaterial, ExtractedTexture, ImportError, ImportResult,
+    ProgressFn,
 };
 use crate::settings::ImportSettings;
 
-/// Walk the GLB JSON's materials and assign each image to either sRGB
-/// (color) or linear (data). Default is `Rgba8UnormSrgb`. Anything used
-/// as a normal / metallic-roughness / occlusion / specular-glossiness
-/// map flips to `Rgba8Unorm` so the GPU doesn't apply gamma decode to
-/// data values — a gamma-corrected normal is wrong everywhere.
+/// Walk the GLB JSON's materials and classify each image's [`TextureRole`].
+/// Default is [`TextureRole::Color`] (sRGB). Normal maps become
+/// [`TextureRole::NormalMap`] (→ BC5, renormalized mips); metallic-roughness,
+/// occlusion and spec-glossiness maps become [`TextureRole::LinearData`]
+/// (linear, no gamma decode — a gamma-corrected data map is wrong everywhere).
 ///
 /// Returns a vec indexed by glTF image index. If parsing fails the vec is
-/// empty and the extractor falls back to the sRGB default per image.
-fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
-    let Ok(glb) = gltf::Glb::from_slice(glb_bytes) else {
-        return Vec::new();
-    };
-    let Ok(root) = serde_json::from_slice::<serde_json::Value>(&glb.json) else {
-        return Vec::new();
-    };
-
+/// empty and the extractor falls back to the color default per image.
+fn scan_image_roles(root: &serde_json::Value) -> Vec<TextureRole> {
     let images = root
         .get("images")
         .and_then(|v| v.as_array())
@@ -55,22 +49,29 @@ fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
             .and_then(|i| image_of(i as usize))
     };
 
-    let mut formats = vec![RmipFormat::Rgba8UnormSrgb; images];
-    let mut mark_linear = |idx: Option<usize>| {
+    let mut roles = vec![TextureRole::Color; images];
+    let mut mark = |idx: Option<usize>, role: TextureRole| {
         if let Some(i) = idx {
-            if let Some(slot) = formats.get_mut(i) {
-                *slot = RmipFormat::Rgba8Unorm;
+            if let Some(slot) = roles.get_mut(i) {
+                *slot = role;
             }
         }
     };
 
     for mat in &materials {
         let pbr = mat.get("pbrMetallicRoughness");
-        mark_linear(texture_info_image(mat.get("normalTexture")));
-        mark_linear(texture_info_image(mat.get("occlusionTexture")));
-        mark_linear(texture_info_image(
-            pbr.and_then(|p| p.get("metallicRoughnessTexture")),
-        ));
+        mark(
+            texture_info_image(mat.get("normalTexture")),
+            TextureRole::NormalMap,
+        );
+        mark(
+            texture_info_image(mat.get("occlusionTexture")),
+            TextureRole::LinearData,
+        );
+        mark(
+            texture_info_image(pbr.and_then(|p| p.get("metallicRoughnessTexture"))),
+            TextureRole::LinearData,
+        );
         // KHR_materials_pbrSpecularGlossiness specularGlossinessTexture
         // packs sRGB-encoded specular RGB plus linear glossiness in alpha.
         // We only sample the alpha (for roughness), so treat as linear —
@@ -78,19 +79,24 @@ fn scan_image_formats(glb_bytes: &[u8]) -> Vec<RmipFormat> {
         let sg = mat
             .get("extensions")
             .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
-        mark_linear(texture_info_image(
-            sg.and_then(|s| s.get("specularGlossinessTexture")),
-        ));
+        mark(
+            texture_info_image(sg.and_then(|s| s.get("specularGlossinessTexture"))),
+            TextureRole::LinearData,
+        );
     }
 
-    formats
+    roles
 }
 
 /// GLB files: read the binary directly, then extract any embedded images to
 /// sit alongside the GLB in `<model_dir>/textures/`. Embedded image entries
 /// are rewritten in the GLB's JSON to external URIs so the GLB and the
 /// loose texture files agree on the layout.
-pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert_glb(
+    path: &Path,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+) -> Result<ImportResult, ImportError> {
     let bytes = std::fs::read(path)?;
 
     if bytes.len() < 12 {
@@ -100,6 +106,10 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
     if magic != 0x46546C67 {
         return Err(ImportError::ParseError("invalid GLB magic number".into()));
     }
+
+    // Drop embedded cameras up front so neither the passthrough nor the
+    // texture-extraction path can carry an active renderer into the scene.
+    let bytes = strip_cameras_from_glb(bytes);
 
     if !settings.extract_textures {
         // Passthrough — keep the GLB exactly as-is (embedded textures
@@ -117,14 +127,18 @@ pub fn convert_glb(path: &Path, settings: &ImportSettings) -> Result<ImportResul
         });
     }
 
-    // Pre-scan materials so the texture extractor knows which images are
-    // color (sRGB) vs. data (linear) before baking. Doing it in one pass
-    // produces wrong gamma for normal/MR/occlusion maps, which look
-    // correct to the eye on color textures but break shading on data ones.
-    let format_by_image = scan_image_formats(&bytes);
+    // Pre-scan materials so the texture extractor knows each image's role
+    // (color vs normal vs linear data) before baking. The role drives both
+    // the sRGB/linear choice and the GPU compression format — getting it
+    // wrong looks fine on color maps but breaks shading on data ones.
+    let roles = gltf::Glb::from_slice(&bytes)
+        .ok()
+        .and_then(|glb| serde_json::from_slice::<serde_json::Value>(&glb.json).ok())
+        .map(|root| scan_image_roles(&root))
+        .unwrap_or_default();
 
-    let (rewritten, extracted_textures, warnings) = extract_glb_textures(&bytes, &format_by_image)
-        .unwrap_or_else(|e| {
+    let (rewritten, extracted_textures, warnings) =
+        extract_glb_textures(&bytes, &roles, settings, progress).unwrap_or_else(|e| {
             (
                 bytes.clone(),
                 Vec::new(),
@@ -379,7 +393,9 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
 /// the caller falls back to passthrough.
 fn extract_glb_textures(
     glb_bytes: &[u8],
-    format_by_image: &[RmipFormat],
+    roles: &[TextureRole],
+    settings: &ImportSettings,
+    progress: &ProgressFn,
 ) -> Result<(Vec<u8>, Vec<ExtractedTexture>, Vec<String>), String> {
     let glb = gltf::Glb::from_slice(glb_bytes).map_err(|e| format!("parse GLB: {}", e))?;
 
@@ -397,6 +413,11 @@ fn extract_glb_textures(
     let mut extracted: Vec<ExtractedTexture> = Vec::new();
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // ── Phase 1 (serial): pull each embedded image out of the BIN chunk,
+    // rewrite its URI, emit the original bytes, and queue a bake job. The
+    // GLB-JSON mutation and name dedup must stay single-threaded; only the
+    // expensive bake is parallelized below.
+    let mut jobs: Vec<BakeJob> = Vec::new();
     for (i, image) in root.images.iter_mut().enumerate() {
         // Skip images that already live as external files; nothing to do.
         if image.uri.is_some() {
@@ -461,29 +482,12 @@ fn extract_glb_textures(
         }
         used_names.insert(name.clone());
 
-        // Bake the .rmip (decoded RGBA8 + Lanczos3 mip chain) using the
-        // sRGB/linear classification we computed up-front. Falls back to
-        // sRGB for any image not in the format map (rare — the GLB has an
-        // image no material references).
-        let format = format_by_image
-            .get(i)
-            .copied()
-            .unwrap_or(RmipFormat::Rgba8UnormSrgb);
-        let rmip_bytes = match renzora_rmip::bake::bake_from_image_bytes(raw, format) {
-            Ok(b) => b,
-            Err(e) => {
-                warnings.push(format!("image {}: bake .rmip failed: {}", i, e));
-                continue;
-            }
-        };
-
         // GLB references the original-extension file. Bevy loads this
         // through its own image loader and we discard the result later
         // (the resolver swaps StandardMaterial for GraphMaterial), but
         // the load has to *succeed* for Bevy not to flood the log with
         // settings-mismatch errors.
-        let uri = format!("textures/{}.{}", name, extension);
-        image.uri = Some(uri);
+        image.uri = Some(format!("textures/{}.{}", name, extension));
         image.mime_type = None;
 
         // Original encoded bytes — what Bevy's GLB loader reads.
@@ -493,13 +497,18 @@ fn extract_glb_textures(
             data: raw.to_vec(),
         });
 
-        // Mipmapped + decoded version for our material graph resolver.
-        extracted.push(ExtractedTexture {
+        let role = roles.get(i).copied().unwrap_or(TextureRole::Color);
+        jobs.push(BakeJob {
+            raw: raw.to_vec(),
             name,
-            extension: "rmip".to_string(),
-            data: rmip_bytes,
+            role,
         });
     }
+
+    // ── Phase 2 (parallel): bake every queued texture across all cores.
+    // BC compression is the import-time bottleneck, so this is where the
+    // wall-clock win comes from. Progress is reported as each completes.
+    extracted.extend(bake_jobs_parallel(jobs, settings, progress, &mut warnings));
 
     if extracted.is_empty() {
         return Ok((glb_bytes.to_vec(), Vec::new(), warnings));
@@ -537,33 +546,48 @@ fn sniff_image_extension(data: &[u8]) -> &'static str {
 ///
 /// For now, we embed the JSON GLTF as a GLB by reading all external resources
 /// and packing them into a single binary buffer.
-pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportResult, ImportError> {
+pub fn convert_gltf(
+    path: &Path,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+) -> Result<ImportResult, ImportError> {
     let parent = path.parent().unwrap_or(Path::new("."));
     let json_str = std::fs::read_to_string(path)
         .map_err(|e| ImportError::ParseError(format!("failed to read GLTF: {}", e)))?;
 
-    let root: gltf_json::Root = serde_json::from_str(&json_str)
+    let mut root: gltf_json::Root = serde_json::from_str(&json_str)
         .map_err(|e| ImportError::ParseError(format!("invalid GLTF JSON: {}", e)))?;
 
-    // Collect all external buffer data
+    // Resolve every external/data-URI buffer the .gltf references (the sibling
+    // `.bin` for Sponza) and inline them into a single GLB binary chunk. We
+    // record each source buffer's start offset so buffer views can be remapped
+    // onto the consolidated buffer; without this the output GLB would still
+    // point at the now-missing external `.bin` and fail to load.
     let mut bin_data = Vec::new();
     let mut warnings = Vec::new();
+    let mut buffer_offsets: Vec<usize> = Vec::with_capacity(root.buffers.len());
 
     for buffer in &root.buffers {
-        if let Some(ref uri) = buffer.uri {
-            if uri.starts_with("data:") {
-                // Data URI — decode base64
+        // Keep each buffer 4-byte aligned so accessor component alignment that
+        // held within the source buffer still holds after concatenation.
+        while bin_data.len() % 4 != 0 {
+            bin_data.push(0);
+        }
+        buffer_offsets.push(bin_data.len());
+
+        match buffer.uri.as_deref() {
+            Some(uri) if uri.starts_with("data:") => {
                 if let Some(base64_start) = uri.find(";base64,") {
-                    let encoded = &uri[base64_start + 8..];
-                    let decoded = base64_decode(encoded).map_err(|e| {
+                    let decoded = base64_decode(&uri[base64_start + 8..]).map_err(|e| {
                         ImportError::ParseError(format!("invalid base64 in buffer URI: {}", e))
                     })?;
                     bin_data.extend_from_slice(&decoded);
                 } else {
                     warnings.push("unsupported data URI scheme in buffer".to_string());
                 }
-            } else {
-                // External file reference
+            }
+            Some(uri) => {
+                // External file, resolved relative to the .gltf's folder.
                 let buf_path = parent.join(uri);
                 let data = std::fs::read(&buf_path).map_err(|e| {
                     ImportError::ParseError(format!(
@@ -574,8 +598,46 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
                 })?;
                 bin_data.extend_from_slice(&data);
             }
+            // A uri-less buffer in a .gltf would refer to a GLB BIN chunk that
+            // doesn't exist here; nothing to inline.
+            None => {}
         }
     }
+
+    // Repoint every buffer view at the single consolidated buffer (index 0),
+    // shifting its offset by where its original buffer landed, then collapse
+    // the buffer list to one inline buffer with no URI.
+    if !bin_data.is_empty() {
+        for view in &mut root.buffer_views {
+            let base = buffer_offsets.get(view.buffer.value()).copied().unwrap_or(0);
+            let old = view.byte_offset.map(|o| o.0).unwrap_or(0);
+            view.byte_offset = Some(gltf_json::validation::USize64(base as u64 + old));
+            view.buffer = gltf_json::Index::new(0);
+        }
+        let buf0 = &mut root.buffers[0];
+        buf0.uri = None;
+        buf0.byte_length = gltf_json::validation::USize64(bin_data.len() as u64);
+        root.buffers.truncate(1);
+    }
+
+    // Bake the external (or data-URI) images this glTF references into
+    // mipmapped, block-compressed `.rmip` files and repoint the GLB at them.
+    // Without this the loose 4K PNGs load raw — the exact bottleneck that
+    // makes scenes like Sponza crawl.
+    let mut extracted_textures = Vec::new();
+    if settings.extract_textures && !root.images.is_empty() {
+        let roles = serde_json::from_str::<serde_json::Value>(&json_str)
+            .ok()
+            .map(|v| scan_image_roles(&v))
+            .unwrap_or_default();
+        let (texs, warns) = bake_external_images(&mut root, parent, &roles, settings, progress);
+        extracted_textures = texs;
+        warnings.extend(warns);
+    }
+
+    // Imported cameras are authored viewpoints with no use in-engine; drop
+    // them so no rogue active renderer spawns from the model.
+    strip_cameras(&mut root);
 
     // Build GLB from JSON + binary chunk
     let json_bytes = root.to_vec().map_err(|e| {
@@ -591,12 +653,173 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
         },
     );
 
+    let extracted_materials = if settings.extract_materials {
+        extract_glb_materials(&glb_bytes)
+    } else {
+        Vec::new()
+    };
+
     Ok(ImportResult {
         glb_bytes: crate::glb_compat::strip_unsupported_extensions(&glb_bytes),
         warnings,
-        extracted_textures: Vec::new(),
-        extracted_materials: Vec::new(),
+        extracted_textures,
+        extracted_materials,
     })
+}
+
+/// Bake every external- or data-URI image referenced by a glTF document into
+/// a `.rmip` (mipmapped + GPU-block-compressed) sitting under `textures/`,
+/// and repoint each image's URI at the baked file.
+///
+/// Unlike the embedded-GLB path — which must externalize the original bytes
+/// so Bevy's GLB loader can decode them — here we point the GLB straight at
+/// the `.rmip`. Bevy's GLB loader routes those URIs through `RmipAssetLoader`
+/// (its `Settings` type is `ImageLoaderSettings` precisely so this works), so
+/// the heavy source PNGs are never decoded or uploaded at runtime: no load
+/// stall, no transient uncompressed-VRAM spike. Materials are rewritten to
+/// the same `.rmip` URIs by `extract_glb_materials`.
+fn bake_external_images(
+    root: &mut gltf_json::Root,
+    parent: &Path,
+    roles: &[TextureRole],
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+) -> (Vec<ExtractedTexture>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // ── Phase 1 (serial): resolve each image's source bytes, dedup its name,
+    // repoint the GLB URI at the (about-to-be-baked) `.rmip`, and queue a job.
+    let mut jobs: Vec<BakeJob> = Vec::new();
+    for (i, image) in root.images.iter_mut().enumerate() {
+        let Some(uri) = image.uri.clone() else {
+            // Already an embedded bufferView image — the .gltf path doesn't
+            // inline those; the .glb path handles them separately.
+            continue;
+        };
+
+        // Resolve the source bytes from a data URI or a sibling file.
+        let raw = if uri.starts_with("data:") {
+            match uri.find(";base64,") {
+                Some(b) => match base64_decode(&uri[b + 8..]) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        warnings.push(format!("image {i}: bad data URI: {e}"));
+                        continue;
+                    }
+                },
+                None => {
+                    warnings.push(format!("image {i}: unsupported data URI scheme"));
+                    continue;
+                }
+            }
+        } else {
+            let p = parent.join(&uri);
+            match std::fs::read(&p) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    warnings.push(format!("image {i}: read '{}': {e}", p.display()));
+                    continue;
+                }
+            }
+        };
+
+        // Derive a stable, unique, filesystem-safe stem from the source name.
+        let stem = Path::new(&uri)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("image");
+        let mut name = sanitize_texture_name(stem);
+        if name.is_empty() {
+            name = format!("image_{i}");
+        }
+        let base = name.clone();
+        let mut n = 1;
+        while used_names.contains(&name) {
+            n += 1;
+            name = format!("{base}_{n}");
+        }
+        used_names.insert(name.clone());
+
+        image.uri = Some(format!("textures/{name}.rmip"));
+        image.mime_type = None;
+
+        let role = roles.get(i).copied().unwrap_or(TextureRole::Color);
+        jobs.push(BakeJob { raw, name, role });
+    }
+
+    // ── Phase 2 (parallel): bake every queued texture across all cores.
+    let extracted = bake_jobs_parallel(jobs, settings, progress, &mut warnings);
+    (extracted, warnings)
+}
+
+/// One texture queued for baking. Collected serially, baked in parallel.
+struct BakeJob {
+    /// Encoded source image bytes (PNG/JPG/etc).
+    raw: Vec<u8>,
+    /// Output stem (no extension); the `.rmip` is written as `<name>.rmip`.
+    name: String,
+    /// Semantic role driving sRGB/linear + GPU format selection.
+    role: TextureRole,
+}
+
+/// Bake a batch of queued textures in parallel across the rayon pool,
+/// reporting `(done, total, name)` progress as each finishes. Returns the
+/// resulting `.rmip` textures; per-texture bake failures are pushed onto
+/// `warnings` rather than aborting the whole import.
+fn bake_jobs_parallel(
+    jobs: Vec<BakeJob>,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
+    warnings: &mut Vec<String>,
+) -> Vec<ExtractedTexture> {
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let total = jobs.len();
+    if total == 0 {
+        return Vec::new();
+    }
+
+    // Shared completion counter so progress reflects work finished, not the
+    // (unordered) index rayon happens to schedule.
+    let counter = AtomicUsize::new(0);
+    let baked: Vec<(String, Result<Vec<u8>, String>)> = jobs
+        .into_par_iter()
+        .map(|job| {
+            let res = renzora_rmip::bake::bake_image(&job.raw, settings.bake_params(job.role));
+            let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
+            progress(done, total, &job.name);
+            (job.name, res)
+        })
+        .collect();
+
+    let mut out = Vec::with_capacity(baked.len());
+    for (name, res) in baked {
+        match res {
+            Ok(data) => out.push(ExtractedTexture {
+                name,
+                extension: "rmip".to_string(),
+                data,
+            }),
+            Err(e) => warnings.push(format!("texture '{name}': bake .rmip failed: {e}")),
+        }
+    }
+    out
+}
+
+/// Sanitize a texture filename stem: keep alphanumerics, `_`, `-`, `.`;
+/// replace anything else with `_`.
+fn sanitize_texture_name(stem: &str) -> String {
+    stem.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// Simple base64 decoder (no external dep needed).
@@ -637,6 +860,41 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     }
 
     Ok(out)
+}
+
+/// Remove every camera from a glTF document.
+///
+/// Imported model cameras are authored viewpoints that have no use once the
+/// asset is brought into the engine — the editor and scene cameras own the
+/// view, and Bevy marks the first embedded camera active, so it silently
+/// renders the whole scene a second time. We drop the `cameras` array and
+/// clear every node's `camera` reference so imports never carry renderers;
+/// the user adds cameras through the engine, which sets the proper markers.
+fn strip_cameras(root: &mut gltf_json::Root) {
+    root.cameras.clear();
+    for node in &mut root.nodes {
+        node.camera = None;
+    }
+}
+
+/// Strip cameras from already-serialized GLB bytes. Re-parses, removes the
+/// cameras, and repacks with the original BIN chunk; returns the input
+/// unchanged if there's nothing to strip or parsing fails.
+fn strip_cameras_from_glb(bytes: Vec<u8>) -> Vec<u8> {
+    let Ok(glb) = gltf::Glb::from_slice(&bytes) else {
+        return bytes;
+    };
+    let Ok(mut root) = serde_json::from_slice::<gltf_json::Root>(&glb.json) else {
+        return bytes;
+    };
+    if root.cameras.is_empty() && root.nodes.iter().all(|n| n.camera.is_none()) {
+        return bytes; // nothing to strip — avoid a needless repack
+    }
+    strip_cameras(&mut root);
+    let Ok(json) = root.to_vec() else {
+        return bytes;
+    };
+    pack_glb(&json, glb.bin.as_deref())
 }
 
 /// Pack JSON and optional binary data into a GLB container.

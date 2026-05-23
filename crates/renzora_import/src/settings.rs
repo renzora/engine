@@ -41,6 +41,19 @@ pub struct ImportSettings {
     /// Emit `.material` files per PBR material (also controls GLTF material
     /// records in the GLB — off means the mesh references no material).
     pub extract_materials: bool,
+
+    // ─── Texture baking (.rmip) ─────────────────────────────────────────
+    /// GPU-block-compress baked textures (BC7/BC5/BC1/BC3). Cuts VRAM 4–8×
+    /// and removes the runtime decode. Off stores uncompressed RGBA8 mips.
+    pub texture_compression: bool,
+    /// Prefer BC7 (best quality, 1 byte/px) over BC1/BC3 for color/data maps.
+    /// Normal maps always use BC5 regardless. Off trades quality for size and
+    /// faster import (mirrors Godot's non-"high quality" VRAM path).
+    pub texture_high_quality: bool,
+    /// Clamp each texture's longest side to this many texels at import
+    /// (`0` = keep native resolution). 4K source maps are rarely needed at
+    /// full res in-scene; downsampling is the single biggest VRAM win.
+    pub texture_max_size: u32,
 }
 
 impl Default for ImportSettings {
@@ -52,11 +65,31 @@ impl Default for ImportSettings {
             generate_normals: true,
             optimize_vertex_cache: true,
             optimize_overdraw: true,
+            // Safe again: the optimizer now skips the vertex-fetch attribute
+            // remap for primitives that share a vertex buffer (which was
+            // scrambling shared geometry on assets like Sponza), and only
+            // applies it to primitives that exclusively own their attributes.
             optimize_vertex_fetch: true,
             extract_skeleton: true,
             extract_animations: true,
             extract_textures: true,
             extract_materials: true,
+            texture_compression: true,
+            texture_high_quality: true,
+            texture_max_size: 2048,
+        }
+    }
+}
+
+impl ImportSettings {
+    /// Build the `.rmip` baker parameters for a texture of the given role
+    /// from these import settings.
+    pub fn bake_params(&self, role: renzora_rmip::bake::TextureRole) -> renzora_rmip::bake::BakeParams {
+        renzora_rmip::bake::BakeParams {
+            role,
+            compress: self.texture_compression,
+            high_quality: self.texture_high_quality,
+            max_size: self.texture_max_size,
         }
     }
 }

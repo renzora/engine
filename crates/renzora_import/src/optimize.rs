@@ -4,6 +4,7 @@
 //! optional lossy simplification to GLB meshes.
 
 use log::warn;
+use std::collections::HashMap;
 
 /// Settings controlling which mesh optimizations to apply.
 #[derive(Debug, Clone)]
@@ -88,8 +89,29 @@ pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<
     // Snapshot of buffer for reading (writes go into `bin`)
     let read_buf = bin.clone();
 
+    // Count how many primitives reference each attribute accessor. The
+    // vertex-fetch pass rewrites attribute *data* in place, so it's only
+    // correct for primitives that exclusively own their attributes — if two
+    // primitives share a vertex buffer (common in real assets like Sponza),
+    // each would re-permute the shared data with its own table and scramble
+    // the other's geometry. We skip vertex-fetch for any shared primitive;
+    // the index-only passes (cache/overdraw) stay safe regardless.
+    let mut accessor_usage: HashMap<usize, u32> = HashMap::new();
     for mesh in doc.meshes() {
         for primitive in mesh.primitives() {
+            for (_, acc) in primitive.attributes() {
+                *accessor_usage.entry(acc.index()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    for mesh in doc.meshes() {
+        for primitive in mesh.primitives() {
+            let vertex_fetch_safe = settings.vertex_fetch
+                && primitive
+                    .attributes()
+                    .all(|(_, acc)| accessor_usage.get(&acc.index()).copied() == Some(1));
+
             if let Err(e) = optimize_primitive(
                 &primitive,
                 &read_buf,
@@ -97,6 +119,7 @@ pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<
                 &mut json,
                 &mut json_modified,
                 settings,
+                vertex_fetch_safe,
             ) {
                 warn!(
                     "Mesh {} prim {}: skipped optimization: {e}",
@@ -137,6 +160,9 @@ fn optimize_primitive(
     json: &mut serde_json::Value,
     json_modified: &mut bool,
     settings: &MeshOptSettings,
+    // Whether the vertex-fetch attribute remap is safe for this primitive
+    // (true only when its attributes aren't shared with another primitive).
+    vertex_fetch_safe: bool,
 ) -> Result<(), String> {
     let idx_accessor = primitive.indices().ok_or("Non-indexed primitive")?;
     let pos_accessor = primitive
@@ -160,7 +186,7 @@ fn optimize_primitive(
         meshopt::optimize_overdraw_in_place(&mut indices, &adapter, 1.05);
     }
 
-    if settings.vertex_fetch {
+    if vertex_fetch_safe {
         let remap = meshopt::optimize_vertex_fetch_remap(&indices, vertex_count);
         indices = meshopt::remap_index_buffer(Some(&indices), vertex_count, &remap);
 
@@ -356,4 +382,144 @@ fn rebuild_glb(json_bytes: &[u8], bin: &[u8]) -> Result<Vec<u8>, String> {
     out.extend(std::iter::repeat_n(0, bin_pad));
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pack a glTF JSON string + binary blob into a minimal GLB.
+    fn pack_test_glb(json: &str, bin: &[u8]) -> Vec<u8> {
+        let json_bytes = json.as_bytes();
+        let json_pad = (4 - json_bytes.len() % 4) % 4;
+        let bin_pad = (4 - bin.len() % 4) % 4;
+        let total = 12 + 8 + json_bytes.len() + json_pad + 8 + bin.len() + bin_pad;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"glTF");
+        out.extend_from_slice(&2u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&((json_bytes.len() + json_pad) as u32).to_le_bytes());
+        out.extend_from_slice(&0x4E4F534Au32.to_le_bytes());
+        out.extend_from_slice(json_bytes);
+        out.extend(std::iter::repeat_n(b' ', json_pad));
+        out.extend_from_slice(&((bin.len() + bin_pad) as u32).to_le_bytes());
+        out.extend_from_slice(&0x004E4942u32.to_le_bytes());
+        out.extend_from_slice(bin);
+        out.extend(std::iter::repeat_n(0u8, bin_pad));
+        out
+    }
+
+    fn all_on() -> MeshOptSettings {
+        MeshOptSettings {
+            vertex_cache: true,
+            overdraw: true,
+            vertex_fetch: true,
+            simplify: false,
+            simplify_ratio: 0.5,
+            quantize: false,
+            generate_lods: false,
+            lod_levels: 3,
+        }
+    }
+
+    fn read_positions(bin: &[u8], base: usize, count: usize) -> Vec<[f32; 3]> {
+        (0..count)
+            .map(|i| {
+                let o = base + i * 12;
+                [
+                    f32::from_le_bytes(bin[o..o + 4].try_into().unwrap()),
+                    f32::from_le_bytes(bin[o + 4..o + 8].try_into().unwrap()),
+                    f32::from_le_bytes(bin[o + 8..o + 12].try_into().unwrap()),
+                ]
+            })
+            .collect()
+    }
+
+    /// Two primitives sharing one POSITION accessor: vertex-fetch must be
+    /// skipped so the shared position data is left byte-for-byte intact
+    /// (this is the corruption that streaked Sponza).
+    #[test]
+    fn vertex_fetch_skips_shared_attribute_primitives() {
+        let positions: [f32; 9] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let mut bin = Vec::new();
+        for p in positions {
+            bin.extend_from_slice(&p.to_le_bytes());
+        }
+        for i in [0u16, 1, 2] {
+            bin.extend_from_slice(&i.to_le_bytes()); // indices A @ 36
+        }
+        for i in [0u16, 1, 2] {
+            bin.extend_from_slice(&i.to_le_bytes()); // indices B @ 42
+        }
+
+        let json = r#"{"asset":{"version":"2.0"},
+            "buffers":[{"byteLength":48}],
+            "bufferViews":[
+                {"buffer":0,"byteOffset":0,"byteLength":36},
+                {"buffer":0,"byteOffset":36,"byteLength":6},
+                {"buffer":0,"byteOffset":42,"byteLength":6}],
+            "accessors":[
+                {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},
+                {"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"},
+                {"bufferView":2,"componentType":5123,"count":3,"type":"SCALAR"}],
+            "meshes":[{"primitives":[
+                {"attributes":{"POSITION":0},"indices":1},
+                {"attributes":{"POSITION":0},"indices":2}]}]}"#;
+
+        let glb = pack_test_glb(json, &bin);
+        let out = optimize_glb(&glb, &all_on()).expect("optimize");
+        let out_glb = gltf::Glb::from_slice(&out).expect("parse");
+        let out_bin = out_glb.bin.expect("bin");
+
+        assert_eq!(
+            read_positions(&out_bin, 0, 3),
+            read_positions(&bin, 0, 3),
+            "shared POSITION data must be untouched when vertex-fetch is skipped",
+        );
+    }
+
+    /// A primitive that exclusively owns its attributes still gets vertex-fetch
+    /// applied — and the resolved triangle (indices → positions) must be the
+    /// same set of vertices afterward, just possibly reordered in memory.
+    #[test]
+    fn vertex_fetch_preserves_geometry_when_exclusive() {
+        let positions: [f32; 9] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0];
+        let mut bin = Vec::new();
+        for p in positions {
+            bin.extend_from_slice(&p.to_le_bytes());
+        }
+        for i in [0u16, 1, 2] {
+            bin.extend_from_slice(&i.to_le_bytes()); // indices @ 36
+        }
+
+        let json = r#"{"asset":{"version":"2.0"},
+            "buffers":[{"byteLength":42}],
+            "bufferViews":[
+                {"buffer":0,"byteOffset":0,"byteLength":36},
+                {"buffer":0,"byteOffset":36,"byteLength":6}],
+            "accessors":[
+                {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[2,3,0]},
+                {"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}],
+            "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"#;
+
+        let glb = pack_test_glb(json, &bin);
+        let out = optimize_glb(&glb, &all_on()).expect("optimize");
+        let out_glb = gltf::Glb::from_slice(&out).expect("parse");
+        let out_bin = out_glb.bin.expect("bin");
+
+        // Resolve indices → positions and compare the vertex set to the input.
+        let out_pos = read_positions(&out_bin, 0, 3);
+        let mut resolved: Vec<[f32; 3]> = (0..3)
+            .map(|i| {
+                let o = 36 + i * 2;
+                let idx = u16::from_le_bytes(out_bin[o..o + 2].try_into().unwrap()) as usize;
+                out_pos[idx]
+            })
+            .collect();
+        let mut expected = vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 3.0, 0.0]];
+        let key = |v: &[f32; 3]| (v[0].to_bits(), v[1].to_bits(), v[2].to_bits());
+        resolved.sort_by_key(key);
+        expected.sort_by_key(key);
+        assert_eq!(resolved, expected, "triangle vertices must survive vertex-fetch");
+    }
 }

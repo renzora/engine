@@ -41,6 +41,21 @@ mod plugin_meta;
 pub use plugin_meta::{for_each_static_plugin, PluginScope, StaticPlugin};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
+// ── Post-process framework ───────────────────────────────────────────────
+// `PostProcessPlugin<T>`, `PostProcessEffect`, the unified render-graph node
+// and the shared `PostProcessRegistry`. Folded in from the old standalone
+// `renzora_postprocess` dylib so its symbols ship inside `renzora.dll`
+// instead of a separate file — the ~50 effect plugins still resolve one
+// shared copy (and one `PostProcessRegistry` TypeId) across the dlopen
+// boundary, just from `renzora` now. The `renzora_postprocess` crate
+// remains as a thin rlib re-export shim so existing `renzora_postprocess::…`
+// paths (incl. those emitted by the `post_process` macro) keep compiling.
+//
+// Gated so non-rendering targets (mobile staticlib, wasm, headless server)
+// don't pull the render-graph surface into the lean base crate.
+#[cfg(feature = "postprocess")]
+pub mod postprocess;
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor

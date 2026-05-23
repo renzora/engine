@@ -104,10 +104,12 @@ copy_shared_libs() {
     # plugin link against. Each ships once next to the host, not in
     # plugins/. Adding a new SDK dylib (e.g. another contract crate
     # promoted to dual-mode dylib) means listing it here.
+    # NOTE: `renzora_postprocess` is no longer here — its framework folded
+    # into `renzora` (module `renzora::postprocess`), so it ships inside
+    # renzora.{dll,so,dylib} and emits no dylib of its own.
     for f in \
         "$SRC/librenzora.$EXT"           "$SRC/renzora.$EXT" \
-        "$SRC/librenzora_editor.$EXT"    "$SRC/renzora_editor.$EXT" \
-        "$SRC/librenzora_postprocess.$EXT" "$SRC/renzora_postprocess.$EXT"; do
+        "$SRC/librenzora_editor.$EXT"    "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -125,6 +127,10 @@ copy_shared_libs() {
         [[ "$base" == renzora."$EXT" ]] && continue
         [[ "$base" == librenzora_editor."$EXT" ]] && continue
         [[ "$base" == renzora_editor."$EXT" ]] && continue
+        # `renzora_postprocess` is now an rlib shim and emits no dylib, but
+        # keep this guard so a stale dylib left in the cargo cache (from
+        # before the crate-type change) is never swept into plugins/ — it
+        # has no `add!`/`plugin_bevy_hash`, so the loader would reject it.
         [[ "$base" == librenzora_postprocess."$EXT" ]] && continue
         [[ "$base" == renzora_postprocess."$EXT" ]] && continue
         [[ "$base" == librenzora_preview."$EXT" ]] && continue

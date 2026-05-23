@@ -97,10 +97,32 @@ pub enum ImportError {
     Io(#[from] std::io::Error),
 }
 
+/// Progress callback for long per-asset work — currently texture baking,
+/// which dominates import time for texture-heavy models. Called as
+/// `(done, total, current_item_name)` once per texture. Lets the UI show a
+/// moving "[12/73] Compressing textures: …" bar instead of sitting at 100%
+/// for the whole multi-minute bake.
+///
+/// `Sync` because textures bake in parallel across a rayon pool — the
+/// callback is invoked from multiple worker threads as each texture finishes,
+/// so it must be shareable (the UI side typically locks an mpsc sender).
+pub type ProgressFn<'a> = dyn Fn(usize, usize, &str) + Sync + 'a;
+
 /// Convert any supported 3D model file to GLB binary data.
 pub fn convert_to_glb(
     source_path: &Path,
     settings: &ImportSettings,
+) -> Result<ImportResult, ImportError> {
+    convert_to_glb_with_progress(source_path, settings, &|_, _, _| {})
+}
+
+/// Like [`convert_to_glb`] but reports per-texture baking progress through
+/// `progress`. Only the glTF/GLB paths emit progress today (they're the ones
+/// that bake textures); other formats ignore the callback.
+pub fn convert_to_glb_with_progress(
+    source_path: &Path,
+    settings: &ImportSettings,
+    progress: &ProgressFn,
 ) -> Result<ImportResult, ImportError> {
     if !source_path.exists() {
         return Err(ImportError::FileNotFound(source_path.display().to_string()));
@@ -116,8 +138,8 @@ pub fn convert_to_glb(
     })?;
 
     match format {
-        ModelFormat::Glb => crate::gltf_pass::convert_glb(source_path, settings),
-        ModelFormat::Gltf => crate::gltf_pass::convert_gltf(source_path, settings),
+        ModelFormat::Glb => crate::gltf_pass::convert_glb(source_path, settings, progress),
+        ModelFormat::Gltf => crate::gltf_pass::convert_gltf(source_path, settings, progress),
         ModelFormat::Obj => crate::obj::convert(source_path, settings),
         ModelFormat::Stl => crate::stl::convert(source_path, settings),
         ModelFormat::Ply => crate::ply::convert(source_path, settings),

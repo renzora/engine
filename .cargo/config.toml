@@ -37,8 +37,10 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # the host binary. Distribution plugins (e.g. `renzora_record`) are
 # `cdylib` and get loaded at runtime by `dynamic_plugin_loader`. The
 # `prefer-dynamic` flag below applies to crates that emit BOTH rlib +
-# dylib — currently bevy (via `bevy/dynamic_linking`), `renzora`,
-# `renzora_editor`, `renzora_postprocess`. They each ship as a single
+# dylib — currently bevy (via `bevy/dynamic_linking`), `renzora`, and
+# `renzora_editor`. (The post-process framework now lives inside `renzora`
+# behind its `postprocess` feature, so `renzora_postprocess` is a plain
+# rlib shim and no longer emits its own dylib.) They each ship as a single
 # `.dll`/`.so`/`.dylib` next to the host so workspace plugins (linked
 # statically into the host) AND distribution plugins (loaded at runtime)
 # share one compiled copy of the SDK contracts and matching `TypeId`s.

@@ -37,7 +37,8 @@ pub mod usd;
 pub use anim_extract::extract_animations_from_glb;
 pub use bvh::extract_animations_from_bvh;
 pub use convert::{
-    convert_to_glb, ExtractedAlphaMode, ExtractedPbrMaterial, ImportError, ImportResult,
+    convert_to_glb, convert_to_glb_with_progress, ExtractedAlphaMode, ExtractedPbrMaterial,
+    ImportError, ImportResult, ProgressFn,
 };
 pub use fbx_ufbx::extract_animations as extract_animations_from_fbx;
 pub use formats::{detect_format, supported_extensions, ModelFormat};

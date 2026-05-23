@@ -861,7 +861,24 @@ fn import_worker(
             label: format!("Converting {}", file_name),
         });
 
-        match renzora_import::convert_to_glb(source_path, &settings) {
+        // Per-texture progress: texture baking (decode + mip + BC compression)
+        // dominates import time for texture-heavy models, so surface it as a
+        // moving "[done/total] Compressing textures: …" bar rather than
+        // letting the file-level bar sit at 100% for minutes. Textures bake in
+        // parallel, so the callback is invoked from multiple threads — wrap the
+        // sender in a Mutex to make the closure `Sync`.
+        let tex_tx = Mutex::new(tx.clone());
+        let on_texture = move |done: usize, tex_total: usize, name: &str| {
+            if let Ok(sender) = tex_tx.lock() {
+                let _ = sender.send(ImportMsg::Progress {
+                    current: done,
+                    total: tex_total,
+                    label: format!("Compressing textures: {}", name),
+                });
+            }
+        };
+
+        match renzora_import::convert_to_glb_with_progress(source_path, &settings, &on_texture) {
             Ok(result) => {
                 // --- Phase: optimizing ---
                 let opt_settings = MeshOptSettings {

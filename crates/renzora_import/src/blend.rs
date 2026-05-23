@@ -103,7 +103,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
     // Apply scale post-export (Blender's glTF exporter doesn't have a
     // reliable global scale parameter across all versions)
-    let result = crate::gltf_pass::convert_glb(&tmp_glb, settings);
+    let result = crate::gltf_pass::convert_glb(&tmp_glb, settings, &|_, _, _| {});
     let _ = std::fs::remove_file(&tmp_glb);
     result
 }
