@@ -69,8 +69,13 @@ jobs:
           submodules: true
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+
+      # `rust-toolchain.toml` pins the channel and overrides the action above,
+      # so install clippy onto the pinned toolchain explicitly. (We deliberately
+      # do NOT put `components = ["clippy"]` in rust-toolchain.toml — that makes
+      # the parallel docker build lanes race on the component download.)
+      - name: Install clippy on the pinned toolchain
+        run: rustup component add clippy
 
       - name: Install Linux dependencies
         run: |

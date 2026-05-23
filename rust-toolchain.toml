@@ -1,6 +1,7 @@
 [toolchain]
 channel = "1.93.0"
-# `clippy` is part of the pinned toolchain so `cargo clippy` works in CI and
-# locally without a separate `rustup component add` (the CI clippy gate relies
-# on this — `rust-toolchain.toml` overrides the action's installed channel).
-components = ["clippy"]
+# NOTE: do NOT add `components = ["clippy"]` here. It forces rustup to install
+# clippy for every use of the toolchain — including the parallel docker build
+# lanes, which share one rustup dir and race on the component download (the
+# `editor` lane fails with a rename error). The CI clippy job installs clippy
+# itself via an explicit `rustup component add clippy` step instead.
