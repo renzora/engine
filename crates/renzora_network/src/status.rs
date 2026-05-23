@@ -46,3 +46,47 @@ impl NetworkStatus {
         self.connected_clients.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_state_default_disconnected() {
+        assert_eq!(ConnectionState::default(), ConnectionState::Disconnected);
+    }
+
+    #[test]
+    fn status_default_is_disconnected_no_clients() {
+        let s = NetworkStatus::default();
+        assert!(!s.is_connected());
+        assert!(!s.is_server);
+        assert_eq!(s.client_id, None);
+        assert_eq!(s.client_count(), 0);
+    }
+
+    #[test]
+    fn is_connected_tracks_state() {
+        let mut s = NetworkStatus::default();
+        assert!(!s.is_connected());
+        s.state = ConnectionState::Connecting;
+        assert!(!s.is_connected());
+        s.state = ConnectionState::Connected;
+        assert!(s.is_connected());
+    }
+
+    #[test]
+    fn client_count_matches_vec_len() {
+        let mut s = NetworkStatus::default();
+        assert_eq!(s.client_count(), 0);
+        s.connected_clients.push(ConnectedClient {
+            client_id: 1,
+            rtt_ms: 12.0,
+        });
+        s.connected_clients.push(ConnectedClient {
+            client_id: 2,
+            rtt_ms: 30.0,
+        });
+        assert_eq!(s.client_count(), 2);
+    }
+}

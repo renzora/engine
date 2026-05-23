@@ -739,3 +739,360 @@ impl UndoCommand for SpawnEntityCmd {
 }
 
 renzora::add!(UndoPlugin, Editor);
+
+// ──────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Records every execute/undo into a shared log resource so tests can
+    /// assert *which* command ran and in *what order*, plus a net counter.
+    #[derive(Resource, Default)]
+    struct Log {
+        events: Vec<String>,
+        counter: i32,
+    }
+
+    /// Minimal command with no GPU/asset dependencies. `execute` adds `delta`
+    /// to the counter and logs `"exec:{id}"`; `undo` subtracts and logs
+    /// `"undo:{id}"`.
+    struct CounterCmd {
+        id: String,
+        delta: i32,
+        merge_with_same_id: bool,
+    }
+
+    impl CounterCmd {
+        fn new(id: &str, delta: i32) -> Box<dyn UndoCommand> {
+            Box::new(CounterCmd {
+                id: id.to_string(),
+                delta,
+                merge_with_same_id: false,
+            })
+        }
+        fn mergeable(id: &str, delta: i32) -> Box<dyn UndoCommand> {
+            Box::new(CounterCmd {
+                id: id.to_string(),
+                delta,
+                merge_with_same_id: true,
+            })
+        }
+    }
+
+    impl UndoCommand for CounterCmd {
+        fn label(&self) -> &str {
+            &self.id
+        }
+        fn execute(&mut self, world: &mut World) {
+            let mut log = world.resource_mut::<Log>();
+            log.counter += self.delta;
+            log.events.push(format!("exec:{}", self.id));
+        }
+        fn undo(&mut self, world: &mut World) {
+            let mut log = world.resource_mut::<Log>();
+            log.counter -= self.delta;
+            log.events.push(format!("undo:{}", self.id));
+        }
+        fn merge(&mut self, other: &dyn UndoCommand) -> bool {
+            if !self.merge_with_same_id {
+                return false;
+            }
+            let any: &dyn Any = other;
+            let Some(o) = any.downcast_ref::<CounterCmd>() else {
+                return false;
+            };
+            if o.id != self.id {
+                return false;
+            }
+            // Fold the other delta into ourselves.
+            self.delta += o.delta;
+            true
+        }
+    }
+
+    /// Bare World with the resources the stack logic needs. Uses a non-Scene
+    /// active context so the `DocumentTabState` branch is skipped entirely.
+    fn world() -> World {
+        let mut w = World::new();
+        w.insert_resource(Log::default());
+        w.insert_resource(UndoStacks {
+            active: UndoContext::Lifecycle,
+            ..default()
+        });
+        w
+    }
+
+    fn ctx() -> UndoContext {
+        UndoContext::Lifecycle
+    }
+
+    fn counter(w: &World) -> i32 {
+        w.resource::<Log>().counter
+    }
+
+    fn events(w: &World) -> Vec<String> {
+        w.resource::<Log>().events.clone()
+    }
+
+    #[test]
+    fn execute_applies_command_and_records_it() {
+        let mut w = world();
+        execute(&mut w, ctx(), CounterCmd::new("a", 5));
+
+        assert_eq!(counter(&w), 5, "execute should run the command");
+        assert_eq!(events(&w), vec!["exec:a"]);
+        let stacks = w.resource::<UndoStacks>();
+        assert!(stacks.can_undo(&ctx()));
+        assert!(!stacks.can_redo(&ctx()));
+        let (undo, redo) = stacks.labels(&ctx());
+        assert_eq!(undo, vec!["a"]);
+        assert!(redo.is_empty());
+    }
+
+    #[test]
+    fn record_pushes_without_executing() {
+        let mut w = world();
+        record(&mut w, ctx(), CounterCmd::new("a", 5));
+
+        // record must NOT call execute.
+        assert_eq!(counter(&w), 0);
+        assert!(events(&w).is_empty());
+        assert!(w.resource::<UndoStacks>().can_undo(&ctx()));
+    }
+
+    #[test]
+    fn push_three_undo_twice_yields_exact_state() {
+        let mut w = world();
+        execute(&mut w, ctx(), CounterCmd::new("a", 1));
+        execute(&mut w, ctx(), CounterCmd::new("b", 10));
+        execute(&mut w, ctx(), CounterCmd::new("c", 100));
+        assert_eq!(counter(&w), 111);
+
+        let active = ctx();
+        w.resource_mut::<UndoStacks>().active = active.clone();
+
+        undo_once(&mut w); // undo c
+        undo_once(&mut w); // undo b
+
+        assert_eq!(counter(&w), 1, "only 'a' should remain applied");
+        // Most recent undone first.
+        assert_eq!(
+            events(&w),
+            vec!["exec:a", "exec:b", "exec:c", "undo:c", "undo:b"]
+        );
+
+        let stacks = w.resource::<UndoStacks>();
+        let (undo, redo) = stacks.labels(&active);
+        assert_eq!(undo, vec!["a"], "one entry left on undo stack");
+        // redo: front=oldest-undone .. back=next-to-redo
+        assert_eq!(redo, vec!["b", "c"]);
+    }
+
+    #[test]
+    fn redo_reapplies_in_original_order() {
+        let mut w = world();
+        execute(&mut w, ctx(), CounterCmd::new("a", 1));
+        execute(&mut w, ctx(), CounterCmd::new("b", 10));
+        execute(&mut w, ctx(), CounterCmd::new("c", 100));
+
+        undo_once(&mut w); // undo c
+        undo_once(&mut w); // undo b
+        assert_eq!(counter(&w), 1);
+
+        redo_once(&mut w); // redo b (next-to-redo is back of redo deque)
+        assert_eq!(counter(&w), 11);
+        redo_once(&mut w); // redo c
+        assert_eq!(counter(&w), 111);
+
+        assert_eq!(
+            events(&w).iter().filter(|e| e.starts_with("exec")).count(),
+            5,
+            "3 initial execs + 2 redos"
+        );
+        let stacks = w.resource::<UndoStacks>();
+        assert!(stacks.can_undo(&ctx()));
+        assert!(!stacks.can_redo(&ctx()), "redo stack drained");
+        let (undo, _redo) = stacks.labels(&ctx());
+        assert_eq!(undo, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn new_action_after_undo_clears_redo_stack() {
+        let mut w = world();
+        execute(&mut w, ctx(), CounterCmd::new("a", 1));
+        execute(&mut w, ctx(), CounterCmd::new("b", 10));
+
+        undo_once(&mut w); // undo b -> redo has [b]
+        assert!(w.resource::<UndoStacks>().can_redo(&ctx()));
+
+        // A brand-new action must invalidate the redo branch.
+        execute(&mut w, ctx(), CounterCmd::new("c", 100));
+
+        let stacks = w.resource::<UndoStacks>();
+        assert!(!stacks.can_redo(&ctx()), "redo invalidated by new action");
+        let (undo, redo) = stacks.labels(&ctx());
+        assert_eq!(undo, vec!["a", "c"]);
+        assert!(redo.is_empty());
+        assert_eq!(counter(&w), 101, "a(1) + c(100), b was undone");
+    }
+
+    #[test]
+    fn undo_on_empty_stack_is_noop_and_emits_exhausted() {
+        let mut w = world();
+        w.init_resource::<Messages<UndoExhausted>>();
+
+        undo_once(&mut w);
+
+        assert_eq!(counter(&w), 0);
+        assert!(events(&w).is_empty());
+        let msgs = w.resource::<Messages<UndoExhausted>>();
+        assert_eq!(
+            msgs.iter_current_update_messages().count(),
+            1,
+            "undo on empty stack writes UndoExhausted"
+        );
+    }
+
+    #[test]
+    fn redo_on_empty_stack_is_noop_and_emits_exhausted() {
+        let mut w = world();
+        w.init_resource::<Messages<UndoExhausted>>();
+
+        redo_once(&mut w);
+
+        assert_eq!(counter(&w), 0);
+        assert!(events(&w).is_empty());
+        let msgs = w.resource::<Messages<UndoExhausted>>();
+        assert_eq!(msgs.iter_current_update_messages().count(), 1);
+    }
+
+    #[test]
+    fn clear_drops_both_stacks_for_context() {
+        let mut w = world();
+        execute(&mut w, ctx(), CounterCmd::new("a", 1));
+        undo_once(&mut w); // populate redo
+        {
+            let s = w.resource::<UndoStacks>();
+            assert!(s.can_redo(&ctx()));
+        }
+
+        w.resource_mut::<UndoStacks>().clear(&ctx());
+
+        let s = w.resource::<UndoStacks>();
+        assert!(!s.can_undo(&ctx()));
+        assert!(!s.can_redo(&ctx()));
+        let (undo, redo) = s.labels(&ctx());
+        assert!(undo.is_empty() && redo.is_empty());
+    }
+
+    #[test]
+    fn clear_is_scoped_to_one_context() {
+        let mut w = world();
+        execute(&mut w, UndoContext::Lifecycle, CounterCmd::new("a", 1));
+        execute(
+            &mut w,
+            UndoContext::Other("x".into()),
+            CounterCmd::new("b", 2),
+        );
+
+        w.resource_mut::<UndoStacks>().clear(&UndoContext::Lifecycle);
+
+        let s = w.resource::<UndoStacks>();
+        assert!(!s.can_undo(&UndoContext::Lifecycle));
+        assert!(
+            s.can_undo(&UndoContext::Other("x".into())),
+            "other context untouched"
+        );
+    }
+
+    #[test]
+    fn clear_all_wipes_every_context() {
+        let mut w = world();
+        execute(&mut w, UndoContext::Lifecycle, CounterCmd::new("a", 1));
+        execute(
+            &mut w,
+            UndoContext::Other("x".into()),
+            CounterCmd::new("b", 2),
+        );
+
+        w.resource_mut::<UndoStacks>().clear_all();
+
+        let s = w.resource::<UndoStacks>();
+        assert!(!s.can_undo(&UndoContext::Lifecycle));
+        assert!(!s.can_undo(&UndoContext::Other("x".into())));
+    }
+
+    #[test]
+    fn capacity_evicts_oldest_entries() {
+        let mut w = world();
+        // Push one more than the cap.
+        for i in 0..(MAX_DEPTH + 1) {
+            record(&mut w, ctx(), CounterCmd::new(&format!("c{i}"), 1));
+        }
+
+        let s = w.resource::<UndoStacks>();
+        let (undo, _redo) = s.labels(&ctx());
+        assert_eq!(undo.len(), MAX_DEPTH, "stack capped at MAX_DEPTH");
+        // Oldest ("c0") evicted; newest still present at the back.
+        assert_eq!(undo.first().map(String::as_str), Some("c1"));
+        assert_eq!(
+            undo.last().map(String::as_str),
+            Some(format!("c{}", MAX_DEPTH).as_str())
+        );
+    }
+
+    #[test]
+    fn merge_folds_two_pushes_into_one_entry() {
+        let mut w = world();
+        // Two consecutive mergeable pushes with the same id collapse into a
+        // single undo entry, with deltas folded together.
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 1));
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 4));
+
+        let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
+        assert_eq!(undo, vec!["drag"], "two merges -> one entry");
+
+        // Undoing the single merged entry reverses the *combined* delta (5),
+        // confirming the second push folded into the first rather than stacking.
+        undo_once(&mut w);
+        assert_eq!(counter(&w), 0);
+    }
+
+    #[test]
+    fn non_merging_push_does_not_collapse() {
+        let mut w = world();
+        // Distinct ids must NOT merge even when mergeable.
+        record(&mut w, ctx(), CounterCmd::mergeable("a", 1));
+        record(&mut w, ctx(), CounterCmd::mergeable("b", 1));
+        let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
+        assert_eq!(undo, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn merge_clears_redo_branch() {
+        let mut w = world();
+        // Back is mergeable "drag"; populate the redo branch, then a same-id
+        // mergeable arrives and must clear redo (merge path, not push path).
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 1)); // undo=[drag]
+        record(&mut w, ctx(), CounterCmd::new("z", 0)); // undo=[drag,z]
+        undo_once(&mut w); // undo=[drag], redo=[z]
+        assert!(w.resource::<UndoStacks>().can_redo(&ctx()));
+
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 9)); // merges into back
+
+        let s = w.resource::<UndoStacks>();
+        assert!(!s.can_redo(&ctx()), "merge must clear the redo branch");
+        let (undo, _redo) = s.labels(&ctx());
+        assert_eq!(undo, vec!["drag"]);
+    }
+
+    #[test]
+    fn can_undo_redo_false_for_unknown_context() {
+        let w = world();
+        let s = w.resource::<UndoStacks>();
+        assert!(!s.can_undo(&UndoContext::Other("never".into())));
+        assert!(!s.can_redo(&UndoContext::Other("never".into())));
+        let (undo, redo) = s.labels(&UndoContext::Other("never".into()));
+        assert!(undo.is_empty() && redo.is_empty());
+    }
+}

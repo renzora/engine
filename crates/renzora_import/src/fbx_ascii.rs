@@ -628,3 +628,189 @@ fn generate_flat_normals(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(src: &str) -> Vec<FbxNode> {
+        AsciiParser::new(src.as_bytes()).parse_document()
+    }
+
+    // ─── index decoding ─────────────────────────────────────────────────
+
+    #[test]
+    fn decode_index_positive_passthrough() {
+        assert_eq!(decode_fbx_index(0), 0);
+        assert_eq!(decode_fbx_index(5), 5);
+    }
+
+    #[test]
+    fn decode_index_negative_is_polygon_end() {
+        // FBX encodes the last index of a polygon as ~i = -(i + 1).
+        assert_eq!(decode_fbx_index(-1), 0);
+        assert_eq!(decode_fbx_index(-4), 3);
+    }
+
+    // ─── axis conversion ────────────────────────────────────────────────
+
+    #[test]
+    fn convert_axis_yup_is_noop() {
+        let (mut x, mut y, mut z) = (1.0f32, 2.0, 3.0);
+        convert_axis(&mut x, &mut y, &mut z, UpAxis::YUp);
+        assert_eq!((x, y, z), (1.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn convert_axis_zup_swaps_and_negates() {
+        // Z-up → Y-up: y' = z, z' = -y, x unchanged.
+        let (mut x, mut y, mut z) = (1.0f32, 2.0, 3.0);
+        convert_axis(&mut x, &mut y, &mut z, UpAxis::ZUp);
+        assert_eq!((x, y, z), (1.0, 3.0, -2.0));
+    }
+
+    // ─── tokenizer / node tree ──────────────────────────────────────────
+
+    #[test]
+    fn parse_simple_node_with_quoted_property() {
+        let nodes = parse("Model: \"Cube\" {\n}\n");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "Model");
+        assert_eq!(nodes[0].properties, vec!["Cube".to_string()]);
+        assert!(nodes[0].children.is_empty());
+    }
+
+    #[test]
+    fn parse_nested_children() {
+        let nodes = parse("Objects:  {\n  Geometry: \"mesh\" {\n  }\n}\n");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "Objects");
+        assert_eq!(nodes[0].children.len(), 1);
+        assert_eq!(nodes[0].children[0].name, "Geometry");
+        assert_eq!(nodes[0].children[0].properties, vec!["mesh".to_string()]);
+    }
+
+    #[test]
+    fn parse_skips_comments_and_blank_lines() {
+        let src = "; this is a comment\n\n  ; another\nFoo: 1,2,3\n";
+        let nodes = parse(src);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "Foo");
+        assert_eq!(nodes[0].properties, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn parse_empty_input_yields_no_nodes() {
+        assert!(parse("").is_empty());
+        assert!(parse("   \n\t  \n").is_empty());
+        assert!(parse("; only a comment\n").is_empty());
+    }
+
+    // ─── node lookup helpers ────────────────────────────────────────────
+
+    #[test]
+    fn find_node_only_searches_direct_children() {
+        let nodes = parse("A: {\n  B: {\n    C: 1\n  }\n}\n");
+        // A is top-level; B is a direct child of A; C is nested under B.
+        assert!(find_node(&nodes, "A").is_some());
+        assert!(find_node(&nodes, "B").is_none()); // not top-level
+        let a = find_node(&nodes, "A").unwrap();
+        assert!(find_node(&a.children, "B").is_some());
+        assert!(find_node(&a.children, "C").is_none()); // C is one level deeper
+    }
+
+    #[test]
+    fn find_node_recursive_descends() {
+        let nodes = parse("A: {\n  B: {\n    C: 1\n  }\n}\n");
+        assert!(find_node_recursive(&nodes, "C").is_some());
+        assert!(find_node_recursive(&nodes, "Z").is_none());
+    }
+
+    #[test]
+    fn find_all_recursive_collects_every_match() {
+        let nodes = parse("Root: {\n  Model: \"a\" {\n  }\n  Model: \"b\" {\n  }\n}\n");
+        let mut found = Vec::new();
+        find_all_recursive(&nodes, "Model", &mut found);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].properties, vec!["a".to_string()]);
+        assert_eq!(found[1].properties, vec!["b".to_string()]);
+    }
+
+    // ─── array extraction ───────────────────────────────────────────────
+
+    #[test]
+    fn extract_f64_array_flat_style() {
+        // Older FBX flat style: values live directly on the node.
+        let nodes = parse("Vertices: 1.0,2.5,-3.0\n");
+        let arr = extract_f64_array(&nodes[0]);
+        assert_eq!(arr, vec![1.0, 2.5, -3.0]);
+    }
+
+    #[test]
+    fn extract_f64_array_a_child_style_skips_count_marker() {
+        // Modern style: `*N` count marker then an `a:` child holds the data.
+        let src = "Vertices: *3 {\n  a: 1.0,2.0,3.0\n}\n";
+        let nodes = parse(src);
+        let arr = extract_f64_array(&nodes[0]);
+        // The *3 marker must be skipped, only the three values returned.
+        assert_eq!(arr, vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn extract_i32_array_parses_integers() {
+        let nodes = parse("PolygonVertexIndex: 0,1,-3\n");
+        let arr = extract_i32_array(&nodes[0]);
+        assert_eq!(arr, vec![0, 1, -3]);
+    }
+
+    #[test]
+    fn extract_mapping_type_reads_child() {
+        let src = "LayerElementNormal: {\n  MappingInformationType: \"ByVertice\"\n}\n";
+        let nodes = parse(src);
+        assert_eq!(
+            extract_mapping_type(&nodes[0]).as_deref(),
+            Some("ByVertice")
+        );
+    }
+
+    #[test]
+    fn extract_mapping_type_absent_is_none() {
+        let nodes = parse("LayerElementNormal: {\n}\n");
+        assert_eq!(extract_mapping_type(&nodes[0]), None);
+    }
+
+    // ─── up-axis detection ──────────────────────────────────────────────
+
+    #[test]
+    fn detect_up_axis_zup_from_properties60() {
+        let src = "GlobalSettings: {\n  Properties60: {\n    Property: \"UpAxis\", \"int\", \"\",2\n  }\n}\n";
+        let nodes = parse(src);
+        assert_eq!(detect_up_axis(&nodes), Some(UpAxis::ZUp));
+    }
+
+    #[test]
+    fn detect_up_axis_yup_from_properties70() {
+        let src = "GlobalSettings: {\n  Properties70: {\n    P: \"UpAxis\", \"int\", \"\",1\n  }\n}\n";
+        let nodes = parse(src);
+        assert_eq!(detect_up_axis(&nodes), Some(UpAxis::YUp));
+    }
+
+    #[test]
+    fn detect_up_axis_absent_is_none() {
+        let nodes = parse("GlobalSettings: {\n}\n");
+        assert_eq!(detect_up_axis(&nodes), None);
+    }
+
+    // ─── flat normals (FBX variant) ─────────────────────────────────────
+
+    #[test]
+    fn fbx_flat_normals_single_triangle() {
+        let positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let indices = [0u32, 1, 2];
+        let mut normals = vec![0.0f32; 9];
+        generate_flat_normals(&positions, &indices, 0, 3, &mut normals);
+        for v in 0..3 {
+            assert!((normals[v * 3 + 2] - 1.0).abs() < 1e-6, "vertex {} z", v);
+        }
+    }
+}

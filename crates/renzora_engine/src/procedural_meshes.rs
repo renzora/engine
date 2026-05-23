@@ -2157,3 +2157,198 @@ pub fn create_pillar_mesh() -> Mesh {
 
     build_mesh(positions, normals, uvs, indices, Some([0.0, 1.0, 0.0]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::mesh::VertexAttributeValues;
+
+    // ------------------------------------------------------------------
+    // ensure_correct_winding — pure, deterministic
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn winding_flipped_when_face_normal_opposes_vertex_normal() {
+        // Triangle in the XY plane wound CW (when viewed from +Z) has a
+        // geometric face normal pointing -Z, but we declare the vertex
+        // normal as +Z. The mismatch must trigger a swap of indices 1 & 2.
+        let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]];
+        let normals = [[0.0, 0.0, 1.0]; 3];
+        let mut indices = [0u32, 1, 2];
+        ensure_correct_winding(&positions, &normals, &mut indices);
+        assert_eq!(indices, [0, 2, 1], "winding should be corrected");
+    }
+
+    #[test]
+    fn winding_unchanged_when_already_consistent() {
+        // CCW (viewed from +Z): geometric normal is +Z, matches vertex normal.
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = [[0.0, 0.0, 1.0]; 3];
+        let mut indices = [0u32, 1, 2];
+        ensure_correct_winding(&positions, &normals, &mut indices);
+        assert_eq!(indices, [0, 1, 2], "consistent winding must be left alone");
+    }
+
+    #[test]
+    fn winding_processes_each_triangle_independently() {
+        // First tri consistent (+Z), second tri needs a flip.
+        let positions = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], // tri 0: CCW, normal +Z
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0], // tri 1: CW, normal +Z -> flip
+        ];
+        let normals = [[0.0, 0.0, 1.0]; 6];
+        let mut indices = [0u32, 1, 2, 3, 4, 5];
+        ensure_correct_winding(&positions, &normals, &mut indices);
+        assert_eq!(indices, [0, 1, 2, 3, 5, 4]);
+    }
+
+    // ------------------------------------------------------------------
+    // Public mesh generators — structural validation (no GPU needed)
+    // ------------------------------------------------------------------
+
+    fn positions_of(mesh: &Mesh) -> Vec<[f32; 3]> {
+        match mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap() {
+            VertexAttributeValues::Float32x3(v) => v.clone(),
+            _ => panic!("positions must be Float32x3"),
+        }
+    }
+
+    fn index_list(mesh: &Mesh) -> Vec<u32> {
+        match mesh.indices().unwrap() {
+            Indices::U32(v) => v.clone(),
+            Indices::U16(v) => v.iter().map(|&i| i as u32).collect(),
+        }
+    }
+
+    /// Every generated mesh must have matching POSITION/NORMAL/UV counts,
+    /// an index buffer that's a multiple of 3, and no index pointing out of
+    /// bounds.
+    fn assert_mesh_well_formed(mesh: &Mesh) {
+        let pos_count = mesh.count_vertices();
+        assert!(pos_count > 0, "mesh has no vertices");
+
+        let normal_count = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+            Some(VertexAttributeValues::Float32x3(v)) => v.len(),
+            other => panic!("normals missing or wrong type: {:?}", other.is_some()),
+        };
+        let uv_count = match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+            Some(VertexAttributeValues::Float32x2(v)) => v.len(),
+            other => panic!("uvs missing or wrong type: {:?}", other.is_some()),
+        };
+        assert_eq!(pos_count, normal_count, "position/normal count mismatch");
+        assert_eq!(pos_count, uv_count, "position/uv count mismatch");
+
+        let indices = index_list(mesh);
+        assert!(!indices.is_empty(), "mesh has no indices");
+        assert_eq!(indices.len() % 3, 0, "index count must be a multiple of 3");
+        for &i in &indices {
+            assert!(
+                (i as usize) < pos_count,
+                "index {} out of bounds (verts={})",
+                i,
+                pos_count
+            );
+        }
+    }
+
+    #[test]
+    fn all_generators_produce_well_formed_meshes() {
+        assert_mesh_well_formed(&create_wedge_mesh());
+        assert_mesh_well_formed(&create_stairs_mesh(5));
+        assert_mesh_well_formed(&create_arch_mesh(16));
+        assert_mesh_well_formed(&create_half_cylinder_mesh(16));
+        assert_mesh_well_formed(&create_quarter_pipe_mesh(16));
+        assert_mesh_well_formed(&create_corner_mesh());
+        assert_mesh_well_formed(&create_prism_mesh());
+        assert_mesh_well_formed(&create_pyramid_mesh());
+        assert_mesh_well_formed(&create_pipe_mesh(16));
+        assert_mesh_well_formed(&create_ring_mesh(16));
+        assert_mesh_well_formed(&create_ramp_mesh());
+        assert_mesh_well_formed(&create_hemisphere_mesh(16));
+        assert_mesh_well_formed(&create_curved_wall_mesh(16));
+        assert_mesh_well_formed(&create_doorway_mesh());
+        assert_mesh_well_formed(&create_window_wall_mesh());
+        assert_mesh_well_formed(&create_l_shape_mesh());
+        assert_mesh_well_formed(&create_t_shape_mesh());
+        assert_mesh_well_formed(&create_cross_shape_mesh());
+    }
+
+    #[test]
+    fn stairs_min_step_clamp() {
+        // steps is clamped to at least 2; 0 and 1 must produce the same
+        // geometry as 2 (the clamp floor), proving the clamp is applied.
+        let m0 = create_stairs_mesh(0);
+        let m1 = create_stairs_mesh(1);
+        let m2 = create_stairs_mesh(2);
+        assert_eq!(m0.count_vertices(), m2.count_vertices());
+        assert_eq!(m1.count_vertices(), m2.count_vertices());
+        // A 3-step staircase must have strictly more vertices than 2.
+        let m3 = create_stairs_mesh(3);
+        assert!(m3.count_vertices() > m2.count_vertices());
+    }
+
+    #[test]
+    fn arch_segment_clamp_floor() {
+        // segments clamped to >= 8: requesting fewer yields the same vertex
+        // count as exactly 8.
+        let clamped = create_arch_mesh(2);
+        let floor = create_arch_mesh(8);
+        assert_eq!(clamped.count_vertices(), floor.count_vertices());
+    }
+
+    #[test]
+    fn wedge_is_centered_on_origin() {
+        // build_mesh subtracts the center offset (0.5,0.5,0.5) from a unit
+        // cube-spanning wedge, so the bounding box must straddle the origin
+        // within [-0.5, 0.5] on each axis.
+        let mesh = create_wedge_mesh();
+        let positions = positions_of(&mesh);
+        let mut min = [f32::MAX; 3];
+        let mut max = [f32::MIN; 3];
+        for p in &positions {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(p[axis]);
+                max[axis] = max[axis].max(p[axis]);
+            }
+        }
+        for axis in 0..3 {
+            assert!(
+                (min[axis] - -0.5).abs() < 1e-5,
+                "axis {} min should be -0.5, got {}",
+                axis,
+                min[axis]
+            );
+            assert!(
+                (max[axis] - 0.5).abs() < 1e-5,
+                "axis {} max should be 0.5, got {}",
+                axis,
+                max[axis]
+            );
+        }
+    }
+
+    #[test]
+    fn pipe_inner_radius_smaller_than_outer() {
+        // Sanity on the hollow geometry: some vertices must sit at the inner
+        // radius (0.35) and some at the outer (0.5) in the XZ plane.
+        let mesh = create_pipe_mesh(16);
+        let positions = positions_of(&mesh);
+        let mut saw_inner = false;
+        let mut saw_outer = false;
+        for p in &positions {
+            let r = (p[0] * p[0] + p[2] * p[2]).sqrt();
+            if (r - 0.35).abs() < 1e-3 {
+                saw_inner = true;
+            }
+            if (r - 0.5).abs() < 1e-3 {
+                saw_outer = true;
+            }
+        }
+        assert!(saw_inner, "expected vertices at inner radius 0.35");
+        assert!(saw_outer, "expected vertices at outer radius 0.5");
+    }
+}

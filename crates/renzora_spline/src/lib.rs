@@ -214,3 +214,219 @@ impl Plugin for SplinePlugin {
 }
 
 renzora::add!(SplinePlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EPS: f32 = 1e-5;
+
+    fn assert_vec_eq(a: Vec3, b: Vec3) {
+        assert!(
+            (a - b).length() < EPS,
+            "vectors differ: {a:?} vs {b:?} (dist {})",
+            (a - b).length()
+        );
+    }
+
+    #[test]
+    fn segment_count_open_and_closed() {
+        // < 2 points => 0 segments
+        assert_eq!(SplinePath::default().segment_count(), 0);
+        assert_eq!(SplinePath::with_points([Vec3::ZERO]).segment_count(), 0);
+
+        // open: points - 1
+        let open = SplinePath::with_points([Vec3::ZERO, Vec3::X, Vec3::Y]);
+        assert_eq!(open.segment_count(), 2);
+
+        // closed: points
+        let mut closed = open.clone();
+        closed.closed = true;
+        assert_eq!(closed.segment_count(), 3);
+    }
+
+    #[test]
+    fn empty_spline_samples_to_zero() {
+        let s = SplinePath::default();
+        assert_vec_eq(s.sample(0.0), Vec3::ZERO);
+        assert_vec_eq(s.sample(5.0), Vec3::ZERO);
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn single_point_samples_to_that_point() {
+        let p = Vec3::new(3.0, -2.0, 7.0);
+        let s = SplinePath::with_points([p]);
+        assert_vec_eq(s.sample(0.0), p);
+        assert_vec_eq(s.sample(1.0), p);
+        assert_vec_eq(s.sample(-10.0), p);
+    }
+
+    #[test]
+    fn endpoints_match_control_points() {
+        // Catmull-Rom passes through every control point. Sampling at integer
+        // params should land exactly on the corresponding control point.
+        let pts = [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 2.0, 0.0),
+            Vec3::new(3.0, 2.0, 1.0),
+            Vec3::new(5.0, 0.0, 0.0),
+        ];
+        let s = SplinePath::with_points(pts);
+        // Start endpoint.
+        assert_vec_eq(s.sample(0.0), pts[0]);
+        // Interior control points at integer params.
+        assert_vec_eq(s.sample(1.0), pts[1]);
+        assert_vec_eq(s.sample(2.0), pts[2]);
+        // End endpoint: clamps to just below segment_count, but should be
+        // essentially the last point.
+        assert_vec_eq(s.sample(3.0), pts[3]);
+    }
+
+    #[test]
+    fn straight_two_point_midpoint() {
+        // A straight 2-point spline sampled at t=0.5 must be the midpoint.
+        let a = Vec3::new(0.0, 0.0, 0.0);
+        let b = Vec3::new(4.0, 0.0, 0.0);
+        let s = SplinePath::with_points([a, b]);
+        assert_vec_eq(s.sample(0.0), a);
+        assert_vec_eq(s.sample(0.5), Vec3::new(2.0, 0.0, 0.0));
+        // t=1.0 clamps to just under 1; should be at the far end.
+        assert_vec_eq(s.sample(1.0), b);
+    }
+
+    #[test]
+    fn collinear_points_stay_on_the_line() {
+        // Four evenly-spaced collinear points: the curve is the straight line,
+        // so the midpoint of the middle segment is the average of its ends.
+        let pts = [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            Vec3::new(3.0, 0.0, 0.0),
+        ];
+        let s = SplinePath::with_points(pts);
+        // Middle of segment 1 (between pts[1] and pts[2]).
+        let mid = s.sample(1.5);
+        assert!(mid.y.abs() < EPS && mid.z.abs() < EPS, "left the line: {mid:?}");
+        assert!((mid.x - 1.5).abs() < EPS, "expected x=1.5, got {}", mid.x);
+    }
+
+    #[test]
+    fn sample_clamps_out_of_range() {
+        let a = Vec3::ZERO;
+        let b = Vec3::new(2.0, 0.0, 0.0);
+        let s = SplinePath::with_points([a, b]);
+        // Negative clamps to start.
+        assert_vec_eq(s.sample(-5.0), a);
+        // Beyond segment_count clamps to the end.
+        assert_vec_eq(s.sample(100.0), b);
+    }
+
+    #[test]
+    fn sample_uniform_counts_and_endpoints() {
+        let a = Vec3::ZERO;
+        let b = Vec3::new(4.0, 0.0, 0.0);
+        let s = SplinePath::with_points([a, b]);
+
+        // count 0 => empty
+        assert!(s.sample_uniform(0).is_empty());
+
+        // count 1 => single sample at t=0 (start)
+        let one = s.sample_uniform(1);
+        assert_eq!(one.len(), 1);
+        assert_vec_eq(one[0], a);
+
+        // count 5 evenly spaced; first==start, last==end, middle==midpoint.
+        let five = s.sample_uniform(5);
+        assert_eq!(five.len(), 5);
+        assert_vec_eq(five[0], a);
+        assert_vec_eq(five[4], b);
+        assert_vec_eq(five[2], Vec3::new(2.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn sample_uniform_empty_spline() {
+        let s = SplinePath::default();
+        assert!(s.sample_uniform(3).is_empty());
+    }
+
+    #[test]
+    fn sample_by_arc_length_straight_line_spacing() {
+        // Straight line of length 4. Spacing 1.0 should give points at
+        // x = 0,1,2,3 plus the final endpoint at 4 => 5 points total.
+        let a = Vec3::ZERO;
+        let b = Vec3::new(4.0, 0.0, 0.0);
+        let s = SplinePath::with_points([a, b]);
+        let pts = s.sample_by_arc_length(1.0);
+        assert_eq!(pts.len(), 5, "got {pts:?}");
+        for (i, p) in pts.iter().enumerate() {
+            assert!(
+                (p.x - i as f32).abs() < 1e-3,
+                "point {i} expected x≈{i}, got {p:?}"
+            );
+            assert!(p.y.abs() < 1e-3 && p.z.abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn sample_by_arc_length_invalid_spacing_returns_points() {
+        let pts = [Vec3::ZERO, Vec3::X, Vec3::Y];
+        let s = SplinePath::with_points(pts);
+        // Non-positive spacing returns the raw control points unchanged.
+        assert_eq!(s.sample_by_arc_length(0.0), pts.to_vec());
+        assert_eq!(s.sample_by_arc_length(-1.0), pts.to_vec());
+    }
+
+    #[test]
+    fn push_and_with_points_build_same_path() {
+        let mut a = SplinePath::new();
+        a.push(Vec3::ZERO);
+        a.push(Vec3::X);
+        let b = SplinePath::with_points([Vec3::ZERO, Vec3::X]);
+        assert_eq!(a.control_points, b.control_points);
+        assert!(!a.closed);
+    }
+
+    #[test]
+    fn closed_loop_wraps_around() {
+        // A closed square has one more segment than open; sampling at the
+        // final segment's start should land on the last control point, and
+        // the curve should pass through each control point at integer params.
+        let pts = [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 2.0),
+            Vec3::new(0.0, 0.0, 2.0),
+        ];
+        let mut s = SplinePath::with_points(pts);
+        s.closed = true;
+        assert_eq!(s.segment_count(), 4);
+        assert_vec_eq(s.sample(0.0), pts[0]);
+        assert_vec_eq(s.sample(1.0), pts[1]);
+        assert_vec_eq(s.sample(2.0), pts[2]);
+        assert_vec_eq(s.sample(3.0), pts[3]);
+    }
+
+    #[test]
+    fn catmull_rom_endpoints_are_exact() {
+        // The interpolation must return p1 at t=0 and p2 at t=1 regardless of
+        // the surrounding points.
+        let p0 = Vec3::new(-1.0, 0.0, 0.0);
+        let p1 = Vec3::new(0.0, 1.0, 0.0);
+        let p2 = Vec3::new(1.0, 1.0, 0.0);
+        let p3 = Vec3::new(2.0, 0.0, 0.0);
+        assert_vec_eq(catmull_rom(p0, p1, p2, p3, 0.0), p1);
+        assert_vec_eq(catmull_rom(p0, p1, p2, p3, 1.0), p2);
+    }
+
+    #[test]
+    fn serde_round_trip() {
+        let mut s = SplinePath::with_points([Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)]);
+        s.closed = true;
+        let json = serde_json::to_string(&s).expect("serialize");
+        let back: SplinePath = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(s.control_points, back.control_points);
+        assert_eq!(s.closed, back.closed);
+    }
+}

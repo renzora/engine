@@ -37,3 +37,50 @@ impl Default for NetworkOwner {
         Self(OwnerKind::Server)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn networked_default_and_eq() {
+        assert_eq!(Networked, Networked::default());
+    }
+
+    #[test]
+    fn network_owner_default_is_server() {
+        let owner = NetworkOwner::default();
+        assert_eq!(owner.0, OwnerKind::Server);
+    }
+
+    #[test]
+    fn network_id_round_trip() {
+        let id = NetworkId(42);
+        let json = serde_json::to_string(&id).unwrap();
+        let back: NetworkId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn owner_kind_round_trip_both_variants() {
+        for kind in [OwnerKind::Server, OwnerKind::Client(7)] {
+            let json = serde_json::to_string(&kind).unwrap();
+            let back: OwnerKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(kind, back);
+        }
+    }
+
+    #[test]
+    fn owner_kind_variants_distinct() {
+        assert_ne!(OwnerKind::Server, OwnerKind::Client(0));
+        assert_ne!(OwnerKind::Client(1), OwnerKind::Client(2));
+        assert_eq!(OwnerKind::Client(5), OwnerKind::Client(5));
+    }
+
+    #[test]
+    fn networked_round_trip() {
+        let json = serde_json::to_string(&Networked).unwrap();
+        let back: Networked = serde_json::from_str(&json).unwrap();
+        assert_eq!(Networked, back);
+    }
+}

@@ -339,3 +339,106 @@ fn read_number(chars: &[char], start: usize) -> (f64, usize) {
     let num = s.parse::<f64>().unwrap_or(0.0);
     (num, i)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenize_keywords_vs_identifiers() {
+        let toks = tokenize("def Mesh \"Cube\"");
+        assert_eq!(
+            toks,
+            vec![
+                Token::Keyword("def".into()),
+                Token::Identifier("Mesh".into()),
+                Token::QuotedString("Cube".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_punctuation() {
+        let toks = tokenize("( ) [ ] { } = , ; :");
+        assert_eq!(
+            toks,
+            vec![
+                Token::OpenParen,
+                Token::CloseParen,
+                Token::OpenBracket,
+                Token::CloseBracket,
+                Token::OpenBrace,
+                Token::CloseBrace,
+                Token::Equals,
+                Token::Comma,
+                Token::Semicolon,
+                Token::Colon,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_numbers_including_negative_decimal_exponent() {
+        let toks = tokenize("1 -3 1.5 .5 1e-5 -2.0");
+        assert_eq!(
+            toks,
+            vec![
+                Token::Number(1.0),
+                Token::Number(-3.0),
+                Token::Number(1.5),
+                Token::Number(0.5),
+                Token::Number(1e-5),
+                Token::Number(-2.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_skips_line_and_block_comments() {
+        let toks = tokenize("# a line comment\n1 /* block */ 2");
+        assert_eq!(toks, vec![Token::Number(1.0), Token::Number(2.0)]);
+    }
+
+    #[test]
+    fn tokenize_quoted_string_with_escapes() {
+        let toks = tokenize(r#""a\nb\"c""#);
+        assert_eq!(toks, vec![Token::QuotedString("a\nb\"c".into())]);
+    }
+
+    #[test]
+    fn tokenize_asset_and_path_refs() {
+        let toks = tokenize("@./tex.png@ </Root/Mesh>");
+        assert_eq!(
+            toks,
+            vec![
+                Token::AssetRef("./tex.png".into()),
+                Token::PathRef("/Root/Mesh".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_type_array_suffix_kept_on_identifier() {
+        // `point3f[]` should tokenize as a single identifier including `[]`.
+        let toks = tokenize("point3f[] points");
+        assert_eq!(
+            toks,
+            vec![
+                Token::Identifier("point3f[]".into()),
+                Token::Identifier("points".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_namespaced_identifier_keeps_colons() {
+        let toks = tokenize("primvars:st");
+        assert_eq!(toks, vec![Token::Identifier("primvars:st".into())]);
+    }
+
+    #[test]
+    fn tokenize_empty_input() {
+        assert!(tokenize("").is_empty());
+        assert!(tokenize("   \n\t # comment\n").is_empty());
+    }
+}

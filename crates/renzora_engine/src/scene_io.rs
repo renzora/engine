@@ -2101,3 +2101,199 @@ pub fn rehydrate_lights(
         commands.entity(entity).try_insert(Visibility::default());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ------------------------------------------------------------------
+    // extract_unregistered_type
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn extract_type_basic_backtick_form() {
+        let msg = "no registration found for `my::crate::Foo`";
+        assert_eq!(
+            extract_unregistered_type(msg),
+            Some("my::crate::Foo".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_type_with_type_keyword() {
+        // Tolerate the `... for type \`T\`` variant.
+        let msg = "no registration found for type `bevy::pbr::StandardMaterial`";
+        assert_eq!(
+            extract_unregistered_type(msg),
+            Some("bevy::pbr::StandardMaterial".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_type_embedded_in_larger_message() {
+        let msg = "deserialization error at line 5: no registration found for `a::B`, aborting";
+        assert_eq!(extract_unregistered_type(msg), Some("a::B".to_string()));
+    }
+
+    #[test]
+    fn extract_type_returns_none_when_pattern_absent() {
+        assert_eq!(extract_unregistered_type("some unrelated error"), None);
+    }
+
+    #[test]
+    fn extract_type_returns_none_without_closing_backtick() {
+        let msg = "no registration found for `unterminated";
+        assert_eq!(extract_unregistered_type(msg), None);
+    }
+
+    #[test]
+    fn extract_type_returns_none_without_opening_backtick() {
+        let msg = "no registration found for plainname";
+        assert_eq!(extract_unregistered_type(msg), None);
+    }
+
+    // ------------------------------------------------------------------
+    // strip_component_entry
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn strip_middle_entry_keeps_neighbors() {
+        let ron = "(\n  \"a::A\": (x: 1),\n  \"b::B\": (y: 2),\n  \"c::C\": (z: 3),\n)";
+        let out = strip_component_entry(ron, "b::B").expect("entry should be found");
+        assert!(!out.contains("b::B"), "stripped key must be gone");
+        assert!(out.contains("a::A"), "preceding entry must remain");
+        assert!(out.contains("c::C"), "following entry must remain");
+        // No back-to-back commas left behind.
+        assert!(!out.contains(",,"));
+    }
+
+    #[test]
+    fn strip_entry_with_nested_parens() {
+        // The closing paren of the target must be found via balanced-paren
+        // walking, not the first ')' encountered.
+        let ron = "(\n  \"t::T\": (inner: (a: 1, b: (2)), tail: 9),\n  \"u::U\": (k: 0),\n)";
+        let out = strip_component_entry(ron, "t::T").expect("entry should be found");
+        assert!(!out.contains("t::T"));
+        assert!(out.contains("u::U"));
+        // The inner data of u::U must survive intact.
+        assert!(out.contains("k: 0"));
+    }
+
+    #[test]
+    fn strip_entry_with_paren_inside_string_literal() {
+        // A ')' inside a quoted string must not be treated as the closing
+        // paren of the entry.
+        let ron = "(\n  \"s::S\": (label: \"a ) b ( c\"),\n  \"v::V\": (n: 1),\n)";
+        let out = strip_component_entry(ron, "s::S").expect("entry should be found");
+        assert!(!out.contains("s::S"));
+        assert!(out.contains("v::V"));
+        assert!(out.contains("n: 1"));
+    }
+
+    #[test]
+    fn strip_entry_with_escaped_quote_in_string() {
+        // An escaped quote must not prematurely end the string scan.
+        let ron = "(\n  \"e::E\": (txt: \"x \\\" ) still in string\"),\n  \"w::W\": (m: 2),\n)";
+        let out = strip_component_entry(ron, "e::E").expect("entry should be found");
+        assert!(!out.contains("e::E"));
+        assert!(out.contains("w::W"));
+        assert!(out.contains("m: 2"));
+    }
+
+    #[test]
+    fn strip_returns_none_for_missing_key() {
+        let ron = "(\n  \"a::A\": (x: 1),\n)";
+        assert_eq!(strip_component_entry(ron, "z::Z"), None);
+    }
+
+    #[test]
+    fn strip_returns_none_on_unbalanced_parens() {
+        // Opening paren but never closed -> paren matching fails -> None.
+        let ron = "(\n  \"a::A\": (x: 1,\n";
+        assert_eq!(strip_component_entry(ron, "a::A"), None);
+    }
+
+    #[test]
+    fn strip_last_entry_is_removed() {
+        let ron = "(\n  \"a::A\": (x: 1),\n  \"b::B\": (y: 2),\n)";
+        let out = strip_component_entry(ron, "b::B").expect("entry should be found");
+        assert!(!out.contains("b::B"));
+        assert!(out.contains("a::A"));
+    }
+
+    // ------------------------------------------------------------------
+    // extract_scene_instance_sources
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn extract_sources_single() {
+        let text = r#"
+        "renzora::core::SceneInstance": (
+            source: "scenes/car.ron",
+        ),
+        "#;
+        assert_eq!(
+            extract_scene_instance_sources(text),
+            vec!["scenes/car.ron".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_sources_multiple_in_order() {
+        let text = concat!(
+            "\"renzora::core::SceneInstance\": ( source: \"a.ron\" ),\n",
+            "other stuff,\n",
+            "\"renzora::core::SceneInstance\": ( source: \"b.ron\" ),\n",
+        );
+        assert_eq!(
+            extract_scene_instance_sources(text),
+            vec!["a.ron".to_string(), "b.ron".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_sources_none_when_marker_absent() {
+        let text = "\"some::Other\": ( source: \"x.ron\" )";
+        assert!(extract_scene_instance_sources(text).is_empty());
+    }
+
+    #[test]
+    fn extract_sources_empty_string_source() {
+        let text = "\"renzora::core::SceneInstance\": ( source: \"\" )";
+        assert_eq!(
+            extract_scene_instance_sources(text),
+            vec![String::new()]
+        );
+    }
+
+    #[test]
+    fn extract_sources_tab_whitespace_before_quote() {
+        let text = "\"renzora::core::SceneInstance\": (source:\t\"tabbed.ron\")";
+        assert_eq!(
+            extract_scene_instance_sources(text),
+            vec!["tabbed.ron".to_string()]
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // paths_equal / is_self_reference
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn paths_equal_identical_uncanonicalizable_paths() {
+        // Non-existent paths can't canonicalize, so the fallback is a
+        // direct == comparison.
+        let a = Path::new("/nonexistent/scenes/foo.ron");
+        let b = Path::new("/nonexistent/scenes/foo.ron");
+        assert!(paths_equal(a, b));
+        assert!(is_self_reference(a, b));
+    }
+
+    #[test]
+    fn paths_not_equal_different_uncanonicalizable_paths() {
+        let a = Path::new("/nonexistent/scenes/foo.ron");
+        let b = Path::new("/nonexistent/scenes/bar.ron");
+        assert!(!paths_equal(a, b));
+        assert!(!is_self_reference(a, b));
+    }
+}

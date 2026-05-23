@@ -9969,6 +9969,7 @@ dependencies = [
  "log",
  "renzora",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -10592,6 +10593,7 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

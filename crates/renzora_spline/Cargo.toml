@@ -8,5 +8,8 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
 
+[dev-dependencies]
+serde_json = "1"
+
 [lints]
 workspace = true

@@ -39,3 +39,64 @@ pub struct GameEvent {
     /// Serialized payload (MessagePack, JSON, or raw bytes).
     pub data: Vec<u8>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_request_round_trip() {
+        let msg = SpawnRequest {
+            name: "enemy".to_string(),
+            position: Vec3::new(1.0, 2.0, 3.0),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: SpawnRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, msg.name);
+        assert_eq!(back.position, msg.position);
+    }
+
+    #[test]
+    fn despawn_request_round_trip() {
+        let msg = DespawnRequest { network_id: 99 };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: DespawnRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.network_id, 99);
+    }
+
+    #[test]
+    fn chat_message_round_trip() {
+        let msg = ChatMessage {
+            sender: "alice".to_string(),
+            content: "hello world".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sender, msg.sender);
+        assert_eq!(back.content, msg.content);
+    }
+
+    #[test]
+    fn game_event_round_trip_with_binary_payload() {
+        let msg = GameEvent {
+            name: "score".to_string(),
+            data: vec![0u8, 1, 2, 255, 128],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: GameEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, msg.name);
+        assert_eq!(back.data, msg.data);
+    }
+
+    #[test]
+    fn game_event_empty_payload() {
+        let msg = GameEvent {
+            name: "ping".to_string(),
+            data: Vec::new(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: GameEvent = serde_json::from_str(&json).unwrap();
+        assert!(back.data.is_empty());
+        assert_eq!(back.name, "ping");
+    }
+}

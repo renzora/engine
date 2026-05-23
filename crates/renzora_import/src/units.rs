@@ -179,3 +179,79 @@ fn detect_dae_units(path: &Path) -> Option<f32> {
 
     val_str.parse::<f64>().ok().map(|v| v as f32)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── FBX ASCII UnitScaleFactor ──────────────────────────────────────
+
+    #[test]
+    fn fbx_ascii_centimeters() {
+        // UnitScaleFactor 1.0 = centimeters → 0.01 meters per unit.
+        let text = "        P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n";
+        assert_eq!(detect_fbx_units_ascii(text), Some(0.01));
+    }
+
+    #[test]
+    fn fbx_ascii_meters() {
+        // UnitScaleFactor 100 = meters → 1.0 meters per unit.
+        let text = "P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",100\n";
+        assert_eq!(detect_fbx_units_ascii(text), Some(1.0));
+    }
+
+    #[test]
+    fn fbx_ascii_inches() {
+        // UnitScaleFactor 2.54 = inches → 0.0254 meters per unit.
+        let text = "P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",2.54\n";
+        let v = detect_fbx_units_ascii(text).unwrap();
+        assert!((v - 0.0254).abs() < 1e-6, "got {}", v);
+    }
+
+    #[test]
+    fn fbx_ascii_missing_returns_none() {
+        let text = "P: \"SomethingElse\", \"double\", \"Number\", \"\",1\n";
+        assert_eq!(detect_fbx_units_ascii(text), None);
+    }
+
+    #[test]
+    fn fbx_ascii_no_comma_returns_none() {
+        // The detector requires a comma on the line.
+        let text = "UnitScaleFactor 1.0\n";
+        assert_eq!(detect_fbx_units_ascii(text), None);
+    }
+
+    // ─── USD metersPerUnit text probe ───────────────────────────────────
+
+    #[test]
+    fn usd_text_meters_per_unit() {
+        let text = "#usda 1.0\n(\n    metersPerUnit = 0.01\n    upAxis = \"Y\"\n)\n";
+        assert_eq!(detect_usd_units_text(text), Some(0.01));
+    }
+
+    #[test]
+    fn usd_text_meters_per_unit_trailing_paren() {
+        // Value may have a trailing ')' stripped.
+        let text = "metersPerUnit = 1.0)\n";
+        assert_eq!(detect_usd_units_text(text), Some(1.0));
+    }
+
+    #[test]
+    fn usd_text_missing_returns_none() {
+        let text = "#usda 1.0\n(\n    upAxis = \"Z\"\n)\n";
+        assert_eq!(detect_usd_units_text(text), None);
+    }
+
+    // ─── detect_unit_scale dispatch ─────────────────────────────────────
+
+    #[test]
+    fn detect_unit_scale_blend_is_meters() {
+        assert_eq!(detect_unit_scale(std::path::Path::new("a.blend")), Some(1.0));
+    }
+
+    #[test]
+    fn detect_unit_scale_unknown_extension_is_none() {
+        assert_eq!(detect_unit_scale(std::path::Path::new("a.txt")), None);
+        assert_eq!(detect_unit_scale(std::path::Path::new("noext")), None);
+    }
+}

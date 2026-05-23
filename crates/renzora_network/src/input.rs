@@ -20,3 +20,32 @@ pub struct PlayerInput {
     /// Secondary action (e.g. block, alt-fire).
     pub action2: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn player_input_default_is_neutral() {
+        let i = PlayerInput::default();
+        assert_eq!(i.movement, Vec2::ZERO);
+        assert_eq!(i.look_delta, Vec2::ZERO);
+        assert!(!i.jump);
+        assert!(!i.action1);
+        assert!(!i.action2);
+    }
+
+    #[test]
+    fn player_input_round_trip() {
+        let i = PlayerInput {
+            movement: Vec2::new(0.5, -1.0),
+            look_delta: Vec2::new(2.0, 3.0),
+            jump: true,
+            action1: false,
+            action2: true,
+        };
+        let json = serde_json::to_string(&i).unwrap();
+        let back: PlayerInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(i, back);
+    }
+}

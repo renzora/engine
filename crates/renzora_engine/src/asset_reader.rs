@@ -352,3 +352,32 @@ pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
     );
     project_asset_path
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_converts_backslashes_to_forward_slashes() {
+        let p = Path::new("models\\sub\\foo.glb");
+        assert_eq!(EmbeddedAssetReader::normalize(p), "models/sub/foo.glb");
+    }
+
+    #[test]
+    fn normalize_leaves_forward_slashes_untouched() {
+        let p = Path::new("models/sub/foo.glb");
+        assert_eq!(EmbeddedAssetReader::normalize(p), "models/sub/foo.glb");
+    }
+
+    #[test]
+    fn normalize_mixed_separators() {
+        let p = Path::new("a\\b/c\\d.png");
+        assert_eq!(EmbeddedAssetReader::normalize(p), "a/b/c/d.png");
+    }
+
+    #[test]
+    fn normalize_single_component() {
+        let p = Path::new("file.txt");
+        assert_eq!(EmbeddedAssetReader::normalize(p), "file.txt");
+    }
+}

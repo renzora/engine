@@ -245,3 +245,45 @@ fn generate_normals_from_positions(positions: &[f32], indices: &[u32]) -> Vec<f3
 
     normals
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normals_from_single_triangle_point_up_z() {
+        // CCW triangle in the XY plane → +Z normal at every vertex.
+        let positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let indices = [0u32, 1, 2];
+        let normals = generate_normals_from_positions(&positions, &indices);
+        assert_eq!(normals.len(), 9);
+        for v in 0..3 {
+            assert!((normals[v * 3]).abs() < 1e-6);
+            assert!((normals[v * 3 + 1]).abs() < 1e-6);
+            assert!((normals[v * 3 + 2] - 1.0).abs() < 1e-6, "vertex {} z", v);
+        }
+    }
+
+    #[test]
+    fn normals_are_unit_length() {
+        // Two triangles sharing an edge (a quad) — shared verts still normalize.
+        let positions = [
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        ];
+        let indices = [0u32, 1, 2, 0, 2, 3];
+        let normals = generate_normals_from_positions(&positions, &indices);
+        for v in 0..4 {
+            let (x, y, z) = (normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2]);
+            let len = (x * x + y * y + z * z).sqrt();
+            assert!((len - 1.0).abs() < 1e-5, "vertex {} len {}", v, len);
+        }
+    }
+
+    #[test]
+    fn unreferenced_vertex_falls_back_to_up() {
+        let positions = [0.0, 0.0, 0.0];
+        let indices: [u32; 0] = [];
+        let normals = generate_normals_from_positions(&positions, &indices);
+        assert_eq!(normals, vec![0.0, 1.0, 0.0]);
+    }
+}

@@ -1081,6 +1081,172 @@ fn cast_u32_to_bytes(data: &[u32]) -> Vec<u8> {
     out
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── byte casting ───────────────────────────────────────────────────
+
+    #[test]
+    fn cast_f32_little_endian() {
+        let bytes = cast_f32_to_bytes(&[1.0f32, -2.0]);
+        assert_eq!(bytes.len(), 8);
+        assert_eq!(&bytes[0..4], &1.0f32.to_le_bytes());
+        assert_eq!(&bytes[4..8], &(-2.0f32).to_le_bytes());
+    }
+
+    #[test]
+    fn cast_u32_little_endian() {
+        let bytes = cast_u32_to_bytes(&[1u32, 0x01020304]);
+        assert_eq!(bytes.len(), 8);
+        assert_eq!(&bytes[0..4], &[1, 0, 0, 0]);
+        assert_eq!(&bytes[4..8], &[0x04, 0x03, 0x02, 0x01]);
+    }
+
+    #[test]
+    fn cast_empty_slices() {
+        assert!(cast_f32_to_bytes(&[]).is_empty());
+        assert!(cast_u32_to_bytes(&[]).is_empty());
+    }
+
+    // ─── name sanitizing ────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_keeps_safe_chars() {
+        assert_eq!(sanitize_name("abc_DEF-1.2"), "abc_DEF-1.2");
+    }
+
+    #[test]
+    fn sanitize_replaces_unsafe_chars() {
+        assert_eq!(sanitize_name("a b/c\\d"), "a_b_c_d");
+    }
+
+    #[test]
+    fn sanitize_empty_falls_back() {
+        assert_eq!(sanitize_name(""), "texture");
+    }
+
+    // ─── image format sniffing ──────────────────────────────────────────
+
+    #[test]
+    fn sniff_known_magic_bytes() {
+        assert_eq!(sniff_image_ext(&[0x89, 0x50, 0x4E, 0x47, 0, 0]), "png");
+        assert_eq!(sniff_image_ext(&[0xFF, 0xD8, 0xFF, 0xE0]), "jpg");
+        assert_eq!(sniff_image_ext(b"DDS  abc"), "dds");
+        assert_eq!(sniff_image_ext(b"GIF89a..."), "gif");
+        assert_eq!(sniff_image_ext(b"BM......"), "bmp");
+    }
+
+    #[test]
+    fn sniff_webp_needs_riff_and_webp() {
+        let mut data = b"RIFF".to_vec();
+        data.extend_from_slice(&[0, 0, 0, 0]); // size
+        data.extend_from_slice(b"WEBP");
+        assert_eq!(sniff_image_ext(&data), "webp");
+        // RIFF without WEBP fourcc should not match webp.
+        let mut other = b"RIFF".to_vec();
+        other.extend_from_slice(&[0, 0, 0, 0]);
+        other.extend_from_slice(b"WAVE");
+        assert_eq!(sniff_image_ext(&other), "bin");
+    }
+
+    #[test]
+    fn sniff_unknown_is_bin() {
+        assert_eq!(sniff_image_ext(b"hello world"), "bin");
+        assert_eq!(sniff_image_ext(&[]), "bin");
+    }
+
+    // ─── flat normal generation ─────────────────────────────────────────
+
+    #[test]
+    fn flat_normals_single_triangle_in_xy_plane() {
+        // Triangle wound CCW in the XY plane → normal +Z.
+        let positions = [
+            0.0, 0.0, 0.0, // v0
+            1.0, 0.0, 0.0, // v1
+            0.0, 1.0, 0.0, // v2
+        ];
+        let indices = [0u32, 1, 2];
+        let normals = generate_flat_normals(&positions, &indices, 3);
+        assert_eq!(normals.len(), 9);
+        for v in 0..3 {
+            assert!((normals[v * 3] - 0.0).abs() < 1e-6);
+            assert!((normals[v * 3 + 1] - 0.0).abs() < 1e-6);
+            assert!((normals[v * 3 + 2] - 1.0).abs() < 1e-6, "vertex {} z", v);
+        }
+    }
+
+    #[test]
+    fn flat_normals_unreferenced_vertex_defaults_up() {
+        // A vertex never touched by a triangle gets the +Y fallback.
+        let positions = [0.0, 0.0, 0.0]; // single, unreferenced vertex
+        let indices: [u32; 0] = [];
+        let normals = generate_flat_normals(&positions, &indices, 1);
+        assert_eq!(normals, vec![0.0, 1.0, 0.0]);
+    }
+
+    // ─── build_glb end-to-end (no GPU, pure bytes) ──────────────────────
+
+    #[test]
+    fn build_glb_produces_valid_container() {
+        // A single triangle.
+        let positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let normals = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let texcoords = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let indices = [0u32, 1, 2];
+
+        let glb = build_glb(
+            &positions,
+            &normals,
+            &texcoords,
+            &indices,
+            &MaterialBundle::default(),
+        )
+        .expect("build_glb should succeed");
+
+        // GLB magic "glTF", version 2, and length matches buffer.
+        assert_eq!(&glb[0..4], b"glTF");
+        let version = u32::from_le_bytes([glb[4], glb[5], glb[6], glb[7]]);
+        assert_eq!(version, 2);
+        let total_len = u32::from_le_bytes([glb[8], glb[9], glb[10], glb[11]]) as usize;
+        assert_eq!(total_len, glb.len());
+
+        // The JSON chunk should mention the accessor count for the triangle.
+        let json_len = u32::from_le_bytes([glb[12], glb[13], glb[14], glb[15]]) as usize;
+        let json = &glb[20..20 + json_len];
+        let text = String::from_utf8_lossy(json);
+        assert!(text.contains("\"meshes\""));
+        assert!(text.contains("POSITION"));
+    }
+
+    #[test]
+    fn build_glb_with_material_references_material_zero() {
+        let positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let normals = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let texcoords = [0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+        let indices = [0u32, 1, 2];
+
+        let bundle = MaterialBundle {
+            materials: vec![PbrMaterialDef {
+                name: "mat".into(),
+                base_color: [1.0, 0.0, 0.0, 1.0],
+                base_color_texture: None,
+                normal_texture: None,
+                metallic: 0.0,
+                roughness: 0.5,
+            }],
+            textures: Vec::new(),
+        };
+
+        let glb = build_glb(&positions, &normals, &texcoords, &indices, &bundle).unwrap();
+        let json_len = u32::from_le_bytes([glb[12], glb[13], glb[14], glb[15]]) as usize;
+        let text = String::from_utf8_lossy(&glb[20..20 + json_len]);
+        assert!(text.contains("\"materials\""));
+        // The primitive references material index 0.
+        assert!(text.contains("\"material\":0"));
+    }
+}
+
 /// Push GLTF entries (image / sampler / texture / material) from the bundle.
 /// Images use external URIs (relative to the GLB); the caller writes the
 /// actual bytes to disk separately. One default sampler is shared by all
