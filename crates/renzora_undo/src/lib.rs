@@ -884,8 +884,9 @@ mod tests {
         let stacks = w.resource::<UndoStacks>();
         let (undo, redo) = stacks.labels(&active);
         assert_eq!(undo, vec!["a"], "one entry left on undo stack");
-        // redo: front=oldest-undone .. back=next-to-redo
-        assert_eq!(redo, vec!["b", "c"]);
+        // redo deque is front=oldest-undone .. back=next-to-redo. `c` was
+        // undone first (front), `b` second and is next to be redone (back).
+        assert_eq!(redo, vec!["c", "b"]);
     }
 
     #[test]
@@ -1052,10 +1053,12 @@ mod tests {
         let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
         assert_eq!(undo, vec!["drag"], "two merges -> one entry");
 
-        // Undoing the single merged entry reverses the *combined* delta (5),
-        // confirming the second push folded into the first rather than stacking.
+        // `record` does NOT execute, so the counter is still 0 here. Undoing
+        // the single merged entry reverses the *combined* delta (1 + 4 = 5),
+        // taking the counter to -5 — proving the second push folded into the
+        // first (delta 5) rather than stacking as two separate entries.
         undo_once(&mut w);
-        assert_eq!(counter(&w), 0);
+        assert_eq!(counter(&w), -5);
     }
 
     #[test]
