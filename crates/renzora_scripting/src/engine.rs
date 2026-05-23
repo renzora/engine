@@ -16,6 +16,12 @@ pub struct ScriptEngine {
     file_reader: Option<FileReader>,
 }
 
+impl Default for ScriptEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptEngine {
     pub fn new() -> Self {
         Self {

@@ -329,7 +329,7 @@ fn render_sculpt_tab(
                             let mut chunk_query = world.query::<&renzora_terrain::data::TerrainChunkData>();
                             if let Some(terrain_data) = terrain_data {
                                 let chunks: Vec<_> = chunk_query.iter(world).collect();
-                                let chunk_refs: Vec<&renzora_terrain::data::TerrainChunkData> = chunks.iter().map(|c| *c).collect();
+                                let chunk_refs: Vec<&renzora_terrain::data::TerrainChunkData> = chunks.to_vec();
                                 match renzora_terrain::heightmap_import::export_heightmap_png16(&terrain_data, &chunk_refs) {
                                     Ok(data) => {
                                         if let Err(e) = std::fs::write(&path, &data) {
@@ -543,8 +543,8 @@ fn render_layer_list(
     }
 
     // Add layer button
-    if layer_count < MAX_LAYERS {
-        if ui
+    if layer_count < MAX_LAYERS
+        && ui
             .add(
                 egui::Button::new(
                     RichText::new(format!("{PLUS}  Add Layer"))
@@ -561,7 +561,6 @@ fn render_layer_list(
                 }
             });
         }
-    }
 }
 
 fn render_paint_brush_settings(
@@ -690,7 +689,7 @@ fn render_tool_grid(
 
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = spacing;
-        let rows = (tools.len() + cols - 1) / cols;
+        let rows = tools.len().div_ceil(cols);
         for row in 0..rows {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = spacing;

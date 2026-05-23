@@ -206,7 +206,7 @@ pub fn render_sculpt(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &Edi
                     ui.horizontal_wrapped(|ui| {
                         for preset in StampPreset::all() {
                             let is_current =
-                                stamp.map_or(false, |s| s.name == preset.display_name());
+                                stamp.is_some_and(|s| s.name == preset.display_name());
                             if small_toggle(ui, preset.display_name(), is_current, theme).clicked()
                             {
                                 let p = *preset;
@@ -655,8 +655,8 @@ fn render_layer_list(
     }
 
     // Add layer
-    if layer_count < MAX_LAYERS {
-        if ui
+    if layer_count < MAX_LAYERS
+        && ui
             .add(
                 egui::Button::new(
                     RichText::new(format!("{PLUS}  Add Layer"))
@@ -673,7 +673,6 @@ fn render_layer_list(
                 }
             });
         }
-    }
 }
 
 // ── Foliage tab ─────────────────────────────────────────────────────────────
@@ -721,8 +720,8 @@ pub fn render_foliage(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &Ed
                 {
                     config_mut.types.push(FoliageType::default());
                 }
-                if config_mut.types.len() > 1 {
-                    if ui
+                if config_mut.types.len() > 1
+                    && ui
                         .button(RichText::new(format!("{TRASH} Remove")).size(11.0))
                         .clicked()
                     {
@@ -734,7 +733,6 @@ pub fn render_foliage(ui: &mut egui::Ui, world: &World, theme: &Theme, cmds: &Ed
                             settings_mut.active_type = config_mut.types.len().saturating_sub(1);
                         }
                     }
-                }
             });
         },
     );
@@ -889,7 +887,7 @@ fn render_tool_grid(
 
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = spacing;
-        let rows = (tools.len() + cols - 1) / cols;
+        let rows = tools.len().div_ceil(cols);
         for row in 0..rows {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = spacing;

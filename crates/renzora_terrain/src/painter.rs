@@ -118,8 +118,8 @@ pub fn sync_painter_layer_meshes_system(
                 covered[*idx] = true;
             }
         }
-        for i in 0..layer_count {
-            if !covered[i] {
+        for (i, is_covered) in covered.iter().enumerate() {
+            if !is_covered {
                 let name = format!("Paint Layer Mesh {}", i);
                 let layer_mesh = commands
                     .spawn((
@@ -138,7 +138,7 @@ pub fn sync_painter_layer_meshes_system(
 
         // Re-map indices on existing entities (no-op if already correct).
         for (entity, _) in &existing {
-            if let Ok((_, mut marker)) = mesh_query.get_mut(*entity) {
+            if let Ok((_, marker)) = mesh_query.get_mut(*entity) {
                 // We only know this painter's entities, so no conflict with
                 // other painters. Re-read current layer_index from the
                 // existing list; the intent is to leave them as-is unless
@@ -379,7 +379,7 @@ fn extract_layer_textures_from_json(
     let output = nodes.iter().find(|n| {
         n["node_type"]
             .as_str()
-            .map_or(false, |t| t.starts_with("output/"))
+            .is_some_and(|t| t.starts_with("output/"))
     });
     let Some(output) = output else {
         return Ok((None, None, None));

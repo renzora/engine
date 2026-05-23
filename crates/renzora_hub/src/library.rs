@@ -20,6 +20,7 @@ enum LibraryResult {
 
 // ── Panel state ──
 
+#[derive(Default)]
 struct LibraryState {
     assets: Vec<AssetSummary>,
     filter: String,
@@ -29,18 +30,6 @@ struct LibraryState {
     installing_id: Option<String>,
 }
 
-impl Default for LibraryState {
-    fn default() -> Self {
-        Self {
-            assets: Vec::new(),
-            filter: String::new(),
-            loading: false,
-            error: None,
-            status: None,
-            installing_id: None,
-        }
-    }
-}
 
 // ── Panel ──
 
@@ -506,7 +495,7 @@ impl EditorPanel for HubLibraryPanel {
                         .rect_filled(btn_rect, CornerRadius::same(3), btn_bg);
 
                     let btn_text = if is_installing {
-                        format!("{}", egui_phosphor::regular::SPINNER)
+                        egui_phosphor::regular::SPINNER.to_string()
                     } else {
                         format!("{} Install", egui_phosphor::regular::DOWNLOAD_SIMPLE)
                     };

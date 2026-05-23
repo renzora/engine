@@ -155,16 +155,15 @@ pub fn terrain_layer_texture_system(
     }
 
     // Check that all assigned textures are loaded
-    for slot in layer_tex
+    for handle in layer_tex
         .layer_albedo
         .iter()
         .chain(layer_tex.layer_normal.iter())
         .chain(layer_tex.layer_arm.iter())
+        .flatten()
     {
-        if let Some(handle) = slot {
-            if images.get(handle).is_none() {
-                return; // Not loaded yet, wait
-            }
+        if images.get(handle).is_none() {
+            return; // Not loaded yet, wait
         }
     }
 

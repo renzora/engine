@@ -224,11 +224,10 @@ impl ThemeManager {
             };
 
             // Create themes directory if needed
-            if !themes_dir.exists() {
-                if std::fs::create_dir_all(themes_dir).is_err() {
+            if !themes_dir.exists()
+                && std::fs::create_dir_all(themes_dir).is_err() {
                     return false;
                 }
-            }
 
             let path = themes_dir.join(format!("{}.toml", new_name));
 

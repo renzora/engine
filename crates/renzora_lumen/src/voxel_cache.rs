@@ -343,11 +343,11 @@ pub fn prepare_voxel_resources(
         origin: Vec3::ZERO,
         voxel_size: 0.0,
     }; 4];
-    for c in 0..CASCADE_COUNT as usize {
+    for (c, cascade) in cascades.iter_mut().enumerate().take(CASCADE_COUNT as usize) {
         let voxel_size = VOXEL_SIZE_BASE * (1u32 << c as u32) as f32;
         let snapped_center = (camera_pos / voxel_size).floor() * voxel_size;
         let half_extent = (VOXEL_RES as f32 * voxel_size) * 0.5;
-        cascades[c] = VoxelCascadeData {
+        *cascade = VoxelCascadeData {
             origin: snapped_center - Vec3::splat(half_extent),
             voxel_size,
         };
@@ -485,7 +485,7 @@ impl ViewNode for VoxelClearNode {
         // ceil-div handles the (currently exact) edge case where future
         // resolution/cascade tweaks make the entry count non-multiple.
         let entries = VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5;
-        let groups = (entries + 255) / 256;
+        let groups = entries.div_ceil(256);
         pass.dispatch_workgroups(groups, 1, 1);
         Ok(())
     }
@@ -602,7 +602,7 @@ impl ViewNode for VoxelInjectNode {
             pass.set_pipeline(inject_pl);
             pass.set_bind_group(0, &inject_bg, &[view_offset.offset]);
             let size = view_target.main_texture().size();
-            pass.dispatch_workgroups((size.width + 7) / 8, (size.height + 7) / 8, 1);
+            pass.dispatch_workgroups(size.width.div_ceil(8), size.height.div_ceil(8), 1);
         }
         Ok(())
     }

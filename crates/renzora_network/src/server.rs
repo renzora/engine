@@ -37,9 +37,11 @@ impl Plugin for NetworkServerPlugin {
         protocol::register_protocol(app);
 
         // Server status
-        let mut status = NetworkStatus::default();
-        status.is_server = true;
-        status.state = ConnectionState::Connected;
+        let status = NetworkStatus {
+            is_server: true,
+            state: ConnectionState::Connected,
+            ..Default::default()
+        };
         app.insert_resource(status);
 
         // Store config for startup system

@@ -21,8 +21,10 @@ pub struct GradientStop {
 /// How a widget's background is filled.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum UiFill {
     /// No fill (fully transparent).
+    #[default]
     None,
     /// A single solid color.
     Solid(Color),
@@ -39,11 +41,6 @@ pub enum UiFill {
     },
 }
 
-impl Default for UiFill {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl UiFill {
     /// Convenience: solid color fill.

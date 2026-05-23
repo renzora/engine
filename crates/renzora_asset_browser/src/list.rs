@@ -66,8 +66,8 @@ pub fn list_ui_interactive(
     let shift_held = ctx.input(|i| i.modifiers.shift);
 
     // F2 to start rename (exactly one item selected)
-    if ctx.input(|i| i.key_pressed(egui::Key::F2)) && state.renaming_asset.is_none() {
-        if state.selected_assets.len() == 1 {
+    if ctx.input(|i| i.key_pressed(egui::Key::F2)) && state.renaming_asset.is_none()
+        && state.selected_assets.len() == 1 {
             if let Some(path) = state.selected_assets.iter().next() {
                 state.renaming_asset = Some(path.clone());
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -76,7 +76,6 @@ pub fn list_ui_interactive(
                 state.rename_focus_set = false;
             }
         }
-    }
 
     // Delete key — only when this panel area has focus
     if ui.ui_contains_pointer()

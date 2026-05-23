@@ -185,7 +185,7 @@ fn handle_tab_switch(world: &mut World) {
 /// Stamp the current `OrbitCameraState` resource onto the `SceneCamera` entity
 /// so it gets serialized into the scene RON.
 fn stamp_orbit_on_scene_camera(world: &mut World) {
-    let Some(orbit) = world.get_resource::<OrbitCameraState>().map(|o| o.clone()) else {
+    let Some(orbit) = world.get_resource::<OrbitCameraState>().cloned() else {
         return;
     };
     let mut query = world.query_filtered::<Entity, With<SceneCamera>>();
@@ -217,7 +217,7 @@ fn detect_file_keybindings(
     keybindings: Res<KeyBindings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {

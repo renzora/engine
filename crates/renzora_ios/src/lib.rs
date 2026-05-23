@@ -1,5 +1,3 @@
-use bevy::prelude::*;
-
 /// Entry point called from the Swift/Objective-C bridge.
 ///
 /// The iOS app host calls this from `AppDelegate` after UIKit is ready.

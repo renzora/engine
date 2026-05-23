@@ -271,6 +271,7 @@ pub struct UsdTexture {
 
 /// A UsdSkel skeleton definition.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct UsdSkeleton {
     pub name: String,
     pub path: String,
@@ -284,18 +285,6 @@ pub struct UsdSkeleton {
     pub rest_transforms: Vec<[f32; 16]>,
 }
 
-impl Default for UsdSkeleton {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            path: String::new(),
-            joints: Vec::new(),
-            parent_indices: Vec::new(),
-            bind_transforms: Vec::new(),
-            rest_transforms: Vec::new(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Animation

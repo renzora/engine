@@ -26,6 +26,7 @@ pub struct WaveformPeaks {
     pub peaks: Vec<(f32, f32)>,
     /// Source file's natural duration in seconds, useful for the panel
     /// (length of the clip in time, regardless of how many buckets we used).
+    #[allow(dead_code)] // kept for future panel use (clip length in time)
     pub duration_secs: f64,
 }
 

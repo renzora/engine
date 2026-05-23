@@ -8,7 +8,7 @@ use crate::command::ScriptCommand;
 
 thread_local! {
     /// Shared command buffer used by all backends and extensions.
-    pub(crate) static COMMAND_BUFFER: std::cell::RefCell<Vec<ScriptCommand>> = std::cell::RefCell::new(Vec::new());
+    pub(crate) static COMMAND_BUFFER: std::cell::RefCell<Vec<ScriptCommand>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Push a script command from any context (backends or extensions).

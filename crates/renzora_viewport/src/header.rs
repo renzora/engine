@@ -801,7 +801,7 @@ fn render_left_tools(
         egui::Stroke::new(1.0, sep_color),
     );
 
-    let mut paint_section =
+    let paint_section =
         |ui: &mut egui::Ui, x: &mut f32, tools: &[ToolEntry], id_prefix: &str| {
             for (i, entry) in tools.iter().enumerate() {
                 let rect = Rect::from_min_size(Pos2::new(*x, y), btn_size);

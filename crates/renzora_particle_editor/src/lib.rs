@@ -19,7 +19,7 @@ impl Plugin for ParticleEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ParticleEditorPlugin");
         app.add_plugins(preview::ParticlePreviewPlugin);
-        app.register_panel(editor_panel::ParticleEditorPanel::default());
+        app.register_panel(editor_panel::ParticleEditorPanel);
         app.register_panel(graph_panel::ParticleGraphPanel);
         app.register_panel(preview_panel::ParticlePreviewPanel);
     }

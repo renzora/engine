@@ -223,13 +223,12 @@ pub fn find_all_matches(
 
     let mut i = 0;
     while i + nlen <= bytes.len() {
-        if &bytes[i..i + nlen] == needle.as_bytes() {
-            if !whole_word || word_boundary_ok(bytes, i, i + nlen) {
+        if &bytes[i..i + nlen] == needle.as_bytes()
+            && (!whole_word || word_boundary_ok(bytes, i, i + nlen)) {
                 out.push((i, i + nlen));
                 i += nlen;
                 continue;
             }
-        }
         i += 1;
     }
     out
@@ -250,13 +249,12 @@ fn find_all_case_insensitive(content: &str, needle: &str, whole_word: bool) -> V
     }
     let mut i = 0;
     while i + nlen <= hay_bytes.len() {
-        if &hay_bytes[i..i + nlen] == ndl {
-            if !whole_word || word_boundary_ok(bytes, i, i + nlen) {
+        if &hay_bytes[i..i + nlen] == ndl
+            && (!whole_word || word_boundary_ok(bytes, i, i + nlen)) {
                 out.push((i, i + nlen));
                 i += nlen;
                 continue;
             }
-        }
         i += 1;
     }
     out
@@ -277,7 +275,7 @@ fn trim_trailing_whitespace(content: &str) -> String {
     let mut current = String::new();
     for ch in content.chars() {
         if ch == '\n' {
-            out.push_str(current.trim_end_matches(|c: char| c == ' ' || c == '\t'));
+            out.push_str(current.trim_end_matches([' ', '\t']));
             out.push('\n');
             current.clear();
         } else {
@@ -285,7 +283,7 @@ fn trim_trailing_whitespace(content: &str) -> String {
         }
     }
     if !current.is_empty() {
-        out.push_str(current.trim_end_matches(|c: char| c == ' ' || c == '\t'));
+        out.push_str(current.trim_end_matches([' ', '\t']));
     }
     out
 }

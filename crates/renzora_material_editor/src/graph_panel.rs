@@ -111,7 +111,7 @@ impl EditorPanel for MaterialGraphPanel {
 
             if entity_changed || path_changed || leaving_asset_mode {
                 let new_entity = selected_entity;
-                let has_mesh = new_entity.map_or(false, |e| world.get::<Mesh3d>(e).is_some());
+                let has_mesh = new_entity.is_some_and(|e| world.get::<Mesh3d>(e).is_some());
                 let entity_name =
                     new_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
 
@@ -458,8 +458,8 @@ fn render_toolbar(
             // Apply All — applies to every selected mesh entity
             let selection = world.get_resource::<EditorSelection>();
             let selected_count = selection.map(|s| s.get_all().len()).unwrap_or(0);
-            if selected_count > 1 {
-                if ui.add(egui::Button::new(
+            if selected_count > 1
+                && ui.add(egui::Button::new(
                     RichText::new(format!("{} Apply All ({})", egui_phosphor::regular::CHECKS, selected_count))
                         .size(12.0).color(accent),
                 )).on_hover_text("Apply this material to all selected meshes").clicked() {
@@ -489,7 +489,6 @@ fn render_toolbar(
                         }
                     });
                 }
-            }
         }
 
         // ── Domain indicator ──
@@ -542,7 +541,7 @@ fn render_toolbar(
 
         // ── Center ──
         if ui.add(egui::Button::new(
-            RichText::new(format!("{CROSSHAIR}")).size(12.0).color(text_muted),
+            RichText::new(CROSSHAIR.to_string()).size(12.0).color(text_muted),
         )).on_hover_text("Center Graph").clicked() {
             if !graph.nodes.is_empty() {
                 let (mut min_x, mut max_x) = (f32::MAX, f32::MIN);
@@ -561,7 +560,7 @@ fn render_toolbar(
 
         // ── Zoom ──
         if ui.add(egui::Button::new(
-            RichText::new(format!("{MAGNIFYING_GLASS_MINUS}")).size(12.0).color(text_muted),
+            RichText::new(MAGNIFYING_GLASS_MINUS.to_string()).size(12.0).color(text_muted),
         )).on_hover_text("Zoom Out").clicked() {
             state.widget_state.zoom = (state.widget_state.zoom * 0.8).max(0.25);
         }
@@ -570,7 +569,7 @@ fn render_toolbar(
         ui.label(RichText::new(format!("{zoom_pct}%")).size(11.0).color(text_muted));
 
         if ui.add(egui::Button::new(
-            RichText::new(format!("{MAGNIFYING_GLASS_PLUS}")).size(12.0).color(text_muted),
+            RichText::new(MAGNIFYING_GLASS_PLUS.to_string()).size(12.0).color(text_muted),
         )).on_hover_text("Zoom In").clicked() {
             state.widget_state.zoom = (state.widget_state.zoom * 1.25).min(4.0);
         }
@@ -636,7 +635,7 @@ fn handle_texture_drop(
                 .as_ref()
                 .and_then(|p| p.extension())
                 .and_then(|e| e.to_str())
-                .map_or(false, is_image_extension)
+                .is_some_and(is_image_extension)
         })
     });
     let os_dropped: Option<std::path::PathBuf> = ui.ctx().input(|i| {
@@ -648,13 +647,13 @@ fn handle_texture_drop(
                     .as_ref()
                     .and_then(|p| p.extension())
                     .and_then(|e| e.to_str())
-                    .map_or(false, is_image_extension)
+                    .is_some_and(is_image_extension)
             })
             .and_then(|f| f.path.clone())
     });
 
     let pointer = ui.ctx().pointer_hover_pos();
-    let pointer_in_canvas = pointer.map_or(false, |p| canvas_rect.contains(p));
+    let pointer_in_canvas = pointer.is_some_and(|p| canvas_rect.contains(p));
 
     // Draw visual feedback overlay — only when pointer is over the canvas
     if (has_asset_drag || os_hovering) && pointer_in_canvas {

@@ -84,7 +84,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
         } else if settings.generate_normals {
             // Will generate after all meshes are collected
         } else {
-            all_normals.extend(std::iter::repeat(0.0f32).take(vertex_count * 3));
+            all_normals.extend(std::iter::repeat_n(0.0f32, vertex_count * 3));
         }
 
         // UVs
@@ -99,7 +99,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                 all_texcoords.extend_from_slice(&[u, v]);
             }
         } else {
-            all_texcoords.extend(std::iter::repeat(0.0f32).take(vertex_count * 2));
+            all_texcoords.extend(std::iter::repeat_n(0.0f32, vertex_count * 2));
         }
 
         // Indices
@@ -165,7 +165,7 @@ fn detect_up_axis(xml: &str) -> ColladaUpAxis {
 
 fn parse_collada(
     xml: &str,
-    warnings: &mut Vec<String>,
+    warnings: &mut [String],
 ) -> Result<Vec<ColladaGeometry>, ImportError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);

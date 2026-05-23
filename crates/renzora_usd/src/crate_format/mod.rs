@@ -76,12 +76,18 @@ pub fn parse(data: &[u8]) -> UsdResult<UsdStage> {
 /// Internal resolver that walks the spec table and builds the scene.
 struct Resolver<'a> {
     tokens: &'a [String],
+    // kept for future crate-format value resolution (string/data/toc sections)
+    #[allow(dead_code)]
     strings: &'a [u32],
     fields: &'a [fields::Field],
     field_sets: &'a [u32],
     paths: &'a [paths::PathEntry],
     specs: &'a [specs::Spec],
+    // kept for future crate-format value resolution
+    #[allow(dead_code)]
     data: &'a [u8],
+    // kept for future crate-format value resolution
+    #[allow(dead_code)]
     toc: &'a sections::TableOfContents,
 }
 

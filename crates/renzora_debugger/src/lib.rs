@@ -182,15 +182,14 @@ impl EditorPanel for CameraDebugPanel {
             if let Ok(mut local) = self.local.write() {
                 local.cameras = state.cameras.clone();
                 // Preserve local UI state (selected_camera, toggles) but update data
-                if local.selected_camera.is_some() {
-                    if !local
+                if local.selected_camera.is_some()
+                    && !local
                         .cameras
                         .iter()
                         .any(|c| c.entity == local.selected_camera.unwrap())
                     {
                         local.selected_camera = None;
                     }
-                }
             }
         }
 
@@ -574,7 +573,7 @@ impl Plugin for DebuggerPlugin {
         app.add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             EntityCountDiagnosticsPlugin::default(),
-            SystemInformationDiagnosticsPlugin::default(),
+            SystemInformationDiagnosticsPlugin,
         ));
 
         // Init resources

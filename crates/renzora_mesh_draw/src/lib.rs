@@ -202,7 +202,7 @@ impl Plugin for MeshDrawPlugin {
 fn is_active_with(world: &World, mode: ToolMode) -> bool {
     world
         .get_resource::<MeshDrawState>()
-        .map_or(false, |s| s.active && s.tool_mode == mode)
+        .is_some_and(|s| s.active && s.tool_mode == mode)
 }
 
 /// Force-deactivate the tool. Used after a commit so the user isn't left
@@ -625,7 +625,7 @@ fn draw_cursor_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     let pointer_in = ui
         .ctx()
         .pointer_hover_pos()
-        .map_or(false, |p| rect.contains(p));
+        .is_some_and(|p| rect.contains(p));
     if pointer_in {
         ui.ctx().set_cursor_icon(ECursor::Crosshair);
     }

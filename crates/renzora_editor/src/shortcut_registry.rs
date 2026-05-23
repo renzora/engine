@@ -80,7 +80,7 @@ impl ShortcutRegistry {
 pub fn shortcut_dispatch_system(world: &mut World) {
     let has_focus = world
         .get_resource::<renzora::InputFocusState>()
-        .map_or(false, |f| f.egui_wants_keyboard);
+        .is_some_and(|f| f.egui_wants_keyboard);
     if has_focus {
         return;
     }

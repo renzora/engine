@@ -96,8 +96,8 @@ pub fn popover<R>(
     // Close on outside click
     if ui.input(|i| i.pointer.any_click()) {
         let pointer = ui.ctx().pointer_interact_pos();
-        let inside_popup = pointer.map_or(false, |p| area.rect.contains(p));
-        let inside_anchor = pointer.map_or(false, |p| anchor.rect.contains(p));
+        let inside_popup = pointer.is_some_and(|p| area.rect.contains(p));
+        let inside_anchor = pointer.is_some_and(|p| anchor.rect.contains(p));
         if !inside_popup && !inside_anchor {
             *open = false;
         }

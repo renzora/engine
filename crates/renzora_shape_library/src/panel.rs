@@ -109,7 +109,7 @@ impl EditorPanel for ShapeLibraryPanel {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = spacing;
 
-                let rows = (shapes.len() + cols - 1) / cols;
+                let rows = shapes.len().div_ceil(cols);
                 for row in 0..rows {
                     ui.horizontal(|ui| {
                         ui.add_space(panel_padding);

@@ -109,26 +109,27 @@ impl EditorPanel for ConsolePanel {
         // Push modified state so the sync system can apply it.
         if let Ok(mut pending) = self.bridge.lock() {
             if let Ok(local) = self.local.read() {
-                let mut state = ConsoleState::default();
-                state.entries = local.entries.clone();
-                state.shared_buffer = local.shared_buffer.clone();
-                state.show_info = local.show_info;
-                state.show_success = local.show_success;
-                state.show_warnings = local.show_warnings;
-                state.show_errors = local.show_errors;
-                state.auto_scroll = local.auto_scroll;
-                state.search_filter = local.search_filter.clone();
-                state.category_filter = local.category_filter.clone();
-                state.hidden_categories = local.hidden_categories.clone();
-                state.seen_categories = local.seen_categories.clone();
-                state.show_timestamps = local.show_timestamps;
-                state.show_frame = local.show_frame;
-                state.frame_counter = local.frame_counter;
-                state.input_buffer = local.input_buffer.clone();
-                state.command_history = local.command_history.clone();
-                state.history_index = local.history_index;
-                state.saved_input = local.saved_input.clone();
-                state.focus_input = local.focus_input;
+                let state = ConsoleState {
+                    entries: local.entries.clone(),
+                    shared_buffer: local.shared_buffer.clone(),
+                    show_info: local.show_info,
+                    show_success: local.show_success,
+                    show_warnings: local.show_warnings,
+                    show_errors: local.show_errors,
+                    auto_scroll: local.auto_scroll,
+                    search_filter: local.search_filter.clone(),
+                    category_filter: local.category_filter.clone(),
+                    hidden_categories: local.hidden_categories.clone(),
+                    seen_categories: local.seen_categories.clone(),
+                    show_timestamps: local.show_timestamps,
+                    show_frame: local.show_frame,
+                    frame_counter: local.frame_counter,
+                    input_buffer: local.input_buffer.clone(),
+                    command_history: local.command_history.clone(),
+                    history_index: local.history_index,
+                    saved_input: local.saved_input.clone(),
+                    focus_input: local.focus_input,
+                };
                 *pending = Some(state);
             }
         }

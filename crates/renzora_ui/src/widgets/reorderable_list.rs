@@ -13,7 +13,7 @@ use renzora_theme::Theme;
 pub fn reorderable_list<T>(
     ui: &mut egui::Ui,
     id: egui::Id,
-    items: &mut Vec<T>,
+    items: &mut [T],
     row_height: f32,
     theme: &Theme,
     mut row: impl FnMut(&mut egui::Ui, usize, &mut T),
@@ -22,7 +22,7 @@ pub fn reorderable_list<T>(
     let mut new_dragging = dragging;
     let mut swap: Option<(usize, usize)> = None;
 
-    for i in 0..items.len() {
+    for (i, item) in items.iter_mut().enumerate() {
         let (rect, resp) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), row_height),
             Sense::click_and_drag(),
@@ -59,7 +59,7 @@ pub fn reorderable_list<T>(
             egui::UiBuilder::new()
                 .max_rect(body_rect)
                 .layout(egui::Layout::left_to_right(egui::Align::Center)),
-            |ui| row(ui, i, &mut items[i]),
+            |ui| row(ui, i, item),
         );
 
         // Drop feedback
@@ -67,7 +67,7 @@ pub fn reorderable_list<T>(
             if ui
                 .ctx()
                 .pointer_interact_pos()
-                .map_or(false, |p| rect.contains(p))
+                .is_some_and(|p| rect.contains(p))
                 && from != i
             {
                 ui.painter().rect_stroke(

@@ -91,7 +91,7 @@ pub fn sync_graph_to_widget(graph: &BlueprintGraph) -> NodeGraphState {
                 .collect();
 
             let hdr = def
-                .map(|d| header_color(d))
+                .map(header_color)
                 .unwrap_or(Color32::from_rgb(100, 100, 100));
 
             NodeDef {
@@ -538,14 +538,12 @@ fn render_context_menu(
         state.open_submenu = None;
     }
 
-    if state.context_menu_age > 3 {
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            state.context_menu_open = false;
-            state.open_submenu = None;
-        } else if ui.input(|i| i.pointer.any_click()) && !pointer_in_menus {
-            state.context_menu_open = false;
-            state.open_submenu = None;
-        }
+    if state.context_menu_age > 3
+        && (ui.input(|i| i.key_pressed(egui::Key::Escape))
+            || (ui.input(|i| i.pointer.any_click()) && !pointer_in_menus))
+    {
+        state.context_menu_open = false;
+        state.open_submenu = None;
     }
 
     modified

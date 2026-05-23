@@ -113,11 +113,9 @@ impl DockTree {
 
     /// Set the active tab for the leaf that contains `panel`.
     pub fn set_active_tab(&mut self, panel: &str) {
-        if let Some(leaf) = self.find_leaf_mut(panel) {
-            if let DockTree::Leaf { tabs, active_tab } = leaf {
-                if let Some(idx) = tabs.iter().position(|t| t == panel) {
-                    *active_tab = idx;
-                }
+        if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(panel) {
+            if let Some(idx) = tabs.iter().position(|t| t == panel) {
+                *active_tab = idx;
             }
         }
     }
@@ -158,7 +156,7 @@ impl DockTree {
                 first.is_active_tab(panel) || second.is_active_tab(panel)
             }
             DockTree::Leaf { tabs, active_tab } => {
-                tabs.get(*active_tab).map_or(false, |t| t == panel)
+                tabs.get(*active_tab).is_some_and(|t| t == panel)
             }
             DockTree::Empty => false,
         }
@@ -215,25 +213,21 @@ impl DockTree {
 
     /// Add a tab to the leaf containing `sibling`, at the end.
     pub fn add_tab(&mut self, sibling: &str, new_panel: String) -> bool {
-        if let Some(leaf) = self.find_leaf_mut(sibling) {
-            if let DockTree::Leaf { tabs, active_tab } = leaf {
-                tabs.push(new_panel);
-                *active_tab = tabs.len() - 1;
-                return true;
-            }
+        if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(sibling) {
+            tabs.push(new_panel);
+            *active_tab = tabs.len() - 1;
+            return true;
         }
         false
     }
 
     /// Add a tab at a specific index within its leaf.
     pub fn add_tab_at(&mut self, sibling: &str, new_panel: String, index: usize) -> bool {
-        if let Some(leaf) = self.find_leaf_mut(sibling) {
-            if let DockTree::Leaf { tabs, active_tab } = leaf {
-                let idx = index.min(tabs.len());
-                tabs.insert(idx, new_panel);
-                *active_tab = idx;
-                return true;
-            }
+        if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(sibling) {
+            let idx = index.min(tabs.len());
+            tabs.insert(idx, new_panel);
+            *active_tab = idx;
+            return true;
         }
         false
     }
@@ -261,15 +255,13 @@ impl DockTree {
 
     /// Reorder a tab within its leaf (same leaf, different index).
     pub fn reorder_tab(&mut self, panel: &str, new_index: usize) -> bool {
-        if let Some(leaf) = self.find_leaf_mut(panel) {
-            if let DockTree::Leaf { tabs, active_tab } = leaf {
-                if let Some(old_idx) = tabs.iter().position(|t| t == panel) {
-                    let panel_id = tabs.remove(old_idx);
-                    let idx = new_index.min(tabs.len());
-                    tabs.insert(idx, panel_id);
-                    *active_tab = idx;
-                    return true;
-                }
+        if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(panel) {
+            if let Some(old_idx) = tabs.iter().position(|t| t == panel) {
+                let panel_id = tabs.remove(old_idx);
+                let idx = new_index.min(tabs.len());
+                tabs.insert(idx, panel_id);
+                *active_tab = idx;
+                return true;
             }
         }
         false

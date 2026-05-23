@@ -329,7 +329,7 @@ impl EditorPanel for ShaderPreviewPanel {
         };
 
         let editor_state = world.get_resource::<ShaderEditorState>();
-        let has_shader = editor_state.map_or(false, |s| s.compiled_wgsl.is_some());
+        let has_shader = editor_state.is_some_and(|s| s.compiled_wgsl.is_some());
 
         if !has_shader {
             ui.centered_and_justified(|ui| {
@@ -338,7 +338,7 @@ impl EditorPanel for ShaderPreviewPanel {
             return;
         }
 
-        let preview_ok = editor_state.map_or(true, |s| s.preview_compatible);
+        let preview_ok = editor_state.is_none_or(|s| s.preview_compatible);
         if !preview_ok {
             let msg = match editor_state.map(|s| s.shader_file.shader_type) {
                 Some(renzora_shader::file::ShaderType::Material) => {

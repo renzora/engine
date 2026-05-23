@@ -113,7 +113,10 @@ pub fn update_rotation_pie_state(
         && gizmo_state.active_axis.is_some()
         && gizmo_state.drag_angle.abs() > 1e-3
     {
-        let Some(axis) = gizmo_axis_to_pie(gizmo_state.active_axis.unwrap()) else {
+        let Some(active_axis) = gizmo_state.active_axis else {
+            return;
+        };
+        let Some(axis) = gizmo_axis_to_pie(active_axis) else {
             return;
         };
         let Ok(root_gt) = gizmo_root.single() else {
@@ -165,7 +168,7 @@ pub fn draw_pie_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
     let three = world
         .get_resource::<ViewportSettings>()
-        .map_or(true, |s| s.viewport_view == ViewportView::Three);
+        .is_none_or(|s| s.viewport_view == ViewportView::Three);
     if !three {
         return;
     }

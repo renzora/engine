@@ -113,18 +113,12 @@ impl Default for WaterUniforms {
 
 /// Custom Bevy Material for water rendering.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+#[derive(Default)]
 pub struct WaterMaterial {
     #[uniform(0)]
     pub uniforms: WaterUniforms,
 }
 
-impl Default for WaterMaterial {
-    fn default() -> Self {
-        Self {
-            uniforms: WaterUniforms::default(),
-        }
-    }
-}
 
 impl Material for WaterMaterial {
     fn vertex_shader() -> ShaderRef {

@@ -107,6 +107,9 @@ impl StatusBarItem for ThemeStatusItem {
         -100
     }
 
+    // Uses deprecated egui popup APIs (toggle_popup/popup_above_or_below_widget/close_popup);
+    // egui::Popup replacement has a different API shape, migrate later.
+    #[allow(deprecated)]
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
         let Some(tm) = world.get_resource::<ThemeManager>() else {
             return;

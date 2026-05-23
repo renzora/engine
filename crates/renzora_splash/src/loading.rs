@@ -291,6 +291,9 @@ pub(crate) fn editor_loading_overlay_ui_system(
     };
     ctx.request_repaint();
 
+    // deprecated upstream egui API; screen_rect()->content_rect() has different
+    // semantics, migrate later
+    #[allow(deprecated)]
     let screen = ctx.screen_rect();
 
     egui::Area::new(egui::Id::new("editor_loading_overlay"))

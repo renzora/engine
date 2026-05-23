@@ -678,7 +678,7 @@ pub fn update_camera_debug_state(
 
         let clear_color = match &camera.clear_color {
             ClearColorConfig::Default => None,
-            ClearColorConfig::Custom(color) => Some(color.clone()),
+            ClearColorConfig::Custom(color) => Some(*color),
             ClearColorConfig::None => None,
         };
 
@@ -723,7 +723,7 @@ pub fn update_camera_debug_state(
 
         let clear_color = match &camera.clear_color {
             ClearColorConfig::Default => None,
-            ClearColorConfig::Custom(color) => Some(color.clone()),
+            ClearColorConfig::Custom(color) => Some(*color),
             ClearColorConfig::None => None,
         };
 
@@ -1096,6 +1096,9 @@ impl RenderPipelineGraphData {
     }
 }
 
+// drop(data) ends the Mut<Resource> borrow early so `app` can be re-borrowed
+// (get_sub_app below); Mut isn't Drop so clippy flags it, but the effect is intended.
+#[allow(clippy::drop_non_drop)]
 pub fn extract_render_graph(app: &mut App) {
     use bevy::render::render_graph::RenderGraph;
     use bevy::render::RenderApp;
@@ -1220,7 +1223,7 @@ fn clean_type_name(type_name: &str, label_str: &str) -> String {
             let prev = name.chars().nth(i - 1).unwrap_or(' ');
             if prev.is_lowercase()
                 || (prev.is_uppercase()
-                    && name.chars().nth(i + 1).map_or(false, |n| n.is_lowercase()))
+                    && name.chars().nth(i + 1).is_some_and(|n| n.is_lowercase()))
             {
                 result.push(' ');
             }

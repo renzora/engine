@@ -249,7 +249,7 @@ fn resolve_material_refs(
                 resolve_material_instance_file(
                     &fs_path,
                     project.as_deref(),
-                    &mut *cache,
+                    &mut cache,
                     &mut standard_materials,
                     &mut graph_materials,
                     &mut shaders,
@@ -765,7 +765,7 @@ fn resolve_material_instance_file(
     // 1. Ensure the master is compiled. If it isn't, compile it now and
     //    cache both the GraphMaterial handle and the parameter list. Two
     //    instances of the same master share this compilation.
-    if cache.graph_materials.get(&master_key).is_none() {
+    if !cache.graph_materials.contains_key(&master_key) {
         let from_precompiled = master_graph.wgsl_path.as_deref().and_then(|wp| {
             load_compiled_from_vfs(wp, project, reader).map(|loaded| (wp.to_string(), loaded))
         });
@@ -858,7 +858,7 @@ fn resolve_graph_material_from_graph(
     };
 
     // Compile graph → WGSL
-    let result = codegen::compile_with_functions(&graph, registry);
+    let result = codegen::compile_with_functions(graph, registry);
     if !result.errors.is_empty() {
         for err in &result.errors {
             error!("Material compile error in '{}': {}", path, err);

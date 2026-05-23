@@ -190,7 +190,7 @@ pub fn pick_element(
             for (i, v) in edit.vertices.iter().enumerate() {
                 if let Some(sp) = project(v.position) {
                     let d = (sp - cursor_vp).length();
-                    if d <= PICK_RADIUS_PX && best.map_or(true, |(bd, _)| d < bd) {
+                    if d <= PICK_RADIUS_PX && best.is_none_or(|(bd, _)| d < bd) {
                         best = Some((d, VertexId(i as u32)));
                     }
                 }
@@ -216,7 +216,7 @@ pub fn pick_element(
                     continue;
                 };
                 let d = point_to_segment(cursor_vp, a, b);
-                if d <= PICK_RADIUS_PX && best.map_or(true, |(bd, _)| d < bd) {
+                if d <= PICK_RADIUS_PX && best.is_none_or(|(bd, _)| d < bd) {
                     best = Some((d, crate::edit_mesh::EdgeId(i as u32)));
                 }
             }
@@ -242,7 +242,7 @@ pub fn pick_element(
                     let p1 = edit.vertices[w[0].0 as usize].position;
                     let p2 = edit.vertices[w[1].0 as usize].position;
                     if let Some(t) = ray_triangle(local_origin, local_dir, p0, p1, p2) {
-                        if best.map_or(true, |(bt, _)| t < bt) {
+                        if best.is_none_or(|(bt, _)| t < bt) {
                             best = Some((t, crate::edit_mesh::FaceId(i as u32)));
                         }
                     }

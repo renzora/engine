@@ -135,6 +135,9 @@ pub struct OpenedMicrophone {
 /// List input device names available on the default cpal host. Devices
 /// whose name lookup fails are silently skipped (rare, mostly virtual
 /// devices on Windows).
+// cpal DeviceTrait::name() is deprecated in favor of description()/id() which
+// have different semantics; migrate later.
+#[allow(deprecated)]
 pub fn list_input_devices() -> Vec<String> {
     let host = cpal::default_host();
     host.input_devices()
@@ -146,6 +149,9 @@ pub fn list_input_devices() -> Vec<String> {
 }
 
 /// List output device names available on the default cpal host.
+// cpal DeviceTrait::name() is deprecated in favor of description()/id() which
+// have different semantics; migrate later.
+#[allow(deprecated)]
 pub fn list_output_devices() -> Vec<String> {
     let host = cpal::default_host();
     host.output_devices()
@@ -160,6 +166,9 @@ pub fn list_output_devices() -> Vec<String> {
 /// ringbuffer. The returned [`OpenedMicrophone::data`] should be `play()`'d
 /// on a Kira track to start consuming samples; [`OpenedMicrophone::stream`]
 /// must be kept alive to keep capture running.
+// cpal DeviceTrait::name() is deprecated in favor of description()/id() which
+// have different semantics; migrate later.
+#[allow(deprecated)]
 pub fn open_microphone(device_name: &str) -> Result<OpenedMicrophone, MicError> {
     let host = cpal::default_host();
     let device = host

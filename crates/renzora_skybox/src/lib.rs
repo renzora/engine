@@ -382,7 +382,7 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
         return Err("Invalid image dimensions".to_string());
     }
 
-    let face_size = (src_height / 2).max(256).min(2048);
+    let face_size = (src_height / 2).clamp(256, 2048);
     let bytes_per_pixel = equirect
         .texture_descriptor
         .format

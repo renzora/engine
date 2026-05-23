@@ -54,6 +54,7 @@ const UNDERLINE_HEIGHT: f32 = 2.0;
 const UNDERLINE_INSET: f32 = 3.0;
 
 /// Play mode state passed into the title bar for rendering play/stop controls.
+#[derive(Default)]
 pub struct PlayModeInfo {
     pub is_playing: bool,
     pub is_paused: bool,
@@ -63,16 +64,6 @@ pub struct PlayModeInfo {
     pub has_scene_camera: bool,
 }
 
-impl Default for PlayModeInfo {
-    fn default() -> Self {
-        Self {
-            is_playing: false,
-            is_paused: false,
-            is_scripts_only: false,
-            has_scene_camera: false,
-        }
-    }
-}
 
 /// Render the title bar at the top of the editor window. Returns an action to handle.
 pub fn render_title_bar(
@@ -773,6 +764,9 @@ pub fn render_title_bar(
                     let opened_id = plus_id.with("popup_opened");
                     let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
 
+                    // deprecated upstream egui API; screen_rect()->content_rect() has
+                    // different semantics, migrate later
+                    #[allow(deprecated)]
                     let screen = ui.ctx().screen_rect();
                     let popup_w = 320.0_f32.min(screen.width() - 40.0);
                     // Centered horizontally on the + button, just below it,
@@ -1323,6 +1317,9 @@ fn draw_about_grid(painter: &egui::Painter, rect: Rect, grid_timer: f32, time: f
 fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
     let mut close_requested = ctx.input(|i| i.key_pressed(egui::Key::Escape));
 
+    // deprecated upstream egui API; screen_rect()->content_rect() has different
+    // semantics, migrate later
+    #[allow(deprecated)]
     let screen = ctx.screen_rect();
     let popup_w = 460.0_f32.min(screen.width() - 40.0);
     let popup_h = 380.0_f32.min(screen.height() - 80.0);
@@ -1425,7 +1422,7 @@ fn render_about_overlay(ctx: &egui::Context, theme: &Theme) -> bool {
                 let (rect, _) = content_ui.allocate_exact_size(img_size, Sense::hover());
                 egui::Image::new(&tex)
                     .fit_to_exact_size(img_size)
-                    .paint_at(&mut content_ui, rect);
+                    .paint_at(&content_ui, rect);
             }
 
             content_ui.add_space(8.0);

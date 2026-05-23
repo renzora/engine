@@ -21,7 +21,7 @@ pub const STUDIO_PREVIEW_LAYER: usize = 10;
 /// tree. All expensive studio-preview work (camera rendering, model cloning,
 /// skeleton drawing, etc.) is gated on this so other layouts don't pay for it.
 pub fn studio_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.map_or(false, |d| d.tree.contains_panel("studio_preview"))
+    docking.is_some_and(|d| d.tree.contains_panel("studio_preview"))
 }
 
 /// Toggles the studio-preview camera on/off with panel visibility and tears
@@ -34,7 +34,7 @@ pub fn sync_studio_preview_activation(
     mut tracker: ResMut<StudioPreviewTracker>,
     mut commands: Commands,
 ) {
-    let mounted = docking.map_or(false, |d| d.tree.contains_panel("studio_preview"));
+    let mounted = docking.is_some_and(|d| d.tree.contains_panel("studio_preview"));
     for mut camera in camera_q.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;
@@ -294,7 +294,7 @@ pub fn setup_studio_preview(
         for x in 0..tex_dim {
             let tx = x / checker_size;
             let ty = y / checker_size;
-            let is_light = (tx + ty) % 2 == 0;
+            let is_light = (tx + ty).is_multiple_of(2);
             let (r, g, b) = if is_light { (55, 55, 60) } else { (35, 35, 40) };
             let idx = ((y * tex_dim + x) * 4) as usize;
             checker_data[idx] = b; // BGRA
@@ -353,8 +353,8 @@ pub fn resize_preview(mut preview: ResMut<StudioPreviewImage>, mut images: ResMu
         return;
     }
 
-    let w = rw.max(64).min(3840);
-    let h = rh.max(64).min(2160);
+    let w = rw.clamp(64, 3840);
+    let h = rh.clamp(64, 2160);
 
     if let Some(image) = images.get_mut(&preview.handle) {
         image.resize(Extent3d {

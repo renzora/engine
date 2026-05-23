@@ -165,11 +165,11 @@ pub fn draw_node(
     let pin_zone_w = 60.0 * zoom;
 
     // Input pins (left side)
-    let mut iy = 0;
-    for pin in node
+    for (iy, pin) in node
         .pins
         .iter()
         .filter(|p| p.direction == PinDirection::Input)
+        .enumerate()
     {
         let py = pin_start_y + (iy as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x, py);
@@ -201,15 +201,14 @@ pub fn draw_node(
             color: pin.color,
             hit_rect,
         });
-        iy += 1;
     }
 
     // Output pins (right side)
-    let mut oy_idx = 0;
-    for pin in node
+    for (oy_idx, pin) in node
         .pins
         .iter()
         .filter(|p| p.direction == PinDirection::Output)
+        .enumerate()
     {
         let py = pin_start_y + (oy_idx as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x + scaled_w, py);
@@ -241,7 +240,6 @@ pub fn draw_node(
             color: pin.color,
             hit_rect,
         });
-        oy_idx += 1;
     }
 
     // Thumbnail — fills the left-side empty space below input pins

@@ -17,7 +17,7 @@ use bevy_egui::egui;
 use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
 use renzora::core::PlayModeState;
 
-fn find_editor_camera_2d<'a>(world: &'a World) -> Option<(&'a Camera, &'a GlobalTransform)> {
+fn find_editor_camera_2d(world: &World) -> Option<(&Camera, &GlobalTransform)> {
     let entity = world
         .get_resource::<crate::light_gizmo::SceneIconCache>()?
         .editor_camera_2d?;
@@ -191,7 +191,7 @@ pub fn draw_grid_2d_gizmos(
     if settings.viewport_view != ViewportView::Two || !settings.show_grid {
         return;
     }
-    if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     let tile = settings.snap.translate_snap;

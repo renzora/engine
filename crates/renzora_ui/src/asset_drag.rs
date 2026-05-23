@@ -130,7 +130,7 @@ pub fn asset_drop_target(
     let available = ui.available_width();
 
     // Reserve space for clear button if we have a value
-    let has_value = current_path.map_or(false, |p| !p.is_empty());
+    let has_value = current_path.is_some_and(|p| !p.is_empty());
     let field_width = if has_value {
         available - 20.0
     } else {
@@ -143,7 +143,7 @@ pub fn asset_drop_target(
     );
 
     let pointer_pos = ui.ctx().pointer_hover_pos();
-    let pointer_in_rect = pointer_pos.map_or(false, |p| rect.contains(p));
+    let pointer_in_rect = pointer_pos.is_some_and(|p| rect.contains(p));
 
     // Check if a compatible asset is hovering
     let compatible_hover = payload

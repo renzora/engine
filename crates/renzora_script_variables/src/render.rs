@@ -91,7 +91,7 @@ pub fn render_script_variables_content(
 }
 
 fn render_prop_row(ui: &mut egui::Ui, idx: usize, prop: &ScriptVariableDefinition, theme: &Theme) {
-    let bg = if idx % 2 == 0 {
+    let bg = if idx.is_multiple_of(2) {
         theme.panels.inspector_row_even.to_color32()
     } else {
         theme.panels.inspector_row_odd.to_color32()

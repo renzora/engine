@@ -136,7 +136,7 @@ fn read_group(data: &[u8], offset: usize) -> Result<OgawaGroup, ImportError> {
 
         let raw = u64::from_le_bytes(data[entry_offset..entry_offset + 8].try_into().unwrap());
         let is_data = (raw & 1) != 0;
-        let child_offset = (raw >> 1) as u64;
+        let child_offset = raw >> 1;
 
         let size = if is_data && (child_offset as usize) + 8 <= data.len() {
             // Data streams store their size at the referenced offset
@@ -185,6 +185,9 @@ fn read_data_stream<'a>(data: &'a [u8], child: &OgawaChild) -> Option<&'a [u8]> 
 // Alembic schema layer
 // ---------------------------------------------------------------------------
 
+// normals/texcoords/warnings are threaded through recursion as scaffolding for
+// per-mesh normal/UV/warning collection not yet wired up; kept for that future use.
+#[allow(clippy::only_used_in_recursion)]
 fn extract_meshes(
     file_data: &[u8],
     group: &OgawaGroup,
@@ -335,7 +338,7 @@ fn looks_like_face_counts(data: &[u8]) -> bool {
     if ints.is_empty() {
         return false;
     }
-    ints.iter().all(|&v| v >= 3 && v <= 100)
+    ints.iter().all(|&v| (3..=100).contains(&v))
 }
 
 fn looks_like_indices(data: &[u8], vertex_count: usize) -> bool {

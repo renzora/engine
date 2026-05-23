@@ -192,17 +192,17 @@ pub fn process_audio_commands(
                 if let Some(entity) = entity {
                     if let Some(handles) = audio.active_sounds.get_mut(&entity) {
                         for handle in handles.iter_mut() {
-                            let _ = handle.pause(Tween::default());
+                            handle.pause(Tween::default());
                         }
                     }
                 } else {
                     for handles in audio.active_sounds.values_mut() {
                         for handle in handles.iter_mut() {
-                            let _ = handle.pause(Tween::default());
+                            handle.pause(Tween::default());
                         }
                     }
                     if let Some(ref mut h) = audio.music_handle {
-                        let _ = h.pause(Tween::default());
+                        h.pause(Tween::default());
                     }
                 }
             }
@@ -211,17 +211,17 @@ pub fn process_audio_commands(
                 if let Some(entity) = entity {
                     if let Some(handles) = audio.active_sounds.get_mut(&entity) {
                         for handle in handles.iter_mut() {
-                            let _ = handle.resume(Tween::default());
+                            handle.resume(Tween::default());
                         }
                     }
                 } else {
                     for handles in audio.active_sounds.values_mut() {
                         for handle in handles.iter_mut() {
-                            let _ = handle.resume(Tween::default());
+                            handle.resume(Tween::default());
                         }
                     }
                     if let Some(ref mut h) = audio.music_handle {
-                        let _ = h.resume(Tween::default());
+                        h.resume(Tween::default());
                     }
                 }
             }
@@ -241,7 +241,7 @@ pub fn process_audio_commands(
                         Tween::default()
                     };
                     for handle in handles.iter_mut() {
-                        let _ = handle.set_volume(amplitude_to_db(volume as f64), tween);
+                        handle.set_volume(amplitude_to_db(volume as f64), tween);
                     }
                 }
             }
@@ -261,7 +261,7 @@ pub fn process_audio_commands(
                         Tween::default()
                     };
                     for handle in handles.iter_mut() {
-                        let _ = handle.set_playback_rate(pitch as f64, tween);
+                        handle.set_playback_rate(pitch as f64, tween);
                     }
                 }
             }
@@ -374,7 +374,7 @@ pub fn update_vu_meters(
     }
 
     // Estimate activity from playing sounds (without emitter query, assume SFX bus)
-    for (_entity, handles) in &audio.active_sounds {
+    for handles in audio.active_sounds.values() {
         let playing_count = handles
             .iter()
             .filter(|h| h.state() == PlaybackState::Playing)

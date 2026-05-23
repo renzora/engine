@@ -217,7 +217,7 @@ fn draw_viewport_cursor_overlay(
     // itself is drawn into a panel (not an Area), so this cleanly excludes
     // overlays without excluding the viewport.
     let ctx = ui.ctx();
-    let pointer_in = ctx.pointer_hover_pos().map_or(false, |p| rect.contains(p));
+    let pointer_in = ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p));
     let obstructed = ctx.is_pointer_over_area() || ctx.wants_pointer_input();
     if pointer_in && !obstructed {
         ctx.set_cursor_icon(CursorIcon::Crosshair);
@@ -247,7 +247,7 @@ fn hide_cursor_for_brushes(
         active_tool.as_deref(),
         Some(ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint)
     );
-    let hovered = viewport.as_deref().map_or(false, |v| v.hovered);
+    let hovered = viewport.as_deref().is_some_and(|v| v.hovered);
     let should_hide = brush_active && hovered;
 
     if should_hide && !ours.0 {
@@ -339,8 +339,8 @@ fn handle_viewport_resize(
     let h = resize_req.height.load(Ordering::Relaxed);
 
     // Clamp to reasonable bounds
-    let w = w.max(64).min(7680);
-    let h = h.max(64).min(4320);
+    let w = w.clamp(64, 7680);
+    let h = h.clamp(64, 4320);
 
     viewport_state.screen_size = Vec2::new(w as f32, h as f32);
 
@@ -511,13 +511,13 @@ impl EditorPanel for ViewportPanel {
         // Overlay: axis orientation gizmo. 3D-only — meaningless in
         // orthographic 2D and worse-than-meaningless in UI canvas mode.
         let settings_for_overlays = world.get_resource::<ViewportSettings>();
-        let show_axis = settings_for_overlays.map_or(true, |s| s.show_axis_gizmo);
+        let show_axis = settings_for_overlays.is_none_or(|s| s.show_axis_gizmo);
         let view = settings_for_overlays
             .map(|s| s.viewport_view)
             .unwrap_or_default();
         let is_three = view == renzora::core::viewport_types::ViewportView::Three;
         let play_mode = world.get_resource::<renzora::core::PlayModeState>();
-        let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
+        let in_play = play_mode.is_some_and(|p| p.is_in_play_mode());
         if show_axis && !in_play && is_three {
             render_axis_gizmo(ui.ctx(), world, rect);
         }
@@ -564,7 +564,7 @@ impl EditorPanel for CameraPreviewPanel {
         let preview = world.get_resource::<CameraPreviewState>();
         let user_textures = world.get_resource::<EguiUserTextures>();
 
-        let has_preview = preview.as_ref().map_or(false, |p| p.previewing.is_some());
+        let has_preview = preview.as_ref().is_some_and(|p| p.previewing.is_some());
 
         if !has_preview {
             let theme = world
@@ -586,7 +586,7 @@ impl EditorPanel for CameraPreviewPanel {
             .and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()))
             .unwrap_or_else(|| "Camera".to_string());
 
-        let is_default = previewing_entity.map_or(false, |e| {
+        let is_default = previewing_entity.is_some_and(|e| {
             world.get::<renzora::core::DefaultCamera>(e).is_some()
         });
 
@@ -780,7 +780,7 @@ fn handle_view_shortcuts(
     mut settings: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -1213,12 +1213,10 @@ fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Re
                     } else {
                         3.0
                     }
+                } else if _depth < -0.1 {
+                    1.0
                 } else {
-                    if _depth < -0.1 {
-                        1.0
-                    } else {
-                        1.5
-                    }
+                    1.5
                 };
 
                 if is_positive {
@@ -1280,7 +1278,7 @@ fn sync_viewport_camera_activation(
 ) {
     use renzora::core::viewport_types::ViewportView;
 
-    let mounted = docking.map_or(true, |d| d.tree.contains_panel("viewport"));
+    let mounted = docking.is_none_or(|d| d.tree.contains_panel("viewport"));
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
 
     // The 3D editor camera also serves as the *backdrop* in UI authoring

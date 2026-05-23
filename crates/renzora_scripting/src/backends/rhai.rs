@@ -30,6 +30,12 @@ pub struct RhaiBackend {
     file_reader: Option<FileReader>,
 }
 
+impl Default for RhaiBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RhaiBackend {
     pub fn new() -> Self {
         let mut engine = Engine::new();

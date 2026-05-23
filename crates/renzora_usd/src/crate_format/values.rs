@@ -200,12 +200,18 @@ pub mod type_id {
     pub const ASSET_PATH: u32 = 15;
     pub const MATRIX4D: u32 = 20;
     pub const QUATF: u32 = 21;
+    // kept for completeness of the USDC type-id table (double-precision variant)
+    #[allow(dead_code)]
     pub const QUATD: u32 = 22;
     pub const VEC2F: u32 = 25;
+    // kept for completeness of the USDC type-id table (double-precision variant)
+    #[allow(dead_code)]
     pub const VEC2D: u32 = 26;
     pub const VEC3F: u32 = 28;
     pub const VEC3D: u32 = 29;
     pub const VEC4F: u32 = 31;
+    // kept for completeness of the USDC type-id table (double-precision variant)
+    #[allow(dead_code)]
     pub const VEC4D: u32 = 32;
     pub const PATH: u32 = 39;
     pub const PATH_LIST_OP: u32 = 40;
@@ -213,12 +219,18 @@ pub mod type_id {
     pub const TOKEN_LIST_OP: u32 = 42;
 
     // Array flag — OR'd with the base type
+    // kept for future array-typed value decoding
+    #[allow(dead_code)]
     pub const ARRAY_BIT: u32 = 1 << 31;
 
+    // kept for future array-typed value decoding
+    #[allow(dead_code)]
     pub fn is_array(type_id: u32) -> bool {
         type_id & ARRAY_BIT != 0
     }
 
+    // kept for future array-typed value decoding
+    #[allow(dead_code)]
     pub fn base_type(type_id: u32) -> u32 {
         type_id & !ARRAY_BIT
     }

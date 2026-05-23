@@ -115,7 +115,7 @@ pub fn sync_canvases_to_editor_camera(
     render: Option<Res<UiCanvasRender>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
 ) {
-    let in_play = play_mode.map_or(false, |p| p.is_in_play_mode());
+    let in_play = play_mode.is_some_and(|p| p.is_in_play_mode());
     if in_play {
         // Play-mode handler owns target-camera assignment.
         return;

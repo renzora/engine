@@ -144,7 +144,7 @@ fn render_node(
                 .painter()
                 .layout_no_wrap(label.clone(), font.clone(), Color32::WHITE);
             let pad_x = 18.0;
-            let pad_y = 10.0;
+            let _pad_y = 10.0;
             let btn_size = Vec2::new(galley.rect.width() + pad_x * 2.0, 36.0);
             let btn_rect = Rect::from_center_size(rect.center(), btn_size);
             let resp = ui.interact(btn_rect, btn_id, Sense::click());
@@ -568,12 +568,11 @@ fn render_leaf(
 
         // Right-click context menu
         tab_response.context_menu(|ui| {
-            if can_close {
-                if ui.button("Close").clicked() {
+            if can_close
+                && ui.button("Close").clicked() {
                     result.panel_to_close = Some(panel_id.clone());
                     ui.close();
                 }
-            }
             if ui.button("Undock").clicked() {
                 result.context_menu_undock = Some(panel_id.clone());
                 ui.close();
@@ -807,7 +806,7 @@ fn render_panel_picker_popup(
                 }
             }
 
-            let cols_to_show = groups.len().min(COLS_PER_ROW).max(1);
+            let cols_to_show = groups.len().clamp(1, COLS_PER_ROW);
             let content_width = (cols_to_show as f32) * COL_WIDTH
                 + (cols_to_show.saturating_sub(1) as f32) * COL_GAP;
             ui.set_min_width(content_width.max(260.0));

@@ -90,7 +90,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             );
             all_normals.extend_from_slice(&normals);
         } else {
-            all_normals.extend(std::iter::repeat(0.0f32).take(vertex_count * 3));
+            all_normals.extend(std::iter::repeat_n(0.0f32, vertex_count * 3));
         }
 
         let has_texcoords = mesh.texcoords.len() == vertex_count * 2;
@@ -105,7 +105,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                 all_texcoords.extend_from_slice(&[u, v]);
             }
         } else {
-            all_texcoords.extend(std::iter::repeat(0.0f32).take(vertex_count * 2));
+            all_texcoords.extend(std::iter::repeat_n(0.0f32, vertex_count * 2));
         }
 
         for &idx in &mesh.indices {
@@ -1094,13 +1094,15 @@ fn emit_material_bundle(root: &mut gltf_json::Root, bundle: &MaterialBundle) {
 
     // One linear/repeat sampler shared across all textures.
     if !bundle.textures.is_empty() {
-        let mut sampler = texture::Sampler::default();
-        sampler.mag_filter = Some(validation::Checked::Valid(texture::MagFilter::Linear));
-        sampler.min_filter = Some(validation::Checked::Valid(
-            texture::MinFilter::LinearMipmapLinear,
-        ));
-        sampler.wrap_s = validation::Checked::Valid(texture::WrappingMode::Repeat);
-        sampler.wrap_t = validation::Checked::Valid(texture::WrappingMode::Repeat);
+        let sampler = texture::Sampler {
+            mag_filter: Some(validation::Checked::Valid(texture::MagFilter::Linear)),
+            min_filter: Some(validation::Checked::Valid(
+                texture::MinFilter::LinearMipmapLinear,
+            )),
+            wrap_s: validation::Checked::Valid(texture::WrappingMode::Repeat),
+            wrap_t: validation::Checked::Valid(texture::WrappingMode::Repeat),
+            ..Default::default()
+        };
         root.samplers.push(sampler);
     }
     let sampler_idx = if bundle.textures.is_empty() {
@@ -1141,8 +1143,10 @@ fn emit_material_bundle(root: &mut gltf_json::Root, bundle: &MaterialBundle) {
             extensions: None,
             extras: Default::default(),
         });
-        let mut m = Material::default();
-        m.alpha_mode = validation::Checked::Valid(material::AlphaMode::Opaque);
+        let mut m = Material {
+            alpha_mode: validation::Checked::Valid(material::AlphaMode::Opaque),
+            ..Default::default()
+        };
         m.pbr_metallic_roughness.base_color_factor = material::PbrBaseColorFactor(mat.base_color);
         m.pbr_metallic_roughness.base_color_texture = base_tex;
         m.pbr_metallic_roughness.metallic_factor = material::StrengthFactor(mat.metallic);

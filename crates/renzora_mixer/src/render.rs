@@ -131,6 +131,9 @@ fn fire_fx_command(commands: Option<&EditorCommands>, cmd: MixerFxCommand) {
 /// slots loaded, faint muted grey otherwise. Click opens a popover with the
 /// chain editor + a plugin picker.
 #[allow(clippy::too_many_arguments)]
+// Uses deprecated egui popup APIs (toggle_popup/popup_above_or_below_widget/close_popup);
+// egui::Popup replacement has a different API shape, migrate later.
+#[allow(deprecated)]
 fn render_strip_fx_button(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -444,6 +447,9 @@ fn render_strip_fx_button(
 /// pickers for this bus. Visually unobtrusive when nothing is bound; tints
 /// to the accent colour when a device is set so the user can spot which
 /// strips are wired to hardware.
+// Uses deprecated egui popup APIs (toggle_popup/popup_above_or_below_widget);
+// egui::Popup replacement has a different API shape, migrate later.
+#[allow(deprecated)]
 fn render_strip_settings_cog(
     ui: &mut egui::Ui,
     id: egui::Id,

@@ -173,8 +173,8 @@ impl ViewNode for ScreenReflectionResolveNode {
         pass.set_pipeline(compute);
         pass.set_bind_group(0, &bind_group, &[]);
         // 8×8 tiles cover the full-res output.
-        let dispatch_x = (refl.resolved_size.width + 7) / 8;
-        let dispatch_y = (refl.resolved_size.height + 7) / 8;
+        let dispatch_x = refl.resolved_size.width.div_ceil(8);
+        let dispatch_y = refl.resolved_size.height.div_ceil(8);
         pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
 
         Ok(())

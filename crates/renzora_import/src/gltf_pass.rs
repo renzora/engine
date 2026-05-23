@@ -270,7 +270,7 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             .get("extensions")
             .and_then(|e| e.get("KHR_materials_pbrSpecularGlossiness"));
         let pbr_block_empty = pbr
-            .map(|p| p.as_object().map_or(true, |o| o.is_empty()))
+            .map(|p| p.as_object().is_none_or(|o| o.is_empty()))
             .unwrap_or(true);
 
         let mut roughness = roughness;
@@ -560,7 +560,7 @@ pub fn convert_gltf(path: &Path, _settings: &ImportSettings) -> Result<ImportRes
                     })?;
                     bin_data.extend_from_slice(&decoded);
                 } else {
-                    warnings.push(format!("unsupported data URI scheme in buffer"));
+                    warnings.push("unsupported data URI scheme in buffer".to_string());
                 }
             } else {
                 // External file reference
@@ -667,9 +667,7 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     out.extend_from_slice(&(json_chunk_len as u32).to_le_bytes());
     out.extend_from_slice(&0x4E4F534Au32.to_le_bytes()); // "JSON"
     out.extend_from_slice(json);
-    for _ in 0..json_pad {
-        out.push(b' ');
-    }
+    out.extend(std::iter::repeat_n(b' ', json_pad));
 
     // BIN chunk
     if let Some(b) = bin {
@@ -677,9 +675,7 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
         out.extend_from_slice(&(bin_chunk_len as u32).to_le_bytes());
         out.extend_from_slice(&0x004E4942u32.to_le_bytes()); // "BIN\0"
         out.extend_from_slice(b);
-        for _ in 0..bin_pad {
-            out.push(0);
-        }
+        out.extend(std::iter::repeat_n(0, bin_pad));
     }
 
     out

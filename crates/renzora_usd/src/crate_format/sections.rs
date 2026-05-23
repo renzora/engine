@@ -85,6 +85,8 @@ impl TableOfContents {
     }
 
     /// Get section data slice.
+    // kept for future section-by-name access
+    #[allow(dead_code)]
     pub fn section_data<'a>(&self, data: &'a [u8], name: &str) -> UsdResult<&'a [u8]> {
         let section = self
             .find(name)

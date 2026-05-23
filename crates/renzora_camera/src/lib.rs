@@ -258,7 +258,7 @@ fn handle_view_angle_keys(
 ) {
     use std::f32::consts::{FRAC_PI_2, PI};
 
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -324,7 +324,7 @@ fn focus_selected(
     transforms: Query<&Transform, Without<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -356,7 +356,7 @@ fn toggle_pivot_lock(
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -389,7 +389,7 @@ fn frame_all(
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -440,7 +440,7 @@ fn handle_camera_view_request(
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
 ) {
     let Some(request) = request else { return };
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         commands.remove_resource::<renzora::core::CameraViewRequest>();
         return;
     }
@@ -496,7 +496,7 @@ fn camera_to_cursor(
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
@@ -574,14 +574,14 @@ fn camera_controller(
     mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     // Don't touch cursor or process input during play mode
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         mouse_motion.clear();
         scroll_events.clear();
         velocity.velocity = Vec3::ZERO;
         return;
     }
 
-    let viewport_hovered = viewport.as_ref().map_or(true, |v| v.hovered);
+    let viewport_hovered = viewport.as_ref().is_none_or(|v| v.hovered);
 
     let Ok(mut transform) = camera_query.single_mut() else {
         mouse_motion.clear();
@@ -699,7 +699,7 @@ fn camera_controller(
     // Skip scroll zoom when terrain/foliage tool is active — scroll controls brush radius instead
     let tool_active = active_tool
         .as_ref()
-        .map_or(false, |t| t.is_terrain_or_foliage());
+        .is_some_and(|t| t.is_terrain_or_foliage());
 
     let mut scroll_changed = false;
     if !tool_active {

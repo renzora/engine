@@ -15,7 +15,7 @@ use renzora_animation::{
     state_machine::{AnimCondition, AnimState, AnimTransition, AnimationStateMachine, StateMotion},
     AnimatorComponent,
 };
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
+use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
 
 use crate::AnimationEditorState;
@@ -470,7 +470,7 @@ impl StateMachinePanel {
         };
 
         ui.horizontal(|ui| {
-            let can_add = state_names.len() >= 1;
+            let can_add = !state_names.is_empty();
             let btn = egui::Button::new(
                 egui::RichText::new(format!("{} Add Transition", egui_phosphor::regular::PLUS))
                     .size(11.0)

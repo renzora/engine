@@ -2,11 +2,11 @@
 //! `.material` graph is saved. Three files live side-by-side:
 //!
 //! * `foo.material`      — graph JSON (editor only; never shipped). Carries a
-//!                         `wgsl_path` field pointing at the compiled shader.
+//!   `wgsl_path` field pointing at the compiled shader.
 //! * `foo.wgsl`          — pure WGSL fragment shader emitted by codegen.
 //! * `foo.wgsl.meta`     — JSON sidecar with everything the resolver needs
-//!                         that the WGSL alone can't express (texture
-//!                         bindings, parameters, alpha mode, …).
+//!   that the WGSL alone can't express (texture
+//!   bindings, parameters, alpha mode, …).
 //!
 //! At runtime / play mode, the resolver reads `foo.wgsl` + `foo.wgsl.meta`,
 //! skips graph parsing and codegen entirely, and feeds the cached WGSL into

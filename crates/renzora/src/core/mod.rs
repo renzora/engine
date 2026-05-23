@@ -147,6 +147,7 @@ pub enum TextureFilter {
 /// sprites; future fields (canvas blend modes, default tonemap, etc.)
 /// land here.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub struct Rendering2dConfig {
     /// Sampler used when loading sprite textures. Defaults to
     /// `Nearest` so pixel-art assets render crisp out of the box.
@@ -155,13 +156,6 @@ pub struct Rendering2dConfig {
     pub image_filter: TextureFilter,
 }
 
-impl Default for Rendering2dConfig {
-    fn default() -> Self {
-        Self {
-            image_filter: TextureFilter::default(),
-        }
-    }
-}
 
 /// Game render-resolution config. Sits next to [`WindowConfig`]; the
 /// window is the OS-managed surface, the viewport is the resolution the
@@ -650,17 +644,14 @@ pub struct PbrMaterialExtracted {
 /// Mirrors glTF 2.0 `alphaMode`. Lives in core so the import event and the
 /// material graph use a single shared enum without crate-cycle gymnastics.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum PbrAlphaMode {
+    #[default]
     Opaque,
     Mask,
     Blend,
 }
 
-impl Default for PbrAlphaMode {
-    fn default() -> Self {
-        Self::Opaque
-    }
-}
 
 /// Event fired when a file or folder is renamed/moved inside the project's
 /// asset tree. Subscribers should patch any stored asset-relative references
@@ -847,13 +838,13 @@ pub struct ActionState {
 
 impl ActionState {
     pub fn pressed(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.pressed)
+        self.actions.get(action).is_some_and(|a| a.pressed)
     }
     pub fn just_pressed(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.just_pressed)
+        self.actions.get(action).is_some_and(|a| a.just_pressed)
     }
     pub fn just_released(&self, action: &str) -> bool {
-        self.actions.get(action).map_or(false, |a| a.just_released)
+        self.actions.get(action).is_some_and(|a| a.just_released)
     }
     pub fn axis_1d(&self, action: &str) -> f32 {
         self.actions.get(action).map_or(0.0, |a| a.axis_1d)
@@ -1027,7 +1018,7 @@ impl PlayModeState {
 /// Run condition: returns true when NOT in play mode (editing or scripts-only).
 /// Use as `.run_if(not_in_play_mode)` on editor systems that should be disabled during play.
 pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
-    !play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode())
+    !play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())
 }
 
 /// Run condition: returns true when the viewport is in 3D view. Use on
@@ -1035,7 +1026,7 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
 /// rotation pies, etc.) only make sense projecting through a 3D camera.
 pub fn in_three_view(settings: Option<Res<crate::core::viewport_types::ViewportSettings>>) -> bool {
     use crate::core::viewport_types::ViewportView;
-    settings.map_or(true, |s| s.viewport_view == ViewportView::Three)
+    settings.is_none_or(|s| s.viewport_view == ViewportView::Three)
 }
 
 /// Run condition: returns true when the viewport is in 2D view. Use on
@@ -1043,7 +1034,7 @@ pub fn in_three_view(settings: Option<Res<crate::core::viewport_types::ViewportS
 /// editor camera.
 pub fn in_two_view(settings: Option<Res<crate::core::viewport_types::ViewportSettings>>) -> bool {
     use crate::core::viewport_types::ViewportView;
-    settings.map_or(false, |s| s.viewport_view == ViewportView::Two)
+    settings.is_some_and(|s| s.viewport_view == ViewportView::Two)
 }
 
 /// Marker component added to the game camera entity during play mode.
@@ -1434,7 +1425,9 @@ pub enum PinDir {
 
 /// Concrete values stored on pins (inline constants, defaults).
 #[derive(Clone, Debug, Serialize, Deserialize, Reflect, PartialEq)]
+#[derive(Default)]
 pub enum PinValue {
+    #[default]
     None,
     Float(f32),
     Int(i32),
@@ -1446,11 +1439,6 @@ pub enum PinValue {
     Entity(String),
 }
 
-impl Default for PinValue {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl PinValue {
     pub fn as_float(&self) -> f32 {

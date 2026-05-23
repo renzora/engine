@@ -231,9 +231,10 @@ fn draw_synthwave_grid(painter: &egui::Painter, screen: Vec2, grid_timer: f32, t
 
     // Slow hue cycle on the grid so it's not static — visually anchors the scene.
     let hue = (time * 0.05) % 1.0;
-    let r = (120.0 + 80.0 * (hue * 6.28).cos()) as u8;
-    let g = (120.0 + 80.0 * (hue * 6.28 + 2.09).cos()) as u8;
-    let b = (120.0 + 80.0 * (hue * 6.28 + 4.18).cos()) as u8;
+    let tau = std::f64::consts::TAU;
+    let r = (120.0 + 80.0 * (hue * tau).cos()) as u8;
+    let g = (120.0 + 80.0 * (hue * tau + 2.09).cos()) as u8;
+    let b = (120.0 + 80.0 * (hue * tau + 4.18).cos()) as u8;
     let base = Color32::from_rgb(r, g, b);
     let grid_color = base.gamma_multiply(0.15);
     let glow_color = base.gamma_multiply(0.08);
@@ -1354,9 +1355,7 @@ fn window_button(ui: &mut egui::Ui, rect: egui::Rect, icon: &str, is_close: bool
     } else {
         Color32::TRANSPARENT
     };
-    let icon_color = if is_close && hovered {
-        Color32::WHITE
-    } else if hovered {
+    let icon_color = if hovered {
         Color32::WHITE
     } else {
         TEXT

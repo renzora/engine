@@ -105,7 +105,7 @@ fn material_custom_ui(
         .filter(|p| p.is_detached && p.matches_extensions(&all_exts))
         .is_some();
     let pointer = ui.ctx().pointer_hover_pos();
-    let pointer_in_row = pointer.map_or(false, |p| row_rect.contains(p));
+    let pointer_in_row = pointer.is_some_and(|p| row_rect.contains(p));
     let row_hovering = compatible_drag && pointer_in_row;
     let mut dropped_path: Option<std::path::PathBuf> = None;
     if row_hovering && !ui.ctx().input(|i| i.pointer.any_down()) {
@@ -210,6 +210,9 @@ fn material_custom_ui(
         )
     });
     if dropdown_btn.clicked() {
+        // deprecated upstream egui API; egui::Popup replacement has a different
+        // API shape, migrate later
+        #[allow(deprecated)]
         ui.memory_mut(|m| m.toggle_popup(browse_id));
     }
 
@@ -226,6 +229,9 @@ fn material_custom_ui(
         )
         .on_hover_text("Browse all .material files in the project");
     if browse_icon_resp.clicked() {
+        // deprecated upstream egui API; egui::Popup replacement has a different
+        // API shape, migrate later
+        #[allow(deprecated)]
         ui.memory_mut(|m| m.toggle_popup(browse_id));
     }
 
@@ -277,6 +283,9 @@ fn material_custom_ui(
     // Picker popup anchored under the dropdown button.
     let popup_width = dropdown_btn.rect.width();
     let registry = world.get_resource::<MaterialThumbnailRegistry>();
+    // deprecated upstream egui API; egui::Popup replacement has a different
+    // API shape, migrate later
+    #[allow(deprecated)]
     egui::popup_below_widget(
         ui,
         browse_id,
@@ -443,6 +452,9 @@ fn material_custom_ui(
 
                         if click.clicked() {
                             chosen_material = Some(rel_path.clone());
+                            // deprecated upstream egui API; egui::Popup replacement
+                            // has a different API shape, migrate later
+                            #[allow(deprecated)]
                             ui.memory_mut(|m| m.close_popup(browse_id));
                         }
                     }
@@ -691,7 +703,7 @@ fn render_overrides_section(
         );
         ui.add_space(8.0);
         ui.label(
-            egui::RichText::new(format!("{}", regular::ARROW_UP_RIGHT))
+            egui::RichText::new(regular::ARROW_UP_RIGHT.to_string())
                 .size(10.0)
                 .color(theme.text.muted.to_color32()),
         );

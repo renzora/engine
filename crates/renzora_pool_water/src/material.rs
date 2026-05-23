@@ -57,6 +57,7 @@ impl Default for PoolWaterUniforms {
 
 /// Custom Bevy Material for interactive pool water with screen-space refraction.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+#[derive(Default)]
 pub struct PoolWaterMaterial {
     #[uniform(0)]
     pub uniforms: PoolWaterUniforms,
@@ -65,14 +66,6 @@ pub struct PoolWaterMaterial {
     pub heightfield: Option<Handle<Image>>,
 }
 
-impl Default for PoolWaterMaterial {
-    fn default() -> Self {
-        Self {
-            uniforms: PoolWaterUniforms::default(),
-            heightfield: None,
-        }
-    }
-}
 
 impl Material for PoolWaterMaterial {
     fn vertex_shader() -> ShaderRef {

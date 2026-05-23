@@ -368,7 +368,7 @@ impl EditorPanel for MaterialInspectorPanel {
                                     let new_path = if let Some(project) =
                                         world.get_resource::<renzora::core::CurrentProject>()
                                     {
-                                        project.make_asset_relative(&dropped)
+                                        project.make_asset_relative(dropped)
                                     } else {
                                         dropped.to_string_lossy().to_string()
                                     };

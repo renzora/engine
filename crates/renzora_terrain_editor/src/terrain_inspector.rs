@@ -198,7 +198,6 @@ fn render_size_tab(
                 )
                 .clicked()
             {
-                let entity = entity;
                 cmds.push(move |w: &mut World| expand_terrain(w, entity, dir));
             }
         }

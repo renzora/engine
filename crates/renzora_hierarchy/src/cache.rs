@@ -62,7 +62,7 @@ pub fn mark_hierarchy_dirty(
         return;
     }
 
-    if filter.as_ref().map_or(false, |f| f.is_changed()) {
+    if filter.as_ref().is_some_and(|f| f.is_changed()) {
         dirty.0 = true;
         return;
     }

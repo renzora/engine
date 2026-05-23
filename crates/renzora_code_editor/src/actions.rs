@@ -43,12 +43,10 @@ pub fn byte_to_char(content: &str, byte_idx: usize) -> usize {
 
 /// Inverse of `byte_to_char`.
 pub fn char_to_byte(content: &str, char_idx: usize) -> usize {
-    let mut count = 0usize;
-    for (i, _) in content.char_indices() {
+    for (count, (i, _)) in content.char_indices().enumerate() {
         if count == char_idx {
             return i;
         }
-        count += 1;
     }
     content.len()
 }
@@ -539,11 +537,10 @@ pub fn compute_foldable_lines(content: &str, lang: Language) -> HashSet<usize> {
         for (i, line) in lines.iter().enumerate() {
             let no_comment = strip_trailing_comment(line, lang);
             let trimmed = no_comment.trim_end();
-            if trimmed.ends_with('{') || trimmed.ends_with('[') {
-                if i + 1 < lines.len() {
+            if (trimmed.ends_with('{') || trimmed.ends_with('['))
+                && i + 1 < lines.len() {
                     out.insert(i);
                 }
-            }
         }
         return out;
     }
@@ -591,13 +588,13 @@ pub fn fold_end_line(content: &str, start_line: usize, lang: Language) -> usize 
         let mut open_b = b'{';
         let mut close_b = b'}';
         let mut start_byte = None;
-        for i in line_start..line_end {
-            if bytes[i] == b'{' {
+        for (i, &b) in bytes.iter().enumerate().take(line_end).skip(line_start) {
+            if b == b'{' {
                 open_b = b'{';
                 close_b = b'}';
                 start_byte = Some(i);
             }
-            if bytes[i] == b'[' && start_byte.is_none() {
+            if b == b'[' && start_byte.is_none() {
                 open_b = b'[';
                 close_b = b']';
                 start_byte = Some(i);
@@ -623,12 +620,12 @@ pub fn fold_end_line(content: &str, start_line: usize, lang: Language) -> usize 
     } else {
         let my_indent = indent_width(lines[start_line]);
         let mut last = start_line;
-        for j in (start_line + 1)..lines.len() {
-            if lines[j].trim().is_empty() {
+        for (j, line) in lines.iter().enumerate().skip(start_line + 1) {
+            if line.trim().is_empty() {
                 last = j;
                 continue;
             }
-            if indent_width(lines[j]) > my_indent {
+            if indent_width(line) > my_indent {
                 last = j;
             } else {
                 break;

@@ -26,7 +26,7 @@ pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect
     }
 
     let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.map_or(false, |p| viewport_rect.contains(p));
+    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
     if !pointer_in_viewport {
         return;
     }

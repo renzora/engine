@@ -37,7 +37,7 @@ fn working_space_size(num_ints: usize) -> usize {
         return 0;
     }
     // commonValue (4 bytes) + 2-bit codes + max int bytes
-    4 + (num_ints * 2 + 7) / 8 + num_ints * 4
+    4 + (num_ints * 2).div_ceil(8) + num_ints * 4
 }
 
 /// Read a compressed u32 array from data at `pos`.
@@ -129,7 +129,7 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
     let common_delta = i32::from_le_bytes(encoded[0..4].try_into().unwrap());
 
     // Read 2-bit codes
-    let num_code_bytes = (num_ints * 2 + 7) / 8;
+    let num_code_bytes = (num_ints * 2).div_ceil(8);
     let codes_start = 4;
     let vints_start = codes_start + num_code_bytes;
 

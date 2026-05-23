@@ -329,9 +329,9 @@ pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
                 j += 1;
             }
             let word = &text[i..j];
-            let fmt = if keywords.iter().any(|k| *k == word) {
+            let fmt = if keywords.contains(&word) {
                 &style.keyword
-            } else if types.iter().any(|t| *t == word) {
+            } else if types.contains(&word) {
                 &style.ty
             } else if j < len && bytes[j] == b'(' {
                 &style.function

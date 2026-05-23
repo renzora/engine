@@ -32,7 +32,7 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
     }
 
     let pointer_pos = ui.ctx().pointer_hover_pos();
-    let in_viewport = pointer_pos.map_or(false, |p| viewport_rect.contains(p));
+    let in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
 
     // On release: set pending_drop or cancel
     if ui.ctx().input(|i| i.pointer.any_released()) {

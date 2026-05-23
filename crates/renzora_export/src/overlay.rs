@@ -184,6 +184,9 @@ fn poll_export_task(world: &mut World) {
 }
 
 /// Kick off the GitHub release manifest fetch on first open.
+// drop(state) ends the Mut<Resource> borrow early so `world` is free again;
+// Mut isn't Drop so clippy flags it, but the lifetime-ending effect is intended.
+#[allow(clippy::drop_non_drop)]
 fn ensure_release_fetch(world: &mut World) {
     let mut state = world.resource_mut::<ExportOverlayState>();
     if state.release_fetch_started {
@@ -284,6 +287,9 @@ fn poll_download_task(world: &mut World) {
     }
 }
 
+// drop(export_state) ends the Mut<Resource> borrow early so `world` is free to
+// re-borrow; Mut isn't Drop so clippy flags it, but the effect is intended.
+#[allow(clippy::drop_non_drop)]
 pub fn draw_export_overlay(world: &mut World, ctx: &egui::Context) {
     // Poll background tasks every frame
     poll_export_task(world);
@@ -891,6 +897,9 @@ fn draw_runtime_status(
 }
 
 /// Render the per-platform export settings panel (packaging, mesh, window, options, plugins, icon).
+// drop(export_state) ends the Mut<Resource> borrow early so `world` is free to
+// re-borrow; Mut isn't Drop so clippy flags it, but the effect is intended.
+#[allow(clippy::drop_non_drop)]
 fn draw_settings_panel(
     ui: &mut egui::Ui,
     world: &mut World,
@@ -1259,7 +1268,7 @@ fn export_android_apk(
 
         writer
             .start_file(name, options)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
         writer.write_all(&buf)?;
@@ -1270,12 +1279,12 @@ fn export_android_apk(
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     writer
         .start_file("assets/game.rpak", rpak_options)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(&rpak_bytes)?;
 
     writer
         .finish()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     Ok(())
 }
@@ -1320,11 +1329,11 @@ fn export_ios_app(
         if entry.is_dir() {
             writer
                 .add_directory(&name, options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
         } else {
             writer
                 .start_file(&name, options)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
             writer.write_all(&buf)?;
@@ -1346,12 +1355,12 @@ fn export_ios_app(
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     writer
         .start_file(&rpak_path, rpak_options)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(&rpak_bytes)?;
 
     writer
         .finish()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     Ok(())
 }
@@ -1400,7 +1409,7 @@ fn export_wasm_zip(
 
         writer
             .start_file(&name, file_options)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
         writer.write_all(&buf)?;
@@ -1409,7 +1418,7 @@ fn export_wasm_zip(
     // Add the rpak as game.rpak
     writer
         .start_file("game.rpak", stored)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(&rpak_bytes)?;
 
     // Generate index.html
@@ -1474,12 +1483,12 @@ fn export_wasm_zip(
 
     writer
         .start_file("index.html", options)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(index_html.as_bytes())?;
 
     writer
         .finish()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     info!("[export] WASM zip written to {}", zip_path.display());
 
@@ -1788,30 +1797,12 @@ fn export_worker(
 
                 packer
                     .write_to_file(&rpak_path, compression_level)
-                    .and_then(|_| std::fs::copy(&template_path, &binary_dest).map(|_| ()))
-                    .and_then(|_| {
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            let perms = std::fs::Permissions::from_mode(0o755);
-                            std::fs::set_permissions(&binary_dest, perms)?;
-                        }
-                        Ok(())
-                    })
+                    .and_then(|_| std::fs::copy(&template_path, &binary_dest).map(|_| ())).map(|_| ())
             }
             PackagingMode::SingleBinary => {
                 let binary_dest = output_dir.join(&binary_name);
                 packer
-                    .append_to_binary(&template_path, &binary_dest, compression_level)
-                    .and_then(|_| {
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            let perms = std::fs::Permissions::from_mode(0o755);
-                            std::fs::set_permissions(&binary_dest, perms)?;
-                        }
-                        Ok(())
-                    })
+                    .append_to_binary(&template_path, &binary_dest, compression_level).map(|_| ())
             }
         }
     };

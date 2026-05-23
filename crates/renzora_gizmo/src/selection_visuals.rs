@@ -84,7 +84,7 @@ pub fn update_selection_outlines(
     let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8);
     let outline_width = 3.0;
 
-    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
 
     let should_show = !modal.active
@@ -217,7 +217,7 @@ pub fn draw_selection_bounding_box(
         return;
     }
 
-    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     if in_play {
         return;
     }
@@ -341,7 +341,7 @@ pub fn terrain_chunk_selection_system(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     world: &World,
 ) {
-    let in_play = play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     if modal.active || in_play {
         return;
     }

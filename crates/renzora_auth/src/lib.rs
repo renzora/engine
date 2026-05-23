@@ -129,6 +129,7 @@ enum AuthResult {
 
 /// Persistent authentication UI state.
 #[derive(Resource)]
+#[derive(Default)]
 pub struct AuthState {
     pub window_open: bool,
     pub view: AuthView,
@@ -148,23 +149,6 @@ pub struct AuthState {
     receiver: Option<Mutex<mpsc::Receiver<AuthResult>>>,
 }
 
-impl Default for AuthState {
-    fn default() -> Self {
-        Self {
-            window_open: false,
-            view: AuthView::default(),
-            email: String::new(),
-            password: String::new(),
-            confirm_password: String::new(),
-            username: String::new(),
-            status: None,
-            error: None,
-            loading: false,
-            just_signed_in: false,
-            receiver: None,
-        }
-    }
-}
 
 /// Render the auth modal window. Call this each frame from the editor loop.
 pub fn render_auth_window(

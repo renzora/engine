@@ -324,7 +324,7 @@ fn expand_defines(source: &str) -> String {
                 if rest
                     .as_bytes()
                     .get(paren_pos.saturating_sub(1))
-                    .map_or(false, |c| c.is_ascii_alphanumeric() || *c == b'_')
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_')
                     || paren_pos == name.len()
                 {
                     if let Some(close_paren) = rest[paren_pos..].find(')') {

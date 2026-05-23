@@ -171,6 +171,7 @@ impl Default for NodeGraphConfig {
 // ── Response (what happened this frame) ────────────────────────────────────
 
 /// Returned by [`node_graph()`](super::node_graph) each frame.
+#[derive(Default)]
 pub struct NodeGraphResponse {
     pub selection_changed: bool,
     pub node_moved: Option<u64>,
@@ -184,16 +185,3 @@ pub struct NodeGraphResponse {
     pub right_click_handled: bool,
 }
 
-impl Default for NodeGraphResponse {
-    fn default() -> Self {
-        Self {
-            selection_changed: false,
-            node_moved: None,
-            connection_made: None,
-            connection_removed: None,
-            nodes_deleted: Vec::new(),
-            canvas_response: None,
-            right_click_handled: false,
-        }
-    }
-}

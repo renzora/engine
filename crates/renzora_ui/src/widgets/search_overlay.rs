@@ -254,7 +254,7 @@ pub fn search_overlay(
                                             let painter = ui.painter();
 
                                             // Alternating row bg
-                                            let bg = if row_index % 2 == 0 {
+                                            let bg = if row_index.is_multiple_of(2) {
                                                 row_even
                                             } else {
                                                 row_odd
@@ -340,7 +340,7 @@ pub fn search_overlay(
                                                     let painter = ui.painter();
 
                                                     // Alternating row bg
-                                                    let bg = if row_index % 2 == 0 {
+                                                    let bg = if row_index.is_multiple_of(2) {
                                                         row_even
                                                     } else {
                                                         row_odd

@@ -94,9 +94,9 @@ impl Plugin for ShapesPlugin {
 
 /// Rehydrates `MaterialNode` handles after scene deserialization.
 /// Shape components survive serialization but `MaterialNode<T>` handles don't.
+//
 // Bevy's system fn parameter limit is 16. The combined rehydrate query uses
 // 17 (1 commands + 8 queries + 8 asset resources), so we split the work.
-
 fn rehydrate_basic_shape_materials(
     mut commands: Commands,
     circles: Query<

@@ -286,14 +286,12 @@ fn animator_custom_ui(
             // Collect all .anim paths from the drag (multi-select aware).
             let dragged: Vec<std::path::PathBuf> = payload
                 .paths
-                .iter()
-                .cloned()
-                .filter(|p| {
+                .iter().filter(|&p| {
                     p.extension()
                         .and_then(|e| e.to_str())
                         .map(|e| e.eq_ignore_ascii_case("anim"))
                         .unwrap_or(false)
-                })
+                }).cloned()
                 .collect();
 
             if !dragged.is_empty() {

@@ -410,7 +410,8 @@ enum InnerSnapshot {
         size: UVec2,
     },
     Stopping,
-    Done(String),
+    // String payload (output path) kept for future status display
+    Done(#[allow(dead_code)] String),
 }
 
 impl From<&Inner> for InnerSnapshot {
@@ -748,7 +749,7 @@ impl Plugin for RecordPlugin {
         app.add_systems(Last, capture_frame_system);
         app.add_systems(Update, (drive_stop_transition, drive_finalise).chain());
 
-        app.register_panel(RecordPanel::default());
+        app.register_panel(RecordPanel);
     }
 }
 

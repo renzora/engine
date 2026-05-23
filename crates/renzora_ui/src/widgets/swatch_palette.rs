@@ -16,7 +16,7 @@ pub fn swatch_palette(
     theme: &Theme,
 ) -> Option<usize> {
     let cols = columns.max(1);
-    let rows = (swatches.len() + cols - 1) / cols;
+    let rows = swatches.len().div_ceil(cols);
     let spacing = 2.0;
     let total_w = cols as f32 * (swatch_size + spacing) - spacing;
     let total_h = rows as f32 * (swatch_size + spacing) - spacing;

@@ -37,7 +37,7 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
         let offset = bin_data.len();
         bin_data.extend_from_slice(&tex.data);
         // Pad to 4-byte alignment
-        while bin_data.len() % 4 != 0 {
+        while !bin_data.len().is_multiple_of(4) {
             bin_data.push(0);
         }
 
@@ -277,7 +277,7 @@ pub fn convert(stage: &UsdStage) -> UsdResult<Vec<u8>> {
         let idx_offset = bin_data.len();
 
         for &idx in &triangles {
-            bin_data.extend_from_slice(&(idx as u32).to_le_bytes());
+            bin_data.extend_from_slice(&idx.to_le_bytes());
         }
 
         buffer_views.push(buffer::View {
@@ -427,14 +427,14 @@ fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     out.extend_from_slice(&(json_len as u32).to_le_bytes()); // chunk length
     out.extend_from_slice(&0x4E4F534Au32.to_le_bytes()); // chunk type "JSON"
     out.extend_from_slice(json);
-    out.extend(std::iter::repeat(b' ').take(json_pad));
+    out.extend(std::iter::repeat_n(b' ', json_pad));
 
     // BIN chunk
     if !bin_data.is_empty() {
         out.extend_from_slice(&(bin_len as u32).to_le_bytes()); // chunk length
         out.extend_from_slice(&0x004E4942u32.to_le_bytes()); // chunk type "BIN\0"
         out.extend_from_slice(bin_data);
-        out.extend(std::iter::repeat(0u8).take(bin_pad));
+        out.extend(std::iter::repeat_n(0u8, bin_pad));
     }
 
     out

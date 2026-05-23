@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
-use renzora_postprocess;
-use serde;
 
 #[renzora_macros::post_process(shader = "kuwahara.wgsl", name = "Kuwahara", icon = "PAINT_BRUSH")]
 pub struct KuwaharaSettings {

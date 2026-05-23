@@ -59,3 +59,49 @@ jobs:
             --exclude bevy_mod_openxr \
             --exclude bevy_mod_xr \
             --exclude bevy_xr_utils
+
+  clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libvulkan-dev \
+            mold
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Lints the engine's own crates (same first-party scope as `test`).
+      # `--no-deps` keeps clippy from linting the vendored crates that leak in
+      # as path-dependencies. `too_many_arguments` / `type_complexity` are
+      # allowed because they're inherent to Bevy systems and queries (Bevy
+      # allows them too). Scope is lib + bins; tests/examples aren't linted yet.
+      - name: Clippy
+        run: |
+          cargo clippy --workspace --no-deps \
+            --exclude renzora_shader \
+            --exclude bevy_gauge \
+            --exclude bevy_hanabi \
+            --exclude bevy_mod_outline \
+            --exclude bevy_silk \
+            --exclude vleue_navigator \
+            --exclude bevy_mod_openxr \
+            --exclude bevy_mod_xr \
+            --exclude bevy_xr_utils \
+            -- -D warnings \
+            -A clippy::too_many_arguments \
+            -A clippy::type_complexity

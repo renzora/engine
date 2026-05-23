@@ -52,6 +52,12 @@ pub struct ScriptComponent {
     next_id: u32,
 }
 
+impl Default for ScriptComponent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptComponent {
     pub fn new() -> Self {
         Self {

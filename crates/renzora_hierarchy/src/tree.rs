@@ -474,7 +474,7 @@ fn render_node(
     }
 
     // Track AsChild group border top
-    let is_as_child_target = state.drop_target.as_ref().map_or(false, |(e, z)| {
+    let is_as_child_target = state.drop_target.as_ref().is_some_and(|(e, z)| {
         *e == node.entity && *z == renzora_editor::TreeDropZone::AsChild
     });
     let group_top = if is_as_child_target {
@@ -613,25 +613,23 @@ fn context_menu(
             });
             ui.close();
         }
-    } else {
-        if ui
-            .button(format!("{} Add Blueprint", regular::FLOW_ARROW))
-            .clicked()
-        {
-            let entity = node.entity;
-            commands.push(move |world: &mut World| {
-                let mut graph = BlueprintGraph::new();
-                graph.add_node("event/on_update", [0.0, 0.0]);
-                world.entity_mut(entity).insert(graph);
-                if let Some(sel) = world.get_resource::<EditorSelection>() {
-                    sel.set(Some(entity));
-                }
-                if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
-                    docking.tree.set_active_tab("blueprint_graph");
-                }
-            });
-            ui.close();
-        }
+    } else if ui
+        .button(format!("{} Add Blueprint", regular::FLOW_ARROW))
+        .clicked()
+    {
+        let entity = node.entity;
+        commands.push(move |world: &mut World| {
+            let mut graph = BlueprintGraph::new();
+            graph.add_node("event/on_update", [0.0, 0.0]);
+            world.entity_mut(entity).insert(graph);
+            if let Some(sel) = world.get_resource::<EditorSelection>() {
+                sel.set(Some(entity));
+            }
+            if let Some(mut docking) = world.get_resource_mut::<DockingState>() {
+                docking.tree.set_active_tab("blueprint_graph");
+            }
+        });
+        ui.close();
     }
 
     ui.separator();
@@ -905,8 +903,8 @@ fn context_menu(
     // Removes the `SceneInstance` marker; its descendants stay in the world
     // and become scene-owned entities (saved directly in the host scene from
     // then on, no longer pulled from the source file).
-    if node.is_scene_instance {
-        if ui
+    if node.is_scene_instance
+        && ui
             .button(format!("{} Unpack Scene Instance", regular::LINK_BREAK))
             .clicked()
         {
@@ -920,7 +918,6 @@ fn context_menu(
             });
             ui.close();
         }
-    }
 
     ui.separator();
 

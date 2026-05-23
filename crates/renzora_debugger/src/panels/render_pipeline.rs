@@ -309,15 +309,14 @@ fn render_canvas(
     }
 
     // Pan
-    if graph_data.dragged_node.is_none() {
-        if response.dragged_by(egui::PointerButton::Middle)
-            || response.dragged_by(egui::PointerButton::Secondary)
+    if graph_data.dragged_node.is_none()
+        && (response.dragged_by(egui::PointerButton::Middle)
+            || response.dragged_by(egui::PointerButton::Secondary))
         {
             let delta = response.drag_delta();
             graph_data.canvas.offset[0] += delta.x / zoom;
             graph_data.canvas.offset[1] += delta.y / zoom;
         }
-    }
 
     // Zoom
     if rect.contains(pointer_pos.unwrap_or_default()) {
@@ -363,7 +362,7 @@ fn render_canvas(
     // Edges
     let edges_clone: Vec<RenderGraphEdge> = graph_data.edges.clone();
     for edge in &edges_clone {
-        let highlighted = hovered.map_or(false, |h| edge.from == h || edge.to == h);
+        let highlighted = hovered.is_some_and(|h| edge.from == h || edge.to == h);
         draw_edge(
             &painter,
             graph_data,

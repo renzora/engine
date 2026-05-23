@@ -62,7 +62,7 @@ fn scan_script_files_inner(
         if path
             .file_name()
             .and_then(|n| n.to_str())
-            .map_or(false, |n| n.starts_with('.'))
+            .is_some_and(|n| n.starts_with('.'))
         {
             continue;
         }

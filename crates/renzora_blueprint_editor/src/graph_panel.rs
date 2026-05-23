@@ -146,7 +146,7 @@ impl EditorPanel for BlueprintGraphPanel {
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
                 ui.label(
-                    RichText::new(format!("{LIGHTNING}"))
+                    RichText::new(LIGHTNING.to_string())
                         .size(48.0)
                         .color(theme.text.muted.to_color32()),
                 );
@@ -236,7 +236,7 @@ impl BlueprintGraphPanel {
             let path_owned = rel_path.to_string();
             cmds.push(move |world: &mut World| {
                 let graph = load_blueprint_file(project.as_ref(), &path_owned)
-                    .unwrap_or_else(BlueprintGraph::new);
+                    .unwrap_or_default();
                 let mut state = world.resource_mut::<BlueprintEditorState>();
                 state.editing_file_path = Some(path_owned);
                 state.file_graph = Some(graph);
@@ -457,7 +457,7 @@ fn render_toolbar(
         // ── Center ──
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{CROSSHAIR}"))
+                RichText::new(CROSSHAIR.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))
@@ -482,7 +482,7 @@ fn render_toolbar(
         // ── Zoom ──
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{MAGNIFYING_GLASS_MINUS}"))
+                RichText::new(MAGNIFYING_GLASS_MINUS.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))
@@ -501,7 +501,7 @@ fn render_toolbar(
 
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{MAGNIFYING_GLASS_PLUS}"))
+                RichText::new(MAGNIFYING_GLASS_PLUS.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))

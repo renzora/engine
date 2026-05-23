@@ -50,7 +50,7 @@ fn settings_overlay_system(world: &mut World) {
     // Early-out if settings not visible
     let show = world
         .get_resource::<EditorSettings>()
-        .map_or(false, |s| s.show_settings);
+        .is_some_and(|s| s.show_settings);
     if !show {
         return;
     }
@@ -673,7 +673,7 @@ fn settings_row<R>(
     theme: &Theme,
     add_widget: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    let bg_color = if row_index % 2 == 0 {
+    let bg_color = if row_index.is_multiple_of(2) {
         theme
             .panels
             .inspector_row_even
@@ -1775,7 +1775,7 @@ fn render_keybinding_row(
     let border_color = theme.widgets.border.to_color32();
     let warning_color = theme.semantic.warning.to_color32();
 
-    let bg_color = if row_index % 2 == 0 {
+    let bg_color = if row_index.is_multiple_of(2) {
         theme
             .panels
             .inspector_row_even
@@ -1851,7 +1851,7 @@ fn render_plugin_keybinding_row(
     let border_color = theme.widgets.border.to_color32();
     let warning_color = theme.semantic.warning.to_color32();
 
-    let bg_color = if row_index % 2 == 0 {
+    let bg_color = if row_index.is_multiple_of(2) {
         theme
             .panels
             .inspector_row_even
@@ -2091,14 +2091,14 @@ fn render_theme_tab(ui: &mut egui::Ui, state: &mut ThemeEditState, theme: &Theme
         theme,
         |ui| {
             settings_row(ui, 0, "Theme", theme, |ui| {
-                let resp = egui::ComboBox::from_id_salt("theme_selector")
+                
+                egui::ComboBox::from_id_salt("theme_selector")
                     .selected_text(&state.active_name)
                     .show_ui(ui, |ui| {
                         for name in state.available.clone() {
                             ui.selectable_value(&mut state.active_name, name.clone(), name);
                         }
-                    });
-                resp
+                    })
             });
 
             ui.add_space(4.0);
@@ -2231,7 +2231,7 @@ fn render_theme_color_section(
 ) {
     render_category(ui, icon, label, style, id_source, true, theme, |ui| {
         for (i, (name, color)) in colors.iter_mut().enumerate() {
-            theme_color_row_mut(ui, i, name, *color, row_even, row_odd);
+            theme_color_row_mut(ui, i, name, color, row_even, row_odd);
         }
     });
 }
@@ -2244,7 +2244,7 @@ fn theme_color_row_mut(
     row_even: Color32,
     row_odd: Color32,
 ) {
-    let bg_color = if row_index % 2 == 0 {
+    let bg_color = if row_index.is_multiple_of(2) {
         row_even
     } else {
         row_odd

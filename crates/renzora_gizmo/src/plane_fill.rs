@@ -107,7 +107,7 @@ pub fn draw_plane_fill_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rec
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
     let three = world
         .get_resource::<ViewportSettings>()
-        .map_or(true, |s| s.viewport_view == ViewportView::Three);
+        .is_none_or(|s| s.viewport_view == ViewportView::Three);
     if !three {
         return;
     }

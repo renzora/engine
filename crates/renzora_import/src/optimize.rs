@@ -305,8 +305,8 @@ fn remap_attribute_in_buffer(
     let stride = view.stride().unwrap_or(element_size);
 
     // Apply remap manually: for each old vertex, copy its data to the new slot
-    for old_idx in 0..vertex_count {
-        let new_idx = remap[old_idx] as usize;
+    for (old_idx, &remapped) in remap.iter().enumerate().take(vertex_count) {
+        let new_idx = remapped as usize;
         if new_idx >= vertex_count {
             continue; // vertex was removed by remap
         }
@@ -347,17 +347,13 @@ fn rebuild_glb(json_bytes: &[u8], bin: &[u8]) -> Result<Vec<u8>, String> {
     out.extend_from_slice(&(json_padded as u32).to_le_bytes());
     out.extend_from_slice(&0x4E4F534Au32.to_le_bytes()); // "JSON"
     out.extend_from_slice(json_bytes);
-    for _ in 0..json_pad {
-        out.push(b' ');
-    }
+    out.extend(std::iter::repeat_n(b' ', json_pad));
 
     // BIN chunk
     out.extend_from_slice(&(bin_padded as u32).to_le_bytes());
     out.extend_from_slice(&0x004E4942u32.to_le_bytes()); // "BIN\0"
     out.extend_from_slice(bin);
-    for _ in 0..bin_pad {
-        out.push(0);
-    }
+    out.extend(std::iter::repeat_n(0, bin_pad));
 
     Ok(out)
 }

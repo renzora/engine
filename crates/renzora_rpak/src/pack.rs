@@ -17,6 +17,12 @@ pub struct RpakPacker {
     entries: BTreeMap<String, Vec<u8>>,
 }
 
+impl Default for RpakPacker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RpakPacker {
     pub fn new() -> Self {
         Self {
@@ -75,7 +81,7 @@ impl RpakPacker {
             // compressor ends up making it larger (common for tiny files,
             // already-compressed formats like .png/.ogg/.glb-with-jpeg).
             let compressed = zstd::encode_all(data.as_slice(), compression_level)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
             let (compression, payload) = if (compressed.len() as u64) < uncompressed_size {
                 (Compression::Zstd, compressed)
@@ -101,7 +107,7 @@ impl RpakPacker {
         let raw_index = encode_index(&entries);
         let index_uncompressed_len = raw_index.len();
         let compressed_index = zstd::encode_all(raw_index.as_slice(), compression_level)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         let (index_compress, stored_index): (bool, Vec<u8>) =
             if compressed_index.len() < index_uncompressed_len {
@@ -276,8 +282,8 @@ where
     // packing so exported builds don't carry editor preferences.
     for name in &["project.toml", "project.ron"] {
         let path = project_dir.join(name);
-        if path.is_file() {
-            if visited.insert(name.to_string()) {
+        if path.is_file()
+            && visited.insert(name.to_string()) {
                 if *name == "project.toml" {
                     let text = std::fs::read_to_string(&path)?;
                     let stripped = strip_editor_section(&text);
@@ -288,7 +294,6 @@ where
                 on_packed(name);
                 queue.push_back(name.to_string());
             }
-        }
     }
 
     // Read main_scene and icon from project.toml
@@ -630,7 +635,7 @@ fn strip_visual_components(input: &str) -> String {
 
         // It's a component entry — check the keep list
         let kept_by_prefix = SERVER_KEEP_PREFIXES.iter().any(|p| key.starts_with(p));
-        let force_stripped = SERVER_STRIP_EXACT.iter().any(|e| key == *e);
+        let force_stripped = SERVER_STRIP_EXACT.contains(&key);
         if kept_by_prefix && !force_stripped {
             continue; // keep it
         }

@@ -366,7 +366,7 @@ impl Plugin for RenzoraEditorPlugin {
                     .layouts
                     .get(manager.active_index)
                     .map(|l| l.tree.clone())
-                    .unwrap_or_else(|| renzora_ui::layouts::scene_layout());
+                    .unwrap_or_else(renzora_ui::layouts::scene_layout);
                 (manager, DockingState { tree })
             }
             None => (LayoutManager::default(), DockingState::default()),
@@ -609,8 +609,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
         .order(0)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
-                .copied()
-                .map_or(false, |t| t == ActiveTool::Select)
+                .copied() == Some(ActiveTool::Select)
         })
         .on_activate(|w| {
             w.insert_resource(ActiveTool::Select);
@@ -626,8 +625,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
         .order(1)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
-                .copied()
-                .map_or(false, |t| t == ActiveTool::Translate)
+                .copied() == Some(ActiveTool::Translate)
         })
         .on_activate(|w| {
             w.insert_resource(ActiveTool::Translate);
@@ -643,8 +641,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
         .order(2)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
-                .copied()
-                .map_or(false, |t| t == ActiveTool::Rotate)
+                .copied() == Some(ActiveTool::Rotate)
         })
         .on_activate(|w| {
             w.insert_resource(ActiveTool::Rotate);
@@ -660,8 +657,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
         .order(3)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
-                .copied()
-                .map_or(false, |t| t == ActiveTool::Scale)
+                .copied() == Some(ActiveTool::Scale)
         })
         .on_activate(|w| {
             w.insert_resource(ActiveTool::Scale);
@@ -759,7 +755,7 @@ fn load_project_custom_fonts(world: &mut World, ctx: &egui::Context) {
         };
         fonts
             .font_data
-            .insert(stem.clone().into(), egui::FontData::from_owned(data).into());
+            .insert(stem.clone(), egui::FontData::from_owned(data).into());
         new_names.push(stem);
     }
 

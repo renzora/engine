@@ -28,7 +28,7 @@ impl Plugin for FoliageEditorPlugin {
                 )
                     .chain()
                     .run_if(|tool: Option<Res<ActiveTool>>| {
-                        tool.map_or(false, |t| *t == ActiveTool::FoliagePaint)
+                        tool.is_some_and(|t| *t == ActiveTool::FoliagePaint)
                     }),
             );
     }

@@ -631,22 +631,22 @@ fn gradient_stops_editor(
     theme: &renzora_theme::Theme,
 ) -> bool {
     let mut changed = false;
-    for i in 0..stops.len() {
+    for (i, stop) in stops.iter_mut().enumerate() {
         let row = start_row + i * 2;
         inline_property(ui, row, &format!("Stop {} Pos", i + 1), theme, |ui| {
-            let mut v = stops[i].position;
+            let mut v = stop.position;
             if ui
                 .add(egui::DragValue::new(&mut v).speed(0.01).range(0.0..=1.0))
                 .changed()
             {
-                stops[i].position = v;
+                stop.position = v;
                 changed = true;
             }
         });
         inline_property(ui, row + 1, &format!("Stop {} Color", i + 1), theme, |ui| {
-            let mut arr = color_to_arr(stops[i].color);
+            let mut arr = color_to_arr(stop.color);
             if ui.color_edit_button_rgba_unmultiplied(&mut arr).changed() {
-                stops[i].color = arr_to_color(arr);
+                stop.color = arr_to_color(arr);
                 changed = true;
             }
         });
@@ -664,15 +664,14 @@ fn gradient_stops_editor(
             });
             changed = true;
         }
-        if stops.len() > 2 {
-            if ui
+        if stops.len() > 2
+            && ui
                 .small_button(format!("{} Remove", regular::MINUS))
                 .clicked()
             {
                 stops.pop();
                 changed = true;
             }
-        }
     });
 
     changed
@@ -2025,8 +2024,7 @@ pub fn render_dropdown_data_inspector(
                     })
                     .inner
                     .is_some()
-                {
-                    if v != data.selected {
+                    && v != data.selected {
                         data.selected = v;
                         commands.push(move |world: &mut World| {
                             if let Ok(mut em) = world.get_entity_mut(entity) {
@@ -2036,16 +2034,15 @@ pub fn render_dropdown_data_inspector(
                             }
                         });
                     }
-                }
             });
             // Options list
             let mut options_changed = false;
             let mut new_options = data.options.clone();
-            for i in 0..new_options.len() {
+            for (i, option) in new_options.iter_mut().enumerate() {
                 inline_property(ui, i + 2, &format!("#{}", i + 1), theme, |ui| {
                     if ui
                         .add(
-                            egui::TextEdit::singleline(&mut new_options[i])
+                            egui::TextEdit::singleline(option)
                                 .desired_width(ui.available_width()),
                         )
                         .changed()
@@ -2060,15 +2057,14 @@ pub fn render_dropdown_data_inspector(
                     new_options.push(format!("Option {}", new_options.len() + 1));
                     options_changed = true;
                 }
-                if new_options.len() > 1 {
-                    if ui
+                if new_options.len() > 1
+                    && ui
                         .small_button(format!("{} Remove", regular::MINUS))
                         .clicked()
                     {
                         new_options.pop();
                         options_changed = true;
                     }
-                }
             });
             if options_changed {
                 data.options = new_options.clone();

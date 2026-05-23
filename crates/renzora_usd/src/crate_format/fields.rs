@@ -341,8 +341,8 @@ fn rv3d(d: &[u8], o: usize) -> Option<[f64; 3]> {
 }
 fn rmat(d: &[u8], o: usize) -> Option<[f64; 16]> {
     let mut m = [0.0; 16];
-    for i in 0..16 {
-        m[i] = f64::at(d, o + i * 8)?;
+    for (i, slot) in m.iter_mut().enumerate() {
+        *slot = f64::at(d, o + i * 8)?;
     }
     Some(m)
 }

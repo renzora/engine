@@ -734,7 +734,7 @@ fn apply_canvas_visibility_mode(
     play_mode: Option<Res<renzora::PlayModeState>>,
     mut canvases: Query<(&UiCanvas, &mut Visibility), Changed<UiCanvas>>,
 ) {
-    let in_play = play_mode.map_or(true, |p| p.is_in_play_mode());
+    let in_play = play_mode.is_none_or(|p| p.is_in_play_mode());
     for (canvas, mut vis) in &mut canvases {
         apply_canvas_visibility_to(in_play, canvas, &mut vis);
     }
@@ -769,7 +769,7 @@ fn on_canvas_inserted(
     mut canvases: Query<(&UiCanvas, &mut Visibility)>,
 ) {
     let entity = trigger.entity;
-    let in_play = play_mode.map_or(true, |p| p.is_in_play_mode());
+    let in_play = play_mode.is_none_or(|p| p.is_in_play_mode());
     if let Ok((canvas, mut vis)) = canvases.get_mut(entity) {
         apply_canvas_visibility_to(in_play, canvas, &mut vis);
     }

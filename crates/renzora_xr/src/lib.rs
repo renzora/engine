@@ -73,7 +73,6 @@ pub unsafe extern "C" fn xr_init_rendering(app_ptr: *mut std::ffi::c_void) {
             address_mode_w: bevy::image::ImageAddressMode::Repeat,
             ..default()
         },
-        ..default()
     })
     .set(bevy_mod_openxr::init::OxrInitPlugin { exts, ..default() });
 
@@ -483,7 +482,7 @@ fn sync_skybox_to_xr_cameras(
     let Some((viewport_skybox, viewport_cam)) = viewport_cameras.iter().next() else {
         return;
     };
-    let viewport_clear = viewport_cam.clear_color.clone();
+    let viewport_clear = viewport_cam.clear_color;
 
     for (entity, existing_skybox) in xr_cameras.iter() {
         match (viewport_skybox, existing_skybox) {
@@ -502,7 +501,7 @@ fn sync_skybox_to_xr_cameras(
         }
 
         if let Ok(mut xr_cam) = xr_cam_settings.get_mut(entity) {
-            xr_cam.clear_color = viewport_clear.clone();
+            xr_cam.clear_color = viewport_clear;
         }
     }
 }

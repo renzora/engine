@@ -801,12 +801,12 @@ impl<'a> LuaCompiler<'a> {
                 _ => "0".to_string(),
             },
             "input/is_key_pressed" => {
-                let key = self.resolve_input_value(&node, "key");
+                let key = self.resolve_input_value(node, "key");
                 let key_str = strip_quotes(&key);
                 format!("is_key_pressed(\"{}\")", key_str)
             }
             "input/is_key_just_pressed" => {
-                let key = self.resolve_input_value(&node, "key");
+                let key = self.resolve_input_value(node, "key");
                 let key_str = strip_quotes(&key);
                 format!("is_key_just_pressed(\"{}\")", key_str)
             }
@@ -816,7 +816,7 @@ impl<'a> LuaCompiler<'a> {
                 _ => "0".to_string(),
             },
             "input/is_mouse_pressed" => {
-                let btn = self.resolve_input_value(&node, "button");
+                let btn = self.resolve_input_value(node, "button");
                 let btn_str = strip_quotes(&btn);
                 match btn_str.as_str() {
                     "Left" => "mouse_left".to_string(),
@@ -832,15 +832,15 @@ impl<'a> LuaCompiler<'a> {
                 _ => "nil".to_string(),
             },
             "entity/get_entity" => {
-                let name = self.resolve_input_value(&node, "name");
-                name
+                
+                self.resolve_input_value(node, "name")
             }
 
             // ── Component reflection read ───────────────────────────
             "component/get_field" => {
-                let entity_val = self.resolve_input_value(&node, "entity");
-                let comp = self.resolve_input_value(&node, "component");
-                let field = self.resolve_input_value(&node, "field");
+                let entity_val = self.resolve_input_value(node, "entity");
+                let comp = self.resolve_input_value(node, "component");
+                let field = self.resolve_input_value(node, "field");
                 let entity_str = strip_quotes(&entity_val);
                 let comp_str = strip_quotes(&comp);
                 let field_str = strip_quotes(&field);
@@ -854,7 +854,7 @@ impl<'a> LuaCompiler<'a> {
 
             // ── Variable read ───────────────────────────────────────
             "variable/get" => {
-                let name = self.resolve_input_value(&node, "name");
+                let name = self.resolve_input_value(node, "name");
                 let var_name = strip_quotes(&name);
                 sanitize_var(&var_name)
             }

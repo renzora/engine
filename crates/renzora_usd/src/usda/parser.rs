@@ -104,7 +104,7 @@ fn parse_prim(
     stage: &mut UsdStage,
 ) -> Option<UsdNode> {
     // Expect: def TypeName "Name" { ... }
-    let specifier = match tokens.get(*pos) {
+    let _specifier = match tokens.get(*pos) {
         Some(Token::Keyword(k)) if k == "def" || k == "over" || k == "class" => {
             *pos += 1;
             k.clone()
@@ -532,9 +532,9 @@ fn parse_property(
 fn parse_relationship(
     tokens: &[Token],
     pos: &mut usize,
-    prim_path: &str,
+    _prim_path: &str,
     mesh: &mut Option<MeshBuilder>,
-    material: &mut Option<UsdMaterial>,
+    _material: &mut Option<UsdMaterial>,
 ) {
     // rel material:binding = </Path/To/Material>
     let rel_name = match tokens.get(*pos) {
@@ -780,10 +780,10 @@ fn parse_matrix4_array(tokens: &[Token], pos: &mut usize) -> Vec<[f32; 16]> {
 
 fn read_3_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
     let mut vals = [0.0f32; 3];
-    for i in 0..3 {
+    for val in &mut vals {
         match tokens.get(*pos) {
             Some(Token::Number(n)) => {
-                vals[i] = *n as f32;
+                *val = *n as f32;
                 *pos += 1;
             }
             _ => return None,
@@ -797,10 +797,10 @@ fn read_3_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
 
 fn read_2_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 2]> {
     let mut vals = [0.0f32; 2];
-    for i in 0..2 {
+    for val in &mut vals {
         match tokens.get(*pos) {
             Some(Token::Number(n)) => {
-                vals[i] = *n as f32;
+                *val = *n as f32;
                 *pos += 1;
             }
             _ => return None,

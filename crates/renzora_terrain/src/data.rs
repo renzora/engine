@@ -497,7 +497,7 @@ impl StampBrushData {
             pixels,
             width: size,
             height: size,
-            name: format!("{}", kind.display_name()),
+            name: kind.display_name().to_string(),
         }
     }
 }

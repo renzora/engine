@@ -91,7 +91,7 @@ fn extrude_faces(edit: &mut EditMesh, selected: &HashSet<FaceId>) -> Option<Extr
     }
 
     // 5. Emit the side quads for boundary edges.
-    for (_key, occurrences) in &edge_occurrences {
+    for occurrences in edge_occurrences.values() {
         if occurrences.len() != 1 {
             continue;
         }

@@ -69,7 +69,7 @@ pub fn setup_camera_preview(
 /// Shows: selected Camera3d → DefaultCamera → first scene Camera3d.
 /// Run condition: true when the Camera Preview panel is in the active dock tree.
 pub fn camera_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.map_or(false, |d| d.tree.contains_panel("camera_preview"))
+    docking.is_some_and(|d| d.tree.contains_panel("camera_preview"))
 }
 
 /// Toggles the Camera Preview camera on/off with panel visibility and despawns
@@ -81,7 +81,7 @@ pub fn sync_camera_preview_activation(
     mut preview_state: Option<ResMut<CameraPreviewState>>,
     mut commands: Commands,
 ) {
-    let mounted = docking.map_or(false, |d| d.tree.contains_panel("camera_preview"));
+    let mounted = docking.is_some_and(|d| d.tree.contains_panel("camera_preview"));
     for mut camera in preview_cameras.iter_mut() {
         if camera.is_active != mounted {
             camera.is_active = mounted;
@@ -145,7 +145,7 @@ pub fn update_camera_preview(
     let (editor_skybox, editor_clear_color) = editor_cameras
         .iter()
         .next()
-        .map(|(skybox, cam)| (skybox.cloned(), cam.clear_color.clone()))
+        .map(|(skybox, cam)| (skybox.cloned(), cam.clear_color))
         .unwrap_or((None, ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12))));
 
     if let Some((cam_entity, cam_global_transform, cam_projection)) = target {

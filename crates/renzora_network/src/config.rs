@@ -5,17 +5,14 @@ use serde::{Deserialize, Serialize};
 /// Transport protocol for networking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TransportKind {
+    #[default]
     Udp,
     WebTransport,
     WebSocket,
 }
 
-impl Default for TransportKind {
-    fn default() -> Self {
-        Self::Udp
-    }
-}
 
 impl TransportKind {
     pub fn from_str_loose(s: &str) -> Self {

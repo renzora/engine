@@ -113,7 +113,7 @@ fn inspector_entry() -> InspectorEntry {
         add_fn: Some(|world, entity| {
             let mode = world
                 .get::<Tonemapping>(entity)
-                .map(|t| tonemapping_to_mode(t))
+                .map(tonemapping_to_mode)
                 .unwrap_or(6);
             let ev100 = world
                 .get::<Exposure>(entity)

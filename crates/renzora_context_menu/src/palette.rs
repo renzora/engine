@@ -32,7 +32,7 @@ impl Default for PaletteState {
     }
 }
 
-enum PendingPaletteAction {
+pub(crate) enum PendingPaletteAction {
     SpawnEntity(&'static str),
     AddComponent(&'static str),
 }

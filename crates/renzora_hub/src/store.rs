@@ -106,10 +106,8 @@ impl HubStorePanel {
         // Poll category results
         if let Ok(guard) = self.category_rx.lock() {
             if let Some(rx) = guard.as_ref() {
-                if let Ok(result) = rx.try_recv() {
-                    if let Ok(cats) = result {
-                        self.state.write().unwrap().categories = cats;
-                    }
+                if let Ok(Ok(cats)) = rx.try_recv() {
+                    self.state.write().unwrap().categories = cats;
                 }
             }
         }
@@ -705,8 +703,8 @@ impl HubStorePanel {
                         let pad = ((ui.available_width() - 200.0) / 2.0).max(0.0);
                         ui.add_space(pad);
 
-                        if page > 1 {
-                            if ui
+                        if page > 1
+                            && ui
                                 .button(
                                     RichText::new(format!(
                                         "{} Prev",
@@ -718,14 +716,13 @@ impl HubStorePanel {
                             {
                                 page_change = Some(page - 1);
                             }
-                        }
                         ui.label(
                             RichText::new(format!("{} / {}", page, total_pages))
                                 .size(11.0)
                                 .color(text_secondary),
                         );
-                        if page < total_pages {
-                            if ui
+                        if page < total_pages
+                            && ui
                                 .button(
                                     RichText::new(format!(
                                         "Next {}",
@@ -737,7 +734,6 @@ impl HubStorePanel {
                             {
                                 page_change = Some(page + 1);
                             }
-                        }
                     });
                     ui.add_space(8.0);
                 }

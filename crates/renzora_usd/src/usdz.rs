@@ -16,7 +16,7 @@ pub fn parse(path: &Path) -> UsdResult<UsdStage> {
 
     let mut usd_content: Option<UsdContent> = None;
     let mut textures: Vec<UsdTexture> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let warnings: Vec<String> = Vec::new();
 
     for i in 0..archive.len() {
         let mut entry = archive

@@ -133,7 +133,7 @@ fn get_active_scene_absolute_path(world: &World) -> Option<PathBuf> {
         let tabs = world.get_resource::<renzora_ui::DocumentTabState>()?;
         let tab = tabs.tabs.get(tabs.active_tab)?;
         let scene_rel = tab.scene_path.as_ref()?;
-        return Some(project.resolve_path(scene_rel));
+        Some(project.resolve_path(scene_rel))
     }
     #[cfg(not(feature = "editor"))]
     {

@@ -542,7 +542,7 @@ fn group_consecutive_entries<'a>(entries: &[&'a LogEntry]) -> Vec<GroupedLogEntr
     let mut grouped = Vec::new();
 
     for entry in entries {
-        let should_group = grouped.last().map_or(false, |last: &GroupedLogEntry| {
+        let should_group = grouped.last().is_some_and(|last: &GroupedLogEntry| {
             last.entry.level == entry.level
                 && last.entry.category == entry.category
                 && last.entry.message == entry.message

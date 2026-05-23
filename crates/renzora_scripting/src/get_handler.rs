@@ -55,7 +55,7 @@ thread_local! {
     /// Latest asset-load progress, refreshed by the execution system before
     /// each script tick and cleared after. `None` when no progress data is
     /// available (e.g. running outside the standard scene-load pipeline).
-    static ASSET_PROGRESS: RefCell<Option<AssetProgressSnapshot>> = RefCell::new(None);
+    static ASSET_PROGRESS: RefCell<Option<AssetProgressSnapshot>> = const { RefCell::new(None) };
 }
 
 /// Set the get-field handler for the current script execution.

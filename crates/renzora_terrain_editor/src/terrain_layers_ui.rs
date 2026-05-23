@@ -21,7 +21,8 @@ const MAX_LAYERS: usize = 16;
 /// during the transition we still register this type so the old
 /// brush-layer paint path links. It's no longer written by the new UI.
 #[derive(Resource, Default)]
-pub struct ActiveBrushLayer(pub Option<Entity>);
+// kept during the brush-layer transition so the old paint path still links
+pub struct ActiveBrushLayer(#[allow(dead_code)] pub Option<Entity>);
 
 pub fn terrain_layers_entry() -> InspectorEntry {
     InspectorEntry {
@@ -117,7 +118,6 @@ fn render_layer_list(
             }
         }
         dragged = None;
-        drop_target = None;
     }
 
     ui.ctx()
@@ -337,7 +337,7 @@ fn render_layer_row(
         egui::pos2(ui.min_rect().max.x, end_y),
     );
     let pointer = ui.ctx().pointer_hover_pos();
-    let hovered = pointer.map_or(false, |p| row_rect.contains(p));
+    let hovered = pointer.is_some_and(|p| row_rect.contains(p));
 
     RowResponse {
         row_rect,

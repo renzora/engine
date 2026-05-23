@@ -43,12 +43,14 @@ pub enum DawIntent {
     RemoveTrack(TrackId),
     SetTrackName(TrackId, String),
     SetTrackBus(TrackId, String),
+    #[allow(dead_code)] // kept for future track-volume UI wiring
     SetTrackVolume(TrackId, f32),
     SetTrackMute(TrackId, bool),
     SetTrackSolo(TrackId, bool),
     SelectClip(Option<ClipId>),
     MoveClip(ClipId, f64),
     ResizeClipRight(ClipId, f64),
+    #[allow(dead_code)] // handled in apply loop; kept for future clip-rename UI
     SetClipName(ClipId, String),
     RemoveClip(ClipId),
     AddClip {
@@ -239,7 +241,7 @@ impl DawPanel {
         let pp = ui.ctx().pointer_latest_pos();
         let audio_drag =
             payload.filter(|p| p.is_detached && p.matches_extensions(AUDIO_EXTENSIONS));
-        let pointer_in_rect = pp.map_or(false, |p| drop_rect.contains(p));
+        let pointer_in_rect = pp.is_some_and(|p| drop_rect.contains(p));
         let is_hovering = audio_drag.is_some() && pointer_in_rect;
 
         if let (Some(p), true) = (audio_drag, is_hovering) {
@@ -361,6 +363,9 @@ impl DawPanel {
         }
     }
 
+    // Uses deprecated egui popup APIs (toggle_popup/popup_below_widget/close_popup);
+    // egui::Popup replacement has a different API shape, migrate later.
+    #[allow(deprecated)]
     fn render_track_header_row(
         &self,
         ui: &mut egui::Ui,
@@ -690,7 +695,7 @@ impl DawPanel {
         );
         if ruler_resp.clicked() || ruler_resp.dragged() {
             if let Some(p) = ruler_resp.interact_pointer_pos() {
-                let t = ((p.x - origin.x) / pps as f32).max(0.0) as f64;
+                let t = ((p.x - origin.x) / pps).max(0.0) as f64;
                 let snapped = timeline.transport.snap_seconds(t);
                 buffer.push(DawIntent::SeekTo(snapped));
             }

@@ -188,7 +188,7 @@ fn redirect_game_cameras_to_offscreen(
         // Only redirect cameras that render the default game layer (0).
         // RenderLayers::default() is layer 0; treat missing component
         // the same way.
-        let on_game_layer = layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
+        let on_game_layer = layers.is_none_or(|l| l.intersects(&RenderLayers::default()));
         if !on_game_layer {
             continue;
         }
@@ -229,7 +229,7 @@ fn on_camera_2d_added_redirect(
     let Ok(layers) = cameras.get(entity) else {
         return;
     };
-    let on_game_layer = layers.map_or(true, |l| l.intersects(&RenderLayers::default()));
+    let on_game_layer = layers.is_none_or(|l| l.intersects(&RenderLayers::default()));
     if !on_game_layer {
         return;
     }
@@ -262,7 +262,7 @@ fn update_blit_layout(
     // tick after spawn.
     let resized = !resize_events.is_empty();
     resize_events.clear();
-    let project_changed = project.as_ref().map_or(false, |p| p.is_changed());
+    let project_changed = project.as_ref().is_some_and(|p| p.is_changed());
     if !resized && !project_changed && *force_first {
         return;
     }

@@ -87,8 +87,7 @@ impl EditorPanel for ParticleEditorPanel {
                 let load_path = PathBuf::from(&abs_path);
                 let abs_for_state = abs_path.clone();
                 cmds.push(move |world: &mut World| {
-                    let effect = load_effect_from_file(&load_path)
-                        .unwrap_or_else(|| HanabiEffectDefinition::default());
+                    let effect = load_effect_from_file(&load_path).unwrap_or_default();
                     let mut state = world.resource_mut::<ParticleEditorState>();
                     state.current_effect = Some(effect);
                     state.current_file_path = Some(abs_for_state);
@@ -1535,7 +1534,7 @@ fn render_color_section(
                                 stop.color = [color.r(), color.g(), color.b(), color.a()];
                                 changed = true;
                             }
-                            if len > 2 && ui.small_button(format!("{}", MINUS)).clicked() {
+                            if len > 2 && ui.small_button(MINUS.to_string()).clicked() {
                                 to_remove = Some(i);
                             }
                             changed
@@ -2426,7 +2425,7 @@ fn render_variables_section(
                                     .changed();
                             }
                         }
-                        if ui.small_button(format!("{}", MINUS)).clicked() {
+                        if ui.small_button(MINUS.to_string()).clicked() {
                             to_remove = Some(name.clone());
                         }
                         changed

@@ -50,7 +50,7 @@ pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
     // Sign signed_data with ECDSA P-256 SHA-256
     let sig = key_pair
         .sign(&rng, &signed_data)
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "ECDSA signing failed"))?;
+        .map_err(|_| io::Error::other("ECDSA signing failed"))?;
 
     // Public key in SubjectPublicKeyInfo DER format (from the certificate)
     // Build SPKI wrapper for the EC public key
@@ -116,7 +116,7 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
     bevy::log::info!("Generating debug signing key...");
 
     let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Keygen failed: {e}")))?;
+        .map_err(|e| io::Error::other(format!("Keygen failed: {e}")))?;
 
     let mut params = rcgen::CertificateParams::default();
     params
@@ -131,7 +131,7 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
 
     let cert = params
         .self_signed(&key_pair)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Cert gen failed: {e}")))?;
+        .map_err(|e| io::Error::other(format!("Cert gen failed: {e}")))?;
 
     let pkcs8_der = key_pair.serialize_der();
     let cert_der = cert.der().to_vec();

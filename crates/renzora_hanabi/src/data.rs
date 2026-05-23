@@ -23,7 +23,9 @@ pub enum ShapeDimension {
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Reflect, Debug)]
 #[reflect(Serialize, Deserialize)]
+#[derive(Default)]
 pub enum HanabiEmitShape {
+    #[default]
     Point,
     Circle {
         radius: f32,
@@ -48,11 +50,6 @@ pub enum HanabiEmitShape {
     },
 }
 
-impl Default for HanabiEmitShape {
-    fn default() -> Self {
-        Self::Point
-    }
-}
 
 // ============================================================================
 // Spawn Mode
@@ -564,6 +561,9 @@ impl Default for HanabiEffectDefinition {
 // Effect Source
 // ============================================================================
 
+// Boxing the Inline variant would change this public, Reflect-derived enum's
+// layout/API; kept inline intentionally.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Serialize, Deserialize, Reflect, Debug)]
 #[reflect(Serialize, Deserialize)]
 pub enum EffectSource {
@@ -657,12 +657,14 @@ pub fn load_effect_from_file(path: &std::path::Path) -> Option<HanabiEffectDefin
             Ok(effect) => Some(effect),
             Err(e) => {
                 bevy::log::error!("Failed to parse particle effect {:?}: {}", path, e);
-                let mut effect = HanabiEffectDefinition::default();
-                effect.name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled")
-                    .to_string();
+                let effect = HanabiEffectDefinition {
+                    name: path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Untitled")
+                        .to_string(),
+                    ..Default::default()
+                };
                 Some(effect)
             }
         },

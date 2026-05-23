@@ -124,7 +124,7 @@ pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect
     }
 
     let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.map_or(false, |p| viewport_rect.contains(p));
+    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
 
     if !pointer_in_viewport {
         return;
@@ -531,7 +531,7 @@ fn discover_animation_clips(
     let mut entries: Vec<_> = std::fs::read_dir(&anim_dir_abs)
         .ok()?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "anim"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "anim"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
 

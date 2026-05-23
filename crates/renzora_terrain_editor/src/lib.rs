@@ -55,8 +55,7 @@ impl Plugin for TerrainEditorPlugin {
             .visible_if(terrain_exists_in_scene)
             .active_if(|w| {
                 w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainSculpt)
+                    .copied() == Some(ActiveTool::TerrainSculpt)
             })
             .on_activate(|w| {
                 activate_terrain_tool(w, TerrainInspectorTab::Sculpt, ActiveTool::TerrainSculpt)
@@ -73,8 +72,7 @@ impl Plugin for TerrainEditorPlugin {
             .visible_if(terrain_exists_in_scene)
             .active_if(|w| {
                 w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::TerrainPaint)
+                    .copied() == Some(ActiveTool::TerrainPaint)
             })
             .on_activate(|w| {
                 activate_terrain_tool(w, TerrainInspectorTab::Paint, ActiveTool::TerrainPaint)
@@ -91,8 +89,7 @@ impl Plugin for TerrainEditorPlugin {
             .visible_if(terrain_exists_in_scene)
             .active_if(|w| {
                 w.get_resource::<ActiveTool>()
-                    .copied()
-                    .map_or(false, |t| t == ActiveTool::FoliagePaint)
+                    .copied() == Some(ActiveTool::FoliagePaint)
             })
             .on_activate(|w| {
                 activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)
@@ -136,7 +133,7 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_stroke_end_system,
                     systems::terrain_undo_redo_system,
                 )
-                    .run_if(|tool: Option<Res<ActiveTool>>| tool.map_or(false, |t| t.is_terrain()))
+                    .run_if(|tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| t.is_terrain()))
                     .run_if(renzora::core::not_in_play_mode),
             )
             // Keep the layer preview cache in sync so the terrain inspector
@@ -176,7 +173,7 @@ impl Plugin for TerrainEditorPlugin {
 }
 
 fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -> bool {
-    move |tool: Option<Res<ActiveTool>>| tool.map_or(false, |t| *t == expected)
+    move |tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| *t == expected)
 }
 
 /// Toolbar visibility predicate: true if any entity in the world has `TerrainData`.
@@ -215,8 +212,7 @@ fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: Acti
     if let Some(entity) = first_terrain_entity(world) {
         let already_selected = world
             .get_resource::<EditorSelection>()
-            .and_then(|s| s.get())
-            .map_or(false, |sel| sel == entity);
+            .and_then(|s| s.get()) == Some(entity);
         if !already_selected {
             if let Some(sel) = world.get_resource::<EditorSelection>() {
                 sel.set(Some(entity));

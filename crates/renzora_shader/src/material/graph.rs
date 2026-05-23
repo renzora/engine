@@ -113,6 +113,7 @@ pub enum PinDir {
 // ── Pin values ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PinValue {
     Float(f32),
     Vec2([f32; 2]),
@@ -126,14 +127,10 @@ pub enum PinValue {
     /// Arbitrary string (used by Custom Code node for its WGSL snippet,
     /// by subgraph-call nodes for the function asset path, etc).
     String(String),
+    #[default]
     None,
 }
 
-impl Default for PinValue {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl PinValue {
     /// Convert to a WGSL literal expression.
@@ -211,8 +208,10 @@ impl PinTemplate {
 
 /// What kind of shader this material graph compiles to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MaterialDomain {
     /// Standard PBR surface material (meshes, props).
+    #[default]
     Surface,
     /// Terrain layer — compiles to `layer_main()` / `layer_pbr()`.
     TerrainLayer,
@@ -233,11 +232,6 @@ impl MaterialDomain {
     }
 }
 
-impl Default for MaterialDomain {
-    fn default() -> Self {
-        Self::Surface
-    }
-}
 
 // ── Connection ──────────────────────────────────────────────────────────────
 
@@ -281,7 +275,9 @@ impl MaterialNode {
 /// resolve time. Default is `Opaque` so existing materials (which omit
 /// the field on disk) continue to render unchanged.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AlphaMode {
+    #[default]
     Opaque,
     /// Discard fragments below `cutoff`. Used for foliage, masks.
     Mask {
@@ -291,11 +287,6 @@ pub enum AlphaMode {
     Blend,
 }
 
-impl Default for AlphaMode {
-    fn default() -> Self {
-        Self::Opaque
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterialGraph {

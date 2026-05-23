@@ -76,7 +76,6 @@ fn sync_volumetric_fog(
                         ambient_intensity: settings.ambient_intensity,
                         step_count: settings.step_count,
                         jitter: settings.jitter,
-                        ..default()
                     });
                 } else {
                     commands.entity(*target).remove::<VolumetricFog>();

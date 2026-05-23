@@ -17,7 +17,9 @@ use renzora_editor::{EditorLocked, EditorSelection, FieldValue, InspectorRegistr
 // ── Public API ─────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Default)]
 pub enum UndoContext {
+    #[default]
     Scene,
     MaterialGraph(String),
     Blueprint(String),
@@ -25,11 +27,6 @@ pub enum UndoContext {
     Other(String),
 }
 
-impl Default for UndoContext {
-    fn default() -> Self {
-        UndoContext::Scene
-    }
-}
 
 /// A single undoable action. `execute` is called on initial push AND on redo.
 /// `undo` reverses the action. Both take `&mut self` so the command can
@@ -74,12 +71,12 @@ impl UndoStacks {
     pub fn can_undo(&self, context: &UndoContext) -> bool {
         self.stacks
             .get(context)
-            .map_or(false, |s| !s.undo.is_empty())
+            .is_some_and(|s| !s.undo.is_empty())
     }
     pub fn can_redo(&self, context: &UndoContext) -> bool {
         self.stacks
             .get(context)
-            .map_or(false, |s| !s.redo.is_empty())
+            .is_some_and(|s| !s.redo.is_empty())
     }
     /// Returns `(undo_labels, redo_labels)` for the given context.
     /// `undo` is ordered front=oldest → back=most recent;

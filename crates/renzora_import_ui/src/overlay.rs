@@ -43,7 +43,8 @@ enum ImportMsg {
     /// Marshal a material-extraction event across the thread boundary; the
     /// UI-side poller triggers it on `&mut World` so observers in other
     /// crates can write the `.material` file without us depending on them.
-    MaterialExtracted(renzora::core::PbrMaterialExtracted),
+    // Boxed: PbrMaterialExtracted is much larger than the other variants.
+    MaterialExtracted(Box<renzora::core::PbrMaterialExtracted>),
     /// Absolute path of a `.glb` that was just successfully written into
     /// the project. The poller forwards these to
     /// [`ModelThumbnailRegistry::request`] so the offscreen capture
@@ -149,7 +150,7 @@ pub(crate) fn poll_import_task(world: &mut World) {
                     state.log_entries.push(entry);
                 }
                 ImportMsg::MaterialExtracted(ev) => {
-                    material_events.push(ev);
+                    material_events.push(*ev);
                 }
                 ImportMsg::Imported(path) => {
                     imported_models.push(path);
@@ -932,7 +933,7 @@ fn import_worker(
                         })
                     };
                     for mat in &result.extracted_materials {
-                        let _ = tx.send(ImportMsg::MaterialExtracted(
+                        let _ = tx.send(ImportMsg::MaterialExtracted(Box::new(
                             renzora::core::PbrMaterialExtracted {
                                 name: mat.name.clone(),
                                 output_dir: mat_dir.clone(),
@@ -965,7 +966,7 @@ fn import_worker(
                                 alpha_cutoff: mat.alpha_cutoff,
                                 double_sided: mat.double_sided,
                             },
-                        ));
+                        )));
                     }
                 }
 
@@ -1073,7 +1074,7 @@ fn import_worker(
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
                 let (stem_owned, fallback_model_dir) = unique_model_dir(&dest, base_stem);
-                let stem: &str = &stem_owned;
+                let _stem: &str = &stem_owned;
                 let anim_dir = fallback_model_dir.join("animations");
 
                 let anim_fallback_result: Option<Result<_, String>> =

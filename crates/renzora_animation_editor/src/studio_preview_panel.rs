@@ -143,7 +143,7 @@ impl EditorPanel for StudioPreviewPanel {
                     && ui
                         .ctx()
                         .pointer_latest_pos()
-                        .map_or(false, |p| btn_rect.contains(p));
+                        .is_some_and(|p| btn_rect.contains(p));
 
                 // Background
                 let bg = if tool.active {

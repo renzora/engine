@@ -214,6 +214,9 @@ impl EditorPanel for HierarchyPanel {
                 .add_sized([filter_width, row_height], filter_btn)
                 .on_hover_text("Filter by type");
             if resp.clicked() {
+                // deprecated upstream egui API; egui::Popup replacement has a
+                // different API shape, migrate later
+                #[allow(deprecated)]
                 ui.memory_mut(|m| m.toggle_popup(popup_id));
             }
             filter_resp = Some(resp);
@@ -251,6 +254,9 @@ impl EditorPanel for HierarchyPanel {
         ui.add_space(4.0);
 
         if let Some(resp) = &filter_resp {
+            // deprecated upstream egui API; egui::Popup replacement has a
+            // different API shape, migrate later
+            #[allow(deprecated)]
             egui::popup_below_widget(
                 ui,
                 popup_id,
@@ -390,7 +396,7 @@ impl EditorPanel for HierarchyPanel {
                     let mut handled = false;
                     if world
                         .get_resource::<SpawnRegistry>()
-                        .map_or(false, |r| r.iter().any(|p| p.id == id))
+                        .is_some_and(|r| r.iter().any(|p| p.id == id))
                     {
                         let preset_id = id.clone();
                         commands.push(move |world: &mut World| {
@@ -868,7 +874,7 @@ impl EditorPanel for HierarchyPanel {
         if let Some(payload) = world.get_resource::<renzora_ui::asset_drag::AssetDragPayload>() {
             if payload.is_detached && payload.matches_extensions(&["ron"]) {
                 let pointer = ui.ctx().pointer_latest_pos();
-                let pointer_in_panel = pointer.map_or(false, |p| panel_rect.contains(p));
+                let pointer_in_panel = pointer.is_some_and(|p| panel_rect.contains(p));
                 if pointer_in_panel {
                     // Highlight the panel edge to show it's a valid drop target.
                     ui.painter().rect_stroke(
@@ -1340,7 +1346,7 @@ fn detect_selection_keybindings(
     mut rename_req: ResMut<RenameRequest>,
 ) {
     use renzora::core::keybindings::EditorAction;
-    if play_mode.as_ref().map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {

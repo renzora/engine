@@ -782,10 +782,10 @@ fn parse_matrix4_array(tokens: &[Token], pos: &mut usize) -> Vec<[f32; 16]> {
 
 fn read_3_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
     let mut vals = [0.0f32; 3];
-    for i in 0..3 {
+    for slot in &mut vals {
         match tokens.get(*pos) {
             Some(Token::Number(n)) => {
-                vals[i] = *n as f32;
+                *slot = *n as f32;
                 *pos += 1;
             }
             _ => return None,
@@ -799,10 +799,10 @@ fn read_3_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 3]> {
 
 fn read_2_numbers(tokens: &[Token], pos: &mut usize) -> Option<[f32; 2]> {
     let mut vals = [0.0f32; 2];
-    for i in 0..2 {
+    for slot in &mut vals {
         match tokens.get(*pos) {
             Some(Token::Number(n)) => {
-                vals[i] = *n as f32;
+                *slot = *n as f32;
                 *pos += 1;
             }
             _ => return None,

@@ -159,7 +159,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             .filter_map(|name| {
                 let reg = registry.iter().find(|r| {
                     let table = r.type_info().type_path_table();
-                    table.short_path() == *name || table.ident().map_or(false, |i| i == *name)
+                    table.short_path() == *name || (table.ident() == Some(*name))
                 })?;
                 world.components().get_id(reg.type_id())
             })

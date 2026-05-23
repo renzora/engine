@@ -1,6 +1,6 @@
 #![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy_egui::egui::{self, Align2, Color32, CursorIcon, FontId, Pos2, Sense, Vec2};
 use egui_phosphor::regular::{self, CARET_DOWN, CARET_RIGHT, FOLDER, FOLDER_OPEN, HOUSE};
@@ -559,13 +559,11 @@ fn render_folder_children(
             .to_string();
 
         // Search filter
-        if !state.search.is_empty() {
-            if !name.to_lowercase().contains(&state.search.to_lowercase()) {
-                if !folder_contains_match(folder, &state.search) {
+        if !state.search.is_empty()
+            && !name.to_lowercase().contains(&state.search.to_lowercase())
+                && !folder_contains_match(folder, &state.search) {
                     continue;
                 }
-            }
-        }
 
         let is_expanded = state.expanded_folders.contains(folder);
         let is_current =
@@ -760,7 +758,7 @@ fn render_folder_files(
 fn render_file_row(
     ui: &mut egui::Ui,
     name: &str,
-    path: &PathBuf,
+    path: &Path,
     depth: usize,
     is_selected: bool,
     theme: &Theme,
@@ -831,7 +829,7 @@ fn render_folder_row(
     is_current: bool,
     is_drop_target: bool,
     depth: usize,
-    path: &PathBuf,
+    path: &Path,
     theme: &Theme,
 ) -> (bool, bool, bool, egui::Rect) {
     let selection_bg = theme.semantic.selection.to_color32();
@@ -1017,11 +1015,10 @@ fn folder_contains_match(dir: &PathBuf, search: &str) -> bool {
             if name.contains(&search_lower) {
                 return true;
             }
-            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                if folder_contains_match(&entry.path(), search) {
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                && folder_contains_match(&entry.path(), search) {
                     return true;
                 }
-            }
         }
         false
     }

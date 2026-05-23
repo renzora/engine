@@ -380,7 +380,7 @@ fn compute_effect_hash(def: &HanabiEffectDefinition) -> u64 {
 /// Run condition: `true` when the Particle Preview panel is in the active
 /// dock tree. Heavy per-frame work (effect spawn/update) is gated on this.
 pub fn particle_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.map_or(false, |d| d.tree.contains_panel("particle_preview"))
+    docking.is_some_and(|d| d.tree.contains_panel("particle_preview"))
 }
 
 fn sync_preview_camera_active(
@@ -391,7 +391,7 @@ fn sync_preview_camera_active(
     mut tracker: ResMut<ParticlePreviewTracker>,
     mut commands: Commands,
 ) {
-    let panel_mounted = docking.map_or(false, |d| d.tree.contains_panel("particle_preview"));
+    let panel_mounted = docking.is_some_and(|d| d.tree.contains_panel("particle_preview"));
     let should_be_active = panel_mounted && editor_state.current_effect.is_some();
     for mut cam in camera.iter_mut() {
         if cam.is_active != should_be_active {

@@ -212,8 +212,8 @@ pub fn node_graph(
 
     // ── Keyboard shortcuts ─────────────────────────────────────────────
     if canvas_resp.hovered() && !ui.ctx().wants_keyboard_input() {
-        if ui.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
-            if !state.selected.is_empty() {
+        if ui.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace))
+            && !state.selected.is_empty() {
                 response.nodes_deleted = state.selected.clone();
                 state.connections.retain(|c| {
                     !state.selected.contains(&c.from_node) && !state.selected.contains(&c.to_node)
@@ -222,7 +222,6 @@ pub fn node_graph(
                 state.selected.clear();
                 response.selection_changed = true;
             }
-        }
 
         if ui.input(|i| i.key_pressed(Key::Escape)) {
             if state.connecting.is_some() {
@@ -528,11 +527,11 @@ fn draw_node_layout(
 
     let mut pin_positions = Vec::new();
 
-    let mut iy = 0;
-    for pin in node
+    for (iy, pin) in node
         .pins
         .iter()
         .filter(|p| p.direction == PinDirection::Input)
+        .enumerate()
     {
         let py = pin_start_y + (iy as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x, py);
@@ -550,14 +549,13 @@ fn draw_node_layout(
             color: pin.color,
             hit_rect,
         });
-        iy += 1;
     }
 
-    let mut oi = 0;
-    for pin in node
+    for (oi, pin) in node
         .pins
         .iter()
         .filter(|p| p.direction == PinDirection::Output)
+        .enumerate()
     {
         let py = pin_start_y + (oi as f32 + 0.5) * pin_spacing;
         let pos = Pos2::new(screen_pos.x + scaled_w, py);
@@ -575,7 +573,6 @@ fn draw_node_layout(
             color: pin.color,
             hit_rect,
         });
-        oi += 1;
     }
 
     (node_rect, pin_positions)

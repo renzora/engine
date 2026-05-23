@@ -20,8 +20,10 @@ use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
 /// What the material editor is currently doing.
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub enum MaterialEditMode {
     /// No mesh entity selected (or selected entity has no mesh).
+    #[default]
     Inactive,
     /// Entity has no MaterialRef yet — showing empty graph, will save on first edit.
     Pending { entity: Entity },
@@ -33,11 +35,6 @@ pub enum MaterialEditMode {
     EditingFile { path: String },
 }
 
-impl Default for MaterialEditMode {
-    fn default() -> Self {
-        Self::Inactive
-    }
-}
 
 /// Persistent editor state for the material editor.
 #[derive(Resource)]

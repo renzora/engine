@@ -132,7 +132,7 @@ impl Drag2dState {
 /// [`crate::light_gizmo::update_editor_camera_2d_cache`]. The overlay
 /// drawer runs with `&World`, which can't initialize a `QueryState`, so
 /// we lean on the cache the same way the 3D scene-icon overlay does.
-fn find_editor_camera_2d<'a>(world: &'a World) -> Option<(&'a Camera, &'a GlobalTransform)> {
+fn find_editor_camera_2d(world: &World) -> Option<(&Camera, &GlobalTransform)> {
     let entity = world
         .get_resource::<crate::light_gizmo::SceneIconCache>()?
         .editor_camera_2d?;
@@ -330,7 +330,7 @@ pub fn pick_2d_system(
     transforms: Query<&Transform>,
     world_root: Query<()>,
 ) {
-    if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if !mouse.just_pressed(MouseButton::Left) {
@@ -463,7 +463,7 @@ pub fn drag_move_2d_system(
     mut transforms: Query<&mut Transform>,
     mut sprites: Query<&mut Sprite>,
 ) {
-    if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         drag.cancel();
         return;
     }
@@ -613,10 +613,10 @@ pub fn keyboard_nudge_2d(
     play_mode: Option<Res<PlayModeState>>,
     mut transforms: Query<&mut Transform>,
 ) {
-    if play_mode.map_or(false, |pm| pm.is_in_play_mode()) {
+    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
-    if !viewport.map_or(false, |v| v.hovered) {
+    if !viewport.is_some_and(|v| v.hovered) {
         return;
     }
     let Some(entity) = selection.get() else {

@@ -735,7 +735,7 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
                 field_type: FieldType::Float {
                     speed: 0.05,
                     min: 0.0,
-                    max: 6.28,
+                    max: std::f32::consts::TAU,
                 },
                 get_fn: |world, entity| {
                     world

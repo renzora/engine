@@ -1126,8 +1126,8 @@ fn render_context_menu(
                                     .and_then(|e| e.to_str())
                                     .map(|e| e.eq_ignore_ascii_case("material"))
                                     .unwrap_or(false);
-                                if is_master {
-                                    if menu_item(
+                                if is_master
+                                    && menu_item(
                                         ui,
                                         regular::COPY,
                                         "Create Instance",
@@ -1137,10 +1137,9 @@ fn render_context_menu(
                                         state.pending_create_instance = Some(path);
                                         state.context_menu_pos = None;
                                     }
-                                }
                             }
-                        } else if state.selected_assets.len() > 1 {
-                            if menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary)
+                        } else if state.selected_assets.len() > 1
+                            && menu_item(ui, regular::TEXT_AA, "Batch Rename…", "", text_primary)
                             {
                                 let mut assets: Vec<std::path::PathBuf> =
                                     state.selected_assets.iter().cloned().collect();
@@ -1156,7 +1155,6 @@ fn render_context_menu(
                                 state.batch_rename_active = true;
                                 state.context_menu_pos = None;
                             }
-                        }
 
                         if menu_item(ui, regular::COPY, "Duplicate", "Ctrl+D", text_primary) {
                             state.duplicate_selected();
@@ -1193,15 +1191,14 @@ fn render_context_menu(
     // Close context menu on primary click outside (skip secondary — that
     // re-opens a new menu via the grid handler). Also skip the first frame
     // so the menu isn't immediately dismissed by the same click that opened it.
-    if area_resp.response.rect.area() > 0.0 {
-        if ctx.input(|i| i.pointer.primary_clicked()) {
+    if area_resp.response.rect.area() > 0.0
+        && ctx.input(|i| i.pointer.primary_clicked()) {
             if let Some(pointer_pos) = ctx.pointer_latest_pos() {
                 if !area_resp.response.rect.contains(pointer_pos) {
                     state.context_menu_pos = None;
                 }
             }
         }
-    }
 }
 
 /// Plugin that registers the `AssetBrowserPanel` with the editor.

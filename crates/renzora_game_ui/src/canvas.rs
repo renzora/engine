@@ -8,11 +8,9 @@
 
 use std::sync::RwLock;
 
-use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
+use bevy_egui::EguiUserTextures;
 use egui_phosphor::regular;
 use renzora_editor::{
     AssetDragPayload, EditorCommands, EditorPanel, EditorSelection, PanelLocation,
@@ -990,7 +988,7 @@ impl EditorPanel for UiCanvasPanel {
                 // Preview toggle (show viewport render behind canvas)
                 let preview_on = world
                     .get_resource::<UiCanvasPreviewEnabled>()
-                    .map_or(true, |r| r.0);
+                    .is_none_or(|r| r.0);
                 let preview_color = if preview_on { accent } else { text_muted };
                 if ui
                     .add(
@@ -1299,7 +1297,7 @@ impl EditorPanel for UiCanvasPanel {
                         && ui
                             .ctx()
                             .pointer_latest_pos()
-                            .map_or(false, |p| btn_rect.contains(p));
+                            .is_some_and(|p| btn_rect.contains(p));
                     let bg = if is_active_draw {
                         accent
                     } else if hovered {
@@ -1465,7 +1463,7 @@ impl EditorPanel for UiCanvasPanel {
         // no second camera, no extra full-scene render.
         if world
             .get_resource::<UiCanvasPreviewEnabled>()
-            .map_or(true, |r| r.0)
+            .is_none_or(|r| r.0)
         {
             let tex_id = world
                 .get_resource::<renzora::ViewportRenderTarget>()
@@ -1647,7 +1645,7 @@ impl EditorPanel for UiCanvasPanel {
         if let Some(payload) = world.get_resource::<AssetDragPayload>() {
             if payload.is_detached && payload.matches_extensions(IMAGE_EXTENSIONS) {
                 let pointer_pos = ui.ctx().pointer_hover_pos();
-                let pointer_in_canvas = pointer_pos.map_or(false, |p| canvas_rect.contains(p));
+                let pointer_in_canvas = pointer_pos.is_some_and(|p| canvas_rect.contains(p));
 
                 if pointer_in_canvas {
                     // Draw drop-zone highlight on the canvas
@@ -2482,7 +2480,7 @@ impl EditorPanel for UiCanvasPanel {
 
             // Draw mode: crosshair cursor everywhere in the canvas panel.
             if state.draw_mode.is_some() {
-                if pointer.map_or(false, |p| available.contains(p)) {
+                if pointer.is_some_and(|p| available.contains(p)) {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
                 }
             } else
@@ -2729,7 +2727,7 @@ impl EditorPanel for UiCanvasPanel {
 
                 // Drop on pointer release
                 if !ui.ctx().input(|i| i.pointer.any_down()) {
-                    let over_canvas = pointer.map_or(false, |p| canvas_rect.contains(p));
+                    let over_canvas = pointer.is_some_and(|p| canvas_rect.contains(p));
                     if over_canvas && state.active_canvas.is_some() {
                         // Convert screen position to canvas-local coordinates
                         let pos = pointer.unwrap();
@@ -3954,7 +3952,7 @@ fn paint_text_input(
     let (display_text, color) = if text.is_empty() {
         (placeholder, Color32::from_rgb(120, 120, 130))
     } else {
-        (text.as_ref(), arr_to_c32(&ws.text_color))
+        (text, arr_to_c32(&ws.text_color))
     };
     painter.text(
         Pos2::new(rect.min.x + pad, rect.center().y),
@@ -4305,7 +4303,7 @@ fn paint_notification_feed(
     count: usize,
     color: &[f32; 4],
 ) {
-    let n = count.max(1).min(5);
+    let n = count.clamp(1, 5);
     let card_h = ((rect.height() - (n as f32 - 1.0) * 2.0 * z) / n as f32).max(12.0);
     let c = arr_to_c32(color);
     let pad = 4.0 * z;
@@ -4822,7 +4820,7 @@ fn paint_objective_tracker(
                 y + line_h / 2.0,
             ),
             egui::Align2::LEFT_CENTER,
-            &format!("Objective {}", i + 1),
+            format!("Objective {}", i + 1),
             egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0)),
             tc,
         );
@@ -5152,7 +5150,7 @@ fn paint_list_widget(
         painter.text(
             Pos2::new(row_rect.min.x + pad, row_rect.center().y),
             egui::Align2::LEFT_CENTER,
-            &format!("Item {}", i + 1),
+            format!("Item {}", i + 1),
             egui::FontId::proportional((11.0 * z).clamp(6.0, 22.0)),
             tc,
         );

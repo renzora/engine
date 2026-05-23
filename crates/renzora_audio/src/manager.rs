@@ -137,6 +137,12 @@ pub struct KiraAudioManager {
     pub project_path: Option<PathBuf>,
 }
 
+impl Default for KiraAudioManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KiraAudioManager {
     pub fn new() -> Self {
         let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
@@ -411,7 +417,7 @@ impl KiraAudioManager {
     pub fn stop_entity_sounds(&mut self, entity: Entity) {
         if let Some(handles) = self.active_sounds.remove(&entity) {
             for mut handle in handles {
-                let _ = handle.stop(Tween::default());
+                handle.stop(Tween::default());
             }
         }
         self.spatial_tracks.remove(&entity);
@@ -422,7 +428,7 @@ impl KiraAudioManager {
     pub fn stop_all_sounds(&mut self) {
         for (_, handles) in self.active_sounds.drain() {
             for mut handle in handles {
-                let _ = handle.stop(Tween::default());
+                handle.stop(Tween::default());
             }
         }
         self.spatial_tracks.clear();
@@ -441,7 +447,7 @@ impl KiraAudioManager {
             } else {
                 Tween::default()
             };
-            let _ = handle.stop(tween);
+            handle.stop(tween);
         }
     }
 }

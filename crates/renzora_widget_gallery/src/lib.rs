@@ -2071,8 +2071,10 @@ impl Default for MixerGalleryState {
                     name: name.to_string(),
                     color,
                 };
-                let mut st = MixerStripState::default();
-                st.volume = vol;
+                let st = MixerStripState {
+                    volume: vol,
+                    ..Default::default()
+                };
                 (cfg, st)
             })
             .collect();
@@ -2559,7 +2561,7 @@ fn build_demo_graph() -> NodeGraphState {
                 PinDef {
                     name: "color_in".into(),
                     label: "Color".into(),
-                    color: color,
+                    color,
                     shape: PinShape::Circle,
                     direction: PinDirection::Input,
                 },

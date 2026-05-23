@@ -146,7 +146,7 @@ impl EditorPanel for CodeEditorPanel {
                     let hovering = ui
                         .ctx()
                         .pointer_hover_pos()
-                        .map_or(false, |p| panel_rect.contains(p));
+                        .is_some_and(|p| panel_rect.contains(p));
                     if hovering && !ui.ctx().input(|i| i.pointer.any_down()) {
                         let path = payload.path.clone();
                         if let Ok(mut local) = self.local.write() {

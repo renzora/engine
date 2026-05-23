@@ -350,7 +350,7 @@ fn extract_layer_textures_from_json(
     let output_node = nodes.iter().find(|n| {
         n["node_type"]
             .as_str()
-            .map_or(false, |t| t.starts_with("output/"))
+            .is_some_and(|t| t.starts_with("output/"))
     });
     let Some(output_node) = output_node else {
         return Ok((None, None, None));

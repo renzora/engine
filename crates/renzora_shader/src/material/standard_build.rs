@@ -52,18 +52,19 @@ pub fn try_build_standard_material(
 
     let output = graph.output_node()?;
 
-    let mut mat = StandardMaterial::default();
-
     // Apply graph-level flags first; nothing below should override these.
-    mat.alpha_mode = match graph.alpha_mode {
-        GraphAlphaMode::Opaque => AlphaMode::Opaque,
-        GraphAlphaMode::Mask { cutoff } => AlphaMode::Mask(cutoff),
-        GraphAlphaMode::Blend => AlphaMode::Blend,
-    };
-    mat.cull_mode = if graph.double_sided {
-        None
-    } else {
-        Some(bevy::render::render_resource::Face::Back)
+    let mut mat = StandardMaterial {
+        alpha_mode: match graph.alpha_mode {
+            GraphAlphaMode::Opaque => AlphaMode::Opaque,
+            GraphAlphaMode::Mask { cutoff } => AlphaMode::Mask(cutoff),
+            GraphAlphaMode::Blend => AlphaMode::Blend,
+        },
+        cull_mode: if graph.double_sided {
+            None
+        } else {
+            Some(bevy::render::render_resource::Face::Back)
+        },
+        ..Default::default()
     };
 
     // ── base_color (factor + texture) ───────────────────────────────────

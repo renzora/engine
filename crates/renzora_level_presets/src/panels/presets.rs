@@ -44,8 +44,8 @@ pub fn render_level_presets_content(
         ui.add_space(padding);
         ui.label(RichText::new("Scale").size(10.0).color(text_muted));
         ui.add(egui::Slider::new(&mut state.scale, 0.5..=5.0));
-        if state.has_active_level {
-            if ui
+        if state.has_active_level
+            && ui
                 .add(
                     egui::Button::new(RichText::new("Clear").size(10.0))
                         .fill(theme.semantic.error.to_color32()),
@@ -54,7 +54,6 @@ pub fn render_level_presets_content(
             {
                 state.commands.push(LevelCommand::Clear);
             }
-        }
     });
 
     ui.add_space(spacing);
@@ -76,7 +75,7 @@ pub fn render_level_presets_content(
             ui.spacing_mut().item_spacing.y = spacing;
 
             let presets = LevelPreset::ALL;
-            let rows = (presets.len() + cols - 1) / cols;
+            let rows = presets.len().div_ceil(cols);
             for row in 0..rows {
                 ui.horizontal(|ui| {
                     ui.add_space(padding);

@@ -67,16 +67,13 @@ pub struct TimelineTrack {
 
 /// Transport playback state.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum TransportState {
+    #[default]
     Stopped,
     Playing,
 }
 
-impl Default for TransportState {
-    fn default() -> Self {
-        TransportState::Stopped
-    }
-}
 
 /// Timeline-level transport / clock.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

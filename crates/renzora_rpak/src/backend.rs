@@ -40,6 +40,11 @@ pub trait PakBackend: Send + Sync {
     /// Total addressable size in bytes.
     fn len(&self) -> u64;
 
+    /// Whether the backend has zero addressable bytes.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Read `size` bytes starting at `offset`.
     ///
     /// Returns a borrowed slice when the backend can serve one cheaply

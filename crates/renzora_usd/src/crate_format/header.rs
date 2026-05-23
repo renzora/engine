@@ -9,6 +9,8 @@ const MAGIC: &[u8; 8] = b"PXR-USDC";
 #[derive(Debug)]
 pub struct Header {
     /// File format version (major.minor.patch encoded).
+    // kept for future version-gated parsing (e.g. has_lz4)
+    #[allow(dead_code)]
     pub version: [u8; 3],
     /// Offset to the table of contents.
     pub toc_offset: u64,
@@ -52,6 +54,8 @@ impl Header {
     }
 
     /// Check if this version supports LZ4 compression (>= 0.4.0).
+    // kept for future LZ4 decompression support
+    #[allow(dead_code)]
     pub fn has_lz4(&self) -> bool {
         self.version[0] > 0 || self.version[1] >= 4
     }

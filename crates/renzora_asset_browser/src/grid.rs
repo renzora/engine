@@ -193,8 +193,8 @@ pub fn grid_ui_interactive(
     let ctx = ui.ctx().clone();
 
     // F2 to start rename (exactly one item selected)
-    if ctx.input(|i| i.key_pressed(egui::Key::F2)) && state.renaming_asset.is_none() {
-        if state.selected_assets.len() == 1 {
+    if ctx.input(|i| i.key_pressed(egui::Key::F2)) && state.renaming_asset.is_none()
+        && state.selected_assets.len() == 1 {
             if let Some(path) = state.selected_assets.iter().next() {
                 state.renaming_asset = Some(path.clone());
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -203,7 +203,6 @@ pub fn grid_ui_interactive(
                 state.rename_focus_set = false;
             }
         }
-    }
 
     // Delete key — only when this panel area has focus
     if ui.ui_contains_pointer()
@@ -496,11 +495,10 @@ pub fn grid_ui_interactive(
     };
 
     // Click on empty space to deselect (not during marquee)
-    if primary_clicked && press_on_empty && state.marquee_start.is_none() {
-        if !ctrl_held && !shift_held {
+    if primary_clicked && press_on_empty && state.marquee_start.is_none()
+        && !ctrl_held && !shift_held {
             state.clear_selection();
         }
-    }
 
     // Start marquee on primary press in empty space
     if primary_pressed && state.marquee_start.is_none() && press_on_empty {
@@ -553,13 +551,12 @@ pub fn grid_ui_interactive(
     }
 
     // End marquee on pointer release
-    if ctx.input(|i| i.pointer.any_released()) {
-        if state.marquee_start.is_some() {
+    if ctx.input(|i| i.pointer.any_released())
+        && state.marquee_start.is_some() {
             state.marquee_start = None;
             state.marquee_current = None;
             state.pre_marquee_selection.clear();
         }
-    }
 
     // --- Process click interactions ---
     let mut double_clicked_file = None;
@@ -694,5 +691,5 @@ fn days_to_date(mut days: u64) -> (u64, u64, u64) {
 }
 
 fn is_leap(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }

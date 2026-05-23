@@ -320,7 +320,7 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
         // Build BoneTracks from collected curve data
         let mut tracks: Vec<BoneTrack> = Vec::new();
 
-        for (_bone_id, (bone_name, prop_map)) in &bone_curves {
+        for (bone_name, prop_map) in bone_curves.values() {
             let mut track = BoneTrack {
                 bone_name: bone_name.clone(),
                 translations: Vec::new(),

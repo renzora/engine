@@ -553,7 +553,7 @@ impl EditorPanel for MaterialPreviewPanel {
         };
 
         let editor_state = world.get_resource::<MaterialEditorState>();
-        let has_material = editor_state.map_or(false, |s| s.compiled_wgsl.is_some());
+        let has_material = editor_state.is_some_and(|s| s.compiled_wgsl.is_some());
 
         if !has_material {
             ui.centered_and_justified(|ui| {

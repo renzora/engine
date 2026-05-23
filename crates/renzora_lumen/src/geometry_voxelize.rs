@@ -167,7 +167,7 @@ fn sample_mesh_surface(mesh: &Mesh, spacing: f32) -> Vec<Vec3> {
     };
 
     let mut samples = Vec::new();
-    let mut tri_iter = match indices {
+    let tri_iter = match indices {
         Indices::U16(v) => Box::new(v.chunks_exact(3).map(|c| {
             (c[0] as usize, c[1] as usize, c[2] as usize)
         })) as Box<dyn Iterator<Item = (usize, usize, usize)>>,
@@ -177,7 +177,7 @@ fn sample_mesh_surface(mesh: &Mesh, spacing: f32) -> Vec<Vec3> {
     };
 
     let voxel_area = spacing * spacing;
-    while let Some((i0, i1, i2)) = tri_iter.next() {
+    for (i0, i1, i2) in tri_iter {
         if i0 >= positions.len() || i1 >= positions.len() || i2 >= positions.len() {
             continue;
         }
@@ -467,7 +467,7 @@ impl ViewNode for GeometryInjectNode {
         pass.set_pipeline(compute);
         pass.set_bind_group(0, &bg, &[]);
         // 64 threads per workgroup.
-        let groups = (buffer.count + 63) / 64;
+        let groups = buffer.count.div_ceil(64);
         pass.dispatch_workgroups(groups, 1, 1);
         Ok(())
     }

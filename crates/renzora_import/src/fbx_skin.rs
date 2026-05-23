@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_variables)] // Legacy FBX parser kept for reference after ufbx swap.
+#![allow(unused_variables)] // Legacy FBX parser kept for reference after ufbx swap.
 
 //! FBX skin + skeleton extraction.
 //!
@@ -15,7 +15,7 @@
 //!   rotation so the bind pose matches the skin weights.
 //! - TransformLink (bone bind-pose world matrix) and Transform (mesh bind-pose
 //!   world matrix) together yield the inverse bind matrix:
-//!     `IBM = inverse(TransformLink) * Transform`
+//!   `IBM = inverse(TransformLink) * Transform`
 //!   For Mixamo, Transform is usually identity.
 
 use std::collections::HashMap;

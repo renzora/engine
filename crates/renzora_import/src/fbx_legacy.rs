@@ -444,8 +444,8 @@ fn detect_up_axis(nodes: &[FbxNode]) -> Option<UpAxis> {
         find_child(settings, "Properties60").or_else(|| find_child(settings, "Properties70"))?;
 
     for child in &props.children {
-        if child.name == "P" || child.name == "Property" {
-            if get_string_prop(child, 0) == Some("UpAxis") {
+        if (child.name == "P" || child.name == "Property")
+            && get_string_prop(child, 0) == Some("UpAxis") {
                 // Value is typically the last property
                 for prop in child.properties.iter().rev() {
                     match prop {
@@ -465,7 +465,6 @@ fn detect_up_axis(nodes: &[FbxNode]) -> Option<UpAxis> {
                     }
                 }
             }
-        }
     }
     None
 }
@@ -605,9 +604,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 
         // Parse polygons and triangulate
         let mut polygon_start = 0usize;
-        let mut polygon_vertex_idx = 0usize;
 
         for (raw_idx_pos, &raw_idx) in raw_indices.iter().enumerate() {
+            // `raw_idx_pos` is the per-polygon-vertex running index.
             let is_end = raw_idx < 0;
             let vertex_idx = if is_end {
                 (-raw_idx - 1) as usize
@@ -618,9 +617,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             // Map normals
             if !raw_normals.is_empty() {
                 let ni = match normal_mapping.as_deref() {
-                    Some("ByPolygonVertex") => polygon_vertex_idx,
+                    Some("ByPolygonVertex") => raw_idx_pos,
                     Some("ByVertice") | Some("ByVertex") => vertex_idx,
-                    _ => polygon_vertex_idx,
+                    _ => raw_idx_pos,
                 };
 
                 if ni * 3 + 2 < raw_normals.len() {
@@ -640,16 +639,16 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             // Map UVs
             if !raw_uvs.is_empty() {
                 let ui = if !uv_indices.is_empty() {
-                    if polygon_vertex_idx < uv_indices.len() {
-                        uv_indices[polygon_vertex_idx] as usize
+                    if raw_idx_pos < uv_indices.len() {
+                        uv_indices[raw_idx_pos] as usize
                     } else {
                         0
                     }
                 } else {
                     match uv_mapping.as_deref() {
-                        Some("ByPolygonVertex") => polygon_vertex_idx,
+                        Some("ByPolygonVertex") => raw_idx_pos,
                         Some("ByVertice") | Some("ByVertex") => vertex_idx,
-                        _ => polygon_vertex_idx,
+                        _ => raw_idx_pos,
                     }
                 };
 
@@ -664,8 +663,6 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                     geo_texcoords[vertex_idx * 2 + 1] = v;
                 }
             }
-
-            polygon_vertex_idx += 1;
 
             if is_end {
                 let poly_len = raw_idx_pos - polygon_start + 1;

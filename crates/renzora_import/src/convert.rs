@@ -57,19 +57,17 @@ pub struct ExtractedPbrMaterial {
 /// source file; downstream the material resolver maps it onto Bevy's
 /// `AlphaMode` so transparency renders correctly without artist intervention.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default)]
 pub enum ExtractedAlphaMode {
+    #[default]
     Opaque,
     Mask,
     Blend,
 }
 
-impl Default for ExtractedAlphaMode {
-    fn default() -> Self {
-        Self::Opaque
-    }
-}
 
 /// Result of a successful import.
+#[derive(Default)]
 pub struct ImportResult {
     /// The GLB binary data, ready to write to disk.
     pub glb_bytes: Vec<u8>,
@@ -83,16 +81,6 @@ pub struct ImportResult {
     pub extracted_materials: Vec<ExtractedPbrMaterial>,
 }
 
-impl Default for ImportResult {
-    fn default() -> Self {
-        Self {
-            glb_bytes: Vec::new(),
-            warnings: Vec::new(),
-            extracted_textures: Vec::new(),
-            extracted_materials: Vec::new(),
-        }
-    }
-}
 
 /// Errors that can occur during import.
 #[derive(Debug, thiserror::Error)]

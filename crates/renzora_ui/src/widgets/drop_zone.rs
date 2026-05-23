@@ -57,7 +57,7 @@ pub fn file_drop_zone(
         i.raw
             .hovered_files
             .iter()
-            .any(|f| f.path.as_ref().map_or(false, |p| is_matching_ext(p)))
+            .any(|f| f.path.as_ref().is_some_and(|p| is_matching_ext(p)))
     });
 
     // Check for OS drop
@@ -65,7 +65,7 @@ pub fn file_drop_zone(
         i.raw
             .dropped_files
             .iter()
-            .find(|f| f.path.as_ref().map_or(false, |p| is_matching_ext(p)))
+            .find(|f| f.path.as_ref().is_some_and(|p| is_matching_ext(p)))
             .and_then(|f| f.path.clone())
     });
 
@@ -90,7 +90,7 @@ pub fn file_drop_zone(
         );
 
         let pointer_pos = ui.ctx().pointer_hover_pos();
-        let pointer_in_zone = pointer_pos.map_or(false, |p| rect.contains(p));
+        let pointer_in_zone = pointer_pos.is_some_and(|p| rect.contains(p));
 
         // OS hover highlight
         if os_hovered && pointer_in_zone {
@@ -111,7 +111,7 @@ pub fn file_drop_zone(
         }
 
         // Draw contents
-        let has_file = current_path.map_or(false, |p| !p.is_empty());
+        let has_file = current_path.is_some_and(|p| !p.is_empty());
         if has_file {
             let path = current_path.unwrap();
             let file_name = path
@@ -165,7 +165,7 @@ pub fn file_drop_zone(
     });
 
     // Clear button
-    if current_path.map_or(false, |p| !p.is_empty()) {
+    if current_path.is_some_and(|p| !p.is_empty()) {
         ui.add_space(4.0);
         if ui
             .button(egui::RichText::new(format!("{} Clear", X_CIRCLE)).color(theme.semantic_error))

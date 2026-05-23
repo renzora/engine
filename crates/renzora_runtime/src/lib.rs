@@ -94,7 +94,6 @@ pub fn add_default_rendering(app: &mut App) {
                     anisotropy_clamp: 16,
                     ..default()
                 },
-                ..default()
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
@@ -374,13 +373,13 @@ pub fn add_engine_plugins(app: &mut App) {
     info!("[runtime] foundation: RuntimePlugin");
     app.add_plugins(renzora_engine::RuntimePlugin);
     info!("[runtime] foundation: GlobalsPlugin");
-    app.add_plugins(renzora_globals::GlobalsPlugin::default());
+    app.add_plugins(renzora_globals::GlobalsPlugin);
     info!("[runtime] foundation: InputPlugin");
-    app.add_plugins(renzora_input::InputPlugin::default());
+    app.add_plugins(renzora_input::InputPlugin);
     info!("[runtime] foundation: ScriptingPlugin");
     app.add_plugins(renzora_scripting::ScriptingPlugin::default());
     info!("[runtime] foundation: PhysicsPlugin");
-    app.add_plugins(renzora_physics::PhysicsPlugin::default());
+    app.add_plugins(renzora_physics::PhysicsPlugin);
 
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
@@ -420,11 +419,11 @@ pub fn build_runtime_app() -> App {
 pub fn add_editor_plugins(app: &mut App) {
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[editor] foundation: AssetRegistryPlugin");
-    app.add_plugins(renzora_asset_registry::AssetRegistryPlugin::default());
+    app.add_plugins(renzora_asset_registry::AssetRegistryPlugin);
     info!("[editor] foundation: RenzoraEditorPlugin");
-    app.add_plugins(renzora_editor::RenzoraEditorPlugin::default());
+    app.add_plugins(renzora_editor::RenzoraEditorPlugin);
     info!("[editor] foundation: KeybindingsPlugin");
-    app.add_plugins(renzora_keybindings::KeybindingsPlugin::default());
+    app.add_plugins(renzora_keybindings::KeybindingsPlugin);
 
     // ── Auto-discovered (any order) ────────────────────────────────────
     renzora::for_each_static_plugin(renzora::PluginScope::Editor, |plugin| {

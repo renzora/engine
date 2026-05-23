@@ -273,7 +273,6 @@ pub fn render_resize_zones(
     }
     if resize_zone(ui, right, "resize_e", CursorIcon::ResizeEast) {
         queue.push(WindowAction::StartResize(CompassOctant::East));
-        return;
     }
 }
 

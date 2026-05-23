@@ -161,17 +161,13 @@ pub fn process_particle_commands(
                 }
             }
             ParticleCommand::Reset(entity) => {
-                if let Ok((_, spawner)) = effect_query.get_mut(entity) {
-                    if let Some(mut s) = spawner {
-                        s.reset();
-                    }
+                if let Ok((_, Some(mut s))) = effect_query.get_mut(entity) {
+                    s.reset();
                 }
             }
             ParticleCommand::Burst { entity, count: _ } => {
-                if let Ok((_, spawner)) = effect_query.get_mut(entity) {
-                    if let Some(mut s) = spawner {
-                        s.reset();
-                    }
+                if let Ok((_, Some(mut s))) = effect_query.get_mut(entity) {
+                    s.reset();
                 }
             }
             ParticleCommand::SetRate { entity, multiplier } => {

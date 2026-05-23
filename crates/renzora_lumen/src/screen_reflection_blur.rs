@@ -239,8 +239,8 @@ impl ViewNode for ScreenReflectionBlurNode {
         for mip in 1..REFLECTION_MIP_COUNT {
             let mip_w = (refl.size.width >> mip).max(1);
             let mip_h = (refl.size.height >> mip).max(1);
-            let dispatch_x = (mip_w + 7) / 8;
-            let dispatch_y = (mip_h + 7) / 8;
+            let dispatch_x = mip_w.div_ceil(8);
+            let dispatch_y = mip_h.div_ceil(8);
 
             // Horizontal pass: source = previous mip of pyramid,
             // destination = temp buffer at the current mip's size.

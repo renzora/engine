@@ -159,8 +159,8 @@ impl ViewNode for VoxelDownsampleNode {
             // mip level.
             let dst_res = (VOXEL_RES >> dst_mip).max(1);
             let dst_z = (super::voxel_cache::VOXEL_RES_Z >> dst_mip).max(1);
-            let dispatch_xy = (dst_res + 3) / 4;
-            let dispatch_z = (dst_z + 3) / 4;
+            let dispatch_xy = dst_res.div_ceil(4);
+            let dispatch_z = dst_z.div_ceil(4);
             pass.dispatch_workgroups(dispatch_xy, dispatch_xy, dispatch_z);
         }
 

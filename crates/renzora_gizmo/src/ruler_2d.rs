@@ -17,7 +17,7 @@ const TICK_LONG: f32 = 8.0;
 const TICK_SHORT: f32 = 4.0;
 const SUBDIVISIONS: u32 = 5;
 
-fn find_editor_camera_2d<'a>(world: &'a World) -> Option<(&'a Camera, &'a GlobalTransform)> {
+fn find_editor_camera_2d(world: &World) -> Option<(&Camera, &GlobalTransform)> {
     let entity = world
         .get_resource::<crate::light_gizmo::SceneIconCache>()?
         .editor_camera_2d?;

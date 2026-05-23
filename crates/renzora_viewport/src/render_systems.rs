@@ -228,7 +228,7 @@ pub fn update_render_toggles(
         return;
     }
 
-    if !toggles_changed && !(new_materials && !is_default && !swap_active) {
+    if (swap_active || is_default || !new_materials) && !toggles_changed {
         return;
     }
 
@@ -312,7 +312,7 @@ fn apply_swap_generic<M: Material>(
     // Mode changed — update cached debug-material uniforms.
     if changed {
         last_viz.mode = Some(mode_idx);
-        for (_src_id, dbg_handle) in &cache.map {
+        for dbg_handle in cache.map.values() {
             if let Some(dbg) = debug_materials.get_mut(dbg_handle) {
                 dbg.params.config.x = mode_idx;
             }

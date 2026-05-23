@@ -21,7 +21,6 @@ pub fn smooth_correction(
     status: Res<NetworkStatus>,
 ) {
     if !status.is_connected() {
-        return;
     }
     // Lightyear handles the actual rollback/correction internally.
     // This system is a hook point for custom smoothing if needed.

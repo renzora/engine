@@ -28,6 +28,7 @@ impl Default for DebugParams {
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
+#[derive(Default)]
 pub struct ViewportDebugMaterial {
     #[uniform(0)]
     pub params: DebugParams,
@@ -36,14 +37,6 @@ pub struct ViewportDebugMaterial {
     pub mr_texture: Option<Handle<Image>>,
 }
 
-impl Default for ViewportDebugMaterial {
-    fn default() -> Self {
-        Self {
-            params: DebugParams::default(),
-            mr_texture: None,
-        }
-    }
-}
 
 impl Material for ViewportDebugMaterial {
     fn vertex_shader() -> ShaderRef {

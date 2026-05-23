@@ -198,7 +198,7 @@ fn detect_right_click_tap(
     // was last rendered.
     if !docking
         .as_deref()
-        .map_or(true, |d| d.tree.is_active_tab("viewport"))
+        .is_none_or(|d| d.tree.is_active_tab("viewport"))
     {
         return;
     }

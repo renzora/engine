@@ -95,7 +95,7 @@ fn parse_bvh(content: &str) -> Result<BvhFile, String> {
     let mut channel_offset = 0usize;
 
     // Skip until HIERARCHY
-    while let Some(line) = lines.next() {
+    for line in lines.by_ref() {
         if line.trim().eq_ignore_ascii_case("HIERARCHY") {
             break;
         }
@@ -151,7 +151,7 @@ fn parse_bvh(content: &str) -> Result<BvhFile, String> {
             }
         } else if trimmed.starts_with("End Site") {
             // Skip end site block
-            while let Some(inner) = lines.next() {
+            for inner in lines.by_ref() {
                 let inner_trimmed = inner.trim();
                 if inner_trimmed == "{" {
                     depth += 1;
@@ -170,7 +170,7 @@ fn parse_bvh(content: &str) -> Result<BvhFile, String> {
     let mut frame_time = 1.0 / 30.0f32;
     let mut frames: Vec<Vec<f32>> = Vec::new();
 
-    while let Some(line) = lines.next() {
+    for line in lines {
         let trimmed = line.trim();
 
         if trimmed.starts_with("Frames:") {

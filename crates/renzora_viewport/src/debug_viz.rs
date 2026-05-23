@@ -27,7 +27,6 @@ use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
-use bevy::utils::default;
 use bytemuck::{Pod, Zeroable};
 
 use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
@@ -293,4 +292,4 @@ impl Plugin for DebugVizPlugin {
 // Silence unused-import warnings if the prepass markers aren't referenced
 // elsewhere in this file (we only need them for the doc comment context).
 #[allow(dead_code)]
-fn _prepass_imports_used(_: DepthPrepass, __: NormalPrepass) {}
+fn _prepass_imports_used(_depth: DepthPrepass, _normal: NormalPrepass) {}

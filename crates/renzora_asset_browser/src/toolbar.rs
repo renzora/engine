@@ -168,7 +168,7 @@ pub fn toolbar_ui(ui: &mut egui::Ui, state: &mut AssetBrowserState, theme: &Them
                 ui.add(
                     egui::TextEdit::singleline(&mut state.search)
                         .desired_width(avail - 8.0)
-                        .hint_text(format!("{}", regular::MAGNIFYING_GLASS)),
+                        .hint_text(regular::MAGNIFYING_GLASS.to_string()),
                 );
             } else {
                 if state.view_mode == ViewMode::Grid {

@@ -245,11 +245,7 @@ impl EditorPanel for ScenesPanel {
                             egui::Align2::LEFT_CENTER,
                             &name,
                             egui::FontId::proportional(11.5),
-                            if is_current {
-                                text_primary
-                            } else {
-                                text_primary
-                            },
+                            text_primary,
                         );
 
                         if is_boot {
@@ -290,8 +286,8 @@ impl EditorPanel for ScenesPanel {
                                 });
                                 ui.close();
                             }
-                            if !is_boot {
-                                if ui
+                            if !is_boot
+                                && ui
                                     .button(format!("{} Set as Boot Scene", regular::STAR))
                                     .clicked()
                                 {
@@ -315,7 +311,6 @@ impl EditorPanel for ScenesPanel {
                                     });
                                     ui.close();
                                 }
-                            }
                             if ui.button(format!("{} Delete", regular::TRASH)).clicked() {
                                 let target = path.clone();
                                 commands.push(move |_world: &mut World| {

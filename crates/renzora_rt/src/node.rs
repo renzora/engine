@@ -53,7 +53,7 @@ impl ViewNode for RtNode {
         // before writing the uniform, so frame_count - 1 matches what
         // the shader sees in `config.frame_count`.
         let frame = pipeline.frame_count.load(Ordering::Relaxed).wrapping_sub(1);
-        let (read_history, write_history) = if frame % 2 == 0 {
+        let (read_history, write_history) = if frame.is_multiple_of(2) {
             (&resources.history_a, &resources.history_b)
         } else {
             (&resources.history_b, &resources.history_a)

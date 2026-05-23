@@ -318,7 +318,7 @@ fn render_toolbar(
         // ── Center Graph ──
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{}", CROSSHAIR))
+                RichText::new(CROSSHAIR.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))
@@ -348,7 +348,7 @@ fn render_toolbar(
         // ── Zoom controls ──
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{}", MAGNIFYING_GLASS_MINUS))
+                RichText::new(MAGNIFYING_GLASS_MINUS.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))
@@ -367,7 +367,7 @@ fn render_toolbar(
 
         if ui
             .add(egui::Button::new(
-                RichText::new(format!("{}", MAGNIFYING_GLASS_PLUS))
+                RichText::new(MAGNIFYING_GLASS_PLUS.to_string())
                     .size(12.0)
                     .color(text_muted),
             ))

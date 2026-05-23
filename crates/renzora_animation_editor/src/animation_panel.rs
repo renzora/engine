@@ -132,7 +132,7 @@ impl EditorPanel for AnimationPanel {
         });
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            if let Some(ref t) = theme_ref {
+            if let Some(t) = theme_ref {
                 // ── Clip Properties ──
                 if let Some(ref clip_name) = selected_clip {
                     if let Some(slot) = animator.clips.iter().find(|s| &s.name == clip_name) {

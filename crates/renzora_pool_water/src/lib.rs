@@ -306,7 +306,7 @@ pub fn add_drop_to_pool(
 }
 
 fn hash_f32(x: f32) -> f32 {
-    let s = (x * 127.1 + 311.7).sin() * 43758.5453;
+    let s = (x * 127.1 + 311.7).sin() * 43_758.547;
     s.fract()
 }
 

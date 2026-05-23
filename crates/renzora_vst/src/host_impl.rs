@@ -8,8 +8,6 @@
 //! and Bevy's main-loop model (we pump messages from an Update system
 //! instead of blocking on `for message in receiver`).
 
-#![cfg(feature = "clap-host")]
-
 use std::ffi::CString;
 use std::path::Path;
 

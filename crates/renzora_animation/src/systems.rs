@@ -246,14 +246,13 @@ pub fn auto_play_default(
 
         // Check if the animation graph was removed from the player (e.g. by scene reload)
         if let Some(player_entity) = state.player_entity {
-            if graph_query.get(player_entity).is_err() {
-                if state.current_clip.is_some() {
+            if graph_query.get(player_entity).is_err()
+                && state.current_clip.is_some() {
                     warn!("[animation] AnimationGraphHandle disappeared from player {:?}, re-initializing", player_entity);
                     state.initialized = false;
                     state.current_clip = None;
                     continue;
                 }
-            }
         }
 
         if state.current_clip.is_some() {
@@ -281,7 +280,7 @@ pub fn auto_play_default(
         };
 
         let slot = animator.get_slot(default_name);
-        let looping = slot.map_or(true, |s| s.looping);
+        let looping = slot.is_none_or(|s| s.looping);
         let speed = slot.map_or(1.0, |s| s.speed);
 
         let blend = Duration::from_secs_f32(animator.blend_duration.max(0.0));
@@ -753,7 +752,7 @@ pub fn detect_animation_finished(world: &mut World) {
                 continue;
             };
             let slot = animator.get_slot(current_clip);
-            let is_looping = slot.map_or(true, |s| s.looping);
+            let is_looping = slot.is_none_or(|s| s.looping);
             if is_looping {
                 continue;
             }

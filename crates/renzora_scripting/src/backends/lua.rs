@@ -51,6 +51,12 @@ pub struct LuaBackend {
     file_reader: Option<FileReader>,
 }
 
+impl Default for LuaBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LuaBackend {
     pub fn new() -> Self {
         Self {
@@ -544,8 +550,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "play_sound",
         lua.create_function(|_, args: LuaMultiValue| {
-            let path: String = args
-                .get(0)
+            let path: String = args.front()
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
             let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
@@ -579,8 +584,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "play_music",
         lua.create_function(|_, args: LuaMultiValue| {
-            let path: String = args
-                .get(0)
+            let path: String = args.front()
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
             let volume: f32 = args.get(1).and_then(|v| v.as_f32()).unwrap_or(1.0);
@@ -1065,10 +1069,8 @@ fn register_api(lua: &Lua) {
         lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
             let mut map = std::collections::HashMap::new();
             if let Some(tbl) = args {
-                for pair in tbl.pairs::<String, LuaValue>() {
-                    if let Ok((k, v)) = pair {
-                        map.insert(k, lua_to_action_value(&v));
-                    }
+                for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
+                    map.insert(k, lua_to_action_value(&v));
                 }
             }
             push_command(ScriptCommand::Action {
@@ -1088,10 +1090,8 @@ fn register_api(lua: &Lua) {
             |_, (target, name, args): (String, String, Option<LuaTable>)| {
                 let mut map = std::collections::HashMap::new();
                 if let Some(tbl) = args {
-                    for pair in tbl.pairs::<String, LuaValue>() {
-                        if let Ok((k, v)) = pair {
-                            map.insert(k, lua_to_action_value(&v));
-                        }
+                    for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
+                        map.insert(k, lua_to_action_value(&v));
                     }
                 }
                 push_command(ScriptCommand::Action {
@@ -1114,11 +1114,8 @@ fn register_api(lua: &Lua) {
                 Some(fields) => {
                     let t = lua.create_table()?;
                     for (key, val) in fields {
-                        match property_value_to_lua_result(lua, val) {
-                            Ok(lv) => {
-                                let _ = t.set(key, lv);
-                            }
-                            Err(_) => {}
+                        if let Ok(lv) = property_value_to_lua_result(lua, val) {
+                            let _ = t.set(key, lv);
                         }
                     }
                     Ok(LuaValue::Table(t))
@@ -1137,11 +1134,8 @@ fn register_api(lua: &Lua) {
                 Some(fields) => {
                     let t = lua.create_table()?;
                     for (key, val) in fields {
-                        match property_value_to_lua_result(lua, val) {
-                            Ok(lv) => {
-                                let _ = t.set(key, lv);
-                            }
-                            Err(_) => {}
+                        if let Ok(lv) = property_value_to_lua_result(lua, val) {
+                            let _ = t.set(key, lv);
                         }
                     }
                     Ok(LuaValue::Table(t))
@@ -1652,7 +1646,6 @@ fn property_value_to_lua_result(
 }
 
 /// Extract a string argument from a LuaMultiValue by index.
-
 fn lua_to_action_value(value: &LuaValue) -> renzora::ScriptActionValue {
     use renzora::ScriptActionValue;
     match value {

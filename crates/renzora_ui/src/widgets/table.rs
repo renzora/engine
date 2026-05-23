@@ -8,7 +8,9 @@ use bevy_egui::egui::{self, Color32, Sense, Stroke, Vec2};
 use renzora_theme::Theme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum SortOrder {
+    #[default]
     None,
     Ascending,
     Descending,
@@ -31,11 +33,6 @@ pub struct TableSort {
     pub order: SortOrder,
 }
 
-impl Default for SortOrder {
-    fn default() -> Self {
-        SortOrder::None
-    }
-}
 
 /// Render a simple table. `headers` labels each column, `row_count` is the
 /// total number of rows, and `cell` is called for each visible cell.

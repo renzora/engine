@@ -1,6 +1,7 @@
 use syn::{Field, Lit, Type};
 
 /// Parsed attributes from `#[field(...)]` on a struct field.
+#[derive(Default)]
 pub struct FieldAttrs {
     pub name: Option<String>,
     pub speed: Option<f32>,
@@ -11,19 +12,6 @@ pub struct FieldAttrs {
     pub readonly: bool,
 }
 
-impl Default for FieldAttrs {
-    fn default() -> Self {
-        Self {
-            name: None,
-            speed: None,
-            min: None,
-            max: None,
-            default: None,
-            skip: false,
-            readonly: false,
-        }
-    }
-}
 
 impl FieldAttrs {
     pub fn from_field(field: &Field) -> syn::Result<Self> {

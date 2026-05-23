@@ -100,16 +100,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
             let before = entities.len();
             entities.retain(|&entity| {
                 let mut cursor = entity;
-                loop {
-                    if let Some(child_of) = world.get::<ChildOf>(cursor) {
-                        let parent = child_of.parent();
-                        if instance_roots.contains(&parent) {
-                            return false; // descendant of a scene instance — skip
-                        }
-                        cursor = parent;
-                    } else {
-                        break;
+                while let Some(child_of) = world.get::<ChildOf>(cursor) {
+                    let parent = child_of.parent();
+                    if instance_roots.contains(&parent) {
+                        return false; // descendant of a scene instance — skip
                     }
+                    cursor = parent;
                 }
                 true
             });
@@ -140,16 +136,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 // Walk up the parent chain; if we hit a MeshInstanceData entity
                 // and it's not *this* entity, exclude it.
                 let mut cursor = entity;
-                loop {
-                    if let Some(child_of) = world.get::<ChildOf>(cursor) {
-                        let parent = child_of.parent();
-                        if mesh_instance_entities.contains(&parent) {
-                            return false; // descendant of a mesh instance — skip
-                        }
-                        cursor = parent;
-                    } else {
-                        break;
+                while let Some(child_of) = world.get::<ChildOf>(cursor) {
+                    let parent = child_of.parent();
+                    if mesh_instance_entities.contains(&parent) {
+                        return false; // descendant of a mesh instance — skip
                     }
+                    cursor = parent;
                 }
                 true
             });
@@ -304,16 +296,12 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         if !mesh_instance_entities.is_empty() {
             entities.retain(|&entity| {
                 let mut cursor = entity;
-                loop {
-                    if let Some(child_of) = world.get::<ChildOf>(cursor) {
-                        let parent = child_of.parent();
-                        if mesh_instance_entities.contains(&parent) {
-                            return false;
-                        }
-                        cursor = parent;
-                    } else {
-                        break;
+                while let Some(child_of) = world.get::<ChildOf>(cursor) {
+                    let parent = child_of.parent();
+                    if mesh_instance_entities.contains(&parent) {
+                        return false;
                     }
+                    cursor = parent;
                 }
                 true
             });
@@ -585,8 +573,7 @@ fn strip_component_entry(ron: &str, type_path: &str) -> Option<String> {
     let mut in_string = false;
     let mut prev_escape = false;
     let mut close_pos: Option<usize> = None;
-    for j in (open_pos + 1)..bytes.len() {
-        let c = bytes[j];
+    for (j, &c) in bytes.iter().enumerate().skip(open_pos + 1) {
         if in_string {
             if c == b'"' && !prev_escape {
                 in_string = false;
@@ -883,7 +870,7 @@ pub fn expand_scene_instances(world: &mut World) {
             // user added children before save).
             if world
                 .get::<Children>(entity)
-                .map_or(false, |c| c.iter().count() > 0)
+                .is_some_and(|c| c.iter().count() > 0)
             {
                 continue;
             }
@@ -1721,7 +1708,7 @@ pub fn rehydrate_cameras(
                 ),
             );
             commands.entity(entity).try_insert(PlayModeCamera);
-            if let Some(ref img) = render_target.as_ref().and_then(|rt| rt.image.as_ref()) {
+            if let Some(img) = render_target.as_ref().and_then(|rt| rt.image.as_ref()) {
                 commands
                     .entity(entity)
                     .try_insert(bevy::camera::RenderTarget::Image(
@@ -1835,12 +1822,8 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
     }
 
     // Find the editor camera.
-    let mut editor_cam = None;
     let mut q = world.query_filtered::<Entity, With<EditorCamera>>();
-    for e in q.iter(world) {
-        editor_cam = Some(e);
-        break;
-    }
+    let editor_cam = q.iter(world).next();
     let Some(dst) = editor_cam else {
         return;
     };

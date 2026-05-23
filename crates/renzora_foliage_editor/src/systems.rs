@@ -42,7 +42,7 @@ pub fn foliage_paint_hover_system(
     terrain_query: Query<&TerrainData>,
 ) {
     // Only process when viewport is hovered (not over a panel/slider)
-    let vp_hovered = viewport.as_ref().map_or(false, |v| v.hovered);
+    let vp_hovered = viewport.as_ref().is_some_and(|v| v.hovered);
     if !vp_hovered {
         paint_state.hover_position = None;
         paint_state.hover_uv = None;
@@ -193,7 +193,7 @@ pub fn foliage_paint_scroll_system(
     mut settings: ResMut<FoliagePaintSettings>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
 ) {
-    let vp_hovered = viewport.as_ref().map_or(false, |v| v.hovered);
+    let vp_hovered = viewport.as_ref().is_some_and(|v| v.hovered);
     if !vp_hovered {
         return;
     }

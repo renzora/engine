@@ -114,11 +114,9 @@ impl EditorPanel for FoliagePanel {
             // Write back
             if tool_mut != tool_state {
                 let tool_val = tool_mut;
-                world.get_resource::<EditorCommands>().map(|cmds| {
-                    cmds.push(move |w: &mut World| {
+                if let Some(cmds) = world.get_resource::<EditorCommands>() { cmds.push(move |w: &mut World| {
                         w.insert_resource(tool_val);
-                    });
-                });
+                    }); }
             }
             return;
         }
@@ -144,8 +142,8 @@ impl EditorPanel for FoliagePanel {
                     {
                         config_clone.types.push(FoliageType::default());
                     }
-                    if config_clone.types.len() > 1 {
-                        if ui
+                    if config_clone.types.len() > 1
+                        && ui
                             .button(RichText::new(format!("{} Remove", TRASH)).color(text_primary))
                             .clicked()
                         {
@@ -158,7 +156,6 @@ impl EditorPanel for FoliagePanel {
                                     config_clone.types.len().saturating_sub(1);
                             }
                         }
-                    }
                 });
             });
             ui.add_space(4.0);

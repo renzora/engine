@@ -473,8 +473,8 @@ fn draw_card(
                             }
 
                             // Back button
-                            if current > 0 {
-                                if ui
+                            if current > 0
+                                && ui
                                     .add(
                                         egui::Button::new(
                                             egui::RichText::new(format!(
@@ -491,7 +491,6 @@ fn draw_card(
                                 {
                                     action = TutorialAction::Back;
                                 }
-                            }
                         });
                     });
                 });

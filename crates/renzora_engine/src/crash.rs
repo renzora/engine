@@ -158,7 +158,7 @@ fn get_crash_dir() -> std::path::PathBuf {
         if let Some(home) = dirs::home_dir() {
             return home.join(".renzora").join("crashes");
         }
-        return std::path::PathBuf::from(".renzora/crashes");
+        std::path::PathBuf::from(".renzora/crashes")
     }
 
     #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
@@ -169,7 +169,7 @@ fn get_crash_dir() -> std::path::PathBuf {
         {
             return exe_dir;
         }
-        return std::path::PathBuf::from(".");
+        std::path::PathBuf::from(".")
     }
 
     #[cfg(target_arch = "wasm32")]

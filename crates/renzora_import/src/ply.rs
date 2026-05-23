@@ -60,7 +60,7 @@ impl PropertyAccess for Face {
                 self.vertex_indices = v.iter().map(|&i| i as u32).collect();
             }
             ("vertex_indices" | "vertex_index", Property::ListUInt(v)) => {
-                self.vertex_indices = v.iter().map(|&i| i as u32).collect();
+                self.vertex_indices = v.to_vec();
             }
             _ => {}
         }
@@ -171,7 +171,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             }
             // Fan triangulation
             for i in 1..vi.len() - 1 {
-                indices.extend_from_slice(&[vi[0], vi[i] as u32, vi[i + 1] as u32]);
+                indices.extend_from_slice(&[vi[0], vi[i], vi[i + 1]]);
             }
         }
     }

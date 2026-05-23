@@ -61,6 +61,7 @@ impl ChannelStrip {
 
 /// Mixer resource - the single source of truth for all bus parameters
 #[derive(Resource)]
+#[derive(Default)]
 pub struct MixerState {
     pub master: ChannelStrip,
     pub sfx: ChannelStrip,
@@ -79,22 +80,6 @@ pub struct MixerState {
     pub dragging_bus: Option<usize>,
 }
 
-impl Default for MixerState {
-    fn default() -> Self {
-        Self {
-            master: ChannelStrip::default(),
-            sfx: ChannelStrip::default(),
-            music: ChannelStrip::default(),
-            ambient: ChannelStrip::default(),
-            custom_buses: Vec::new(),
-            adding_bus: false,
-            new_bus_name: String::new(),
-            renaming_bus: None,
-            rename_buf: String::new(),
-            dragging_bus: None,
-        }
-    }
-}
 
 /// System: sync MixerState to Kira TrackHandles every frame when changed
 pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraAudioManager>>) {
@@ -114,7 +99,7 @@ pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraA
     } else {
         mixer.master.volume
     };
-    let _ = audio
+    audio
         .manager
         .main_track()
         .set_volume(amplitude_to_db(master_amp), Tween::default());
@@ -125,19 +110,19 @@ pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraA
     let music_eff = mixer.music.effective_volume(any_solo);
     let ambient_eff = mixer.ambient.effective_volume(any_solo);
 
-    let _ = audio
+    audio
         .sfx_track
         .set_volume(amplitude_to_db(sfx_eff), Tween::default());
     audio
         .sfx_pan
         .set_panning(Panning(mixer.sfx.panning as f32), Tween::default());
-    let _ = audio
+    audio
         .music_track
         .set_volume(amplitude_to_db(music_eff), Tween::default());
     audio
         .music_pan
         .set_panning(Panning(mixer.music.panning as f32), Tween::default());
-    let _ = audio
+    audio
         .ambient_track
         .set_volume(amplitude_to_db(ambient_eff), Tween::default());
     audio
@@ -165,7 +150,7 @@ pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraA
     for (i, (_, strip)) in mixer.custom_buses.iter().enumerate() {
         if let Some((track, pan_handle)) = audio.custom_tracks.get_mut(i) {
             let eff = strip.effective_volume(any_solo);
-            let _ = track.set_volume(amplitude_to_db(eff), Tween::default());
+            track.set_volume(amplitude_to_db(eff), Tween::default());
             pan_handle.set_panning(Panning(strip.panning as f32), Tween::default());
         }
     }

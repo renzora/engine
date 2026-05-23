@@ -38,7 +38,7 @@ pub fn apply_script_commands(
 
     // 0. Drain TransformWriteQueue from core (blueprint writes go here)
     if !tw_queue.writes.is_empty() {
-        cmd_queue.transform_writes.extend(tw_queue.writes.drain(..));
+        cmd_queue.transform_writes.append(&mut tw_queue.writes);
     }
 
     // 1. Apply transform writes
@@ -157,7 +157,7 @@ pub fn apply_script_commands(
             // === Visibility ===
             ScriptCommand::SetVisibility { entity_id, visible } => {
                 let target = entity_id
-                    .map(|id| Entity::from_bits(id))
+                    .map(Entity::from_bits)
                     .unwrap_or(source_entity);
                 if let Ok(mut vis) = visibility_query.get_mut(target) {
                     *vis = if visible {

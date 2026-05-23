@@ -8,7 +8,7 @@ pub fn compute_inverse_bind_matrices(skeleton: &UsdSkeleton) -> Vec<[f32; 16]> {
     skeleton
         .bind_transforms
         .iter()
-        .map(|m| invert_4x4(m))
+        .map(invert_4x4)
         .collect()
 }
 

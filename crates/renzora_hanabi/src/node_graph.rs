@@ -22,6 +22,7 @@ pub enum PinDir {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Reflect)]
 #[reflect(Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PinValue {
     Float(f32),
     Vec2([f32; 2]),
@@ -32,14 +33,10 @@ pub enum PinValue {
     Int(i32),
     /// Color gradient stops: Vec of (position, [r, g, b, a])
     Gradient(Vec<(f32, [f32; 4])>),
+    #[default]
     None,
 }
 
-impl Default for PinValue {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PinTemplate {
@@ -789,7 +786,7 @@ impl ParticleNodeGraph {
         // Allow multiple connections to Emitter category pins; otherwise replace existing
         let is_emitter_category_pin = self
             .get_node(to_node)
-            .map_or(false, |n| n.node_type == ParticleNodeType::Emitter)
+            .is_some_and(|n| n.node_type == ParticleNodeType::Emitter)
             && ["spawn", "init", "update", "render"].contains(&to_pin);
         if !is_emitter_category_pin {
             self.connections

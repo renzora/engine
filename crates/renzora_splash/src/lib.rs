@@ -125,7 +125,7 @@ fn handle_request_open_project(
             error!("Failed to open project: {}", e);
             rfd::MessageDialog::new()
                 .set_title("Invalid Project")
-                .set_description(&format!("Failed to open project: {}", e))
+                .set_description(format!("Failed to open project: {}", e))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
             return;
@@ -275,7 +275,7 @@ fn splash_ui_system(world: &mut World) {
 fn with_primary_window(world: &mut World, f: impl FnOnce(&mut Window)) {
     let mut q = world.query_filtered::<&mut Window, With<PrimaryWindow>>();
     if let Ok(mut w) = q.single_mut(world) {
-        f(&mut *w);
+        f(&mut w);
     }
 }
 

@@ -842,8 +842,8 @@ impl<'a> EvalContext<'a> {
                     self.runtime.do_once_fired.remove(&node_id);
                     return;
                 }
-                if !self.runtime.do_once_fired.contains_key(&node_id) {
-                    self.runtime.do_once_fired.insert(node_id, true);
+                if let std::collections::hash_map::Entry::Vacant(e) = self.runtime.do_once_fired.entry(node_id) {
+                    e.insert(true);
                     self.follow_exec(node_id, "completed");
                 }
             }
@@ -1530,7 +1530,7 @@ pub fn run_blueprints(world: &mut World) {
                 entity: bpe.entity,
                 cache: HashMap::new(),
                 graph: &graph,
-                world: &world,
+                world,
                 transform: &bpe.transform,
                 input: &input,
                 action_state: &action_state,

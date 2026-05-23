@@ -66,24 +66,21 @@ fn audio_preview_thread(rx: mpsc::Receiver<AudioCmd>, playing: Arc<AtomicBool>) 
         match cmd {
             AudioCmd::Play(data) => {
                 if let Some(ref mut h) = current {
-                    let _ = h.stop(kira::Tween::default());
+                    h.stop(kira::Tween::default());
                 }
                 current = None;
                 playing.store(false, Ordering::SeqCst);
 
-                match StaticSoundData::from_cursor(std::io::Cursor::new(data)) {
-                    Ok(sound) => {
-                        if let Ok(handle) = manager.play(sound) {
-                            current = Some(handle);
-                            playing.store(true, Ordering::SeqCst);
-                        }
+                if let Ok(sound) = StaticSoundData::from_cursor(std::io::Cursor::new(data)) {
+                    if let Ok(handle) = manager.play(sound) {
+                        current = Some(handle);
+                        playing.store(true, Ordering::SeqCst);
                     }
-                    Err(_) => {}
                 }
             }
             AudioCmd::Stop => {
                 if let Some(ref mut h) = current {
-                    let _ = h.stop(kira::Tween::default());
+                    h.stop(kira::Tween::default());
                 }
                 current = None;
                 playing.store(false, Ordering::SeqCst);
@@ -116,6 +113,7 @@ struct DownloadComplete {
 
 // ── Overlay state ───────────────────────────────────────────────────────────
 
+#[derive(Default)]
 struct OverlayState {
     open: bool,
     slug: String,
@@ -139,28 +137,6 @@ struct OverlayState {
     shader_source: Option<String>,
 }
 
-impl Default for OverlayState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            slug: String::new(),
-            detail: None,
-            loading: false,
-            error: None,
-            status: None,
-            installing: false,
-            comments: Vec::new(),
-            comment_draft: String::new(),
-            posting_comment: false,
-            rating: None,
-            hover_star: None,
-            audio_loading: false,
-            confirm_purchase: false,
-            shader_requested: false,
-            shader_source: None,
-        }
-    }
-}
 
 // ── Overlay manager ─────────────────────────────────────────────────────────
 
@@ -445,9 +421,9 @@ impl AssetOverlay {
         std::thread::spawn(move || {
             let result = (|| -> Result<Vec<u8>, String> {
                 let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                    .map_err(|e| format!("{e}"))?;
+                    .map_err(|e| e.to_string())?;
                 renzora_auth::marketplace::download_file(&dl_resp.download_url)
-                    .map_err(|e| format!("{e}"))
+                    .map_err(|e| e.to_string())
             })();
             let _ = tx.send(OverlayResult::AudioData(result));
         });
@@ -467,9 +443,9 @@ impl AssetOverlay {
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
                 let dl_resp = renzora_auth::marketplace::download_asset(&session_clone, &asset_id)
-                    .map_err(|e| format!("{e}"))?;
+                    .map_err(|e| e.to_string())?;
                 let data = renzora_auth::marketplace::download_file(&dl_resp.download_url)
-                    .map_err(|e| format!("{e}"))?;
+                    .map_err(|e| e.to_string())?;
 
                 // Try as raw UTF-8 text first
                 if let Ok(source) = String::from_utf8(data.clone()) {
@@ -593,8 +569,8 @@ impl AssetOverlay {
             .rect_filled(screen, 0.0, Color32::from_black_alpha(160));
 
         // ── Modal window ──
-        let modal_w = (screen.width() * 0.75).min(900.0).max(500.0);
-        let modal_h = (screen.height() * 0.85).min(700.0).max(400.0);
+        let modal_w = (screen.width() * 0.75).clamp(500.0, 900.0);
+        let modal_h = (screen.height() * 0.85).clamp(400.0, 700.0);
 
         egui::Window::new("##hub_asset_overlay")
             .title_bar(false)
@@ -886,27 +862,25 @@ impl AssetOverlay {
                                                             {
                                                                 do_audio_stop = true;
                                                             }
-                                                        } else {
-                                                            if ui
-                                                                .add(
-                                                                    egui::Button::new(
-                                                                        RichText::new(format!(
-                                                                            "{} Play",
-                                                                            egui_phosphor::regular::PLAY
-                                                                        ))
-                                                                        .size(10.0)
-                                                                        .color(Color32::WHITE),
-                                                                    )
-                                                                    .fill(accent)
-                                                                    .corner_radius(
-                                                                        CornerRadius::same(4),
-                                                                    ),
+                                                        } else if ui
+                                                            .add(
+                                                                egui::Button::new(
+                                                                    RichText::new(format!(
+                                                                        "{} Play",
+                                                                        egui_phosphor::regular::PLAY
+                                                                    ))
+                                                                    .size(10.0)
+                                                                    .color(Color32::WHITE),
                                                                 )
-                                                                .clicked()
-                                                            {
-                                                                do_audio_play =
-                                                                    Some(detail.id.clone());
-                                                            }
+                                                                .fill(accent)
+                                                                .corner_radius(
+                                                                    CornerRadius::same(4),
+                                                                ),
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            do_audio_play =
+                                                                Some(detail.id.clone());
                                                         }
                                                     },
                                                 );
@@ -1171,15 +1145,9 @@ impl AssetOverlay {
                                             let filled = (i as f32) <= r.average;
                                             let half =
                                                 !filled && (i as f32 - 0.5) <= r.average;
-                                            let icon = if filled || half {
-                                                egui_phosphor::regular::STAR
-                                            } else {
-                                                egui_phosphor::regular::STAR
-                                            };
-                                            let color = if filled {
+                                            let icon = egui_phosphor::regular::STAR;
+                                            let color = if filled || half {
                                                 Color32::from_rgb(250, 204, 21) // yellow
-                                            } else if half {
-                                                Color32::from_rgb(250, 204, 21)
                                             } else {
                                                 darken(text_muted, 20)
                                             };

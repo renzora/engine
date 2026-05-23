@@ -85,13 +85,13 @@ fn leading_closers(text: &str, brackets_too: bool) -> usize {
 }
 
 fn strip_indent(line: &str) -> &str {
-    line.trim_start_matches(|c: char| c == ' ' || c == '\t')
+    line.trim_start_matches([' ', '\t'])
 }
 
 /// Remove string literals and line comments so brace-counting isn't fooled
 /// by `"} { ... // }"` etc. Block comments are not perfectly handled —
 /// good enough for re-indenting code that already roughly compiles.
-fn strip_strings_and_comments<'a>(line: &'a str, lang: Language) -> String {
+fn strip_strings_and_comments(line: &str, lang: Language) -> String {
     let line_comment = lang.line_comment();
     let mut out = String::with_capacity(line.len());
     let mut chars = line.chars().peekable();
@@ -237,8 +237,8 @@ fn format_python(content: &str) -> String {
                     }
                 })
                 .collect();
-            let body: &str = line.trim_start_matches(|c: char| c == ' ' || c == '\t');
-            let trimmed_body = body.trim_end_matches(|c: char| c == ' ' || c == '\t');
+            let body: &str = line.trim_start_matches([' ', '\t']);
+            let trimmed_body = body.trim_end_matches([' ', '\t']);
             format!("{}{}", leading, trimmed_body)
         })
         .collect::<Vec<_>>()

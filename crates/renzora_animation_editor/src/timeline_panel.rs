@@ -160,7 +160,7 @@ impl EditorPanel for TimelinePanel {
         }
 
         // Load the selected clip's .anim data from disk
-        let clip_data = self.load_clip_data(selected_clip.as_deref(), &animator, world);
+        let clip_data = self.load_clip_data(selected_clip.as_deref(), animator, world);
         let clip_duration = clip_data.as_ref().map(|c| c.duration).unwrap_or(2.0);
 
         // ── Range overview bar (DAW-style mini-map) ──

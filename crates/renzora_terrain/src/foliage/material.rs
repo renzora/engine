@@ -37,18 +37,12 @@ impl Default for GrassUniforms {
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+#[derive(Default)]
 pub struct GrassMaterial {
     #[uniform(0)]
     pub uniforms: GrassUniforms,
 }
 
-impl Default for GrassMaterial {
-    fn default() -> Self {
-        Self {
-            uniforms: GrassUniforms::default(),
-        }
-    }
-}
 
 impl Material for GrassMaterial {
     fn vertex_shader() -> ShaderRef {

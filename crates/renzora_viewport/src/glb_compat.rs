@@ -173,18 +173,14 @@ fn repack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
     out.extend_from_slice(&(json_chunk_len as u32).to_le_bytes());
     out.extend_from_slice(&0x4E4F534Au32.to_le_bytes());
     out.extend_from_slice(json);
-    for _ in 0..json_pad {
-        out.push(b' ');
-    }
+    out.extend(std::iter::repeat_n(b' ', json_pad));
 
     if let Some(b) = bin {
         let bin_pad = (4 - (b.len() % 4)) % 4;
         out.extend_from_slice(&(bin_chunk_len as u32).to_le_bytes());
         out.extend_from_slice(&0x004E4942u32.to_le_bytes());
         out.extend_from_slice(b);
-        for _ in 0..bin_pad {
-            out.push(0);
-        }
+        out.extend(std::iter::repeat_n(0, bin_pad));
     }
 
     out

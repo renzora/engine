@@ -124,8 +124,8 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
             tri_scratch.clear();
             tri_scratch.resize((face.num_indices as usize - 2) * 3, 0);
             let produced = ufbx::triangulate_face_vec(&mut tri_scratch, mesh, face);
-            for i in 0..produced as usize * 3 {
-                let corner = tri_scratch[i] as usize;
+            for &corner_idx in tri_scratch.iter().take(produced as usize * 3) {
+                let corner = corner_idx as usize;
                 let vi = mesh.vertex_indices[corner];
                 all_indices.push(vi + base_vertex);
             }
@@ -497,7 +497,7 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
         if !eid_is_joint.contains(&eid) {
             continue;
         }
-        let name = (&*node.element.name).to_string();
+        let name = (*node.element.name).to_string();
         let t = node.local_transform.translation;
         let r = node.local_transform.rotation;
         let s = node.local_transform.scale;
@@ -531,8 +531,8 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
         eid_to_node.insert(node.element.element_id, node);
     }
 
-    for joint_i in 0..joints.len() {
-        let eid = joints[joint_i].element_id;
+    for joint in joints.iter_mut() {
+        let eid = joint.element_id;
         let node = match eid_to_node.get(&eid) {
             Some(n) => *n,
             None => continue,
@@ -541,7 +541,7 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
         while let Some(parent) = walker {
             let pid = parent.element.element_id;
             if let Some(&pji) = eid_to_joint_idx.get(&pid) {
-                joints[joint_i].parent = Some(pji);
+                joint.parent = Some(pji);
                 break;
             }
             walker = parent.parent.as_ref().map(|p| -> &ufbx::Node { p });
@@ -585,14 +585,16 @@ fn matrix_to_gltf(m: &ufbx::Matrix) -> [f32; 16] {
 }
 
 fn load_scene(path: &Path, settings: &ImportSettings) -> Result<ufbx::SceneRoot, ImportError> {
-    let mut opts = ufbx::LoadOpts::default();
     // Normalize everything to a right-handed, Y-up, meters coordinate system
     // so downstream code doesn't have to guess. ufbx applies unit scaling and
     // axis conversion to both meshes and bone transforms consistently.
-    opts.target_axes = ufbx::CoordinateAxes::right_handed_y_up();
-    opts.target_unit_meters = settings.scale as ufbx::Real;
-    opts.space_conversion = ufbx::SpaceConversion::ModifyGeometry;
-    opts.generate_missing_normals = settings.generate_normals;
+    let opts = ufbx::LoadOpts {
+        target_axes: ufbx::CoordinateAxes::right_handed_y_up(),
+        target_unit_meters: settings.scale as ufbx::Real,
+        space_conversion: ufbx::SpaceConversion::ModifyGeometry,
+        generate_missing_normals: settings.generate_normals,
+        ..Default::default()
+    };
 
     let path_str = path
         .to_str()
@@ -670,9 +672,9 @@ fn collect_textures_and_materials(
     for tex in &scene.textures {
         // Embedded data lives either on the texture itself or its linked Video.
         let bytes: &[u8] = if !tex.content.is_empty() {
-            &*tex.content
+            &tex.content
         } else if let Some(video) = tex.video.as_ref() {
-            &*video.content
+            &video.content
         } else {
             // External-only reference — nothing to extract. Skip silently;
             // the user can drop the source texture into the project manually.
@@ -685,7 +687,7 @@ fn collect_textures_and_materials(
         // Pick the best name we can find: prefer the FBX texture/video name,
         // then fall back to the source filename's stem.
         let base = {
-            let n = (&*tex.element.name).to_string();
+            let n = (*tex.element.name).to_string();
             if !n.is_empty() {
                 n
             } else {
@@ -757,7 +759,7 @@ fn collect_textures_and_materials(
         };
 
         bundle.materials.push(PbrMaterialDef {
-            name: (&*mat.element.name).to_string(),
+            name: (*mat.element.name).to_string(),
             base_color: base_color_factor,
             base_color_texture,
             normal_texture,

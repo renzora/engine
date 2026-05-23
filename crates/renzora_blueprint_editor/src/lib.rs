@@ -39,8 +39,8 @@ impl Plugin for BlueprintEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] BlueprintEditorPlugin");
         app.init_resource::<BlueprintEditorState>();
-        app.register_panel(graph_panel::BlueprintGraphPanel::default());
-        app.register_panel(properties_panel::BlueprintPropertiesPanel::default());
+        app.register_panel(graph_panel::BlueprintGraphPanel);
+        app.register_panel(properties_panel::BlueprintPropertiesPanel);
     }
 }
 

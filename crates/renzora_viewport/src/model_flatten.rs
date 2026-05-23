@@ -328,7 +328,7 @@ fn is_gltf_wrapper_name(name: &str) -> bool {
         return true;
     }
     let suffix_only_digits = |sep: char| {
-        name.split_once(sep).map_or(false, |(prefix, rest)| {
+        name.split_once(sep).is_some_and(|(prefix, rest)| {
             prefix == "RootNode" && !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
         })
     };

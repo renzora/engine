@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
-use renzora_postprocess;
-use serde;
 
 #[renzora_macros::post_process(shader = "letterbox.wgsl", name = "Letterbox", icon = "ROWS")]
 pub struct LetterboxSettings {

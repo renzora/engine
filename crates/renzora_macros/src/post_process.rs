@@ -114,7 +114,7 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
         min_total
     } else {
         // Round up to next multiple of 4
-        ((total_with_enabled + 3) / 4) * 4
+        total_with_enabled.div_ceil(4) * 4
     };
     let padding_count = target - total_with_enabled;
 
@@ -303,6 +303,9 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
 
         #[cfg(feature = "editor")]
         impl renzora_editor::InspectableComponent for #struct_name {
+            // Field min/max bounds are user-supplied float literals that may
+            // approximate math constants (e.g. TAU); they're emitted verbatim.
+            #[allow(clippy::approx_constant)]
             fn inspector_entry() -> renzora_editor::InspectorEntry {
                 renzora_editor::InspectorEntry {
                     type_id: #type_id,

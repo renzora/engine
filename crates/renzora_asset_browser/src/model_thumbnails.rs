@@ -67,6 +67,7 @@ const CAPTURE_CELL_SPACING: f32 = 200.0;
 ///     specialized pipeline the first time each material variant
 ///     hits the render pass. With many materials per GLB the queue
 ///     can take a second to drain.
+///
 /// 90 frames ≈ 1.5s at 60fps — generous but captures are async and
 /// each model only pays this once per session (subsequent sessions
 /// hit the PNG cache).
@@ -125,7 +126,7 @@ struct PendingCapture {
 // trust the bounding-box union to reflect the full model.
 
 #[derive(Resource, Default)]
-struct PendingCaptures {
+pub(crate) struct PendingCaptures {
     jobs: Vec<PendingCapture>,
 }
 
@@ -848,7 +849,10 @@ fn try_load_cached_thumb(
 /// has armed the warmup — observers run between systems, and we need
 /// the warmup_remaining = Some(N) state to be visible by the time
 /// this runs the same frame.
-pub fn tick_warmup_and_dispatch(mut commands: Commands, mut pending: ResMut<PendingCaptures>) {
+pub(crate) fn tick_warmup_and_dispatch(
+    mut commands: Commands,
+    mut pending: ResMut<PendingCaptures>,
+) {
     // Two passes: countdown, then dispatch ready ones. Avoids the
     // borrow-checker complaint about iterating + mutating + spawning
     // in one pass.

@@ -504,11 +504,11 @@ pub fn render_code_editor_content(
     let style = TokenStyle::from_theme(FontId::monospace(font_size), theme);
 
     // Snapshot data we need after the scroll area.
-    let file_content_line_count;
-    let cursor_char_idx_after: Option<usize>;
-    let editor_rect_after: Rect;
-    let text_start_x;
-    let should_scroll_to_cursor;
+    
+    
+    
+    
+    
 
     // Pending autocomplete trigger (filled inside scroll area).
     let mut trigger_autocomplete = false;
@@ -785,7 +785,7 @@ pub fn render_code_editor_content(
                 if let (Some(pre), Some(now)) = (pre_primary_char, cur_char_idx) {
                     if pre != now {
                         let now_byte = char_to_byte(&file.content, now);
-                        if !state_extra_cursors.iter().any(|&c| c == now_byte) {
+                        if !state_extra_cursors.contains(&now_byte) {
                             // Capture for the post-textedit merge below.
                             pending_alt_extra = Some(now_byte);
                         }
@@ -1011,11 +1011,11 @@ pub fn render_code_editor_content(
 
     let (editor_rect_after_v, cur_after_v, line_count_v, text_start_x_v, should_scroll_v) =
         scroll_output.inner;
-    editor_rect_after = editor_rect_after_v;
-    cursor_char_idx_after = cur_after_v;
-    file_content_line_count = line_count_v;
-    text_start_x = text_start_x_v;
-    should_scroll_to_cursor = should_scroll_v;
+    let editor_rect_after: Rect = editor_rect_after_v;
+    let cursor_char_idx_after: Option<usize> = cur_after_v;
+    let file_content_line_count = line_count_v;
+    let text_start_x = text_start_x_v;
+    let should_scroll_to_cursor = should_scroll_v;
     let _ = (should_scroll_to_cursor, text_start_x);
 
     // --- Minimap (right sidebar, independent of scroll area) ---

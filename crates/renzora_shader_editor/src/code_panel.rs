@@ -378,7 +378,7 @@ impl EditorPanel for ShaderCodePanel {
 
                     // New — use type-specific template
                     if ui
-                        .button(RichText::new(format!("{}", FILE_PLUS)).size(12.0))
+                        .button(RichText::new(FILE_PLUS.to_string()).size(12.0))
                         .clicked()
                     {
                         let shader_type = state.shader_file.shader_type;
@@ -402,7 +402,7 @@ impl EditorPanel for ShaderCodePanel {
 
                     // Open
                     if ui
-                        .button(RichText::new(format!("{}", FOLDER_OPEN)).size(12.0))
+                        .button(RichText::new(FOLDER_OPEN.to_string()).size(12.0))
                         .clicked()
                     {
                         if let Some(cmds) = world.get_resource::<EditorCommands>() {
@@ -414,11 +414,11 @@ impl EditorPanel for ShaderCodePanel {
 
                     // Save
                     let save_label = if state.is_modified {
-                        RichText::new(format!("{}", FLOPPY_DISK))
+                        RichText::new(FLOPPY_DISK.to_string())
                             .size(12.0)
                             .color(egui::Color32::from_rgb(255, 200, 80))
                     } else {
-                        RichText::new(format!("{}", FLOPPY_DISK))
+                        RichText::new(FLOPPY_DISK.to_string())
                             .size(12.0)
                             .color(muted)
                     };
@@ -636,6 +636,9 @@ fn open_shader_file(world: &mut World) {
     }
 }
 
+// drop(state) ends the Mut<Resource> borrow early so `world` can be re-borrowed;
+// Mut isn't Drop so clippy flags it, but the effect is intended.
+#[allow(clippy::drop_non_drop)]
 fn save_shader_file(world: &mut World, source: &str) {
     let mut state = world.resource_mut::<ShaderEditorState>();
     state.shader_file.shader_source = source.to_string();

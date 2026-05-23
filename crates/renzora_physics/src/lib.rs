@@ -45,7 +45,7 @@ use renzora::PlayModeState;
 
 /// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
 fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
-    play_mode.map_or(true, |pm| !pm.is_editing())
+    play_mode.is_none_or(|pm| !pm.is_editing())
 }
 
 /// Stamps up to `BATCH` entities per frame from the queue. Keeps the UI

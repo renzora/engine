@@ -90,7 +90,7 @@ pub fn inline_property<R>(
 
 /// Pick the alternating row background color from the theme.
 fn row_bg(row_index: usize, theme: &Theme) -> egui::Color32 {
-    if row_index % 2 == 0 {
+    if row_index.is_multiple_of(2) {
         theme.panels.inspector_row_even.to_color32()
     } else {
         theme.panels.inspector_row_odd.to_color32()

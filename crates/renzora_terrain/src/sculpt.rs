@@ -307,7 +307,7 @@ pub fn apply_stamp(
             let u = (rx / brush_radius + 1.0) * 0.5;
             let v = (rz / brush_radius + 1.0) * 0.5;
 
-            if u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 {
+            if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
                 continue;
             }
 

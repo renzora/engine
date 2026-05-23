@@ -2445,7 +2445,7 @@ fn generate_positions(pattern: SpawnPattern, count: u32, height: f32) -> Vec<Vec
             .collect(),
         SpawnPattern::Wall => {
             let cols = (count as f32).sqrt().ceil() as usize;
-            let rows = (count + cols - 1) / cols;
+            let rows = count.div_ceil(cols);
             let mut positions = Vec::with_capacity(count);
             for row in 0..rows {
                 for col in 0..cols {
@@ -2748,7 +2748,7 @@ fn spawn_inclined_plane(
         sphere_mesh,
         mat(materials, Color::hsl(120.0, 0.7, 0.5)),
         "Ramp Sphere".into(),
-        Transform::from_translation(Vec3::new(-0.5 * s, 5.0 * s, -1.0 * s)),
+        Transform::from_translation(Vec3::new(-0.5 * s, 5.0 * s, -s)),
         PhysicsBodyType::RigidBody,
         CollisionShapeData::sphere(0.4 * s),
         1.0,
@@ -3150,7 +3150,7 @@ fn spawn_wedge_stress(
             box_mesh.clone(),
             m,
             format!("Corner Box {}", i),
-            Transform::from_translation(Vec3::new(1.5 * s + i as f32 * 1.0 * s, 0.5 * s, -1.0 * s)),
+            Transform::from_translation(Vec3::new(1.5 * s + i as f32 * 1.0 * s, 0.5 * s, -s)),
             PhysicsBodyType::RigidBody,
             CollisionShapeData::cuboid(Vec3::splat(0.3 * s)),
             2.0,
@@ -3617,7 +3617,7 @@ fn spawn_pinball_arena(
         meshes.add(Cuboid::new(board_w, board_h, 0.3)),
         board_mat,
         "Board".into(),
-        Transform::from_translation(Vec3::new(0.0, board_h * 0.5, -1.0 * s))
+        Transform::from_translation(Vec3::new(0.0, board_h * 0.5, -s))
             .with_rotation(Quat::from_rotation_x(tilt)),
         CollisionShapeData::cuboid(Vec3::new(board_w * 0.5, board_h * 0.5, 0.15)),
     );

@@ -78,7 +78,7 @@ pub fn drive_clip_playback(
     if !timeline.transport.is_playing() {
         if !active.by_clip.is_empty() {
             for (_, mut h) in active.by_clip.drain() {
-                let _ = h.stop(Tween::default());
+                h.stop(Tween::default());
             }
         }
         active.last_position = timeline.transport.position;
@@ -101,7 +101,7 @@ pub fn drive_clip_playback(
         let jumped_far = now > prev + MAX_FORWARD_STEP;
         if jumped_back || jumped_far {
             for (_, mut h) in active.by_clip.drain() {
-                let _ = h.stop(Tween::default());
+                h.stop(Tween::default());
             }
         }
     }
@@ -124,7 +124,7 @@ pub fn drive_clip_playback(
     }
     for id in to_drop {
         if let Some(mut h) = active.by_clip.remove(&id) {
-            let _ = h.stop(Tween::default());
+            h.stop(Tween::default());
         }
     }
 
@@ -272,6 +272,6 @@ pub fn cache_clip_durations(
 pub fn stop_all_clips(active: Option<NonSendMut<ActiveClips>>) {
     let Some(mut active) = active else { return };
     for (_, mut h) in active.by_clip.drain() {
-        let _ = h.stop(Tween::default());
+        h.stop(Tween::default());
     }
 }

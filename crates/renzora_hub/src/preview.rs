@@ -18,19 +18,12 @@ pub const HUB_PREVIEW_LAYER: usize = 11;
 // ── Resources ───────────────────────────────────────────────────────────────
 
 #[derive(Resource)]
+#[derive(Default)]
 pub struct HubPreviewImage {
     pub handle: Handle<Image>,
     pub texture_id: Option<TextureId>,
 }
 
-impl Default for HubPreviewImage {
-    fn default() -> Self {
-        Self {
-            handle: Handle::default(),
-            texture_id: None,
-        }
-    }
-}
 
 /// Set `wgsl` to trigger shader compilation; set `clear` to deactivate.
 #[derive(Resource, Default)]

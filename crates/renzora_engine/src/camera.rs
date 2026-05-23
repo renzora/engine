@@ -204,7 +204,7 @@ pub fn editor_2d_camera_controller(
     windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
     mut camera_query: Query<(&Camera, &mut Transform, &mut Projection), With<EditorCamera2d>>,
 ) {
-    let in_play = play_mode.map_or(false, |pm| pm.is_in_play_mode());
+    let in_play = play_mode.is_some_and(|pm| pm.is_in_play_mode());
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
     if in_play || view != ViewportView::Two {
         mouse_motion.clear();
@@ -212,7 +212,7 @@ pub fn editor_2d_camera_controller(
         return;
     }
 
-    let hovered = viewport.as_ref().map_or(false, |v| v.hovered);
+    let hovered = viewport.as_ref().is_some_and(|v| v.hovered);
     let Ok((camera, mut transform, mut projection)) = camera_query.single_mut() else {
         mouse_motion.clear();
         scroll_events.clear();

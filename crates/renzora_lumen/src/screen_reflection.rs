@@ -81,8 +81,8 @@ pub struct ScreenReflectionResources {
     /// where N = REFLECTION_MIP_COUNT - 1.
     pub mip_level_view: TextureView,
     /// Full-res bilaterally-upsampled reflection buffer — Stage 4
-    /// output. `screen_reflection_resolve` reads the pyramid + mip_level
-    /// + depth/normal/roughness at full res and writes here. This is
+    /// output. `screen_reflection_resolve` reads the pyramid, mip_level,
+    /// and depth/normal/roughness at full res and writes here. This is
     /// what `lumen_trace` actually samples for the final composite;
     /// the pyramid and mip_level are intermediate state.
     pub resolved_view: TextureView,
@@ -206,8 +206,8 @@ pub fn prepare_screen_reflection_resources(
         // Half-res — ceil-divide so a 1px-wide view still gets one
         // output pixel (avoids zero-sized texture allocation).
         let half_size = Extent3d {
-            width: (target_size.width + 1) / 2,
-            height: (target_size.height + 1) / 2,
+            width: target_size.width.div_ceil(2),
+            height: target_size.height.div_ceil(2),
             depth_or_array_layers: 1,
         };
 
@@ -386,8 +386,8 @@ impl ViewNode for ScreenReflectionTraceNode {
         // Workgroup 8x8 — covers a tile of half-res output pixels.
         // `(size + 7) / 8` round-up so the right/bottom edges don't
         // get clipped when the half-res size isn't a multiple of 8.
-        let dispatch_x = (resources.size.width + 7) / 8;
-        let dispatch_y = (resources.size.height + 7) / 8;
+        let dispatch_x = resources.size.width.div_ceil(8);
+        let dispatch_y = resources.size.height.div_ceil(8);
         pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
 
         Ok(())

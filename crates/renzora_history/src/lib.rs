@@ -245,7 +245,7 @@ pub struct HistoryPanelPlugin;
 impl Plugin for HistoryPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] HistoryPanelPlugin");
-        app.register_panel(HistoryPanel::default());
+        app.register_panel(HistoryPanel);
     }
 }
 

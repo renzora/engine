@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
 use renzora_editor::AppEditorExt;
-use renzora_postprocess;
-use serde;
 
 #[renzora_macros::post_process(shader = "swirl.wgsl", name = "Swirl", icon = "SPIRAL")]
 pub struct SwirlSettings {

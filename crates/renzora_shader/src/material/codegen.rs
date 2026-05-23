@@ -166,6 +166,8 @@ struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
+    // kept for API symmetry with new_with_functions / future callers
+    #[allow(dead_code)]
     fn new(graph: &'a MaterialGraph) -> Self {
         Self::new_with_functions(graph, None)
     }
@@ -330,6 +332,7 @@ impl<'a> Ctx<'a> {
     ///   - power(|world_normal|, sharpness) → blend weights
     ///   - call `fbm_fn(plane_uv, i32(octaves), lacunarity, persistence)` on yz/xz/xy
     ///   - weighted sum → output "value"
+    ///
     /// `fbm_fn` is the helper name (mat_fbm, mat_fbm_ridged, ...).
     /// `_arity` kept for future variants with different param counts.
     fn emit_triplanar_noise(
@@ -2053,20 +2056,20 @@ impl<'a> Ctx<'a> {
                 let v = self.next_var("scdepth");
                 // Guard the prepass sample — if no DepthPrepass is active, the
                 // shader still compiles but returns a "far away" sentinel.
-                self.emit(format!("#ifdef DEPTH_PREPASS"));
+                self.emit("#ifdef DEPTH_PREPASS".to_string());
                 self.emit(format!(
                     "    let {v} = mat_linearize_depth(bevy_pbr::prepass_utils::prepass_depth(in.position, 0u));"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!("    let {v} = 1.0e6;"));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "depth", v);
             }
             "scene/depth_fade" => {
                 self.uses_scene_depth = true;
                 let distance = self.input(node, "distance");
                 let v = self.next_var("sdfade");
-                self.emit(format!("#ifdef DEPTH_PREPASS"));
+                self.emit("#ifdef DEPTH_PREPASS".to_string());
                 self.emit(format!(
                     "    let {v}_scene = mat_linearize_depth(bevy_pbr::prepass_utils::prepass_depth(in.position, 0u));"
                 ));
@@ -2076,33 +2079,33 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v} = saturate(({v}_scene - {v}_pixel) / max({distance}, 0.0001));"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!("    let {v} = 1.0;"));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "fade", v);
             }
             "scene/scene_normal" => {
                 self.uses_scene_normal = true;
                 let v = self.next_var("snrm");
-                self.emit(format!("#ifdef NORMAL_PREPASS"));
+                self.emit("#ifdef NORMAL_PREPASS".to_string());
                 self.emit(format!(
                     "    let {v} = bevy_pbr::prepass_utils::prepass_normal(in.position, 0u);"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!("    let {v} = vec3<f32>(0.0, 1.0, 0.0);"));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "normal", v);
             }
             "scene/motion_vector" => {
                 self.uses_motion_vector = true;
                 let vel = self.next_var("mv");
-                self.emit(format!("#ifdef MOTION_VECTOR_PREPASS"));
+                self.emit("#ifdef MOTION_VECTOR_PREPASS".to_string());
                 self.emit(format!(
                     "    let {vel} = bevy_pbr::prepass_utils::prepass_motion_vector(in.position, 0u);"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!("    let {vel} = vec2<f32>(0.0, 0.0);"));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "velocity", vel.clone());
                 self.set_out(id, "speed", format!("length({vel})"));
             }
@@ -2151,15 +2154,15 @@ impl<'a> Ctx<'a> {
                 // emit the sampling code itself; the bindings are imported
                 // from bevy_pbr::mesh_view_bindings (which Bevy already
                 // binds for every camera with a view bind group).
-                self.emit(format!("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY"));
+                self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, normalize({dir}), {mip});"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, normalize({dir}), {mip});"
                 ));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
@@ -2177,15 +2180,15 @@ impl<'a> Ctx<'a> {
                 self.emit(format!(
                     "    let {v}_rd = reflect(-{v}_vd, normalize({n}));"
                 ));
-                self.emit(format!("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY"));
+                self.emit("#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_maps[0], environment_map_sampler, {v}_rd, {mip});"
                 ));
-                self.emit(format!("#else"));
+                self.emit("#else".to_string());
                 self.emit(format!(
                     "    let {v} = textureSampleLevel(specular_environment_map, environment_map_sampler, {v}_rd, {mip});"
                 ));
-                self.emit(format!("#endif"));
+                self.emit("#endif".to_string());
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
@@ -2873,7 +2876,7 @@ fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String) {
         shader.push_str("#import bevy_pbr::mesh_view_bindings::{specular_environment_map, environment_map_sampler}\n");
         shader.push_str("#endif\n");
     }
-    shader.push_str("\n");
+    shader.push('\n');
 }
 
 /// Emit a Surface-domain PBR shader as a StandardMaterial extension hook.
@@ -2961,7 +2964,7 @@ fn build_pbr_shader(
     if is_connected("normal") {
         let e = resolved.get("normal").unwrap();
         shader.push_str(&format!("    pbr_input.N = normalize({e});\n"));
-        shader.push_str(&format!("    pbr_input.world_normal = pbr_input.N;\n"));
+        shader.push_str("    pbr_input.world_normal = pbr_input.N;\n");
     }
     if is_connected("alpha") {
         let e = resolved.get("alpha").unwrap();

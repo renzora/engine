@@ -198,6 +198,9 @@ impl EditorPanel for ShaderPropertiesPanel {
     }
 }
 
+// drop(s) ends the Mut<Resource> borrow early so `world` can be re-borrowed
+// (reapply_params); Mut isn't Drop so clippy flags it, but the effect is intended.
+#[allow(clippy::drop_non_drop)]
 fn render_float_param(
     ui: &mut egui::Ui,
     world: &World,
@@ -231,6 +234,7 @@ fn render_float_param(
     });
 }
 
+#[allow(clippy::drop_non_drop)] // drop(s) ends Mut<Resource> borrow before reapply_params; intended.
 fn render_color_param(
     ui: &mut egui::Ui,
     world: &World,
@@ -262,6 +266,7 @@ fn render_color_param(
     });
 }
 
+#[allow(clippy::drop_non_drop)] // drop(s) ends Mut<Resource> borrow before reapply_params; intended.
 fn render_vec_param(
     ui: &mut egui::Ui,
     world: &World,
@@ -413,6 +418,7 @@ fn render_vec_param(
     }
 }
 
+#[allow(clippy::drop_non_drop)] // drop(s) ends Mut<Resource> borrow before reapply_params; intended.
 fn render_int_param(
     ui: &mut egui::Ui,
     world: &World,
@@ -444,6 +450,7 @@ fn render_int_param(
     });
 }
 
+#[allow(clippy::drop_non_drop)] // drop(s) ends Mut<Resource> borrow before reapply_params; intended.
 fn render_bool_param(
     ui: &mut egui::Ui,
     world: &World,

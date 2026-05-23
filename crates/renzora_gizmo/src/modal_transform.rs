@@ -303,7 +303,7 @@ pub fn modal_transform_input_system(
     }
     avg_pos /= count as f32;
 
-    let viewport_hovered = viewport.as_ref().map_or(true, |v| v.hovered);
+    let viewport_hovered = viewport.as_ref().is_none_or(|v| v.hovered);
 
     let pivot_screen_pos = camera_query
         .single()

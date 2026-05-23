@@ -87,7 +87,7 @@ pub fn debug_log_cameras(
                         .map(|n| n.to_string())
                         .unwrap_or_else(|| "unnamed".into()),
                     active: cam.is_active,
-                    order: cam.order as isize,
+                    order: cam.order,
                     has_cam3d: cam3d.is_some(),
                     role,
                     has_default: default_cam.is_some(),

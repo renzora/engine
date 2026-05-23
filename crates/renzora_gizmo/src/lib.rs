@@ -1577,7 +1577,7 @@ fn viewport_cursor_ray(
                 .mul_vec3(local_dir)
                 .normalize();
             Some(Ray3d {
-                origin: near.into(),
+                origin: near,
                 direction: Dir3::new(world_dir).ok()?,
             })
         }
@@ -1590,7 +1590,7 @@ fn viewport_cursor_ray(
                     .matrix3
                     .mul_vec3(Vec3::new(ndc.x * hw, ndc.y * hh, 0.0));
             Some(Ray3d {
-                origin: (near + offset).into(),
+                origin: (near + offset),
                 direction: camera_transform.forward(),
             })
         }
@@ -1599,7 +1599,7 @@ fn viewport_cursor_ray(
 }
 
 fn closest_distance_ray_segment(ray: &Ray3d, seg_a: Vec3, seg_b: Vec3) -> Option<f32> {
-    let ro: Vec3 = ray.origin.into();
+    let ro: Vec3 = ray.origin;
     let rd: Vec3 = ray.direction.as_vec3();
     let sd = seg_b - seg_a;
     let sl = sd.length();
@@ -1636,7 +1636,7 @@ fn ray_circle_distance(ray: &Ray3d, center: Vec3, normal: Vec3, radius: f32) -> 
         let s0 = center + (p1 * a0.cos() + p2 * a0.sin()) * radius;
         let s1 = center + (p1 * a1.cos() + p2 * a1.sin()) * radius;
         if let Some(d) = closest_distance_ray_segment(ray, s0, s1) {
-            if best.map_or(true, |b| d < b) {
+            if best.is_none_or(|b| d < b) {
                 best = Some(d);
             }
         }
@@ -1646,7 +1646,7 @@ fn ray_circle_distance(ray: &Ray3d, center: Vec3, normal: Vec3, radius: f32) -> 
 
 fn ray_hits_plane_quad(ray: &Ray3d, corner: Vec3, axis_a: Vec3, axis_b: Vec3, size: f32) -> bool {
     let normal = axis_a.cross(axis_b).normalize();
-    let ro: Vec3 = ray.origin.into();
+    let ro: Vec3 = ray.origin;
     let rd: Vec3 = ray.direction.as_vec3();
     let denom = normal.dot(rd);
     if denom.abs() < 1e-6 {
@@ -1776,7 +1776,7 @@ fn gizmo_hover_detect(
                         entity_pos,
                         entity_pos + dir * gizmo_size,
                     ) {
-                        if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
+                        if dist < threshold && best.is_none_or(|(_, d)| dist < d) {
                             best = Some((axis, dist));
                         }
                     }
@@ -1789,7 +1789,7 @@ fn gizmo_hover_detect(
                 if let Some(dist) =
                     closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size)
                 {
-                    if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
+                    if dist < threshold && best.is_none_or(|(_, d)| dist < d) {
                         best = Some((axis, dist));
                     }
                 }
@@ -1800,7 +1800,7 @@ fn gizmo_hover_detect(
             for axis in AXES {
                 if let Some(dist) = ray_circle_distance(&ray, entity_pos, axis.direction(), radius)
                 {
-                    if dist < threshold && best.map_or(true, |(_, d)| dist < d) {
+                    if dist < threshold && best.is_none_or(|(_, d)| dist < d) {
                         best = Some((axis, dist));
                     }
                 }

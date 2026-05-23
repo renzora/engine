@@ -511,10 +511,15 @@ pub fn render_document_tabs(
             // Collect visible tab rects for drop detection
             let mut tab_rects: Vec<(usize, Rect)> = Vec::new();
 
-            for order_idx in 0..visible_count {
-                let tab = &tab_state.tabs[order_idx];
-                let display_text = layouts[order_idx].0.clone();
-                let tab_width = layouts[order_idx].1;
+            for (order_idx, (tab, layout)) in tab_state
+                .tabs
+                .iter()
+                .zip(layouts.iter())
+                .enumerate()
+                .take(visible_count)
+            {
+                let display_text = layout.0.clone();
+                let tab_width = layout.1;
                 let is_active = order_idx == tab_state.active_tab;
                 let is_being_dragged = dragging == Some(order_idx);
 

@@ -56,7 +56,7 @@ impl AudioPreviewState {
 
     pub fn stop(&mut self) {
         if let Some(mut handle) = self.handle.take() {
-            let _ = handle.stop(Tween::default());
+            handle.stop(Tween::default());
         }
         self.previewing_entity = None;
         self.previewing_path = None;
