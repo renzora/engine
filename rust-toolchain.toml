@@ -1,2 +1,6 @@
 [toolchain]
 channel = "1.93.0"
+# `clippy` is part of the pinned toolchain so `cargo clippy` works in CI and
+# locally without a separate `rustup component add` (the CI clippy gate relies
+# on this — `rust-toolchain.toml` overrides the action's installed channel).
+components = ["clippy"]
