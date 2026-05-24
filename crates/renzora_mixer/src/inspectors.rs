@@ -94,6 +94,81 @@ fn audio_player_custom_ui(
         }
     }
 
+    // ----- Clip Pool (random one-shots fired by play_audio()) -----
+    section_header(ui, "Clip Pool", theme);
+    {
+        let exts = ["ogg", "wav", "mp3", "flac"];
+
+        // Existing pool entries: filename + remove button.
+        for (i, clip) in data.clips.iter().enumerate() {
+            let name = clip.rsplit(['/', '\\']).next().unwrap_or(clip).to_string();
+            let remove = inline_property(ui, row, "", theme, |ui| {
+                let mut remove = false;
+                ui.horizontal(|ui| {
+                    if ui.small_button(regular::TRASH).clicked() {
+                        remove = true;
+                    }
+                    ui.label(egui::RichText::new(&name).size(11.0));
+                });
+                remove
+            });
+            row += 1;
+            if remove {
+                commands.push(move |w| {
+                    if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
+                        if i < d.clips.len() {
+                            d.clips.remove(i);
+                        }
+                    }
+                });
+            }
+        }
+
+        // Drop zone — appends every audio file dropped (multi-select works).
+        let payload = world.get_resource::<AssetDragPayload>();
+        let result = inline_property(ui, row, "Add", theme, |ui| {
+            asset_drop_target(
+                ui,
+                ui.id().with("audio_clip_pool_add"),
+                None,
+                &exts,
+                "Drag audio file(s) here",
+                theme,
+                payload,
+            )
+        });
+        row += 1;
+        if result.dropped_path.is_some() {
+            if let Some(p) = payload {
+                let project = world.get_resource::<renzora::core::CurrentProject>();
+                let mut to_add: Vec<String> = Vec::new();
+                for path in &p.paths {
+                    let is_audio = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| {
+                            let e = e.to_ascii_lowercase();
+                            exts.iter().any(|x| *x == e)
+                        })
+                        .unwrap_or(false);
+                    if is_audio {
+                        let rel = project
+                            .map(|pr| pr.make_asset_relative(path))
+                            .unwrap_or_else(|| path.to_string_lossy().to_string());
+                        to_add.push(rel);
+                    }
+                }
+                if !to_add.is_empty() {
+                    commands.push(move |w| {
+                        if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
+                            d.clips.extend(to_add);
+                        }
+                    });
+                }
+            }
+        }
+    }
+
     // ----- Playback -----
     section_header(ui, "Playback", theme);
     if inline_property(ui, row, "Autoplay", theme, |ui| {
@@ -130,8 +205,18 @@ fn audio_player_custom_ui(
     });
     row += 1;
 
+    changed |= inline_property(ui, row, "Vol Jitter", theme, |ui| {
+        labeled_slider(ui, &mut data.volume_jitter, SliderConfig::new(0.0, 1.0), theme).changed()
+    });
+    row += 1;
+
     changed |= inline_property(ui, row, "Pitch", theme, |ui| {
         labeled_slider(ui, &mut data.pitch, SliderConfig::new(0.1, 4.0), theme).changed()
+    });
+    row += 1;
+
+    changed |= inline_property(ui, row, "Pitch Jitter", theme, |ui| {
+        labeled_slider(ui, &mut data.pitch_jitter, SliderConfig::new(0.0, 0.5), theme).changed()
     });
     row += 1;
 
@@ -222,9 +307,13 @@ fn audio_player_custom_ui(
         let new_data = data;
         commands.push(move |w| {
             if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
+                // Preserve the clip + pool, which the drag-drop/clear/remove
+                // commands above manage independently of this bulk write.
                 let clip = d.clip.clone();
+                let clips = std::mem::take(&mut d.clips);
                 *d = new_data;
                 d.clip = clip;
+                d.clips = clips;
             }
         });
     }

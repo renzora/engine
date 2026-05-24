@@ -11,6 +11,7 @@
 --   West (X/Square) / J          : punch.
 --   North (Y/Triangle) / K       : kick.
 --   East (B/Circle) / C          : toggle crouch / crawl.
+--   R2 (RT) / Left Shift  (hold) : sprint.
 --   L1 (LB) / Left Ctrl   (hold) : crouch / crawl.
 --   L2 (LT) / right mouse (hold) : "strafe lock" — the character keeps facing
 --                                   away from the camera so the stick selects
@@ -43,6 +44,7 @@ function props()
     return {
         -- Movement
         move_speed    = { type = "float",  value = 3.0,   hint = "Max move speed (world units/sec)" },
+        sprint_speed  = { type = "float",  value = 6.0,   hint = "Move speed while sprinting (hold R2 / Left Shift)" },
         crouch_speed  = { type = "float",  value = 1.4,   hint = "Move speed while crouched/crawling" },
         turn_speed    = { type = "float",  value = 540.0, hint = "How fast the character turns (deg/sec)" },
         deadzone      = { type = "float",  value = 0.2,   hint = "Stick magnitude below this is ignored" },
@@ -238,6 +240,8 @@ function on_update()
     -- Circle toggles crawl; L1 / Left Ctrl is a hold. Either keeps us crouched.
     if crouch_edge then _crouch_tgl = not _crouch_tgl end
     local crouch_held = _crouch_tgl or gamepad_l1 or is_key_pressed("ControlLeft")
+    -- Hold R2 (right trigger) or Left Shift to sprint.
+    local sprint_held = gamepad_right_trigger > 0.5 or gamepad_r2 or is_key_pressed("ShiftLeft")
 
     -- ----- Tick down timed clips -----
     if _lock_timer > 0.0 then _lock_timer = _lock_timer - delta end
@@ -285,7 +289,11 @@ function on_update()
     if not locked then
         if moving then
             local speed = move_speed
-            if crouch_held and grounded then speed = crouch_speed end
+            if crouch_held and grounded then
+                speed = crouch_speed
+            elseif sprint_held then
+                speed = sprint_speed
+            end
             dx = dir_x * speed * delta
             dz = dir_z * speed * delta
             -- Strafe lock faces away from the camera; otherwise face travel.

@@ -617,6 +617,20 @@ fn register_api(lua: &Lua) {
         })
         .unwrap(),
     );
+    // play_audio([entity_name]) — fire a one-shot from an entity's AudioPlayer
+    // component (random clip from its pool + jitter). No name = this entity.
+    let _ = globals.set(
+        "play_audio",
+        lua.create_function(|_, target: Option<String>| {
+            push_command(ScriptCommand::Action {
+                name: "play_audio_player".to_string(),
+                target_entity: target.filter(|s| !s.is_empty()),
+                args: std::collections::HashMap::new(),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Physics --
     let _ = globals.set(

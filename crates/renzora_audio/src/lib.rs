@@ -73,6 +73,7 @@ impl Plugin for KiraPlugin {
                 .insert_resource(AudioPreviewState::default())
                 .insert_resource(mixer::MixerState::default())
                 .insert_resource(AudioCommandQueue::default())
+                .insert_resource(script_actions::AudioPlayerRuntime::default())
                 .insert_resource(TimelineState::default())
                 .configure_sets(
                     Update,

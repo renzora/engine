@@ -12,12 +12,26 @@ use crate::manager::RolloffType;
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component)]
 pub struct AudioPlayer {
-    /// Relative path to the audio clip asset.
+    /// Relative path to the audio clip asset (single clip; used by autoplay).
     pub clip: String,
+    /// Pool of clip paths for one-shot playback via `play_audio()`. When
+    /// non-empty, each trigger picks one at random (never the same one twice in
+    /// a row); falls back to `clip` when empty.
+    #[serde(default)]
+    #[reflect(default)]
+    pub clips: Vec<String>,
     /// Volume multiplier (0.0–2.0, 1.0 = unity).
     pub volume: f32,
+    /// Random +/- volume applied per one-shot, for variation (0 = none).
+    #[serde(default)]
+    #[reflect(default)]
+    pub volume_jitter: f32,
     /// Playback speed multiplier (1.0 = normal).
     pub pitch: f32,
+    /// Random +/- pitch applied per one-shot, for variation (0 = none).
+    #[serde(default)]
+    #[reflect(default)]
+    pub pitch_jitter: f32,
     /// Stereo panning (-1.0 left, 0.0 center, 1.0 right).
     pub panning: f32,
     /// Whether the clip loops.
@@ -50,8 +64,11 @@ impl Default for AudioPlayer {
     fn default() -> Self {
         Self {
             clip: String::new(),
+            clips: Vec::new(),
             volume: 1.0,
+            volume_jitter: 0.0,
             pitch: 1.0,
+            pitch_jitter: 0.0,
             panning: 0.0,
             looping: false,
             loop_start: 0.0,
