@@ -212,11 +212,19 @@ fn script_component_ui(
             let mut tab_groups: Vec<(String, Vec<(String, ScriptValue)>)> = Vec::new();
             let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
             for def in &defs {
-                let Some(val) = entry.variables.get(&def.name) else {
-                    continue;
-                };
+                // Show the prop even when the entity hasn't stored a value yet.
+                // `entry.variables` is only populated lazily, when scripts first
+                // execute in play/script mode — so on a freshly added script or a
+                // just-loaded project the map is empty. Fall back to the prop's
+                // declared default so the inspector reflects the script's `props()`
+                // immediately; editing the field writes the value into `variables`.
+                let val = entry
+                    .variables
+                    .get(&def.name)
+                    .cloned()
+                    .unwrap_or_else(|| def.default_value.clone());
                 let tab = def.tab.clone().unwrap_or_else(|| "General".to_string());
-                let pair = (def.name.clone(), val.clone());
+                let pair = (def.name.clone(), val);
                 match tab_groups.iter_mut().find(|(t, _)| *t == tab) {
                     Some((_, vars)) => vars.push(pair),
                     None => tab_groups.push((tab, vec![pair])),
