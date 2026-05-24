@@ -188,17 +188,27 @@ fn optimize_primitive(
 
     if vertex_fetch_safe {
         let remap = meshopt::optimize_vertex_fetch_remap(&indices, vertex_count);
-        indices = meshopt::remap_index_buffer(Some(&indices), vertex_count, &remap);
+        // `optimize_vertex_fetch_remap` (meshopt-rs) resizes the returned table
+        // down to the *unique* vertex count, but we index it by old vertex id
+        // (0..vertex_count) both when remapping indices and when scattering each
+        // attribute. When the primitive has vertices its indices never reference
+        // (unique < vertex_count — common in real assets like Sponza), the table
+        // is shorter than vertex_count, the lookups run off its end, and the mesh
+        // is scrambled. Only apply vertex-fetch when every vertex is referenced;
+        // otherwise leave the cache/overdraw result (both index-only, safe).
+        if remap.len() == vertex_count {
+            indices = meshopt::remap_index_buffer(Some(&indices), vertex_count, &remap);
 
-        // Remap every vertex attribute in the binary buffer
-        for (_sem, acc) in primitive.attributes() {
-            remap_attribute_in_buffer(&acc, read_buf, bin, &remap, vertex_count)?;
+            // Remap every vertex attribute in the binary buffer
+            for (_sem, acc) in primitive.attributes() {
+                remap_attribute_in_buffer(&acc, read_buf, bin, &remap, vertex_count)?;
+            }
+
+            // Rebuild adapter from updated buffer for subsequent ops
+            pos_bytes = read_position_bytes(&pos_accessor, bin.as_slice())?;
+            adapter = meshopt::VertexDataAdapter::new(&pos_bytes, 12, 0)
+                .map_err(|e| format!("VertexDataAdapter: {e:?}"))?;
         }
-
-        // Rebuild adapter from updated buffer for subsequent ops
-        pos_bytes = read_position_bytes(&pos_accessor, bin.as_slice())?;
-        adapter = meshopt::VertexDataAdapter::new(&pos_bytes, 12, 0)
-            .map_err(|e| format!("VertexDataAdapter: {e:?}"))?;
     }
 
     // --- Lossy: simplification ---
@@ -521,5 +531,64 @@ mod tests {
         resolved.sort_by_key(key);
         expected.sort_by_key(key);
         assert_eq!(resolved, expected, "triangle vertices must survive vertex-fetch");
+    }
+
+    /// Regression: a primitive whose index buffer doesn't reference every vertex
+    /// in its POSITION accessor (unused/duplicate verts). meshopt's
+    /// `optimize_vertex_fetch_remap` then returns a table sized to the *unique*
+    /// vertex count, shorter than `vertex_count`; indexing it by old vertex id
+    /// runs off the end and scrambles geometry — the bug that streaked Sponza
+    /// (assets there pad primitives with unreferenced verts). Vertex-fetch must
+    /// detect the short table and leave the geometry intact.
+    #[test]
+    fn vertex_fetch_handles_unused_vertices() {
+        // 4 vertices; the single triangle uses 0, 2, 3 — vertex 1 is unused,
+        // and a *used* vertex (3) has an id past the unique count (3).
+        let positions: [f32; 12] = [
+            0.0, 0.0, 0.0, // 0  A (used)
+            9.0, 9.0, 9.0, // 1  B (unused — the gap)
+            1.0, 0.0, 0.0, // 2  C (used)
+            0.0, 1.0, 0.0, // 3  D (used)
+        ];
+        let mut bin = Vec::new();
+        for p in positions {
+            bin.extend_from_slice(&p.to_le_bytes());
+        }
+        for i in [0u16, 2, 3] {
+            bin.extend_from_slice(&i.to_le_bytes()); // indices @ 48
+        }
+
+        let json = r#"{"asset":{"version":"2.0"},
+            "buffers":[{"byteLength":54}],
+            "bufferViews":[
+                {"buffer":0,"byteOffset":0,"byteLength":48},
+                {"buffer":0,"byteOffset":48,"byteLength":6}],
+            "accessors":[
+                {"bufferView":0,"componentType":5126,"count":4,"type":"VEC3","min":[0,0,0],"max":[9,9,9]},
+                {"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}],
+            "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"#;
+
+        let glb = pack_test_glb(json, &bin);
+        let out = optimize_glb(&glb, &all_on()).expect("optimize");
+        let out_glb = gltf::Glb::from_slice(&out).expect("parse");
+        let out_bin = out_glb.bin.expect("bin");
+
+        // Resolve the triangle (indices → positions); it must still be A/C/D.
+        let out_pos = read_positions(&out_bin, 0, 4);
+        let mut resolved: Vec<[f32; 3]> = (0..3)
+            .map(|i| {
+                let o = 48 + i * 2;
+                let idx = u16::from_le_bytes(out_bin[o..o + 2].try_into().unwrap()) as usize;
+                out_pos[idx]
+            })
+            .collect();
+        let mut expected = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let key = |v: &[f32; 3]| (v[0].to_bits(), v[1].to_bits(), v[2].to_bits());
+        resolved.sort_by_key(key);
+        expected.sort_by_key(key);
+        assert_eq!(
+            resolved, expected,
+            "triangle must resolve to A/C/D despite the unused vertex",
+        );
     }
 }

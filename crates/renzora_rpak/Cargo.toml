@@ -13,6 +13,9 @@ toml = "0.8"
 # pure-bytes scenarios go through `BytesBackend` instead.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap2 = "0.9"
+# Parallel per-entry compression during packing. Export is desktop-only; the
+# wasm runtime only reads archives, so rayon stays out of the wasm build.
+rayon = "1"
 
 [lints]
 workspace = true

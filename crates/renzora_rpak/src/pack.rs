@@ -11,6 +11,80 @@ use crate::format::{
     HEADER_FLAG_INDEX_COMPRESSED, HEADER_LEN,
 };
 
+/// Normalize a path into a canonical archive key: forward slashes, no `.`
+/// segments, and no empty segments (collapsing `//`).
+///
+/// This matters because scene files can store paths with OS-native separators
+/// — a script saved on Windows as `scripts\foo.lua` is escaped in RON as
+/// `scripts\\foo.lua`, and the packer's textual scan turns the doubled
+/// backslash into a doubled slash. Without collapsing, the entry is keyed
+/// `scripts//foo.lua` while the runtime looks it up as `scripts/foo.lua`, so
+/// the asset is never found. Normalizing both sides to the same canonical key
+/// keeps subdirectory assets (scripts, models, …) loadable from the archive.
+fn normalize_archive_key(path: &str) -> String {
+    path.replace('\\', "/")
+        .split('/')
+        .filter(|seg| !seg.is_empty() && *seg != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Extensions whose contents are already compressed. Re-compressing them with
+/// zstd costs CPU (a lot at high levels) for essentially no size win and just
+/// falls back to `Stored` anyway, so we store them verbatim and skip the pass.
+fn is_already_compressed(path: &str) -> bool {
+    const SKIP: &[&str] = &[
+        // Images
+        ".png", ".jpg", ".jpeg", ".webp", ".gif",
+        // Audio
+        ".ogg", ".mp3", ".flac",
+        // GPU/baked textures and other already-compressed containers
+        ".rmip", ".ktx2", ".basis", ".dds",
+        ".zst", ".zip",
+    ];
+    let lower = path.to_ascii_lowercase();
+    SKIP.iter().any(|ext| lower.ends_with(ext))
+}
+
+/// Compress one entry. Returns `(Stored, None)` for already-compressed formats
+/// or when zstd fails to shrink the data, otherwise `(Zstd, Some(bytes))`.
+fn compress_entry(path: &str, data: &[u8], level: i32) -> io::Result<(Compression, Option<Vec<u8>>)> {
+    if is_already_compressed(path) {
+        return Ok((Compression::Stored, None));
+    }
+    let z = zstd::encode_all(data, level).map_err(io::Error::other)?;
+    if (z.len() as u64) < data.len() as u64 {
+        Ok((Compression::Zstd, Some(z)))
+    } else {
+        Ok((Compression::Stored, None))
+    }
+}
+
+/// Compress all entries, in parallel across cores on native targets.
+#[cfg(not(target_arch = "wasm32"))]
+fn compress_entries(
+    items: &[(&String, &Vec<u8>)],
+    level: i32,
+) -> io::Result<Vec<(Compression, Option<Vec<u8>>)>> {
+    use rayon::prelude::*;
+    items
+        .par_iter()
+        .map(|&(p, d)| compress_entry(p, d, level))
+        .collect()
+}
+
+/// WASM has no thread pool; the runtime never packs anyway, but keep it building.
+#[cfg(target_arch = "wasm32")]
+fn compress_entries(
+    items: &[(&String, &Vec<u8>)],
+    level: i32,
+) -> io::Result<Vec<(Compression, Option<Vec<u8>>)>> {
+    items
+        .iter()
+        .map(|&(p, d)| compress_entry(p, d, level))
+        .collect()
+}
+
 /// Collects files and writes them into an `.rpak` archive.
 pub struct RpakPacker {
     /// path (relative, forward-slash) -> file contents
@@ -32,8 +106,7 @@ impl RpakPacker {
 
     /// Add a file with the given archive-relative path.
     pub fn add_file(&mut self, archive_path: &str, data: Vec<u8>) {
-        let normalized = archive_path.replace('\\', "/");
-        self.entries.insert(normalized, data);
+        self.entries.insert(normalize_archive_key(archive_path), data);
     }
 
     /// Add a file from disk, computing the archive path relative to `base_dir`.
@@ -71,29 +144,25 @@ impl RpakPacker {
         // Reserve header space; we'll backfill once the index offset is known.
         let mut out: Vec<u8> = vec![0u8; HEADER_LEN as usize];
 
-        // ── Pass 1: write each entry's payload (zstd-compress when it shrinks).
-        let mut entries: Vec<PakEntry> = Vec::with_capacity(self.entries.len());
-        for (path, data) in &self.entries {
+        // ── Pass 1: compress every payload (in parallel off-wasm), then lay
+        // them out sequentially so offsets stay deterministic. Already-compressed
+        // formats skip zstd entirely (see `compress_entry`) — at high levels those
+        // passes are the bulk of the cost and gain nothing.
+        let items: Vec<(&String, &Vec<u8>)> = self.entries.iter().collect();
+        let compressed = compress_entries(&items, compression_level)?;
+
+        let mut entries: Vec<PakEntry> = Vec::with_capacity(items.len());
+        for ((path, data), (compression, payload)) in items.iter().zip(compressed) {
             let uncompressed_size = data.len() as u64;
             let entry_offset = out.len() as u64;
-
-            // zstd-compress the payload, but fall back to Stored if the
-            // compressor ends up making it larger (common for tiny files,
-            // already-compressed formats like .png/.ogg/.glb-with-jpeg).
-            let compressed = zstd::encode_all(data.as_slice(), compression_level)
-                .map_err(io::Error::other)?;
-
-            let (compression, payload) = if (compressed.len() as u64) < uncompressed_size {
-                (Compression::Zstd, compressed)
-            } else {
-                (Compression::Stored, data.clone())
-            };
-
-            let compressed_size = payload.len() as u64;
-            out.extend_from_slice(&payload);
+            // `payload` is Some only when zstd actually shrank the data; otherwise
+            // the original bytes are stored verbatim.
+            let bytes: &[u8] = payload.as_deref().unwrap_or(data.as_slice());
+            let compressed_size = bytes.len() as u64;
+            out.extend_from_slice(bytes);
 
             entries.push(PakEntry {
-                path: path.clone(),
+                path: (*path).clone(),
                 offset: entry_offset,
                 compressed_size,
                 uncompressed_size,
@@ -224,7 +293,7 @@ where
         disk_path
             .strip_prefix(project_dir)
             .ok()
-            .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+            .map(|rel| normalize_archive_key(&rel.to_string_lossy()))
     };
 
     // Try to pack a file by archive key if it passes the extension filter.
@@ -345,9 +414,8 @@ where
         };
 
         for reference in refs {
-            let norm = reference.replace('\\', "/");
-            let stripped = norm.trim_start_matches("./").to_string();
-            let mut candidates: Vec<String> = vec![norm.clone(), stripped.clone()];
+            let stripped = normalize_archive_key(&reference);
+            let mut candidates: Vec<String> = vec![stripped.clone()];
             if !parent_dir.is_empty() {
                 candidates.push(format!("{}/{}", parent_dir, stripped));
             }
@@ -844,6 +912,9 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".tga",
     ".hdr",
     ".exr",
+    // Renzora baked textures (pre-mipmapped, GPU-compressed; referenced by
+    // `.material` files as literal paths next to the source model).
+    ".rmip",
     // 3D models
     ".glb",
     ".gltf",
@@ -855,6 +926,9 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".flac",
     // Scenes
     ".ron",
+    // Animations (clips + state machines, RON-based)
+    ".anim",
+    ".animsm",
     // Materials / shaders
     ".material",
     ".shader",
@@ -990,6 +1064,27 @@ mod tests {
         // Lookups go through normalize, so both spellings hit the same entry.
         assert_eq!(p.get("models/car.glb"), Some(&[1u8, 2, 3][..]));
         assert_eq!(p.len(), 1);
+    }
+
+    #[test]
+    fn normalize_collapses_doubled_separators() {
+        // A Windows-saved `scripts\foo.lua` is escaped to `scripts\\foo.lua` in
+        // RON; the textual asset scan reads the doubled backslash and turns it
+        // into a doubled slash. The key must collapse to the form the runtime
+        // looks up, or subdirectory scripts never load from the archive.
+        assert_eq!(normalize_archive_key("scripts//foo.lua"), "scripts/foo.lua");
+        assert_eq!(normalize_archive_key("scripts\\foo.lua"), "scripts/foo.lua");
+        assert_eq!(normalize_archive_key("scripts\\\\foo.lua"), "scripts/foo.lua");
+        assert_eq!(normalize_archive_key("./models/a.glb"), "models/a.glb");
+        assert_eq!(
+            normalize_archive_key("models/character/Idle.anim"),
+            "models/character/Idle.anim"
+        );
+
+        // Entries keyed by a doubled-slash path are reachable at the clean key.
+        let mut p = RpakPacker::new();
+        p.add_file("scripts//foo.lua", vec![9]);
+        assert_eq!(p.get("scripts/foo.lua"), Some(&[9u8][..]));
     }
 
     #[test]

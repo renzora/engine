@@ -87,12 +87,19 @@ fn scan_script_files_inner(
 }
 
 fn make_relative(abs: std::path::PathBuf, world: &World) -> std::path::PathBuf {
-    if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
-        if let Ok(rel) = abs.strip_prefix(&project.path) {
-            return rel.to_path_buf();
-        }
-    }
-    abs
+    let rel = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+        abs.strip_prefix(&project.path)
+            .map(|r| r.to_path_buf())
+            .unwrap_or(abs)
+    } else {
+        abs
+    };
+    // Store with forward slashes so the path is OS-independent and resolves to
+    // the same archive key at export and runtime. A Windows-native
+    // `scripts\foo.lua` otherwise serializes into the scene as `scripts\\foo.lua`
+    // and the packer's textual scan turns it into `scripts//foo.lua`, which the
+    // runtime (looking up `scripts/foo.lua`) never finds.
+    std::path::PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
 }
 
 fn to_display_name(name: &str) -> String {

@@ -10283,6 +10283,7 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "memmap2",
+ "rayon",
  "toml 0.8.23",
  "zstd",
 ]

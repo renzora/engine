@@ -120,11 +120,30 @@ pub fn init_app() -> App {
     app
 }
 
+/// Clean log formatter for the exported (standalone) game.
+///
+/// The editor runs in a real terminal, so it keeps Bevy's default ANSI-colored
+/// formatter. The exported game's output is usually read from a piped/redirected
+/// console or a log file that doesn't interpret ANSI, where the defaults dump
+/// raw escape sequences (`←[2m`, `←[32m`, …) on every line instead of colors,
+/// which is the bulk of the unreadability. We turn ANSI off and use the
+/// `.compact()` formatter, which drops the leading `system{name="…"}:` span-name
+/// prefix, leaving plain `TIMESTAMP LEVEL target: message` lines.
+#[cfg(not(feature = "editor"))]
+fn runtime_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
+    use bevy::log::tracing_subscriber::fmt;
+    Some(Box::new(
+        fmt::Layer::default()
+            .with_writer(std::io::stderr)
+            .with_ansi(false)
+            .event_format(fmt::format().with_ansi(false).compact()),
+    ))
+}
+
 pub fn add_default_rendering(app: &mut App) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
-    app.add_plugins(
-        DefaultPlugins
+    let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
                 ..default()
@@ -170,8 +189,15 @@ pub fn add_default_rendering(app: &mut App) {
                     ..default()
                 }),
                 ..default()
-            }),
-    );
+            });
+    // Exported game only: replace Bevy's default ANSI formatter with a plain,
+    // span-free one. The editor keeps the default (it runs in a real terminal).
+    #[cfg(not(feature = "editor"))]
+    let plugins = plugins.set(bevy::log::LogPlugin {
+        fmt_layer: runtime_fmt_layer,
+        ..default()
+    });
+    app.add_plugins(plugins);
     #[cfg(feature = "editor")]
     app.add_systems(Startup, maximize_primary_window);
     #[cfg(not(feature = "editor"))]

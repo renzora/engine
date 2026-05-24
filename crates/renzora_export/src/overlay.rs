@@ -948,7 +948,7 @@ fn draw_settings_panel(
                     .color(text_secondary),
             );
             ui.add(
-                egui::Slider::new(&mut export_state.compression_level, 1..=19).text("zstd level"),
+                egui::Slider::new(&mut export_state.compression_level, 1..=22).text("zstd level"),
             );
         });
         drop(export_state);
