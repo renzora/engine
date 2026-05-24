@@ -617,7 +617,11 @@ fn load_scene_on_enter_loading(world: &mut World) {
 fn tick_scene_load_progress(
     progress: Option<ResMut<SceneLoadProgress>>,
     mut tasks: ResMut<LoadingTasks>,
-    instances: Query<(&MeshInstanceData, Option<&Children>)>,
+    instances: Query<(
+        &MeshInstanceData,
+        Option<&Children>,
+        Has<scene_io::MeshInstanceLoadFailed>,
+    )>,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<SceneRoot>>,
@@ -680,8 +684,10 @@ fn tick_scene_load_progress(
     let mut next_processing_name: Option<String> = None;
     let processed: u32 = instances
         .iter()
-        .filter(|(data, kids)| {
-            if data.model_path.is_none() {
+        .filter(|(data, kids, load_failed)| {
+            // No model to load, or the load failed (missing file) — either way
+            // there's nothing left to wait on, so count it as processed.
+            if data.model_path.is_none() || *load_failed {
                 return true;
             }
             let done = kids
@@ -787,7 +793,14 @@ fn tick_editor_load_progress(
     // a "has SceneRoot child with non-empty children" check
     // misclassify finished entities as still-unspawned forever. Filtering
     // on `ImportedRoot` is both simpler and survives flatten.
-    instances: Query<(&MeshInstanceData, Option<&Children>), Without<ImportedRoot>>,
+    instances: Query<
+        (
+            &MeshInstanceData,
+            Option<&Children>,
+            Has<scene_io::MeshInstanceLoadFailed>,
+        ),
+        Without<ImportedRoot>,
+    >,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<SceneRoot>>,
@@ -803,8 +816,10 @@ fn tick_editor_load_progress(
     let pending_assets = pending.iter().filter(|d| d.model_path.is_some()).count() as u32;
     let unspawned: u32 = instances
         .iter()
-        .filter(|(data, kids)| {
-            if data.model_path.is_none() {
+        .filter(|(data, kids, load_failed)| {
+            // Nothing to load, or the load failed (missing file) — not
+            // outstanding work, so don't count it as unspawned.
+            if data.model_path.is_none() || *load_failed {
                 return false;
             }
             let scene_populated = kids
@@ -883,8 +898,8 @@ fn tick_editor_load_progress(
         }
 
         let mut next_processing_name: Option<String> = None;
-        for (data, kids) in instances.iter() {
-            if data.model_path.is_none() {
+        for (data, kids, load_failed) in instances.iter() {
+            if data.model_path.is_none() || load_failed {
                 continue;
             }
             let populated = kids

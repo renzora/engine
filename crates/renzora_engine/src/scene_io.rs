@@ -2011,17 +2011,48 @@ pub fn rehydrate_mesh_instances(
 #[derive(Component)]
 pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
 
+/// Marker: the mesh instance's GLB asset failed to load — typically because the
+/// model file was deleted (or renamed/moved) while the editor was closed, so the
+/// scene still references a path that no longer exists. The asset never lands in
+/// `Assets<Gltf>`, so loading-progress systems must treat the entity as resolved
+/// instead of waiting on it forever (which hangs the loading screen).
+#[derive(Component)]
+pub struct MeshInstanceLoadFailed;
+
 /// Finishes mesh-instance rehydration once the GLTF asset is ready.
 pub fn finish_mesh_instance_rehydrate(
     mut commands: Commands,
     query: Query<(Entity, &PendingMeshInstanceRehydrate)>,
     gltf_assets: Option<Res<Assets<Gltf>>>,
+    asset_server: Res<AssetServer>,
 ) {
     let Some(gltf_assets) = gltf_assets else {
         return;
     };
     for (entity, pending) in &query {
         let Some(gltf) = gltf_assets.get(&pending.0) else {
+            // Not in the store yet — still loading, or the load failed. A
+            // failed load (missing/deleted file) never produces a `Gltf`, so
+            // without this branch the entity keeps `PendingMeshInstanceRehydrate`
+            // forever and the loading screen never advances. Detect the failure,
+            // drop the pending marker, and tag it so progress systems count it
+            // as done.
+            if matches!(
+                asset_server.get_load_state(pending.0.id()),
+                Some(bevy::asset::LoadState::Failed(_))
+            ) {
+                warn!(
+                    "[scene] model failed to load (missing or deleted?), skipping: {}",
+                    asset_server
+                        .get_path(pending.0.id())
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "<unknown>".into())
+                );
+                commands
+                    .entity(entity)
+                    .remove::<PendingMeshInstanceRehydrate>()
+                    .insert(MeshInstanceLoadFailed);
+            }
             continue;
         };
 
