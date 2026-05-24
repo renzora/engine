@@ -18,97 +18,24 @@ pub fn detect_unit_scale(path: &Path) -> Option<f32> {
     let ext = path.extension().and_then(|e| e.to_str())?.to_lowercase();
 
     match ext.as_str() {
-        "fbx" => detect_fbx_units(path),
+        // FBX is handled by ufbx at load time: `load_scene` sets
+        // `target_unit_meters = 1.0`, and ufbx normalizes the file's source
+        // units (read from its own `original_unit_meters`) to meters reliably
+        // across every FBX version. The previous bespoke probe was both
+        // inverted (it returned meters-per-unit, which `load_scene` then used
+        // as `target_unit_meters` — preserving cm instead of normalizing) and
+        // unreliable (it failed to parse FBX 6100, so old rigs imported as
+        // meters while modern Mixamo clip FBX 7700s imported as cm — the same
+        // character ending up with a meter skeleton and centimeter clips, which
+        // explodes the rig when a clip plays). Returning `None` keeps the scale
+        // at its 1.0 default so ufbx does the (correct, consistent) conversion.
+        "fbx" => None,
         "usd" | "usda" | "usdc" => detect_usd_units_file(path),
         "usdz" => detect_usdz_units(path),
         "dae" => detect_dae_units(path),
         "blend" => Some(1.0), // Blender uses meters natively
         _ => None,
     }
-}
-
-// ---------------------------------------------------------------------------
-// FBX
-// ---------------------------------------------------------------------------
-
-/// Read FBX `UnitScaleFactor` from GlobalSettings.
-///
-/// UnitScaleFactor is the number of centimeters per file unit.
-/// - 1.0 = centimeters → 0.01 meters
-/// - 100.0 = meters → 1.0 meters
-/// - 2.54 = inches → 0.0254 meters
-fn detect_fbx_units(path: &Path) -> Option<f32> {
-    let data = std::fs::read(path).ok()?;
-
-    // Try binary FBX (both modern and legacy) via fbx_legacy parser
-    // which handles all binary versions
-    if data.len() >= 27 && &data[0..20] == b"Kaydara FBX Binary  " {
-        return detect_fbx_units_binary(&data);
-    }
-
-    // ASCII FBX
-    if let Ok(text) = std::str::from_utf8(&data) {
-        return detect_fbx_units_ascii(text);
-    }
-
-    None
-}
-
-fn detect_fbx_units_binary(data: &[u8]) -> Option<f32> {
-    let (_, nodes) = crate::fbx_legacy::parse_document(data).ok()?;
-
-    for node in &nodes {
-        if node.name != "GlobalSettings" {
-            continue;
-        }
-        for child in &node.children {
-            if child.name != "Properties70" && child.name != "Properties60" {
-                continue;
-            }
-            for prop in &child.children {
-                if prop.name != "P" && prop.name != "Property" {
-                    continue;
-                }
-                if let Some(crate::fbx_legacy::FbxProp::String(ref name)) = prop.properties.first()
-                {
-                    if name == "UnitScaleFactor" {
-                        for p in prop.properties.iter().skip(4) {
-                            match p {
-                                crate::fbx_legacy::FbxProp::F64(v) => {
-                                    return Some((*v / 100.0) as f32)
-                                }
-                                crate::fbx_legacy::FbxProp::F32(v) => return Some(*v / 100.0),
-                                crate::fbx_legacy::FbxProp::I32(v) => {
-                                    return Some(*v as f32 / 100.0)
-                                }
-                                crate::fbx_legacy::FbxProp::I64(v) => {
-                                    return Some(*v as f32 / 100.0)
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn detect_fbx_units_ascii(text: &str) -> Option<f32> {
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.contains("UnitScaleFactor") && trimmed.contains(',') {
-            // Format: P: "UnitScaleFactor", "double", "Number", "",1
-            if let Some(val_str) = trimmed.rsplit(',').next() {
-                if let Ok(val) = val_str.trim().parse::<f64>() {
-                    return Some((val / 100.0) as f32);
-                }
-            }
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -184,41 +111,13 @@ fn detect_dae_units(path: &Path) -> Option<f32> {
 mod tests {
     use super::*;
 
-    // ─── FBX ASCII UnitScaleFactor ──────────────────────────────────────
+    // ─── FBX is normalized by ufbx at load (no bespoke probe) ───────────
 
     #[test]
-    fn fbx_ascii_centimeters() {
-        // UnitScaleFactor 1.0 = centimeters → 0.01 meters per unit.
-        let text = "        P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n";
-        assert_eq!(detect_fbx_units_ascii(text), Some(0.01));
-    }
-
-    #[test]
-    fn fbx_ascii_meters() {
-        // UnitScaleFactor 100 = meters → 1.0 meters per unit.
-        let text = "P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",100\n";
-        assert_eq!(detect_fbx_units_ascii(text), Some(1.0));
-    }
-
-    #[test]
-    fn fbx_ascii_inches() {
-        // UnitScaleFactor 2.54 = inches → 0.0254 meters per unit.
-        let text = "P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",2.54\n";
-        let v = detect_fbx_units_ascii(text).unwrap();
-        assert!((v - 0.0254).abs() < 1e-6, "got {}", v);
-    }
-
-    #[test]
-    fn fbx_ascii_missing_returns_none() {
-        let text = "P: \"SomethingElse\", \"double\", \"Number\", \"\",1\n";
-        assert_eq!(detect_fbx_units_ascii(text), None);
-    }
-
-    #[test]
-    fn fbx_ascii_no_comma_returns_none() {
-        // The detector requires a comma on the line.
-        let text = "UnitScaleFactor 1.0\n";
-        assert_eq!(detect_fbx_units_ascii(text), None);
+    fn detect_unit_scale_fbx_defers_to_ufbx() {
+        // FBX returns None so the import scale stays at its 1.0 default and
+        // `load_scene`'s `target_unit_meters = 1.0` lets ufbx normalize units.
+        assert_eq!(detect_unit_scale(std::path::Path::new("a.fbx")), None);
     }
 
     // ─── USD metersPerUnit text probe ───────────────────────────────────

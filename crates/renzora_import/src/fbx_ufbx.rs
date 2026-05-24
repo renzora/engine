@@ -353,9 +353,18 @@ fn animation_unit_fixup(scene: &ufbx::Scene) -> f32 {
     best_factor as f32
 }
 
-pub fn extract_animations(path: &Path, output_dir: &Path) -> Result<AnimExtractResult, String> {
-    let settings = ImportSettings::default();
-    let scene = load_scene(path, &settings).map_err(|e| format!("{}", e))?;
+pub fn extract_animations(
+    path: &Path,
+    output_dir: &Path,
+    settings: &ImportSettings,
+) -> Result<AnimExtractResult, String> {
+    // Use the SAME settings (crucially `scale` → `target_unit_meters`) that the
+    // caller passed to `convert`. Hardcoding `ImportSettings::default()` here
+    // meant the mesh/skeleton honored the user's import scale while the
+    // animation clips were always extracted at scale 1.0 — so importing a
+    // character at any non-default scale produced clips in a different unit
+    // than the skeleton, collapsing the rig when a clip played.
+    let scene = load_scene(path, settings).map_err(|e| format!("{}", e))?;
     let scene_ref: &ufbx::Scene = &scene;
 
     let mut result = AnimExtractResult {

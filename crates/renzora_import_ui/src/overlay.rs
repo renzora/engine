@@ -11,6 +11,20 @@ use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::{ImportSettings, UpAxis};
 use renzora_theme::ThemeManager;
 
+/// How imported files are laid out on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportLayout {
+    /// Each source file gets its own `<stem>/` folder (default). Keeps a
+    /// model's GLB plus its derived animations/, textures/ and materials/
+    /// grouped together, isolated from other imports.
+    PerFileFolder,
+    /// All source files share the destination folder directly. Derived assets
+    /// merge into single sibling `animations/`, `textures/` and `materials/`
+    /// folders — handy when importing a batch of animation clips for one
+    /// character (e.g. a folder of Mixamo FBX takes).
+    Combined,
+}
+
 /// Import progress state.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportProgress {
@@ -66,6 +80,8 @@ pub struct ImportOverlayState {
     pub visible: bool,
     pub pending_files: Vec<PathBuf>,
     pub target_directory: String,
+    /// How imported files are organized under the destination folder.
+    pub layout: ImportLayout,
     pub settings: ImportSettings,
     pub progress: ImportProgress,
     /// Per-file import results shown in the output log.
@@ -80,6 +96,7 @@ impl Default for ImportOverlayState {
             visible: false,
             pending_files: Vec::new(),
             target_directory: "models".to_string(),
+            layout: ImportLayout::PerFileFolder,
             settings: ImportSettings::default(),
             progress: ImportProgress::Idle,
             log_entries: Vec::new(),
@@ -592,6 +609,24 @@ pub fn draw_import_overlay(world: &mut World, ctx: &egui::Context) {
                             .desired_width(ui.available_width() - 80.0);
                         ui.add(text_edit);
                     });
+
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new("Organize")
+                            .size(12.0)
+                            .color(text_secondary),
+                    );
+                    ui.radio_value(
+                        &mut state.layout,
+                        ImportLayout::PerFileFolder,
+                        egui::RichText::new("Separate folder per file").color(text_primary),
+                    );
+                    ui.radio_value(
+                        &mut state.layout,
+                        ImportLayout::Combined,
+                        egui::RichText::new("Combine all files into destination")
+                            .color(text_primary),
+                    );
                 }
 
                 let browse_clicked = ui
@@ -780,6 +815,7 @@ pub(crate) fn run_import(world: &mut World) {
     let files = state.pending_files.clone();
     let settings = state.settings.clone();
     let target_dir = state.target_directory.clone();
+    let layout = state.layout;
 
     let total = files.len();
     info!(
@@ -803,7 +839,7 @@ pub(crate) fn run_import(world: &mut World) {
 
     // Spawn background thread
     std::thread::spawn(move || {
-        import_worker(tx, project, files, settings, target_dir);
+        import_worker(tx, project, files, settings, target_dir, layout);
     });
 }
 
@@ -831,6 +867,7 @@ fn import_worker(
     files: Vec<PathBuf>,
     settings: ImportSettings,
     target_dir: String,
+    layout: ImportLayout,
 ) {
     let total = files.len();
     let dest = project.path.join(&target_dir);
@@ -907,13 +944,20 @@ fn import_worker(
                 };
 
                 // --- Phase: writing ---
-                // Each imported model gets its own folder so all derived
-                // assets (animations, textures, materials) live together.
+                // Where the GLB and its derived assets (animations, textures,
+                // materials) land depends on the chosen layout:
+                //   PerFileFolder — each model gets its own `<stem>/` folder so
+                //     its assets stay isolated from other imports.
+                //   Combined — every file writes straight into the destination,
+                //     so derived assets merge into shared sibling folders.
                 let base_stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
-                let (stem_owned, model_dir) = unique_model_dir(&dest, base_stem);
+                let (stem_owned, model_dir) = match layout {
+                    ImportLayout::PerFileFolder => unique_model_dir(&dest, base_stem),
+                    ImportLayout::Combined => (base_stem.to_string(), dest.clone()),
+                };
                 let stem: &str = &stem_owned;
                 if let Err(e) = std::fs::create_dir_all(&model_dir) {
                     let msg = format!("failed to create model folder: {}", e);
@@ -937,15 +981,21 @@ fn import_worker(
                 if settings.extract_materials && !result.extracted_materials.is_empty() {
                     let mat_dir = model_dir.join("materials");
                     let rewrite_uri = |uri: &Option<String>| -> Option<String> {
-                        // Textures live under the model folder, which itself
-                        // lives under `<target>/<stem>/`. Prefix the relative
-                        // URI so consumers can resolve it from the project
-                        // root.
+                        // Textures live under the model folder. Prefix the
+                        // relative URI with that folder's path from the project
+                        // root so consumers can resolve it. The model folder is
+                        // `<target>/<stem>/` (PerFileFolder) or `<target>/`
+                        // (Combined).
+                        let prefix = match layout {
+                            ImportLayout::PerFileFolder if target_dir.is_empty() => stem.to_string(),
+                            ImportLayout::PerFileFolder => format!("{}/{}", target_dir, stem),
+                            ImportLayout::Combined => target_dir.clone(),
+                        };
                         uri.as_ref().map(|u| {
-                            if target_dir.is_empty() {
-                                format!("{}/{}", stem, u)
+                            if prefix.is_empty() {
+                                u.clone()
                             } else {
-                                format!("{}/{}/{}", target_dir, stem, u)
+                                format!("{}/{}", prefix, u)
                             }
                         })
                     };
@@ -1090,7 +1140,10 @@ fn import_worker(
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
-                let (stem_owned, fallback_model_dir) = unique_model_dir(&dest, base_stem);
+                let (stem_owned, fallback_model_dir) = match layout {
+                    ImportLayout::PerFileFolder => unique_model_dir(&dest, base_stem),
+                    ImportLayout::Combined => (base_stem.to_string(), dest.clone()),
+                };
                 let _stem: &str = &stem_owned;
                 let anim_dir = fallback_model_dir.join("animations");
 
@@ -1102,6 +1155,7 @@ fn import_worker(
                             "fbx" => Some(renzora_import::extract_animations_from_fbx(
                                 source_path,
                                 &anim_dir,
+                                &settings,
                             )),
                             "usd" | "usda" | "usdc" | "usdz" => Some(
                                 renzora_import::extract_animations_from_usd(source_path, &anim_dir),
