@@ -304,6 +304,55 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
 }
 
 /// Extract every animation stack in an FBX file to a directory of `.anim` files.
+/// Measure the unit-scale discrepancy between ufbx's animation evaluator
+/// (`evaluate_transform`, which applies `target_unit_meters` and yields meters)
+/// and the skeleton export in [`convert`], which reads `node.local_transform`
+/// verbatim in the source file's units. Returns the factor that maps evaluator
+/// translations back onto skeleton-space units, or `1.0` when no reliable
+/// reference bone exists (in which case translations are left untouched).
+///
+/// The factor is derived directly from a non-root bone rather than from ufbx's
+/// reported unit metadata, so it is correct regardless of the source unit
+/// (cm, inches, meters). A non-root bone's local translation is a fixed bone
+/// length — animation only rotates it — so its rest offset is identical in both
+/// systems apart from the unit scale. The skeleton root is skipped because its
+/// translation *is* animated, so its rest offset wouldn't cleanly reveal the
+/// scale. The longest such bone is used to minimize relative error.
+fn animation_unit_fixup(scene: &ufbx::Scene) -> f32 {
+    let anim: &ufbx::Anim = &scene.anim;
+    let mut best_local_len = 0.0f64;
+    let mut best_factor = 1.0f64;
+
+    for node in &scene.nodes {
+        if node.bone.is_none() {
+            continue;
+        }
+        let parent_is_bone = node
+            .parent
+            .as_ref()
+            .map(|p| -> &ufbx::Node { p })
+            .is_some_and(|p| p.bone.is_some());
+        if !parent_is_bone {
+            continue;
+        }
+
+        let l = node.local_transform.translation;
+        let llen = (l.x * l.x + l.y * l.y + l.z * l.z).sqrt();
+        if llen <= best_local_len {
+            continue;
+        }
+
+        let e = ufbx::evaluate_transform(anim, node, 0.0).translation;
+        let elen = (e.x * e.x + e.y * e.y + e.z * e.z).sqrt();
+        if elen > 1e-9 {
+            best_local_len = llen;
+            best_factor = llen / elen;
+        }
+    }
+
+    best_factor as f32
+}
+
 pub fn extract_animations(path: &Path, output_dir: &Path) -> Result<AnimExtractResult, String> {
     let settings = ImportSettings::default();
     let scene = load_scene(path, &settings).map_err(|e| format!("{}", e))?;
@@ -338,6 +387,22 @@ pub fn extract_animations(path: &Path, output_dir: &Path) -> Result<AnimExtractR
         .unwrap_or("clip")
         .to_string();
     let stack_count = scene_ref.anim_stacks.len();
+
+    // ufbx's animation evaluator honors `target_unit_meters` and returns
+    // translations in meters, but the mesh/skeleton export in `convert` reads
+    // `node.local_transform` verbatim in the source file's units (centimeters
+    // for Mixamo). Writing meter-scale translations against a centimeter
+    // skeleton collapses every bone offset 100× and crumples the mesh into a
+    // blob the moment a clip plays. Rescale animated translations back into the
+    // skeleton's unit space so the two agree.
+    let unit_fixup = animation_unit_fixup(scene_ref);
+    if (unit_fixup - 1.0).abs() > 1e-3 {
+        log::info!(
+            "[import] {}: scaling animation translations by {:.4} to match skeleton units",
+            path.display(),
+            unit_fixup
+        );
+    }
 
     for (stack_i, stack_ref) in (&scene_ref.anim_stacks).into_iter().enumerate() {
         let clip_name = if stack_count == 1 {
@@ -388,9 +453,9 @@ pub fn extract_animations(path: &Path, output_dir: &Path) -> Result<AnimExtractR
                 track.translations.push((
                     rel_t as f32,
                     [
-                        tr.translation.x as f32,
-                        tr.translation.y as f32,
-                        tr.translation.z as f32,
+                        tr.translation.x as f32 * unit_fixup,
+                        tr.translation.y as f32 * unit_fixup,
+                        tr.translation.z as f32 * unit_fixup,
                     ],
                 ));
                 track.rotations.push((
