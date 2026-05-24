@@ -51,11 +51,64 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         }
     }
 
-    #[cfg(not(target_os = "android"))]
+    // Web: let Bevy's wasm defaults select WebGPU/WebGL. Pinning a native
+    // backend (or requesting native-only features like POLYGON_MODE_LINE) here
+    // would break the browser build.
+    #[cfg(all(not(target_os = "android"), target_arch = "wasm32"))]
     {
-        use bevy::render::settings::{WgpuFeatures, WgpuSettings};
+        bevy::render::settings::WgpuSettings::default()
+    }
+
+    // Desktop (Windows / macOS / Linux / BSD).
+    #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+    {
+        use bevy::render::settings::{Backends, WgpuFeatures, WgpuSettings};
+        use renzora::RendererBackend;
+
+        // Per-OS default, used when the preference is `Auto`. Vulkan is the
+        // standard backend on Windows, Linux and the BSDs — it's the one path
+        // shared across most platforms and gives the best experience here (fast
+        // load, clean splash, no DX12 frame-flicker). The play-mode crash that
+        // once pushed us toward DX12 was never Vulkan's fault: it came from
+        // Bevy's default `Backends::all()` loading the DX12/DXGI backend
+        // alongside Vulkan, and DXGI's occlusion handling clobbering the Vulkan
+        // surface when the runtime window took the foreground. Pinning to a
+        // single backend here — which `Auto` now always does — removes that, so
+        // Vulkan is both the fastest and the safe default. DX12 remains a
+        // user-selectable fallback for Windows machines with weak/missing Vulkan
+        // drivers (see `RendererBackend`). Metal is the first-class (and only)
+        // backend on Apple platforms.
+        #[cfg(target_os = "windows")]
+        let default_backend = Backends::VULKAN;
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let default_backend = Backends::METAL;
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
+        let default_backend = Backends::VULKAN;
+
+        // User override persisted under `~/.renzora/renderer.toml`. Read here
+        // because wgpu selects the backend at render-plugin build time and
+        // can't change it afterwards; `Auto` keeps the per-OS default above.
+        let backends = match renzora::load_renderer_backend() {
+            RendererBackend::Auto => default_backend,
+            RendererBackend::Dx12 => Backends::DX12,
+            RendererBackend::Vulkan => Backends::VULKAN,
+            RendererBackend::Metal => Backends::METAL,
+            RendererBackend::Gl => Backends::GL,
+        };
+
+        // Wireframe (`PolygonMode::Line`) for the editor viewport — supported on
+        // DX12, Vulkan and Metal but NOT OpenGL, so requesting it as a *required*
+        // feature on the GL backend would leave wgpu unable to create a device.
+        // Skip it there; GL users simply don't get wireframe.
+        let features = if backends == Backends::GL {
+            WgpuFeatures::empty()
+        } else {
+            WgpuFeatures::POLYGON_MODE_LINE
+        };
+
         WgpuSettings {
-            features: WgpuFeatures::POLYGON_MODE_LINE,
+            backends: Some(backends),
+            features,
             ..default()
         }
     }

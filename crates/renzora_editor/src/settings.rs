@@ -134,6 +134,10 @@ pub struct EditorSettings {
     pub external_play_window: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
+    /// Graphics backend wgpu requests at startup. Persisted to disk (not held
+    /// only in this resource) because the renderer is created before this
+    /// resource exists; changing it requires an editor restart to take effect.
+    pub renderer_backend: renzora::RendererBackend,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
     /// Pin expanded ancestor rows to the top of the hierarchy as you scroll.
@@ -169,6 +173,9 @@ impl Default for EditorSettings {
             hide_cursor_in_play_mode: true,
             external_play_window: true,
             auto_import_on_drop: true,
+            // Seed the UI's working copy from the persisted preference so the
+            // settings panel shows what the renderer actually booted with.
+            renderer_backend: renzora::load_renderer_backend(),
             ui_preview_by_default: true,
             hierarchy_parent_stacking: true,
             show_settings: false,

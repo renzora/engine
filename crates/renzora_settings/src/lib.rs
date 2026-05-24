@@ -18,7 +18,8 @@ use egui_phosphor::regular::{
 };
 
 use renzora_editor::{
-    CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont,
+    AppEditorExt, CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab,
+    StatusBarAlignment, StatusBarItem, UiFont,
 };
 use renzora_keybindings::{bindable_keys, EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeManager};
@@ -38,6 +39,46 @@ impl Plugin for SettingsPlugin {
             EguiPrimaryContextPass,
             settings_overlay_system.run_if(in_state(renzora_editor::SplashState::Editor)),
         );
+        app.register_status_item(RendererStatusItem);
+    }
+}
+
+/// Read-only status-bar indicator showing the active graphics backend. Reads
+/// the persisted preference (seeded into [`EditorSettings`] at startup) and
+/// resolves `Auto` to the concrete backend actually in use.
+struct RendererStatusItem;
+
+impl StatusBarItem for RendererStatusItem {
+    fn id(&self) -> &str {
+        "renderer"
+    }
+
+    fn alignment(&self) -> StatusBarAlignment {
+        StatusBarAlignment::Right
+    }
+
+    fn order(&self) -> i32 {
+        -90
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let backend = world
+            .get_resource::<EditorSettings>()
+            .map(|s| s.renderer_backend)
+            .unwrap_or_default()
+            .resolved();
+
+        let color = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.text.secondary.to_color32())
+            .unwrap_or(Color32::GRAY);
+
+        ui.label(
+            RichText::new(format!("{} {}", MONITOR, backend.label()))
+                .size(11.0)
+                .color(color),
+        )
+        .on_hover_text("Active graphics backend — change in Settings → Editor → Renderer");
     }
 }
 
@@ -1388,6 +1429,45 @@ fn render_editor_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme: &T
                     &mut settings.ui_preview_by_default,
                     "Show game viewport behind canvas by default",
                 )
+            });
+        },
+    );
+
+    render_category(
+        ui,
+        MONITOR,
+        "Renderer",
+        CategoryStyle::interface(),
+        "settings_renderer",
+        true,
+        theme,
+        |ui| {
+            settings_row(ui, 0, "Graphics Backend", theme, |ui| {
+                use renzora::RendererBackend as RB;
+                let before = settings.renderer_backend;
+                let resp = egui::ComboBox::from_id_salt("settings_renderer_backend")
+                    .selected_text(settings.renderer_backend.label())
+                    .show_ui(ui, |ui| {
+                        for &backend in RB::available() {
+                            ui.selectable_value(
+                                &mut settings.renderer_backend,
+                                backend,
+                                backend.label(),
+                            );
+                        }
+                    })
+                    .response;
+                // Persist immediately on change — the value is read from disk at
+                // the next launch, before this resource exists.
+                if settings.renderer_backend != before {
+                    if let Err(e) = renzora::save_renderer_backend(settings.renderer_backend) {
+                        warn!("[settings] Failed to save renderer backend: {}", e);
+                    }
+                }
+                resp
+            });
+            settings_row(ui, 1, "", theme, |ui| {
+                ui.weak("Takes effect after restarting the editor")
             });
         },
     );

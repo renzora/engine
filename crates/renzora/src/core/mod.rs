@@ -81,6 +81,139 @@ impl Default for WindowConfig {
     }
 }
 
+/// Graphics backend the editor and runtime request from wgpu at startup.
+///
+/// wgpu selects the backend when the render plugin initializes and cannot
+/// switch it while the app runs, so this preference is persisted to disk and
+/// read *before* the render plugin is built (see
+/// `renzora_runtime::platform_wgpu_settings`). Changing it therefore only
+/// takes effect after restarting the editor/runtime.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RendererBackend {
+    /// Use the engine's standard backend for the current OS: Vulkan on
+    /// Windows / Linux / BSD, Metal on Apple platforms. Recommended.
+    #[default]
+    Auto,
+    /// Direct3D 12 — Windows only.
+    Dx12,
+    /// Vulkan — Windows, Linux, Android.
+    Vulkan,
+    /// Metal — macOS / iOS only.
+    Metal,
+    /// OpenGL — broad-compatibility fallback (no wireframe; fewer features).
+    Gl,
+}
+
+impl RendererBackend {
+    /// Human-readable label for settings UIs.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Automatic",
+            Self::Dx12 => "DirectX 12",
+            Self::Vulkan => "Vulkan",
+            Self::Metal => "Metal",
+            Self::Gl => "OpenGL",
+        }
+    }
+
+    /// Resolve `Auto` to the concrete backend the engine actually requests on
+    /// this platform. Explicit choices pass through unchanged. Mirrors the
+    /// per-OS default in `renzora_runtime::platform_wgpu_settings`; useful for
+    /// displaying the active backend (e.g. in the status bar).
+    pub fn resolved(self) -> RendererBackend {
+        match self {
+            Self::Auto => {
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                {
+                    Self::Metal
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+                {
+                    Self::Vulkan
+                }
+            }
+            other => other,
+        }
+    }
+
+    /// Backends worth offering on the current platform. `Auto` is always
+    /// first; the rest are only backends wgpu can actually create here, so a
+    /// settings UI never lets the user pick e.g. DX12 on Linux — which would
+    /// leave wgpu unable to find an adapter and panic at startup.
+    pub fn available() -> &'static [RendererBackend] {
+        #[cfg(target_os = "windows")]
+        {
+            &[Self::Auto, Self::Dx12, Self::Vulkan]
+        }
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            &[Self::Auto, Self::Metal]
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
+        {
+            &[Self::Auto, Self::Vulkan, Self::Gl]
+        }
+    }
+}
+
+/// On-disk wrapper so the preference file stays forward-compatible
+/// (`backend = "dx12"`, with room to grow).
+#[derive(Serialize, Deserialize, Default)]
+struct RendererPrefFile {
+    backend: RendererBackend,
+}
+
+/// Path to the persisted renderer preference: `~/.renzora/renderer.toml`.
+/// Mirrors the crash-report directory convention. Resolves the home dir via
+/// env vars (`HOME`, falling back to Windows' `USERPROFILE`) so `renzora`
+/// core keeps its dep list to bevy + serialization (no `dirs`).
+#[cfg(not(target_arch = "wasm32"))]
+fn renderer_pref_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)?;
+    Some(home.join(".renzora").join("renderer.toml"))
+}
+
+/// Load the persisted renderer backend preference, defaulting to
+/// [`RendererBackend::Auto`] when the file is absent or unreadable.
+pub fn load_renderer_backend() -> RendererBackend {
+    #[cfg(target_arch = "wasm32")]
+    {
+        RendererBackend::Auto
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = renderer_pref_path() else {
+            return RendererBackend::Auto;
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return RendererBackend::Auto;
+        };
+        toml::from_str::<RendererPrefFile>(&text)
+            .map(|f| f.backend)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the renderer backend preference. Takes effect on the next launch.
+/// No-op error on wasm (no writable home dir).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_renderer_backend(backend: RendererBackend) -> std::io::Result<()> {
+    let Some(path) = renderer_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for renderer preference",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let text = toml::to_string_pretty(&RendererPrefFile { backend }).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
 /// How the game's render viewport scales to fill the OS window.
 ///
 /// Mirrors Godot's stretch modes — the *render resolution* (what the
