@@ -6,13 +6,28 @@
 use bevy::prelude::*;
 use kira::{
     sound::static_sound::StaticSoundData, sound::streaming::StreamingSoundData,
-    sound::PlaybackState, Tween,
+    sound::PlaybackState, Panning, Tween,
 };
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::manager::{amplitude_to_db, quat_to_mint, vec3_to_mint, KiraAudioManager, RolloffType};
 use crate::mixer::MixerState;
 use crate::preview::AudioPreviewState;
+
+/// Load a static sound for a project-relative `clip` path. Prefers the engine's
+/// VFS-aware byte loader (so `.rpak`-bundled assets in exported games work),
+/// falling back to a direct filesystem read at `disk_path` (editor / loose
+/// files, and when no loader is installed e.g. in tests).
+fn load_static_sound(
+    clip: &str,
+    disk_path: &std::path::Path,
+) -> Result<StaticSoundData, kira::sound::FromFileError> {
+    if let Some(bytes) = crate::asset_loader::load_asset_bytes(clip) {
+        StaticSoundData::from_cursor(std::io::Cursor::new(bytes))
+    } else {
+        StaticSoundData::from_file(disk_path)
+    }
+}
 
 /// Marker component for the audio listener entity (the "ears" in 3D space).
 #[derive(Component, Clone, Debug)]
@@ -58,7 +73,7 @@ pub fn process_audio_commands(
                 let full_path = audio.resolve_path(&path);
                 let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
 
-                match StaticSoundData::from_file(&full_path) {
+                match load_static_sound(&path, &full_path) {
                     Ok(data) => {
                         let data = data.volume(amplitude_to_db(effective_volume));
                         let data = if looping {
@@ -81,6 +96,93 @@ pub fn process_audio_commands(
                 }
             }
 
+            AudioCommand::PlayEntity {
+                entity,
+                player,
+                position,
+            } => {
+                if player.clip.is_empty() {
+                    continue;
+                }
+                let full_path = audio.resolve_path(&player.clip);
+                let effective_volume =
+                    (player.volume as f64 * audio.master_volume).clamp(0.0, 2.0);
+
+                match load_static_sound(&player.clip, &full_path) {
+                    Ok(data) => {
+                        // Common settings: volume + pitch (playback rate).
+                        let mut data = data
+                            .volume(amplitude_to_db(effective_volume))
+                            .playback_rate(player.pitch.max(0.01) as f64);
+
+                        // Loop region: [loop_start, loop_end) — open-ended when
+                        // loop_end is 0 (loop to the natural end of the clip).
+                        if player.looping {
+                            data = if player.loop_end > 0.0 {
+                                data.loop_region(player.loop_start..player.loop_end)
+                            } else {
+                                data.loop_region(player.loop_start..)
+                            };
+                        }
+
+                        if player.fade_in > 0.0 {
+                            data = data.fade_in_tween(Tween {
+                                duration: std::time::Duration::from_secs_f32(player.fade_in),
+                                ..Default::default()
+                            });
+                        }
+
+                        if player.spatial {
+                            // 3D: route through a positioned spatial sub-track.
+                            // Panning is derived from listener geometry, so we
+                            // don't apply manual panning here.
+                            if let Some(spatial_track) = audio.get_or_create_spatial_track(
+                                entity,
+                                position,
+                                &player.bus,
+                                player.spatial_min_distance,
+                                player.spatial_max_distance,
+                                &player.spatial_rolloff,
+                                &mixer,
+                            ) {
+                                match spatial_track.play(data) {
+                                    Ok(handle) => {
+                                        audio.track_sound(entity, handle);
+                                        info!(
+                                            "[KiraAudio] AudioPlayer (3D) started: {} on bus {}",
+                                            player.clip, player.bus
+                                        );
+                                    }
+                                    Err(e) => warn!(
+                                        "[KiraAudio] Failed to play AudioPlayer {}: {}",
+                                        player.clip, e
+                                    ),
+                                }
+                            }
+                        } else {
+                            let data = data.panning(Panning(player.panning));
+                            match audio.play_on_bus(data, &player.bus, &mixer) {
+                                Ok(handle) => {
+                                    audio.track_sound(entity, handle);
+                                    info!(
+                                        "[KiraAudio] AudioPlayer started: {} on bus {}",
+                                        player.clip, player.bus
+                                    );
+                                }
+                                Err(e) => warn!(
+                                    "[KiraAudio] Failed to play AudioPlayer {}: {}",
+                                    player.clip, e
+                                ),
+                            }
+                        }
+                    }
+                    Err(e) => warn!(
+                        "[KiraAudio] Failed to load AudioPlayer clip {}: {}",
+                        player.clip, e
+                    ),
+                }
+            }
+
             AudioCommand::PlaySound3D {
                 path,
                 volume,
@@ -91,7 +193,7 @@ pub fn process_audio_commands(
                 let full_path = audio.resolve_path(&path);
                 let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
 
-                match StaticSoundData::from_file(&full_path) {
+                match load_static_sound(&path, &full_path) {
                     Ok(data) => {
                         let data = data.volume(amplitude_to_db(effective_volume));
 

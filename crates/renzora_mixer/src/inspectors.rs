@@ -3,9 +3,11 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use egui_phosphor::regular;
-use renzora_audio::{AudioListener, AudioPlayer, MixerState};
+use renzora_audio::{AudioListener, AudioPlayer, MixerState, RolloffType};
 use renzora_editor::{
-    EditorCommands, FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
+    asset_drop_target, enum_combobox, inline_property, labeled_slider, section_header,
+    toggle_switch, AssetDragPayload, EditorCommands, FieldDef, FieldType, FieldValue,
+    InspectorEntry, InspectorRegistry, SliderConfig,
 };
 use renzora_theme::Theme;
 
@@ -14,75 +16,131 @@ pub fn register_audio_inspectors(registry: &mut InspectorRegistry) {
     registry.register(audio_listener_entry());
 }
 
+/// Rolloff options, indexed to match the dropdown order below.
+const ROLLOFF_LABELS: &[&str] = &["Logarithmic", "Linear"];
+
+fn rolloff_to_index(r: &RolloffType) -> usize {
+    match r {
+        RolloffType::Logarithmic => 0,
+        RolloffType::Linear => 1,
+    }
+}
+
+fn rolloff_from_index(i: usize) -> RolloffType {
+    match i {
+        1 => RolloffType::Linear,
+        _ => RolloffType::Logarithmic,
+    }
+}
+
 fn audio_player_custom_ui(
     ui: &mut egui::Ui,
     world: &World,
     entity: Entity,
     commands: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
-    let Some(data) = world.get::<AudioPlayer>(entity) else {
+    let Some(audio) = world.get::<AudioPlayer>(entity) else {
         return;
     };
 
-    // Clip
-    let mut clip = data.clip.clone();
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Clip").size(11.0));
-        if ui.text_edit_singleline(&mut clip).changed() {
-            let v = clip.clone();
+    // Work on a local copy; non-clip fields are applied in one deferred write
+    // at the end. The clip is handled separately (drag-drop / clear) and is
+    // preserved by that final write so the two paths don't clobber each other.
+    let mut data = audio.clone();
+    let mut changed = false;
+    let mut row = 0;
+
+    // ----- Clip (drag an audio file from the asset browser onto this) -----
+    section_header(ui, "Clip", theme);
+    {
+        let payload = world.get_resource::<AssetDragPayload>();
+        let exts = ["ogg", "wav", "mp3", "flac"];
+        let current = if data.clip.is_empty() {
+            None
+        } else {
+            Some(data.clip.as_str())
+        };
+        let result = inline_property(ui, row, "File", theme, |ui| {
+            asset_drop_target(
+                ui,
+                ui.id().with("audio_clip"),
+                current,
+                &exts,
+                "Drag audio here",
+                theme,
+                payload,
+            )
+        });
+        row += 1;
+
+        if let Some(path) = result.dropped_path {
+            let rel = world
+                .get_resource::<renzora::core::CurrentProject>()
+                .map(|p| p.make_asset_relative(&path))
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
             commands.push(move |w| {
                 if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.clip = v;
+                    d.clip = rel;
                 }
             });
         }
-    });
-
-    // Volume
-    let mut volume = data.volume;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Volume").size(11.0));
-        if ui.add(egui::Slider::new(&mut volume, 0.0..=2.0)).changed() {
+        if result.cleared {
             commands.push(move |w| {
                 if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.volume = volume;
+                    d.clip.clear();
                 }
             });
         }
-    });
+    }
 
-    // Pitch
-    let mut pitch = data.pitch;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Pitch").size(11.0));
-        if ui.add(egui::Slider::new(&mut pitch, 0.1..=4.0)).changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.pitch = pitch;
-                }
-            });
-        }
-    });
+    // ----- Playback -----
+    section_header(ui, "Playback", theme);
+    if inline_property(ui, row, "Autoplay", theme, |ui| {
+        toggle_switch(ui, ui.id().with("ap_autoplay"), data.autoplay)
+    }) {
+        data.autoplay = !data.autoplay;
+        changed = true;
+    }
+    row += 1;
 
-    // Panning
-    let mut panning = data.panning;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Panning").size(11.0));
-        if ui
-            .add(egui::Slider::new(&mut panning, -1.0..=1.0))
-            .changed()
-        {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.panning = panning;
-                }
-            });
-        }
-    });
+    if inline_property(ui, row, "Looping", theme, |ui| {
+        toggle_switch(ui, ui.id().with("ap_looping"), data.looping)
+    }) {
+        data.looping = !data.looping;
+        changed = true;
+    }
+    row += 1;
 
-    // Bus dropdown — sourced from MixerState
-    let current_bus = data.bus.clone();
+    changed |= inline_property(ui, row, "Fade In", theme, |ui| {
+        ui.add(
+            egui::DragValue::new(&mut data.fade_in)
+                .speed(0.05)
+                .range(0.0..=10.0)
+                .suffix(" s"),
+        )
+        .changed()
+    });
+    row += 1;
+
+    // ----- Mix -----
+    section_header(ui, "Mix", theme);
+    changed |= inline_property(ui, row, "Volume", theme, |ui| {
+        labeled_slider(ui, &mut data.volume, SliderConfig::new(0.0, 2.0), theme).changed()
+    });
+    row += 1;
+
+    changed |= inline_property(ui, row, "Pitch", theme, |ui| {
+        labeled_slider(ui, &mut data.pitch, SliderConfig::new(0.1, 4.0), theme).changed()
+    });
+    row += 1;
+
+    changed |= inline_property(ui, row, "Panning", theme, |ui| {
+        labeled_slider(ui, &mut data.panning, SliderConfig::new(-1.0, 1.0), theme).changed()
+    });
+    row += 1;
+
+    // Bus dropdown — built-in buses plus any custom mixer buses.
     let mut buses = vec![
         "Master".to_string(),
         "Sfx".to_string(),
@@ -94,153 +152,82 @@ fn audio_player_custom_ui(
             buses.push(name.clone());
         }
     }
-
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Bus").size(11.0));
-        egui::ComboBox::from_id_salt(ui.id().with("audio_bus"))
-            .selected_text(&current_bus)
-            .show_ui(ui, |ui| {
-                for bus_name in &buses {
-                    if ui
-                        .selectable_label(*bus_name == current_bus, bus_name)
-                        .clicked()
-                    {
-                        let v = bus_name.clone();
-                        commands.push(move |w| {
-                            if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                                d.bus = v;
-                            }
-                        });
-                    }
-                }
-            });
+    let bus_refs: Vec<&str> = buses.iter().map(|s| s.as_str()).collect();
+    let bus_idx = buses.iter().position(|b| *b == data.bus).unwrap_or(0);
+    let picked_bus = inline_property(ui, row, "Bus", theme, |ui| {
+        enum_combobox(ui, ui.id().with("ap_bus"), bus_idx, &bus_refs)
     });
+    row += 1;
+    if let Some(i) = picked_bus {
+        data.bus = buses[i].clone();
+        changed = true;
+    }
 
-    // Looping
-    let mut looping = data.looping;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Looping").size(11.0));
-        if ui.checkbox(&mut looping, "").changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.looping = looping;
-                }
-            });
-        }
-    });
-
-    // Autoplay
-    let mut autoplay = data.autoplay;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Autoplay").size(11.0));
-        if ui.checkbox(&mut autoplay, "").changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.autoplay = autoplay;
-                }
-            });
-        }
-    });
-
-    // Fade In
-    let mut fade_in = data.fade_in;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Fade In").size(11.0));
-        if ui
-            .add(
-                egui::DragValue::new(&mut fade_in)
-                    .speed(0.05)
-                    .range(0.0..=10.0)
-                    .suffix("s"),
-            )
-            .changed()
-        {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.fade_in = fade_in;
-                }
-            });
-        }
-    });
-
-    // Spatial
-    let mut spatial = data.spatial;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Spatial").size(11.0));
-        if ui.checkbox(&mut spatial, "").changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.spatial = spatial;
-                }
-            });
-        }
-    });
+    // ----- Spatial (3D) -----
+    section_header(ui, "Spatial", theme);
+    if inline_property(ui, row, "Enabled", theme, |ui| {
+        toggle_switch(ui, ui.id().with("ap_spatial"), data.spatial)
+    }) {
+        data.spatial = !data.spatial;
+        changed = true;
+    }
+    row += 1;
 
     if data.spatial {
-        let mut min_dist = data.spatial_min_distance;
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("  Min Distance").size(11.0));
-            if ui
-                .add(
-                    egui::DragValue::new(&mut min_dist)
-                        .speed(0.1)
-                        .range(0.01..=1000.0),
-                )
-                .changed()
-            {
-                commands.push(move |w| {
-                    if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                        d.spatial_min_distance = min_dist;
-                    }
-                });
-            }
+        changed |= inline_property(ui, row, "Min Distance", theme, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut data.spatial_min_distance)
+                    .speed(0.1)
+                    .range(0.01..=1000.0),
+            )
+            .changed()
         });
+        row += 1;
 
-        let mut max_dist = data.spatial_max_distance;
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("  Max Distance").size(11.0));
-            if ui
-                .add(
-                    egui::DragValue::new(&mut max_dist)
-                        .speed(0.5)
-                        .range(0.1..=10000.0),
-                )
-                .changed()
-            {
-                commands.push(move |w| {
-                    if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                        d.spatial_max_distance = max_dist;
-                    }
-                });
+        changed |= inline_property(ui, row, "Max Distance", theme, |ui| {
+            ui.add(
+                egui::DragValue::new(&mut data.spatial_max_distance)
+                    .speed(0.5)
+                    .range(0.1..=10000.0),
+            )
+            .changed()
+        });
+        row += 1;
+
+        let rolloff_idx = rolloff_to_index(&data.spatial_rolloff);
+        let picked_rolloff = inline_property(ui, row, "Rolloff", theme, |ui| {
+            enum_combobox(ui, ui.id().with("ap_rolloff"), rolloff_idx, ROLLOFF_LABELS)
+        });
+        row += 1;
+        if let Some(i) = picked_rolloff {
+            data.spatial_rolloff = rolloff_from_index(i);
+            changed = true;
+        }
+    }
+
+    // ----- Sends (routing to global reverb / delay buses) -----
+    section_header(ui, "Sends", theme);
+    changed |= inline_property(ui, row, "Reverb", theme, |ui| {
+        labeled_slider(ui, &mut data.reverb_send, SliderConfig::new(0.0, 1.0), theme).changed()
+    });
+    row += 1;
+
+    changed |= inline_property(ui, row, "Delay", theme, |ui| {
+        labeled_slider(ui, &mut data.delay_send, SliderConfig::new(0.0, 1.0), theme).changed()
+    });
+
+    // Apply all non-clip edits in one write, preserving the live clip value
+    // (which the drag-drop / clear commands above may have just changed).
+    if changed {
+        let new_data = data;
+        commands.push(move |w| {
+            if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
+                let clip = d.clip.clone();
+                *d = new_data;
+                d.clip = clip;
             }
         });
     }
-
-    // Reverb Send
-    let mut reverb = data.reverb_send;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Reverb Send").size(11.0));
-        if ui.add(egui::Slider::new(&mut reverb, 0.0..=1.0)).changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.reverb_send = reverb;
-                }
-            });
-        }
-    });
-
-    // Delay Send
-    let mut delay = data.delay_send;
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Delay Send").size(11.0));
-        if ui.add(egui::Slider::new(&mut delay, 0.0..=1.0)).changed() {
-            commands.push(move |w| {
-                if let Some(mut d) = w.get_mut::<AudioPlayer>(entity) {
-                    d.delay_send = delay;
-                }
-            });
-        }
-    });
 }
 
 fn audio_player_entry() -> InspectorEntry {

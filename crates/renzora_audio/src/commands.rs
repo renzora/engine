@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 
+use crate::components::AudioPlayer;
+
 /// A single audio command to be processed by the audio systems.
 #[derive(Clone, Debug)]
 pub enum AudioCommand {
@@ -14,6 +16,14 @@ pub enum AudioCommand {
         looping: bool,
         bus: String,
         entity: Option<Entity>,
+    },
+    /// Play an entity's `AudioPlayer` with all its configured parameters
+    /// (volume, pitch, panning, loop region, fade, bus, spatial settings).
+    /// `position` is the emitter's world position, used when `spatial` is set.
+    PlayEntity {
+        entity: Entity,
+        player: AudioPlayer,
+        position: Vec3,
     },
     PlaySound3D {
         path: String,

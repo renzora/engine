@@ -10,12 +10,15 @@ pub mod fx_bridge;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
+        pub mod asset_loader;
+        pub mod autoplay;
         pub mod commands;
         pub mod components;
         pub mod manager;
         pub mod microphone;
         pub mod mixer;
         pub mod preview;
+        pub mod script_actions;
         pub mod systems;
         pub mod timeline;
         pub mod timeline_scheduler;
@@ -75,6 +78,11 @@ impl Plugin for KiraPlugin {
                     Update,
                     (AudioSet::Commands, AudioSet::Sync, AudioSet::Cleanup).chain(),
                 )
+                .add_systems(Update, sync_audio_project_path.before(AudioSet::Commands))
+                .add_systems(
+                    Update,
+                    autoplay::audio_player_autoplay.before(AudioSet::Commands),
+                )
                 .add_systems(
                     Update,
                     systems::process_audio_commands.in_set(AudioSet::Commands),
@@ -95,10 +103,32 @@ impl Plugin for KiraPlugin {
                         .after(timeline_scheduler::tick_transport),
                 )
                 .add_systems(Update, timeline_scheduler::cache_clip_durations);
+
+            // Consume audio ScriptActions (play_sound/play_music/etc.) emitted by
+            // scripts and blueprints, forwarding them to the command queue.
+            _app.add_observer(crate::script_actions::handle_audio_script_actions);
         }
 
         #[cfg(target_arch = "wasm32")]
         info!("[runtime] Audio disabled on WASM");
+    }
+}
+
+/// Keep the audio manager's project root in sync with the current project, so
+/// `resolve_path` turns relative clip paths (e.g. `"audio/music.ogg"`) into
+/// absolute paths the direct `from_file` callers (music, preview, timeline) can
+/// open. Without this the manager's `project_path` stays `None` and paths
+/// resolve against the process working directory.
+#[cfg(not(target_arch = "wasm32"))]
+fn sync_audio_project_path(
+    project: Option<Res<renzora::core::CurrentProject>>,
+    audio: Option<NonSendMut<manager::KiraAudioManager>>,
+) {
+    let (Some(project), Some(mut audio)) = (project, audio) else {
+        return;
+    };
+    if project.is_changed() || audio.project_path.is_none() {
+        audio.project_path = Some(project.path.clone());
     }
 }
 

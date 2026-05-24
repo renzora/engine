@@ -327,6 +327,8 @@ impl Plugin for RuntimePlugin {
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
         // always resolves from the correct project directory.
         app.add_systems(Update, sync_project_asset_path);
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Update, install_audio_asset_loader);
 
         // Safety net: in Deferred mode, ensure every 3D camera carries
         // DeferredPrepass so its prepass queue includes the deferred
@@ -801,6 +803,34 @@ fn sync_project_asset_path(
         project.path.display()
     );
     asset_path.set(project.path.clone());
+}
+
+/// Install the audio byte loader so Kira can load clips from the virtual
+/// filesystem — the `.rpak` archive in exported games, or loose files on disk
+/// in the editor — rather than only the process working directory (which is
+/// where `from_file` would otherwise look, and miss).
+#[cfg(not(target_arch = "wasm32"))]
+fn install_audio_asset_loader(
+    project: Option<Res<CurrentProject>>,
+    vfs: Option<Res<crate::vfs::Vfs>>,
+) {
+    let Some(project) = project else {
+        return;
+    };
+    let vfs_changed = vfs.as_ref().is_some_and(|v| v.is_changed());
+    if !(project.is_changed() || vfs_changed) {
+        return;
+    }
+    let root = project.path.clone();
+    let archive = vfs.as_ref().and_then(|v| v.archive_arc());
+    renzora_audio::asset_loader::set_asset_byte_loader(Box::new(move |key: &str| {
+        if let Some(ref archive) = archive {
+            if let Some(bytes) = archive.get(key) {
+                return Some(bytes);
+            }
+        }
+        std::fs::read(root.join(key)).ok()
+    }));
 }
 
 #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
