@@ -165,7 +165,7 @@ pub fn update_camera_preview(
                 *preview_proj = cam_projection.clone();
                 // Sync skybox every frame
                 if let Some(ref skybox) = editor_skybox {
-                    commands.entity(entity).insert(skybox.clone());
+                    commands.entity(entity).try_insert(skybox.clone());
                 } else {
                     commands.entity(entity).remove::<Skybox>();
                 }

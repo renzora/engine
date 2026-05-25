@@ -107,7 +107,11 @@ pub fn sync_voxel_cache_views(
             }
             None => (false, false),
         };
-        commands.entity(entity).insert(VoxelCacheView {
+        // `try_insert` (not `insert`): this command is applied at end-of-
+        // schedule, and a camera can be despawned in between — e.g. opening a
+        // document/asset tab tears down the scene camera. `insert` would panic
+        // on the dead entity; `try_insert` safely no-ops.
+        commands.entity(entity).try_insert(VoxelCacheView {
             inject_active,
             debug_active,
         });

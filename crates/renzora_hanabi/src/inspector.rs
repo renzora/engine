@@ -2,7 +2,10 @@
 
 use bevy::prelude::*;
 use bevy_egui::egui;
-use renzora_editor::{EditorCommands, InspectorEntry, InspectorRegistry};
+use renzora_editor::{
+    asset_drop_target, inline_property, section_header, AssetDragPayload, DocTabKind,
+    EditorCommands, InspectorEntry, InspectorRegistry,
+};
 use renzora_theme::Theme;
 
 use crate::data::*;
@@ -24,147 +27,80 @@ fn hanabi_custom_ui(
     world: &World,
     entity: Entity,
     cmds: &EditorCommands,
-    _theme: &Theme,
+    theme: &Theme,
 ) {
     let Some(data) = world.get::<HanabiEffect>(entity) else {
         return;
     };
 
-    // Runtime controls
-    let playing = data.playing;
-    let rate_mult = data.rate_multiplier;
-    let scale_mult = data.scale_multiplier;
-    let time_scale = data.time_scale;
-    let tint = data.color_tint;
+    // This component is just a *reference* to a `.particle` effect — all the
+    // authoring lives in the particle editor. So the inspector only loads a
+    // file (drag-drop) and offers an Edit button to open it in a document tab.
+    section_header(ui, "Effect", theme);
 
-    // Source info
-    let source_label = match &data.source {
-        EffectSource::Asset { path } => format!(
-            "Asset: {}",
-            if path.is_empty() {
-                "(none)"
-            } else {
-                path.as_str()
-            }
-        ),
-        EffectSource::Inline { definition } => format!("Inline: {}", definition.name),
+    let payload = world.get_resource::<AssetDragPayload>();
+    let exts = ["particle"];
+    let current = match &data.source {
+        EffectSource::Asset { path } if !path.is_empty() => Some(path.as_str()),
+        _ => None,
     };
 
-    ui.label(format!("Source: {}", source_label));
-    ui.separator();
+    let result = inline_property(ui, 0, "File", theme, |ui| {
+        asset_drop_target(
+            ui,
+            ui.id().with("hanabi_source"),
+            current,
+            &exts,
+            "Drag a .particle here",
+            theme,
+            payload,
+        )
+    });
 
-    ui.label("Runtime Controls");
-
-    // Playing toggle
-    let mut new_playing = playing;
-    if ui.checkbox(&mut new_playing, "Playing").changed() {
-        cmds.push(move |world: &mut World| {
-            if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
-                d.playing = new_playing;
+    if let Some(path) = result.dropped_path {
+        let rel = world
+            .get_resource::<renzora::core::CurrentProject>()
+            .map(|p| p.make_asset_relative(&path))
+            .unwrap_or_else(|| path.to_string_lossy().to_string());
+        cmds.push(move |w: &mut World| {
+            if let Some(mut c) = w.get_mut::<HanabiEffect>(entity) {
+                c.source = EffectSource::Asset { path: rel };
+            }
+        });
+    }
+    if result.cleared {
+        cmds.push(move |w: &mut World| {
+            if let Some(mut c) = w.get_mut::<HanabiEffect>(entity) {
+                c.source = EffectSource::Asset {
+                    path: String::new(),
+                };
             }
         });
     }
 
-    // Rate multiplier
-    let mut new_rate = rate_mult;
-    ui.horizontal(|ui| {
-        ui.label("Rate Multiplier:");
-        if ui
-            .add(
-                egui::DragValue::new(&mut new_rate)
-                    .speed(0.05)
-                    .range(0.0..=10.0),
-            )
-            .changed()
-        {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
-                    d.rate_multiplier = new_rate;
-                }
-            });
+    // Edit button — opens the referenced `.particle` in the particle editor.
+    let edit_path: Option<String> = match &data.source {
+        EffectSource::Asset { path } if !path.is_empty() => Some(path.clone()),
+        _ => None,
+    };
+    inline_property(ui, 1, "", theme, |ui| {
+        let resp = ui.add_enabled(
+            edit_path.is_some(),
+            egui::Button::new("Edit in Particle Editor"),
+        );
+        if resp.clicked() {
+            if let Some(p) = edit_path.clone() {
+                cmds.push(move |w: &mut World| {
+                    renzora_editor::open_asset_tab(
+                        w,
+                        std::path::Path::new(&p),
+                        DocTabKind::Particle,
+                    );
+                });
+            }
         }
+        resp
     });
-
-    // Scale multiplier
-    let mut new_scale = scale_mult;
-    ui.horizontal(|ui| {
-        ui.label("Scale Multiplier:");
-        if ui
-            .add(
-                egui::DragValue::new(&mut new_scale)
-                    .speed(0.05)
-                    .range(0.0..=10.0),
-            )
-            .changed()
-        {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
-                    d.scale_multiplier = new_scale;
-                }
-            });
-        }
-    });
-
-    // Time scale
-    let mut new_ts = time_scale;
-    ui.horizontal(|ui| {
-        ui.label("Time Scale:");
-        if ui
-            .add(
-                egui::DragValue::new(&mut new_ts)
-                    .speed(0.05)
-                    .range(0.0..=5.0),
-            )
-            .changed()
-        {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
-                    d.time_scale = new_ts;
-                }
-            });
-        }
-    });
-
-    // Color tint
-    let mut rgba = egui::Rgba::from_rgba_premultiplied(tint[0], tint[1], tint[2], tint[3]);
-    ui.horizontal(|ui| {
-        ui.label("Color Tint:");
-        if egui::color_picker::color_edit_button_rgba(
-            ui,
-            &mut rgba,
-            egui::color_picker::Alpha::OnlyBlend,
-        )
-        .changed()
-        {
-            let new_tint = [rgba.r(), rgba.g(), rgba.b(), rgba.a()];
-            cmds.push(move |world: &mut World| {
-                if let Some(mut d) = world.get_mut::<HanabiEffect>(entity) {
-                    d.color_tint = new_tint;
-                }
-            });
-        }
-    });
-
-    // Show effect details for inline sources
-    if let EffectSource::Inline { definition } = &data.source {
-        ui.separator();
-        ui.collapsing("Effect Details", |ui| {
-            ui.label(format!("Capacity: {}", definition.capacity));
-            ui.label(format!("Spawn Mode: {:?}", definition.spawn_mode));
-            ui.label(format!("Spawn Rate: {:.1}/s", definition.spawn_rate));
-            ui.label(format!(
-                "Lifetime: {:.2} - {:.2}s",
-                definition.lifetime_min, definition.lifetime_max
-            ));
-            ui.label(format!("Emit Shape: {:?}", definition.emit_shape));
-            ui.label(format!("Velocity Mode: {:?}", definition.velocity_mode));
-            ui.label(format!("Alpha Mode: {:?}", definition.alpha_mode));
-            ui.label(format!(
-                "Simulation Space: {:?}",
-                definition.simulation_space
-            ));
-        });
-    }
 }
 
 fn register_inspector_system(world: &mut World) {

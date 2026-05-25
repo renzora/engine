@@ -107,7 +107,9 @@ pub fn sync_lumen_sky_cubemap(
             None => true,
         };
         if needs_update {
-            commands.entity(entity).insert(LumenSkyCubemap {
+            // try_insert: the camera may despawn before this deferred command
+            // applies (e.g. switching to a document/asset tab).
+            commands.entity(entity).try_insert(LumenSkyCubemap {
                 diffuse_map: em.diffuse_map.clone(),
                 intensity: em.intensity,
             });

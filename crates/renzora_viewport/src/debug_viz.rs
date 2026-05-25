@@ -139,7 +139,10 @@ pub fn sync_debug_viz_mode(
 ) {
     let mode = settings.map(|s| s.visualization_mode).unwrap_or_default();
     for entity in &cameras {
-        commands.entity(entity).insert(DebugVizMode { mode });
+        // try_insert: a camera can be despawned before this end-of-schedule
+        // command applies (e.g. opening a document tab tears down the scene
+        // camera). `insert` would panic on the dead entity.
+        commands.entity(entity).try_insert(DebugVizMode { mode });
     }
 }
 

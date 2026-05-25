@@ -101,7 +101,7 @@ fn ensure_depth_prepass(
     }
     if routing.routes.is_empty() {
         for cam in &cameras {
-            commands.entity(cam).insert(DepthPrepass);
+            commands.entity(cam).try_insert(DepthPrepass);
         }
     } else {
         for (target, _) in routing.iter() {

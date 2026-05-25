@@ -181,9 +181,11 @@ fn apply_quality(commands: &mut Commands, target: Entity, settings: &LumenLighti
     // `renzora_rt`'s sync system to leave RtLighting alone — without it,
     // RT would clobber what we set every frame because the authored source
     // entity has `LumenLighting`, not `RtLighting`.
+    // try_insert: `target` may despawn before these deferred commands apply
+    // (e.g. opening a document/asset tab tears down the scene camera).
     commands
         .entity(target)
-        .insert((settings.clone(), RtLightingExternallyManaged));
+        .try_insert((settings.clone(), RtLightingExternallyManaged));
 
     match settings.quality {
         LumenQuality::ScreenSpace => {
@@ -194,7 +196,7 @@ fn apply_quality(commands: &mut Commands, target: Entity, settings: &LumenLighti
                 // on top.
                 LumenDebug::None | LumenDebug::VoxelCache => RtDebugMode::Composite,
             };
-            commands.entity(target).insert(RtLighting {
+            commands.entity(target).try_insert(RtLighting {
                 enabled: true,
                 intensity: settings.intensity,
                 debug: rt_debug,

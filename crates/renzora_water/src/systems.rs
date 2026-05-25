@@ -32,7 +32,7 @@ pub fn ensure_depth_prepass(
         return;
     }
     for entity in cameras.iter() {
-        commands.entity(entity).insert(DepthPrepass);
+        commands.entity(entity).try_insert(DepthPrepass);
     }
 }
 
