@@ -10,7 +10,6 @@ pub mod fx_bridge;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
-        pub mod asset_loader;
         pub mod autoplay;
         pub mod commands;
         pub mod components;

@@ -15,12 +15,21 @@ fn resolve_effect_definition(
 ) -> HanabiEffectDefinition {
     match source {
         EffectSource::Asset { path } => {
-            if let Some(proj) = project {
-                let full_path = proj.path.join(path);
-                load_effect_from_file(&full_path).unwrap_or_default()
-            } else {
-                load_effect_from_file(&PathBuf::from(path)).unwrap_or_default()
+            // Prefer the VFS-aware byte loader so `.particle` files bundled in
+            // an exported `.rpak` load correctly (the editor's disk read can't
+            // see into the archive). Falls back to a direct disk read.
+            if let Some(bytes) = renzora::core::load_asset_bytes(path) {
+                if let Ok(text) = std::str::from_utf8(&bytes) {
+                    if let Ok(def) = ron::from_str::<HanabiEffectDefinition>(text) {
+                        return def;
+                    }
+                }
             }
+            let disk = match project {
+                Some(proj) => proj.path.join(path),
+                None => PathBuf::from(path),
+            };
+            load_effect_from_file(&disk).unwrap_or_default()
         }
         EffectSource::Inline { definition } => definition.clone(),
     }

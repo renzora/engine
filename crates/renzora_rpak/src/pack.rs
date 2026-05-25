@@ -929,6 +929,8 @@ const ASSET_EXTENSIONS: &[&str] = &[
     // Animations (clips + state machines, RON-based)
     ".anim",
     ".animsm",
+    // Particle effects (RON-based)
+    ".particle",
     // Materials / shaders
     ".material",
     ".shader",

@@ -823,7 +823,7 @@ fn install_audio_asset_loader(
     }
     let root = project.path.clone();
     let archive = vfs.as_ref().and_then(|v| v.archive_arc());
-    renzora_audio::asset_loader::set_asset_byte_loader(Box::new(move |key: &str| {
+    renzora::core::set_asset_byte_loader(Box::new(move |key: &str| {
         if let Some(ref archive) = archive {
             if let Some(bytes) = archive.get(key) {
                 return Some(bytes);

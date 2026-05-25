@@ -22,7 +22,7 @@ fn load_static_sound(
     clip: &str,
     disk_path: &std::path::Path,
 ) -> Result<StaticSoundData, kira::sound::FromFileError> {
-    if let Some(bytes) = crate::asset_loader::load_asset_bytes(clip) {
+    if let Some(bytes) = renzora::core::load_asset_bytes(clip) {
         StaticSoundData::from_cursor(std::io::Cursor::new(bytes))
     } else {
         StaticSoundData::from_file(disk_path)
