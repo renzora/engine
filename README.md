@@ -37,10 +37,6 @@ Run `renzora --help` for the rest (`init`, `check`, `upx`, `clean`, `destroy`).
 
 Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Builds land in `dist/<platform>/` — the runtime build doubles as a dedicated server (run it with `--server`).
 
-### IDE setup
-
-Want code intelligence? Open the repo in VS Code and **Reopen in Container** — rust-analyzer runs inside the same image, so all you install locally is Docker and VS Code.
-
 ## Extending the Engine
 
 Renzora is plugin-based — you can add components, editor panels, gameplay, and networking in Rust, and script behavior in Lua/Rhai. See **[Plugin Development](docs/plugin-development.md)** for the SDK, scaffolding, components, and scripting.
