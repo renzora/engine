@@ -10716,14 +10716,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_tests"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "lightyear",
-]
-
-[[package]]
 name = "renzora_theme"
 version = "0.1.0"
 dependencies = [

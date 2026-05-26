@@ -1,5 +1,6 @@
-//! Host-server (listen-server) recipe validation — pure lightyear, no renzora,
-//! so it links and runs on native Windows.
+//! Host-server (listen-server) recipe validation for `renzora_network`'s
+//! `--host` mode — a pure-lightyear probe that proves the setup before it's
+//! wired into the engine.
 //!
 //! Proves the two things that would otherwise have to be discovered via a slow
 //! Docker rebuild:
@@ -8,8 +9,8 @@
 //!   2. a local `Client` that is a `LinkOf` a started `Server`, once `Connect`
 //!      is triggered, gets promoted to a `HostClient` by lightyear's observers.
 //!
-//! If this is green, the same setup can be wired into `renzora_network`'s
-//! `--host` mode with confidence.
+//! If this is green, the same setup can be wired into `--host` mode with
+//! confidence.
 
 use bevy::prelude::*;
 use core::time::Duration;
