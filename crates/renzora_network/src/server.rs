@@ -112,7 +112,7 @@ fn auto_replicate_networked(
     query: Query<(Entity, Option<&NetworkTransform>), Added<Networked>>,
 ) {
     for (entity, net_tf) in &query {
-        let interpolate = net_tf.map_or(true, |nt| nt.interpolate);
+        let interpolate = net_tf.is_none_or(|nt| nt.interpolate);
         let mut ec = commands.entity(entity);
         ec.insert(Replicate::to_clients(NetworkTarget::All));
         if interpolate {
