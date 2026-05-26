@@ -14,8 +14,8 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ```bash
 cargo install renzora     # installs the `renzora` command
-renzora new mygame        # scaffold a new project
-cd mygame
+renzora new engine        # scaffold a new project
+cd engine
 renzora run               # build the editor and launch it (first run is slow)
 ```
 
