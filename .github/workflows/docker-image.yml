@@ -1,0 +1,48 @@
+name: Toolchain Image
+
+# Builds the pinned cross-compile toolchain image and pushes it to GHCR so
+# `renzora init` / `renzora run` can `docker pull ghcr.io/renzora/engine`
+# instead of building osxcross/NDK/xwin/etc. locally (a few-minute pull vs a
+# 10-25 min build). Only rebuilds when the Dockerfile changes — the image is
+# toolchain-only (no engine source; that's bind-mounted at run time).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker/engine-builder/**"
+      - ".github/workflows/docker-image.yml"
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/engine-builder/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/renzora/engine:latest
+            ghcr.io/renzora/engine:${{ github.sha }}
+          # Reuse the previously published image as a layer cache so unchanged
+          # layers (osxcross, NDK, SDKs) aren't rebuilt every run.
+          cache-from: type=registry,ref=ghcr.io/renzora/engine:latest
+          cache-to: type=inline
