@@ -1224,6 +1224,29 @@ pub struct NetworkBridge {
     pub player_count: i32,
 }
 
+/// A single networked RPC delivered to this peer, awaiting dispatch to
+/// scripts' `on_rpc(name, args)` hook.
+#[derive(Clone, Debug)]
+pub struct IncomingRpc {
+    /// RPC name the sender used (the first arg to `rpc(name, args)`).
+    pub name: String,
+    /// Decoded argument table.
+    pub args: std::collections::HashMap<String, ScriptActionValue>,
+    /// Sender's peer id (0 = server/local).
+    pub from: u64,
+}
+
+/// Inbox bridge for networked RPCs received from the wire.
+///
+/// `renzora_network` pushes a [`IncomingRpc`] here for every `GameEvent` it
+/// receives; `renzora_scripting` drains it each frame and invokes every
+/// script's `on_rpc(name, args)` hook. Lives in core because scripting must
+/// not depend on the network crate (same indirection as [`NetworkBridge`]).
+#[derive(Resource, Default)]
+pub struct ScriptRpcInbox {
+    pub pending: Vec<IncomingRpc>,
+}
+
 /// Marker resource: present when the runtime is running as a dedicated server
 /// (`renzora-runtime --server`). Inserted before engine plugins build so they
 /// can opt out of client/render-only setup. A dedicated server has no render

@@ -30,7 +30,7 @@ const WEBSITE_URL: &str = "https://renzora.com";
 const YOUTUBE_URL: &str = "https://youtube.com/@renzoragame";
 const DISCORD_URL: &str = "https://discord.gg/9UHUGUyDJv";
 const GITHUB_URL: &str = "https://github.com/renzora/engine";
-const ROADMAP_URL: &str = "https://github.com/renzora/engine/blob/main/roadmap.md";
+const ROADMAP_URL: &str = "https://github.com/renzora/engine/blob/main/docs/roadmap.md";
 
 const BG_COLOR: Color32 = Color32::from_rgb(5, 4, 10);
 const PANEL_BG: Color32 = Color32::from_rgba_premultiplied(18, 20, 30, 230);
@@ -44,7 +44,7 @@ const ACCENT_HOVER: Color32 = Color32::from_rgb(140, 175, 255);
 const ERROR_COLOR: Color32 = Color32::from_rgb(239, 68, 68);
 
 /// Upcoming roadmap items shown on the splash. Curated to stay short — the
-/// full list lives in roadmap.md on GitHub.
+/// full list lives in docs/roadmap.md on GitHub.
 const ROADMAP_ITEMS: &[&str] = &[
     "Prefab / template system for reusable entities",
     "Batch property editing across multiple entities",

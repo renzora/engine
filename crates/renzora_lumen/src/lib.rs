@@ -7,7 +7,7 @@
 //!
 //! Phase 1 implements only `Off` and `ScreenSpace`. Higher tiers
 //! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as
-//! `Off`; Phases 2-6 of `renzora_lumen_plan.md` fill them in.
+//! `Off`; Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
 
 use bevy::prelude::*;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};

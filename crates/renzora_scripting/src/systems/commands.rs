@@ -188,10 +188,23 @@ pub fn apply_script_commands(
 
             // === Debug ===
             ScriptCommand::Log { level, message } => {
-                match level.as_str() {
-                    "warn" => renzora::clog_warn!("Script", "{}", message),
-                    "error" => renzora::clog_error!("Script", "{}", message),
-                    _ => renzora::clog_info!("Script", "{}", message),
+                // Route to two sinks: the in-memory console buffer (read by the
+                // editor console panel) AND a real tracing log. Without the
+                // tracing emit, `print_log` is invisible in runtime/headless
+                // builds, which have no console panel — only stdout.
+                match level.to_ascii_lowercase().as_str() {
+                    "warn" => {
+                        renzora::clog_warn!("Script", "{}", message);
+                        warn!(target: "script", "{}", message);
+                    }
+                    "error" => {
+                        renzora::clog_error!("Script", "{}", message);
+                        error!(target: "script", "{}", message);
+                    }
+                    _ => {
+                        renzora::clog_info!("Script", "{}", message);
+                        info!(target: "script", "{}", message);
+                    }
                 }
                 log_buffer.entries.push(ScriptLogEntry {
                     level: level.clone(),

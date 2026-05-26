@@ -43,7 +43,7 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 # which `plugin_bevy_hash()` checks at dlopen time). Mobile/wasm builds
 # under `cargo build -p <mobile_crate>` only see their own dep tree
 # (resolver = "2") and stay clean of dynamic_linking.
-bevy = { version = "0.18", features = ["bluenoise_texture", "experimental_pbr_pcss", "jpeg"] }
+bevy = { version = "0.18", features = ["bluenoise_texture", "experimental_pbr_pcss", "jpeg", "serialize"] }
 # Shared external deps. Plugins opt in by name (`bevy_egui = { workspace = true }`)
 # so versions stay locked across the workspace.
 bevy_egui = "0.39"

@@ -10,49 +10,40 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Getting Started
 
-**Prerequisites:** [Rust](https://rustup.rs/)
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) — that's all. The engine builds, tests, and cross-compiles inside a container with a pinned toolchain, so you don't install Rust (or anything else) natively. One environment for everyone: no "works on my machine," and the pinned compiler is the ABI contract the plugin system depends on. (Optional: VS Code for the in-container IDE — see [Dev Container](#dev-container).)
 
 ```bash
-cargo install cargo-make
 git clone https://github.com/renzora/engine
 cd engine
-makers run
+dev init     # first run builds the toolchain image (slow); cached after
+dev run      # build the editor in the container, launch it on your machine
 ```
 
-Linux: `sudo apt install libwayland-dev` before building.
+The `dev` entrypoint lives at the repo root — `dev.cmd` (Windows) and `dev` (Linux/macOS); the implementation sits in `docker/`. Add the repo to your `PATH` to run `dev` from anywhere, otherwise use `.\dev.cmd` (Windows) or `./dev` (Linux/macOS).
 
-### Local builds (host OS only)
+### `dev` commands
 
-These compile for the OS you're on. Mobile crates (`renzora-ios`, `renzora-android`) are excluded automatically -- they're cross-compiled via Docker or their dedicated template scripts.
-
-| Command | What it does |
-|---|---|
-| `makers run` | Build + run the editor |
-| `makers build` | Alias for `makers build-editor` |
-| `makers build-editor` | Build the editor + plugins, sync to `dist/<host>/editor/` |
-| `makers build-runtime` | Build runtime export template (no editor crates), sync to `dist/<host>/runtime/`. Doubles as the dedicated server — run it with `--server`. |
-| `makers build-web` | Build WASM runtime export template → `target/dist/renzora-runtime-web-wasm32.zip` |
-| <nobr>`makers build-web-editor`</nobr> | Build WASM editor → `templates/web/` (runs `wasm-bindgen` + `wasm-opt` + brotli; native-only deps make this best-effort) |
-| `makers build-android` | Build all Android template APKs (ARM64 + x86_64) |
-| <nobr>`makers build-android-arm64`</nobr> | Build Android ARM64 template APK only |
-| `makers build-ios` | Build iOS ARM64 template (macOS + Xcode only) |
-| `makers clean` | Remove final artifacts for editor + runtime (keeps cargo's dep cache) |
-| `makers clean-editor` | Same as `clean`, scoped to the editor target |
-| `makers clean-runtime` | Same as `clean`, scoped to the runtime target |
-
-### Docker builds (cross-platform)
-
-One container, one bind-mount, one shared `target/` cache. Filter platforms with `--`.
+Everything runs in the one container.
 
 | Command | What it does |
 |---|---|
-| `makers docker-init` | Set up Docker: build image + create container + start. Idempotent -- skips any step already done. |
-| `makers docker-build` | Build all platforms in parallel lanes (auto-runs `docker-init`; fast after first run -- cache persists). Add `-- windows linux` (etc.) to build only a subset. |
-| `makers upx` | UPX `--brute` shrink the host binary, SDK dylibs, and every plugin (slow -- minutes per file). Defaults to every platform under `dist/`. Add `-- windows` (etc.) or a path like `-- dist/windows-x64` to scope it. |
-| `makers docker-clean` | Wipe the container's build cache |
-| `makers docker-destroy` | Remove the container entirely |
+| `dev init` | Build the image + create/start the container. Idempotent. |
+| `dev build [platforms]` | Cross-build for one or more platforms (no args = all), e.g. `dev build windows linux`. |
+| `dev run [editor\|runtime]` | Build for your host, then run it natively (editor default). The GPU app runs on your machine; only the build happens in the container. |
+| `dev test [args]` | Run the test suite in the container (no args = full workspace suite). |
+| `dev check [args]` | `cargo check` in the container. |
+| `dev add <name> [--editor\|--dylib]` | Scaffold a new plugin crate. |
+| `dev remove <name>` | Delete a plugin crate. |
+| `dev upx [platforms]` | UPX-compress built binaries under `dist/`. |
+| `dev shell` | Interactive shell in the container. |
+| `dev clean` | Remove the build cache (`target/`). |
+| `dev destroy` | Remove the container. |
 
-Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`).
+Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). The runtime template doubles as the dedicated server — run it with `--server`.
+
+### Dev Container
+
+Open the repo in VS Code and **Reopen in Container**: rust-analyzer and all tooling run inside the same image, so code intelligence uses the exact pinned toolchain and the only things you install on your machine are Docker + VS Code. (The GPU editor/game still launches on your host via `dev run`.)
 
 ## Plugin SDK
 
@@ -65,13 +56,13 @@ The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` mac
 Use the workspace task to create a plugin:
 
 ```bash
-makers add cool_fx              # engine plugin (Runtime + Editor, baked into binary)
-makers add my_panel --editor    # editor-only plugin
-makers add my_effect --dylib    # distribution plugin (.dll/.so/.dylib for plugins/)
-makers remove cool_fx           # delete one
+./dev add cool_fx              # engine plugin (Runtime + Editor, baked into binary)
+./dev add my_panel --editor    # editor-only plugin
+./dev add my_effect --dylib    # distribution plugin (.dll/.so/.dylib for plugins/)
+./dev remove cool_fx           # delete one
 ```
 
-`makers add` creates `crates/renzora_<name>/` with a default skeleton. Static plugins (default and `--editor`) are registered as a dep of `renzora_runtime`; the `crates/*` workspace glob auto-includes the new directory. Distribution plugins (`--dylib`) are built standalone (`crate-type = ["cdylib"]`, `renzora/dlopen` feature) and aren't added to `renzora_runtime` -- they're loaded at runtime by `dynamic_plugin_loader` from the `plugins/` directory next to the binary. Adding a plugin is a single command, no manual edits to the runtime crate.
+`dev add` creates `crates/renzora_<name>/` with a default skeleton. Static plugins (default and `--editor`) are registered as a dep of `renzora_runtime`; the `crates/*` workspace glob auto-includes the new directory. Distribution plugins (`--dylib`) are built standalone (`crate-type = ["cdylib"]`, `renzora/dlopen` feature) and aren't added to `renzora_runtime` -- they're loaded at runtime by `dynamic_plugin_loader` from the `plugins/` directory next to the binary. Adding a plugin is a single command, no manual edits to the runtime crate.
 
 ### Plugin Crate
 
@@ -127,7 +118,7 @@ The macro emits an `inventory::submit!` block; the runtime iterates the registry
 If you want to ship a plugin as a standalone file users can drop into `<renzora>/plugins/`, scaffold it with `--dylib`:
 
 ```sh
-makers add cool_fx --dylib
+./dev add cool_fx --dylib
 ```
 
 That scaffold uses `crate-type = ["cdylib"]` and enables the `renzora/dlopen` feature, which makes `renzora::add!` emit unmangled `extern "C"` exports (`plugin_create`, `plugin_scope`, `plugin_bevy_hash`). Build with `cargo build -p renzora_cool_fx --profile dist` and copy the resulting `.dll`/`.so`/`.dylib` into the engine's `plugins/` directory. The host's `dynamic_plugin_loader` finds it at startup, validates the bevy ABI hash, and loads it. The plugin must be built against the same bevy + renzora versions as the host -- otherwise the hash check rejects it.

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Renzora dev launcher (Linux/macOS). Everything runs inside the `renzora/engine`
+# container, so the host needs only Docker — one pinned toolchain/environment
+# (the ABI contract the dlopen plugin system depends on), no native Rust.
+#
+#   ./dev init                 build image + create/start container (idempotent)
+#   ./dev build [platforms]    cross-build via docker/scripts/build-all.sh (no args = all)
+#   ./dev test  [args]         cargo test in the container (no args = workspace suite)
+#   ./dev check [args]         cargo check in the container
+#   ./dev run   [editor|runtime]   build for this host + run it (editor default)
+#   ./dev shell                interactive bash in the container
+#   ./dev clean                remove target/ in the container
+#   ./dev destroy              remove the container
+#
+# Uses the same container name as `makers docker-*` (renzora-<hash>), so the two
+# coexist during the transition off cargo-make.
+set -euo pipefail
+
+# Anchor to the repo (this script's own dir) so `dev` works from any cwd once
+# it's on PATH, and always targets the repo it lives in.
+cd "$(cd "$(dirname "$0")" && pwd)"
+
+IMAGE="renzora/engine"
+DOCKERFILE="docker/engine-builder/Dockerfile"
+# Linux has md5sum; macOS has md5. Both emit the digest first, so cut -c1-8
+# yields the same 8 chars on either. (Per-directory container name.)
+if command -v md5sum >/dev/null 2>&1; then
+    HASH=$(printf %s "$PWD" | md5sum | cut -c1-8)
+else
+    HASH=$(printf %s "$PWD" | md5 | cut -c1-8)
+fi
+NAME="renzora-$HASH"
+EXCLUDES="--exclude renzora_shader --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline --exclude bevy_silk --exclude vleue_navigator --exclude bevy_mod_openxr --exclude bevy_mod_xr --exclude bevy_xr_utils"
+
+ensure_up() {
+    if [ -z "$(docker images -q "$IMAGE")" ]; then
+        echo "Building image $IMAGE (first time, this takes a while)..."
+        docker build -f "$DOCKERFILE" -t "$IMAGE" .
+    fi
+    local image_id
+    image_id=$(docker image inspect "$IMAGE" --format '{{.Id}}')
+    if [ -n "$(docker ps -aq -f "name=^${NAME}$")" ] && [ -z "$(docker ps -aq -f "name=^${NAME}$" -f "label=renzora.image=$image_id")" ]; then
+        echo "Container $NAME is from an outdated image - recreating..."
+        docker rm -f "$NAME" >/dev/null
+    fi
+    if [ -z "$(docker ps -aq -f "name=^${NAME}$")" ]; then
+        echo "Creating container $NAME..."
+        docker create --name "$NAME" --label "renzora.image=$image_id" -v "$PWD:/app/src" -w /app/src "$IMAGE" sleep infinity >/dev/null
+    fi
+    docker start "$NAME" >/dev/null
+}
+
+dexec() { docker exec "$NAME" bash -c "$1"; }
+
+verb="${1:-help}"
+shift || true
+rest="$*"
+
+case "$verb" in
+    init)  ensure_up; echo "Container $NAME is running." ;;
+    build) ensure_up; dexec "/app/src/docker/scripts/build-all.sh dist $rest" ;;
+    test)  ensure_up; if [ -n "$rest" ]; then dexec "cargo test $rest"; else dexec "cargo test --workspace $EXCLUDES"; fi ;;
+    check) ensure_up; if [ -n "$rest" ]; then dexec "cargo check $rest"; else dexec "cargo check --workspace $EXCLUDES"; fi ;;
+    run)
+        ensure_up
+        feature="${rest:-editor}"
+        case "$feature" in editor|runtime) ;; *) echo "Usage: ./dev run [editor|runtime]"; exit 1 ;; esac
+        case "$(uname -s)" in
+            Linux)  platform=linux; outdir=linux-x64 ;;
+            Darwin) platform=macos; if [ "$(uname -m)" = "arm64" ]; then outdir=macos-arm64; else outdir=macos-x64; fi ;;
+            *) echo "Unsupported host for run: $(uname -s)"; exit 1 ;;
+        esac
+        dexec "/app/src/docker/scripts/build-all.sh dist $platform"
+        # Linux editor ships as an AppImage/AppDir; otherwise run the bare binary.
+        bin="renzora"; [ "$feature" = "runtime" ] && bin="renzora-runtime"
+        dir="dist/$outdir/$feature"
+        appimage=$(ls "$dir"/*.AppImage 2>/dev/null | head -1 || true)
+        if [ "$platform" = linux ] && [ "$feature" = editor ] && [ -n "$appimage" ]; then
+            echo "Running $appimage ..."; "$appimage"
+        elif [ -x "$dir/$bin" ]; then
+            echo "Running $dir/$bin ..."; "$dir/$bin"
+        else
+            echo "Built binary not found in $dir"; exit 1
+        fi
+        ;;
+    add)     ensure_up; dexec "bash docker/scripts/add-plugin.sh $rest" ;;
+    remove)  ensure_up; dexec "bash docker/scripts/remove-plugin.sh $rest" ;;
+    upx)     ensure_up; dexec "bash docker/scripts/upx-compress.sh $rest" ;;
+    shell)   ensure_up; docker exec -it "$NAME" bash ;;
+    clean)   ensure_up; dexec "rm -rf target && echo 'target/ cleaned'" ;;
+    destroy) docker rm -f "$NAME" 2>/dev/null >/dev/null || true; echo "Removed container $NAME." ;;
+    *)
+        cat <<'EOF'
+Renzora dev launcher - everything runs in the renzora/engine container.
+Usage: dev <command> [args]   (or ./dev if the repo isn't on PATH)
+  init                  build image + create/start container (idempotent)
+  build [platforms]     cross-build via docker/scripts/build-all.sh (no args = all)
+  test  [args]          cargo test in the container (no args = workspace suite)
+  check [args]          cargo check in the container
+  run   [editor|runtime]  build for this host + run it (editor default)
+  add   <name> [--editor|--dylib]   scaffold a new plugin crate
+  remove <name>         delete a plugin crate
+  upx   [platforms]     UPX-compress built binaries under dist/
+  shell                 interactive bash in the container
+  clean                 remove target/ in the container
+  destroy               remove the container
+EOF
+        ;;
+esac

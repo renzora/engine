@@ -1,0 +1,28 @@
+[package]
+name = "renzora_tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Integration-test crate for the engine. One file per scenario under `tests/`.
+#
+# Tests that depend ONLY on bevy + lightyear (no `renzora`) link as a normal
+# static test binary, so they run on native Windows too — they don't drag in
+# `renzora.dll` (whose 65k+ export table can't link on Windows). Tests that need
+# first-party engine crates pull in `renzora` transitively and therefore run in
+# CI / Linux / WSL only. Keep renzora-free probes (lightyear patterns) here so
+# they stay locally runnable.
+#
+# Picked up automatically by CI's `cargo test --workspace` (it's a `renzora_*`
+# workspace member). `src/lib.rs` is empty — it just gives the package a target
+# so `tests/` integration tests have something to attach to.
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+bevy = { workspace = true }
+lightyear = { version = "0.26", features = ["udp", "netcode"] }
+
+[lints]
+workspace = true

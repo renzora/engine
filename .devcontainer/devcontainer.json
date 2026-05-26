@@ -1,0 +1,36 @@
+{
+  // Dev Container: the editor's tooling (rust-analyzer, cargo, the cross
+  // toolchains) runs INSIDE the renzora/engine image, so the host needs only
+  // Docker + an editor — no native Rust, and code intelligence uses the exact
+  // pinned toolchain that builds + plugins use (the ABI contract). The GPU
+  // editor/game still runs on the host: build here, run the produced binary
+  // from dist/ (see ./dev run).
+  "name": "renzora",
+  "build": {
+    "dockerfile": "../docker/engine-builder/Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/app/src",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/app/src,type=bind,consistency=cached",
+  // target/ on a named volume so rust-analyzer's check artifacts live on fast
+  // container-local storage instead of the slow Windows/macOS bind mount. This
+  // is the IDE's own cache, separate from `./dev build` output.
+  "mounts": [
+    "source=renzora-devcontainer-target,target=/app/src/target,type=volume"
+  ],
+  // Best-effort: rust-analyzer resolves std with rust-src. Non-fatal if offline.
+  "postCreateCommand": "rustup component add rust-src 2>/dev/null || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
+      ],
+      "settings": {
+        "rust-analyzer.check.command": "check",
+        "rust-analyzer.cargo.extraEnv": { "CARGO_TARGET_DIR": "target" }
+      }
+    }
+  }
+}

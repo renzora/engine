@@ -129,6 +129,27 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Dispatch a received networked RPC to a script's `on_rpc(name, args)`.
+    pub fn call_on_rpc(
+        &self,
+        path: &Path,
+        rpc_name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        from: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands = backend.call_on_rpc(&resolved, rpc_name, args, from, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
     pub fn needs_reload(&self, path: &Path) -> bool {
         let resolved = self.resolve_path(path);
         self.backend_for(path)

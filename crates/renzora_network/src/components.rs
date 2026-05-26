@@ -20,7 +20,7 @@ pub struct Networked;
 pub struct NetworkId(pub u64);
 
 /// Who owns this networked entity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 pub enum OwnerKind {
     /// Server-authoritative (NPCs, world objects).
     Server,
@@ -29,12 +29,55 @@ pub enum OwnerKind {
 }
 
 /// Identifies the owner of a networked entity.
-#[derive(Component, Clone, Debug, Serialize, Deserialize)]
+///
+/// Usually assigned at runtime by the server (e.g. a player avatar gets
+/// `Client(id)` on spawn). World objects placed in the editor default to
+/// `Server`. Reflected so it serializes into scenes and shows in the inspector.
+#[derive(Component, Clone, Debug, PartialEq, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct NetworkOwner(pub OwnerKind);
 
 impl Default for NetworkOwner {
     fn default() -> Self {
         Self(OwnerKind::Server)
+    }
+}
+
+/// Marker for a server-spawned player avatar — one per connected client.
+///
+/// The server spawns these on join (with `Networked` + `NetworkOwner`) and
+/// despawns them on leave; replication carries the marker to every client, so
+/// a client-side system can give each one a visual. Game code can match on it
+/// to attach the real avatar model.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize, PartialEq)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct NetworkPlayer;
+
+/// Tunes how a [`Networked`] entity's `Transform` is replicated — the
+/// "synchronizer" knobs. Optional: a `Networked` entity with no
+/// `NetworkTransform` syncs its transform with these defaults (position +
+/// rotation, interpolated on remote peers). Attach this to override.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize, PartialEq)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct NetworkTransform {
+    /// Smoothly interpolate this entity between replicated snapshots on peers
+    /// that don't own it. Off = snap to each received position (jittery, but
+    /// useful for debugging or teleport-only entities).
+    pub interpolate: bool,
+    /// Replicate rotation (translation always replicates).
+    pub sync_rotation: bool,
+    /// Replicate scale. Off by default — most networked entities don't
+    /// rescale, and skipping it saves bandwidth.
+    pub sync_scale: bool,
+}
+
+impl Default for NetworkTransform {
+    fn default() -> Self {
+        Self {
+            interpolate: true,
+            sync_rotation: true,
+            sync_scale: false,
+        }
     }
 }
 

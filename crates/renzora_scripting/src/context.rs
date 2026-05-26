@@ -111,6 +111,13 @@ pub struct ScriptContext {
     /// active or hasn't read back a value yet.
     pub camera_ev: f32,
 
+    // Network status (mirror of `renzora::NetworkBridge`). Lets scripts gate
+    // server-authoritative logic with `net_is_server()` etc. All false/0 when
+    // networking isn't active.
+    pub net_is_server: bool,
+    pub net_is_connected: bool,
+    pub net_player_count: i32,
+
     // Gamepad
     pub gamepad_left_stick: Vec2,
     pub gamepad_right_stick: Vec2,
@@ -214,6 +221,9 @@ impl ScriptContext {
             mouse_buttons_just_pressed: [false; 5],
             mouse_scroll: 0.0,
             camera_ev: 0.0,
+            net_is_server: false,
+            net_is_connected: false,
+            net_player_count: 0,
             gamepad_left_stick: Vec2::ZERO,
             gamepad_right_stick: Vec2::ZERO,
             gamepad_left_trigger: 0.0,

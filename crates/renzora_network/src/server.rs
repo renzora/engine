@@ -47,6 +47,15 @@ impl Plugin for NetworkServerPlugin {
         // Store config for startup system
         app.insert_resource(ServerNetworkConfig(self.config.clone()));
 
+        // RPC: scripts running on the server can send (broadcast to all
+        // clients), and the server relays client→client RPCs while also
+        // delivering them to its own scripts. The outbound queue + inbox are
+        // init'd by `NetworkPlugin` (which builds before this in both paths).
+        // `NetworkPlugin` skips its own observer setup in server mode, so the
+        // script-action observer is added here for server-side scripts.
+        app.add_observer(crate::script_extension::handle_network_script_actions);
+        app.add_observer(crate::rpc::receive_and_relay_rpcs);
+
         // Systems
         app.add_systems(Startup, spawn_server_entity);
         app.add_systems(
@@ -55,6 +64,7 @@ impl Plugin for NetworkServerPlugin {
                 auto_replicate_networked,
                 handle_new_clients,
                 assign_network_ids,
+                crate::rpc::send_outgoing_rpcs,
             ),
         );
     }
@@ -92,11 +102,23 @@ fn spawn_server_entity(mut commands: Commands, config: Res<ServerNetworkConfig>)
     });
 }
 
-/// Auto-insert Lightyear `Replicate` marker on entities that gain the `Networked` marker.
-fn auto_replicate_networked(mut commands: Commands, query: Query<Entity, Added<Networked>>) {
-    for entity in &query {
-        commands.entity(entity).insert(Replicate::default());
-        info!("[network] Auto-replicate entity {:?}", entity);
+/// When an entity gains the `Networked` marker, set it up for replication:
+/// replicate to all clients, and (unless `NetworkTransform.interpolate` is
+/// false) mark it as an interpolation target so remote peers smooth its
+/// `Transform` between snapshots. `Transform` itself replicates because it's
+/// registered in the protocol.
+fn auto_replicate_networked(
+    mut commands: Commands,
+    query: Query<(Entity, Option<&NetworkTransform>), Added<Networked>>,
+) {
+    for (entity, net_tf) in &query {
+        let interpolate = net_tf.map_or(true, |nt| nt.interpolate);
+        let mut ec = commands.entity(entity);
+        ec.insert(Replicate::to_clients(NetworkTarget::All));
+        if interpolate {
+            ec.insert(InterpolationTarget::to_clients(NetworkTarget::All));
+        }
+        info!("[network] Auto-replicate entity {:?} (interpolate={})", entity, interpolate);
     }
 }
 

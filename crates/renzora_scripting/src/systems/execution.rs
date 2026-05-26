@@ -89,6 +89,15 @@ pub fn run_scripts(world: &mut World) {
         }
     }
 
+    // Snapshot networked RPCs received since the last frame, draining the
+    // inbox once. Every script's `on_rpc(name, args)` fires for each pending
+    // RPC below (broadcast semantics for v1). Resource may be absent if the
+    // network plugin isn't loaded — then there's simply nothing to dispatch.
+    let pending_rpcs: Vec<renzora::IncomingRpc> = world
+        .get_resource_mut::<renzora::ScriptRpcInbox>()
+        .map(|mut inbox| std::mem::take(&mut inbox.pending))
+        .unwrap_or_default();
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -308,6 +317,11 @@ pub fn run_scripts(world: &mut World) {
                 .get_resource::<renzora::core::CameraExposureState>()
                 .map(|s| s.ev100)
                 .unwrap_or(0.0);
+            if let Some(net) = world.get_resource::<renzora::NetworkBridge>() {
+                ctx.net_is_server = net.is_server;
+                ctx.net_is_connected = net.is_connected;
+                ctx.net_player_count = net.player_count;
+            }
             ctx.keys_pressed = keys_pressed.clone();
             ctx.keys_just_pressed = keys_just_pressed.clone();
             ctx.keys_just_released = keys_just_released.clone();
@@ -458,6 +472,22 @@ pub fn run_scripts(world: &mut World) {
                 }
             } else {
                 entry.runtime_state.has_error = false;
+            }
+
+            // Deliver any networked RPCs received this frame to the script's
+            // `on_rpc(name, args)` hook. Runs while the get-handler is still
+            // live so handlers can read component fields too.
+            for rpc in &pending_rpcs {
+                if let Err(e) = engine.call_on_rpc(
+                    &script_path,
+                    &rpc.name,
+                    &rpc.args,
+                    rpc.from,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!("Script on_rpc error [{}]: {}", script_path.display(), e);
+                }
             }
 
             // Clear the get handler before any mutable world access

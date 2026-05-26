@@ -97,7 +97,7 @@ COPY src/ src/
 
 RUN mkdir -p plugins_build
 
-COPY scripts/ scripts/
+COPY docker/scripts/ scripts/
 RUN chmod +x scripts/*.sh
 
 # ── Pre-build engine deps (cached — only plugin crate compiles at runtime) ──

@@ -18,6 +18,7 @@ pub fn handle_network_script_actions(
     trigger: On<ScriptAction>,
     status: Res<NetworkStatus>,
     mut cmds: Commands,
+    mut outbox: ResMut<crate::rpc::PendingOutgoingRpc>,
 ) {
     use renzora::ScriptActionValue;
     let action = trigger.event();
@@ -101,10 +102,33 @@ pub fn handle_network_script_actions(
                 log::warn!("[network] Script RPC ignored — not connected");
                 return;
             }
-            let name = get_str("name");
-            let args = get_str("args");
-            log::info!("[network] Script RPC: {} ({}B)", name, args.len());
-            // TODO: send as GameEvent message
+            // Name comes from the reserved key set by the `rpc()` verb, or
+            // falls back to the legacy `action("net_rpc", { name = .. })` form.
+            let name_key = if action.args.contains_key(crate::rpc::RPC_NAME_KEY) {
+                crate::rpc::RPC_NAME_KEY
+            } else {
+                "name"
+            };
+            let name = match action.args.get(name_key) {
+                Some(ScriptActionValue::String(s)) => s.clone(),
+                _ => String::new(),
+            };
+            if name.is_empty() {
+                log::warn!("[network] Script RPC ignored — missing name");
+                return;
+            }
+            // Everything except the reserved name key is the payload.
+            let payload: std::collections::HashMap<String, ScriptActionValue> = action
+                .args
+                .iter()
+                .filter(|(k, _)| k.as_str() != name_key)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            log::debug!("[network] Script RPC: {} ({} args)", name, payload.len());
+            outbox.queue.push(crate::rpc::OutgoingRpc {
+                name,
+                args: payload,
+            });
         }
         _ => {} // Not a network action
     }

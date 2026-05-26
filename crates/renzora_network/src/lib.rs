@@ -15,12 +15,17 @@ pub mod messages;
 pub mod prediction;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod protocol;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod rpc;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod script_extension;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 pub mod status;
 
-pub use components::{NetworkId, NetworkOwner, Networked, OwnerKind};
+pub use components::{
+    NetworkId, NetworkOwner, NetworkPlayer, NetworkTransform, Networked, OwnerKind,
+};
 pub use config::{NetworkConfig, TransportKind};
 #[cfg(not(target_arch = "wasm32"))]
 pub use input::PlayerInput;
@@ -62,10 +67,22 @@ impl Plugin for NetworkPlugin {
         // Shared status resource (read by editor panels, scripts, blueprints)
         app.init_resource::<NetworkStatus>();
         app.init_resource::<renzora::NetworkBridge>();
+        // RPC bridge resources — outbound queue (drained to the wire) and the
+        // inbound inbox (drained by renzora_scripting into `on_rpc`). Init'd
+        // here so both the client and dedicated-server paths share them.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            app.init_resource::<rpc::PendingOutgoingRpc>();
+            app.init_resource::<renzora::ScriptRpcInbox>();
+        }
 
-        // Register networked component types for scene deny list
+        // Register networked component types (scene serialization + inspector).
         app.register_type::<components::Networked>();
         app.register_type::<components::NetworkId>();
+        app.register_type::<components::NetworkOwner>();
+        app.register_type::<components::OwnerKind>();
+        app.register_type::<components::NetworkTransform>();
+        app.register_type::<components::NetworkPlayer>();
 
         // A dedicated server adds `ServerPlugins` + protocol via
         // `NetworkServerPlugin`; skip the client setup here so the protocol
@@ -92,6 +109,9 @@ impl Plugin for NetworkPlugin {
 
             // Script actions (decoupled — observes ScriptAction events)
             app.add_observer(script_extension::handle_network_script_actions);
+            // Deliver received RPCs to local scripts (client side; the server
+            // adds its own copy that also relays — see NetworkServerPlugin).
+            app.add_observer(rpc::receive_and_relay_rpcs);
 
             // Schedule systems
             app.add_systems(
@@ -101,6 +121,7 @@ impl Plugin for NetworkPlugin {
                     process_pending_disconnect,
                     client::update_network_status,
                     sync_network_bridge,
+                    rpc::send_outgoing_rpcs,
                 ),
             );
         }

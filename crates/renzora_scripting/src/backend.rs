@@ -51,6 +51,24 @@ pub trait ScriptBackend: Send + Sync {
         vars: &mut ScriptVariables,
     ) -> Result<Vec<ScriptCommand>, String>;
 
+    /// Execute the `on_rpc(name, args)` hook for a received networked RPC.
+    /// Returns commands produced by the script.
+    ///
+    /// Default is a no-op so backends without RPC support compile unchanged;
+    /// a backend overrides this to dispatch to its `on_rpc` handler.
+    fn call_on_rpc(
+        &self,
+        path: &Path,
+        rpc_name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        from: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, rpc_name, args, from, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Check if a script file has changed and needs reloading
     fn needs_reload(&self, path: &Path) -> bool;
 

@@ -210,13 +210,20 @@ impl LuaBackend {
         props
     }
 
-    fn execute_hook(
+    /// Ensure this entity's VM for `path` is built and its context globals are
+    /// fresh, then run `invoke` against it. Shared by every lifecycle hook
+    /// (`on_ready`/`on_update`/`on_rpc`) so they all see the same per-frame
+    /// context setup and command draining.
+    fn with_hook_vm<F>(
         &self,
         path: &Path,
-        hook: &str,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
+        invoke: F,
+    ) -> Result<Vec<ScriptCommand>, String>
+    where
+        F: FnOnce(&Lua) -> Result<(), String>,
+    {
         self.load_script(path)?;
 
         let (source, version) = {
@@ -273,21 +280,33 @@ impl LuaBackend {
         // Drain stale commands so this hook only sees its own output.
         drain_commands();
 
-        let globals = lua.globals();
-        let func: Result<LuaFunction, _> = globals.get(hook);
-        if let Ok(func) = func {
-            func.call::<()>(()).map_err(|e| {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} {}: {}", name, hook, e)
-            })?;
-        }
+        invoke(lua)?;
 
         read_back_variables(lua, vars);
 
         Ok(drain_commands())
+    }
+
+    fn execute_hook(
+        &self,
+        path: &Path,
+        hook: &str,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            if let Ok(func) = globals.get::<LuaFunction>(hook) {
+                func.call::<()>(()).map_err(|e| {
+                    let name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown");
+                    format!("{} {}: {}", name, hook, e)
+                })?;
+            }
+            Ok(())
+        })
     }
 }
 
@@ -353,6 +372,36 @@ impl ScriptBackend for LuaBackend {
         vars: &mut ScriptVariables,
     ) -> Result<Vec<ScriptCommand>, String> {
         self.execute_hook(path, "on_update", ctx, vars)
+    }
+
+    fn call_on_rpc(
+        &self,
+        path: &Path,
+        rpc_name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        from: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>("on_rpc") else {
+                return Ok(()); // script doesn't handle RPCs — fine
+            };
+            let table = lua.create_table().map_err(|e| e.to_string())?;
+            for (k, v) in args {
+                let lv = action_value_to_lua(lua, v).map_err(|e| e.to_string())?;
+                table.set(k.as_str(), lv).map_err(|e| e.to_string())?;
+            }
+            func.call::<()>((rpc_name, table, from)).map_err(|e| {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} on_rpc: {}", name, e)
+            })?;
+            Ok(())
+        })
     }
 
     fn needs_reload(&self, path: &Path) -> bool {
@@ -1097,6 +1146,67 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+    // -- Network status --
+    // net_is_server() — true on the dedicated/host server. Gate
+    // server-authoritative logic with this so it doesn't also run on clients.
+    let _ = globals.set(
+        "net_is_server",
+        lua.create_function(|lua, ()| Ok(lua.globals().get::<bool>("_net_is_server").unwrap_or(false)))
+            .unwrap(),
+    );
+    // net_is_client() — true when networking is active and this is not the server.
+    let _ = globals.set(
+        "net_is_client",
+        lua.create_function(|lua, ()| {
+            let is_server = lua.globals().get::<bool>("_net_is_server").unwrap_or(false);
+            let connected = lua.globals().get::<bool>("_net_is_connected").unwrap_or(false);
+            Ok(connected && !is_server)
+        })
+        .unwrap(),
+    );
+    // net_is_connected() — connected to a server (client) or running (server).
+    let _ = globals.set(
+        "net_is_connected",
+        lua.create_function(|lua, ()| {
+            Ok(lua.globals().get::<bool>("_net_is_connected").unwrap_or(false))
+        })
+        .unwrap(),
+    );
+    // net_player_count() — connected client count (server only; 0 elsewhere).
+    let _ = globals.set(
+        "net_player_count",
+        lua.create_function(|lua, ()| Ok(lua.globals().get::<i64>("_net_player_count").unwrap_or(0)))
+            .unwrap(),
+    );
+
+    // rpc("name", { key = value, ... }) — fire a networked RPC. Emits a
+    // `net_rpc` action carrying the RPC name in the reserved `__rpc` key;
+    // renzora_network sends it over the wire and remote peers invoke their
+    // `on_rpc(name, args)` hook. The reserved key must match
+    // `renzora_network::rpc::RPC_NAME_KEY`.
+    let _ = globals.set(
+        "rpc",
+        lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
+            let mut map = std::collections::HashMap::new();
+            if let Some(tbl) = args {
+                for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
+                    map.insert(k, lua_to_action_value(&v));
+                }
+            }
+            map.insert(
+                "__rpc".to_string(),
+                renzora::ScriptActionValue::String(name),
+            );
+            push_command(ScriptCommand::Action {
+                name: "net_rpc".to_string(),
+                target_entity: None,
+                args: map,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+
     // action_on("EntityName", "name", { key = value, ... }) — action targeting another entity
     let _ = globals.set(
         "action_on",
@@ -1406,6 +1516,11 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     let _ = g.set("self_entity_id", ctx.self_entity_id as i64);
     let _ = g.set("self_entity_name", ctx.self_entity_name.clone());
 
+    // Network status (read via net_is_server() / net_is_connected() / etc.)
+    let _ = g.set("_net_is_server", ctx.net_is_server);
+    let _ = g.set("_net_is_connected", ctx.net_is_connected);
+    let _ = g.set("_net_player_count", ctx.net_player_count);
+
     // Keyboard maps
     if let Ok(keys_table) = lua.create_table() {
         for (key, &pressed) in &ctx.keys_pressed {
@@ -1654,6 +1769,25 @@ fn property_value_to_lua_result(
             t.set("g", v[1] as f64)?;
             t.set("b", v[2] as f64)?;
             t.set("a", v[3] as f64)?;
+            Ok(LuaValue::Table(t))
+        }
+    }
+}
+
+/// Convert a `ScriptActionValue` back into a Lua value, for handing RPC args
+/// to `on_rpc(name, args)`. Inverse of [`lua_to_action_value`].
+fn action_value_to_lua(lua: &Lua, value: &renzora::ScriptActionValue) -> LuaResult<LuaValue> {
+    use renzora::ScriptActionValue;
+    match value {
+        ScriptActionValue::Float(v) => Ok(LuaValue::Number(*v as f64)),
+        ScriptActionValue::Int(v) => Ok(LuaValue::Integer(*v)),
+        ScriptActionValue::Bool(v) => Ok(LuaValue::Boolean(*v)),
+        ScriptActionValue::String(v) => Ok(LuaValue::String(lua.create_string(v)?)),
+        ScriptActionValue::Vec3(v) => {
+            let t = lua.create_table()?;
+            t.set("x", v[0] as f64)?;
+            t.set("y", v[1] as f64)?;
+            t.set("z", v[2] as f64)?;
             Ok(LuaValue::Table(t))
         }
     }

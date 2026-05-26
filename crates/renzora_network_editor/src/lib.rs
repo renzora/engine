@@ -6,10 +6,12 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
+use renzora_editor::{
+    inline_property, AppEditorExt, EditorCommands, EditorPanel, InspectorEntry, PanelLocation,
+};
 use renzora_network::status::ConnectionState;
-use renzora_network::{NetworkId, NetworkOwner, NetworkStatus, Networked, OwnerKind};
-use renzora_theme::ThemeManager;
+use renzora_network::{NetworkId, NetworkOwner, NetworkStatus, NetworkTransform, Networked, OwnerKind};
+use renzora_theme::{Theme, ThemeManager};
 
 // ============================================================================
 // Network Monitor Panel
@@ -396,6 +398,115 @@ impl EditorPanel for NetworkSettingsPanel {
 }
 
 // ============================================================================
+// Inspector entries (attachable components)
+// ============================================================================
+
+/// `Networked` — the "replicate this entity" marker. Adding it makes the
+/// server replicate the entity (and its `Transform`) to every client.
+fn networked_inspector() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "networked",
+        display_name: "Networked",
+        icon: egui_phosphor::regular::SHARE_NETWORK,
+        category: "networking",
+        has_fn: |world, entity| world.get::<Networked>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(Networked);
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<Networked>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(networked_ui),
+    }
+}
+
+fn networked_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    _cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let muted = theme.text.muted.to_color32();
+    let id = world
+        .get::<NetworkId>(entity)
+        .map(|n| n.0.to_string())
+        .unwrap_or_else(|| "—".into());
+    let owner = match world.get::<NetworkOwner>(entity).map(|o| o.0) {
+        Some(OwnerKind::Server) => "Server".to_string(),
+        Some(OwnerKind::Client(cid)) => format!("Client {cid}"),
+        None => "Server (default)".into(),
+    };
+    ui.label(
+        egui::RichText::new("Replicated to all clients. Network id and owner\nare assigned by the server at runtime.")
+            .size(11.0)
+            .color(muted),
+    );
+    egui::Grid::new("networked_info").num_columns(2).show(ui, |ui| {
+        ui.label(egui::RichText::new("Network ID").size(11.0).color(muted));
+        ui.label(id);
+        ui.end_row();
+        ui.label(egui::RichText::new("Owner").size(11.0).color(muted));
+        ui.label(owner);
+        ui.end_row();
+    });
+}
+
+/// `NetworkTransform` — tunes how the entity's transform replicates.
+fn network_transform_inspector() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "network_transform",
+        display_name: "Network Transform",
+        icon: egui_phosphor::regular::ARROWS_OUT_CARDINAL,
+        category: "networking",
+        has_fn: |world, entity| world.get::<NetworkTransform>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(NetworkTransform::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<NetworkTransform>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+        custom_ui_fn: Some(network_transform_ui),
+    }
+}
+
+fn network_transform_ui(
+    ui: &mut egui::Ui,
+    world: &World,
+    entity: Entity,
+    cmds: &EditorCommands,
+    theme: &Theme,
+) {
+    let Some(nt) = world.get::<NetworkTransform>(entity) else { return; };
+    let mut data = nt.clone();
+    let mut changed = false;
+
+    inline_property(ui, 0, "Interpolate", theme, |ui| {
+        changed |= ui.checkbox(&mut data.interpolate, "").changed();
+    });
+    inline_property(ui, 1, "Sync Rotation", theme, |ui| {
+        changed |= ui.checkbox(&mut data.sync_rotation, "").changed();
+    });
+    inline_property(ui, 2, "Sync Scale", theme, |ui| {
+        changed |= ui.checkbox(&mut data.sync_scale, "").changed();
+    });
+
+    if changed {
+        cmds.push(move |world: &mut World| {
+            if let Some(mut nt) = world.get_mut::<NetworkTransform>(entity) {
+                *nt = data;
+            }
+        });
+    }
+}
+
+// ============================================================================
 // Plugin
 // ============================================================================
 
@@ -408,6 +519,8 @@ impl Plugin for NetworkEditorPlugin {
         app.register_panel(NetworkMonitorPanel);
         app.register_panel(NetworkEntitiesPanel);
         app.register_panel(NetworkSettingsPanel);
+        app.register_inspector(networked_inspector());
+        app.register_inspector(network_transform_inspector());
     }
 }
 
