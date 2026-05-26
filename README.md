@@ -10,40 +10,36 @@ A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/)
 
 ## Getting Started
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) — that's all. The engine builds, tests, and cross-compiles inside a container with a pinned toolchain, so you don't install Rust (or anything else) natively. One environment for everyone: no "works on my machine," and the pinned compiler is the ABI contract the plugin system depends on. (Optional: VS Code for the in-container IDE — see [Dev Container](#dev-container).)
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/), and Rust just to install the CLI.
 
 ```bash
-git clone https://github.com/renzora/engine
-cd engine
-dev init     # first run builds the toolchain image (slow); cached after
-dev run      # build the editor in the container, launch it on your machine
+cargo install renzora     # installs the `renzora` command
+renzora new mygame        # scaffold a new project
+cd mygame
+renzora run               # build the editor and launch it (first run is slow)
 ```
 
-The `dev` entrypoint lives at the repo root — `dev.cmd` (Windows) and `dev` (Linux/macOS); the implementation sits in `docker/`. Add the repo to your `PATH` to run `dev` from anywhere, otherwise use `.\dev.cmd` (Windows) or `./dev` (Linux/macOS).
+Everything builds inside a container, so Docker handles the rest — no toolchain or system libraries to set up, and the build is identical on every machine. The editor runs on your computer, not in the container.
 
-### `dev` commands
-
-Everything runs in the one container.
+### Commands
 
 | Command | What it does |
 |---|---|
-| `dev init` | Build the image + create/start the container. Idempotent. |
-| `dev build [platforms]` | Cross-build for one or more platforms (no args = all), e.g. `dev build windows linux`. |
-| `dev run [editor\|runtime]` | Build for your host, then run it natively (editor default). The GPU app runs on your machine; only the build happens in the container. |
-| `dev test [args]` | Run the test suite in the container (no args = full workspace suite). |
-| `dev check [args]` | `cargo check` in the container. |
-| `dev add <name> [--editor\|--dylib]` | Scaffold a new plugin crate. |
-| `dev remove <name>` | Delete a plugin crate. |
-| `dev upx [platforms]` | UPX-compress built binaries under `dist/`. |
-| `dev shell` | Interactive shell in the container. |
-| `dev clean` | Remove the build cache (`target/`). |
-| `dev destroy` | Remove the container. |
+| `renzora new <name>` | Scaffold a new project. |
+| `renzora run [editor\|runtime]` | Build for your machine and launch it (editor by default). |
+| `renzora build [platforms]` | Cross-build for one or more platforms (no args = all). |
+| `renzora test` | Run the test suite. |
+| `renzora add <name> [--editor\|--dylib]` | Add a plugin crate. |
+| `renzora remove <name>` | Delete a plugin crate. |
+| `renzora shell` | Open a shell in the build container. |
 
-Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Output goes to `dist/<platform>/<target>/` (e.g. `dist/windows-x64/editor/`, `dist/windows-x64/runtime/`). The runtime template doubles as the dedicated server — run it with `--server`.
+Run `renzora --help` for the rest (`init`, `check`, `upx`, `clean`, `destroy`).
 
-### Dev Container
+Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Builds land in `dist/<platform>/` — the runtime build doubles as a dedicated server (run it with `--server`).
 
-Open the repo in VS Code and **Reopen in Container**: rust-analyzer and all tooling run inside the same image, so code intelligence uses the exact pinned toolchain and the only things you install on your machine are Docker + VS Code. (The GPU editor/game still launches on your host via `dev run`.)
+### IDE setup
+
+Want code intelligence? Open the repo in VS Code and **Reopen in Container** — rust-analyzer runs inside the same image, so all you install locally is Docker and VS Code.
 
 ## Plugin SDK
 
@@ -53,16 +49,14 @@ The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` mac
 
 ### Scaffolding
 
-Use the workspace task to create a plugin:
-
 ```bash
-./dev add cool_fx              # engine plugin (Runtime + Editor, baked into binary)
-./dev add my_panel --editor    # editor-only plugin
-./dev add my_effect --dylib    # distribution plugin (.dll/.so/.dylib for plugins/)
-./dev remove cool_fx           # delete one
+renzora add cool_fx              # plugin for the editor and exported games
+renzora add my_panel --editor    # editor-only plugin
+renzora add my_effect --dylib    # distributable plugin (drop-in .dll/.so/.dylib)
+renzora remove cool_fx           # delete one
 ```
 
-`dev add` creates `crates/renzora_<name>/` with a default skeleton. Static plugins (default and `--editor`) are registered as a dep of `renzora_runtime`; the `crates/*` workspace glob auto-includes the new directory. Distribution plugins (`--dylib`) are built standalone (`crate-type = ["cdylib"]`, `renzora/dlopen` feature) and aren't added to `renzora_runtime` -- they're loaded at runtime by `dynamic_plugin_loader` from the `plugins/` directory next to the binary. Adding a plugin is a single command, no manual edits to the runtime crate.
+This creates `crates/renzora_<name>/` with a working skeleton and wires it into the build automatically — no manual edits to any other crate.
 
 ### Plugin Crate
 
@@ -115,17 +109,13 @@ The macro emits an `inventory::submit!` block; the runtime iterates the registry
 
 ### Distribution Plugins
 
-If you want to ship a plugin as a standalone file users can drop into `<renzora>/plugins/`, scaffold it with `--dylib`:
+To ship a plugin as a standalone file users can drop into `<renzora>/plugins/`, scaffold it with `--dylib`:
 
 ```sh
-./dev add cool_fx --dylib
+renzora add cool_fx --dylib
 ```
 
-That scaffold uses `crate-type = ["cdylib"]` and enables the `renzora/dlopen` feature, which makes `renzora::add!` emit unmangled `extern "C"` exports (`plugin_create`, `plugin_scope`, `plugin_bevy_hash`). Build with `cargo build -p renzora_cool_fx --profile dist` and copy the resulting `.dll`/`.so`/`.dylib` into the engine's `plugins/` directory. The host's `dynamic_plugin_loader` finds it at startup, validates the bevy ABI hash, and loads it. The plugin must be built against the same bevy + renzora versions as the host -- otherwise the hash check rejects it.
-
-### Building
-
-Don't build plugins standalone (`cargo build -p my_plugin` from outside `--workspace`) -- it may produce a different `bevy_dylib` hash and the plugin won't load. Stay inside `--workspace`.
+Build it and drop the resulting `.dll`/`.so`/`.dylib` into the engine's `plugins/` directory — the engine finds and loads it at startup. It has to be built against the same engine version, or it's rejected at load time.
 
 ## Creating Components
 
