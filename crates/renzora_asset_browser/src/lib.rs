@@ -891,7 +891,7 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> 
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
         "ron" => DocTabKind::Scene,
-        "rhai" | "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        "rhai" | "lua" | "js" | "ts" | "py" | "html" => DocTabKind::Script,
         "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
         _ => return None,
     })
