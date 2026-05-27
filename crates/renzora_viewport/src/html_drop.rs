@@ -9,10 +9,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy_egui::egui;
 
-use renzora::core::CurrentProject;
 use renzora_editor::{EditorCommands, EditorSelection};
-use renzora_game_ui::UiCanvas;
-use renzora_hui::HtmlTemplatePath;
 use renzora_ui::asset_drag::AssetDragPayload;
 
 const HTML_EXTENSIONS: &[&str] = &["html"];
@@ -44,38 +41,10 @@ pub fn check_viewport_html_drop(ui: &mut egui::Ui, world: &World, viewport_rect:
 }
 
 fn spawn_html_template(world: &mut World, abs_path: PathBuf) {
-    // Stored path stays project-relative so it survives moving the project to a
-    // different machine (matches sprite/scene drops).
-    let path_str = if let Some(project) = world.get_resource::<CurrentProject>() {
-        project.make_asset_relative(&abs_path)
-    } else {
-        abs_path.to_string_lossy().to_string()
-    };
-
-    let canvas = world
-        .spawn((
-            Name::new("HTML UI"),
-            UiCanvas::default(),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                ..default()
-            },
-        ))
-        .id();
-
-    let name = abs_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "HTML Template".to_string());
-    let template = world
-        .spawn((Name::new(name), HtmlTemplatePath(path_str)))
-        .id();
-    world.entity_mut(canvas).add_child(template);
-
-    // Select the template child so its inspector (Template field) is shown.
+    // Shared spawn: a draggable, absolutely-positioned instance under a canvas
+    // (path stored project-relative; markup built under a child HtmlNode).
+    let instance = renzora_game_ui::spawn::spawn_html_template_at(world, &abs_path, None);
     if let Some(sel) = world.get_resource::<EditorSelection>() {
-        sel.set(Some(template));
+        sel.set(Some(instance));
     }
 }
