@@ -4,7 +4,7 @@
   // Docker + an editor — no native Rust, and code intelligence uses the exact
   // pinned toolchain that builds + plugins use (the ABI contract). The GPU
   // editor/game still runs on the host: build here, run the produced binary
-  // from dist/ (see ./dev run).
+  // from dist/ (see `renzora run`).
   "name": "renzora",
   "build": {
     "dockerfile": "../docker/engine-builder/Dockerfile",
@@ -14,7 +14,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/app/src,type=bind,consistency=cached",
   // target/ on a named volume so rust-analyzer's check artifacts live on fast
   // container-local storage instead of the slow Windows/macOS bind mount. This
-  // is the IDE's own cache, separate from `./dev build` output.
+  // is the IDE's own cache, separate from `renzora build` output.
   "mounts": [
     "source=renzora-devcontainer-target,target=/app/src/target,type=volume"
   ],
