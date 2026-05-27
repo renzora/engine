@@ -7,46 +7,36 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Both jobs run INSIDE the pinned toolchain image (ghcr.io/renzora/engine) —
+# the same environment local `renzora test` uses and the same one plugins are
+# built against (the ABI contract). So there's nothing to install on the runner:
+# rustc 1.93, the cross toolchains, and the Linux dev libs (alsa/udev/wayland/
+# xkbcommon/vulkan/mold) are all baked into the image. We pin `:latest` rather
+# than the Dockerfile-hash tag because this workflow and docker-image.yml are
+# independent — on a push that changes the Dockerfile, the hash-tagged image may
+# not be published yet; `:latest` with eventual consistency is fine for tests.
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    container: ghcr.io/renzora/engine:latest
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: latest
-          cache: true
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libasound2-dev \
-            libudev-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libvulkan-dev \
-            mold
-
       - uses: Swatinem/rust-cache@v2
 
-      # CI tests the engine's own crates only. The vendored Bevy-ecosystem
-      # crates (bevy_*, vleue_navigator) are third-party code copied into the
-      # tree; running their test suites and examples just re-tests upstream
-      # against our Bevy version and breaks on every API drift — noise, not
-      # signal. They are still built as dependencies; we just don't run their
-      # tests. New first-party crates stay covered automatically via --workspace.
+      # Tests the engine's own crates only. The vendored Bevy-ecosystem crates
+      # (bevy_*, vleue_navigator) are third-party code copied into the tree;
+      # running their suites just re-tests upstream against our Bevy version and
+      # breaks on every API drift — noise, not signal. They're still built as
+      # dependencies; we just don't run their tests. New first-party crates stay
+      # covered automatically via --workspace.
       #
-      # renzora_shader is first-party but has 9 pre-existing test failures from
-      # the material-graph rework era (see commit 5370748); excluded until that
-      # suite is cleaned up.
+      # renzora_shader is first-party but has pre-existing test failures from the
+      # material-graph rework (see commit 5370748); excluded until cleaned up.
       - name: Run tests
         run: |
           cargo test --workspace \
@@ -62,39 +52,25 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
+    container: ghcr.io/renzora/engine:latest
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      # `rust-toolchain.toml` pins the channel and overrides the action above,
-      # so install clippy onto the pinned toolchain explicitly. (We deliberately
-      # do NOT put `components = ["clippy"]` in rust-toolchain.toml — that makes
-      # the parallel docker build lanes race on the component download.)
-      - name: Install clippy on the pinned toolchain
+      # The image deliberately doesn't ship the clippy component (it would make
+      # the parallel docker build lanes race on the component download — see
+      # rust-toolchain.toml), so add it on the pinned toolchain here.
+      - name: Install clippy
         run: rustup component add clippy
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libasound2-dev \
-            libudev-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libvulkan-dev \
-            mold
 
       - uses: Swatinem/rust-cache@v2
 
       # Lints the engine's own crates (same first-party scope as `test`).
-      # `--no-deps` keeps clippy from linting the vendored crates that leak in
-      # as path-dependencies. `too_many_arguments` / `type_complexity` are
-      # allowed because they're inherent to Bevy systems and queries (Bevy
-      # allows them too). Scope is lib + bins; tests/examples aren't linted yet.
+      # `--no-deps` keeps clippy off the vendored crates that leak in as
+      # path-deps. `too_many_arguments` / `type_complexity` are allowed because
+      # they're inherent to Bevy systems and queries (Bevy allows them too).
       - name: Clippy
         run: |
           cargo clippy --workspace --no-deps \
