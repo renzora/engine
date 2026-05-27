@@ -98,6 +98,13 @@ pub fn run_scripts(world: &mut World) {
         .map(|mut inbox| std::mem::take(&mut inbox.pending))
         .unwrap_or_default();
 
+    // Player join/leave events received since last frame (server side). Each
+    // fires every script's `on_player_joined(id)` / `on_player_left(id)` hook.
+    let pending_player_events: Vec<renzora::NetPlayerEvent> = world
+        .get_resource_mut::<renzora::ScriptNetLifecycleInbox>()
+        .map(|mut inbox| std::mem::take(&mut inbox.pending))
+        .unwrap_or_default();
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -487,6 +494,24 @@ pub fn run_scripts(world: &mut World) {
                     &mut entry.variables,
                 ) {
                     warn!("Script on_rpc error [{}]: {}", script_path.display(), e);
+                }
+            }
+
+            // Deliver player join/leave events to `on_player_joined(id)` /
+            // `on_player_left(id)` (server side).
+            for ev in &pending_player_events {
+                if let Err(e) = engine.call_on_player_event(
+                    &script_path,
+                    ev.id,
+                    ev.joined,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!(
+                        "Script on_player_event error [{}]: {}",
+                        script_path.display(),
+                        e
+                    );
                 }
             }
 

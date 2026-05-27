@@ -404,6 +404,31 @@ impl ScriptBackend for LuaBackend {
         })
     }
 
+    fn call_on_player_event(
+        &self,
+        path: &Path,
+        id: u64,
+        joined: bool,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let hook = if joined { "on_player_joined" } else { "on_player_left" };
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>(hook) else {
+                return Ok(()); // script doesn't handle this lifecycle event — fine
+            };
+            func.call::<()>(id).map_err(|e| {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} {}: {}", name, hook, e)
+            })?;
+            Ok(())
+        })
+    }
+
     fn needs_reload(&self, path: &Path) -> bool {
         let cache = match self.cache.read() {
             Ok(c) => c,

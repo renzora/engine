@@ -69,6 +69,21 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute a player-lifecycle hook — `on_player_joined(id)` when `joined`,
+    /// else `on_player_left(id)`. Server-side. Default is a no-op so backends
+    /// without lifecycle support compile unchanged.
+    fn call_on_player_event(
+        &self,
+        path: &Path,
+        id: u64,
+        joined: bool,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, id, joined, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Check if a script file has changed and needs reloading
     fn needs_reload(&self, path: &Path) -> bool;
 

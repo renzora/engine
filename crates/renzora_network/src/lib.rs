@@ -74,6 +74,7 @@ impl Plugin for NetworkPlugin {
         {
             app.init_resource::<rpc::PendingOutgoingRpc>();
             app.init_resource::<renzora::ScriptRpcInbox>();
+            app.init_resource::<renzora::ScriptNetLifecycleInbox>();
         }
 
         // Register networked component types (scene serialization + inspector).

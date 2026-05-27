@@ -1247,6 +1247,27 @@ pub struct ScriptRpcInbox {
     pub pending: Vec<IncomingRpc>,
 }
 
+/// A player join/leave event, awaiting dispatch to scripts'
+/// `on_player_joined(id)` / `on_player_left(id)` hooks. Server-authoritative:
+/// only the server/host observes connections, so only it produces these.
+#[derive(Clone, Debug)]
+pub struct NetPlayerEvent {
+    /// Peer id that joined or left (same id space as [`IncomingRpc::from`]).
+    pub id: u64,
+    /// `true` = joined, `false` = left.
+    pub joined: bool,
+}
+
+/// Inbox of player lifecycle events. `renzora_network` (server side) pushes a
+/// [`NetPlayerEvent`] when a client connects/disconnects; `renzora_scripting`
+/// drains it each frame and invokes every script's `on_player_joined(id)` /
+/// `on_player_left(id)` hook. Lives in core for the same reason as
+/// [`ScriptRpcInbox`] — scripting must not depend on the network crate.
+#[derive(Resource, Default)]
+pub struct ScriptNetLifecycleInbox {
+    pub pending: Vec<NetPlayerEvent>,
+}
+
 /// Marker resource: present when the runtime is running as a dedicated server
 /// (`renzora-runtime --server`). Inserted before engine plugins build so they
 /// can opt out of client/render-only setup. A dedicated server has no render

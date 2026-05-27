@@ -57,12 +57,14 @@ impl Plugin for NetworkServerPlugin {
         app.add_observer(crate::rpc::receive_and_relay_rpcs);
 
         // Systems
+        app.init_resource::<ConnectedPeers>();
         app.add_systems(Startup, spawn_server_entity);
         app.add_systems(
             Update,
             (
                 auto_replicate_networked,
                 handle_new_clients,
+                handle_disconnects,
                 assign_network_ids,
                 crate::rpc::send_outgoing_rpcs,
             ),
@@ -193,21 +195,49 @@ fn assign_network_ids(
     }
 }
 
-/// Track new client connections by observing `Added<Connected>`.
+/// Connection-entity → peer id, kept so a disconnect can report the right id
+/// to `on_player_left` after the connection's components are gone.
+#[derive(Resource, Default)]
+struct ConnectedPeers(std::collections::HashMap<Entity, u64>);
+
+/// A client connected (`Added<Connected>` on a `ClientOf` link): record it,
+/// update status, and queue `on_player_joined(id)` for scripts. The id is the
+/// real lightyear peer id, so it matches the `from` a script sees in `on_rpc`.
 fn handle_new_clients(
-    query: Query<Entity, Added<Connected>>,
+    query: Query<(Entity, &RemoteId), (Added<Connected>, With<ClientOf>)>,
     mut status: ResMut<NetworkStatus>,
-    mut next_client_id: Local<u64>,
+    mut peers: ResMut<ConnectedPeers>,
+    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
 ) {
-    for entity in &query {
-        *next_client_id += 1;
-        info!(
-            "[network] Client connected: entity={:?} id={}",
-            entity, *next_client_id
-        );
+    for (entity, remote) in &query {
+        let id = crate::rpc::peer_id_to_u64(remote.0);
+        info!("[network] Client connected: entity={:?} id={}", entity, id);
+        peers.0.insert(entity, id);
         status.connected_clients.push(ConnectedClient {
-            client_id: *next_client_id,
+            client_id: id,
             rtt_ms: 0.0,
         });
+        lifecycle
+            .pending
+            .push(renzora::NetPlayerEvent { id, joined: true });
+    }
+}
+
+/// A client disconnected (`Connected` removed): queue `on_player_left(id)` and
+/// drop it from status. Uses the tracked id since the connection is gone.
+fn handle_disconnects(
+    mut removed: RemovedComponents<Connected>,
+    mut status: ResMut<NetworkStatus>,
+    mut peers: ResMut<ConnectedPeers>,
+    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
+) {
+    for entity in removed.read() {
+        if let Some(id) = peers.0.remove(&entity) {
+            info!("[network] Client disconnected: entity={:?} id={}", entity, id);
+            status.connected_clients.retain(|c| c.client_id != id);
+            lifecycle
+                .pending
+                .push(renzora::NetPlayerEvent { id, joined: false });
+        }
     }
 }
