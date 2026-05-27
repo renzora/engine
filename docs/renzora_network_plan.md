@@ -45,9 +45,9 @@ Continuous "where things are." The synchronizer half.
 - ⬜ **Delta compression** (Lightyear `Diffable`) for bandwidth on large/often-changing components.
 - ⬜ Per-component send-rate / change-detection config on `NetworkTransform`.
 
-## Phase 4 — Player lifecycle, ownership & spawning ⬜
+## Phase 4 — Player lifecycle, ownership & spawning 🟡
 The MultiplayerSpawner equivalent — entirely script/prefab-driven.
-- ⬜ Server hooks: `on_player_joined(id)`, `on_player_left(id)`.
+- ✅ Server hooks: `on_player_joined(id)`, `on_player_left(id)` — server tracks real lightyear peer ids on connect/disconnect (`ScriptNetLifecycleInbox` in core), dispatched to scripts via the same path as `on_rpc`.
 - ⬜ `spawn_networked(prefab_or_primitive, x, y, z, owner)` verb → spawns `Networked` + `NetworkOwner`.
 - ⬜ **Prefab-spawn replication**: server says "spawn prefab P as net id N owned by C"; each client instantiates P locally **with its own mesh/visual** (solves "meshes don't replicate"). Lightyear `PreSpawned` for client-predicted spawns.
 - ⬜ `Controlled` / `ControlledBy` — which entity a client owns (so a script knows "this avatar is mine").
