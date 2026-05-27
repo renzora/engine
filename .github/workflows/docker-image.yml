@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "docker/engine-builder/**"
+      - "docker/Dockerfile"
       - ".github/workflows/docker-image.yml"
   workflow_dispatch:
 
@@ -38,13 +38,13 @@ jobs:
       # is pinned to the exact toolchain image it was built against.
       - name: Compute Dockerfile content tag
         id: dftag
-        run: echo "tag=$(tr -d '\r' < docker/engine-builder/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        run: echo "tag=$(tr -d '\r' < docker/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/engine-builder/Dockerfile
+          file: docker/Dockerfile
           platforms: linux/amd64
           push: true
           tags: |

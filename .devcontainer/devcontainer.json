@@ -7,7 +7,7 @@
   // from dist/ (see `renzora run`).
   "name": "renzora",
   "build": {
-    "dockerfile": "../docker/engine-builder/Dockerfile",
+    "dockerfile": "../docker/Dockerfile",
     "context": ".."
   },
   "workspaceFolder": "/app/src",
