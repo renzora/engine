@@ -93,6 +93,7 @@ editor = [
     "renzora_water/editor",
     "renzora_terrain/editor",
     "renzora_game_ui/editor",
+    "renzora_hui/editor",
     "renzora_gauges/editor",
     "renzora_navmesh/editor",
 ]

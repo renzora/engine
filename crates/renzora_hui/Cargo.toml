@@ -3,6 +3,11 @@ name = "renzora_hui"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Editor-only canvas integration: tag built template nodes as draggable widgets
+# and persist drag positions. Off in shipped games, where bevy_hui owns layout.
+editor = []
+
 [dependencies]
 bevy = { workspace = true }
 bevy_hui = "0.6"

@@ -9,6 +9,9 @@ use bevy::prelude::*;
 
 pub mod lua_bridge;
 
+#[cfg(feature = "editor")]
+pub mod editor;
+
 /// Folders (relative to the asset root) scanned by [`bevy_hui::HuiAutoLoadPlugin`]
 /// for reusable component templates that register themselves by file stem.
 const AUTOLOAD_DIRS: &[&str] = &["ui/components"];
@@ -27,6 +30,11 @@ impl Plugin for HuiPlugin {
         .init_resource::<renzora::ScriptUiInbox>()
         .add_systems(Update, lua_bridge::register_lua_forwarders)
         .add_observer(lua_bridge::handle_hui_spawn);
+
+        // Editor-only: make template entities show up as draggable widgets in
+        // the canvas preview and persist drag positions across hot-reloads.
+        #[cfg(feature = "editor")]
+        app.add_plugins(editor::HuiEditorPlugin);
     }
 }
 

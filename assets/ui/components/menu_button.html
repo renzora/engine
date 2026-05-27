@@ -11,9 +11,11 @@
     <property name="action">noop</property>
     <property name="primary">#2A2D34</property>
     <property name="secondary">#4C8BF5</property>
+    <!-- Unique per instance so drag overrides don't collide; callers pass id="..." -->
+    <property name="id">menu_button</property>
 
     <button
-        id="menu_button"
+        id="{id}"
         padding="8px"
         margin="4px"
         height="56px"
