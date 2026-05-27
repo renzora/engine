@@ -1,0 +1,26 @@
+<!-- Reusable labeled stat bar (health / mana / stamina / ...).
+     Auto-registered as <stat_bar> by HuiAutoLoadPlugin.
+
+     Properties:
+       label   left-hand caption (e.g. "Health")
+       value   right-hand readout (e.g. "72 / 100")
+       fill    width of the filled portion as a percent (e.g. "72%")
+       color   fill color (e.g. "#E74C3C")
+       track   empty-track color -->
+<template>
+    <property name="label">Stat</property>
+    <property name="value"></property>
+    <property name="fill">50%</property>
+    <property name="color">#4C8BF5</property>
+    <property name="track">#222831</property>
+
+    <node flex_direction="column" width="260px" row_gap="4px">
+        <node flex_direction="row" justify_content="space_between" width="100%">
+            <text font_size="14" font_color="#FFFFFF">{label}</text>
+            <text font_size="14" font_color="#AEB6C2">{value}</text>
+        </node>
+        <node width="100%" height="18px" background="{track}" border_radius="9px" padding="2px">
+            <node width="{fill}" height="100%" background="{color}" border_radius="7px" />
+        </node>
+    </node>
+</template>

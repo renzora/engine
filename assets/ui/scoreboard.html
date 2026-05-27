@@ -1,0 +1,52 @@
+<!-- Scoreboard — exercises CSS-grid layout with mixed column widths
+     `(repeats, size)`: a fixed rank column, a flexible name column, and two
+     fixed stat columns. Each cell is its own grid item; rows flow in order. -->
+<template>
+    <node
+        flex_direction="column"
+        width="400px"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="12px"
+        padding="16px"
+        row_gap="10px"
+    >
+        <text font_size="20" font_color="#FFFFFF">Scoreboard</text>
+
+        <node
+            display="grid"
+            grid_template_columns="(1, 36px) (1, 1fr) (1, 64px) (1, 72px)"
+            row_gap="6px"
+            column_gap="10px"
+            width="100%"
+        >
+            <!-- header row -->
+            <text font_size="12" font_color="#8A93A2">#</text>
+            <text font_size="12" font_color="#8A93A2">Player</text>
+            <text font_size="12" font_color="#8A93A2">Kills</text>
+            <text font_size="12" font_color="#8A93A2">Score</text>
+
+            <!-- rows -->
+            <text font_size="15" font_color="#F1C40F">1</text>
+            <text font_size="15" font_color="#FFFFFF">Nova</text>
+            <text font_size="15" font_color="#FFFFFF">24</text>
+            <text font_size="15" font_color="#FFFFFF">4820</text>
+
+            <text font_size="15" font_color="#BDC3C7">2</text>
+            <text font_size="15" font_color="#FFFFFF">Rook</text>
+            <text font_size="15" font_color="#FFFFFF">19</text>
+            <text font_size="15" font_color="#FFFFFF">3960</text>
+
+            <text font_size="15" font_color="#CD7F32">3</text>
+            <text font_size="15" font_color="#FFFFFF">Echo</text>
+            <text font_size="15" font_color="#FFFFFF">17</text>
+            <text font_size="15" font_color="#FFFFFF">3120</text>
+
+            <text font_size="15" font_color="#5A6678">4</text>
+            <text font_size="15" font_color="#FFFFFF">Vex</text>
+            <text font_size="15" font_color="#FFFFFF">11</text>
+            <text font_size="15" font_color="#FFFFFF">2050</text>
+        </node>
+    </node>
+</template>

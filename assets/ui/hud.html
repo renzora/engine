@@ -1,0 +1,61 @@
+<!-- Full-screen game HUD — exercises absolute positioning of panels into screen
+     corners and composition of the reusable <stat_bar> component. Spawn this as
+     a UI Canvas child so it fills the viewport. -->
+<template>
+    <node width="100%" height="100%" position="relative">
+
+        <!-- top-left: vitals -->
+        <node position="absolute" top="16px" left="16px" flex_direction="column" row_gap="8px">
+            <stat_bar label="HP" value="72 / 100" fill="72%" color="#E74C3C" />
+            <stat_bar label="MP" value="40 / 100" fill="40%" color="#3498DB" />
+        </node>
+
+        <!-- top-right: score -->
+        <node
+            position="absolute"
+            top="16px"
+            right="16px"
+            flex_direction="column"
+            align_items="flex_end"
+            padding="10px"
+            background="#0D0F14"
+            border_radius="10px"
+        >
+            <text font_size="12" font_color="#8A93A2">SCORE</text>
+            <text font_size="28" font_color="#FFFFFF">128,540</text>
+        </node>
+
+        <!-- bottom-left: ammo -->
+        <node
+            position="absolute"
+            bottom="16px"
+            left="16px"
+            flex_direction="row"
+            align_items="flex_end"
+            column_gap="6px"
+            padding="10px"
+            background="#0D0F14"
+            border_radius="10px"
+        >
+            <text font_size="36" font_color="#FFFFFF">24</text>
+            <text font_size="16" font_color="#8A93A2" margin="0px 0px 6px 0px">/ 120</text>
+        </node>
+
+        <!-- bottom-right: minimap placeholder -->
+        <node
+            position="absolute"
+            bottom="16px"
+            right="16px"
+            width="140px"
+            height="140px"
+            background="#0D0F14"
+            border="2px"
+            border_color="#222B38"
+            border_radius="10px"
+            justify_content="center"
+            align_items="center"
+        >
+            <text font_size="12" font_color="#5A6678">MINIMAP</text>
+        </node>
+    </node>
+</template>

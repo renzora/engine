@@ -1,0 +1,40 @@
+<!-- Reusable inventory slot. Auto-registered as <item_slot>.
+     Uses a colored tile + letter as a stand-in icon so the template needs no
+     image assets. Swap the inner <node> for an <image src="..."> for real icons.
+
+     Properties:
+       letter  single-char stand-in icon (e.g. "S" for sword)
+       count   stack count badge (e.g. "12"); leave empty to hide
+       color   tile color -->
+<template>
+    <property name="letter"></property>
+    <property name="count"></property>
+    <property name="color">#3A3F4B</property>
+
+    <node
+        width="64px"
+        height="64px"
+        background="#1B1F27"
+        border="2px"
+        border_color="#2C3340"
+        border_radius="8px"
+        justify_content="center"
+        align_items="center"
+        hover:border_color="#4C8BF5"
+        hover:background="#222A36"
+        delay="0.1s"
+        ease="cubic_out"
+    >
+        <node
+            width="44px"
+            height="44px"
+            background="{color}"
+            border_radius="6px"
+            justify_content="center"
+            align_items="center"
+        >
+            <text font_size="22" font_color="#FFFFFF">{letter}</text>
+        </node>
+        <text position="absolute" right="5px" bottom="3px" font_size="12" font_color="#FFFFFF">{count}</text>
+    </node>
+</template>

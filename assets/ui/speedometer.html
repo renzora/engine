@@ -1,0 +1,36 @@
+<!-- Digital speedometer — big readout, a horizontal RPM-style gauge, and a gear
+     indicator. (bevy_hui styles don't expose rotation, so this is a digital
+     gauge rather than a needle dial.) Exercises large fonts, baseline alignment,
+     nested fill bars and row/column composition. -->
+<template>
+    <node
+        flex_direction="column"
+        align_items="center"
+        row_gap="6px"
+        padding="20px"
+        width="240px"
+        background="#0D0F14"
+        border="1px"
+        border_color="#1C2230"
+        border_radius="16px"
+    >
+        <text font_size="13" font_color="#8A93A2">SPEED</text>
+
+        <node flex_direction="row" align_items="flex_end" column_gap="6px">
+            <text font_size="64" font_color="#FFFFFF">87</text>
+            <text font_size="18" font_color="#8A93A2" margin="0px 0px 12px 0px">km/h</text>
+        </node>
+
+        <!-- RPM gauge: filled portion of the track -->
+        <node width="200px" height="10px" background="#1C2230" border_radius="5px" padding="2px">
+            <node width="58%" height="100%" background="#F39C12" border_radius="4px" />
+        </node>
+
+        <node flex_direction="row" column_gap="10px" margin="8px 0px 0px 0px" align_items="center">
+            <text font_size="22" font_color="#2ECC71">D</text>
+            <text font_size="16" font_color="#5A6678">3</text>
+            <text font_size="14" font_color="#5A6678">|</text>
+            <text font_size="14" font_color="#8A93A2">3450 rpm</text>
+        </node>
+    </node>
+</template>

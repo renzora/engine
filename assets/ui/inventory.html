@@ -1,0 +1,34 @@
+<!-- Inventory — exercises a fixed grid of the reusable <item_slot> component,
+     hover states on each slot, and stack-count badges. 4 columns × 2 rows. -->
+<template>
+    <node
+        flex_direction="column"
+        row_gap="12px"
+        padding="16px"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="12px"
+    >
+        <node flex_direction="row" justify_content="space_between" align_items="center" width="100%">
+            <text font_size="18" font_color="#FFFFFF">Inventory</text>
+            <text font_size="13" font_color="#8A93A2">8 / 16</text>
+        </node>
+
+        <node
+            display="grid"
+            grid_template_columns="(4, 64px)"
+            row_gap="8px"
+            column_gap="8px"
+        >
+            <item_slot letter="S" count="1"  color="#7F8C8D" />
+            <item_slot letter="P" count="3"  color="#27AE60" />
+            <item_slot letter="B" count="12" color="#C0392B" />
+            <item_slot letter="K" count=""   color="#2980B9" />
+            <item_slot letter="G" count="240" color="#F1C40F" />
+            <item_slot letter="H" count="2"  color="#8E44AD" />
+            <item_slot letter="A" count="60" color="#D35400" />
+            <item_slot letter="?" count=""   color="#3A3F4B" />
+        </node>
+    </node>
+</template>
