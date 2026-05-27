@@ -60,8 +60,8 @@ jobs:
           submodules: true
 
       # The image deliberately doesn't ship the clippy component (it would make
-      # the parallel docker build lanes race on the component download — see
-      # rust-toolchain.toml), so add it on the pinned toolchain here.
+      # the parallel docker build lanes race on the rustup component download),
+      # so add it to the image's toolchain here.
       - name: Install clippy
         run: rustup component add clippy
 

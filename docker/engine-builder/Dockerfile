@@ -6,14 +6,16 @@
 # baked in — the repo is mounted at runtime via a persistent container.
 #
 # Set up (build image + create + start container; idempotent):
-#   makers docker-init
+#   renzora init
 #
-# Build all platforms:
-#   makers docker-build
-#
-# Build a subset:
-#   makers docker-build -- windows linux
+# Build all platforms / a subset:
+#   renzora build
+#   renzora build windows linux
 
+# This is the SINGLE source of truth for the engine's Rust version — there is no
+# rust-toolchain.toml. Everything builds in this image, so the compiler is
+# whatever this base provides. Bumping the version = editing this line (which
+# also changes the image's content hash, so the CLI auto-pulls the new image).
 FROM --platform=linux/amd64 rust:1.93.0-bookworm
 
 # ── System dependencies ──────────────────────────────────────────────────────

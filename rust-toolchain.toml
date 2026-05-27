@@ -1,7 +1,0 @@
-[toolchain]
-channel = "1.93.0"
-# NOTE: do NOT add `components = ["clippy"]` here. It forces rustup to install
-# clippy for every use of the toolchain — including the parallel docker build
-# lanes, which share one rustup dir and race on the component download (the
-# `editor` lane fails with a rename error). The CI clippy job installs clippy
-# itself via an explicit `rustup component add clippy` step instead.
