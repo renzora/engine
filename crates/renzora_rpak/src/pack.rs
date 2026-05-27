@@ -365,6 +365,36 @@ where
             }
     }
 
+    // Force-include UI markup templates under `ui/`. bevy_hui component
+    // templates (e.g. `<menu_button>`) are referenced by tag name and discovered
+    // at runtime via folder autoload, not by quoted path — so the reference BFS
+    // below never reaches them. Pack every `.html` under `ui/` up front so both
+    // directly-referenced templates and tag-only components ship. `try_pack`
+    // respects `allowed_extensions`, so server exports still skip them.
+    let ui_dir = project_dir.join("ui");
+    if ui_dir.is_dir() {
+        let mut dirs = vec![ui_dir];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| e.eq_ignore_ascii_case("html"))
+                {
+                    if let Some(key) = archive_key_for(&path) {
+                        try_pack(&key, &mut packer, &mut visited, &mut queue, &mut on_packed);
+                    }
+                }
+            }
+        }
+    }
+
     // Read main_scene and icon from project.toml
     let project_toml_path = project_dir.join("project.toml");
     if project_toml_path.is_file() {
@@ -941,6 +971,8 @@ const ASSET_EXTENSIONS: &[&str] = &[
     // Data
     ".blueprint",
     ".json",
+    // UI markup (bevy_hui templates)
+    ".html",
     // Fonts
     ".ttf",
     ".otf",

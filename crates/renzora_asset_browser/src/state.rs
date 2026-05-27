@@ -613,6 +613,9 @@ pub fn file_icon(path: &Path) -> (&'static str, Color32) {
         "lua" => (regular::CODE, Color32::from_rgb(80, 130, 230)),
         "js" | "ts" => (regular::CODE, Color32::from_rgb(240, 220, 80)),
 
+        // UI markup (bevy_hui templates)
+        "html" => (regular::BROWSER, Color32::from_rgb(230, 120, 90)),
+
         // Shaders
         "wgsl" | "glsl" | "vert" | "frag" => {
             (regular::GRAPHICS_CARD, Color32::from_rgb(220, 120, 255))
@@ -704,6 +707,8 @@ const COPYABLE_EXTENSIONS: &[&str] = &[
     "lua",
     "js",
     "ts",
+    // UI markup (bevy_hui templates)
+    "html",
     // Shaders
     "wgsl",
     "glsl",
