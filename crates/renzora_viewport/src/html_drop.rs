@@ -1,0 +1,81 @@
+//! Drag-and-drop HTML template spawning — when a `.html` asset is dropped on the
+//! viewport, spawn a UI Canvas with a child `HtmlTemplatePath` entity (the same
+//! shape as the "+ Add Entity → HTML Template" preset). The runtime observer in
+//! `renzora_hui` turns the path into an `HtmlNode` and bevy_hui builds the markup
+//! beneath it. UI is screen-space, so the 3D drop point is ignored.
+
+use std::path::PathBuf;
+
+use bevy::prelude::*;
+use bevy_egui::egui;
+
+use renzora::core::CurrentProject;
+use renzora_editor::{EditorCommands, EditorSelection};
+use renzora_game_ui::UiCanvas;
+use renzora_hui::HtmlTemplatePath;
+use renzora_ui::asset_drag::AssetDragPayload;
+
+const HTML_EXTENSIONS: &[&str] = &["html"];
+
+/// Called from the viewport panel's `ui()` each frame. On release of an `.html`
+/// drag-drop payload over the viewport, queues a deferred command that spawns a
+/// UI Canvas + template-carrying child.
+pub fn check_viewport_html_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
+    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
+        return;
+    };
+    if !payload.is_detached || !payload.matches_extensions(HTML_EXTENSIONS) {
+        return;
+    }
+
+    let pointer_pos = ui.ctx().pointer_latest_pos();
+    if !pointer_pos.is_some_and(|p| viewport_rect.contains(p)) {
+        return;
+    }
+    // Wait for the pointer to be released over the viewport.
+    if ui.ctx().input(|i| i.pointer.any_down()) {
+        return;
+    }
+
+    let abs_path = payload.path.clone();
+    if let Some(commands) = world.get_resource::<EditorCommands>() {
+        commands.push(move |world: &mut World| spawn_html_template(world, abs_path));
+    }
+}
+
+fn spawn_html_template(world: &mut World, abs_path: PathBuf) {
+    // Stored path stays project-relative so it survives moving the project to a
+    // different machine (matches sprite/scene drops).
+    let path_str = if let Some(project) = world.get_resource::<CurrentProject>() {
+        project.make_asset_relative(&abs_path)
+    } else {
+        abs_path.to_string_lossy().to_string()
+    };
+
+    let canvas = world
+        .spawn((
+            Name::new("HTML UI"),
+            UiCanvas::default(),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+        ))
+        .id();
+
+    let name = abs_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "HTML Template".to_string());
+    let template = world
+        .spawn((Name::new(name), HtmlTemplatePath(path_str)))
+        .id();
+    world.entity_mut(canvas).add_child(template);
+
+    // Select the template child so its inspector (Template field) is shown.
+    if let Some(sel) = world.get_resource::<EditorSelection>() {
+        sel.set(Some(template));
+    }
+}

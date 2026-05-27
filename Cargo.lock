@@ -9085,8 +9085,10 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_egui",
+ "cosmic-text",
  "egui-phosphor",
  "log",
+ "regex",
  "renzora",
  "renzora_editor",
  "renzora_scripting",
@@ -10915,6 +10917,7 @@ dependencies = [
  "renzora_editor",
  "renzora_engine",
  "renzora_game_ui",
+ "renzora_hui",
  "renzora_import",
  "renzora_keybindings",
  "renzora_shader",

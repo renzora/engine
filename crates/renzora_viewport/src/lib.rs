@@ -11,6 +11,7 @@ pub mod external_runtime;
 pub mod glb_compat;
 pub mod header;
 pub mod material_drop;
+pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
 pub mod persistence;
@@ -477,6 +478,9 @@ impl EditorPanel for ViewportPanel {
         // 2D-only: image asset drops retarget the sprite under the
         // pointer or spawn a new Sprite at the drop point.
         sprite_drop::check_viewport_sprite_drop(ui, world, rect);
+
+        // Check for .html template drops (spawns a UI Canvas + HtmlTemplatePath)
+        html_drop::check_viewport_html_drop(ui, world, rect);
 
         // Overlay: modal transform HUD (scale circle, mode text, axis info)
         render_modal_transform_hud(ui.ctx(), world, rect);
