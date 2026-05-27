@@ -29,7 +29,7 @@ pub mod palette;
 
 use bevy::prelude::*;
 
-pub use components::{UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
+pub use components::{HtmlTemplatePath, UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
 
 #[derive(Default)]
 pub struct GameUiPlugin;
@@ -39,6 +39,7 @@ impl Plugin for GameUiPlugin {
         // ── Reflection registration ─────────────────────────────────────
         app.register_type::<components::UiCanvas>();
         app.register_type::<components::UiWidget>();
+        app.register_type::<components::HtmlTemplatePath>();
         app.register_type::<components::UiWidgetPart>();
         // Single-entity primitive (replaces ProgressBar / HealthBar / LoadingScreen)
         app.register_type::<components::UiBarFill>();

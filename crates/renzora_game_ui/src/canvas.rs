@@ -1701,6 +1701,47 @@ impl EditorPanel for UiCanvasPanel {
             }
         }
 
+        // ── HTML template drag-and-drop (bevy_hui templates) ────────────
+        if let Some(payload) = world.get_resource::<AssetDragPayload>() {
+            if payload.is_detached && payload.matches_extensions(&["html"]) {
+                let pointer_pos = ui.ctx().pointer_hover_pos();
+                let pointer_in_canvas = pointer_pos.is_some_and(|p| canvas_rect.contains(p));
+
+                if pointer_in_canvas {
+                    painter.rect_filled(
+                        canvas_rect,
+                        0.0,
+                        Color32::from_rgba_unmultiplied(100, 150, 220, 15),
+                    );
+                    painter.rect_stroke(
+                        canvas_rect,
+                        0.0,
+                        Stroke::new(2.0, Color32::from_rgba_unmultiplied(100, 150, 220, 180)),
+                        egui::StrokeKind::Inside,
+                    );
+                    if let Some(pos) = pointer_pos {
+                        painter.text(
+                            Pos2::new(pos.x, pos.y - 16.0),
+                            egui::Align2::CENTER_BOTTOM,
+                            format!("{} Drop to add template", regular::BROWSER),
+                            egui::FontId::proportional(11.0),
+                            Color32::from_rgb(100, 150, 220),
+                        );
+                    }
+
+                    // Detect drop (pointer released) — add the template to the
+                    // canvas being edited so it appears in this view.
+                    if !ui.ctx().input(|i| i.pointer.any_down()) {
+                        let asset_path = payload.path.clone();
+                        let active_canvas = state.active_canvas;
+                        commands.push(move |world: &mut World| {
+                            crate::spawn::spawn_html_template_at(world, &asset_path, active_canvas);
+                        });
+                    }
+                }
+            }
+        }
+
         // ── Keyboard shortcuts ───────────────────────────────────────────
         let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.mac_cmd);
         let shift = ui.input(|i| i.modifiers.shift);

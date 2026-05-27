@@ -257,6 +257,52 @@ fn apply_parent_layout(world: &mut World, entity: Entity, layout: ParentLayout) 
 /// Re-apply [`apply_parent_layout`] to an entity based on its current
 /// parent in the world. Public so the editor's reparent observer can
 /// call it when a widget is dragged to a new parent in the hierarchy.
+/// Spawn an entity carrying a bevy_hui template path as a child of `parent`
+/// (or the first existing / a freshly-created `UiCanvas`). Returns the template
+/// entity. `renzora_hui`'s observer binds the path to an `HtmlNode` and builds
+/// the markup beneath it. Mirrors [`spawn_image_at`]'s canvas resolution + path
+/// normalization; placement is irrelevant since the template owns its layout.
+pub fn spawn_html_template_at(
+    world: &mut World,
+    asset_path: &std::path::Path,
+    parent: Option<Entity>,
+) -> Entity {
+    let canvas_entity = {
+        let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
+        match parent.or_else(|| q.iter(world).next()) {
+            Some(e) => e,
+            None => world
+                .spawn((
+                    Name::new("UI Canvas"),
+                    UiCanvas::default(),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                ))
+                .id(),
+        }
+    };
+
+    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+        project.make_asset_relative(asset_path)
+    } else {
+        asset_path.to_string_lossy().replace('\\', "/")
+    };
+
+    let name = asset_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "HTML Template".to_string());
+    let template = world
+        .spawn((Name::new(name), HtmlTemplatePath(load_path)))
+        .id();
+    world.entity_mut(canvas_entity).add_child(template);
+    template
+}
+
 pub fn reapply_layout_from_parent(world: &mut World, entity: Entity) {
     let parent = world.get::<ChildOf>(entity).map(|co| co.parent());
     let (_, layout) = classify_parent(world, parent);

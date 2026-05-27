@@ -169,6 +169,15 @@ impl Default for UiWidget {
     }
 }
 
+/// Path (project-relative, e.g. `"ui/health_bar.html"`) of a bevy_hui template
+/// an entity should display. Serializable source of truth; `renzora_hui`'s
+/// observer turns it into a loaded `HtmlNode`. Defined here (not in
+/// `renzora_hui`) so the UI canvas editor and viewport — which can't depend on
+/// `renzora_hui` without a cycle — can spawn it directly.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct HtmlTemplatePath(pub String);
+
 /// Identifies a child entity's role within a composite widget.
 ///
 /// E.g. the fill bar inside a ProgressBar, the thumb on a Slider.
