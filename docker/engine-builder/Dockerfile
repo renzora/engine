@@ -133,11 +133,13 @@ RUN curl -sL "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSI
 
 RUN git clone --depth 1 https://github.com/tpoechtrager/osxcross /opt/osxcross
 
-# Fetch the macOS + iOS SDKs at build time instead of vendoring them into
-# docker/sdk/, so `makers docker-build` is self-contained. These URLs point to
-# community mirrors that redistribute Apple-licensed SDK content; use at your
-# own discretion. To pin different versions, update these URLs together with
-# the OSXCROSS_SDK / OSXCROSS_IOS_SDK names above.
+# Fetch the macOS + iOS SDKs at build time so the image is self-contained.
+# These URLs point to community mirrors that redistribute Apple-licensed SDK
+# content; use at your own discretion. For license-clean SDKs, generate your
+# own from Xcode on a Mac via osxcross's tools/gen_sdk_package.sh (macOS) and
+# tools/gen_sdk_package_p.sh iPhoneOS (iOS), host the tarballs, and point these
+# URLs at them. To pin versions, update these URLs together with the
+# OSXCROSS_SDK / OSXCROSS_IOS_SDK names above.
 ENV OSXCROSS_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/26.1/MacOSX26.1.sdk.tar.xz
 ENV OSXCROSS_IOS_SDK_URL=https://github.com/growtopiajaw/iPhoneOS-SDK/releases/download/v1.0/iPhoneOS15.5.sdk.tar.xz
 RUN mkdir -p /opt/osxcross/tarballs && \
