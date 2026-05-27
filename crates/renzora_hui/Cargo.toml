@@ -1,0 +1,13 @@
+[package]
+name = "renzora_hui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+bevy_hui = "0.6"
+renzora = { path = "../renzora", default-features = false }
+renzora_game_ui = { path = "../renzora_game_ui" }
+
+[lints]
+workspace = true

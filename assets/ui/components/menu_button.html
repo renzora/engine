@@ -1,0 +1,39 @@
+<!-- Reusable menu button. Auto-registered as <menu_button> by HuiAutoLoadPlugin
+     (scans assets/ui/components/). Authored once, reused across templates.
+
+     Properties:
+       text     visible label
+       action   markup callback name; forwarded to Lua's on_ui(name, args)
+                via renzora_hui when there is no Rust HtmlFunctions binding.
+       primary / secondary   colors -->
+<template>
+    <property name="text">Button</property>
+    <property name="action">noop</property>
+    <property name="primary">#2A2D34</property>
+    <property name="secondary">#4C8BF5</property>
+
+    <button
+        id="menu_button"
+        padding="8px"
+        margin="4px"
+        height="56px"
+        width="240px"
+        border="2px"
+        border_radius="10px"
+        background="{primary}"
+        border_color="{primary}"
+        delay="0.15s"
+        ease="cubic_in"
+        hover:background="{secondary}"
+        hover:border_color="{secondary}"
+        on_press="{action}"
+    >
+        <text
+            watch="menu_button"
+            font_size="20"
+            font_color="#FFFFFF"
+        >
+            {text}
+        </text>
+    </button>
+</template>

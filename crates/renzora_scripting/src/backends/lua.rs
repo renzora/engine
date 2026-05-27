@@ -404,6 +404,36 @@ impl ScriptBackend for LuaBackend {
         })
     }
 
+    fn call_on_ui(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>("on_ui") else {
+                return Ok(()); // script doesn't handle UI callbacks — fine
+            };
+            let table = lua.create_table().map_err(|e| e.to_string())?;
+            for (k, v) in args {
+                let lv = action_value_to_lua(lua, v).map_err(|e| e.to_string())?;
+                table.set(k.as_str(), lv).map_err(|e| e.to_string())?;
+            }
+            func.call::<()>((name, table, entity_bits)).map_err(|e| {
+                let script = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} on_ui: {}", script, e)
+            })?;
+            Ok(())
+        })
+    }
+
     fn call_on_player_event(
         &self,
         path: &Path,

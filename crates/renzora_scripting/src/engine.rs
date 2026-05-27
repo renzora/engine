@@ -150,6 +150,27 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Dispatch a UI markup callback to a script's `on_ui(name, args)` hook.
+    pub fn call_on_ui(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands = backend.call_on_ui(&resolved, name, args, entity_bits, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
     /// Dispatch a player join/leave to a script's `on_player_joined(id)` /
     /// `on_player_left(id)` hook.
     pub fn call_on_player_event(

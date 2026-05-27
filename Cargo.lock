@@ -1592,6 +1592,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_hui"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bea9bfb4d773fadaed5482b9f1a694a2fee1768ede7869a753f9ba3a9d2a1a2"
+dependencies = [
+ "bevy 0.18.0",
+ "nom",
+ "owo-colors",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "bevy_image"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7767,6 +7779,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "owo-colors"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9658,6 +9676,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_hui"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_hui",
+ "renzora",
+ "renzora_game_ui",
+]
+
+[[package]]
 name = "renzora_import"
 version = "0.1.0"
 dependencies = [
@@ -10326,6 +10354,7 @@ dependencies = [
  "renzora_hierarchy",
  "renzora_history",
  "renzora_hub",
+ "renzora_hui",
  "renzora_import_ui",
  "renzora_input",
  "renzora_inspector",

@@ -1268,6 +1268,32 @@ pub struct ScriptNetLifecycleInbox {
     pub pending: Vec<NetPlayerEvent>,
 }
 
+/// A UI markup callback awaiting dispatch to scripts' `on_ui(name, args)` hook.
+///
+/// Produced by `renzora_hui` when a `bevy_hui` template node fires an event
+/// (e.g. `on_press="start_game"`) that has no Rust-side `HtmlFunctions`
+/// binding — the name then falls through to scripts instead.
+#[derive(Clone, Debug)]
+pub struct UiCallback {
+    /// The markup callback name (the value of `on_press` / `on_change` / …).
+    pub name: String,
+    /// `tag:`-prefixed markup attributes on the node, decoded as args.
+    pub args: std::collections::HashMap<String, ScriptActionValue>,
+    /// The UI node entity that fired the event, as raw bits (`Entity::to_bits`).
+    /// Scripts receive this so they can target the originating widget.
+    pub entity_bits: u64,
+}
+
+/// Inbox bridge for UI markup callbacks. `renzora_hui` pushes a [`UiCallback`]
+/// when a template event fires; `renzora_scripting` drains it each frame and
+/// invokes every script's `on_ui(name, args)` hook (broadcast, same semantics
+/// as [`ScriptRpcInbox`]). Lives in core so scripting depends on neither
+/// `renzora_hui` nor `bevy_hui`.
+#[derive(Resource, Default)]
+pub struct ScriptUiInbox {
+    pub pending: Vec<UiCallback>,
+}
+
 /// Marker resource: present when the runtime is running as a dedicated server
 /// (`renzora-runtime --server`). Inserted before engine plugins build so they
 /// can opt out of client/render-only setup. A dedicated server has no render

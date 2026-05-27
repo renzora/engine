@@ -69,6 +69,25 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute the `on_ui(name, args)` hook for a UI markup callback (a
+    /// `bevy_hui` template event with no Rust binding). `entity_bits` is the
+    /// firing node's `Entity::to_bits()`, passed through as the third arg.
+    /// Returns commands produced by the script.
+    ///
+    /// Default is a no-op so backends without UI support compile unchanged.
+    fn call_on_ui(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, name, args, entity_bits, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Execute a player-lifecycle hook — `on_player_joined(id)` when `joined`,
     /// else `on_player_left(id)`. Server-side. Default is a no-op so backends
     /// without lifecycle support compile unchanged.

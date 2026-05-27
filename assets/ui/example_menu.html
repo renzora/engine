@@ -1,0 +1,33 @@
+<!-- Example main menu authored entirely in markup.
+
+     Spawn it from Rust:
+         cmd.spawn(HtmlNode(server.load("ui/example_menu.html")));
+     or from a Lua script:
+         action("hui_spawn", { template = "ui/example_menu.html" })
+
+     Each <menu_button>'s `action` is the markup callback name. When no Rust
+     HtmlFunctions binding exists, renzora_hui forwards it to every script's
+         function on_ui(name, args) ... end
+     hook (broadcast, like on_rpc). The optional `tag:`-prefixed attributes
+     arrive as the `args` table. -->
+<template>
+    <property name="title">Renzora</property>
+
+    <node
+        id="menu_root"
+        flex_direction="column"
+        align_items="center"
+        justify_content="center"
+        width="100%"
+        height="100%"
+    >
+        <text font_size="48" font_color="#FFFFFF" margin="0px 0px 24px 0px">
+            {title}
+        </text>
+
+        <menu_button text="Start Game" action="start_game" tag:scene="level_01" />
+        <menu_button text="Settings"   action="open_settings" />
+        <menu_button text="Credits"    action="open_credits" />
+        <menu_button text="Quit"       action="quit_game" />
+    </node>
+</template>

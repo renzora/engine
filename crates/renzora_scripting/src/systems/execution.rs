@@ -105,6 +105,15 @@ pub fn run_scripts(world: &mut World) {
         .map(|mut inbox| std::mem::take(&mut inbox.pending))
         .unwrap_or_default();
 
+    // UI markup callbacks received since last frame (e.g. a bevy_hui button
+    // `on_press` with no Rust binding). Each fires every script's
+    // `on_ui(name, args, entity)` hook. Resource may be absent if `renzora_hui`
+    // isn't loaded — then there's nothing to dispatch.
+    let pending_ui_callbacks: Vec<renzora::UiCallback> = world
+        .get_resource_mut::<renzora::ScriptUiInbox>()
+        .map(|mut inbox| std::mem::take(&mut inbox.pending))
+        .unwrap_or_default();
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -494,6 +503,21 @@ pub fn run_scripts(world: &mut World) {
                     &mut entry.variables,
                 ) {
                     warn!("Script on_rpc error [{}]: {}", script_path.display(), e);
+                }
+            }
+
+            // Deliver UI markup callbacks to the script's `on_ui(name, args)`
+            // hook. Same broadcast + live-handler placement as `on_rpc` above.
+            for cb in &pending_ui_callbacks {
+                if let Err(e) = engine.call_on_ui(
+                    &script_path,
+                    &cb.name,
+                    &cb.args,
+                    cb.entity_bits,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!("Script on_ui error [{}]: {}", script_path.display(), e);
                 }
             }
 
