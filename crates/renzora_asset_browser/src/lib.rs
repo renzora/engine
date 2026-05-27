@@ -924,6 +924,7 @@ fn render_context_menu(
     let lua_color = Color32::from_rgb(80, 130, 230);
     let blueprint_color = Color32::from_rgb(100, 180, 255);
     let shader_color = Color32::from_rgb(220, 120, 255);
+    let html_color = Color32::from_rgb(230, 120, 90);
 
     // Estimate menu height to decide if we need to flip upward
     // 8 create items + header + separator + selection section (variable) + separator + import
@@ -1067,6 +1068,13 @@ fn render_context_menu(
                     }
                     if menu_item(ui, regular::GRAPHICS_CARD, "Shader", "", shader_color) {
                         state.create_inline("new_shader.wgsl", "// New shader\n");
+                        state.context_menu_pos = None;
+                    }
+                    if menu_item(ui, regular::BROWSER, "HTML Template", "", html_color) {
+                        state.create_inline(
+                            "new_template.html",
+                            "<template>\n    <node padding=\"16px\" flex_direction=\"column\">\n        <text font_size=\"24\" font_color=\"#FFFFFF\">New Template</text>\n    </node>\n</template>\n",
+                        );
                         state.context_menu_pos = None;
                     }
 
