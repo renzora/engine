@@ -38,6 +38,49 @@ fn both_plugin_sets_coexist() {
     let _app = host_server_app();
 }
 
+/// The engine wiring: client + server plugin sets, then the real protocol
+/// registered exactly once *after both* (NetworkServerPlugin owns it in host
+/// mode). Validates that registering the protocol in that order doesn't break
+/// host-client promotion.
+#[test]
+fn host_client_is_promoted_with_protocol_registered() {
+    let tick = Duration::from_secs_f64(1.0 / 64.0);
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(ClientPlugins { tick_duration: tick });
+    app.add_plugins(ServerPlugins { tick_duration: tick });
+    // Exactly once, after both plugin sets — mirrors NetworkServerPlugin.
+    renzora_network::protocol::register_protocol(&mut app);
+
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let server = app
+        .world_mut()
+        .spawn((
+            ServerUdpIo::default(),
+            LocalAddr(addr),
+            NetcodeServer::new(NetcodeConfig::default()),
+        ))
+        .id();
+    app.world_mut().trigger(Start { entity: server });
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let client = app
+        .world_mut()
+        .spawn((Client::default(), LinkOf { server }))
+        .id();
+    app.world_mut().trigger(Connect { entity: client });
+    for _ in 0..10 {
+        app.update();
+    }
+
+    assert!(
+        app.world().get::<HostClient>(client).is_some(),
+        "host client not promoted when the protocol is registered after both plugin sets"
+    );
+}
+
 #[test]
 fn local_client_is_promoted_to_host_client() {
     let mut app = host_server_app();

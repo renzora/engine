@@ -67,12 +67,28 @@ impl Plugin for NetworkServerPlugin {
                 crate::rpc::send_outgoing_rpcs,
             ),
         );
+
+        // Host/listen-server: this process also plays. Once the server has
+        // started, spawn a local client linked to it; lightyear's host
+        // observers promote it to a `HostClient` (in-process, no UDP for the
+        // local player). The client half (`ClientPlugins`) was added by
+        // `NetworkPlugin`, which ran first because it builds during
+        // `add_engine_plugins` and this plugin is added afterwards.
+        if app.world().contains_resource::<renzora::HostServer>() {
+            info!("[network] Host mode — local player will join as a host client");
+            app.add_systems(Update, spawn_host_client);
+        }
     }
 }
 
 /// Resource holding the server config for the startup system.
 #[derive(Resource)]
 struct ServerNetworkConfig(NetworkConfig);
+
+/// The server entity spawned at startup. Used by host mode to link the local
+/// client to it. Harmless in dedicated-server mode (no system reads it).
+#[derive(Resource)]
+struct ServerEntity(Entity);
 
 /// Spawn the server entity with UDP IO and netcode, then trigger Start.
 fn spawn_server_entity(mut commands: Commands, config: Res<ServerNetworkConfig>) {
@@ -96,10 +112,53 @@ fn spawn_server_entity(mut commands: Commands, config: Res<ServerNetworkConfig>)
         ))
         .id();
 
+    commands.insert_resource(ServerEntity(server_entity));
+
     // Trigger the server to start listening
     commands.trigger(Start {
         entity: server_entity,
     });
+}
+
+/// Host mode only: once the server has had a few ticks to reach `Started`,
+/// spawn the local player's client as a `LinkOf` the server and connect it.
+/// Lightyear's host observers then promote it to a `HostClient`. Runs once.
+///
+/// The small frame delay mirrors the validated host-server recipe
+/// (`tests/host_server.rs`): the server must be started before the local
+/// client connects.
+fn spawn_host_client(
+    mut commands: Commands,
+    server: Option<Res<ServerEntity>>,
+    mut frames: Local<u32>,
+    mut done: Local<bool>,
+) {
+    use lightyear::prelude::{Client, Connect, LinkOf};
+
+    if *done {
+        return;
+    }
+    let Some(server) = server else {
+        return;
+    };
+    *frames += 1;
+    if *frames < 5 {
+        return;
+    }
+
+    info!(
+        "[network] Host mode: joining as local host client (server {:?})",
+        server.0
+    );
+    let client = commands
+        .spawn((
+            Client::default(),
+            LinkOf { server: server.0 },
+            Name::new("HostClient"),
+        ))
+        .id();
+    commands.trigger(Connect { entity: client });
+    *done = true;
 }
 
 /// When an entity gains the `Networked` marker, set it up for replication:

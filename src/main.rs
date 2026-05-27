@@ -126,24 +126,39 @@ fn main() {
     // server template — the dedicated server IS the runtime in server mode.
     #[cfg(feature = "runtime")]
     {
-        let server_mode = std::env::args().any(|a| a == "--server");
+        // Two server-ish modes share the network server plugin:
+        //   --server : dedicated server, headless (no window/GPU).
+        //   --host   : host/listen-server, windowed (this process also plays).
+        // `--host` wins if both are passed.
+        let host_mode = std::env::args().any(|a| a == "--host");
+        let server_mode = !host_mode && std::env::args().any(|a| a == "--server");
 
         let mut app = init_app();
 
-        // Load the server config up front so the headless runner and the
+        // Load the network config up front so the headless runner and the
         // network server plugin share one tick rate.
-        let server_config = server_mode.then(load_server_config);
+        let server_config = (server_mode || host_mode).then(load_server_config);
 
         if let Some(net_config) = &server_config {
-            // Windows release runtime is `windows_subsystem = "windows"`, so
-            // grab a console for the server's log output.
-            renzora_runtime::attach_console();
-            // Mark server mode before engine plugins build, so client/render-
-            // only plugins (NetworkPlugin's client setup, bevy_hanabi) opt out.
-            app.init_resource::<renzora_runtime::renzora::DedicatedServer>();
-            // Headless: no GPU, no window, no winit — driven by a fixed-rate
-            // runner at the network tick. See `add_headless_rendering`.
-            renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate);
+            if host_mode {
+                // Host/listen-server: windowed client + server in one process.
+                // Mark host mode before engine plugins build so NetworkPlugin
+                // wires the client half and lets the server plugin own the
+                // protocol. The host renders, so it is NOT headless.
+                app.init_resource::<renzora_runtime::renzora::HostServer>();
+                add_default_rendering(&mut app);
+            } else {
+                // Windows release runtime is `windows_subsystem = "windows"`,
+                // so grab a console for the server's log output.
+                renzora_runtime::attach_console();
+                // Mark server mode before engine plugins build, so client/
+                // render-only plugins (NetworkPlugin's client setup,
+                // bevy_hanabi) opt out.
+                app.init_resource::<renzora_runtime::renzora::DedicatedServer>();
+                // Headless: no GPU, no window, no winit — driven by a fixed-rate
+                // runner at the network tick. See `add_headless_rendering`.
+                renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate);
+            }
         } else {
             add_default_rendering(&mut app);
         }
@@ -153,8 +168,10 @@ fn main() {
 
         if let Some(net_config) = server_config {
             info!(
-                "[server] Starting dedicated server on {}:{}",
-                net_config.server_addr, net_config.port
+                "[server] Starting {} on {}:{}",
+                if host_mode { "host server" } else { "dedicated server" },
+                net_config.server_addr,
+                net_config.port
             );
             app.add_plugins(renzora_runtime::renzora_network::NetworkServerPlugin::new(
                 net_config,

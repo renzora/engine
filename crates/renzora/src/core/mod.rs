@@ -1256,6 +1256,15 @@ pub struct ScriptRpcInbox {
 #[derive(Resource, Default)]
 pub struct DedicatedServer;
 
+/// Marker resource: present when the runtime is running as a host/listen-server
+/// (`renzora-runtime --host`). Unlike [`DedicatedServer`] the host renders
+/// normally (it has a local player), so it is *not* headless — it runs both the
+/// client and server plugin sets in one process. Inserted before engine plugins
+/// build so networking can wire host mode (client setup stays, the server plugin
+/// owns the protocol/observers so they register exactly once).
+#[derive(Resource, Default)]
+pub struct HostServer;
+
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]

@@ -94,6 +94,13 @@ impl Plugin for NetworkPlugin {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            // Host/listen-server mode (`--host`) runs BOTH plugin sets in one
+            // process. There, `NetworkServerPlugin` (added after this) owns the
+            // protocol, the shared observers, and the RPC-send system so each
+            // registers exactly once, after `ServerPlugins`. Here we add only
+            // the client half; in pure-client mode we add everything.
+            let host = app.world().contains_resource::<renzora::HostServer>();
+
             // Lightyear client infrastructure
             let tick_rate = app
                 .world()
@@ -104,16 +111,10 @@ impl Plugin for NetworkPlugin {
             let tick_duration = core::time::Duration::from_secs_f64(1.0 / tick_rate as f64);
             app.add_plugins(lightyear::prelude::client::ClientPlugins { tick_duration });
 
-            // Register protocol (channels, components, messages)
-            protocol::register_protocol(app);
-
-            // Script actions (decoupled — observes ScriptAction events)
-            app.add_observer(script_extension::handle_network_script_actions);
-            // Deliver received RPCs to local scripts (client side; the server
-            // adds its own copy that also relays — see NetworkServerPlugin).
-            app.add_observer(rpc::receive_and_relay_rpcs);
-
-            // Schedule systems
+            // Client-side connection/status systems run in both client and host
+            // modes (the connect/disconnect systems are harmless no-ops on a
+            // host, which never dials out — its local client is wired by the
+            // server plugin).
             app.add_systems(
                 Update,
                 (
@@ -121,9 +122,18 @@ impl Plugin for NetworkPlugin {
                     process_pending_disconnect,
                     client::update_network_status,
                     sync_network_bridge,
-                    rpc::send_outgoing_rpcs,
                 ),
             );
+
+            if !host {
+                // Pure client: own the protocol, shared observers, and RPC send.
+                protocol::register_protocol(app);
+                // Script actions (decoupled — observes ScriptAction events).
+                app.add_observer(script_extension::handle_network_script_actions);
+                // Deliver received RPCs to local scripts.
+                app.add_observer(rpc::receive_and_relay_rpcs);
+                app.add_systems(Update, rpc::send_outgoing_rpcs);
+            }
         }
 
         #[cfg(target_arch = "wasm32")]
