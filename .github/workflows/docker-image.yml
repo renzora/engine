@@ -32,6 +32,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Content tag = first 12 hex of the SHA-256 of the Dockerfile (CRLF
+      # stripped so it matches the hash the CLI computes on any platform). The
+      # `renzora` CLI derives the same tag and pulls it, so a checkout's source
+      # is pinned to the exact toolchain image it was built against.
+      - name: Compute Dockerfile content tag
+        id: dftag
+        run: echo "tag=$(tr -d '\r' < docker/engine-builder/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -41,6 +49,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/renzora/engine:latest
+            ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }}
             ghcr.io/renzora/engine:${{ github.sha }}
           # Reuse the previously published image as a layer cache so unchanged
           # layers (osxcross, NDK, SDKs) aren't rebuilt every run.
