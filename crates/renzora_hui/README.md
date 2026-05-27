@@ -55,12 +55,28 @@ end
 Rust bindings take precedence; Lua is the fallback. See
 `assets/scripts/ui_menu.lua` for a complete example.
 
-## Editor canvas (feature `editor`)
+## Editor (feature `editor`)
 
-When the `editor` feature is on, every node a template builds is tagged as a
-`renzora_game_ui` widget, so the existing UI canvas preview shows the template's
-entities and lets you select and drag them. Dragging a node that has a markup
-`id` records its position into a `HuiLayoutOverrides` component on the spawning
-`HtmlNode` entity; the override is saved with the scene and re-applied after each
-hot-reload, so layout tweaks survive template edits. The `.html` file is never
-rewritten — markup stays the source of structure.
+**Create one** from the hierarchy's **+ Add Entity → UI → "HTML Template"**. That
+spawns a full-screen UI Canvas with a template child (pointed at
+`ui/example_menu.html` by default) so it renders in the canvas preview. Select
+the child and use the inspector's **Template** field to pick any `.html`.
+
+Every node a template builds is tagged as a `renzora_game_ui` widget, so the
+canvas preview shows the template's entities and lets you select and drag them.
+Dragging a node that has a markup `id` records its position into a
+`HuiLayoutOverrides` component on the spawning entity; the override is saved with
+the scene and re-applied after each hot-reload, so layout tweaks survive template
+edits. The `.html` file is never rewritten — markup stays the source of structure.
+
+### `HtmlTemplatePath`
+
+Which template an entity displays is stored as a serializable
+`HtmlTemplatePath(String)` component (since `HtmlNode`'s `Handle` doesn't
+round-trip through scenes). A runtime observer turns the path into a loaded
+`HtmlNode`, so scene-authored templates load in **exported games**, not just the
+editor. Set the path from Rust or let the inspector manage it.
+
+> Known limitation: changing the path on an *already-built* entity reloads the
+> handle but bevy_hui won't rebuild in place (it marks built trees `FullyBuild`).
+> Re-create the entity, or hot-reload the file, to see a different template.

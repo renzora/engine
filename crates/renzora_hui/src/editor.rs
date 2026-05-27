@@ -17,7 +17,17 @@
 use bevy::prelude::*;
 use bevy::ui::Val;
 use bevy_hui::prelude::{HtmlNode, Tags, UiId};
-use renzora_game_ui::{UiThemed, UiWidget};
+use egui_phosphor::regular;
+use renzora_editor::{
+    AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
+};
+use renzora_game_ui::{UiCanvas, UiThemed, UiWidget};
+
+use crate::template::HtmlTemplatePath;
+
+/// Default template a freshly-created HTML entity points at, so it shows
+/// something immediately instead of an empty node.
+const DEFAULT_TEMPLATE: &str = "ui/example_menu.html";
 
 /// Marker on every `bevy_hui` node we've tagged into the canvas, recording the
 /// `left`/`top` values `bevy_hui` built it with. A drag is detected as the live
@@ -53,7 +63,106 @@ impl Plugin for HuiEditorPlugin {
             .register_type::<HuiLayoutOverrides>()
             // Tag/restore must apply before we look for drags to capture.
             .add_systems(Update, (tag_and_restore, capture_drags).chain());
+
+        register_editor_entries(app);
     }
+}
+
+/// Make HTML templates a first-class editor entity: creatable from the
+/// hierarchy's "+ Add Entity" overlay, identifiable in the tree, and editable
+/// (template path) in the inspector.
+fn register_editor_entries(app: &mut App) {
+    // "+ Add Entity" → UI → "HTML Template". Spawns a full-screen UI Canvas
+    // (so it renders into the editor's canvas preview) with a template-carrying
+    // child. The runtime observer turns the path into an HtmlNode and bevy_hui
+    // builds the markup beneath it; `tag_and_restore` then makes those nodes
+    // draggable. The child is returned (and selected) so the inspector shows its
+    // template field. bevy_hui owns the child's subtree, leaving the canvas
+    // entity's own Node untouched.
+    app.register_entity_preset(EntityPreset {
+        id: "html_template",
+        display_name: "HTML Template",
+        icon: regular::CODE,
+        category: "ui",
+        spawn_fn: |world| {
+            let canvas = world
+                .spawn((
+                    Name::new("HTML UI"),
+                    UiCanvas::default(),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                ))
+                .id();
+            let template = world
+                .spawn((
+                    Name::new("HTML Template"),
+                    HtmlTemplatePath(DEFAULT_TEMPLATE.to_string()),
+                ))
+                .id();
+            world.entity_mut(canvas).add_child(template);
+            template
+        },
+    });
+
+    // Distinctive icon + type label in the hierarchy tree.
+    app.register_component_icon(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<HtmlTemplatePath>(),
+        name: "HTML Template",
+        icon: regular::CODE,
+        color: [120, 170, 220],
+        priority: 96,
+        dynamic_icon_fn: None,
+    });
+
+    // Inspector: pick/replace the .html the entity displays. Adding the
+    // component (also via "Add Component") seeds the default template.
+    app.register_inspector(InspectorEntry {
+        type_id: "html_template",
+        display_name: "HTML Template",
+        icon: regular::CODE,
+        category: "ui",
+        has_fn: |world, entity| world.get::<HtmlTemplatePath>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(HtmlTemplatePath(DEFAULT_TEMPLATE.to_string()));
+        }),
+        remove_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .remove::<HtmlTemplatePath>()
+                .remove::<HtmlNode>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![FieldDef {
+            name: "Template",
+            field_type: FieldType::Asset {
+                extensions: vec!["html".into()],
+            },
+            get_fn: |world, entity| {
+                let path = world
+                    .get::<HtmlTemplatePath>(entity)
+                    .map(|p| if p.0.is_empty() { None } else { Some(p.0.clone()) })
+                    .unwrap_or(None);
+                Some(FieldValue::Asset(path))
+            },
+            // Always insert (replace) so the binding observer fires and reloads
+            // the HtmlNode for the new path.
+            set_fn: |world, entity, val| {
+                if let FieldValue::Asset(path) = val {
+                    world
+                        .entity_mut(entity)
+                        .insert(HtmlTemplatePath(path.unwrap_or_default()));
+                }
+            },
+        }],
+        custom_ui_fn: None,
+    });
 }
 
 /// As each template node is built (`Tags` is inserted on every node), tag it as

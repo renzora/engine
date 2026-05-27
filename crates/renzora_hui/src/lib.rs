@@ -8,6 +8,9 @@
 use bevy::prelude::*;
 
 pub mod lua_bridge;
+pub mod template;
+
+pub use template::HtmlTemplatePath;
 
 #[cfg(feature = "editor")]
 pub mod editor;
@@ -31,8 +34,13 @@ impl Plugin for HuiPlugin {
         .add_systems(Update, lua_bridge::register_lua_forwarders)
         .add_observer(lua_bridge::handle_hui_spawn);
 
+        // Runtime: bind serializable HtmlTemplatePath → HtmlNode (so templates
+        // load from saved scenes in the editor *and* in exported games).
+        template::plugin(app);
+
         // Editor-only: make template entities show up as draggable widgets in
-        // the canvas preview and persist drag positions across hot-reloads.
+        // the canvas preview, persist drag positions across hot-reloads, and
+        // expose HtmlNode in the hierarchy "+ Add Entity" / inspector.
         #[cfg(feature = "editor")]
         app.add_plugins(editor::HuiEditorPlugin);
     }
