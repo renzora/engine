@@ -9,11 +9,12 @@
 //! instance's position. So this module is just editor registrations.
 
 use bevy::prelude::*;
-use bevy_hui::prelude::HtmlNode;
+use bevy_hui::prelude::{HtmlNode, Tags};
 use egui_phosphor::regular;
 use renzora_editor::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
+use renzora_game_ui::UiWidget;
 
 use crate::template::HtmlTemplatePath;
 
@@ -26,6 +27,28 @@ pub struct HuiEditorPlugin;
 impl Plugin for HuiEditorPlugin {
     fn build(&self, app: &mut App) {
         register_editor_entries(app);
+        app.add_systems(Update, tag_built_nodes);
+    }
+}
+
+/// As each bevy_hui node is built (`Tags` is inserted on every node, including
+/// the markup root that lands on the `HtmlNode` child), tag it as a `UiWidget`
+/// so the canvas editor's hit-test finds it. The canvas selects/drags the
+/// visible markup, not the transparent instance overlay — clicks land on the
+/// real widget, transparent gaps fall through. Hot-reload safe: bevy_hui
+/// re-inserts `Tags` on rebuild, re-firing `Added<Tags>`.
+///
+/// Insertion ordering: bevy_hui sets `ChildOf` before `Tags`, so when game_ui's
+/// reparent observers fire there's no `UiWidget` on the node yet (they no-op),
+/// and by the time we add `UiWidget` here there's no `Changed<ChildOf>` — so
+/// `apply_parent_layout` never overwrites bevy_hui's Node. No explicit
+/// exemption marker needed.
+fn tag_built_nodes(
+    mut commands: Commands,
+    built: Query<Entity, Added<Tags>>,
+) {
+    for entity in &built {
+        commands.entity(entity).insert(UiWidget::default());
     }
 }
 

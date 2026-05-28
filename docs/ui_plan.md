@@ -104,39 +104,46 @@ editor cascade). Everything compiles; the *visual* behavior needs in-editor chec
 
 ---
 
-## 6. Entity model & the flex-vs-drag question ❓
+## 6. Entity model & positioning ✅ ✏️
 
-### Current model ✅
-`spawn_html_template_at` creates **one instance entity** with `HtmlTemplatePath`
-+ `UiWidget` + an **absolute** `Node`, parented under a `UiCanvas`. The binding
-observer puts `HtmlNode` on a **child**, so:
-- bevy_hui owns/rebuilds only the child subtree (hot-reload safe);
-- the instance entity is a stable, draggable, **scene-saved** unit whose position
-  is just its `Node` (no overlay/UiId machinery needed);
-- inner markup nodes are untagged → you drag the template as a whole.
+**Decision (locked):** markup is the **single source of truth**. The editor
+visually positions/resizes by writing `left/top/width/height` back into the
+`.html` file. Game devs stop having to keep markup and code in sync — what you
+see in the editor is what's in the file. Trade-off: a reused component (e.g.
+`stat_bar` used 4× in a HUD) has one markup file, so its *intrinsic* size/style
+is shared; placement comes from the parent template's layout, not from
+per-instance overrides — same model Unity and Godot use (prefabs + LayoutGroup).
 
-### The open conflict ❓
-Forcing the instance **absolute** means dropped templates are content-sized at a
-fixed point — but flex sizing (e.g. a stretched/anchored layout) is often what
-you *want*, and is the thing bevy_hui is best at. Dragging then fights the
-layout. Desired: **respect flex by default, allow drag as an opt-in override.**
+**Authoring split:**
+| You author this | Position lives in | Editor's role |
+|---|---|---|
+| Top-level template (`hud.html`) | Root's `left/top/width/height` | Drag/resize rewrites |
+| Reused component (`stat_bar.html`) | (nothing — sized only) | Parent template's flex |
 
-**Options:**
-- **(A) Flex default + per-instance scene override (recommended).** Elements
-  follow markup/flex layout. Dragging *opts an element out of flow* → absolute
-  position stored as scene data on the instance (keyed per markup `id`), with a
-  **"Reset to layout"** to snap back. The `.html` is never rewritten, so reused
-  components/instances stay independent. This is the "prefab + instance override"
-  model. Requires re-introducing per-node identity for elements you want to
-  override individually (markup `id`).
-- **(B) Dragging rewrites the `.html`.** True WYSIWYG, single source of truth.
-  Fine for single-use templates, but moving a *reused* component/instance moves
-  every use of it, and it contends with hot-reload + comment/format preservation.
+**Entity model (Phase 1 ✅):**
+- `spawn_html_template_at` creates a **transparent layout-host instance** with
+  `HtmlTemplatePath` + an absolute 100%×100% `Node`. **Not** a `UiWidget` — it
+  doesn't catch clicks; it only provides a sizing reference for markup roots
+  that use `100%`.
+- `renzora_hui`'s observer builds the markup under a child `HtmlNode` (hot-reload
+  safe; bevy_hui never disturbs the instance entity).
+- A `tag_built_nodes` system in renzora_hui's editor module inserts `UiWidget`
+  on every bevy_hui-built node (`Added<Tags>`). The canvas selects/drags those —
+  click lands on visible markup, transparent gaps fall through, sticky drag.
+- Templates default to `position="absolute"` with explicit `left/top` + explicit
+  `width/height` on the root, so drag/resize have a real target.
 
-**Recommendation:** (A). Revert the always-absolute default so flex is honored,
-add the scene-stored override + reset affordance. (B) optionally later as an
-explicit "bake to markup" action for one-off templates.
-**Decision: pending sign-off.**
+**Phases:**
+- **Phase 1 ✅** — selection model (above). Drag doesn't persist yet; that's Phase 2.
+- **Phase 2 🔜** — **markup write-back.** Drag/resize edits `left/top/width/height`
+  in the `.html` file via surgical string edits (preserves comments + formatting).
+  bevy_hui's hot-reload picks the change up; rendered state stays in sync with
+  the file.
+- **Phase 3 🔜** — **drop-onto-container.** Dropping a `.html` on an existing
+  container widget parents the instance under it; parent-aware `Node` defaults so
+  a container child becomes a flex item, a canvas child a 100% overlay. Plus a
+  `<slot>` demo template — bevy_hui supports React-style children composition
+  (see §7).
 
 ---
 
@@ -151,6 +158,32 @@ function. Use it to expose renzora's own widgets in markup:
 
 This is the highest-leverage way to get "rich, intricate" UI into markup without
 waiting on bevy_hui to grow CSS features. Small effort; big expressive payoff.
+
+### React-style children with `<slot/>` (already works) ✅
+
+bevy_hui has `NodeType::Slot` built in — a component template can declare a
+`<slot/>` placeholder, and whatever children the caller nests inside the
+component tag get re-parented into the slot at build time. Same model as React
+`children`, Vue/Svelte slots, Web Components:
+
+```html
+<!-- panel.html -->
+<template>
+    <property name="title">Panel</property>
+    <node padding="16px" background="#11151C" border_radius="10px">
+        <text>{title}</text>
+        <slot/>
+    </node>
+</template>
+
+<!-- using it -->
+<panel title="Vitals">
+    <stat_bar label="HP" fill="72%"/>
+    <stat_bar label="MP" fill="40%"/>
+</panel>
+```
+
+A `<slot>` demo template lands with Phase 3 (§6).
 
 ---
 

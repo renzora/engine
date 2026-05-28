@@ -15,7 +15,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{
     CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode, ViewportSettings,
-    ViewportState,
+    ViewportState, ViewportView,
 };
 use renzora::core::InputFocusState;
 use renzora::core::{EditorCamera, PlayModeCamera};
@@ -559,6 +559,7 @@ fn camera_to_cursor(
 fn camera_controller(
     mut orbit: ResMut<OrbitCameraState>,
     settings: Res<CameraSettings>,
+    vp_settings: Option<Res<ViewportSettings>>,
     mut pivot_lock: ResMut<PivotLock>,
     mut drag: ResMut<CameraDragState>,
     mut velocity: ResMut<CameraVelocityState>,
@@ -575,6 +576,21 @@ fn camera_controller(
 ) {
     // Don't touch cursor or process input during play mode
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
+        mouse_motion.clear();
+        scroll_events.clear();
+        velocity.velocity = Vec3::ZERO;
+        return;
+    }
+
+    // Only drive the 3D editor camera when the viewport is showing it. In UI
+    // (and 2D) mode this system would otherwise still consume mouse input and
+    // orbit/pan/zoom the 3D camera in the background — even while the pointer
+    // is over UI panels.
+    let view = vp_settings
+        .as_ref()
+        .map(|s| s.viewport_view)
+        .unwrap_or(ViewportView::Three);
+    if view != ViewportView::Three {
         mouse_motion.clear();
         scroll_events.clear();
         velocity.velocity = Vec3::ZERO;

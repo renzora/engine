@@ -257,15 +257,16 @@ fn apply_parent_layout(world: &mut World, entity: Entity, layout: ParentLayout) 
 /// Re-apply [`apply_parent_layout`] to an entity based on its current
 /// parent in the world. Public so the editor's reparent observer can
 /// call it when a widget is dragged to a new parent in the hierarchy.
-/// Spawn a draggable HTML-template instance as a child of `parent` (or the first
-/// existing / a freshly-created `UiCanvas`). Returns the instance entity.
+/// Spawn an HTML-template instance as a child of `parent` (or the first existing
+/// / a freshly-created `UiCanvas`). Returns the instance entity.
 ///
-/// The instance is an **absolutely-positioned `UiWidget`** so the canvas editor
-/// can select and freely drag it as a unit, and its `Node` (position) is saved
-/// with the scene. `renzora_hui`'s observer then builds the actual markup under a
-/// *child* `HtmlNode`, so bevy_hui's per-build/hot-reload layout never resets the
-/// instance's position. Mirrors [`spawn_image_at`]'s canvas resolution + path
-/// normalization.
+/// The instance is a **transparent 100% × 100% layout host** (not a `UiWidget`),
+/// so it provides the `100%` sizing reference markup roots need but doesn't catch
+/// canvas clicks. `renzora_hui` tags the bevy_hui-built markup nodes themselves
+/// as `UiWidget`s — that's what the canvas selects, drags, and hit-tests, so
+/// clicks land on the *visible* element and transparent gaps fall through.
+/// `renzora_hui`'s observer builds the actual markup under a *child* `HtmlNode`,
+/// so bevy_hui's per-build/hot-reload work never disturbs the instance itself.
 pub fn spawn_html_template_at(
     world: &mut World,
     asset_path: &std::path::Path,
@@ -303,12 +304,11 @@ pub fn spawn_html_template_at(
     let instance = world
         .spawn((
             Name::new(name),
-            UiWidget::default(),
             HtmlTemplatePath(load_path),
             Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 position_type: PositionType::Absolute,
-                left: Val::Px(40.0),
-                top: Val::Px(40.0),
                 ..default()
             },
         ))
