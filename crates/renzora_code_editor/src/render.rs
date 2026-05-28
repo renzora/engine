@@ -10,6 +10,7 @@ use egui_phosphor::regular::{
 };
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora_theme::Theme;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::actions::{
@@ -20,7 +21,7 @@ use crate::actions::{
     word_range_at_byte, TAB_SIZE,
 };
 use crate::autocomplete::{self, CompletionItem};
-use crate::highlight::{highlight, Language, TokenStyle};
+use crate::highlight::{highlight_cached, FileHighlightCache, Language, TokenStyle};
 use crate::state::{find_all_matches, CodeEditorState};
 
 /// Width reserved for the line-number gutter (scales with font size).
@@ -212,6 +213,7 @@ pub fn render_code_editor_panel(
     theme: &Theme,
     scripts_dir: Option<PathBuf>,
     shortcuts: EditorShortcuts,
+    cache: &mut HashMap<PathBuf, FileHighlightCache>,
 ) {
     // Validate the split tab so deletions don't dangle.
     if let Some(idx) = state.split_active_tab {
@@ -222,7 +224,7 @@ pub fn render_code_editor_panel(
 
     let split = state.split_active_tab;
     if split.is_none() {
-        render_code_editor_content(ui, state, theme, scripts_dir, shortcuts);
+        render_code_editor_content(ui, state, theme, scripts_dir, shortcuts, cache);
         return;
     }
 
@@ -233,11 +235,11 @@ pub fn render_code_editor_panel(
 
     ui.horizontal_top(|ui| {
         ui.allocate_ui_with_layout(left_size, egui::Layout::top_down(egui::Align::Min), |ui| {
-            render_code_editor_content(ui, state, theme, scripts_dir.clone(), shortcuts);
+            render_code_editor_content(ui, state, theme, scripts_dir.clone(), shortcuts, cache);
         });
         ui.separator();
         ui.allocate_ui_with_layout(right_size, egui::Layout::top_down(egui::Align::Min), |ui| {
-            render_split_pane(ui, state, theme);
+            render_split_pane(ui, state, theme, cache);
         });
     });
 }
@@ -246,7 +248,12 @@ pub fn render_code_editor_panel(
 /// and same edit operations as the main pane, but only the tab strip and
 /// textedit — no toolbar, find bar, modals or status bar (those live in the
 /// main pane to avoid duplicate keybinding events).
-fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &Theme) {
+fn render_split_pane(
+    ui: &mut egui::Ui,
+    state: &mut CodeEditorState,
+    theme: &Theme,
+    cache: &mut HashMap<PathBuf, FileHighlightCache>,
+) {
     let muted = theme.text.muted.to_color32();
     let disabled = theme.text.disabled.to_color32();
     let surface_panel = theme.surfaces.panel.to_color32();
@@ -318,6 +325,9 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
     let style = TokenStyle::from_theme(FontId::monospace(font_size), theme);
     let row_height = ui.fonts_mut(|f| f.row_height(&FontId::monospace(font_size)));
 
+    let cache_key = state.open_files[active_idx].path.clone();
+    let file_cache = cache.entry(cache_key).or_default();
+
     let avail = ui.available_rect_before_wrap();
     let scroll_id = Id::new(("code_editor_split_scroll", active_idx));
     egui::ScrollArea::vertical()
@@ -329,7 +339,7 @@ fn render_split_pane(ui: &mut egui::Ui, state: &mut CodeEditorState, theme: &The
             let gw = gutter_width(line_count, font_size);
 
             let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
-                let mut job = highlight(text.as_str(), lang, &style);
+                let mut job = highlight_cached(text.as_str(), lang, &style, file_cache);
                 job.wrap.max_width = wrap_width;
                 ui.painter().layout_job(job)
             };
@@ -389,6 +399,7 @@ pub fn render_code_editor_content(
     theme: &Theme,
     scripts_dir: Option<PathBuf>,
     shortcuts: EditorShortcuts,
+    cache: &mut HashMap<PathBuf, FileHighlightCache>,
 ) {
     let muted = theme.text.muted.to_color32();
     let disabled = theme.text.disabled.to_color32();
@@ -682,6 +693,8 @@ pub fn render_code_editor_content(
     if let Some(y) = pending_scroll {
         scroll_builder = scroll_builder.vertical_scroll_offset(y);
     }
+    let cache_key = state.open_files[active_idx].path.clone();
+    let file_cache = cache.entry(cache_key).or_default();
     let scroll_output = scroll_builder.show(&mut scroll_ui, |ui| {
         let line_count = state.open_files[active_idx].content.lines().count().max(1);
         let gw = gutter_width(line_count, font_size);
@@ -706,7 +719,7 @@ pub fn render_code_editor_content(
 
         // Prepare layouter borrowing the theme style.
         let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap_width: f32| {
-            let mut job = highlight(text.as_str(), lang, &style);
+            let mut job = highlight_cached(text.as_str(), lang, &style, file_cache);
             job.wrap.max_width = wrap_width;
             if let Some((sa, sb)) = sel_range_chars {
                 let text_str = text.as_str();

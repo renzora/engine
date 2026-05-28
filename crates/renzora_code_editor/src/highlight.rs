@@ -202,66 +202,139 @@ fn types_for(lang: Language) -> &'static [&'static str] {
 }
 
 /// Build a `LayoutJob` with coloured tokens for the given source text.
-pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
-    let mut job = LayoutJob::default();
+/// Token category. Mapped to a [`TokenStyle`] field (color) only at assembly
+/// time, so the per-line cache stays valid across theme / font changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenKind {
+    Normal,
+    Keyword,
+    Type,
+    Function,
+    Number,
+    String,
+    Comment,
+}
+
+/// Cross-line tokenizer state carried into the next line. Currently only tracks
+/// whether we're inside a C-style `/* ... */` block comment (the one
+/// multi-line construct the tokenizer recognises; Lua `--` long comments are
+/// treated as line comments, matching the previous behaviour).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LineState {
+    #[default]
+    Normal,
+    BlockComment,
+}
+
+impl TokenStyle {
+    fn fmt_for(&self, kind: TokenKind) -> &TextFormat {
+        match kind {
+            TokenKind::Normal => &self.normal,
+            TokenKind::Keyword => &self.keyword,
+            TokenKind::Type => &self.ty,
+            TokenKind::Function => &self.function,
+            TokenKind::Number => &self.number,
+            TokenKind::String => &self.string,
+            TokenKind::Comment => &self.comment,
+        }
+    }
+}
+
+fn line_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+/// Append a line's cached spans to `job` using the current theme colours.
+/// `spans` must exactly cover `line` (sum of lengths == `line.len()`), which
+/// [`highlight_line`] guarantees.
+fn append_line(job: &mut LayoutJob, line: &str, spans: &[(u32, TokenKind)], style: &TokenStyle) {
+    let mut off = 0usize;
+    for &(slen, kind) in spans {
+        let end = off + slen as usize;
+        job.append(&line[off..end], 0.0, style.fmt_for(kind).clone());
+        off = end;
+    }
+}
+
+/// Tokenize a SINGLE line (no trailing `\n`) given the incoming cross-line
+/// state. Returns the spans as `(byte_len, kind)` pairs that exactly cover the
+/// line, plus the outgoing state for the next line. This is the canonical
+/// tokenizer; both [`highlight`] and [`highlight_cached`] build on it.
+pub fn highlight_line(
+    line: &str,
+    lang: Language,
+    incoming: LineState,
+) -> (Vec<(u32, TokenKind)>, LineState) {
+    let mut spans: Vec<(u32, TokenKind)> = Vec::new();
+    let mut push = |len: usize, kind: TokenKind| {
+        if len > 0 {
+            spans.push((len as u32, kind));
+        }
+    };
 
     if matches!(lang, Language::PlainText) {
-        job.append(text, 0.0, style.normal.clone());
-        return job;
+        push(line.len(), TokenKind::Normal);
+        return (spans, LineState::Normal);
     }
 
-    // Strings in TOML/JSON: treat everything but strings/numbers/keywords as normal.
+    let bytes = line.as_bytes();
+    let len = bytes.len();
+    let mut i = 0usize;
+
+    // Continuation of a block comment started on a previous line.
+    if incoming == LineState::BlockComment {
+        let mut j = 0usize;
+        while j + 1 < len && !(bytes[j] == b'*' && bytes[j + 1] == b'/') {
+            j += 1;
+        }
+        if j + 1 < len {
+            // Found the closing `*/` on this line.
+            push(j + 2, TokenKind::Comment);
+            i = j + 2;
+        } else {
+            push(len, TokenKind::Comment);
+            return (spans, LineState::BlockComment);
+        }
+    }
+
     let keywords = keywords_for(lang);
     let types = types_for(lang);
     let line_comment = lang.line_comment();
     let has_block_comment = lang.has_c_block_comment();
 
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    let len = bytes.len();
-
     while i < len {
         let b = bytes[i];
 
-        // --- Line comment ---
+        // --- Line comment (to end of line) ---
         if let Some(prefix) = line_comment {
             let pb = prefix.as_bytes();
             if i + pb.len() <= len && &bytes[i..i + pb.len()] == pb {
-                let mut j = i;
-                while j < len && bytes[j] != b'\n' {
-                    j += 1;
-                }
-                job.append(&text[i..j], 0.0, style.comment.clone());
-                i = j;
+                push(len - i, TokenKind::Comment);
+                i = len;
                 continue;
             }
         }
 
-        // --- Block comment /* ... */ ---
+        // --- Block comment /* ... */ (may not close on this line) ---
         if has_block_comment && i + 1 < len && b == b'/' && bytes[i + 1] == b'*' {
             let mut j = i + 2;
             while j + 1 < len && !(bytes[j] == b'*' && bytes[j + 1] == b'/') {
                 j += 1;
             }
-            let end = (j + 2).min(len);
-            job.append(&text[i..end], 0.0, style.comment.clone());
-            i = end;
-            continue;
-        }
-
-        // --- Lua long comment --[[ ... ]] ---
-        if matches!(lang, Language::Lua) && i + 3 < len && &bytes[i..i + 4] == b"--[[" {
-            let mut j = i + 4;
-            while j + 1 < len && !(bytes[j] == b']' && bytes[j + 1] == b']') {
-                j += 1;
+            if j + 1 < len {
+                push((j + 2) - i, TokenKind::Comment);
+                i = j + 2;
+                continue;
+            } else {
+                push(len - i, TokenKind::Comment);
+                return (spans, LineState::BlockComment);
             }
-            let end = (j + 2).min(len);
-            job.append(&text[i..end], 0.0, style.comment.clone());
-            i = end;
-            continue;
         }
 
-        // --- String "..." or '...' ---
+        // --- String "..." or '...' (single line) ---
         if b == b'"' || b == b'\'' {
             let quote = b;
             let mut j = i + 1;
@@ -270,13 +343,10 @@ pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
                     j += 2;
                     continue;
                 }
-                if bytes[j] == b'\n' {
-                    break;
-                }
                 j += 1;
             }
             let end = (j + 1).min(len);
-            job.append(&text[i..end], 0.0, style.string.clone());
+            push(end - i, TokenKind::String);
             i = end;
             continue;
         }
@@ -317,7 +387,7 @@ pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
                     j = k;
                 }
             }
-            job.append(&text[i..j], 0.0, style.number.clone());
+            push(j - i, TokenKind::Number);
             i = j;
             continue;
         }
@@ -328,27 +398,119 @@ pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
             while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
                 j += 1;
             }
-            let word = &text[i..j];
-            let fmt = if keywords.contains(&word) {
-                &style.keyword
+            let word = &line[i..j];
+            let kind = if keywords.contains(&word) {
+                TokenKind::Keyword
             } else if types.contains(&word) {
-                &style.ty
+                TokenKind::Type
             } else if j < len && bytes[j] == b'(' {
-                &style.function
+                TokenKind::Function
             } else {
-                &style.normal
+                TokenKind::Normal
             };
-            job.append(word, 0.0, fmt.clone());
+            push(j - i, kind);
             i = j;
             continue;
         }
 
         // --- Anything else: one full char (UTF-8 safe) ---
-        let ch_len = text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        let ch_len = line[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
         let end = (i + ch_len).min(len);
-        job.append(&text[i..end], 0.0, style.normal.clone());
+        push(end - i, TokenKind::Normal);
         i = end;
     }
 
+    (spans, LineState::Normal)
+}
+
+/// One-shot whole-buffer highlight with no cache. Delegates to
+/// [`highlight_line`] so tokenization has a single source of truth.
+pub fn highlight(text: &str, lang: Language, style: &TokenStyle) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    if matches!(lang, Language::PlainText) {
+        job.append(text, 0.0, style.normal.clone());
+        return job;
+    }
+    let lines: Vec<&str> = text.split('\n').collect();
+    let n = lines.len();
+    let mut incoming = LineState::Normal;
+    for (idx, line) in lines.iter().enumerate() {
+        let (spans, outgoing) = highlight_line(line, lang, incoming);
+        append_line(&mut job, line, &spans, style);
+        incoming = outgoing;
+        if idx + 1 < n {
+            job.append("\n", 0.0, style.normal.clone());
+        }
+    }
+    job
+}
+
+/// Per-line highlight cache for one file. Stores token *kinds* (not colors) so
+/// theme/font changes don't invalidate it; entries are keyed by line content
+/// hash + incoming state, so only changed lines (and any whose block-comment
+/// state shifted) are re-tokenized.
+#[derive(Default)]
+struct CachedLine {
+    valid: bool,
+    hash: u64,
+    incoming: LineState,
+    outgoing: LineState,
+    spans: Vec<(u32, TokenKind)>,
+}
+
+#[derive(Default)]
+pub struct FileHighlightCache {
+    lang: Option<Language>,
+    lines: Vec<CachedLine>,
+}
+
+/// Whole-buffer highlight that reuses unchanged lines from `cache`. Produces a
+/// `LayoutJob` byte-identical to [`highlight`] for the same input, so cursor
+/// mapping is unaffected.
+pub fn highlight_cached(
+    text: &str,
+    lang: Language,
+    style: &TokenStyle,
+    cache: &mut FileHighlightCache,
+) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    if matches!(lang, Language::PlainText) {
+        job.append(text, 0.0, style.normal.clone());
+        return job;
+    }
+
+    // Language switch invalidates every cached line.
+    if cache.lang != Some(lang) {
+        cache.lines.clear();
+        cache.lang = Some(lang);
+    }
+
+    let lines: Vec<&str> = text.split('\n').collect();
+    let n = lines.len();
+    if cache.lines.len() != n {
+        cache.lines.resize_with(n, CachedLine::default);
+    }
+
+    let mut incoming = LineState::Normal;
+    for (idx, line) in lines.iter().enumerate() {
+        let h = line_hash(line);
+        {
+            let entry = &mut cache.lines[idx];
+            if !(entry.valid && entry.hash == h && entry.incoming == incoming) {
+                let (spans, outgoing) = highlight_line(line, lang, incoming);
+                entry.valid = true;
+                entry.hash = h;
+                entry.incoming = incoming;
+                entry.outgoing = outgoing;
+                entry.spans = spans;
+            }
+        }
+        let entry = &cache.lines[idx];
+        append_line(&mut job, line, &entry.spans, style);
+        incoming = entry.outgoing;
+        if idx + 1 < n {
+            job.append("\n", 0.0, style.normal.clone());
+        }
+    }
     job
 }

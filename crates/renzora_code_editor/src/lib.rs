@@ -50,6 +50,11 @@ impl Default for CodeEditorBridge {
 pub struct CodeEditorPanel {
     bridge: Arc<Mutex<Option<CodeEditorState>>>,
     local: RwLock<CodeEditorState>,
+    /// Per-file syntax-highlight cache (line text + state → token kinds), keyed
+    /// by file path. Lives on the panel (not the per-frame-cloned state) so it
+    /// persists across frames; reused by both the main and split editor panes.
+    highlight_cache:
+        Mutex<std::collections::HashMap<std::path::PathBuf, crate::highlight::FileHighlightCache>>,
 }
 
 impl CodeEditorPanel {
@@ -57,6 +62,7 @@ impl CodeEditorPanel {
         Self {
             bridge,
             local: RwLock::new(CodeEditorState::default()),
+            highlight_cache: Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
@@ -117,7 +123,16 @@ impl EditorPanel for CodeEditorPanel {
 
         // Render
         if let Ok(mut local) = self.local.write() {
-            render_code_editor_panel(ui, &mut local, &theme, scripts_dir, shortcuts);
+            if let Ok(mut cache) = self.highlight_cache.lock() {
+                render_code_editor_panel(
+                    ui,
+                    &mut local,
+                    &theme,
+                    scripts_dir,
+                    shortcuts,
+                    &mut cache,
+                );
+            }
         }
 
         // Accept script file drops

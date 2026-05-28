@@ -4,7 +4,7 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, IrradianceVolume, LightProbe, VolumetricLight,
+    EnvironmentMapLight, LightProbe, VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -321,7 +321,6 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(mesh3d_entry());
     registry.register(environment_map_light_entry());
     registry.register(light_probe_entry());
-    registry.register(irradiance_volume_entry());
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
     // `volumetric_fog_entry()` removed -- `renzora_volumetric_fog` now
@@ -1174,73 +1173,12 @@ fn light_probe_entry() -> InspectorEntry {
             get_fn: |world, entity| {
                 world.get::<LightProbe>(entity).map(|_| {
                     FieldValue::ReadOnly(
-                        "Marker — add EnvironmentMapLight or IrradianceVolume".to_string(),
+                        "Marker — add an EnvironmentMapLight".to_string(),
                     )
                 })
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
-    }
-}
-
-fn irradiance_volume_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "irradiance_volume",
-        display_name: "Irradiance Volume",
-        icon: regular::CUBE_TRANSPARENT,
-        category: "lighting",
-        has_fn: |world, entity| world.get::<IrradianceVolume>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(IrradianceVolume {
-                voxels: Handle::default(),
-                intensity: 1.0,
-                affects_lightmapped_meshes: true,
-            });
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<IrradianceVolume>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Intensity",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 100.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<IrradianceVolume>(entity)
-                        .map(|v| FieldValue::Float(v.intensity))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(f) = val {
-                        if let Some(mut v) = world.get_mut::<IrradianceVolume>(entity) {
-                            v.intensity = f;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Affects Lightmapped",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<IrradianceVolume>(entity)
-                        .map(|v| FieldValue::Bool(v.affects_lightmapped_meshes))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(b) = val {
-                        if let Some(mut v) = world.get_mut::<IrradianceVolume>(entity) {
-                            v.affects_lightmapped_meshes = b;
-                        }
-                    }
-                },
-            },
-        ],
         custom_ui_fn: None,
     }
 }
