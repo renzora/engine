@@ -14,7 +14,7 @@ end
 function on_update()
     local role = net_is_server() and "SERVER" or "CLIENT"
     local conn = net_is_connected() and "connected" or "offline"
-    ui("NetStatus", role .. " — " .. conn)
+    ui("NetStatus", role .. " - " .. conn)
 
     -- Player count is authoritative on the server/host. Clients get it from
     -- net_lobby's broadcast instead.
