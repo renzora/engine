@@ -190,6 +190,15 @@ pub fn add_default_rendering(app: &mut App) {
                 }),
                 ..default()
             });
+    // Editor build: install the Scene Diagnostics panel's tracing
+    // capture layer so the Recent Runtime Warnings section can show
+    // bevy's WARN/ERROR events (B0004, gltf failures, etc.) without
+    // overriding the default fmt layer.
+    #[cfg(feature = "editor")]
+    let plugins = plugins.set(bevy::log::LogPlugin {
+        custom_layer: renzora_scene::runtime_warnings_layer,
+        ..default()
+    });
     // Exported game only: replace Bevy's default ANSI formatter with a plain,
     // span-free one. The editor keeps the default (it runs in a real terminal).
     #[cfg(not(feature = "editor"))]

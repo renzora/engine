@@ -517,6 +517,195 @@ impl EditorPanel for EcsStatsPanel {
 }
 
 // ============================================================================
+// Material Resolver Panel
+// ============================================================================
+
+struct MaterialResolverPanel;
+
+impl EditorPanel for MaterialResolverPanel {
+    fn id(&self) -> &str {
+        "material_resolver_diag"
+    }
+    fn title(&self) -> &str {
+        "Material Resolver"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::PAINT_BRUSH)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [220.0, 160.0]
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
+        let cache = world.get_resource::<renzora_shader::material::resolver::MaterialCache>();
+        let perf = world.get_resource::<renzora_shader::material::perf::MaterialPerfStats>();
+        match (cache, perf) {
+            (Some(cache), Some(perf)) => {
+                panels::material_resolver::render_material_resolver_content(
+                    ui, cache, perf, &theme,
+                );
+            }
+            _ => {
+                ui.label(
+                    bevy_egui::egui::RichText::new(
+                        "(MaterialCache / MaterialPerfStats resource not present)",
+                    )
+                    .color(theme.text.muted.to_color32())
+                    .italics(),
+                );
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Lumen Panel
+// ============================================================================
+
+struct LumenPanel;
+
+impl EditorPanel for LumenPanel {
+    fn id(&self) -> &str {
+        "lumen_diag"
+    }
+    fn title(&self) -> &str {
+        "Lumen"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::SUN_HORIZON)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [220.0, 200.0]
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
+        let state = world
+            .get_resource::<panels::lumen::LumenDiagState>()
+            .cloned()
+            .unwrap_or_default();
+        panels::lumen::render_lumen_content(ui, &state, &theme);
+    }
+}
+
+fn update_lumen_diag_state(
+    mut state: ResMut<panels::lumen::LumenDiagState>,
+    bake_stats: Option<Res<renzora_lumen::LumenBakeStats>>,
+    cameras: Query<(Option<&Name>, &renzora_lumen::VoxelCacheView)>,
+    sample_entities: Query<(), With<renzora_lumen::MeshVoxelSamples>>,
+    // LumenSkyCubemap is a Component on the editor camera (extracted to
+    // the render world each frame). Any entity with it = at least one
+    // camera has an IBL/sky source bound.
+    sky_cubemaps: Query<(), With<renzora_lumen::LumenSkyCubemap>>,
+) {
+    state.cameras.clear();
+    state.cameras.extend(cameras.iter().map(|(name, view)| {
+        panels::lumen::LumenCameraEntry {
+            camera_name: name
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|| "<unnamed>".into()),
+            inject_active: view.inject_active,
+            debug_active: view.debug_active,
+        }
+    }));
+    state.mesh_voxel_samples_entities = sample_entities.iter().count();
+    state.has_sky_cubemap = !sky_cubemaps.is_empty();
+    state.bake = bake_stats.map(|s| (*s).clone()).unwrap_or_default();
+}
+
+// ============================================================================
+// Scripting Panel
+// ============================================================================
+
+struct ScriptingPanel;
+
+impl EditorPanel for ScriptingPanel {
+    fn id(&self) -> &str {
+        "scripting_diag"
+    }
+    fn title(&self) -> &str {
+        "Scripting"
+    }
+    fn icon(&self) -> Option<&str> {
+        Some(egui_phosphor::regular::CODE)
+    }
+    fn category(&self) -> &str {
+        "Debug"
+    }
+    fn default_location(&self) -> PanelLocation {
+        PanelLocation::Right
+    }
+    fn min_size(&self) -> [f32; 2] {
+        [240.0, 200.0]
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, world: &World) {
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
+        let state = world
+            .get_resource::<panels::scripting::ScriptingDiagState>()
+            .cloned()
+            .unwrap_or_default();
+        panels::scripting::render_scripting_content(ui, &state, &theme);
+    }
+}
+
+fn update_scripting_diag_state(
+    mut state: ResMut<panels::scripting::ScriptingDiagState>,
+    engine: Option<Res<renzora_scripting::ScriptEngine>>,
+    perf: Option<Res<renzora_scripting::perf::ScriptPerfStats>>,
+    components: Query<&renzora_scripting::ScriptComponent>,
+) {
+    // Entity-level inventory (cheap, no allocations beyond the count).
+    let mut entities = 0usize;
+    let mut attachments = 0usize;
+    for comp in components.iter() {
+        entities += 1;
+        attachments += comp.scripts.len();
+    }
+    state.entities_with_script = entities;
+    state.total_script_attachments = attachments;
+
+    if let Some(engine) = engine {
+        state.backend_count = engine.backend_count();
+        state.scripts_folder = engine
+            .scripts_folder()
+            .map(|p| p.to_string_lossy().to_string());
+    }
+
+    if let Some(perf) = perf {
+        state.totals = perf.totals();
+        state.per_script = perf.snapshot();
+        state.current_frame = perf.frame;
+    } else {
+        state.totals = Default::default();
+        state.per_script.clear();
+        state.current_frame = 0;
+    }
+}
+
+// ============================================================================
 // Sync system: apply panel mutations back to world resources
 // ============================================================================
 
@@ -584,7 +773,9 @@ impl Plugin for DebuggerPlugin {
             .init_resource::<CameraDebugState>()
             .init_resource::<CullingDebugState>()
             .init_resource::<EcsStatsState>()
-            .init_resource::<RenderPipelineGraphData>();
+            .init_resource::<RenderPipelineGraphData>()
+            .init_resource::<panels::lumen::LumenDiagState>()
+            .init_resource::<panels::scripting::ScriptingDiagState>();
 
         // Bridge
         let bridge = DebugBridge::default();
@@ -612,6 +803,11 @@ impl Plugin for DebuggerPlugin {
             Update,
             update_ecs_stats.run_if(in_state(SplashState::Editor)),
         );
+        app.add_systems(
+            Update,
+            (update_lumen_diag_state, update_scripting_diag_state)
+                .run_if(in_state(SplashState::Editor)),
+        );
 
         app.register_panel(SystemProfilerPanel);
         app.register_panel(MemoryProfilerPanel);
@@ -621,6 +817,9 @@ impl Plugin for DebuggerPlugin {
         app.register_panel(EcsStatsPanel::new());
         app.register_panel(CameraDebugPanel::new(arc.clone()));
         app.register_panel(CullingDebugPanel::new(arc));
+        app.register_panel(MaterialResolverPanel);
+        app.register_panel(LumenPanel);
+        app.register_panel(ScriptingPanel);
     }
 
     fn finish(&self, app: &mut App) {

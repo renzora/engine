@@ -65,6 +65,54 @@ pub struct MeshVoxelSamples {
     pub albedo: LinearRgba,
 }
 
+/// Per-frame stats for the CPU bake throttle in
+/// `bake_mesh_samples`. Surfaces in the debugger's Lumen panel so you
+/// can see "how many meshes did we bake this frame, how long did it
+/// take, how many samples did each produce on average".
+///
+/// GPU-side pass durations (inject + resolve) live in the render world
+/// and aren't recorded here — use the Render Stats / Tracy panels for
+/// those.
+#[derive(bevy::prelude::Resource, Default, Clone)]
+pub struct LumenBakeStats {
+    /// Wall-clock of the last `bake_mesh_samples` system call.
+    pub last_bake_dur: std::time::Duration,
+    /// Rolling average over the last ~60 frames.
+    pub avg_bake_dur: std::time::Duration,
+    /// Worst single-frame bake observed this session.
+    pub max_bake_dur: std::time::Duration,
+    /// Entities baked in the last frame (0..=MAX_BAKES_PER_FRAME).
+    pub bakes_last_frame: usize,
+    /// Lifetime count of meshes baked.
+    pub total_bakes: u64,
+    /// Lifetime sum of sample points emitted across all bakes.
+    pub total_samples_baked: u64,
+    /// Capacity of `MAX_BAKES_PER_FRAME` so the panel can show
+    /// "saturated" when the throttle is the bottleneck.
+    pub bake_budget_per_frame: usize,
+    /// Internal rolling-average ring buffer. Skipped by the panel.
+    recent_durs: Vec<std::time::Duration>,
+}
+
+impl LumenBakeStats {
+    pub(crate) fn record(&mut self, dur: std::time::Duration, bakes: usize, samples: u64) {
+        self.last_bake_dur = dur;
+        self.bakes_last_frame = bakes;
+        self.total_bakes += bakes as u64;
+        self.total_samples_baked += samples;
+        if dur > self.max_bake_dur {
+            self.max_bake_dur = dur;
+        }
+        self.recent_durs.push(dur);
+        if self.recent_durs.len() > 60 {
+            self.recent_durs.remove(0);
+        }
+        let total: std::time::Duration = self.recent_durs.iter().sum();
+        self.avg_bake_dur = total / self.recent_durs.len().max(1) as u32;
+        self.bake_budget_per_frame = MAX_BAKES_PER_FRAME;
+    }
+}
+
 /// Maximum number of entities that get their samples baked in a single
 /// frame. Bake walks the mesh's triangle list which can be expensive
 /// (a 4k-triangle mesh at 0.75m spacing can produce thousands of
@@ -81,11 +129,13 @@ const MAX_BAKES_PER_FRAME: usize = 4;
 ///
 /// Throttled to `MAX_BAKES_PER_FRAME` entities; the rest get picked
 /// up on subsequent frames as the query keeps yielding them.
+#[allow(clippy::too_many_arguments)]
 fn bake_mesh_samples(
     mut commands: Commands,
     meshes: Res<Assets<Mesh>>,
     standard_materials: Res<Assets<StandardMaterial>>,
     graph_materials: Res<Assets<renzora_shader::material::GraphMaterial>>,
+    mut stats: ResMut<LumenBakeStats>,
     standard_query: Query<
         (
             Entity,
@@ -109,45 +159,65 @@ fn bake_mesh_samples(
         )>,
     >,
 ) {
+    let start = std::time::Instant::now();
     let mut budget = MAX_BAKES_PER_FRAME;
+    let mut bakes = 0usize;
+    let mut samples_emitted: u64 = 0;
     for (entity, mesh_handle, mat_handle, existing) in &standard_query {
-        if budget == 0 { return; }
+        if budget == 0 { break; }
         let Some(mesh) = meshes.get(&mesh_handle.0) else { continue; };
         let albedo = standard_materials
             .get(&mat_handle.0)
             .map(|m| m.base_color.to_linear())
             .unwrap_or(LinearRgba::WHITE);
-        bake_one(&mut commands, entity, mesh, albedo, existing);
+        if let Some(n) = bake_one(&mut commands, entity, mesh, albedo, existing) {
+            samples_emitted += n as u64;
+            bakes += 1;
+        }
         budget -= 1;
     }
 
     for (entity, mesh_handle, mat_handle, existing) in &graph_query {
-        if budget == 0 { return; }
+        if budget == 0 { break; }
         let Some(mesh) = meshes.get(&mesh_handle.0) else { continue; };
         let albedo = graph_materials
             .get(&mat_handle.0)
             .map(|m| m.base.base_color.to_linear())
             .unwrap_or(LinearRgba::WHITE);
-        bake_one(&mut commands, entity, mesh, albedo, existing);
+        if let Some(n) = bake_one(&mut commands, entity, mesh, albedo, existing) {
+            samples_emitted += n as u64;
+            bakes += 1;
+        }
         budget -= 1;
     }
+
+    stats.record(start.elapsed(), bakes, samples_emitted);
 }
 
+/// Returns the number of sample positions emitted, or `None` if the
+/// bake produced nothing AND the entity already had no samples (so we
+/// also didn't insert anything). The count is what the perf stats
+/// roll up into "samples baked this frame".
 fn bake_one(
     commands: &mut Commands,
     entity: Entity,
     mesh: &Mesh,
     albedo: LinearRgba,
     existing: Option<&MeshVoxelSamples>,
-) {
+) -> Option<usize> {
     let local_positions = sample_mesh_surface(mesh, SAMPLE_SPACING);
     if local_positions.is_empty() && existing.is_none() {
-        return;
+        return None;
     }
-    commands.entity(entity).insert(MeshVoxelSamples {
+    let n = local_positions.len();
+    // `try_insert`: the mesh entity can be despawned (scene reload, deletion,
+    // play-mode cleanup) between the query and this command flushing — skip it
+    // gracefully rather than panicking on a stale entity.
+    commands.entity(entity).try_insert(MeshVoxelSamples {
         local_positions,
         albedo,
     });
+    Some(n)
 }
 
 /// Generate sample points across the mesh's surface, spaced roughly
@@ -479,6 +549,7 @@ pub struct GeometryVoxelizePlugin;
 impl Plugin for GeometryVoxelizePlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "voxel_geo_inject.wgsl");
+        app.init_resource::<LumenBakeStats>();
         app.add_systems(Update, bake_mesh_samples);
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {

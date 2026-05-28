@@ -98,6 +98,30 @@ impl MaterialCache {
         self.master_meta.remove(path);
         self.loaded_paths.remove(path);
     }
+
+    /// Number of `.material` files that compiled to plain
+    /// `StandardMaterial` (the trivial fast path).
+    pub fn standard_count(&self) -> usize {
+        self.standard_materials.len()
+    }
+
+    /// Number of `.material` files that compiled to procedural
+    /// `GraphMaterial` (custom WGSL fragment).
+    pub fn graph_count(&self) -> usize {
+        self.graph_materials.len()
+    }
+
+    /// Number of `.shader` / `.wgsl` files compiled into
+    /// `CodeShaderMaterial`.
+    pub fn code_count(&self) -> usize {
+        self.code_materials.len()
+    }
+
+    /// Number of compiled masters whose parameter metadata is cached
+    /// for derived material instances.
+    pub fn master_meta_count(&self) -> usize {
+        self.master_meta.len()
+    }
 }
 
 /// Marker component added to entities that have been resolved.
@@ -128,6 +152,7 @@ impl Plugin for MaterialResolverPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] MaterialResolverPlugin");
         app.init_resource::<MaterialCache>()
+            .init_resource::<super::perf::MaterialPerfStats>()
             .init_resource::<renzora::VirtualFileReader>()
             .register_type::<MaterialRef>()
             .register_type::<super::material_ref::MaterialOverrides>()
@@ -138,10 +163,12 @@ impl Plugin for MaterialResolverPlugin {
 
 /// System that finds entities with `MaterialRef` + `Mesh3d` that don't yet have a resolved material,
 /// loads the file, compiles it, and attaches the material handle.
+#[allow(clippy::too_many_arguments)]
 fn resolve_material_refs(
     mut commands: Commands,
     query: Query<(Entity, &MaterialRef), Without<MaterialResolved>>,
     mut cache: ResMut<MaterialCache>,
+    mut perf: ResMut<super::perf::MaterialPerfStats>,
     standard_materials: Option<ResMut<Assets<bevy::pbr::StandardMaterial>>>,
     graph_materials: Option<ResMut<Assets<GraphMaterial>>>,
     code_materials: Option<ResMut<Assets<CodeShaderMaterial>>>,
@@ -154,6 +181,8 @@ fn resolve_material_refs(
     file_reader: Option<Res<renzora::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
+    use super::perf::MaterialKind;
+    use std::time::Instant;
     let Some(mut standard_materials) = standard_materials else {
         return;
     };
@@ -194,6 +223,7 @@ fn resolve_material_refs(
                     source_path: path.clone(),
                 },
             ));
+            perf.record_cache_hit(path, MaterialKind::Standard);
             continue;
         }
 
@@ -208,6 +238,7 @@ fn resolve_material_refs(
                     source_path: path.clone(),
                 },
             ));
+            perf.record_cache_hit(path, MaterialKind::Graph);
             continue;
         }
 
@@ -219,6 +250,7 @@ fn resolve_material_refs(
                     source_path: path.clone(),
                 },
             ));
+            perf.record_cache_hit(path, MaterialKind::Code);
             continue;
         }
 
@@ -245,6 +277,7 @@ fn resolve_material_refs(
         // always written as `.material`.
         if path.ends_with(".material") || path.ends_with(".material_instance") {
             let is_derived = is_derived_material_file(&fs_path, reader);
+            let start = Instant::now();
             let result = if is_derived {
                 resolve_material_instance_file(
                     &fs_path,
@@ -271,6 +304,7 @@ fn resolve_material_refs(
                     reader,
                 )
             };
+            let compile_dur = start.elapsed();
             match result {
                 Some(CompiledMaterial::Standard(handle)) => {
                     cache
@@ -285,6 +319,7 @@ fn resolve_material_refs(
                             source_path: path.clone(),
                         },
                     ));
+                    perf.record_compile_success(path, MaterialKind::Standard, compile_dur);
                 }
                 Some(CompiledMaterial::Graph { handle, parameters }) => {
                     cache.graph_materials.insert(path.clone(), handle.clone());
@@ -305,26 +340,32 @@ fn resolve_material_refs(
                             source_path: path.clone(),
                         },
                     ));
+                    perf.record_compile_success(path, MaterialKind::Graph, compile_dur);
                 }
                 None => {
-                    warn!(
-                        "Failed to resolve material file: {} (derived={})",
-                        path, is_derived
+                    let err = format!(
+                        "compile returned None (derived={}, fs_path={})",
+                        is_derived, fs_path
                     );
+                    warn!("Failed to resolve material file: {} ({})", path, err);
                     commands.entity(entity).try_insert(MaterialResolved {
                         source_path: path.clone(),
                     });
+                    perf.record_compile_failure(path, compile_dur, err);
                 }
             }
         } else if path.ends_with(".shader") {
-            match resolve_code_shader(
+            let start = Instant::now();
+            let result = resolve_code_shader(
                 &fs_path,
                 &mut code_materials,
                 &mut shaders,
                 &mut shader_cache,
                 &shader_registry,
                 reader,
-            ) {
+            );
+            let compile_dur = start.elapsed();
+            match result {
                 Some(handle) => {
                     cache.code_materials.insert(path.clone(), handle.clone());
                     commands
@@ -336,12 +377,15 @@ fn resolve_material_refs(
                             source_path: path.clone(),
                         },
                     ));
+                    perf.record_compile_success(path, MaterialKind::Code, compile_dur);
                 }
                 None => {
+                    let err = format!("resolve_code_shader returned None ({})", fs_path);
                     warn!("Failed to resolve .shader: {}", path);
                     commands.entity(entity).try_insert(MaterialResolved {
                         source_path: path.clone(),
                     });
+                    perf.record_compile_failure(path, compile_dur, err);
                 }
             }
         } else if path.ends_with(".wgsl")

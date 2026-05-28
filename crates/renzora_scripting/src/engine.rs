@@ -31,6 +31,20 @@ impl ScriptEngine {
         }
     }
 
+    /// Number of registered script backends. Exposed for diagnostic
+    /// panels (renzora_debugger scripting panel) so they can show the
+    /// scripting subsystem's wiring state without poking internals.
+    pub fn backend_count(&self) -> usize {
+        self.backends.len()
+    }
+
+    /// Currently configured scripts root folder, if one's been set.
+    /// Editor diagnostic panels read this to surface "where scripts
+    /// are being loaded from" without taking a mutable borrow.
+    pub fn scripts_folder(&self) -> Option<&std::path::Path> {
+        self.scripts_folder.as_deref()
+    }
+
     /// Register a language backend
     pub fn add_backend(&mut self, backend: Box<dyn ScriptBackend>) {
         log::info!(

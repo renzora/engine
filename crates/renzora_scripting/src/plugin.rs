@@ -88,6 +88,7 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptReloadEvents>()
             .init_resource::<crate::extension::ScriptExtensions>()
             .init_resource::<crate::get_handler::AssetProgressBridge>()
+            .init_resource::<crate::perf::ScriptPerfStats>()
             .register_type::<ScriptComponent>()
             // Configure system set ordering
             .configure_sets(

@@ -1,8 +1,11 @@
 pub mod camera;
 pub mod culling;
 pub mod ecs_stats;
+pub mod lumen;
+pub mod material_resolver;
 pub mod memory;
 pub mod performance;
 pub mod render_pipeline;
 pub mod render_stats;
+pub mod scripting;
 pub mod system_profiler;

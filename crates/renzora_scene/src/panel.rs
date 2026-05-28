@@ -454,6 +454,9 @@ fn open_scene(world: &mut World, path: &std::path::Path) {
         if let Some(mut buffers) = world.get_resource_mut::<renzora::core::SceneTabBuffers>() {
             buffers.buffers.insert(old_id, snapshot);
         }
+        // Pin assets the leaving tab's entities reference before they
+        // despawn — see `tab_asset_cache` module doc.
+        crate::tab_asset_cache::pin_live_tab_handles(world, old_id);
     }
 
     let name = path

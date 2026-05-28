@@ -4,6 +4,7 @@ pub mod instance;
 pub mod material_ref;
 pub mod nodes;
 pub mod pbr_build;
+pub mod perf;
 pub mod precompiled;
 pub mod resolver;
 pub mod runtime;

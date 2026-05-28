@@ -415,7 +415,7 @@ fn layout_animation() -> DockTree {
     )
 }
 
-/// Debug: Hierarchy+Performance | Viewport+debug panels | Inspector+EcsStats
+/// Debug: Hierarchy+Performance | Viewport+debug panels | Inspector+ECS / SceneDiagnostics+(subsystem diag tabs)
 fn layout_debug() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
@@ -450,10 +450,21 @@ fn layout_debug() -> DockTree {
             ),
             DockTree::vertical(
                 DockTree::Leaf {
-                    tabs: vec!["inspector".into(), "gamepad".into()],
+                    tabs: vec!["inspector".into(), "gamepad".into(), "ecs_stats".into()],
                     active_tab: 0,
                 },
-                DockTree::leaf("ecs_stats"),
+                // The MOT — Scene Diagnostics on top, with the subsystem
+                // diagnostic panels stacked as tabs so they all share
+                // one slot the user can flip through.
+                DockTree::Leaf {
+                    tabs: vec![
+                        "scene_diagnostics".into(),
+                        "material_resolver_diag".into(),
+                        "lumen_diag".into(),
+                        "scripting_diag".into(),
+                    ],
+                    active_tab: 0,
+                },
                 0.5,
             ),
             0.75,

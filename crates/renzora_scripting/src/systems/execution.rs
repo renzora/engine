@@ -3,6 +3,8 @@
 
 use bevy::prelude::*;
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use renzora::EntityTag;
 
@@ -11,7 +13,54 @@ use crate::component::ScriptComponent;
 use crate::context::{ChildNodeInfo, ScriptContext, ScriptTime, ScriptTransform};
 use crate::engine::ScriptEngine;
 use crate::input::ScriptInput;
+use crate::perf::ScriptPerfStats;
 use crate::resources::ScriptTimers;
+
+/// Internal queue of per-script timing samples gathered during one
+/// `run_scripts` pass. We collect them inline (while the immutable
+/// `ScriptEngine` borrow is live) and flush to `ScriptPerfStats` after
+/// each entity's hooks finish, when we can take a mutable borrow on
+/// the resource.
+#[derive(Default)]
+struct PerfBatch {
+    on_update: Vec<(PathBuf, Duration, Option<String>)>,
+    on_ready: Vec<(PathBuf, Duration, Option<String>)>,
+    on_rpc: Vec<(PathBuf, Duration)>,
+    on_ui: Vec<(PathBuf, Duration)>,
+}
+
+impl PerfBatch {
+    fn flush(self, world: &mut World) {
+        if self.on_update.is_empty()
+            && self.on_ready.is_empty()
+            && self.on_rpc.is_empty()
+            && self.on_ui.is_empty()
+        {
+            return;
+        }
+        let mut perf = world.resource_mut::<ScriptPerfStats>();
+        for (path, dur, err) in self.on_update {
+            perf.record_on_update(
+                &path,
+                dur,
+                err.as_deref().map_or(Ok(()), Err),
+            );
+        }
+        for (path, dur, err) in self.on_ready {
+            perf.record_on_ready(
+                &path,
+                dur,
+                err.as_deref().map_or(Ok(()), Err),
+            );
+        }
+        for (path, dur) in self.on_rpc {
+            perf.record_on_rpc(&path, dur);
+        }
+        for (path, dur) in self.on_ui {
+            perf.record_on_ui(&path, dur);
+        }
+    }
+}
 
 /// Collected commands from all script executions this frame.
 #[derive(Resource, Default)]
@@ -63,6 +112,16 @@ pub use renzora::TransformWrite;
 ///
 /// Uses exclusive world access so scripts can read component fields via `get()`.
 pub fn run_scripts(world: &mut World) {
+    // Bump the perf-stats frame counter once per run_scripts pass. The
+    // counter is what the diagnostics panel uses to grey out scripts
+    // whose entities haven't been ticked this frame (despawned tabs,
+    // disabled components).
+    world.resource_mut::<ScriptPerfStats>().tick_frame();
+    // Local accumulator for this pass's timing samples. Flushed into
+    // the shared resource at the end so we don't fight for a mutable
+    // borrow while the immutable `ScriptEngine` resource is in scope.
+    let mut perf_batch = PerfBatch::default();
+
     // Extract resources we need (take ownership to avoid borrow conflicts)
     let time_elapsed = world.resource::<Time>().elapsed_secs_f64();
     let time_delta = world.resource::<Time>().delta_secs();
@@ -474,14 +533,30 @@ pub fn run_scripts(world: &mut World) {
                     }
                 }
 
-                if let Err(e) = engine.call_on_ready(&script_path, &mut ctx, &mut entry.variables) {
+                let start = Instant::now();
+                let on_ready_result =
+                    engine.call_on_ready(&script_path, &mut ctx, &mut entry.variables);
+                let on_ready_dur = start.elapsed();
+                let err_msg = on_ready_result.as_ref().err().map(|e| e.to_string());
+                perf_batch
+                    .on_ready
+                    .push((script_path.clone(), on_ready_dur, err_msg.clone()));
+                if let Some(e) = err_msg {
                     warn!("Script on_ready error [{}]: {}", script_path.display(), e);
                     entry.runtime_state.has_error = true;
                 }
                 entry.runtime_state.initialized = true;
             }
 
-            if let Err(e) = engine.call_on_update(&script_path, &mut ctx, &mut entry.variables) {
+            let start = Instant::now();
+            let on_update_result =
+                engine.call_on_update(&script_path, &mut ctx, &mut entry.variables);
+            let on_update_dur = start.elapsed();
+            let err_msg = on_update_result.as_ref().err().map(|e| e.to_string());
+            perf_batch
+                .on_update
+                .push((script_path.clone(), on_update_dur, err_msg.clone()));
+            if let Some(e) = err_msg {
                 if !entry.runtime_state.has_error {
                     warn!("Script on_update error [{}]: {}", script_path.display(), e);
                     entry.runtime_state.has_error = true;
@@ -494,14 +569,18 @@ pub fn run_scripts(world: &mut World) {
             // `on_rpc(name, args)` hook. Runs while the get-handler is still
             // live so handlers can read component fields too.
             for rpc in &pending_rpcs {
-                if let Err(e) = engine.call_on_rpc(
+                let start = Instant::now();
+                let res = engine.call_on_rpc(
                     &script_path,
                     &rpc.name,
                     &rpc.args,
                     rpc.from,
                     &mut ctx,
                     &mut entry.variables,
-                ) {
+                );
+                let dur = start.elapsed();
+                perf_batch.on_rpc.push((script_path.clone(), dur));
+                if let Err(e) = res {
                     warn!("Script on_rpc error [{}]: {}", script_path.display(), e);
                 }
             }
@@ -509,14 +588,18 @@ pub fn run_scripts(world: &mut World) {
             // Deliver UI markup callbacks to the script's `on_ui(name, args)`
             // hook. Same broadcast + live-handler placement as `on_rpc` above.
             for cb in &pending_ui_callbacks {
-                if let Err(e) = engine.call_on_ui(
+                let start = Instant::now();
+                let res = engine.call_on_ui(
                     &script_path,
                     &cb.name,
                     &cb.args,
                     cb.entity_bits,
                     &mut ctx,
                     &mut entry.variables,
-                ) {
+                );
+                let dur = start.elapsed();
+                perf_batch.on_ui.push((script_path.clone(), dur));
+                if let Err(e) = res {
                     warn!("Script on_ui error [{}]: {}", script_path.display(), e);
                 }
             }
@@ -608,4 +691,9 @@ pub fn run_scripts(world: &mut World) {
         // Put the ScriptComponent back on the entity
         world.entity_mut(sed.entity).insert(sc);
     }
+
+    // Apply collected per-hook timings to the shared stats resource.
+    // Deferred until after the per-entity loop so we don't fight the
+    // immutable `ScriptEngine` borrow held inside it.
+    perf_batch.flush(world);
 }

@@ -13,6 +13,7 @@ mod plugin;
 pub mod api;
 pub mod backends;
 pub mod macros;
+pub mod perf;
 pub mod resources;
 pub mod systems;
 

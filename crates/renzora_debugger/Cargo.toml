@@ -16,6 +16,11 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 # isn't a runtime cost.
 renzora_lumen = { path = "../renzora_lumen" }
 renzora_rt = { path = "../renzora_rt" }
+# Editor-only deps for the diagnostic panels — counts of compiled
+# materials, loaded scripts, etc. These crates are already in the
+# editor build's dependency closure.
+renzora_shader = { path = "../renzora_shader" }
+renzora_scripting = { path = "../renzora_scripting" }
 memory-stats = "1"
 
 [lints]

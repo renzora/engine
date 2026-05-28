@@ -15,6 +15,7 @@ renzora_splash = { path = "../renzora_splash" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
 renzora_viewport = { path = "../renzora_viewport" }
+renzora_shader = { path = "../renzora_shader" }
 bevy_egui = { workspace = true }
 egui-phosphor = { workspace = true }
 

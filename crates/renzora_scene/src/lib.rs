@@ -25,6 +25,12 @@ pub use panel::ScenesPanel;
 mod tab_asset_cache;
 pub use tab_asset_cache::TabAssetCache;
 
+mod diagnostics_panel;
+pub use diagnostics_panel::SceneDiagnosticsPanel;
+
+pub mod runtime_warnings;
+pub use runtime_warnings::runtime_warnings_layer;
+
 // ============================================================================
 // Tab Switch System
 // ============================================================================
@@ -142,6 +148,14 @@ fn handle_tab_switch(world: &mut World) {
     if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
         buffers.buffers.insert(old_id, snapshot);
     }
+
+    // Pin every asset the leaving tab's entities currently reference so
+    // that despawning them doesn't evict their textures / materials /
+    // meshes. Without this the tab-switch-back lands on the deserialized
+    // RON but its `MaterialResolver` / `asset_server.load` calls have to
+    // re-decode textures from disk (and worse, anything outside the
+    // resolver path renders blank). See `tab_asset_cache` module doc.
+    tab_asset_cache::pin_live_tab_handles(world, old_id);
 
     // 3. Despawn all scene entities
     despawn_scene_entities(world);
@@ -383,6 +397,17 @@ fn new_scene_system(world: &mut World) {
         return;
     }
 
+    // The scene is being wiped on the current tab — drop the tab's live
+    // pin set so we're not holding strong handles to assets whose
+    // entities have just been despawned. GLB pins stay so a follow-up
+    // drag-drop of the same model is still instant.
+    let active_id = world
+        .get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|ts| ts.active_tab_id());
+    if let (Some(id), Some(mut cache)) = (active_id, world.get_resource_mut::<TabAssetCache>()) {
+        cache.drop_tab_live(id);
+    }
+
     // Despawn all scene entities (keep editor infrastructure)
     despawn_scene_entities(world);
 
@@ -432,6 +457,17 @@ fn open_scene_system(world: &mut World) {
             .pick_file();
 
         let Some(file_path) = file else { return };
+
+        // Pin every asset the current scene's entities reference before
+        // they despawn so the next File→Open of the same scene (or any
+        // scene that shares materials) doesn't re-decode textures from
+        // disk and doesn't lose them to GC. See `tab_asset_cache` doc.
+        let active_id = world
+            .get_resource::<renzora_ui::DocumentTabState>()
+            .and_then(|ts| ts.active_tab_id());
+        if let Some(id) = active_id {
+            tab_asset_cache::pin_live_tab_handles(world, id);
+        }
 
         // Despawn current scene entities
         despawn_scene_entities(world);
@@ -1022,6 +1058,17 @@ impl Plugin for ScenePlugin {
             .init_resource::<SceneLoadProgress>()
             .init_resource::<EditorLoadProgress>()
             .init_resource::<TabAssetCache>()
+            .init_resource::<tab_asset_cache::SceneDiagSnapshot>()
+            // Refresh the Scene Diagnostics panel's input snapshot each
+            // frame. Exclusive system (uses a dozen queries internally
+            // via SystemState); panels only have `&World` so we cache
+            // the data in a resource they can read.
+            .add_systems(
+                Update,
+                tab_asset_cache::update_scene_diag_snapshot
+                    .run_if(in_state(SplashState::Editor)),
+            )
+            .register_panel(SceneDiagnosticsPanel)
             // When the user closes a tab, drop its strong handles so
             // the assets it pinned can evict (assuming no other tab
             // still references them).
