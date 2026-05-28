@@ -1,0 +1,30 @@
+<!-- Bottom-of-screen XP bar — uses the `progress` component. -->
+<template>
+    <node
+        position="absolute"
+        left="50%"
+        bottom="24px"
+        margin="0px 0px 0px -240px"
+        width="480px"
+        flex_direction="column"
+        row_gap="6px"
+    >
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <node flex_direction="row" align_items="center" column_gap="8px">
+                <node
+                    width="22px"
+                    height="22px"
+                    background="#F1C40F"
+                    border_radius="999px"
+                    justify_content="center"
+                    align_items="center"
+                >
+                    <text font_size="11" font_color="#0D0F14">7</text>
+                </node>
+                <text font_size="13" font_color="#FFFFFF">Level 7</text>
+            </node>
+            <text font_size="11" font_color="#8A93A2">1,840 / 2,500 XP</text>
+        </node>
+        <progress fill="73%" color="#F1C40F" height="8px" />
+    </node>
+</template>

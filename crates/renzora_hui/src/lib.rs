@@ -1,48 +1,60 @@
-//! Renzora HUI — author bevy_ui as hot-reloadable pseudo-HTML/XML templates.
+//! Renzora HUI — author UI as hot-reloadable markup (`.html`) compiled into a
+//! `bevy_ui` entity tree.
 //!
-//! Wraps the `bevy_hui` crate so UI can be written as markup (à la Unity's UI
-//! Toolkit / React components) instead of Rust spawn code. Templates live under
-//! `assets/ui/*.html`; reusable component templates under `assets/ui/components/`
-//! are auto-registered by [`bevy_hui::HuiAutoLoadPlugin`].
+//! Uses **only the parser** half of the vendored `bevy_hui` fork (under
+//! `crates/bevy_hui/`) to read `.html` files into a typed AST
+//! (`HtmlTemplate`/`XNode`/`StyleAttr`). Renzora's own [`loader`] then walks
+//! that AST and spawns one entity per markup node with standard bevy_ui
+//! components (`Node`, `BackgroundColor`, `Text`, `TextFont`, …) attached
+//! directly. **No bevy_hui runtime** — no `HtmlNode`, no per-frame style
+//! re-assertion, no `retain::<KeepComps>()` strip. See
+//! `docs/renzora_markup.md` for the architecture.
 
 use bevy::prelude::*;
 
+pub mod components;
+pub mod loader;
 pub mod lua_bridge;
+pub mod provenance;
 pub mod template;
+pub mod writeback;
 
+pub use provenance::MarkupSource;
 pub use template::HtmlTemplatePath;
 
 #[cfg(feature = "editor")]
 pub mod editor;
 
-/// Folders (relative to the asset root) scanned by [`bevy_hui::HuiAutoLoadPlugin`]
-/// for reusable component templates that register themselves by file stem.
-const AUTOLOAD_DIRS: &[&str] = &["ui/components"];
+#[cfg(feature = "editor")]
+pub mod inspector;
 
 #[derive(Default)]
 pub struct HuiPlugin;
 
 impl Plugin for HuiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            bevy_hui::prelude::HuiPlugin,
-            bevy_hui::prelude::HuiAutoLoadPlugin::new(AUTOLOAD_DIRS),
-        ))
-        // Markup callbacks with no Rust binding fall through to scripts'
-        // `on_ui` hook; this inbox carries them to `renzora_scripting`.
-        .init_resource::<renzora::ScriptUiInbox>()
-        .add_systems(Update, lua_bridge::register_lua_forwarders)
-        .add_observer(lua_bridge::handle_hui_spawn);
+        // Parser-side only: registers `HtmlTemplate` as an asset and its loader
+        // so `.html` files load into a typed AST. We do **not** add
+        // bevy_hui's `BuildPlugin`/`TransitionPlugin`/`BindingPlugin`/etc. —
+        // those are the runtime we're replacing.
+        app.add_plugins(bevy_hui::prelude::LoaderPlugin);
 
-        // Runtime: bind serializable HtmlTemplatePath → HtmlNode (so templates
-        // load from saved scenes in the editor *and* in exported games).
+        // Markup callbacks (e.g. `<button on_press="start_game">`) with no
+        // Rust binding fall through to scripts' `on_ui` hook. The bridge will
+        // be re-attached to our own `MarkupOnPress` interaction in Phase D.
+        app.init_resource::<renzora::ScriptUiInbox>()
+            .add_observer(lua_bridge::handle_hui_spawn);
+
+        // The path → entity-tree loader, and the component-template registry
+        // (`assets/ui/components/*.html` indexed by file stem so `<menu_button>`
+        // can be resolved by the loader).
+        components::plugin(app);
         template::plugin(app);
 
-        // Editor-only: make template entities show up as draggable widgets in
-        // the canvas preview, persist drag positions across hot-reloads, and
-        // expose HtmlNode in the hierarchy "+ Add Entity" / inspector.
+        // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
+        // component inspectors with markup writeback.
         #[cfg(feature = "editor")]
-        app.add_plugins(editor::HuiEditorPlugin);
+        app.add_plugins((editor::HuiEditorPlugin, inspector::HuiInspectorPlugin));
     }
 }
 

@@ -1,0 +1,73 @@
+<!-- Centered pause menu — exercises absolute fullscreen + content-centered flex
+     + button list. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0000008C"
+        justify_content="center"
+        align_items="center"
+    >
+        <node
+            flex_direction="column"
+            align_items="stretch"
+            row_gap="12px"
+            padding="28px"
+            background="#11151C"
+            border="1px"
+            border_color="#222B38"
+            border_radius="14px"
+            width="320px"
+        >
+            <text font_size="22" font_color="#FFFFFF" margin="0px 0px 8px 0px">Paused</text>
+
+            <button
+                padding="12px"
+                background="#1B1F27"
+                border="1px"
+                border_color="#2C3340"
+                border_radius="8px"
+                hover:background="#222A36"
+                hover:border_color="#4C8BF5"
+                delay="0.12s"
+                ease="cubic_out"
+                on_press="resume"
+            >
+                <text font_size="14" font_color="#FFFFFF">Resume</text>
+            </button>
+
+            <button
+                padding="12px"
+                background="#1B1F27"
+                border="1px"
+                border_color="#2C3340"
+                border_radius="8px"
+                hover:background="#222A36"
+                hover:border_color="#4C8BF5"
+                delay="0.12s"
+                ease="cubic_out"
+                on_press="open_settings"
+            >
+                <text font_size="14" font_color="#FFFFFF">Settings</text>
+            </button>
+
+            <button
+                padding="12px"
+                background="#1B1F27"
+                border="1px"
+                border_color="#2C3340"
+                border_radius="8px"
+                hover:background="#2A1416"
+                hover:border_color="#E74C3C"
+                delay="0.12s"
+                ease="cubic_out"
+                on_press="quit_to_menu"
+            >
+                <text font_size="14" font_color="#E74C3C">Quit to Menu</text>
+            </button>
+        </node>
+    </node>
+</template>

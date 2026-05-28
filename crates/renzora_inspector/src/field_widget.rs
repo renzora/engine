@@ -330,6 +330,46 @@ pub fn render_field(
             });
         }
 
+        (FieldType::Enum { options }, FieldValue::Enum(current)) => {
+            let set_fn = field.set_fn;
+            let options = *options;
+            // Translate the current string label to its index for the
+            // combobox. Falls back to 0 when the value isn't in the options
+            // list — better than panicking on a stale variant name.
+            let current_idx = options.iter().position(|o| *o == current).unwrap_or(0);
+
+            inline_property(ui, row_index, field.name, theme, |ui| {
+                let id = ui.id().with(field.name);
+                let avail = (ui.available_width() - 28.0).max(60.0);
+                let _ = avail; // enum_combobox uses ui.available_width() itself
+                if let Some(picked) = renzora_ui::widgets::enum_combobox(ui, id, current_idx, options) {
+                    if picked != current_idx {
+                        push_field_change(
+                            cmds,
+                            entity,
+                            field.name,
+                            FieldValue::Enum(current.clone()),
+                            FieldValue::Enum(options[picked].to_string()),
+                            set_fn,
+                        );
+                    }
+                }
+                if reset_button(ui, theme) {
+                    // "Reset" defaults to the first option — same convention
+                    // as the other field types' type_default behaviour.
+                    let default_label = options.first().copied().unwrap_or("").to_string();
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::Enum(current.clone()),
+                        FieldValue::Enum(default_label),
+                        set_fn,
+                    );
+                }
+            });
+        }
+
         (FieldType::ReadOnly, FieldValue::ReadOnly(text)) => {
             inline_property(ui, row_index, field.name, theme, |ui| {
                 ui.label(

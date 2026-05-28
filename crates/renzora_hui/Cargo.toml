@@ -19,5 +19,8 @@ renzora_game_ui = { path = "../renzora_game_ui" }
 renzora_editor = { path = "../renzora_editor", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

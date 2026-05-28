@@ -1,0 +1,97 @@
+<!-- Top-left player HUD — rounded avatar, level/name/class, vitals bars, skill
+     row, money chips, XP bar. The "everything you'd see permanently" overlay. -->
+<template>
+    <node
+        position="absolute"
+        top="20px"
+        left="20px"
+        flex_direction="column"
+        row_gap="12px"
+        width="380px"
+    >
+        <!-- Identity row: avatar + name/level + currencies -->
+        <node flex_direction="row" align_items="center" column_gap="12px">
+            <node
+                width="56px"
+                height="56px"
+                background="#1B1F27"
+                border="2px"
+                border_color="#F1C40F"
+                border_radius="999px"
+                justify_content="center"
+                align_items="center"
+            >
+                <text font_size="24" font_color="#F1C40F">N</text>
+            </node>
+
+            <node flex_direction="column" flex_grow="1" row_gap="2px">
+                <node flex_direction="row" align_items="center" column_gap="6px">
+                    <text font_size="16" font_color="#FFFFFF">Nova Wren</text>
+                    <chip text="Lv 14" color="#F1C40F" />
+                </node>
+                <text font_size="11" font_color="#8A93A2">Spellblade · Ashen Order</text>
+            </node>
+
+            <node flex_direction="column" align_items="flex_end" row_gap="2px">
+                <node flex_direction="row" align_items="center" column_gap="4px">
+                    <text font_size="11" font_color="#F1C40F">⬢</text>
+                    <text font_size="12" font_color="#FFFFFF">1,240</text>
+                </node>
+                <node flex_direction="row" align_items="center" column_gap="4px">
+                    <text font_size="11" font_color="#9B59B6">◆</text>
+                    <text font_size="12" font_color="#FFFFFF">38</text>
+                </node>
+            </node>
+        </node>
+
+        <!-- Vitals -->
+        <node flex_direction="column" row_gap="4px">
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="10" font_color="#8A93A2">HP</text>
+                <text font_size="10" font_color="#FFFFFF">186 / 200</text>
+            </node>
+            <progress fill="93%" color="#E74C3C" height="8px" />
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="10" font_color="#8A93A2">MP</text>
+                <text font_size="10" font_color="#FFFFFF">88 / 140</text>
+            </node>
+            <progress fill="63%" color="#3498DB" height="8px" />
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="10" font_color="#8A93A2">STAMINA</text>
+                <text font_size="10" font_color="#FFFFFF">120 / 120</text>
+            </node>
+            <progress fill="100%" color="#2ECC71" height="8px" />
+        </node>
+
+        <!-- Skills bar -->
+        <node flex_direction="row" column_gap="6px">
+            <node width="46px" height="46px" background="#1B1F27" border="2px" border_color="#4C8BF5" border_radius="8px" justify_content="center" align_items="center">
+                <text font_size="18" font_color="#4C8BF5">F</text>
+            </node>
+            <node width="46px" height="46px" background="#1B1F27" border="2px" border_color="#E74C3C" border_radius="8px" justify_content="center" align_items="center">
+                <text font_size="18" font_color="#E74C3C">B</text>
+            </node>
+            <node width="46px" height="46px" background="#1B1F27" border="2px" border_color="#2C3340" border_radius="8px" justify_content="center" align_items="center" padding="2px">
+                <node flex_direction="column" align_items="center">
+                    <text font_size="14" font_color="#5A6678">D</text>
+                    <text font_size="10" font_color="#F1C40F">3s</text>
+                </node>
+            </node>
+            <node width="46px" height="46px" background="#1B1F27" border="2px" border_color="#9B59B6" border_radius="8px" justify_content="center" align_items="center">
+                <text font_size="18" font_color="#9B59B6">U</text>
+            </node>
+            <node width="46px" height="46px" background="#1B1F27" border="2px" border_color="#2C3340" border_radius="8px" justify_content="center" align_items="center">
+                <text font_size="14" font_color="#5A6678">·</text>
+            </node>
+        </node>
+
+        <!-- XP / level progress -->
+        <node flex_direction="column" row_gap="3px">
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="10" font_color="#8A93A2">XP TO LEVEL 15</text>
+                <text font_size="10" font_color="#F1C40F">1,840 / 2,500</text>
+            </node>
+            <progress fill="73%" color="#F1C40F" height="4px" />
+        </node>
+    </node>
+</template>

@@ -1,0 +1,22 @@
+<!-- Full-screen loading splash — centered title + progress bar component. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14"
+        flex_direction="column"
+        justify_content="center"
+        align_items="center"
+        row_gap="20px"
+    >
+        <text font_size="42" font_color="#FFFFFF">Renzora</text>
+        <text font_size="13" font_color="#8A93A2">Loading world…</text>
+        <node width="320px" margin="20px 0px 0px 0px">
+            <progress fill="64%" color="#F39C12" />
+        </node>
+        <text font_size="11" font_color="#5A6678">Streaming chunks</text>
+    </node>
+</template>

@@ -1,0 +1,137 @@
+<!-- Main menu screen — big title, vertical button stack, top-right profile
+     chip, bottom-left version. Stylized centered layout. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14D9"
+    >
+        <!-- Top-right: profile chip -->
+        <node
+            position="absolute"
+            top="24px"
+            right="24px"
+            flex_direction="row"
+            align_items="center"
+            column_gap="10px"
+            padding="6px 14px 6px 8px"
+            background="#11151C"
+            border="1px"
+            border_color="#222B38"
+            border_radius="999px"
+        >
+            <node width="32px" height="32px" background="#1B1F27" border_radius="999px" justify_content="center" align_items="center">
+                <text font_size="14" font_color="#F1C40F">N</text>
+            </node>
+            <node flex_direction="column" row_gap="0px">
+                <text font_size="11" font_color="#FFFFFF">Nova_Wren</text>
+                <text font_size="9" font_color="#8A93A2">Level 14</text>
+            </node>
+        </node>
+
+        <!-- Centered content -->
+        <node
+            width="100%"
+            height="100%"
+            flex_direction="column"
+            justify_content="center"
+            align_items="center"
+            row_gap="32px"
+        >
+            <node flex_direction="column" align_items="center" row_gap="6px">
+                <text font_size="68" font_color="#FFFFFF">RENZORA</text>
+                <text font_size="13" font_color="#8A93A2">An engine, a world, a vow.</text>
+            </node>
+
+            <node flex_direction="column" row_gap="8px" width="320px">
+                <button
+                    padding="14px"
+                    background="#4C8BF5"
+                    border_radius="8px"
+                    hover:background="#6BA1F8"
+                    delay="0.12s"
+                    ease="cubic_out"
+                    on_press="continue_game"
+                    justify_content="center"
+                >
+                    <text font_size="14" font_color="#FFFFFF">Continue</text>
+                </button>
+                <button
+                    padding="14px"
+                    background="#1B1F27"
+                    border="1px"
+                    border_color="#2C3340"
+                    border_radius="8px"
+                    hover:background="#222A36"
+                    hover:border_color="#4C8BF5"
+                    delay="0.12s"
+                    on_press="new_game"
+                    justify_content="center"
+                >
+                    <text font_size="14" font_color="#FFFFFF">New Game</text>
+                </button>
+                <button
+                    padding="14px"
+                    background="#1B1F27"
+                    border="1px"
+                    border_color="#2C3340"
+                    border_radius="8px"
+                    hover:background="#222A36"
+                    hover:border_color="#4C8BF5"
+                    delay="0.12s"
+                    on_press="multiplayer"
+                    justify_content="center"
+                >
+                    <text font_size="14" font_color="#FFFFFF">Multiplayer</text>
+                </button>
+                <button
+                    padding="14px"
+                    background="#1B1F27"
+                    border="1px"
+                    border_color="#2C3340"
+                    border_radius="8px"
+                    hover:background="#222A36"
+                    hover:border_color="#4C8BF5"
+                    delay="0.12s"
+                    on_press="open_settings"
+                    justify_content="center"
+                >
+                    <text font_size="14" font_color="#FFFFFF">Settings</text>
+                </button>
+                <button
+                    padding="14px"
+                    background="#1B1F27"
+                    border="1px"
+                    border_color="#2C3340"
+                    border_radius="8px"
+                    hover:background="#2A1416"
+                    hover:border_color="#E74C3C"
+                    delay="0.12s"
+                    on_press="quit_game"
+                    justify_content="center"
+                >
+                    <text font_size="14" font_color="#E74C3C">Quit</text>
+                </button>
+            </node>
+
+            <node flex_direction="row" column_gap="6px" margin="20px 0px 0px 0px">
+                <text font_size="11" font_color="#8A93A2">Continue Run · Ashen Lighthouse, Chapter 2</text>
+                <text font_size="11" font_color="#5A6678">·</text>
+                <text font_size="11" font_color="#8A93A2">Last played 3h ago</text>
+            </node>
+        </node>
+
+        <!-- Bottom corners -->
+        <node position="absolute" bottom="20px" left="24px">
+            <text font_size="10" font_color="#5A6678">v0.18.0-alpha · build 4022ad8</text>
+        </node>
+        <node position="absolute" bottom="20px" right="24px" flex_direction="row" column_gap="14px">
+            <text font_size="10" font_color="#8A93A2">News</text>
+            <text font_size="10" font_color="#8A93A2">Discord</text>
+            <text font_size="10" font_color="#8A93A2">Credits</text>
+        </node>
+    </node>
+</template>

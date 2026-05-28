@@ -1,0 +1,45 @@
+<!-- Character dialogue box anchored to the bottom of the screen. Portrait
+     placeholder + name tag + body text + "Continue" hint. -->
+<template>
+    <node
+        position="absolute"
+        left="40px"
+        right="40px"
+        bottom="32px"
+        height="170px"
+        background="#11151C"
+        border="1px"
+        border_color="#3A3F4B"
+        border_radius="12px"
+        padding="16px"
+        flex_direction="row"
+        column_gap="16px"
+    >
+        <node
+            width="120px"
+            height="100%"
+            background="#1B1F27"
+            border="1px"
+            border_color="#2C3340"
+            border_radius="8px"
+            justify_content="center"
+            align_items="center"
+        >
+            <text font_size="40" font_color="#5A6678">?</text>
+        </node>
+
+        <node flex_direction="column" flex_grow="1" row_gap="8px">
+            <node flex_direction="row" align_items="center" column_gap="8px">
+                <text font_size="14" font_color="#F1C40F">Captain Rook</text>
+                <chip text="Hostile" color="#E74C3C" />
+            </node>
+            <text font_size="14" font_color="#FFFFFF">
+                You think you can just walk into MY ship and take MY loot? We'll see about that, kid.
+            </text>
+            <node flex_direction="row" justify_content="flex_end" align_items="center" column_gap="6px" margin="auto 0px 0px 0px">
+                <text font_size="11" font_color="#8A93A2">Continue</text>
+                <kbd key="␣" />
+            </node>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,72 @@
+<!-- Full-screen game-over splash — dramatic title + run summary + retry/quit. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#000000C7"
+        flex_direction="column"
+        justify_content="center"
+        align_items="center"
+        row_gap="20px"
+    >
+        <text font_size="56" font_color="#E74C3C">YOU DIED</text>
+
+        <node
+            flex_direction="row"
+            column_gap="32px"
+            margin="12px 0px 0px 0px"
+            padding="20px"
+            background="#11151C"
+            border="1px"
+            border_color="#222B38"
+            border_radius="12px"
+        >
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="11" font_color="#8A93A2">TIME</text>
+                <text font_size="22" font_color="#FFFFFF">12:34</text>
+            </node>
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="11" font_color="#8A93A2">KILLS</text>
+                <text font_size="22" font_color="#FFFFFF">47</text>
+            </node>
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="11" font_color="#8A93A2">LEVEL</text>
+                <text font_size="22" font_color="#FFFFFF">7</text>
+            </node>
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="11" font_color="#8A93A2">GOLD</text>
+                <text font_size="22" font_color="#F1C40F">240</text>
+            </node>
+        </node>
+
+        <node flex_direction="row" column_gap="10px" margin="14px 0px 0px 0px">
+            <button
+                padding="12px 24px 12px 24px"
+                background="#1B1F27"
+                border="1px"
+                border_color="#4C8BF5"
+                border_radius="8px"
+                hover:background="#222A36"
+                delay="0.12s"
+                on_press="retry"
+            >
+                <text font_size="14" font_color="#FFFFFF">Retry</text>
+            </button>
+            <button
+                padding="12px 24px 12px 24px"
+                background="#1B1F27"
+                border="1px"
+                border_color="#2C3340"
+                border_radius="8px"
+                hover:background="#222A36"
+                delay="0.12s"
+                on_press="quit_to_menu"
+            >
+                <text font_size="14" font_color="#AEB6C2">Main Menu</text>
+            </button>
+        </node>
+    </node>
+</template>

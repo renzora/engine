@@ -7,6 +7,47 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 
+/// Byte range in the original source file. Used by the editor to rewrite
+/// individual attribute values back to the `.html` without round-tripping
+/// the whole AST through a serializer.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect]
+pub struct Span {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl Span {
+    pub fn empty(at: u32) -> Self {
+        Self { start: at, end: at }
+    }
+    pub fn len(&self) -> u32 {
+        self.end.saturating_sub(self.start)
+    }
+    pub fn as_range(&self) -> std::ops::Range<usize> {
+        (self.start as usize)..(self.end as usize)
+    }
+}
+
+/// Per-attribute source location on an `XNode`. One entry per parsed
+/// attribute (style, uncompiled, tag, id, name, src — every key/value pair
+/// that appeared in the open tag), keyed by the identifier the user wrote
+/// (`"font_size"`, `"flex_direction"`, etc.).
+#[derive(Debug, Default, Clone, Reflect)]
+#[reflect]
+pub struct AttrSpan {
+    /// The attribute key as written in source (e.g. `"font_size"`).
+    /// Matches the styles_attr identifier used by `parse_style`.
+    pub key_ident: String,
+    /// Optional `hover:` / `pressed:` / `tag:` prefix.
+    pub prefix: Option<String>,
+    /// Byte range of the key itself.
+    pub key: Span,
+    /// Byte range of the *unquoted* value (the bytes between the `"…"`).
+    /// Rewriting these bytes does not touch the surrounding quotes.
+    pub value: Span,
+}
+
 #[derive(Debug, Default, Reflect)]
 #[reflect]
 pub enum NodeType {
@@ -38,6 +79,17 @@ pub struct XNode {
     pub event_listener: Vec<Action>,
     pub content_id: SlotId,
     pub node_type: NodeType,
+    /// Source location of *each* attribute that appeared in this node's
+    /// open tag. Indexed by parse order (NOT by `styles`/`uncompiled`
+    /// index) — the editor looks one up by `key_ident` when patching.
+    pub attr_spans: Vec<AttrSpan>,
+    /// Zero-length span at the position of `>` or `/>` that closes the
+    /// open tag. Insertion point for *new* attributes added via the
+    /// inspector.
+    pub open_tag_close: Span,
+    /// Byte range of the text content between `<text>HERE</text>`. `None`
+    /// when the node is self-closing or has only child elements.
+    pub content_span: Option<Span>,
     #[reflect(ignore)]
     pub children: Vec<XNode>,
 }
@@ -51,6 +103,10 @@ pub struct HtmlTemplate {
     pub properties: HashMap<String, String>,
     pub root: Vec<XNode>,
     pub content: SlotMap<String>,
+    /// The original source bytes of the `.html` file, retained so the
+    /// editor can patch attribute byte ranges (recorded in `XNode::attr_spans`)
+    /// and write the result back to disk without re-serializing the AST.
+    pub source: Vec<u8>,
 }
 
 /// any valid attribute that can be found

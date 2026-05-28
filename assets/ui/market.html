@@ -1,0 +1,169 @@
+<!-- Full market screen — categories on the left, item grid in the middle,
+     detail panel on the right. Buy/Sell tab at the top + gold counter. -->
+<template>
+    <node
+        position="absolute"
+        left="50%"
+        top="50%"
+        margin="-340px 0px 0px -480px"
+        width="960px"
+        height="680px"
+        flex_direction="column"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="14px"
+        padding="20px"
+        row_gap="14px"
+    >
+        <!-- Header -->
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <node flex_direction="column">
+                <text font_size="22" font_color="#FFFFFF">Cinderwood Market</text>
+                <text font_size="11" font_color="#8A93A2">Open until dusk</text>
+            </node>
+            <node flex_direction="row" align_items="center" column_gap="12px">
+                <node flex_direction="row" align_items="center" column_gap="6px" padding="6px 12px 6px 12px" background="#1B1F27" border_radius="999px">
+                    <text font_size="12" font_color="#F1C40F">⬢</text>
+                    <text font_size="14" font_color="#FFFFFF">1,240</text>
+                </node>
+                <node flex_direction="row" background="#1B1F27" border_radius="8px" padding="3px">
+                    <button padding="6px 14px 6px 14px" background="#4C8BF5" border_radius="6px" on_press="market_buy_tab">
+                        <text font_size="12" font_color="#FFFFFF">Buy</text>
+                    </button>
+                    <button padding="6px 14px 6px 14px" background="#1B1F27" border_radius="6px" hover:background="#222A36" on_press="market_sell_tab">
+                        <text font_size="12" font_color="#AEB6C2">Sell</text>
+                    </button>
+                </node>
+            </node>
+        </node>
+
+        <node flex_direction="row" flex_grow="1" column_gap="14px">
+            <!-- Categories -->
+            <node width="180px" flex_direction="column" row_gap="4px" padding="10px" background="#0D0F14" border_radius="10px">
+                <text font_size="10" font_color="#8A93A2" margin="4px 0px 6px 0px">CATEGORIES</text>
+                <button padding="8px 10px 8px 10px" background="#1B1F27" border_radius="6px" on_press="cat_weapons" hover:background="#222A36" justify_content="flex_start">
+                    <text font_size="12" font_color="#FFFFFF">⚔ Weapons</text>
+                </button>
+                <button padding="8px 10px 8px 10px" background="#222A36" border_radius="6px" border="1px" border_color="#4C8BF5" on_press="cat_armor" justify_content="flex_start">
+                    <text font_size="12" font_color="#4C8BF5">⛨ Armor</text>
+                </button>
+                <button padding="8px 10px 8px 10px" background="#00000000" border_radius="6px" hover:background="#1B1F27" on_press="cat_consumables" justify_content="flex_start">
+                    <text font_size="12" font_color="#AEB6C2">⚱ Consumables</text>
+                </button>
+                <button padding="8px 10px 8px 10px" background="#00000000" border_radius="6px" hover:background="#1B1F27" on_press="cat_materials" justify_content="flex_start">
+                    <text font_size="12" font_color="#AEB6C2">⬢ Materials</text>
+                </button>
+                <button padding="8px 10px 8px 10px" background="#00000000" border_radius="6px" hover:background="#1B1F27" on_press="cat_scrolls" justify_content="flex_start">
+                    <text font_size="12" font_color="#AEB6C2">✦ Scrolls</text>
+                </button>
+                <button padding="8px 10px 8px 10px" background="#00000000" border_radius="6px" hover:background="#1B1F27" on_press="cat_pets" justify_content="flex_start">
+                    <text font_size="12" font_color="#AEB6C2">⌬ Pets</text>
+                </button>
+            </node>
+
+            <!-- Item grid -->
+            <node flex_grow="1" flex_direction="column" row_gap="8px">
+                <text font_size="13" font_color="#8A93A2">ARMOR (12)</text>
+                <node display="grid" grid_template_columns="(4,1fr)" row_gap="8px" column_gap="8px">
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2C3340" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#AEB6C2">⛨</text>
+                        </node>
+                        <text font_size="11" font_color="#FFFFFF">Iron Helm</text>
+                        <text font_size="10" font_color="#F1C40F">85g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#4C8BF5" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#0E1A2A" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#4C8BF5">⛨</text>
+                        </node>
+                        <text font_size="11" font_color="#4C8BF5">Mythril Plate</text>
+                        <text font_size="10" font_color="#F1C40F">340g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#9B59B6" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2A0E1A" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#9B59B6">R</text>
+                        </node>
+                        <text font_size="11" font_color="#9B59B6">Ravenfeather</text>
+                        <text font_size="10" font_color="#F1C40F">980g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2C3340" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#AEB6C2">⛨</text>
+                        </node>
+                        <text font_size="11" font_color="#FFFFFF">Leather Vest</text>
+                        <text font_size="10" font_color="#F1C40F">60g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2C3340" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#AEB6C2">⌐</text>
+                        </node>
+                        <text font_size="11" font_color="#FFFFFF">Buckler</text>
+                        <text font_size="10" font_color="#F1C40F">50g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#2ECC71" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#0E2A1A" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#2ECC71">⌐</text>
+                        </node>
+                        <text font_size="11" font_color="#2ECC71">Treant Shield</text>
+                        <text font_size="10" font_color="#F1C40F">220g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2C3340" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#AEB6C2">⏃</text>
+                        </node>
+                        <text font_size="11" font_color="#FFFFFF">Boots</text>
+                        <text font_size="10" font_color="#F1C40F">35g</text>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="8px" flex_direction="column" align_items="center" row_gap="6px">
+                        <node width="44px" height="44px" background="#2C3340" border_radius="6px" justify_content="center" align_items="center">
+                            <text font_size="20" font_color="#AEB6C2">⏃</text>
+                        </node>
+                        <text font_size="11" font_color="#FFFFFF">Steel Sabatons</text>
+                        <text font_size="10" font_color="#F1C40F">150g</text>
+                    </node>
+                </node>
+            </node>
+
+            <!-- Details panel -->
+            <node width="240px" background="#0D0F14" border_radius="10px" padding="14px" flex_direction="column" row_gap="10px">
+                <node width="100%" height="120px" background="#0E1A2A" border="1px" border_color="#4C8BF5" border_radius="8px" justify_content="center" align_items="center">
+                    <text font_size="56" font_color="#4C8BF5">⛨</text>
+                </node>
+                <text font_size="14" font_color="#4C8BF5">Mythril Plate</text>
+                <node flex_direction="row" column_gap="6px">
+                    <chip text="Rare" color="#4C8BF5" />
+                    <chip text="Chest" color="#AEB6C2" />
+                </node>
+                <text font_size="11" font_color="#AEB6C2">Forged in the deep mines. Light as silk, hard as resolve.</text>
+                <node flex_direction="column" row_gap="4px">
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#8A93A2">Armor</text>
+                        <text font_size="11" font_color="#2ECC71">+24</text>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#8A93A2">Magic Res</text>
+                        <text font_size="11" font_color="#2ECC71">+12</text>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#8A93A2">Weight</text>
+                        <text font_size="11" font_color="#FFFFFF">3.4</text>
+                    </node>
+                </node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" margin="auto 0px 0px 0px">
+                    <text font_size="14" font_color="#F1C40F">340g</text>
+                    <button padding="8px 16px 8px 16px" background="#0E2A1A" border="1px" border_color="#2ECC71" border_radius="6px" hover:background="#11351F" on_press="buy_selected">
+                        <text font_size="12" font_color="#2ECC71">Purchase</text>
+                    </button>
+                </node>
+            </node>
+        </node>
+
+        <!-- Footer -->
+        <node flex_direction="row" justify_content="flex_end">
+            <button padding="8px 18px 8px 18px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="6px" hover:background="#222A36" on_press="close_market">
+                <text font_size="13" font_color="#AEB6C2">Leave Market</text>
+            </button>
+        </node>
+    </node>
+</template>

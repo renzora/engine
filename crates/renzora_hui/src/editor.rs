@@ -80,6 +80,37 @@ fn register_editor_entries(app: &mut App) {
         dynamic_icon_fn: None,
     });
 
+    // Per-markup-node icons. Every node built from `.html` is tagged with
+    // `UiWidget::default()` (priority 60, Container icon) by `tag_built_nodes`,
+    // so without these the hierarchy is a wall of identical Container icons.
+    // Priorities sit *above* UiWidget(60) and *below* HtmlTemplatePath(96) so
+    // the template root keeps its CODE icon while children get type-specific
+    // ones.
+    app.register_component_icon(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<Text>(),
+        name: "UI Text",
+        icon: regular::TEXT_AA,
+        color: [220, 220, 220],
+        priority: 80,
+        dynamic_icon_fn: None,
+    });
+    app.register_component_icon(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<Button>(),
+        name: "UI Button",
+        icon: regular::CURSOR_CLICK,
+        color: [180, 200, 255],
+        priority: 82,
+        dynamic_icon_fn: None,
+    });
+    app.register_component_icon(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<ImageNode>(),
+        name: "UI Image",
+        icon: regular::IMAGE,
+        color: [180, 220, 130],
+        priority: 80,
+        dynamic_icon_fn: None,
+    });
+
     // Inspector: pick/replace the .html the instance displays. Adding the
     // component (also via "Add Component") seeds the default template.
     app.register_inspector(InspectorEntry {

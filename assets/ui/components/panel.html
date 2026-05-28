@@ -1,0 +1,22 @@
+<!-- Bordered panel with title + a slot for body content. Demonstrates: slots,
+     property substitution, flex column composition. -->
+<template>
+    <property name="title">Panel</property>
+    <property name="accent">#4C8BF5</property>
+
+    <node
+        flex_direction="column"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="12px"
+        padding="16px"
+        row_gap="12px"
+    >
+        <node flex_direction="row" align_items="center" column_gap="8px">
+            <node width="3px" height="16px" background="{accent}" border_radius="2px" />
+            <text font_size="14" font_color="#FFFFFF">{title}</text>
+        </node>
+        <slot/>
+    </node>
+</template>

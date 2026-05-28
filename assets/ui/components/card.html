@@ -1,0 +1,22 @@
+<!-- Content card with header (title + subtitle) and a body slot. -->
+<template>
+    <property name="title">Card</property>
+    <property name="subtitle"></property>
+
+    <node
+        flex_direction="column"
+        background="#1B1F27"
+        border="1px"
+        border_color="#2C3340"
+        border_radius="10px"
+        padding="14px"
+        row_gap="10px"
+        width="100%"
+    >
+        <node flex_direction="column" row_gap="2px">
+            <text font_size="15" font_color="#FFFFFF">{title}</text>
+            <text font_size="12" font_color="#8A93A2">{subtitle}</text>
+        </node>
+        <slot/>
+    </node>
+</template>

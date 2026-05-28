@@ -1,0 +1,193 @@
+<!-- CoD-style multiplayer lobby — top mode tabs, party panel left, map preview
+     center, loadout right, big "Find Match" CTA bottom. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14"
+        flex_direction="column"
+        padding="24px"
+        row_gap="16px"
+    >
+        <!-- Top mode tabs -->
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <node flex_direction="row" column_gap="2px" padding="4px" background="#11151C" border_radius="10px">
+                <button padding="10px 18px 10px 18px" background="#E74C3C" border_radius="6px" on_press="mode_quick">
+                    <text font_size="12" font_color="#FFFFFF">QUICK PLAY</text>
+                </button>
+                <button padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="mode_ranked">
+                    <text font_size="12" font_color="#AEB6C2">RANKED</text>
+                </button>
+                <button padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="mode_battle">
+                    <text font_size="12" font_color="#AEB6C2">BATTLE ROYALE</text>
+                </button>
+                <button padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="mode_custom">
+                    <text font_size="12" font_color="#AEB6C2">CUSTOM</text>
+                </button>
+            </node>
+
+            <node flex_direction="row" align_items="center" column_gap="14px">
+                <node flex_direction="row" align_items="center" column_gap="6px">
+                    <node width="8px" height="8px" background="#2ECC71" border_radius="999px" />
+                    <text font_size="11" font_color="#FFFFFF">324,128 online</text>
+                </node>
+                <button padding="6px 12px 6px 12px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="6px" hover:background="#222A36" on_press="store">
+                    <text font_size="12" font_color="#FFFFFF">STORE</text>
+                </button>
+            </node>
+        </node>
+
+        <!-- Main content row -->
+        <node flex_direction="row" flex_grow="1" column_gap="16px">
+            <!-- Party panel -->
+            <node width="280px" flex_direction="column" background="#11151C" border="1px" border_color="#222B38" border_radius="12px" padding="16px" row_gap="10px">
+                <node flex_direction="row" justify_content="space_between" align_items="center">
+                    <text font_size="14" font_color="#FFFFFF">PARTY · 3/6</text>
+                    <chip text="OPEN" color="#2ECC71" />
+                </node>
+
+                <!-- Member 1: You -->
+                <node flex_direction="row" align_items="center" column_gap="10px" padding="8px" background="#1B1F27" border_radius="8px" border="1px" border_color="#F1C40F">
+                    <node width="36px" height="36px" background="#0D0F14" border="2px" border_color="#F1C40F" border_radius="999px" justify_content="center" align_items="center">
+                        <text font_size="14" font_color="#F1C40F">N</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="12" font_color="#FFFFFF">Nova_Wren</text>
+                        <text font_size="10" font_color="#F1C40F">Leader · Lv 87</text>
+                    </node>
+                    <chip text="READY" color="#2ECC71" />
+                </node>
+
+                <!-- Member 2 -->
+                <node flex_direction="row" align_items="center" column_gap="10px" padding="8px" background="#1B1F27" border_radius="8px">
+                    <node width="36px" height="36px" background="#0D0F14" border="2px" border_color="#4C8BF5" border_radius="999px" justify_content="center" align_items="center">
+                        <text font_size="14" font_color="#4C8BF5">R</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="12" font_color="#FFFFFF">Rook_404</text>
+                        <text font_size="10" font_color="#8A93A2">Lv 62 · Sniper</text>
+                    </node>
+                    <chip text="READY" color="#2ECC71" />
+                </node>
+
+                <!-- Member 3 -->
+                <node flex_direction="row" align_items="center" column_gap="10px" padding="8px" background="#1B1F27" border_radius="8px">
+                    <node width="36px" height="36px" background="#0D0F14" border="2px" border_color="#9B59B6" border_radius="999px" justify_content="center" align_items="center">
+                        <text font_size="14" font_color="#9B59B6">E</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="12" font_color="#FFFFFF">EchoSix</text>
+                        <text font_size="10" font_color="#8A93A2">Lv 41 · Assault</text>
+                    </node>
+                    <chip text="LOADOUT" color="#F39C12" />
+                </node>
+
+                <!-- Empty slots -->
+                <node flex_direction="row" align_items="center" justify_content="center" padding="14px" background="#1B1F2766" border="1px" border_color="#2C3340" border_radius="8px">
+                    <text font_size="11" font_color="#5A6678">+ Invite</text>
+                </node>
+                <node flex_direction="row" align_items="center" justify_content="center" padding="14px" background="#1B1F2766" border="1px" border_color="#2C3340" border_radius="8px">
+                    <text font_size="11" font_color="#5A6678">+ Invite</text>
+                </node>
+                <node flex_direction="row" align_items="center" justify_content="center" padding="14px" background="#1B1F2766" border="1px" border_color="#2C3340" border_radius="8px">
+                    <text font_size="11" font_color="#5A6678">+ Invite</text>
+                </node>
+            </node>
+
+            <!-- Map preview -->
+            <node flex_grow="1" flex_direction="column" background="#11151C" border="1px" border_color="#222B38" border_radius="12px" overflow="hidden hidden">
+                <node flex_grow="1" background="#1B2733" justify_content="center" align_items="center">
+                    <text font_size="32" font_color="#3A5066">[ map preview ]</text>
+                </node>
+                <node padding="16px" flex_direction="row" justify_content="space_between" align_items="center" background="#0D0F14">
+                    <node flex_direction="column">
+                        <text font_size="11" font_color="#E74C3C">SEARCH &amp; DESTROY</text>
+                        <text font_size="20" font_color="#FFFFFF">Cinder District</text>
+                        <text font_size="11" font_color="#8A93A2">6v6 · Bomb sites A &amp; B</text>
+                    </node>
+                    <node flex_direction="row" column_gap="6px">
+                        <chip text="Night" color="#9B59B6" />
+                        <chip text="Mid range" color="#AEB6C2" />
+                    </node>
+                </node>
+            </node>
+
+            <!-- Loadout -->
+            <node width="280px" flex_direction="column" background="#11151C" border="1px" border_color="#222B38" border_radius="12px" padding="16px" row_gap="12px">
+                <node flex_direction="row" justify_content="space_between" align_items="center">
+                    <text font_size="14" font_color="#FFFFFF">LOADOUT</text>
+                    <chip text="Edit" color="#4C8BF5" />
+                </node>
+
+                <node padding="10px" background="#1B1F27" border_radius="8px" flex_direction="row" align_items="center" column_gap="10px">
+                    <node width="44px" height="44px" background="#0D0F14" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="20" font_color="#E74C3C">P</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="11" font_color="#8A93A2">PRIMARY</text>
+                        <text font_size="13" font_color="#FFFFFF">M-417 Bravo</text>
+                    </node>
+                </node>
+
+                <node padding="10px" background="#1B1F27" border_radius="8px" flex_direction="row" align_items="center" column_gap="10px">
+                    <node width="44px" height="44px" background="#0D0F14" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="20" font_color="#F39C12">S</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="11" font_color="#8A93A2">SIDEARM</text>
+                        <text font_size="13" font_color="#FFFFFF">Vex .45</text>
+                    </node>
+                </node>
+
+                <node padding="10px" background="#1B1F27" border_radius="8px" flex_direction="row" align_items="center" column_gap="10px">
+                    <node width="44px" height="44px" background="#0D0F14" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="20" font_color="#2ECC71">T</text>
+                    </node>
+                    <node flex_direction="column" flex_grow="1">
+                        <text font_size="11" font_color="#8A93A2">TACTICAL</text>
+                        <text font_size="13" font_color="#FFFFFF">Smoke ×2</text>
+                    </node>
+                </node>
+
+                <node flex_direction="column" row_gap="6px" margin="6px 0px 0px 0px">
+                    <text font_size="11" font_color="#8A93A2">PERKS</text>
+                    <node flex_direction="row" column_gap="4px" flex_wrap="wrap" row_gap="4px">
+                        <chip text="Fleet" color="#4C8BF5" />
+                        <chip text="Hardline" color="#4C8BF5" />
+                        <chip text="Ghost" color="#9B59B6" />
+                    </node>
+                </node>
+            </node>
+        </node>
+
+        <!-- Find Match CTA -->
+        <node flex_direction="row" align_items="center" column_gap="12px">
+            <button padding="14px 24px 14px 24px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="10px" hover:background="#222A36" on_press="back_to_menu">
+                <text font_size="13" font_color="#AEB6C2">Back</text>
+            </button>
+            <button
+                flex_grow="1"
+                padding="18px"
+                background="#E74C3C"
+                border_radius="10px"
+                justify_content="center"
+                align_items="center"
+                hover:background="#F0584A"
+                delay="0.1s"
+                ease="cubic_out"
+                on_press="find_match"
+            >
+                <text font_size="18" font_color="#FFFFFF">⚡ FIND MATCH</text>
+            </button>
+            <button padding="14px 18px 14px 18px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="10px" hover:background="#222A36" on_press="open_settings">
+                <node flex_direction="column" align_items="center">
+                    <text font_size="13" font_color="#FFFFFF">⚙</text>
+                    <text font_size="9" font_color="#8A93A2">Settings</text>
+                </node>
+            </button>
+        </node>
+    </node>
+</template>

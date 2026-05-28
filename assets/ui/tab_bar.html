@@ -1,0 +1,66 @@
+<!-- Tabbed navigation header — active tab visually distinct, on_press routes
+     to the named tab. -->
+<template>
+    <node
+        position="absolute"
+        top="32px"
+        left="50%"
+        margin="0px 0px 0px -240px"
+        width="480px"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="10px"
+        padding="4px"
+        flex_direction="row"
+        column_gap="2px"
+    >
+        <button
+            flex_grow="1"
+            padding="10px"
+            background="#4C8BF5"
+            border_radius="8px"
+            justify_content="center"
+            align_items="center"
+            on_press="tab_inventory"
+        >
+            <text font_size="13" font_color="#FFFFFF">Inventory</text>
+        </button>
+        <button
+            flex_grow="1"
+            padding="10px"
+            background="#11151C"
+            border_radius="8px"
+            justify_content="center"
+            align_items="center"
+            hover:background="#1B1F27"
+            on_press="tab_skills"
+        >
+            <text font_size="13" font_color="#AEB6C2">Skills</text>
+        </button>
+        <button
+            flex_grow="1"
+            padding="10px"
+            background="#11151C"
+            border_radius="8px"
+            justify_content="center"
+            align_items="center"
+            hover:background="#1B1F27"
+            on_press="tab_quests"
+        >
+            <text font_size="13" font_color="#AEB6C2">Quests</text>
+        </button>
+        <button
+            flex_grow="1"
+            padding="10px"
+            background="#11151C"
+            border_radius="8px"
+            justify_content="center"
+            align_items="center"
+            hover:background="#1B1F27"
+            on_press="tab_map"
+        >
+            <text font_size="13" font_color="#AEB6C2">Map</text>
+        </button>
+    </node>
+</template>

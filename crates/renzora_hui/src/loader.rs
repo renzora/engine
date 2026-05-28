@@ -1,0 +1,436 @@
+//! Renzora's markup loader.
+//!
+//! Walks a parsed `HtmlTemplate` and spawns a `bevy_ui` entity tree. Each
+//! `<node>` / `<text>` / `<image>` / `<button>` becomes a real entity with
+//! standard bevy_ui components (`Node`, `BackgroundColor`, `Text`, `TextFont`,
+//! `TextColor`, `BorderColor`, etc.) attached directly. **No `HtmlNode`, no
+//! `HtmlStyle`, no per-frame style re-assertion.** Components hold the truth;
+//! bevy_ui handles layout and rendering as it does for any other UI.
+//!
+//! Features covered:
+//! - All `<node>` / `<text>` / `<image>` / `<button>` styling: layout (flex +
+//!   grid), box model, colors, borders, font size/color, text content.
+//! - `{prop}` substitution in both attribute values (via `AttrTokens::compile`)
+//!   and text content.
+//! - Custom component tags (`<stat_bar>`, `<menu_button>`, …) — looked up in
+//!   the [`ComponentRegistry`], built recursively with merged property
+//!   overrides.
+//! - `<slot/>` — caller's children get reparented to slots in the component
+//!   template.
+//!
+//! Out of scope for now (later phases):
+//! - Hover/pressed transitions.
+//! - Atlas/flipbook animations.
+//! - Custom font assets.
+
+use bevy::platform::collections::HashMap;
+use bevy::prelude::*;
+use bevy::ui::widget::NodeImageMode;
+use bevy_hui::prelude::{
+    AssetServerAdaptor, AttrTokens, Attribute, HtmlTemplate, NodeType, StyleAttr, TemplateProperties,
+    XNode,
+};
+
+use crate::components::ComponentRegistry;
+use crate::provenance::MarkupSource;
+
+/// Spawn the template's root node onto `entity` (and its subtree as children).
+///
+/// `template_handle` is the asset handle the markup was loaded from; it gets
+/// stamped on every spawned entity via [`MarkupSource`] so the editor's
+/// inspector can locate this entity's attribute byte ranges in
+/// `template.source` when writing back to disk. Passing
+/// `Handle<HtmlTemplate>::default()` is valid for non-editor callers that
+/// don't need provenance.
+pub fn build_template_onto(
+    commands: &mut Commands,
+    server: &AssetServer,
+    entity: Entity,
+    template: &HtmlTemplate,
+    template_handle: Handle<HtmlTemplate>,
+    registry: &ComponentRegistry,
+    templates: &Assets<HtmlTemplate>,
+    overrides: &HashMap<String, String>,
+    slot_children: Option<&[XNode]>,
+) {
+    let mut props = TemplateProperties::default();
+    // Defaults first, then overrides win.
+    for (k, v) in &template.properties {
+        props.insert(k.clone(), v.clone());
+    }
+    for (k, v) in overrides {
+        props.insert(k.clone(), v.clone());
+    }
+
+    let ctx = BuildCtx {
+        server,
+        registry,
+        templates,
+        props: &props,
+        slot_children,
+        template_handle: &template_handle,
+    };
+
+    let Some(root) = template.root.first() else {
+        return;
+    };
+    // Root entity lives at the empty path — `template.root[0]` itself.
+    let root_path: Vec<u32> = Vec::new();
+    apply_xnode_to(commands, &ctx, entity, root, template, &root_path);
+    for (i, child) in root.children.iter().enumerate() {
+        let mut child_path = root_path.clone();
+        child_path.push(i as u32);
+        spawn_subtree(commands, &ctx, entity, child, template, child_path);
+    }
+}
+
+#[derive(Copy, Clone)]
+struct BuildCtx<'a> {
+    server: &'a AssetServer,
+    registry: &'a ComponentRegistry,
+    templates: &'a Assets<HtmlTemplate>,
+    props: &'a TemplateProperties,
+    slot_children: Option<&'a [XNode]>,
+    /// Asset handle the *current* template was loaded from. Custom component
+    /// tags swap this with the inner component's handle in their child
+    /// context so provenance keeps pointing at the right `.html`.
+    template_handle: &'a Handle<HtmlTemplate>,
+}
+
+fn spawn_subtree(
+    commands: &mut Commands,
+    ctx: &BuildCtx,
+    parent: Entity,
+    node: &XNode,
+    template: &HtmlTemplate,
+    node_path: Vec<u32>,
+) {
+    // `<slot/>` — drop the caller's children here instead of spawning ourselves.
+    if matches!(node.node_type, NodeType::Slot) {
+        if let Some(slot_kids) = ctx.slot_children {
+            // Use the OUTER context for the slot children's properties (their
+            // scope is the caller, not the component template). Slot children
+            // *originate* from the caller's template, so they don't carry a
+            // provenance path under *this* node — the loader that invoked us
+            // already paid the cost to attribute them.
+            let outer_ctx = BuildCtx {
+                slot_children: None,
+                ..*ctx
+            };
+            for slot_child in slot_kids {
+                spawn_subtree(commands, &outer_ctx, parent, slot_child, template, node_path.clone());
+            }
+        }
+        return;
+    }
+
+    let child = commands.spawn_empty().id();
+    commands.entity(parent).add_child(child);
+    apply_xnode_to(commands, ctx, child, node, template, &node_path);
+    for (i, grand) in node.children.iter().enumerate() {
+        let mut grand_path = node_path.clone();
+        grand_path.push(i as u32);
+        spawn_subtree(commands, ctx, child, grand, template, grand_path);
+    }
+}
+
+/// Build one `XNode` onto `entity`: insert the appropriate bevy_ui components
+/// based on node type, parsed `StyleAttr`s, and compiled `{prop}` references.
+fn apply_xnode_to(
+    commands: &mut Commands,
+    ctx: &BuildCtx,
+    entity: Entity,
+    node: &XNode,
+    template: &HtmlTemplate,
+    node_path: &[u32],
+) {
+    // Custom component tag — load the component template, build it onto this
+    // entity with merged properties + caller's children as the slot content.
+    if let NodeType::Custom(name) = &node.node_type {
+        let Some(handle) = ctx.registry.handle_for(name) else {
+            warn!("renzora_hui: unknown component <{}>", name);
+            return;
+        };
+        let Some(component_template) = ctx.templates.get(handle) else {
+            warn!(
+                "renzora_hui: component <{}> not loaded yet — template will render with the tag missing",
+                name
+            );
+            return;
+        };
+        // `<stat_bar label="HP" fill="72%">` → `node.defs = { label: "HP", fill: "72%" }`
+        // Substitute any `{prop}` refs in those override values from the OUTER
+        // scope, so chaining works (e.g. parent passes `{parent_prop}`).
+        let mut overrides: HashMap<String, String> = HashMap::default();
+        for (k, v) in &node.defs {
+            overrides.insert(k.clone(), substitute_text(v, ctx.props));
+        }
+        // The host entity's provenance still points at the *outer* template
+        // (it's the entity the user sees and clicks), so stamp it before
+        // recursing into the inner component. Children spawned by
+        // `build_template_onto` will get their own MarkupSource entries
+        // anchored at the inner template's handle.
+        commands.entity(entity).insert(MarkupSource {
+            template_handle: ctx.template_handle.clone(),
+            node_path: node_path.to_vec(),
+        });
+        build_template_onto(
+            commands,
+            ctx.server,
+            entity,
+            component_template,
+            handle.clone(),
+            ctx.registry,
+            ctx.templates,
+            &overrides,
+            Some(&node.children),
+        );
+        return;
+    }
+
+    let mut layout = Node::default();
+    let mut background = None;
+    let mut border_color = None;
+    let mut border_radius_rect: Option<UiRect> = None;
+    let mut font_size = None;
+    let mut font_color = None;
+    let mut image_src: Option<String> = node.src.clone();
+
+    // Statically-parsed styles (no `{prop}` in attribute value).
+    for style in &node.styles {
+        apply_style(
+            style,
+            &mut layout,
+            &mut background,
+            &mut border_color,
+            &mut border_radius_rect,
+            &mut font_size,
+            &mut font_color,
+        );
+    }
+
+    // Attributes with `{prop}` refs — compile them now with the current scope.
+    let mut adapter = AssetServerAdaptor { server: ctx.server };
+    for tokens in &node.uncompiled {
+        if let Some(attr) = compile_attr(tokens, ctx.props, &mut adapter) {
+            match attr {
+                Attribute::Style(s) => apply_style(
+                    &s,
+                    &mut layout,
+                    &mut background,
+                    &mut border_color,
+                    &mut border_radius_rect,
+                    &mut font_size,
+                    &mut font_color,
+                ),
+                Attribute::Path(p) => image_src = Some(p),
+                // Other compiled attribute kinds (Action, Tag, PropertyDefinition, Name,
+                // Id, Target, Watch, Uncompiled) aren't applied per-node here — they're
+                // attribute-class concerns we'll wire as we add interaction (Phase D).
+                _ => {}
+            }
+        }
+    }
+
+    // `border_radius` lives on `Node`; map `UiRect` (top,right,bottom,left) to
+    // the adjacent corners (top→top_left, right→top_right, …) — same mapping
+    // bevy_hui's apply_computed uses.
+    if let Some(r) = border_radius_rect {
+        layout.border_radius.top_left = r.top;
+        layout.border_radius.top_right = r.right;
+        layout.border_radius.bottom_right = r.bottom;
+        layout.border_radius.bottom_left = r.left;
+    }
+
+    let mut ec = commands.entity(entity);
+    ec.insert(layout);
+    // Every markup node is its own selectable widget — the canvas editor
+    // hit-tests `UiWidget` entities, so clicking a `<text>` inside a `<panel>`
+    // lands on the text (deepest match wins). Combined with `MarkupSource`
+    // below, that makes per-element edits round-trip to the `.html` file.
+    ec.insert(renzora_game_ui::UiWidget::default());
+
+    // Provenance: the editor's inspector reads this back to locate the byte
+    // range to patch when a user edits an attribute. Skipped for entities
+    // whose handle is `default()` (non-editor callers that don't need it).
+    if ctx.template_handle != &Handle::<HtmlTemplate>::default() {
+        ec.insert(MarkupSource {
+            template_handle: ctx.template_handle.clone(),
+            node_path: node_path.to_vec(),
+        });
+    }
+
+    if let Some(c) = background {
+        ec.insert(BackgroundColor(c));
+    }
+    if let Some(c) = border_color {
+        ec.insert(BorderColor::all(c));
+    }
+    // Always set a `Name` so the entity is visible in the hierarchy panel and
+    // identifiable. Markup `id="..."` and `name="..."` win over the node-type
+    // fallback.
+    let display_name = node
+        .id
+        .as_ref()
+        .map(|id| format!("#{}", id))
+        .or_else(|| node.name.clone())
+        .unwrap_or_else(|| match &node.node_type {
+            NodeType::Node => "node".to_string(),
+            NodeType::Button => "button".to_string(),
+            NodeType::Text => "text".to_string(),
+            NodeType::Image => "image".to_string(),
+            NodeType::Custom(s) => s.clone(),
+            NodeType::Slot => "slot".to_string(),
+            NodeType::Template => "template".to_string(),
+            NodeType::Property => "property".to_string(),
+        });
+    ec.insert(Name::new(display_name));
+
+    match &node.node_type {
+        NodeType::Button => {
+            ec.insert(Button);
+        }
+        NodeType::Text => {
+            // `<text>HERE</text>`: text content lives in the template's slot
+            // map, indexed by the node's `content_id` (captured at parse). May
+            // contain `{prop}` references.
+            let raw = template
+                .content
+                .get(node.content_id)
+                .cloned()
+                .unwrap_or_default();
+            let content = substitute_text(raw.trim(), ctx.props);
+            if !content.is_empty() {
+                ec.insert(Text::new(content));
+                if let Some(s) = font_size {
+                    ec.insert(TextFont::from_font_size(s));
+                }
+                if let Some(c) = font_color {
+                    ec.insert(TextColor(c));
+                }
+            }
+        }
+        NodeType::Image => {
+            if let Some(src) = image_src {
+                ec.insert(ImageNode {
+                    image: ctx.server.load(src),
+                    image_mode: NodeImageMode::Auto,
+                    ..default()
+                });
+            }
+        }
+        NodeType::Node
+        | NodeType::Custom(_)
+        | NodeType::Slot
+        | NodeType::Template
+        | NodeType::Property => {}
+    }
+}
+
+/// Resolve one `AttrTokens` (a `key="{prop}"` style attribute) using the
+/// current property scope. Wraps bevy_hui's `AttrTokens::compile`.
+fn compile_attr(
+    tokens: &AttrTokens,
+    props: &TemplateProperties,
+    adapter: &mut AssetServerAdaptor,
+) -> Option<Attribute> {
+    tokens.compile(props, adapter)
+}
+
+/// Replace `{key}` occurrences in `s` with `props[key]`. Used for text content
+/// and for cascading overrides through component nesting.
+fn substitute_text(s: &str, props: &TemplateProperties) -> String {
+    if !s.contains('{') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '{' {
+            out.push(c);
+            continue;
+        }
+        let mut key = String::new();
+        let mut closed = false;
+        while let Some(pc) = chars.next() {
+            if pc == '}' {
+                closed = true;
+                break;
+            }
+            key.push(pc);
+        }
+        if !closed {
+            // Unterminated `{...` — emit literally.
+            out.push('{');
+            out.push_str(&key);
+            continue;
+        }
+        let key = key.trim();
+        if let Some(v) = props.get(key) {
+            out.push_str(v);
+        }
+        // If unknown, drop silently (matches bevy_hui's behaviour).
+    }
+    out
+}
+
+/// Update a partial `Node` (and the color/text "side" slots) from one parsed
+/// style attribute.
+fn apply_style(
+    style: &StyleAttr,
+    n: &mut Node,
+    bg: &mut Option<Color>,
+    border: &mut Option<Color>,
+    border_radius_rect: &mut Option<UiRect>,
+    font_size: &mut Option<f32>,
+    font_color: &mut Option<Color>,
+) {
+    use StyleAttr as S;
+    match style {
+        S::Display(d) => n.display = *d,
+        S::Position(p) => n.position_type = *p,
+        S::Left(v) => n.left = *v,
+        S::Right(v) => n.right = *v,
+        S::Top(v) => n.top = *v,
+        S::Bottom(v) => n.bottom = *v,
+        S::Width(v) => n.width = *v,
+        S::Height(v) => n.height = *v,
+        S::MinWidth(v) => n.min_width = *v,
+        S::MinHeight(v) => n.min_height = *v,
+        S::MaxWidth(v) => n.max_width = *v,
+        S::MaxHeight(v) => n.max_height = *v,
+        S::AspectRatio(f) => n.aspect_ratio = Some(*f),
+        S::AlignItems(a) => n.align_items = *a,
+        S::JustifyItems(a) => n.justify_items = *a,
+        S::AlignSelf(a) => n.align_self = *a,
+        S::JustifySelf(a) => n.justify_self = *a,
+        S::AlignContent(a) => n.align_content = *a,
+        S::JustifyContent(a) => n.justify_content = *a,
+        S::Margin(r) => n.margin = *r,
+        S::Padding(r) => n.padding = *r,
+        S::FlexDirection(d) => n.flex_direction = *d,
+        S::FlexWrap(w) => n.flex_wrap = *w,
+        S::FlexGrow(f) => n.flex_grow = *f,
+        S::FlexShrink(f) => n.flex_shrink = *f,
+        S::FlexBasis(v) => n.flex_basis = *v,
+        S::RowGap(v) => n.row_gap = *v,
+        S::ColumnGap(v) => n.column_gap = *v,
+        S::Border(r) => n.border = *r,
+        S::BorderColor(c) => *border = Some(*c),
+        S::BorderRadius(r) => *border_radius_rect = Some(*r),
+        S::Background(c) => *bg = Some(*c),
+        S::FontSize(f) => *font_size = Some(*f),
+        S::FontColor(c) => *font_color = Some(*c),
+        S::GridAutoFlow(g) => n.grid_auto_flow = *g,
+        S::GridTemplateRows(v) => n.grid_template_rows = v.clone(),
+        S::GridTemplateColumns(v) => n.grid_template_columns = v.clone(),
+        S::GridAutoRows(v) => n.grid_auto_rows = v.clone(),
+        S::GridAutoColumns(v) => n.grid_auto_columns = v.clone(),
+        S::GridRow(g) => n.grid_row = *g,
+        S::GridColumn(g) => n.grid_column = *g,
+        // Skipped for now: Hover/Pressed/Active (transitions → Phase D),
+        // animation knobs, image styles, shadows, outline, overflow, zindex,
+        // custom fonts.
+        _ => {}
+    }
+}

@@ -13,6 +13,12 @@ pub enum FieldValue {
     ReadOnly(String),
     /// Asset path (project-relative).
     Asset(Option<String>),
+    /// One of a fixed set of string variants (rendered as a dropdown). The
+    /// allowed set is on the paired [`FieldType::Enum`]. Used for things like
+    /// `FlexDirection` ("row"/"column"/...), `PositionType`, etc., which
+    /// don't fit a numeric / boolean / color widget but have a small,
+    /// well-known option list.
+    Enum(String),
 }
 
 impl FieldValue {
@@ -27,6 +33,10 @@ impl FieldValue {
             FieldValue::String(_) => FieldValue::String(String::new()),
             FieldValue::ReadOnly(s) => FieldValue::ReadOnly(s.clone()),
             FieldValue::Asset(_) => FieldValue::Asset(None),
+            // "Reset to default" on an enum lands at the empty string — the
+            // FieldDef's own `get_fn` will rewrite to the first option on the
+            // next read.
+            FieldValue::Enum(_) => FieldValue::Enum(String::new()),
         }
     }
 }
@@ -51,6 +61,12 @@ pub enum FieldType {
     /// Empty slice = accept all.
     Asset {
         extensions: Vec<std::string::String>,
+    },
+    /// Dropdown choice from a fixed list of variant labels (e.g.
+    /// `["row", "column", "row_reverse", "column_reverse"]`). The `set_fn`
+    /// receives a `FieldValue::Enum(String)` carrying the selected label.
+    Enum {
+        options: &'static [&'static str],
     },
 }
 

@@ -1,0 +1,122 @@
+<!-- Stardew-style hotbar — 12 item slots at the bottom-center, selected slot
+     highlighted, stack counts, number keys beneath each slot. -->
+<template>
+    <node
+        position="absolute"
+        left="50%"
+        bottom="24px"
+        margin="0px 0px 0px -316px"
+        width="632px"
+        flex_direction="column"
+        align_items="center"
+        row_gap="4px"
+    >
+        <node flex_direction="row" column_gap="4px">
+            <!-- Slot 1 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node
+                    width="48px"
+                    height="48px"
+                    background="#3A2412"
+                    border="2px"
+                    border_color="#5A4020"
+                    border_radius="6px"
+                    justify_content="center"
+                    align_items="center"
+                    padding="2px"
+                >
+                    <text font_size="22" font_color="#A87C46">A</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">1</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">1</text>
+            </node>
+            <!-- Slot 2 - SELECTED -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node
+                    width="48px"
+                    height="48px"
+                    background="#5A3F1E"
+                    border="3px"
+                    border_color="#F1C40F"
+                    border_radius="6px"
+                    justify_content="center"
+                    align_items="center"
+                    padding="2px"
+                >
+                    <text font_size="22" font_color="#FFFFFF">P</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">24</text>
+                </node>
+                <text font_size="9" font_color="#F1C40F">2</text>
+            </node>
+            <!-- Slot 3 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" justify_content="center" align_items="center" padding="2px">
+                    <text font_size="22" font_color="#A87C46">S</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">3</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">3</text>
+            </node>
+            <!-- Slot 4 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" justify_content="center" align_items="center" padding="2px">
+                    <text font_size="22" font_color="#A87C46">H</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">8</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">4</text>
+            </node>
+            <!-- Slot 5 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" justify_content="center" align_items="center" padding="2px">
+                    <text font_size="22" font_color="#A87C46">C</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">12</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">5</text>
+            </node>
+            <!-- Slot 6 - empty -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" />
+                <text font_size="9" font_color="#A87C46">6</text>
+            </node>
+            <!-- Slot 7 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" justify_content="center" align_items="center" padding="2px">
+                    <text font_size="22" font_color="#A87C46">W</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">7</text>
+            </node>
+            <!-- Slot 8 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" justify_content="center" align_items="center" padding="2px">
+                    <text font_size="22" font_color="#A87C46">F</text>
+                    <text position="absolute" right="3px" bottom="2px" font_size="10" font_color="#FFFFFF">2</text>
+                </node>
+                <text font_size="9" font_color="#A87C46">8</text>
+            </node>
+            <!-- Slot 9 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" />
+                <text font_size="9" font_color="#A87C46">9</text>
+            </node>
+            <!-- Slot 10 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" />
+                <text font_size="9" font_color="#A87C46">0</text>
+            </node>
+            <!-- Slot 11 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" />
+                <text font_size="9" font_color="#A87C46">-</text>
+            </node>
+            <!-- Slot 12 -->
+            <node flex_direction="column" align_items="center" row_gap="2px">
+                <node width="48px" height="48px" background="#3A2412" border="2px" border_color="#5A4020" border_radius="6px" />
+                <text font_size="9" font_color="#A87C46">=</text>
+            </node>
+        </node>
+
+        <!-- Selected item label above the bar -->
+        <node padding="4px 12px 4px 12px" background="#3A2412" border="1px" border_color="#F1C40F" border_radius="999px" margin="6px 0px 0px 0px">
+            <text font_size="11" font_color="#F1C40F">Parsnip Seeds · 24</text>
+        </node>
+    </node>
+</template>

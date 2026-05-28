@@ -1,0 +1,117 @@
+<!-- Character stats panel — grid of labeled stats + equipment slot grid +
+     attributes list. Heavy on layout variety. -->
+<template>
+    <node
+        position="absolute"
+        left="50%"
+        top="50%"
+        margin="-280px 0px 0px -340px"
+        width="680px"
+        height="560px"
+        flex_direction="column"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="14px"
+        padding="22px"
+        row_gap="18px"
+    >
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <node flex_direction="column">
+                <text font_size="22" font_color="#FFFFFF">Nova Wren</text>
+                <text font_size="12" font_color="#8A93A2">Spellblade · Level 14</text>
+            </node>
+            <node flex_direction="row" column_gap="8px">
+                <chip text="Stealth+1" color="#2ECC71" />
+                <chip text="Bleed" color="#E74C3C" />
+            </node>
+        </node>
+
+        <node flex_direction="row" column_gap="18px" flex_grow="1">
+            <node
+                width="200px"
+                background="#0D0F14"
+                border="1px"
+                border_color="#222B38"
+                border_radius="10px"
+                padding="14px"
+                flex_direction="column"
+                row_gap="10px"
+            >
+                <text font_size="13" font_color="#FFFFFF" margin="0px 0px 4px 0px">Equipment</text>
+                <node display="grid" grid_template_columns="(3, 56px)" row_gap="6px" column_gap="6px">
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="20" font_color="#FFFFFF">S</text>
+                    </node>
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" />
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#F1C40F" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="18" font_color="#F1C40F">H</text>
+                    </node>
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#2ECC71" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="18" font_color="#2ECC71">C</text>
+                    </node>
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" />
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" />
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#9B59B6" border_radius="6px" justify_content="center" align_items="center">
+                        <text font_size="18" font_color="#9B59B6">R</text>
+                    </node>
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" />
+                    <node width="56px" height="56px" background="#1B1F27" border="2px" border_color="#3A3F4B" border_radius="6px" />
+                </node>
+            </node>
+
+            <node flex_grow="1" flex_direction="column" row_gap="10px">
+                <node display="grid" grid_template_columns="(2, 1fr)" row_gap="10px" column_gap="10px">
+                    <node padding="10px" background="#1B1F27" border_radius="8px">
+                        <node flex_direction="column" row_gap="2px">
+                            <text font_size="10" font_color="#8A93A2">STR</text>
+                            <text font_size="20" font_color="#FFFFFF">17</text>
+                        </node>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border_radius="8px">
+                        <node flex_direction="column" row_gap="2px">
+                            <text font_size="10" font_color="#8A93A2">DEX</text>
+                            <text font_size="20" font_color="#FFFFFF">22</text>
+                        </node>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border_radius="8px">
+                        <node flex_direction="column" row_gap="2px">
+                            <text font_size="10" font_color="#8A93A2">INT</text>
+                            <text font_size="20" font_color="#9B59B6">26</text>
+                        </node>
+                    </node>
+                    <node padding="10px" background="#1B1F27" border_radius="8px">
+                        <node flex_direction="column" row_gap="2px">
+                            <text font_size="10" font_color="#8A93A2">END</text>
+                            <text font_size="20" font_color="#FFFFFF">19</text>
+                        </node>
+                    </node>
+                </node>
+
+                <node flex_direction="column" row_gap="6px" margin="6px 0px 0px 0px">
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#AEB6C2">Health</text>
+                        <text font_size="11" font_color="#FFFFFF">186 / 200</text>
+                    </node>
+                    <progress fill="93%" color="#E74C3C" height="6px" />
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#AEB6C2">Mana</text>
+                        <text font_size="11" font_color="#FFFFFF">88 / 140</text>
+                    </node>
+                    <progress fill="63%" color="#3498DB" height="6px" />
+                    <node flex_direction="row" justify_content="space_between">
+                        <text font_size="11" font_color="#AEB6C2">Stamina</text>
+                        <text font_size="11" font_color="#FFFFFF">120 / 120</text>
+                    </node>
+                    <progress fill="100%" color="#2ECC71" height="6px" />
+                </node>
+            </node>
+        </node>
+
+        <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+            <button padding="10px 18px 10px 18px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="6px" hover:background="#222A36" on_press="close_sheet">
+                <text font_size="13" font_color="#AEB6C2">Close</text>
+            </button>
+        </node>
+    </node>
+</template>

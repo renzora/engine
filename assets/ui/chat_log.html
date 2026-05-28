@@ -1,0 +1,55 @@
+<!-- Bottom-left chat log — semi-transparent panel + per-message rows. Exercises
+     rgba backgrounds + flex column scrollable-ish layouts. -->
+<template>
+    <node
+        position="absolute"
+        left="24px"
+        bottom="120px"
+        width="380px"
+        max_height="280px"
+        padding="12px"
+        background="#0D0F14B3"
+        border="1px"
+        border_color="#222B38"
+        border_radius="10px"
+        flex_direction="column"
+        row_gap="6px"
+    >
+        <node flex_direction="row" column_gap="6px">
+            <text font_size="11" font_color="#5A6678">[12:42]</text>
+            <text font_size="11" font_color="#4C8BF5">Nova:</text>
+            <text font_size="11" font_color="#FFFFFF">on my way to the shrine</text>
+        </node>
+        <node flex_direction="row" column_gap="6px">
+            <text font_size="11" font_color="#5A6678">[12:42]</text>
+            <text font_size="11" font_color="#2ECC71">Rook:</text>
+            <text font_size="11" font_color="#FFFFFF">need a heal!</text>
+        </node>
+        <node flex_direction="row" column_gap="6px">
+            <text font_size="11" font_color="#5A6678">[12:43]</text>
+            <text font_size="11" font_color="#F1C40F">Echo:</text>
+            <text font_size="11" font_color="#FFFFFF">incoming from the east</text>
+        </node>
+        <node flex_direction="row" column_gap="6px">
+            <text font_size="11" font_color="#5A6678">[12:43]</text>
+            <text font_size="11" font_color="#9B59B6">Vex:</text>
+            <text font_size="11" font_color="#FFFFFF">portal up in 30s</text>
+        </node>
+        <node flex_direction="row" column_gap="6px">
+            <text font_size="11" font_color="#5A6678">[12:44]</text>
+            <text font_size="11" font_color="#4C8BF5">Nova:</text>
+            <text font_size="11" font_color="#FFFFFF">copy</text>
+        </node>
+
+        <node
+            flex_direction="row"
+            align_items="center"
+            padding="8px 10px 8px 10px"
+            background="#11151C"
+            border_radius="6px"
+            margin="6px 0px 0px 0px"
+        >
+            <text font_size="11" font_color="#5A6678">Type a message…</text>
+        </node>
+    </node>
+</template>

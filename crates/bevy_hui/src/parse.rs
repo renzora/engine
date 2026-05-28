@@ -1,6 +1,8 @@
 use crate::adaptor::AssetLoadAdaptor;
 use crate::animation::{AnimationDirection, Atlas};
-use crate::data::{Action, AttrTokens, Attribute, FontReference, HtmlTemplate, StyleAttr, XNode};
+use crate::data::{
+    Action, AttrSpan, AttrTokens, Attribute, FontReference, HtmlTemplate, Span, StyleAttr, XNode,
+};
 use crate::prelude::NodeType;
 use crate::util::SlotMap;
 use bevy::math::{Rect, UVec2, Vec2};
@@ -50,6 +52,12 @@ pub fn parse_template<'a, 'b, E>(
 where
     E: ParseError<&'a [u8]> + ContextError<&'a [u8]>,
 {
+    // Snapshot the original buffer's base pointer so every parser site can
+    // compute byte offsets via pointer arithmetic (`slice.as_ptr() - base`)
+    // without threading position through every nom combinator.
+    let base = input.as_ptr() as usize;
+    let source = input.to_vec();
+
     trim_comments0(input)?;
     let (input, _xml_header) = alt((
         delimited(tag("<?"), take_until("?>"), tag("?>")).map(Some),
@@ -85,7 +93,7 @@ where
                 };
             }
             _ => {
-                let (_, node) = from_raw_xml::<E>(child, &mut content, loader)?;
+                let (_, node) = from_raw_xml::<E>(child, &mut content, loader, base)?;
                 root.push(node);
             }
         }
@@ -98,8 +106,20 @@ where
             properties,
             root,
             content,
+            source,
         },
     ))
+}
+
+/// Compute a `Span` for any sub-slice of the original parser input. The
+/// caller must guarantee `slice` is from the same buffer that `base` was
+/// snapshotted from (which is true for every slice nom hands back from
+/// `parse_template`'s input).
+#[inline]
+fn span_of(slice: &[u8], base: usize) -> Span {
+    let start = (slice.as_ptr() as usize).saturating_sub(base) as u32;
+    let end = start + slice.len() as u32;
+    Span { start, end }
 }
 
 fn trim_comments0<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], Vec<&'a [u8]>, E>
@@ -124,6 +144,7 @@ fn from_raw_xml<'a, 'b, 'c, E>(
     mut xml: Xml<'a>,
     content_map: &'b mut SlotMap<String>,
     loader: &'c mut impl AssetLoadAdaptor,
+    base: usize,
 ) -> IResult<&'a [u8], XNode, E>
 where
     E: ParseError<&'a [u8]> + ContextError<&'a [u8]>,
@@ -132,6 +153,17 @@ where
     let (_, node_type) = parse_node_type(xml.name)?;
     xnode.node_type = node_type;
 
+    // Span bookkeeping for the editor:
+    // - `open_tag_close` is a zero-length insertion point for new attributes.
+    // - `content_span` records the text content slice (None when the tag is
+    //   self-closing or holds only child elements).
+    // - `attr_spans` runs parallel to the parser-visited attribute order so
+    //   the inspector can look up "where is the `font_size` attribute" by
+    //   identifier without caring which `XNode` field (`styles`,
+    //   `uncompiled`, `tags`, …) the value ultimately landed in.
+    xnode.open_tag_close = span_of(xml.open_tag_close, base);
+    xnode.content_span = xml.value.map(|v| span_of(v, base));
+
     xnode.content_id = xml
         .value
         .map(|bytes| String::from_utf8_lossy(bytes).to_string())
@@ -139,6 +171,13 @@ where
         .unwrap_or_default();
 
     for attr in xml.attributes.iter() {
+        xnode.attr_spans.push(AttrSpan {
+            key_ident: String::from_utf8_lossy(attr.key).to_string(),
+            prefix: attr.prefix.map(|p| String::from_utf8_lossy(p).to_string()),
+            key: span_of(attr.key, base),
+            value: span_of(attr.value, base),
+        });
+
         let (_input, compiled_attr) = match xnode.node_type {
             NodeType::Custom(_) => {
                 match attribute_from_parts::<E>(attr.prefix, attr.key, attr.value, loader) {
@@ -168,7 +207,7 @@ where
     }
 
     for child in xml.children.drain(..) {
-        let (_, node) = from_raw_xml(child, content_map, loader)?;
+        let (_, node) = from_raw_xml(child, content_map, loader, base)?;
         xnode.children.push(node);
     }
 
@@ -181,6 +220,10 @@ struct Xml<'a> {
     value: Option<&'a [u8]>,
     attributes: Vec<XmlAttr<'a>>,
     children: Vec<Xml<'a>>,
+    /// Zero-length slice pointing at the `>` (or `/>`) byte that closes the
+    /// open tag. Used by the editor as the insertion point for *new*
+    /// attributes — span derived via `span_of` in `from_raw_xml`.
+    open_tag_close: &'a [u8],
 }
 
 struct XmlAttr<'a> {
@@ -218,9 +261,14 @@ where
     )(input)?;
 
     let (input, attributes) = parse_xml_attr(input)?;
+    // Skip whitespace separately so we can snapshot a zero-length slice that
+    // points at the `>`/`/>` byte itself — that position is where the
+    // inspector inserts brand-new attributes.
+    let (input, _) = multispace0(input)?;
+    let open_tag_close: &[u8] = &input[..0];
     let (input, is_empty) = alt((
-        preceded(multispace0, tag("/>")).map(|_| true),
-        preceded(multispace0, tag(">")).map(|_| false),
+        tag("/>").map(|_| true),
+        tag(">").map(|_| false),
     ))(input)?;
 
     if is_empty {
@@ -232,6 +280,7 @@ where
                 attributes,
                 value: None,
                 children: vec![],
+                open_tag_close,
             },
         ));
     }
@@ -261,6 +310,7 @@ where
             attributes,
             value,
             children,
+            open_tag_close,
         },
     ))
 }
@@ -1972,5 +2022,57 @@ mod tests {
         //     sides_scale_mode: todo!(),
         //     max_corner_scale: todo!(),
         // };
+    }
+
+    /// Verify that the spans recorded by `parse_template` round-trip back to
+    /// the literal bytes the user wrote. Without this guarantee the editor's
+    /// markup writeback would scribble the wrong byte ranges.
+    #[test]
+    fn test_attr_spans_round_trip() {
+        struct NullAdaptor;
+        impl AssetLoadAdaptor for NullAdaptor {
+            fn load<'a, A: bevy::asset::Asset>(
+                &mut self,
+                _path: impl Into<bevy::asset::AssetPath<'a>>,
+            ) -> bevy::asset::Handle<A> {
+                bevy::asset::Handle::default()
+            }
+        }
+
+        // The exact attribute shape the user called out: a `<text>` with
+        // `font_size` and `font_color` plus a one-character body.
+        let src = br##"<template><text font_size="12" font_color="#8A93A2">#</text></template>"##;
+        let mut adapter = NullAdaptor;
+        let (_, template) =
+            parse_template::<VerboseHtmlError>(src, &mut adapter).expect("parse ok");
+
+        // `source` retention — the template owns the bytes we passed in so the
+        // editor can patch them later.
+        assert_eq!(&template.source, src);
+
+        let root = &template.root[0];
+        assert!(matches!(root.node_type, NodeType::Text));
+
+        // Two attribute spans, in source order. `key_ident` matches what the
+        // user typed; `value` is the unquoted byte range.
+        assert_eq!(root.attr_spans.len(), 2);
+        let fs = &root.attr_spans[0];
+        assert_eq!(fs.key_ident, "font_size");
+        assert_eq!(&template.source[fs.value.as_range()], b"12");
+        assert_eq!(&template.source[fs.key.as_range()], b"font_size");
+
+        let fc = &root.attr_spans[1];
+        assert_eq!(fc.key_ident, "font_color");
+        assert_eq!(&template.source[fc.value.as_range()], b"#8A93A2");
+
+        // `open_tag_close` points exactly at the closing `>` of `<text …>`.
+        // Inserting a new attribute means writing into `start` of this span.
+        let close_at = root.open_tag_close.start as usize;
+        assert_eq!(template.source[close_at], b'>');
+        assert_eq!(root.open_tag_close.len(), 0);
+
+        // Text content span.
+        let cs = root.content_span.expect("text has content span");
+        assert_eq!(&template.source[cs.as_range()], b"#");
     }
 }

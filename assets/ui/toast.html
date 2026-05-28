@@ -1,0 +1,31 @@
+<!-- Top-right toast notification — corner-anchored row with icon + text. -->
+<template>
+    <node
+        position="absolute"
+        top="24px"
+        right="24px"
+        flex_direction="row"
+        align_items="center"
+        column_gap="12px"
+        padding="12px 16px 12px 16px"
+        background="#11151C"
+        border="1px"
+        border_color="#2ECC71"
+        border_radius="10px"
+    >
+        <node
+            width="28px"
+            height="28px"
+            background="#0E2A1A"
+            border_radius="999px"
+            justify_content="center"
+            align_items="center"
+        >
+            <text font_size="14" font_color="#2ECC71">✓</text>
+        </node>
+        <node flex_direction="column">
+            <text font_size="13" font_color="#FFFFFF">Auto-saved</text>
+            <text font_size="11" font_color="#8A93A2">Just now</text>
+        </node>
+    </node>
+</template>

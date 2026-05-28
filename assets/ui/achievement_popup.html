@@ -1,0 +1,34 @@
+<!-- Bottom-right achievement banner — gold border + icon + text stack. -->
+<template>
+    <node
+        position="absolute"
+        bottom="32px"
+        right="32px"
+        flex_direction="row"
+        align_items="center"
+        column_gap="14px"
+        padding="14px 18px 14px 14px"
+        background="#11151C"
+        border="1px"
+        border_color="#F1C40F"
+        border_radius="10px"
+    >
+        <node
+            width="48px"
+            height="48px"
+            background="#2C1F00"
+            border="1px"
+            border_color="#F1C40F"
+            border_radius="999px"
+            justify_content="center"
+            align_items="center"
+        >
+            <text font_size="24" font_color="#F1C40F">★</text>
+        </node>
+        <node flex_direction="column" row_gap="2px">
+            <text font_size="10" font_color="#F1C40F">ACHIEVEMENT UNLOCKED</text>
+            <text font_size="14" font_color="#FFFFFF">First Blood</text>
+            <text font_size="11" font_color="#8A93A2">Defeat your first enemy</text>
+        </node>
+    </node>
+</template>

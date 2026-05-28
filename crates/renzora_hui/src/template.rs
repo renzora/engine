@@ -1,33 +1,38 @@
-//! Runtime: bind a serializable template *path* to a `bevy_hui` `HtmlNode`.
+//! Runtime: bind a serializable template *path* to the entity tree the
+//! renzora loader builds from the `.html` file.
 //!
-//! The path component [`HtmlTemplatePath`] lives in `renzora_game_ui` (so the UI
-//! canvas editor and viewport can spawn it without depending on this crate),
-//! and `renzora_game_ui` registers it for reflection. This module owns the
-//! bevy_hui-specific half.
+//! `HtmlTemplatePath` lives in `renzora_game_ui` (so the canvas/viewport can
+//! spawn it without depending on this crate), and `renzora_game_ui` registers
+//! it for reflection. This module owns the loader trigger.
 //!
-//! Crucially the `HtmlNode` is placed on a **child** entity, not on the
-//! `HtmlTemplatePath` entity itself. bevy_hui builds a template's root node onto
-//! whatever entity carries `HtmlNode` and rebuilds it on hot-reload — so if that
-//! were the `HtmlTemplatePath` entity, the editor could never give it a stable
-//! absolute position (bevy_hui would keep resetting its `Node`). By keeping the
-//! markup under a child, the `HtmlTemplatePath` entity stays a plain, stable,
-//! scene-saved container the canvas editor can freely position.
+//! **Single entity model.** `HtmlTemplatePath` sits on the entity the user
+//! spawned. As soon as it's set, an observer waits for the parsed
+//! `HtmlTemplate` asset to become available, then `build_template_onto` walks
+//! the AST and attaches the markup's components/children directly to that same
+//! entity. There's no opaque "scope root" wrapper, no `HtmlNode`, no
+//! `HtmlStyle` — just the components the loader writes.
+//!
+//! Hot-reload (Phase C) will despawn the children and re-run the loader; for
+//! now we only handle the initial path-insert path.
 
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use bevy_hui::prelude::{HtmlNode, HtmlTemplate};
+use bevy_hui::prelude::HtmlTemplate;
 pub use renzora_game_ui::HtmlTemplatePath;
 
-/// (Re)spawns the `HtmlNode` markup child whenever a path is set.
-///
-/// An observer (not a `Changed<>` system) so it also fires on the reflection
-/// inserts performed by `DynamicScene::write_to_world`, which don't propagate
-/// change ticks. Re-inserting the path (e.g. picking a new template in the
-/// inspector) despawns the old markup child and builds the new one.
+use crate::components::ComponentRegistry;
+use crate::loader::build_template_onto;
+
+/// When `HtmlTemplatePath` is set, kick off async loading of the `.html` and
+/// queue a one-shot system that builds it onto the entity once the asset is
+/// ready. Stores the load handle in `PendingTemplate` so the build can find
+/// the template asset later.
+#[derive(Component)]
+struct PendingTemplate(Handle<HtmlTemplate>);
+
 fn on_template_path_inserted(
     trigger: On<Insert, HtmlTemplatePath>,
     paths: Query<&HtmlTemplatePath>,
-    children: Query<&Children>,
-    markup: Query<(), With<HtmlNode>>,
     server: Res<AssetServer>,
     mut commands: Commands,
 ) {
@@ -36,24 +41,71 @@ fn on_template_path_inserted(
     if path.0.is_empty() {
         return;
     }
+    let handle: Handle<HtmlTemplate> = server.load(path.0.clone());
+    commands.entity(entity).insert(PendingTemplate(handle));
+}
 
-    // Drop any previously-built markup child (and its subtree) so a changed
-    // path rebuilds cleanly.
-    if let Ok(kids) = children.get(entity) {
-        for child in kids.iter() {
-            if markup.get(child).is_ok() {
+/// Each frame, finish loading any `PendingTemplate` entities whose asset has
+/// arrived: clear any pre-existing children, then build the markup tree onto
+/// them and drop the marker.
+///
+/// The children wipe matters for three independent cases:
+///   * **Scene reload** — saved scenes also captured the previously-built
+///     children. On load, the scene loader spawns the parent + all those
+///     children, then we'd build on top, doubling the tree. The Insert observer
+///     can't help here: it fires before the scene loader has finished parenting
+///     the children, so it would see an empty `Children` and clear nothing.
+///   * **Hot-reload** of the `.html` asset (Phase C — re-inserts `PendingTemplate`
+///     against the same entity).
+///   * **Path edit** in the inspector (`HtmlTemplatePath` reinserted with a new
+///     value; the observer re-queues `PendingTemplate`).
+fn finalize_pending_templates(
+    server: Res<AssetServer>,
+    templates: Res<Assets<HtmlTemplate>>,
+    registry: Res<ComponentRegistry>,
+    pending: Query<(Entity, &PendingTemplate)>,
+    children_q: Query<&Children>,
+    mut commands: Commands,
+) {
+    let no_overrides: HashMap<String, String> = HashMap::default();
+    for (entity, marker) in &pending {
+        // Just check the asset is available — `is_loaded_with_dependencies` can
+        // gate on transitive deps that never resolve for self-contained
+        // templates and leave us in pending forever.
+        let Some(template) = templates.get(&marker.0) else {
+            continue;
+        };
+        if let Ok(kids) = children_q.get(entity) {
+            for child in kids.iter() {
                 commands.entity(child).despawn();
             }
         }
+        info!(
+            "renzora_hui: building template `{}` onto {entity}",
+            server
+                .get_path(&marker.0)
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "<no path>".into())
+        );
+        build_template_onto(
+            &mut commands,
+            &server,
+            entity,
+            template,
+            marker.0.clone(),
+            &registry,
+            &templates,
+            &no_overrides,
+            None,
+        );
+        commands.entity(entity).remove::<PendingTemplate>();
     }
-
-    let handle: Handle<HtmlTemplate> = server.load(path.0.clone());
-    commands.spawn((Name::new("Markup"), HtmlNode(handle), ChildOf(entity)));
 }
 
-/// Registers the path→`HtmlNode` binding observer. Runtime (not editor) so
-/// scene-authored templates load in shipped games too. The component type
-/// itself is registered for reflection by `renzora_game_ui`.
+/// Runtime plugin: the path→tree binding. Adds **only** what's needed for
+/// async load + finalize; bevy_hui's `BuildPlugin`/`TransitionPlugin`/etc. are
+/// no longer registered in this crate's plugin.
 pub fn plugin(app: &mut App) {
-    app.add_observer(on_template_path_inserted);
+    app.add_observer(on_template_path_inserted)
+        .add_systems(Update, finalize_pending_templates);
 }

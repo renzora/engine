@@ -1,0 +1,53 @@
+<!-- Modal confirmation dialog — title, body text, two-button row. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0000008C"
+        justify_content="center"
+        align_items="center"
+    >
+        <node
+            flex_direction="column"
+            row_gap="14px"
+            padding="20px"
+            background="#11151C"
+            border="1px"
+            border_color="#222B38"
+            border_radius="12px"
+            width="380px"
+        >
+            <text font_size="17" font_color="#FFFFFF">Delete this save?</text>
+            <text font_size="13" font_color="#AEB6C2">
+                This action cannot be undone. The save slot will be permanently removed.
+            </text>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px" margin="6px 0px 0px 0px">
+                <button
+                    padding="8px 16px 8px 16px"
+                    background="#1B1F27"
+                    border="1px"
+                    border_color="#2C3340"
+                    border_radius="6px"
+                    hover:background="#222A36"
+                    on_press="cancel"
+                >
+                    <text font_size="13" font_color="#AEB6C2">Cancel</text>
+                </button>
+                <button
+                    padding="8px 16px 8px 16px"
+                    background="#3A1316"
+                    border="1px"
+                    border_color="#E74C3C"
+                    border_radius="6px"
+                    hover:background="#4F1A1E"
+                    on_press="confirm_delete"
+                >
+                    <text font_size="13" font_color="#FFFFFF">Delete</text>
+                </button>
+            </node>
+        </node>
+    </node>
+</template>

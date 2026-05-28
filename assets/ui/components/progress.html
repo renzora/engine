@@ -1,0 +1,11 @@
+<!-- Filled horizontal progress bar with optional label. -->
+<template>
+    <property name="fill">50%</property>
+    <property name="color">#4C8BF5</property>
+    <property name="track">#1B1F27</property>
+    <property name="height">10px</property>
+
+    <node width="100%" height="{height}" background="{track}" border_radius="999px" padding="2px">
+        <node width="{fill}" height="100%" background="{color}" border_radius="999px" />
+    </node>
+</template>

@@ -9687,6 +9687,7 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_game_ui",
+ "tempfile",
 ]
 
 [[package]]
@@ -9748,6 +9749,7 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_theme",
+ "renzora_ui",
  "renzora_undo",
 ]
 

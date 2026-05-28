@@ -1,0 +1,39 @@
+<!-- Tutorial-style controls hint strip at the bottom. Uses `kbd` for each key. -->
+<template>
+    <node
+        position="absolute"
+        bottom="24px"
+        left="50%"
+        margin="0px 0px 0px -270px"
+        width="540px"
+        flex_direction="row"
+        justify_content="space_around"
+        align_items="center"
+        padding="14px 18px 14px 18px"
+        background="#0D0F14D9"
+        border="1px"
+        border_color="#222B38"
+        border_radius="999px"
+    >
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <kbd key="W" /><kbd key="A" /><kbd key="S" /><kbd key="D" />
+            <text font_size="11" font_color="#AEB6C2">Move</text>
+        </node>
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <kbd key="␣" />
+            <text font_size="11" font_color="#AEB6C2">Jump</text>
+        </node>
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <kbd key="E" />
+            <text font_size="11" font_color="#AEB6C2">Interact</text>
+        </node>
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <kbd key="⇧" />
+            <text font_size="11" font_color="#AEB6C2">Sprint</text>
+        </node>
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <kbd key="Q" />
+            <text font_size="11" font_color="#AEB6C2">Drop</text>
+        </node>
+    </node>
+</template>

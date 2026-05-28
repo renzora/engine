@@ -28,9 +28,12 @@ pub mod prelude {
         TemplateScope, UiId, UiTarget, UiWatch,
     };
     pub use crate::compile::{CompileContextEvent, CompileNodeEvent};
-    pub use crate::data::{Action, Attribute, HtmlTemplate, NodeType, StyleAttr};
+    pub use crate::data::{
+        Action, AttrSpan, AttrTokens, Attribute, HtmlTemplate, NodeType, Span, StyleAttr, XNode,
+    };
     pub use crate::error::ParseError;
     pub use crate::error::VerboseHtmlError;
+    pub use crate::load::LoaderPlugin;
     pub use crate::parse::parse_template;
     pub use crate::styles::{HoverTimer, HtmlStyle, InteractionTimer, PressedTimer, UiActive};
     pub use crate::HuiPlugin;

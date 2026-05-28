@@ -1,0 +1,18 @@
+<!-- Small colored pill — labels, tags, status badges. -->
+<template>
+    <property name="text">label</property>
+    <property name="color">#4C8BF5</property>
+    <property name="bg">#1B1F27</property>
+
+    <node
+        padding="4px 10px 4px 10px"
+        background="{bg}"
+        border="1px"
+        border_color="{color}"
+        border_radius="999px"
+        align_items="center"
+        justify_content="center"
+    >
+        <text font_size="11" font_color="{color}">{text}</text>
+    </node>
+</template>

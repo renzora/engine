@@ -304,6 +304,7 @@ pub fn spawn_html_template_at(
     let instance = world
         .spawn((
             Name::new(name),
+            UiWidget::default(),
             HtmlTemplatePath(load_path),
             Node {
                 width: Val::Percent(100.0),
@@ -313,7 +314,11 @@ pub fn spawn_html_template_at(
             },
         ))
         .id();
-    world.entity_mut(canvas_entity).add_child(instance);
+    // Insert at index 0 so newly-dropped templates land at the top of the
+    // canvas's child list in the hierarchy panel (Bevy renders later siblings
+    // on top, so this places the template *behind* existing siblings — the
+    // hierarchy ordering is what the user is asking for here).
+    world.entity_mut(canvas_entity).insert_children(0, &[instance]);
     instance
 }
 

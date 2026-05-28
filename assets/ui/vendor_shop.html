@@ -1,0 +1,98 @@
+<!-- Vendor shop — header with gold balance, scrolling list of items each with
+     icon + name + price + buy button. Tests `card`-style rows + chips. -->
+<template>
+    <node
+        position="absolute"
+        left="50%"
+        top="50%"
+        margin="-280px 0px 0px -260px"
+        width="520px"
+        height="560px"
+        flex_direction="column"
+        background="#11151C"
+        border="1px"
+        border_color="#222B38"
+        border_radius="14px"
+        padding="20px"
+        row_gap="14px"
+    >
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <node flex_direction="column">
+                <text font_size="18" font_color="#FFFFFF">Cinderwood Merchant</text>
+                <text font_size="11" font_color="#8A93A2">Salira Vale</text>
+            </node>
+            <node flex_direction="row" align_items="center" column_gap="6px" padding="6px 12px 6px 12px" background="#1B1F27" border_radius="999px">
+                <text font_size="11" font_color="#F1C40F">⬢</text>
+                <text font_size="13" font_color="#FFFFFF">1,240</text>
+            </node>
+        </node>
+
+        <node flex_direction="column" row_gap="8px" flex_grow="1">
+            <node flex_direction="row" align_items="center" padding="10px" background="#1B1F27" border_radius="8px" column_gap="12px">
+                <node width="38px" height="38px" background="#2C1F00" border_radius="6px" justify_content="center" align_items="center">
+                    <text font_size="20" font_color="#F1C40F">H</text>
+                </node>
+                <node flex_direction="column" flex_grow="1">
+                    <text font_size="13" font_color="#FFFFFF">Health Potion</text>
+                    <text font_size="11" font_color="#8A93A2">Restores 80 HP instantly</text>
+                </node>
+                <node flex_direction="row" align_items="center" column_gap="10px">
+                    <text font_size="12" font_color="#F1C40F">25g</text>
+                    <button padding="6px 14px 6px 14px" background="#0E2A1A" border="1px" border_color="#2ECC71" border_radius="6px" hover:background="#11351F" on_press="buy_health_potion">
+                        <text font_size="11" font_color="#2ECC71">Buy</text>
+                    </button>
+                </node>
+            </node>
+
+            <node flex_direction="row" align_items="center" padding="10px" background="#1B1F27" border_radius="8px" column_gap="12px">
+                <node width="38px" height="38px" background="#0E1A2A" border_radius="6px" justify_content="center" align_items="center">
+                    <text font_size="20" font_color="#3498DB">M</text>
+                </node>
+                <node flex_direction="column" flex_grow="1">
+                    <text font_size="13" font_color="#FFFFFF">Mana Tonic</text>
+                    <text font_size="11" font_color="#8A93A2">Restores 60 MP over 10s</text>
+                </node>
+                <node flex_direction="row" align_items="center" column_gap="10px">
+                    <text font_size="12" font_color="#F1C40F">30g</text>
+                    <button padding="6px 14px 6px 14px" background="#0E2A1A" border="1px" border_color="#2ECC71" border_radius="6px" hover:background="#11351F" on_press="buy_mana_tonic">
+                        <text font_size="11" font_color="#2ECC71">Buy</text>
+                    </button>
+                </node>
+            </node>
+
+            <node flex_direction="row" align_items="center" padding="10px" background="#1B1F27" border_radius="8px" column_gap="12px">
+                <node width="38px" height="38px" background="#2A0E1A" border_radius="6px" justify_content="center" align_items="center">
+                    <text font_size="20" font_color="#9B59B6">R</text>
+                </node>
+                <node flex_direction="column" flex_grow="1">
+                    <node flex_direction="row" align_items="center" column_gap="6px">
+                        <text font_size="13" font_color="#FFFFFF">Ravenfeather Cloak</text>
+                        <chip text="Rare" color="#9B59B6" />
+                    </node>
+                    <text font_size="11" font_color="#8A93A2">+12 Stealth · Glides on jump</text>
+                </node>
+                <node flex_direction="row" align_items="center" column_gap="10px">
+                    <text font_size="12" font_color="#F1C40F">980g</text>
+                    <button padding="6px 14px 6px 14px" background="#0E2A1A" border="1px" border_color="#2ECC71" border_radius="6px" hover:background="#11351F" on_press="buy_cloak">
+                        <text font_size="11" font_color="#2ECC71">Buy</text>
+                    </button>
+                </node>
+            </node>
+
+            <node flex_direction="row" align_items="center" padding="10px" background="#1B1F27" border_radius="8px" column_gap="12px">
+                <node width="38px" height="38px" background="#1B1F27" border="1px" border_color="#3A3F4B" border_radius="6px" justify_content="center" align_items="center">
+                    <text font_size="20" font_color="#5A6678">S</text>
+                </node>
+                <node flex_direction="column" flex_grow="1">
+                    <text font_size="13" font_color="#5A6678">Iron Shortsword</text>
+                    <text font_size="11" font_color="#5A6678">Sold out</text>
+                </node>
+                <text font_size="12" font_color="#5A6678">— —</text>
+            </node>
+        </node>
+
+        <button padding="10px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="6px" hover:background="#222A36" on_press="close_shop">
+            <text font_size="13" font_color="#AEB6C2">Leave</text>
+        </button>
+    </node>
+</template>
