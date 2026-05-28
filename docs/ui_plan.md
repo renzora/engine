@@ -3,6 +3,13 @@
 Status of the markup-driven UI system and the road to **Cinder** — the first
 UI-layer particle system in the Bevy ecosystem.
 
+> 🚧 **§6 (entity model) is being rewritten.** The runtime layer is moving from
+> bevy_hui's "opaque builder + per-frame style re-assertion" to a
+> markup-is-an-entity-tree model where every `<node>`/`<text>`/`<image>` is a
+> real entity with bevy_ui components. See [`renzora_markup.md`](./renzora_markup.md)
+> for the new architecture and phased plan. The rest of this doc (Cinder,
+> shader effects, scripting bridge, editor wiring) still stands as written.
+
 **Legend:** ✅ shipped · 🔜 planned · ❓ open decision · 🧪 needs live-editor verification
 
 ---

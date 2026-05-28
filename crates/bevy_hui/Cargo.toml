@@ -1,0 +1,33 @@
+[package]
+name = "bevy_hui"
+authors = ["Lorenz Mielke"]
+version = "0.6.0"
+edition = "2021"
+description = "pseudo Html templating ui crate for the bevy-engine (vendored fork)."
+keywords = ["bevy", "ui", "xml", "html", "dsl"]
+repository = "https://github.com/Lommix/bevy_hui"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+categories = ["game-development"]
+publish = false
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+  "bevy_render",
+  "bevy_ui",
+  "bevy_asset",
+  "bevy_state",
+  "bevy_text",
+  "bevy_log",
+] }
+bevy_picking = { version = "0.18", optional = true }
+thiserror = "1.0.63"
+nom = "7.1.3"
+owo-colors = "4.1.0"
+
+[features]
+picking = ["dep:bevy_picking"]
+default = []
+
+[dev-dependencies]
+test-case = "3.3.1"
