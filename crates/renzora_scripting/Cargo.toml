@@ -13,6 +13,7 @@ editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzo
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 log = "0.4"
 renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_theme = { path = "../renzora_theme", optional = true }
@@ -22,9 +23,12 @@ egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 # Rhai backend (pure Rust, works everywhere including WASM)
 rhai = { version = "1.21", features = ["sync"], optional = true }
 
-# Lua backend (native only — requires C compiler, cannot target WASM)
+# Lua backend (native only — requires C compiler, cannot target WASM).
+# `ureq` powers `http_get`/`http_post` from scripts (blocking client run on a
+# background thread; native only — a wasm fetch path can come later).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
+ureq = "3"
 
 [lints]
 workspace = true

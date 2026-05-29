@@ -29,6 +29,7 @@ pub fn apply_script_commands(
     mut character_queue: ResMut<CharacterCommandQueue>,
     mut cursor_query: Query<&mut CursorOptions>,
     mut tw_queue: ResMut<renzora::TransformWriteQueue>,
+    http_inbox: Res<crate::http::HttpInbox>,
     mut ran_once: Local<bool>,
 ) {
     if !*ran_once {
@@ -312,6 +313,17 @@ pub fn apply_script_commands(
                         args,
                     });
                 });
+            }
+
+            // Async HTTP — fire on a background thread; the result lands in
+            // `HttpInbox` and the executor dispatches `on_http` next frame.
+            ScriptCommand::HttpRequest {
+                method,
+                url,
+                body,
+                callback,
+            } => {
+                http_inbox.request(method, url, body, callback);
             }
 
             // All remaining commands are routed as ScriptAction events.

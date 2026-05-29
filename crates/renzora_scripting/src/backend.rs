@@ -88,6 +88,21 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute the `on_http(callback, status, body)` hook for a completed HTTP
+    /// request. Default is a no-op so backends without HTTP support compile.
+    fn call_on_http(
+        &self,
+        path: &Path,
+        callback: &str,
+        status: u16,
+        body: &str,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, callback, status, body, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Execute a player-lifecycle hook — `on_player_joined(id)` when `joined`,
     /// else `on_player_left(id)`. Server-side. Default is a no-op so backends
     /// without lifecycle support compile unchanged.

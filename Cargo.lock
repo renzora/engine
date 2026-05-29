@@ -9687,6 +9687,7 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_game_ui",
+ "renzora_scripting",
  "tempfile",
 ]
 
@@ -10474,6 +10475,8 @@ dependencies = [
  "renzora_theme",
  "rhai",
  "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

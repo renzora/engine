@@ -434,6 +434,31 @@ impl ScriptBackend for LuaBackend {
         })
     }
 
+    fn call_on_http(
+        &self,
+        path: &Path,
+        callback: &str,
+        status: u16,
+        body: &str,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>("on_http") else {
+                return Ok(()); // script doesn't handle HTTP — fine
+            };
+            func.call::<()>((callback, status as i64, body)).map_err(|e| {
+                let script = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} on_http: {}", script, e)
+            })?;
+            Ok(())
+        })
+    }
+
     fn call_on_player_event(
         &self,
         path: &Path,
@@ -1201,6 +1226,52 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+    // -- HTTP (async) --
+    // http_get(url [, callback]) — fire a GET; the response is delivered to
+    // on_http(callback, status, body) next frame. callback defaults to "get".
+    let _ = globals.set(
+        "http_get",
+        lua.create_function(|_, (url, callback): (String, Option<String>)| {
+            push_command(ScriptCommand::HttpRequest {
+                method: "GET".into(),
+                url,
+                body: None,
+                callback: callback.unwrap_or_else(|| "get".into()),
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    // http_post(url, body [, callback]) — POST a JSON body string. Response →
+    // on_http(callback, status, body). callback defaults to "post".
+    let _ = globals.set(
+        "http_post",
+        lua.create_function(
+            |_, (url, body, callback): (String, String, Option<String>)| {
+                push_command(ScriptCommand::HttpRequest {
+                    method: "POST".into(),
+                    url,
+                    body: Some(body),
+                    callback: callback.unwrap_or_else(|| "post".into()),
+                });
+                Ok(())
+            },
+        )
+        .unwrap(),
+    );
+    // json_parse(str) -> table — decode a JSON string into a Lua table/value.
+    // Returns nil on parse error.
+    let _ = globals.set(
+        "json_parse",
+        lua.create_function(|lua, s: String| {
+            match serde_json::from_str::<serde_json::Value>(&s) {
+                Ok(v) => json_to_lua(lua, &v),
+                Err(_) => Ok(LuaValue::Nil),
+            }
+        })
+        .unwrap(),
+    );
+
     // -- Network status --
     // net_is_server() — true on the dedicated/host server. Gate
     // server-authoritative logic with this so it doesn't also run on clients.
@@ -1696,6 +1767,39 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
                     let _ = g.set(key.as_str(), t);
                 }
             }
+        }
+    }
+}
+
+/// Recursively convert a `serde_json::Value` into a Lua value. Objects and
+/// arrays become tables (arrays 1-indexed, Lua convention). Avoids needing
+/// mlua's `serialize` feature.
+fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> mlua::Result<LuaValue> {
+    use serde_json::Value as J;
+    match value {
+        J::Null => Ok(LuaValue::Nil),
+        J::Bool(b) => Ok(LuaValue::Boolean(*b)),
+        J::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(LuaValue::Integer(i))
+            } else {
+                Ok(LuaValue::Number(n.as_f64().unwrap_or(0.0)))
+            }
+        }
+        J::String(s) => Ok(LuaValue::String(lua.create_string(s)?)),
+        J::Array(arr) => {
+            let t = lua.create_table()?;
+            for (i, e) in arr.iter().enumerate() {
+                t.set(i + 1, json_to_lua(lua, e)?)?;
+            }
+            Ok(LuaValue::Table(t))
+        }
+        J::Object(map) => {
+            let t = lua.create_table()?;
+            for (k, v) in map {
+                t.set(k.as_str(), json_to_lua(lua, v)?)?;
+            }
+            Ok(LuaValue::Table(t))
         }
     }
 }

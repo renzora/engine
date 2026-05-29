@@ -173,6 +173,13 @@ pub fn run_scripts(world: &mut World) {
         .map(|mut inbox| std::mem::take(&mut inbox.pending))
         .unwrap_or_default();
 
+    // Completed HTTP responses since last frame (from background request
+    // threads). Each fires every script's `on_http(callback, status, body)`.
+    let pending_http: Vec<crate::http::HttpResult> = world
+        .get_resource::<crate::http::HttpInbox>()
+        .map(|inbox| inbox.drain())
+        .unwrap_or_default();
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -601,6 +608,21 @@ pub fn run_scripts(world: &mut World) {
                 perf_batch.on_ui.push((script_path.clone(), dur));
                 if let Err(e) = res {
                     warn!("Script on_ui error [{}]: {}", script_path.display(), e);
+                }
+            }
+
+            // Deliver completed HTTP responses to the script's
+            // `on_http(callback, status, body)` hook (broadcast, like on_ui).
+            for r in &pending_http {
+                if let Err(e) = engine.call_on_http(
+                    &script_path,
+                    &r.callback,
+                    r.status,
+                    &r.body,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!("Script on_http error [{}]: {}", script_path.display(), e);
                 }
             }
 

@@ -5,6 +5,7 @@ mod context;
 mod engine;
 pub mod extension;
 pub mod get_handler;
+pub mod http;
 mod input;
 #[cfg(feature = "editor")]
 pub mod inspector;

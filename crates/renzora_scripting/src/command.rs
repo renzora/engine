@@ -537,6 +537,16 @@ pub enum ScriptCommand {
         args: std::collections::HashMap<String, renzora::ScriptActionValue>,
     },
 
+    // === HTTP ===
+    /// Fire an async HTTP request (`http_get` / `http_post`). The result is
+    /// delivered to scripts' `on_http(callback, status, body)` hook.
+    HttpRequest {
+        method: String,
+        url: String,
+        body: Option<String>,
+        callback: String,
+    },
+
     // === Extension (legacy) ===
     /// Custom command from a script extension. Downcasted by the extension's
     /// command processor via `as_any()`.

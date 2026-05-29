@@ -37,9 +37,16 @@ Run `renzora --help` for the rest (`init`, `check`, `upx`, `clean`, `destroy`).
 
 Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Builds land in `dist/<platform>/` — the runtime build doubles as a dedicated server (run it with `--server`).
 
-## Extending the Engine
+## Documentation
 
-Renzora is plugin-based — you can add components, editor panels, gameplay, and networking in Rust, and script behavior in Lua/Rhai. See **[Plugin Development](docs/plugin-development.md)** for the SDK, scaffolding, components, and scripting.
+| Guide | What's inside |
+|---|---|
+| [Plugin Development](docs/plugin-development.md) | SDK, scaffolding, components, editor panels |
+| [Scripting API](docs/scripting_api.md) | Lua hooks, globals, and the full function reference (transform, reflection, input, audio, networking, HTTP, …) |
+| [Template (UI) API](docs/template_api.md) | The `.html` markup language: elements, bindings `{{ }}`, conditionals, loops, components |
+| [UI Component Catalog](docs/hui_components.md) | The widget toolbox and roadmap for building any UI |
+| [Networking Test Plan](docs/networking-test-plan.md) | Multiplayer setup and testing |
+| [Roadmap](docs/roadmap.md) | What's planned |
 
 ## Supported Platforms
 
