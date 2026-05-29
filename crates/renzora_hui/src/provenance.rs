@@ -28,3 +28,11 @@ pub struct MarkupSource {
     pub template_handle: Handle<HtmlTemplate>,
     pub node_path: Vec<u32>,
 }
+
+/// Marker for entities the loader spawned from an `<image>` markup node,
+/// regardless of whether they currently carry an `ImageNode` (which is only
+/// inserted once `src` resolves to a non-empty path). The editor inspector
+/// keys its "UI Image" card off this marker so the drag-drop `Source` slot
+/// appears even on a freshly-spawned `<cursor>` that has no texture yet.
+#[derive(Component, Default, Debug, Clone)]
+pub struct MarkupImage;

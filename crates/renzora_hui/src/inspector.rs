@@ -22,7 +22,7 @@ use renzora_editor::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 
-use crate::provenance::MarkupSource;
+use crate::provenance::{MarkupImage, MarkupSource};
 use crate::writeback::write_attr_to_markup;
 
 /// Build a `FieldDef` for a `Val`-typed `Node` field. Macro instead of a
@@ -699,8 +699,12 @@ fn image_node_entry() -> InspectorEntry {
         display_name: "UI Image",
         icon: regular::IMAGE,
         category: "ui",
+        // Key off `MarkupImage`, not `ImageNode` — that way the drag-drop slot
+        // shows up on `<image>` markup entities even when their `src=""` and
+        // they're still rendering as a styled `<node>` fallback (e.g. the
+        // default `<cursor>` dot). Set_fn below inserts `ImageNode` lazily.
         has_fn: |world, entity| {
-            has_markup_source(world, entity) && world.get::<ImageNode>(entity).is_some()
+            has_markup_source(world, entity) && world.get::<MarkupImage>(entity).is_some()
         },
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(ImageNode {
@@ -736,8 +740,17 @@ fn image_node_entry() -> InspectorEntry {
             set_fn: |world, entity, val| {
                 if let FieldValue::Asset(Some(path)) = val {
                     let handle: Handle<Image> = world.resource::<AssetServer>().load(&path);
+                    // Lazy-insert `ImageNode` for cursor-style entities that
+                    // started without one — the user just dropped a texture
+                    // onto a node that was rendering as a styled `<node>`.
                     if let Some(mut img) = world.get_mut::<ImageNode>(entity) {
                         img.image = handle;
+                    } else {
+                        world.entity_mut(entity).insert(ImageNode {
+                            image: handle,
+                            image_mode: NodeImageMode::Auto,
+                            ..default()
+                        });
                     }
                     write_attr_to_markup(world, entity, "src", &path);
                 }

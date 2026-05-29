@@ -12,7 +12,9 @@
 
 use bevy::prelude::*;
 
-pub mod components;
+pub mod cursor;
+pub mod drag;
+pub mod interactions;
 pub mod loader;
 pub mod lua_bridge;
 pub mod provenance;
@@ -39,17 +41,25 @@ impl Plugin for HuiPlugin {
         // those are the runtime we're replacing.
         app.add_plugins(bevy_hui::prelude::LoaderPlugin);
 
-        // Markup callbacks (e.g. `<button on_press="start_game">`) with no
-        // Rust binding fall through to scripts' `on_ui` hook. The bridge will
-        // be re-attached to our own `MarkupOnPress` interaction in Phase D.
+        // Markup callbacks (`on_press="start_game"`, etc.) get attached as
+        // bevy_hui's `OnUiPress`/`OnUiEnter`/... components by the loader, and
+        // `interactions::forward_ui_interactions` watches `Changed<Interaction>`
+        // to push them into `ScriptUiInbox` for every script's `on_ui` hook.
         app.init_resource::<renzora::ScriptUiInbox>()
-            .add_observer(lua_bridge::handle_hui_spawn);
+            .add_observer(lua_bridge::handle_hui_spawn)
+            .add_observer(lua_bridge::handle_hui_despawn)
+            .add_observer(lua_bridge::handle_hui_hide)
+            .add_observer(lua_bridge::handle_hui_show)
+            .add_observer(lua_bridge::handle_quit);
 
-        // The path → entity-tree loader, and the component-template registry
-        // (`assets/ui/components/*.html` indexed by file stem so `<menu_button>`
-        // can be resolved by the loader).
-        components::plugin(app);
+        // The path → entity-tree loader and the markup → script interaction
+        // bridge. Components used to be auto-registered by file stem; now
+        // every reuse is via `<node template="path">`, so there's no separate
+        // registry — paths resolve through `AssetServer` like any other asset.
         template::plugin(app);
+        interactions::plugin(app);
+        cursor::plugin(app);
+        drag::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.

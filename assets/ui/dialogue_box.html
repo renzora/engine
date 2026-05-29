@@ -31,14 +31,14 @@
         <node flex_direction="column" flex_grow="1" row_gap="8px">
             <node flex_direction="row" align_items="center" column_gap="8px">
                 <text font_size="14" font_color="#F1C40F">Captain Rook</text>
-                <chip text="Hostile" color="#E74C3C" />
+                <node template="ui/components/chip.html" text="Hostile" color="#E74C3C" />
             </node>
             <text font_size="14" font_color="#FFFFFF">
                 You think you can just walk into MY ship and take MY loot? We'll see about that, kid.
             </text>
             <node flex_direction="row" justify_content="flex_end" align_items="center" column_gap="6px" margin="auto 0px 0px 0px">
                 <text font_size="11" font_color="#8A93A2">Continue</text>
-                <kbd key="␣" />
+                <node template="ui/components/kbd.html" key="␣" />
             </node>
         </node>
     </node>

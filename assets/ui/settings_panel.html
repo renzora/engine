@@ -17,22 +17,22 @@
     >
         <text font_size="18" font_color="#FFFFFF">Settings</text>
 
-        <panel title="Audio" accent="#2ECC71">
+        <node template="ui/components/panel.html" title="Audio" accent="#2ECC71">
             <node flex_direction="column" row_gap="10px">
                 <node flex_direction="row" justify_content="space_between" align_items="center">
                     <text font_size="12" font_color="#AEB6C2">Master</text>
                     <text font_size="12" font_color="#FFFFFF">80%</text>
                 </node>
-                <progress fill="80%" color="#2ECC71" height="6px" />
+                <node template="ui/components/progress.html" fill="80%" color="#2ECC71" height="6px" />
                 <node flex_direction="row" justify_content="space_between" align_items="center">
                     <text font_size="12" font_color="#AEB6C2">Music</text>
                     <text font_size="12" font_color="#FFFFFF">55%</text>
                 </node>
-                <progress fill="55%" color="#2ECC71" height="6px" />
+                <node template="ui/components/progress.html" fill="55%" color="#2ECC71" height="6px" />
             </node>
-        </panel>
+        </node>
 
-        <panel title="Display" accent="#F39C12">
+        <node template="ui/components/panel.html" title="Display" accent="#F39C12">
             <node flex_direction="column" row_gap="8px">
                 <node flex_direction="row" justify_content="space_between" align_items="center">
                     <text font_size="12" font_color="#AEB6C2">Vsync</text>
@@ -63,6 +63,6 @@
                     </node>
                 </node>
             </node>
-        </panel>
+        </node>
     </node>
 </template>

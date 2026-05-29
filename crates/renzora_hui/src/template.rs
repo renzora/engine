@@ -20,8 +20,7 @@ use bevy::prelude::*;
 use bevy_hui::prelude::HtmlTemplate;
 pub use renzora_game_ui::HtmlTemplatePath;
 
-use crate::components::ComponentRegistry;
-use crate::loader::build_template_onto;
+use crate::loader::{build_template_onto, template_deps_ready, TemplateHandles};
 
 /// When `HtmlTemplatePath` is set, kick off async loading of the `.html` and
 /// queue a one-shot system that builds it onto the entity once the asset is
@@ -62,7 +61,7 @@ fn on_template_path_inserted(
 fn finalize_pending_templates(
     server: Res<AssetServer>,
     templates: Res<Assets<HtmlTemplate>>,
-    registry: Res<ComponentRegistry>,
+    mut keeper: ResMut<TemplateHandles>,
     pending: Query<(Entity, &PendingTemplate)>,
     children_q: Query<&Children>,
     mut commands: Commands,
@@ -75,6 +74,14 @@ fn finalize_pending_templates(
         let Some(template) = templates.get(&marker.0) else {
             continue;
         };
+        // Make sure every `template="path"` reference (recursively) is loaded
+        // before we build. Skipping a frame is fine — the entity keeps its
+        // `PendingTemplate` and we retry next tick. Avoids the half-built
+        // state where a node has `template="x.html"` but x.html hasn't loaded
+        // yet, leading to a bare placeholder in the output.
+        if !template_deps_ready(template, &server, &templates, &mut keeper) {
+            continue;
+        }
         if let Ok(kids) = children_q.get(entity) {
             for child in kids.iter() {
                 commands.entity(child).despawn();
@@ -93,7 +100,6 @@ fn finalize_pending_templates(
             entity,
             template,
             marker.0.clone(),
-            &registry,
             &templates,
             &no_overrides,
             None,
@@ -106,6 +112,7 @@ fn finalize_pending_templates(
 /// async load + finalize; bevy_hui's `BuildPlugin`/`TransitionPlugin`/etc. are
 /// no longer registered in this crate's plugin.
 pub fn plugin(app: &mut App) {
-    app.add_observer(on_template_path_inserted)
+    app.init_resource::<TemplateHandles>()
+        .add_observer(on_template_path_inserted)
         .add_systems(Update, finalize_pending_templates);
 }

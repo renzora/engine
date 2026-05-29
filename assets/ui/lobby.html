@@ -46,7 +46,7 @@
             <node width="280px" flex_direction="column" background="#11151C" border="1px" border_color="#222B38" border_radius="12px" padding="16px" row_gap="10px">
                 <node flex_direction="row" justify_content="space_between" align_items="center">
                     <text font_size="14" font_color="#FFFFFF">PARTY · 3/6</text>
-                    <chip text="OPEN" color="#2ECC71" />
+                    <node template="ui/components/chip.html" text="OPEN" color="#2ECC71" />
                 </node>
 
                 <!-- Member 1: You -->
@@ -58,7 +58,7 @@
                         <text font_size="12" font_color="#FFFFFF">Nova_Wren</text>
                         <text font_size="10" font_color="#F1C40F">Leader · Lv 87</text>
                     </node>
-                    <chip text="READY" color="#2ECC71" />
+                    <node template="ui/components/chip.html" text="READY" color="#2ECC71" />
                 </node>
 
                 <!-- Member 2 -->
@@ -70,7 +70,7 @@
                         <text font_size="12" font_color="#FFFFFF">Rook_404</text>
                         <text font_size="10" font_color="#8A93A2">Lv 62 · Sniper</text>
                     </node>
-                    <chip text="READY" color="#2ECC71" />
+                    <node template="ui/components/chip.html" text="READY" color="#2ECC71" />
                 </node>
 
                 <!-- Member 3 -->
@@ -82,7 +82,7 @@
                         <text font_size="12" font_color="#FFFFFF">EchoSix</text>
                         <text font_size="10" font_color="#8A93A2">Lv 41 · Assault</text>
                     </node>
-                    <chip text="LOADOUT" color="#F39C12" />
+                    <node template="ui/components/chip.html" text="LOADOUT" color="#F39C12" />
                 </node>
 
                 <!-- Empty slots -->
@@ -109,8 +109,8 @@
                         <text font_size="11" font_color="#8A93A2">6v6 · Bomb sites A &amp; B</text>
                     </node>
                     <node flex_direction="row" column_gap="6px">
-                        <chip text="Night" color="#9B59B6" />
-                        <chip text="Mid range" color="#AEB6C2" />
+                        <node template="ui/components/chip.html" text="Night" color="#9B59B6" />
+                        <node template="ui/components/chip.html" text="Mid range" color="#AEB6C2" />
                     </node>
                 </node>
             </node>
@@ -119,7 +119,7 @@
             <node width="280px" flex_direction="column" background="#11151C" border="1px" border_color="#222B38" border_radius="12px" padding="16px" row_gap="12px">
                 <node flex_direction="row" justify_content="space_between" align_items="center">
                     <text font_size="14" font_color="#FFFFFF">LOADOUT</text>
-                    <chip text="Edit" color="#4C8BF5" />
+                    <node template="ui/components/chip.html" text="Edit" color="#4C8BF5" />
                 </node>
 
                 <node padding="10px" background="#1B1F27" border_radius="8px" flex_direction="row" align_items="center" column_gap="10px">
@@ -155,9 +155,9 @@
                 <node flex_direction="column" row_gap="6px" margin="6px 0px 0px 0px">
                     <text font_size="11" font_color="#8A93A2">PERKS</text>
                     <node flex_direction="row" column_gap="4px" flex_wrap="wrap" row_gap="4px">
-                        <chip text="Fleet" color="#4C8BF5" />
-                        <chip text="Hardline" color="#4C8BF5" />
-                        <chip text="Ghost" color="#9B59B6" />
+                        <node template="ui/components/chip.html" text="Fleet" color="#4C8BF5" />
+                        <node template="ui/components/chip.html" text="Hardline" color="#4C8BF5" />
+                        <node template="ui/components/chip.html" text="Ghost" color="#9B59B6" />
                     </node>
                 </node>
             </node>

@@ -1,4 +1,4 @@
-<!-- Inventory — exercises a fixed grid of the reusable <item_slot> component,
+<!-- Inventory — exercises a fixed grid of the reusable <node template="ui/components/item_slot.html"> component,
      hover states on each slot, and stack-count badges. 4 columns × 2 rows. -->
 <template>
     <node
@@ -25,14 +25,14 @@
             row_gap="8px"
             column_gap="8px"
         >
-            <item_slot letter="S" count="1"  color="#7F8C8D" />
-            <item_slot letter="P" count="3"  color="#27AE60" />
-            <item_slot letter="B" count="12" color="#C0392B" />
-            <item_slot letter="K" count=""   color="#2980B9" />
-            <item_slot letter="G" count="240" color="#F1C40F" />
-            <item_slot letter="H" count="2"  color="#8E44AD" />
-            <item_slot letter="A" count="60" color="#D35400" />
-            <item_slot letter="?" count=""   color="#3A3F4B" />
+            <node template="ui/components/item_slot.html" letter="S" count="1"  color="#7F8C8D" />
+            <node template="ui/components/item_slot.html" letter="P" count="3"  color="#27AE60" />
+            <node template="ui/components/item_slot.html" letter="B" count="12" color="#C0392B" />
+            <node template="ui/components/item_slot.html" letter="K" count=""   color="#2980B9" />
+            <node template="ui/components/item_slot.html" letter="G" count="240" color="#F1C40F" />
+            <node template="ui/components/item_slot.html" letter="H" count="2"  color="#8E44AD" />
+            <node template="ui/components/item_slot.html" letter="A" count="60" color="#D35400" />
+            <node template="ui/components/item_slot.html" letter="?" count=""   color="#3A3F4B" />
         </node>
     </node>
 </template>

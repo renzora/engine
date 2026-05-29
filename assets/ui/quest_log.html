@@ -16,40 +16,40 @@
     >
         <node flex_direction="row" justify_content="space_between" align_items="center">
             <text font_size="18" font_color="#FFFFFF">Quests</text>
-            <chip text="3 active" color="#4C8BF5" />
+            <node template="ui/components/chip.html" text="3 active" color="#4C8BF5" />
         </node>
 
-        <card title="Ashen Lighthouse" subtitle="Main story · Chapter 2">
+        <node template="ui/components/card.html" title="Ashen Lighthouse" subtitle="Main story · Chapter 2">
             <node flex_direction="column" row_gap="8px">
                 <text font_size="12" font_color="#AEB6C2">
                     Reach the lighthouse before sundown and light the beacon.
                 </text>
-                <progress fill="45%" color="#4C8BF5" height="6px" />
+                <node template="ui/components/progress.html" fill="45%" color="#4C8BF5" height="6px" />
                 <node flex_direction="row" justify_content="space_between">
                     <text font_size="11" font_color="#8A93A2">2 / 4 objectives</text>
                     <text font_size="11" font_color="#F1C40F">+ 350 XP</text>
                 </node>
             </node>
-        </card>
+        </node>
 
-        <card title="Hunter's Bounty" subtitle="Side · Cinderwood">
+        <node template="ui/components/card.html" title="Hunter's Bounty" subtitle="Side · Cinderwood">
             <node flex_direction="column" row_gap="8px">
                 <text font_size="12" font_color="#AEB6C2">
                     Slay 7 dire wolves to prove your worth to the hunters' guild.
                 </text>
-                <progress fill="71%" color="#E74C3C" height="6px" />
+                <node template="ui/components/progress.html" fill="71%" color="#E74C3C" height="6px" />
                 <node flex_direction="row" justify_content="space_between">
                     <text font_size="11" font_color="#8A93A2">5 / 7 slain</text>
                     <text font_size="11" font_color="#F1C40F">+ 180 XP</text>
                 </node>
             </node>
-        </card>
+        </node>
 
-        <card title="Whispers in the Mist" subtitle="Side · Hollow Glade">
+        <node template="ui/components/card.html" title="Whispers in the Mist" subtitle="Side · Hollow Glade">
             <node flex_direction="row" justify_content="space_between" align_items="center">
-                <chip text="Tracked" color="#2ECC71" />
+                <node template="ui/components/chip.html" text="Tracked" color="#2ECC71" />
                 <text font_size="11" font_color="#5A6678">No progress yet</text>
             </node>
-        </card>
+        </node>
     </node>
 </template>

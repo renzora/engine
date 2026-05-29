@@ -22,8 +22,8 @@
                 <text font_size="12" font_color="#8A93A2">Spellblade · Level 14</text>
             </node>
             <node flex_direction="row" column_gap="8px">
-                <chip text="Stealth+1" color="#2ECC71" />
-                <chip text="Bleed" color="#E74C3C" />
+                <node template="ui/components/chip.html" text="Stealth+1" color="#2ECC71" />
+                <node template="ui/components/chip.html" text="Bleed" color="#E74C3C" />
             </node>
         </node>
 
@@ -93,17 +93,17 @@
                         <text font_size="11" font_color="#AEB6C2">Health</text>
                         <text font_size="11" font_color="#FFFFFF">186 / 200</text>
                     </node>
-                    <progress fill="93%" color="#E74C3C" height="6px" />
+                    <node template="ui/components/progress.html" fill="93%" color="#E74C3C" height="6px" />
                     <node flex_direction="row" justify_content="space_between">
                         <text font_size="11" font_color="#AEB6C2">Mana</text>
                         <text font_size="11" font_color="#FFFFFF">88 / 140</text>
                     </node>
-                    <progress fill="63%" color="#3498DB" height="6px" />
+                    <node template="ui/components/progress.html" fill="63%" color="#3498DB" height="6px" />
                     <node flex_direction="row" justify_content="space_between">
                         <text font_size="11" font_color="#AEB6C2">Stamina</text>
                         <text font_size="11" font_color="#FFFFFF">120 / 120</text>
                     </node>
-                    <progress fill="100%" color="#2ECC71" height="6px" />
+                    <node template="ui/components/progress.html" fill="100%" color="#2ECC71" height="6px" />
                 </node>
             </node>
         </node>

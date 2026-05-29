@@ -178,15 +178,17 @@ where
             value: span_of(attr.value, base),
         });
 
-        let (_input, compiled_attr) = match xnode.node_type {
-            NodeType::Custom(_) => {
-                match attribute_from_parts::<E>(attr.prefix, attr.key, attr.value, loader) {
-                    Ok(attr) => attr,
-                    Err(_) => as_prop(attr.key, attr.value)?,
-                }
-            }
-            _ => attribute_from_parts(attr.prefix, attr.key, attr.value, loader)?,
-        };
+        // Unknown attributes always fall back to `PropertyDefinition` so any
+        // element — not just `NodeType::Custom` — can carry overrides for a
+        // `template="..."` expansion. e.g. `<node template="cursor.html"
+        // size="32px">` needs `size` to land in `defs`, not error as an
+        // unknown style. Trade-off: typoed style names (e.g. `bagckround`)
+        // are silently stored as props instead of surfacing as parse errors.
+        let (_input, compiled_attr) =
+            match attribute_from_parts::<E>(attr.prefix, attr.key, attr.value, loader) {
+                Ok(attr) => attr,
+                Err(_) => as_prop(attr.key, attr.value)?,
+            };
 
         match compiled_attr {
             Attribute::Style(style_attr) => xnode.styles.push(style_attr),
@@ -194,6 +196,7 @@ where
                 xnode.defs.insert(key, val);
             }
             Attribute::Name(s) => xnode.name = Some(s),
+            Attribute::Template(s) => xnode.template = Some(s),
             Attribute::Uncompiled(attr_tokens) => xnode.uncompiled.push(attr_tokens),
             Attribute::Action(action) => xnode.event_listener.push(action),
             Attribute::Path(path) => xnode.src = Some(path),
@@ -411,6 +414,29 @@ where
         b"id" => {
             let (_, val) = as_string(value)?;
             Ok((key, Attribute::Id(val)))
+        }
+        b"name" => {
+            // Plain `name="foo"` — gets attached as a Bevy `Name` so scripts can
+            // find / hide / show / target the entity by that label. Distinct
+            // from `id`, which historically does the same thing inside bevy_hui
+            // but gets a `#` prefix when rendered into the hierarchy.
+            let (_, val) = as_string(value)?;
+            Ok((key, Attribute::Name(val)))
+        }
+        b"template" => {
+            // Explicit "expand this template here" — points at an asset path,
+            // not a file-stem registry name. Loader does the same thing it
+            // does for `<custom_tag>` but resolves by `server.load(path)`.
+            let (_, val) = as_string(value)?;
+            Ok((key, Attribute::Template(val)))
+        }
+        b"draggable" => {
+            // `draggable="true"` opts the node into renzora_hui's drag system.
+            // Routed through the existing tags map so we don't grow `Attribute`
+            // every time something new wants a marker — the loader keys off
+            // `node.tags.get("draggable")`.
+            let (_, val) = as_string(value)?;
+            Ok((key, Attribute::Tag("draggable".into(), val)))
         }
         b"target" => {
             let (_, val) = as_string(value)?;

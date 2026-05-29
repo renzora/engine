@@ -1,0 +1,34 @@
+<!-- Companion to the main menu example. Spawned by the script when "Settings"
+     is confirmed, despawned when its Back button is pressed (script handles
+     both via `hui_spawn` / `hui_despawn`). -->
+<template>
+    <node
+        name="settings_root"
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14"
+        flex_direction="column"
+        justify_content="center"
+        align_items="center"
+        row_gap="20px"
+    >
+        <text font_size="40" font_color="#FFFFFF">Settings</text>
+        <text font_size="14" font_color="#8A93A2">Stub panel — wire your own controls here.</text>
+
+        <button
+            name="settings_back"
+            padding="14px 32px 14px 32px"
+            background="#4C8BF5"
+            border_radius="8px"
+            hover:background="#6BA1F8"
+            delay="0.12s"
+            justify_content="center"
+            on_press="settings_back"
+        >
+            <text font_size="14" font_color="#FFFFFF">Back</text>
+        </button>
+    </node>
+</template>

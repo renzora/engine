@@ -1,4 +1,4 @@
-<!-- Player stat panel — exercises the reusable <stat_bar> component, nested
+<!-- Player stat panel — exercises the reusable <node template="ui/components/stat_bar.html"> component, nested
      fill bars, border radius and column layout.
 
      Driving it at runtime: give the fill <node> a stable id in stat_bar and set
@@ -19,9 +19,9 @@
         border_radius="12px"
     >
         <text font_size="18" font_color="#FFFFFF" margin="0px 0px 2px 0px">Vitals</text>
-        <stat_bar label="Health"  value="72 / 100" fill="72%" color="#E74C3C" />
-        <stat_bar label="Mana"    value="40 / 100" fill="40%" color="#3498DB" />
-        <stat_bar label="Stamina" value="90 / 100" fill="90%" color="#2ECC71" />
-        <stat_bar label="XP"      value="Lv 7"     fill="30%" color="#F1C40F" track="#1A1E27" />
+        <node template="ui/components/stat_bar.html" label="Health"  value="72 / 100" fill="72%" color="#E74C3C" />
+        <node template="ui/components/stat_bar.html" label="Mana"    value="40 / 100" fill="40%" color="#3498DB" />
+        <node template="ui/components/stat_bar.html" label="Stamina" value="90 / 100" fill="90%" color="#2ECC71" />
+        <node template="ui/components/stat_bar.html" label="XP"      value="Lv 7"     fill="30%" color="#F1C40F" track="#1A1E27" />
     </node>
 </template>

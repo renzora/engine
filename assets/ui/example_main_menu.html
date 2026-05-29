@@ -1,0 +1,105 @@
+<!-- Example: gamepad/keyboard-navigable main menu.
+     Pair with `assets/scripts/example_main_menu.lua` (engine repo) or
+     `scripts/example_main_menu.lua` (your project).
+
+     Each <button> has `name="btn_..."` so the Lua side can target it via
+     `set_on("btn_play", "BorderColor.top", ...)`. The root `name=` lets the
+     script hide/show the whole menu with `action("hui_hide"/"hui_show", ...)`.
+
+     btn_play starts focused (its border is the highlight color) so the menu
+     has a sensible initial state before the script does its first repaint. -->
+<template>
+    <node
+        name="main_menu_root"
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14"
+        flex_direction="column"
+        justify_content="center"
+        align_items="center"
+        row_gap="32px"
+    >
+        <text font_size="56" font_color="#FFFFFF">RENZORA</text>
+
+        <node flex_direction="column" row_gap="10px" width="320px">
+            <button
+                name="btn_play"
+                padding="14px"
+                background="#1B1F27"
+                border="2px"
+                border_color="#4C8BF5"
+                border_radius="8px"
+                hover:background="#222A36"
+                delay="0.12s"
+                justify_content="center"
+                on_press="press_play"
+                on_enter="hover_btn_play"
+            >
+                <text font_size="14" font_color="#FFFFFF">Play</text>
+            </button>
+
+            <button
+                name="btn_settings"
+                padding="14px"
+                background="#1B1F27"
+                border="2px"
+                border_color="#1B1F27"
+                border_radius="8px"
+                hover:background="#222A36"
+                delay="0.12s"
+                justify_content="center"
+                on_press="press_settings"
+                on_enter="hover_btn_settings"
+            >
+                <text font_size="14" font_color="#FFFFFF">Settings</text>
+            </button>
+
+            <button
+                name="btn_credits"
+                padding="14px"
+                background="#1B1F27"
+                border="2px"
+                border_color="#1B1F27"
+                border_radius="8px"
+                hover:background="#222A36"
+                delay="0.12s"
+                justify_content="center"
+                on_press="press_credits"
+                on_enter="hover_btn_credits"
+            >
+                <text font_size="14" font_color="#FFFFFF">Credits</text>
+            </button>
+
+            <button
+                name="btn_exit"
+                padding="14px"
+                background="#1B1F27"
+                border="2px"
+                border_color="#1B1F27"
+                border_radius="8px"
+                hover:background="#2A1416"
+                delay="0.12s"
+                justify_content="center"
+                on_press="press_exit"
+                on_enter="hover_btn_exit"
+            >
+                <text font_size="14" font_color="#E74C3C">Exit</text>
+            </button>
+        </node>
+
+        <text font_size="11" font_color="#5A6678">Left stick / arrows · A or Enter to confirm</text>
+
+        <!-- Custom cursor — explicit template path, so the rpak BFS finds the
+             quoted path automatically and bundles it. The entity the inner
+             template spawns is named `cursor_follow`, which `renzora_hui::
+             cursor` repositions every frame from the window's cursor
+             position. OS cursor auto-hides. -->
+        <node template="ui/components/cursor.html"
+              size="16px"
+              color="#4C8BF5"
+              border="#FFFFFF" />
+    </node>
+</template>

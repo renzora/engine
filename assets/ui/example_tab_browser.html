@@ -1,0 +1,63 @@
+<!-- Example: tabbed browser driven by gamepad.
+     Pair with `assets/scripts/example_tab_browser.lua`.
+
+     The Lua side reads L1/R1 to cycle `tab_*` entities and uses the left
+     stick's Y axis to step through `item_*` entities, calling `set_on(...)`
+     to update their `BackgroundColor` to highlight the active tab + selected
+     item. The script also handles `on_press` so the same UI works with mouse. -->
+<template>
+    <node
+        position="absolute"
+        left="0px"
+        top="0px"
+        width="100%"
+        height="100%"
+        background="#0D0F14"
+        flex_direction="column"
+        padding="32px"
+        row_gap="20px"
+    >
+        <!-- Tab strip. `name="tab_*"` lets the Lua side find each one by name
+             via `set_on(name, "BackgroundColor.color", ...)`. -->
+        <node flex_direction="row" column_gap="6px" padding="4px" background="#11151C" border_radius="10px">
+            <button name="tab_loadout" padding="10px 18px 10px 18px" background="#4C8BF5" border_radius="6px" on_press="select_tab_loadout">
+                <text font_size="13" font_color="#FFFFFF">Loadout</text>
+            </button>
+            <button name="tab_perks" padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="select_tab_perks">
+                <text font_size="13" font_color="#AEB6C2">Perks</text>
+            </button>
+            <button name="tab_maps" padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="select_tab_maps">
+                <text font_size="13" font_color="#AEB6C2">Maps</text>
+            </button>
+            <button name="tab_career" padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="select_tab_career">
+                <text font_size="13" font_color="#AEB6C2">Career</text>
+            </button>
+        </node>
+
+        <!-- Key hints. -->
+        <node flex_direction="row" column_gap="14px" padding="6px 0px 0px 0px">
+            <text font_size="11" font_color="#5A6678">L1 / R1  switch tabs</text>
+            <text font_size="11" font_color="#5A6678">Left stick   move cursor</text>
+            <text font_size="11" font_color="#5A6678">A / Enter   confirm</text>
+        </node>
+
+        <!-- Item list. Each row has `name="item_N"` for the script. -->
+        <node flex_direction="column" row_gap="8px" margin="12px 0px 0px 0px">
+            <node name="item_0" flex_direction="row" align_items="center" padding="14px" background="#222A36" border="2px" border_color="#4C8BF5" border_radius="8px">
+                <text font_size="14" font_color="#FFFFFF">M-417 Bravo · Primary</text>
+            </node>
+            <node name="item_1" flex_direction="row" align_items="center" padding="14px" background="#1B1F27" border="2px" border_color="#1B1F27" border_radius="8px">
+                <text font_size="14" font_color="#FFFFFF">Vex .45 · Sidearm</text>
+            </node>
+            <node name="item_2" flex_direction="row" align_items="center" padding="14px" background="#1B1F27" border="2px" border_color="#1B1F27" border_radius="8px">
+                <text font_size="14" font_color="#FFFFFF">Smoke ×2 · Tactical</text>
+            </node>
+            <node name="item_3" flex_direction="row" align_items="center" padding="14px" background="#1B1F27" border="2px" border_color="#1B1F27" border_radius="8px">
+                <text font_size="14" font_color="#FFFFFF">Frag ×1 · Lethal</text>
+            </node>
+            <node name="item_4" flex_direction="row" align_items="center" padding="14px" background="#1B1F27" border="2px" border_color="#1B1F27" border_radius="8px">
+                <text font_size="14" font_color="#FFFFFF">Ghost · Perk</text>
+            </node>
+        </node>
+    </node>
+</template>

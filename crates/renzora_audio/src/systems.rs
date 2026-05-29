@@ -247,7 +247,34 @@ pub fn process_audio_commands(
                 let full_path = audio.resolve_path(&path);
                 let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
 
-                match StreamingSoundData::from_file(&full_path) {
+                // Kira's streaming source needs a file path on disk. In an
+                // exported runtime the music typically lives inside the .rpak
+                // archive instead — pull the bytes via the VFS byte loader and
+                // materialise a temp file so streaming has something to mmap.
+                // Same clip + same temp path on every call so we don't pile
+                // up duplicates in `%TEMP%`.
+                let stream_path: std::path::PathBuf = if full_path.exists() {
+                    full_path.clone()
+                } else if let Some(bytes) = renzora::core::load_asset_bytes(&path) {
+                    let temp_dir = std::env::temp_dir().join("renzora_music");
+                    let _ = std::fs::create_dir_all(&temp_dir);
+                    let safe = path.replace(['/', '\\', ':'], "_");
+                    let temp_path = temp_dir.join(safe);
+                    if let Err(e) = std::fs::write(&temp_path, &bytes) {
+                        warn!(
+                            "[KiraAudio] Failed to stage music to temp `{}`: {}",
+                            temp_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                    temp_path
+                } else {
+                    warn!("[KiraAudio] Failed to locate music: {}", path);
+                    continue;
+                };
+
+                match StreamingSoundData::from_file(&stream_path) {
                     Ok(data) => {
                         let data = data
                             .volume(amplitude_to_db(effective_volume))

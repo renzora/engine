@@ -1,13 +1,13 @@
 <!-- Full-screen game HUD — exercises absolute positioning of panels into screen
-     corners and composition of the reusable <stat_bar> component. Spawn this as
+     corners and composition of the reusable <node template="ui/components/stat_bar.html"> component. Spawn this as
      a UI Canvas child so it fills the viewport. -->
 <template>
     <node position="absolute" left="0px" top="0px" width="100%" height="100%">
 
         <!-- top-left: vitals -->
         <node position="absolute" top="16px" left="16px" flex_direction="column" row_gap="8px">
-            <stat_bar label="HP" value="72 / 100" fill="72%" color="#E74C3C" />
-            <stat_bar label="MP" value="40 / 100" fill="40%" color="#3498DB" />
+            <node template="ui/components/stat_bar.html" label="HP" value="72 / 100" fill="72%" color="#E74C3C" />
+            <node template="ui/components/stat_bar.html" label="MP" value="40 / 100" fill="40%" color="#3498DB" />
         </node>
 
         <!-- top-right: score -->

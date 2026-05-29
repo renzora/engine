@@ -27,12 +27,12 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::widget::NodeImageMode;
 use bevy_hui::prelude::{
-    AssetServerAdaptor, AttrTokens, Attribute, HtmlTemplate, NodeType, StyleAttr, TemplateProperties,
-    XNode,
+    Action, AssetServerAdaptor, AttrTokens, Attribute, HtmlTemplate, NodeType, OnUiChange,
+    OnUiEnter, OnUiExit, OnUiPress, OnUiSpawn, StyleAttr, TemplateProperties, XNode,
 };
 
-use crate::components::ComponentRegistry;
-use crate::provenance::MarkupSource;
+use crate::drag::Draggable;
+use crate::provenance::{MarkupImage, MarkupSource};
 
 /// Spawn the template's root node onto `entity` (and its subtree as children).
 ///
@@ -48,7 +48,6 @@ pub fn build_template_onto(
     entity: Entity,
     template: &HtmlTemplate,
     template_handle: Handle<HtmlTemplate>,
-    registry: &ComponentRegistry,
     templates: &Assets<HtmlTemplate>,
     overrides: &HashMap<String, String>,
     slot_children: Option<&[XNode]>,
@@ -64,7 +63,6 @@ pub fn build_template_onto(
 
     let ctx = BuildCtx {
         server,
-        registry,
         templates,
         props: &props,
         slot_children,
@@ -87,12 +85,11 @@ pub fn build_template_onto(
 #[derive(Copy, Clone)]
 struct BuildCtx<'a> {
     server: &'a AssetServer,
-    registry: &'a ComponentRegistry,
     templates: &'a Assets<HtmlTemplate>,
     props: &'a TemplateProperties,
     slot_children: Option<&'a [XNode]>,
-    /// Asset handle the *current* template was loaded from. Custom component
-    /// tags swap this with the inner component's handle in their child
+    /// Asset handle the *current* template was loaded from. `template="..."`
+    /// expansions swap this with the inner template's handle in their child
     /// context so provenance keeps pointing at the right `.html`.
     template_handle: &'a Handle<HtmlTemplate>,
 }
@@ -134,6 +131,66 @@ fn spawn_subtree(
     }
 }
 
+/// Persistent cache of every `template="..."` handle the loader has seen.
+///
+/// Without this resource, strong handles produced inside `template_deps_ready`
+/// would drop at the end of the function call. Bevy's asset GC then unloads
+/// the template, the next frame's call re-triggers the load, drops it again,
+/// and we ping-pong forever — never reaching the "loaded" state. Stashing the
+/// handle here keeps the asset alive while the template that needs it is
+/// still being built (and beyond — they act as a hot-reload cache).
+#[derive(Resource, Default)]
+pub struct TemplateHandles {
+    handles: bevy::platform::collections::HashMap<String, Handle<HtmlTemplate>>,
+}
+
+/// Walk a template's AST (and recursively, every template it references via
+/// `template="path"`) to confirm all dependent assets are loaded. Used by
+/// `finalize_pending_templates` before kicking off a build so the loader never
+/// has to bail half-way through with "template not loaded yet."
+pub fn template_deps_ready(
+    template: &HtmlTemplate,
+    server: &AssetServer,
+    templates: &Assets<HtmlTemplate>,
+    keeper: &mut TemplateHandles,
+) -> bool {
+    fn walk(
+        nodes: &[XNode],
+        server: &AssetServer,
+        templates: &Assets<HtmlTemplate>,
+        keeper: &mut TemplateHandles,
+        seen: &mut bevy::platform::collections::HashSet<String>,
+    ) -> bool {
+        for node in nodes {
+            if let Some(path) = &node.template {
+                // Cache the handle so the asset doesn't get dropped between
+                // our load and the next frame's check. Idempotent: subsequent
+                // visits reuse the same handle.
+                let handle = keeper
+                    .handles
+                    .entry(path.clone())
+                    .or_insert_with(|| server.load(path))
+                    .clone();
+                if !seen.insert(path.clone()) {
+                    continue;
+                }
+                let Some(sub) = templates.get(&handle) else {
+                    return false;
+                };
+                if !walk(&sub.root, server, templates, keeper, seen) {
+                    return false;
+                }
+            }
+            if !walk(&node.children, server, templates, keeper, seen) {
+                return false;
+            }
+        }
+        true
+    }
+    let mut seen = bevy::platform::collections::HashSet::default();
+    walk(&template.root, server, templates, keeper, &mut seen)
+}
+
 /// Build one `XNode` onto `entity`: insert the appropriate bevy_ui components
 /// based on node type, parsed `StyleAttr`s, and compiled `{prop}` references.
 fn apply_xnode_to(
@@ -144,30 +201,43 @@ fn apply_xnode_to(
     template: &HtmlTemplate,
     node_path: &[u32],
 ) {
-    // Custom component tag — load the component template, build it onto this
-    // entity with merged properties + caller's children as the slot content.
-    if let NodeType::Custom(name) = &node.node_type {
-        let Some(handle) = ctx.registry.handle_for(name) else {
-            warn!("renzora_hui: unknown component <{}>", name);
-            return;
-        };
-        let Some(component_template) = ctx.templates.get(handle) else {
+    // `template="path/to/foo.html"` — explicit-path expansion. Takes priority
+    // over `<custom_tag>` resolution so an author can use `<node template="x"
+    // .../>` on any built-in element and have the inner template's root
+    // collapse onto this entity. Property overrides come from `node.defs`
+    // (every unknown attribute), slot children come from `node.children` —
+    // identical semantics to the registry path, just resolved differently.
+    if let Some(template_path) = &node.template {
+        let handle: Handle<HtmlTemplate> = ctx.server.load(template_path);
+        // `template_deps_ready` already gated us — the asset *should* be in
+        // `Assets<HtmlTemplate>` by the time we get here. Bail gracefully if
+        // the gate missed an edge case (e.g. hot-reload races); the parent
+        // build will be retried next frame and pick it up.
+        let Some(component_template) = ctx.templates.get(&handle) else {
             warn!(
-                "renzora_hui: component <{}> not loaded yet — template will render with the tag missing",
-                name
+                "renzora_hui: template `{}` not loaded yet — re-try next frame",
+                template_path
             );
             return;
         };
-        // `<stat_bar label="HP" fill="72%">` → `node.defs = { label: "HP", fill: "72%" }`
-        // Substitute any `{prop}` refs in those override values from the OUTER
-        // scope, so chaining works (e.g. parent passes `{parent_prop}`).
+        // `<node template="x" label="HP" fill="72%">` → `node.defs = { label,
+        // fill }`. Substitute any `{prop}` refs in those override values from
+        // the OUTER scope, so chaining works.
         let mut overrides: HashMap<String, String> = HashMap::default();
         for (k, v) in &node.defs {
             overrides.insert(k.clone(), substitute_text(v, ctx.props));
         }
+        // `src="..."` is parsed as `Attribute::Path` → `node.src`, not into
+        // `defs`. Forward it manually so a template can use `{src}` for its
+        // own image source (e.g. the cursor template's `<image src="{src}">`).
+        if let Some(s) = &node.src {
+            overrides
+                .entry("src".to_string())
+                .or_insert_with(|| substitute_text(s, ctx.props));
+        }
         // The host entity's provenance still points at the *outer* template
         // (it's the entity the user sees and clicks), so stamp it before
-        // recursing into the inner component. Children spawned by
+        // recursing into the inner template. Children spawned by
         // `build_template_onto` will get their own MarkupSource entries
         // anchored at the inner template's handle.
         commands.entity(entity).insert(MarkupSource {
@@ -179,11 +249,22 @@ fn apply_xnode_to(
             ctx.server,
             entity,
             component_template,
-            handle.clone(),
-            ctx.registry,
+            handle,
             ctx.templates,
             &overrides,
             Some(&node.children),
+        );
+        return;
+    }
+
+    // Bare `<custom_tag>` with no `template=` attribute. The file-stem
+    // registry that used to resolve these is gone — components must be
+    // referenced by explicit path now. Warn so any un-migrated demo template
+    // surfaces clearly instead of silently rendering an empty box.
+    if let NodeType::Custom(name) = &node.node_type {
+        warn!(
+            "renzora_hui: <{name}> is not a built-in element — use \
+             `<node template=\"path/to/{name}.html\" ...>` instead"
         );
         return;
     }
@@ -250,6 +331,40 @@ fn apply_xnode_to(
     // below, that makes per-element edits round-trip to the `.html` file.
     ec.insert(renzora_game_ui::UiWidget::default());
 
+    // `draggable="true"` (parsed into `node.tags`) opts the entity into the
+    // drag system. Any value except `"false"` counts as truthy — same loose
+    // semantics HTML's own `draggable` attr uses.
+    if let Some(v) = node.tags.get("draggable") {
+        if v != "false" {
+            ec.insert(Draggable);
+        }
+    }
+
+    // Event listeners (`on_press="..."`, `on_enter="..."`, `on_exit="..."`,
+    // `on_spawn`, `on_change`) get attached as bevy_hui's prelude components.
+    // `interactions.rs` then watches `Changed<Interaction>` on these entities
+    // and forwards the names into `renzora::ScriptUiInbox` so every script's
+    // `on_ui(name, args, entity)` Lua hook fires.
+    for action in &node.event_listener {
+        match action {
+            Action::OnPress(fns) => {
+                ec.insert(OnUiPress(fns.clone()));
+            }
+            Action::OnEnter(fns) => {
+                ec.insert(OnUiEnter(fns.clone()));
+            }
+            Action::OnExit(fns) => {
+                ec.insert(OnUiExit(fns.clone()));
+            }
+            Action::OnSpawn(fns) => {
+                ec.insert(OnUiSpawn(fns.clone()));
+            }
+            Action::OnChange(fns) => {
+                ec.insert(OnUiChange(fns.clone()));
+            }
+        }
+    }
+
     // Provenance: the editor's inspector reads this back to locate the byte
     // range to patch when a user edits an attribute. Skipped for entities
     // whose handle is `default()` (non-editor callers that don't need it).
@@ -311,12 +426,21 @@ fn apply_xnode_to(
             }
         }
         NodeType::Image => {
+            // Every `<image>` gets a `MarkupImage` marker so the inspector can
+            // surface the "UI Image" drag-drop slot even before `src` is set.
+            ec.insert(MarkupImage);
+            // `ImageNode` only gets inserted when `src` actually resolves to a
+            // non-empty path — otherwise `server.load("")` errors out and we'd
+            // be left with a broken image handle on what's meant to render as
+            // a styled `<node>` fallback (e.g. the default `<cursor>` dot).
             if let Some(src) = image_src {
-                ec.insert(ImageNode {
-                    image: ctx.server.load(src),
-                    image_mode: NodeImageMode::Auto,
-                    ..default()
-                });
+                if !src.is_empty() {
+                    ec.insert(ImageNode {
+                        image: ctx.server.load(src),
+                        image_mode: NodeImageMode::Auto,
+                        ..default()
+                    });
+                }
             }
         }
         NodeType::Node

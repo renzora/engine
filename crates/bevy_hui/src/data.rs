@@ -73,6 +73,12 @@ pub struct XNode {
     pub watch: Option<String>,
     pub id: Option<String>,
     pub name: Option<String>,
+    /// `template="path"` — when set, the renzora_hui loader expands the
+    /// markup at that path onto this entity using `node.defs` as overrides
+    /// and `node.children` as slot content. Distinct from `NodeType::Custom`
+    /// (file-stem registry lookup) so call sites can pick which resolution
+    /// rule applies — explicit path here, magic name there.
+    pub template: Option<String>,
     pub uncompiled: Vec<AttrTokens>,
     pub tags: HashMap<String, String>,
     pub defs: HashMap<String, String>,
@@ -124,6 +130,11 @@ pub enum Attribute {
     Id(String),
     Watch(String),
     Tag(String, String),
+    /// `template="path/to/foo.html"` — explicitly expand the markup at `path`
+    /// onto this entity, like a component. Unknown attributes on the same
+    /// element (`<node template="x.html" label="OK">`) cascade as property
+    /// overrides into the inner template, identical to `<custom_tag>` today.
+    Template(String),
 }
 
 /// raw attribute

@@ -5,7 +5,7 @@
      or from a Lua script:
          action("hui_spawn", { template = "ui/example_menu.html" })
 
-     Each <menu_button>'s `action` is the markup callback name. When no Rust
+     Each <node template="ui/components/menu_button.html">'s `action` is the markup callback name. When no Rust
      HtmlFunctions binding exists, renzora_hui forwards it to every script's
          function on_ui(name, args) ... end
      hook (broadcast, like on_rpc). The optional `tag:`-prefixed attributes
@@ -25,9 +25,9 @@
             {title}
         </text>
 
-        <menu_button text="Start Game" action="start_game" tag:scene="level_01" />
-        <menu_button text="Settings"   action="open_settings" />
-        <menu_button text="Credits"    action="open_credits" />
-        <menu_button text="Quit"       action="quit_game" />
+        <node template="ui/components/menu_button.html" text="Start Game" action="start_game" tag:scene="level_01" />
+        <node template="ui/components/menu_button.html" text="Settings"   action="open_settings" />
+        <node template="ui/components/menu_button.html" text="Credits"    action="open_credits" />
+        <node template="ui/components/menu_button.html" text="Quit"       action="quit_game" />
     </node>
 </template>
