@@ -18,6 +18,7 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::reflect::{GetPath, PartialReflect, TypeRegistry};
+use bevy::ui::Display;
 
 /// Attached to a `<text>` entity whose content holds `{{ ... }}` tokens.
 #[derive(Component)]
@@ -251,6 +252,93 @@ fn trim_float(n: f64) -> String {
     }
 }
 
+// ── Conditional visibility — `show="{{ cond }}"` ────────────────────────────
+
+/// Attached to an entity with a `show="..."` attribute. Toggles the node's
+/// `Display` between its authored value and `Display::None` based on whether
+/// the (possibly `{{ }}`-bound) condition is truthy.
+#[derive(Component)]
+pub struct ShowBinding {
+    /// Raw attribute value, e.g. `"{{ Player.Stats.is_admin }}"` or `"true"`.
+    expr: String,
+    /// Host entity for bare component paths inside `{{ }}`.
+    source: Entity,
+    /// The node's `Display` when shown (its authored value), restored on true.
+    display_when_shown: Display,
+    /// Last applied state — skip the write when unchanged.
+    last: Option<bool>,
+}
+
+impl ShowBinding {
+    pub fn new(expr: String, source: Entity, display_when_shown: Display) -> Self {
+        Self {
+            expr,
+            source,
+            display_when_shown,
+            last: None,
+        }
+    }
+}
+
+/// A rendered condition string is truthy unless it's empty, `false`, or a
+/// number equal to zero. Covers bound bools (`true`/`false`), numbers
+/// (`0` → false), and plain strings (non-empty → true).
+fn truthy(s: &str) -> bool {
+    let t = s.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("false") {
+        return false;
+    }
+    if let Ok(n) = t.parse::<f64>() {
+        return n != 0.0;
+    }
+    true
+}
+
+/// Evaluate every `show` condition each frame and toggle `Node.display`.
+pub fn update_show_bindings(world: &mut World) {
+    let mut binding_q = world.query::<(Entity, &ShowBinding)>();
+    let bindings: Vec<(Entity, String, Entity)> = binding_q
+        .iter(world)
+        .map(|(e, b)| (e, b.expr.clone(), b.source))
+        .collect();
+    if bindings.is_empty() {
+        return;
+    }
+
+    let mut names: HashMap<String, Entity> = HashMap::default();
+    {
+        let mut name_q = world.query::<(Entity, &Name)>();
+        for (e, n) in name_q.iter(world) {
+            names.insert(n.as_str().to_string(), e);
+        }
+    }
+
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let mut updates: Vec<(Entity, bool)> = Vec::new();
+    {
+        let registry = type_registry.read();
+        for (ent, expr, source) in &bindings {
+            let rendered = render_template(world, &registry, &names, *source, expr);
+            updates.push((*ent, truthy(&rendered)));
+        }
+    }
+
+    for (ent, shown) in updates {
+        let (changed, display_shown) = match world.get_mut::<ShowBinding>(ent) {
+            Some(mut b) if b.last != Some(shown) => {
+                b.last = Some(shown);
+                (true, b.display_when_shown)
+            }
+            _ => (false, Display::Flex),
+        };
+        if changed {
+            if let Some(mut node) = world.get_mut::<Node>(ent) {
+                node.display = if shown { display_shown } else { Display::None };
+            }
+        }
+    }
+}
+
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, update_text_bindings);
+    app.add_systems(Update, (update_text_bindings, update_show_bindings));
 }

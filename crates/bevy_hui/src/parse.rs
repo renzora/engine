@@ -368,6 +368,14 @@ fn parse_uncompiled<'a>(
     let result: IResult<&[u8], &[u8]> = delimited(tag("{"), is_not("}"), tag("}"))(value);
     match result {
         Ok((_, prop)) => {
+            // `{{ ... }}` is a renzora_hui *runtime* binding, not a build-time
+            // `{prop}` ref. The delimited match above grabs the outer `{`, so a
+            // double brace leaves a leading `{` in `prop` — detect that and bail
+            // so the normal attribute match (and the property fallback) handles
+            // it. `show="{{ ... }}"` etc. then route through their own paths.
+            if prop.first() == Some(&b'{') {
+                return None;
+            }
             return Some(Attribute::Uncompiled(AttrTokens {
                 prefix: prefix.map(|p| String::from_utf8_lossy(p).to_string()),
                 ident: String::from_utf8_lossy(key).to_string(),
@@ -437,6 +445,13 @@ where
             // `node.tags.get("draggable")`.
             let (_, val) = as_string(value)?;
             Ok((key, Attribute::Tag("draggable".into(), val)))
+        }
+        b"show" => {
+            // `show="{{ cond }}"` conditional visibility. Stored raw in the tags
+            // map; the loader stamps a `ShowBinding` that toggles `Display`
+            // (None when falsy) each frame. Also accepts a literal `show="true"`.
+            let (_, val) = as_string(value)?;
+            Ok((key, Attribute::Tag("show".into(), val)))
         }
         b"target" => {
             let (_, val) = as_string(value)?;

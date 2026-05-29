@@ -333,8 +333,22 @@ fn apply_xnode_to(
         layout.border_radius.bottom_left = r.left;
     }
 
+    // Capture the authored display before `layout` is moved, so a `show=`
+    // conditional can restore it when the condition is true.
+    let display_when_shown = layout.display;
+
     let mut ec = commands.entity(entity);
     ec.insert(layout);
+
+    // `show="{{ cond }}"` — conditional visibility. Stamp a `ShowBinding` the
+    // binding system evaluates each frame (Display::None when falsy).
+    if let Some(expr) = node.tags.get("show") {
+        ec.insert(crate::binding::ShowBinding::new(
+            expr.clone(),
+            ctx.host,
+            display_when_shown,
+        ));
+    }
     // Every markup node is its own selectable widget — the canvas editor
     // hit-tests `UiWidget` entities, so clicking a `<text>` inside a `<panel>`
     // lands on the text (deepest match wins). Combined with `MarkupSource`
