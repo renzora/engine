@@ -610,6 +610,19 @@ fn apply_xnode_to(
         ec.insert(Interaction::default());
     }
 
+    // `vector="gauge|ring|bar|line|waveform"` — a vello-drawn vector graphic
+    // (see `vector.rs`). bevy_ui lays the node out; the draw system fills its
+    // `UiVelloScene` each frame from the spec + live `{{ }}` bindings.
+    if node.defs.contains_key("vector") {
+        if let Some(spec) = crate::vector::spec_from_defs(&node.defs, ctx.host) {
+            ec.insert(spec);
+            ec.insert(bevy_vello::prelude::UiVelloScene::new());
+            ec.insert(bevy::camera::visibility::RenderLayers::layer(
+                crate::vector::VECTOR_RENDER_LAYER,
+            ));
+        }
+    }
+
     // `gradient="linear 180deg #A #B"` / `shadow="0px 6px 16px #00000088"` —
     // native bevy_ui decoration (see `decor.rs`). Static; no per-frame system.
     if let Some(g) = node.defs.get("gradient").and_then(|v| crate::decor::parse_gradient(v)) {

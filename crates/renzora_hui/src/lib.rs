@@ -28,6 +28,7 @@ pub mod lua_bridge;
 pub mod provenance;
 pub mod template;
 pub mod transitions;
+pub mod vector;
 pub mod widgets;
 pub mod writeback;
 
@@ -78,6 +79,7 @@ impl Plugin for HuiPlugin {
         widgets::plugin(app);
         icons::plugin(app);
         transitions::plugin(app);
+        vector::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.

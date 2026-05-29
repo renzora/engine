@@ -1,0 +1,74 @@
+<!-- Vector graphics (vello): gauges, rings, charts, waveforms.
+
+     <node vector="gauge|ring|bar|line|waveform" ... width=".." height="..">
+       value="{{ binding }}" | literal     (gauge/ring scalar)
+       min / max                            (range; defaults per kind)
+       color / track (hex)  thickness (px)
+       data="0.2,0.5,..."                   (bar/line/waveform series)
+
+     The node is laid out by bevy_ui like any element and reserves its box;
+     the vello scene fills that box. To make a gauge live, bind value, e.g.
+       vector="gauge" value="{{ Vehicle.speed }}" min="0" max="240"
+
+     Drop a UiCanvas, add HtmlTemplate -> this file. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          flex_direction="column" justify_content="center" align_items="center" row_gap="20px"
+          gradient="radial #141A24 #090B10">
+
+        <node flex_direction="row" align_items="center" column_gap="10px">
+            <icon name="gauge" font_size="22" font_color="#7AA2FF" />
+            <text font_size="20" font_color="#FFFFFF">Vector Graphics</text>
+        </node>
+
+        <!-- Dial + ring row -->
+        <node flex_direction="row" column_gap="20px">
+            <node width="200px" flex_direction="column" align_items="center" row_gap="10px"
+                  padding="20px" border_radius="16px" background="#11151C"
+                  border="1px" border_color="#222B38" shadow="0px 12px 32px #000000AA">
+                <node vector="gauge" value="168" min="0" max="240"
+                      color="#4C8BF5" track="#1B2233" thickness="14"
+                      width="160px" height="120px" />
+                <text font_size="22" font_color="#FFFFFF">168</text>
+                <text font_size="11" font_color="#7E8AA0">KM / H</text>
+            </node>
+
+            <node width="200px" flex_direction="column" align_items="center" row_gap="10px"
+                  padding="20px" border_radius="16px" background="#11151C"
+                  border="1px" border_color="#222B38" shadow="0px 12px 32px #000000AA">
+                <node vector="ring" value="0.74"
+                      color="#2ECC71" track="#1B2A1F" thickness="14"
+                      width="150px" height="150px" />
+                <text font_size="11" font_color="#7E8AA0">PROGRESS 74%</text>
+            </node>
+        </node>
+
+        <!-- Charts row -->
+        <node flex_direction="row" column_gap="20px">
+            <node width="220px" flex_direction="column" row_gap="8px"
+                  padding="18px" border_radius="16px" background="#11151C"
+                  border="1px" border_color="#222B38" shadow="0px 12px 32px #000000AA">
+                <text font_size="12" font_color="#9AA7BD">Bars</text>
+                <node vector="bar" data="0.3,0.6,0.45,0.8,0.55,0.9,0.7,1.0"
+                      color="#9B59B6" width="186px" height="80px" />
+            </node>
+
+            <node width="220px" flex_direction="column" row_gap="8px"
+                  padding="18px" border_radius="16px" background="#11151C"
+                  border="1px" border_color="#222B38" shadow="0px 12px 32px #000000AA">
+                <text font_size="12" font_color="#9AA7BD">Line</text>
+                <node vector="line" data="0.2,0.5,0.3,0.7,0.6,0.9,0.55,0.8"
+                      color="#F39C12" thickness="3" width="186px" height="80px" />
+            </node>
+
+            <node width="220px" flex_direction="column" row_gap="8px"
+                  padding="18px" border_radius="16px" background="#11151C"
+                  border="1px" border_color="#222B38" shadow="0px 12px 32px #000000AA">
+                <text font_size="12" font_color="#9AA7BD">Waveform</text>
+                <node vector="waveform" min="0" max="1"
+                      data="0.2,0.6,0.35,0.9,0.5,0.75,0.4,0.95,0.3,0.7,0.55,0.85,0.25,0.6,0.45,0.8"
+                      color="#54E0C7" thickness="4" width="186px" height="80px" />
+            </node>
+        </node>
+    </node>
+</template>

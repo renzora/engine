@@ -30,7 +30,7 @@ use bevy::ui::{
 
 /// Parse a `#RGB` / `#RRGGBB` / `#RRGGBBAA` hex color (the form every demo
 /// template uses). Returns `None` on anything else.
-fn parse_hex_color(s: &str) -> Option<Color> {
+pub fn parse_hex_color(s: &str) -> Option<Color> {
     let h = s.trim().strip_prefix('#')?;
     let nib = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
     let bytes = h.as_bytes();

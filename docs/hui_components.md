@@ -101,6 +101,27 @@ Toggle, then Drag-value, then Disclosure.
 - See `assets/ui/decor_demo.html` for gradient panels, buttons, progress fill,
   and radial swatches.
 
+### Vector graphics (✅ have — `vector.rs`, via bevy_vello)
+- **`vector="gauge|ring|bar|line|waveform"`** → a vello scene drawn into a
+  `UiVelloScene` that bevy_ui lays out and positions (the node reserves its box
+  like any element; the scene fills it). Native desktop only (vello needs WebGPU
+  compute).
+- Attributes:
+  - `value` — scalar for `gauge`/`ring`; a literal number or a `{{ binding }}`
+    (re-resolved each frame against the host's live components — e.g.
+    `value="{{ Vehicle.speed }}"`).
+  - `min` / `max` — range (defaults: 0..1, except `waveform` −1..1).
+  - `color` / `track` — fill and background-track hex colors.
+  - `thickness` — stroke width in px.
+  - `data="0.2,0.5,..."` — comma-separated series for `bar`/`line`/`waveform`.
+- Compositing: a single managed `Camera2d` + `VelloView` mirrors the active
+  world camera's render target and draws just above it
+  (`ClearColorConfig::None`), on a dedicated `RenderLayers` layer. Spawned only
+  when a `vector=` element exists. (Live series binding for charts/waveforms is
+  a follow-up; chart `data` is currently literal.)
+- See `assets/ui/vector_demo.html` for a dashboard (dial, ring, bars, line,
+  waveform).
+
 ## 5. Polish layer (⬜ later)
 - **Transitions/tweens** — smooth hover/show, slide-in drawers, spinners.
   bevy_hui already parses `hover:` / `delay=` / `ease=`; needs a tween system.
