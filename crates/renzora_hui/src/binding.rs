@@ -357,15 +357,173 @@ fn truthy(s: &str) -> bool {
     true
 }
 
-/// Evaluate a `show=` condition to a bool. Supports a single comparison
-/// (`<`, `>`, `<=`, `>=`, `==`, `!=`) between two operands, or a bare operand
-/// (truthy test). Operands are either a `{{ }}`-free binding path
-/// (`Player.Health.current`), a number, a `"quoted"` / bare string literal, or
-/// `true`/`false`. No boolean combinators (`and`/`or`) yet — one comparison.
-///
-/// `raw` is the attribute value, e.g. `"{{ Player.Health.current < 20 }}"` or
-/// a literal `"true"`. A single `{{ }}` wrapper is stripped; the *inside* is
-/// the expression (so the comparison operator isn't mistaken for markup).
+/// A token in a `show=` condition expression.
+#[derive(Debug, Clone, PartialEq)]
+enum Tok {
+    /// A bare word fragment — path segment, number, `true`/`false`. Consecutive
+    /// words rejoin with spaces so entity names like `World Environment` survive.
+    Word(String),
+    /// A `"quoted"` string literal (quotes stripped).
+    Str(String),
+    /// A comparison operator: `<` `>` `<=` `>=` `==` `!=`.
+    Op(String),
+    And,
+    Or,
+    Not,
+    LParen,
+    RParen,
+}
+
+/// Tokenize a condition expression. Whitespace separates words but is NOT a
+/// token; `and`/`or`/`not` (case-insensitive) become keyword tokens.
+fn tokenize_condition(s: &str) -> Vec<Tok> {
+    let bytes = s.as_bytes();
+    let mut toks = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        match c {
+            b' ' | b'\t' | b'\n' | b'\r' => i += 1,
+            b'(' => {
+                toks.push(Tok::LParen);
+                i += 1;
+            }
+            b')' => {
+                toks.push(Tok::RParen);
+                i += 1;
+            }
+            b'"' => {
+                let start = i + 1;
+                let mut j = start;
+                while j < bytes.len() && bytes[j] != b'"' {
+                    j += 1;
+                }
+                toks.push(Tok::Str(s[start..j].to_string()));
+                i = if j < bytes.len() { j + 1 } else { j };
+            }
+            b'<' | b'>' | b'=' | b'!' => {
+                let two = if i + 1 < bytes.len() { &s[i..i + 2] } else { "" };
+                if matches!(two, "<=" | ">=" | "==" | "!=") {
+                    toks.push(Tok::Op(two.to_string()));
+                    i += 2;
+                } else if c == b'!' {
+                    toks.push(Tok::Not); // `!x` == `not x`
+                    i += 1;
+                } else if c == b'=' {
+                    toks.push(Tok::Op("==".to_string())); // be forgiving: `=` → `==`
+                    i += 1;
+                } else {
+                    toks.push(Tok::Op((c as char).to_string()));
+                    i += 1;
+                }
+            }
+            _ => {
+                let start = i;
+                while i < bytes.len()
+                    && !matches!(
+                        bytes[i],
+                        b' ' | b'\t' | b'\n' | b'\r' | b'(' | b')' | b'"' | b'<' | b'>' | b'=' | b'!'
+                    )
+                {
+                    i += 1;
+                }
+                let w = &s[start..i];
+                match w.to_ascii_lowercase().as_str() {
+                    "and" => toks.push(Tok::And),
+                    "or" => toks.push(Tok::Or),
+                    "not" => toks.push(Tok::Not),
+                    _ => toks.push(Tok::Word(w.to_string())),
+                }
+            }
+        }
+    }
+    toks
+}
+
+/// Recursive-descent evaluator for a tokenized condition. Precedence:
+/// `or` < `and` < `not` < comparison. Supports parentheses.
+struct CondEval<'a> {
+    toks: &'a [Tok],
+    pos: usize,
+    world: &'a World,
+    registry: &'a TypeRegistry,
+    names: &'a HashMap<String, Entity>,
+    host: Entity,
+}
+
+impl<'a> CondEval<'a> {
+    fn peek(&self) -> Option<&Tok> {
+        self.toks.get(self.pos)
+    }
+    fn eval(&mut self) -> bool {
+        self.or_expr()
+    }
+    fn or_expr(&mut self) -> bool {
+        let mut v = self.and_expr();
+        while matches!(self.peek(), Some(Tok::Or)) {
+            self.pos += 1;
+            let r = self.and_expr();
+            v = v || r;
+        }
+        v
+    }
+    fn and_expr(&mut self) -> bool {
+        let mut v = self.unary();
+        while matches!(self.peek(), Some(Tok::And)) {
+            self.pos += 1;
+            let r = self.unary();
+            v = v && r;
+        }
+        v
+    }
+    fn unary(&mut self) -> bool {
+        if matches!(self.peek(), Some(Tok::Not)) {
+            self.pos += 1;
+            return !self.unary();
+        }
+        if matches!(self.peek(), Some(Tok::LParen)) {
+            self.pos += 1;
+            let v = self.or_expr();
+            if matches!(self.peek(), Some(Tok::RParen)) {
+                self.pos += 1;
+            }
+            return v;
+        }
+        self.comparison()
+    }
+    fn comparison(&mut self) -> bool {
+        let lhs = self.operand();
+        if let Some(Tok::Op(op)) = self.peek() {
+            let op = op.clone();
+            self.pos += 1;
+            let rhs = self.operand();
+            return compare(&lhs, &rhs, &op);
+        }
+        truthy(&lhs)
+    }
+    /// Consume a run of `Word`s (rejoined with spaces) or a single `Str`, and
+    /// resolve to a value string. Stops at operators / keywords / parens.
+    fn operand(&mut self) -> String {
+        if let Some(Tok::Str(s)) = self.peek() {
+            let s = s.clone();
+            self.pos += 1;
+            return s;
+        }
+        let mut parts: Vec<String> = Vec::new();
+        while let Some(Tok::Word(w)) = self.peek() {
+            parts.push(w.clone());
+            self.pos += 1;
+        }
+        let joined = parts.join(" ");
+        resolve_operand(self.world, self.registry, self.names, self.host, &joined)
+    }
+}
+
+/// Evaluate a `show=` condition to a bool. Supports `and`/`or`/`not`,
+/// parentheses, comparisons (`< > <= >= == !=`), and bare truthy operands.
+/// Operands are binding paths (`Player.Health.current`, `World Environment.Sun.x`),
+/// numbers, `true`/`false`, or `"quoted"` strings. A single `{{ }}` wrapper is
+/// stripped first so operators aren't mistaken for markup.
 fn eval_condition(
     world: &World,
     registry: &TypeRegistry,
@@ -374,18 +532,19 @@ fn eval_condition(
     raw: &str,
 ) -> bool {
     let inner = strip_binding_wrapper(raw);
-
-    // Two-char operators first so `<=` isn't read as `<`.
-    const OPS: &[&str] = &["==", "!=", "<=", ">=", "<", ">"];
-    for op in OPS {
-        if let Some(idx) = find_top_level_op(inner, op) {
-            let lhs = resolve_operand(world, registry, names, host, inner[..idx].trim());
-            let rhs = resolve_operand(world, registry, names, host, inner[idx + op.len()..].trim());
-            return compare(&lhs, &rhs, op);
-        }
+    let toks = tokenize_condition(inner);
+    if toks.is_empty() {
+        return false;
     }
-    // No operator → truthy test of the single resolved operand.
-    truthy(&resolve_operand(world, registry, names, host, inner.trim()))
+    let mut ev = CondEval {
+        toks: &toks,
+        pos: 0,
+        world,
+        registry,
+        names,
+        host,
+    };
+    ev.eval()
 }
 
 /// Strip a single `{{ ... }}` wrapper, returning the inner expression. If
@@ -398,27 +557,6 @@ fn strip_binding_wrapper(raw: &str) -> &str {
         }
     }
     t
-}
-
-/// Find an operator outside of any quoted string. Returns its byte index.
-fn find_top_level_op(s: &str, op: &str) -> Option<usize> {
-    let bytes = s.as_bytes();
-    let op_bytes = op.as_bytes();
-    let mut in_quote = false;
-    let mut i = 0;
-    while i + op_bytes.len() <= bytes.len() {
-        let c = bytes[i];
-        if c == b'"' {
-            in_quote = !in_quote;
-            i += 1;
-            continue;
-        }
-        if !in_quote && &bytes[i..i + op_bytes.len()] == op_bytes {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
 }
 
 /// Resolve one operand to a display string: a `"quoted"` literal (quotes
