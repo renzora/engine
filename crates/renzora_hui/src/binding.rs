@@ -147,8 +147,15 @@ fn resolve_path(
         return None;
     }
 
-    // Bare single segment (`{{ _time }}`) → a script variable on the host.
+    // Bare single segment.
     if segments.len() == 1 {
+        // `{{ Name }}` (or `{{ name }}`) → the host entity's Bevy `Name`.
+        if segments[0].eq_ignore_ascii_case("name") {
+            if let Some(n) = read_name(world, host) {
+                return Some(n);
+            }
+        }
+        // Otherwise a script variable on the host.
         return resolve_script_var(world, host, segments[0]);
     }
 
@@ -164,6 +171,14 @@ fn resolve_path(
     } else {
         (*names.get(segments[0])?, segments[1], &segments[2..])
     };
+
+    // `{{ SomeEntity.Name }}` — read the named entity's Bevy `Name` directly
+    // (the `Name` component reflects to an ugly debug string otherwise).
+    if member.eq_ignore_ascii_case("name") && field_segments.is_empty() {
+        if let Some(n) = read_name(world, entity) {
+            return Some(n);
+        }
+    }
 
     // `member` is either a component type (→ reflect its field) or, failing
     // that, a script variable on the entity. Components win.
@@ -203,6 +218,15 @@ fn resolve_path(
 
     // Not a component — try `member` as a script variable on the entity.
     resolve_script_var(world, entity, member)
+}
+
+/// Read an entity's Bevy `Name` as a plain string.
+fn read_name(world: &World, entity: Entity) -> Option<String> {
+    world
+        .get_entity(entity)
+        .ok()?
+        .get::<Name>()
+        .map(|n| n.as_str().to_string())
 }
 
 /// Read a live script variable off an entity's `ScriptComponent`. Scans every

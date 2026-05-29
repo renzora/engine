@@ -15,6 +15,7 @@ use bevy::prelude::*;
 pub mod binding;
 pub mod cursor;
 pub mod drag;
+pub mod foreach;
 pub mod interactions;
 pub mod loader;
 pub mod lua_bridge;
@@ -62,6 +63,7 @@ impl Plugin for HuiPlugin {
         cursor::plugin(app);
         drag::plugin(app);
         binding::plugin(app);
+        foreach::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.

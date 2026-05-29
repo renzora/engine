@@ -133,10 +133,67 @@ fn spawn_subtree(
     let child = commands.spawn_empty().id();
     commands.entity(parent).add_child(child);
     apply_xnode_to(commands, ctx, child, node, template, &node_path);
+
+    // `<for>` is a runtime-reactive container — its children are spawned per
+    // matching entity by `foreach::update_foreach`, not at build time. Don't
+    // recurse into them here.
+    if is_for_node(node) {
+        return;
+    }
     for (i, grand) in node.children.iter().enumerate() {
         let mut grand_path = node_path.clone();
         grand_path.push(i as u32);
         spawn_subtree(commands, ctx, child, grand, template, grand_path);
+    }
+}
+
+/// True for a `<for>` element.
+fn is_for_node(node: &XNode) -> bool {
+    matches!(&node.node_type, NodeType::Custom(n) if n == "for")
+}
+
+/// Navigate `template` from its root down `path` (chain of child indices).
+fn node_at<'a>(template: &'a HtmlTemplate, path: &[u32]) -> Option<&'a XNode> {
+    let mut node = template.root.first()?;
+    for &idx in path {
+        node = node.children.get(idx as usize)?;
+    }
+    Some(node)
+}
+
+/// Build the children of a `<for>` node once for a single matched `host`
+/// entity, parented under `parent`. Called by `foreach::update_foreach` per
+/// matched entity; each spawned subtree binds `{{ Component.field }}` against
+/// `host`, so the loop body reads the entity it was spawned for.
+pub fn build_for_children(
+    commands: &mut Commands,
+    server: &AssetServer,
+    templates: &Assets<HtmlTemplate>,
+    template_handle: &Handle<HtmlTemplate>,
+    for_node_path: &[u32],
+    host: Entity,
+    parent: Entity,
+) {
+    let Some(template) = templates.get(template_handle) else {
+        return;
+    };
+    let Some(for_node) = node_at(template, for_node_path) else {
+        return;
+    };
+    let mut props = TemplateProperties::default();
+    for (k, v) in &template.properties {
+        props.insert(k.clone(), v.clone());
+    }
+    let ctx = BuildCtx {
+        server,
+        templates,
+        props: &props,
+        slot_children: None,
+        template_handle,
+        host,
+    };
+    for (i, child) in for_node.children.iter().enumerate() {
+        spawn_subtree(commands, &ctx, parent, child, template, vec![i as u32]);
     }
 }
 
@@ -267,11 +324,22 @@ fn apply_xnode_to(
         return;
     }
 
-    // Bare `<custom_tag>` with no `template=` attribute. The file-stem
-    // registry that used to resolve these is gone — components must be
-    // referenced by explicit path now. Warn so any un-migrated demo template
-    // surfaces clearly instead of silently rendering an empty box.
-    if let NodeType::Custom(name) = &node.node_type {
+    // `<for tag="...">` — a runtime-reactive list. Stamp a `ForEach` and fall
+    // through to normal node styling so the `<for>` is itself a styled flex
+    // container (its `flex_direction`, `row_gap`, etc. apply); the foreach
+    // system fills it with one copy of its children per matching entity.
+    if is_for_node(node) {
+        let tag = node.defs.get("tag").cloned().unwrap_or_default();
+        commands.entity(entity).insert(crate::foreach::ForEach::new(
+            ctx.template_handle.clone(),
+            node_path.to_vec(),
+            tag,
+        ));
+    } else if let NodeType::Custom(name) = &node.node_type {
+        // Bare `<custom_tag>` with no `template=` attribute. The file-stem
+        // registry that used to resolve these is gone — components must be
+        // referenced by explicit path now. Warn so any un-migrated demo
+        // template surfaces clearly instead of silently rendering an empty box.
         warn!(
             "renzora_hui: <{name}> is not a built-in element — use \
              `<node template=\"path/to/{name}.html\" ...>` instead"
