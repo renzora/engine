@@ -14,6 +14,8 @@ use bevy::prelude::*;
 
 pub mod binding;
 pub mod cursor;
+pub mod cursor_icon;
+pub mod dnd;
 pub mod drag;
 pub mod foreach;
 pub mod icons;
@@ -66,7 +68,9 @@ impl Plugin for HuiPlugin {
         template::plugin(app);
         interactions::plugin(app);
         cursor::plugin(app);
+        cursor_icon::plugin(app);
         drag::plugin(app);
+        dnd::plugin(app);
         binding::plugin(app);
         foreach::plugin(app);
         input_field::plugin(app);

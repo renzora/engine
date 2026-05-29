@@ -584,6 +584,32 @@ fn apply_xnode_to(
         }
     }
 
+    // `drag_item` — a drag-and-drop source. Payload is the binding host (the
+    // item entity inside a `<for>`). Needs Button for Interaction.
+    if node.defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
+        ec.insert(crate::dnd::DragItem { payload: ctx.host });
+        ec.insert(Button);
+        // Pass so the item still receives Interaction (for pickup) but doesn't
+        // block the drop zone beneath it from detecting the cursor.
+        ec.insert(bevy::ui::FocusPolicy::Pass);
+    }
+    // `cursor="grab"` — OS cursor icon shown while this node is hovered.
+    if let Some(name) = node.defs.get("cursor") {
+        if let Some(icon) = crate::cursor_icon::parse_cursor(name) {
+            ec.insert(crate::cursor_icon::HoverCursor(icon));
+            ec.insert(Interaction::default());
+        }
+    }
+    // `dropzone drop_tag="basket" on_drop="..."` — a drop target.
+    if node.defs.contains_key("dropzone") || node.tags.contains_key("dropzone") {
+        ec.insert(crate::dnd::DropZone {
+            drop_tag: node.defs.get("drop_tag").cloned(),
+            on_drop: node.defs.get("on_drop").cloned(),
+        });
+        ec.insert(bevy::ui::RelativeCursorPosition::default());
+        ec.insert(Interaction::default());
+    }
+
     // Event listeners (`on_press="..."`, `on_enter="..."`, `on_exit="..."`,
     // `on_spawn`, `on_change`) get attached as bevy_hui's prelude components.
     // `interactions.rs` then watches `Changed<Interaction>` on these entities

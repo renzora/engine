@@ -1,0 +1,52 @@
+<!-- Drag & drop between two lists.
+
+     Items are entities tagged "inventory". Drag one onto the Basket panel to
+     retag it "basket" (and back). Both <for>s re-render automatically — that's
+     the cross-list/cross-template move: it's just a tag change on a shared
+     entity, so it works even if the two panels live in different templates.
+
+     Setup: create a few entities, give each a Name and an EntityTag with
+     tag="inventory" (Add Component -> Entity Tag in the inspector). Then a
+     UiCanvas + HtmlTemplate -> this file. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          flex_direction="row" justify_content="center" align_items="center" column_gap="20px"
+          background="#0D0F14CC">
+
+        <!-- INVENTORY (drop here to put items back) -->
+        <node dropzone="true" drop_tag="inventory"
+              width="260px" height="420px" flex_direction="column" row_gap="8px" padding="16px"
+              background="#11151C" border="1px" border_color="#222B38" border_radius="12px">
+            <node flex_direction="row" align_items="center" column_gap="8px">
+                <icon name="backpack" font_size="16" font_color="#AEB6C2" />
+                <text font_size="15" font_color="#FFFFFF">Inventory</text>
+            </node>
+            <for tag="inventory" flex_direction="column" row_gap="6px">
+                <node drag_item="true" cursor="grab" flex_direction="row" align_items="center" column_gap="8px"
+                      padding="10px" background="#1B1F27" border_radius="8px">
+                    <icon name="cube" font_size="16" font_color="#4C8BF5" />
+                    <text font_size="13" font_color="#FFFFFF">{{ Name }}</text>
+                </node>
+            </for>
+        </node>
+
+        <icon name="arrows-left-right" font_size="24" font_color="#5A6678" />
+
+        <!-- BASKET (drop here to add items) -->
+        <node dropzone="true" drop_tag="basket"
+              width="260px" height="420px" flex_direction="column" row_gap="8px" padding="16px"
+              background="#11151C" border="1px" border_color="#222B38" border_radius="12px">
+            <node flex_direction="row" align_items="center" column_gap="8px">
+                <icon name="shopping-cart" font_size="16" font_color="#2ECC71" />
+                <text font_size="15" font_color="#FFFFFF">Basket</text>
+            </node>
+            <for tag="basket" flex_direction="column" row_gap="6px">
+                <node drag_item="true" cursor="grab" flex_direction="row" align_items="center" column_gap="8px"
+                      padding="10px" background="#1B2A1F" border_radius="8px">
+                    <icon name="cube" font_size="16" font_color="#2ECC71" />
+                    <text font_size="13" font_color="#FFFFFF">{{ Name }}</text>
+                </node>
+            </for>
+        </node>
+    </node>
+</template>
