@@ -20,7 +20,7 @@
         <!-- Tab strip. `name="tab_*"` lets the Lua side find each one by name
              via `set_on(name, "BackgroundColor.color", ...)`. -->
         <node flex_direction="row" column_gap="6px" padding="4px" background="#11151C" border_radius="10px">
-            <button name="tab_loadout" padding="10px 18px 10px 18px" background="#4C8BF5" border_radius="6px" on_press="select_tab_loadout">
+            <button name="tab_loadout" padding="10px 18px 10px 18px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" delay="0.12s" on_press="select_tab_loadout">
                 <text font_size="13" font_color="#FFFFFF">Loadout</text>
             </button>
             <button name="tab_perks" padding="10px 18px 10px 18px" background="#11151C" border_radius="6px" hover:background="#1B1F27" on_press="select_tab_perks">

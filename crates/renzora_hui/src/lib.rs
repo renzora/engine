@@ -24,6 +24,7 @@ pub mod phosphor_map;
 pub mod lua_bridge;
 pub mod provenance;
 pub mod template;
+pub mod transitions;
 pub mod widgets;
 pub mod writeback;
 
@@ -71,6 +72,7 @@ impl Plugin for HuiPlugin {
         input_field::plugin(app);
         widgets::plugin(app);
         icons::plugin(app);
+        transitions::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.

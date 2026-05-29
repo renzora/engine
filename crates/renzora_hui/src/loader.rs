@@ -522,6 +522,59 @@ fn apply_xnode_to(
     // below, that makes per-element edits round-trip to the `.html` file.
     ec.insert(renzora_game_ui::UiWidget::default());
 
+    // `hover:` / `pressed:` color overrides + tween timing → `Interactive`.
+    // bevy_hui parses these into `StyleAttr::Hover/Pressed(inner)`; collect the
+    // background/border ones so `transitions::apply_interactive` can swap/ease
+    // them on interaction. (Base colors are the already-computed `background` /
+    // `border_color`.)
+    {
+        let mut hover_bg = None;
+        let mut hover_border = None;
+        let mut pressed_bg = None;
+        let mut pressed_border = None;
+        let mut tween = 0.0_f32;
+        for style in &node.styles {
+            match style {
+                StyleAttr::Hover(inner) => match inner.as_ref() {
+                    StyleAttr::Background(c) => hover_bg = Some(*c),
+                    StyleAttr::BorderColor(c) => hover_border = Some(*c),
+                    _ => {}
+                },
+                StyleAttr::Pressed(inner) => match inner.as_ref() {
+                    StyleAttr::Background(c) => pressed_bg = Some(*c),
+                    StyleAttr::BorderColor(c) => pressed_border = Some(*c),
+                    _ => {}
+                },
+                StyleAttr::Delay(d) | StyleAttr::Duration(d) => tween = *d,
+                _ => {}
+            }
+        }
+
+        if hover_bg.is_some()
+            || hover_border.is_some()
+            || pressed_bg.is_some()
+            || pressed_border.is_some()
+        {
+            // The transition system mutates BackgroundColor/BorderColor, so make
+            // sure they exist even when only a hover/pressed value was given.
+            if background.is_none() && (hover_bg.is_some() || pressed_bg.is_some()) {
+                ec.insert(BackgroundColor(Color::NONE));
+            }
+            // Interaction must be present to detect hover/press. Buttons already
+            // require it; insert for plain hover nodes too (harmless on buttons).
+            ec.insert(Interaction::default());
+            ec.insert(crate::transitions::Interactive {
+                base_bg: background,
+                hover_bg,
+                pressed_bg,
+                base_border: border_color,
+                hover_border,
+                pressed_border,
+                duration: tween,
+            });
+        }
+    }
+
     // `draggable="true"` (parsed into `node.tags`) opts the entity into the
     // drag system. Any value except `"false"` counts as truthy — same loose
     // semantics HTML's own `draggable` attr uses.
