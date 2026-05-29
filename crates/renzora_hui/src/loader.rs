@@ -134,10 +134,9 @@ fn spawn_subtree(
     commands.entity(parent).add_child(child);
     apply_xnode_to(commands, ctx, child, node, template, &node_path);
 
-    // `<for>` is a runtime-reactive container — its children are spawned per
-    // matching entity by `foreach::update_foreach`, not at build time. Don't
-    // recurse into them here.
-    if is_for_node(node) {
+    // `<for>` spawns children per entity at runtime; `<input>` and `<icon>`
+    // own their own text content. None recurse their markup children here.
+    if is_for_node(node) || is_input_node(node) || is_icon_node(node) {
         return;
     }
     for (i, grand) in node.children.iter().enumerate() {
@@ -150,6 +149,16 @@ fn spawn_subtree(
 /// True for a `<for>` element.
 fn is_for_node(node: &XNode) -> bool {
     matches!(&node.node_type, NodeType::Custom(n) if n == "for")
+}
+
+/// True for an `<input>` element.
+fn is_input_node(node: &XNode) -> bool {
+    matches!(&node.node_type, NodeType::Custom(n) if n == "input")
+}
+
+/// True for an `<icon>` element.
+fn is_icon_node(node: &XNode) -> bool {
+    matches!(&node.node_type, NodeType::Custom(n) if n == "icon")
 }
 
 /// Navigate `template` from its root down `path` (chain of child indices).
@@ -335,6 +344,31 @@ fn apply_xnode_to(
             node_path.to_vec(),
             tag,
         ));
+    } else if is_input_node(node) {
+        // `<input bind="Entity.var" placeholder=".." password="true">` — a
+        // focusable text field. Stamp TextInput + Button (for click focus);
+        // the `Text` is added in the node-type match below. Falls through to
+        // node styling so its box/border/padding apply.
+        let bind = node.defs.get("bind").cloned().unwrap_or_default();
+        let placeholder = node.defs.get("placeholder").cloned().unwrap_or_default();
+        let password = node
+            .defs
+            .get("password")
+            .map(|v| v != "false")
+            .unwrap_or(false);
+        commands
+            .entity(entity)
+            .insert(crate::input_field::TextInput::new(
+                bind,
+                placeholder,
+                password,
+                ctx.host,
+            ));
+        commands.entity(entity).insert(Button);
+    } else if is_icon_node(node) {
+        // `<icon>` — styled like a node here; the glyph + Phosphor font are
+        // applied later by `icons::apply_icons` (stamped below where the font
+        // size/color are known). Fall through to node styling.
     } else if let NodeType::Custom(name) = &node.node_type {
         // Bare `<custom_tag>` with no `template=` attribute. The file-stem
         // registry that used to resolve these is gone — components must be
@@ -416,6 +450,71 @@ fn apply_xnode_to(
             ctx.host,
             display_when_shown,
         ));
+    }
+
+    // Interactive widget behaviors (see `widgets.rs`). Each needs `Button` so
+    // bevy_ui delivers `Interaction`. Targets are plain paths (not `{{ }}`).
+    if let Some(target) = node.defs.get("toggle") {
+        ec.insert(crate::widgets::Toggle {
+            target: target.clone(),
+            host: ctx.host,
+        });
+        ec.insert(Button);
+    }
+    if let Some(target) = node.defs.get("drag_value") {
+        let min = node.defs.get("drag_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        let max = node.defs.get("drag_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
+        ec.insert(crate::widgets::DragValue {
+            target: target.clone(),
+            min,
+            max,
+            host: ctx.host,
+        });
+        ec.insert(Button);
+        // `RelativeCursorPosition` is auto-updated by bevy_ui's focus system and
+        // gives the cursor's 0..1 position within the node — what the drag reads.
+        ec.insert(bevy::ui::RelativeCursorPosition::default());
+    }
+    if let Some(target) = node.defs.get("fill") {
+        let min = node.defs.get("fill_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        let max = node.defs.get("fill_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
+        ec.insert(crate::widgets::ValueFill {
+            target: target.clone(),
+            min,
+            max,
+            host: ctx.host,
+        });
+        // A fill is decorative — let clicks pass through to the slider track
+        // beneath it so dragging works across the filled portion.
+        ec.insert(bevy::ui::FocusPolicy::Pass);
+    }
+    if let Some(target) = node.defs.get("toggles") {
+        ec.insert(crate::widgets::Disclose {
+            target: target.clone(),
+        });
+        ec.insert(Button);
+    }
+
+    // `<icon name="...">` — stamp the Icon; the icons system renders the glyph
+    // in the Phosphor font. Size from `font_size` (or `size`), color from
+    // `font_color`.
+    if is_icon_node(node) {
+        let raw_size = font_size
+            .or_else(|| node.defs.get("size").and_then(|s| s.parse().ok()))
+            .unwrap_or(16.0);
+        let size = if raw_size.is_finite() {
+            raw_size.clamp(1.0, 512.0)
+        } else {
+            16.0
+        };
+        // `name="check"` parses to the entity `Name` (node.name), not defs —
+        // that's the icon name. Fall back to defs["icon"] if someone used that.
+        let icon_name = node
+            .name
+            .clone()
+            .or_else(|| node.defs.get("icon").cloned())
+            .unwrap_or_default();
+        ec.insert(crate::icons::Icon::new(icon_name, size, font_color));
     }
     // Every markup node is its own selectable widget — the canvas editor
     // hit-tests `UiWidget` entities, so clicking a `<text>` inside a `<panel>`
@@ -549,6 +648,18 @@ fn apply_xnode_to(
         | NodeType::Template
         | NodeType::Property => {}
     }
+
+    // `<input>` renders its edited value as text on the entity itself; the
+    // input system (`input_field::sync_inputs`) keeps it updated.
+    if is_input_node(node) {
+        ec.insert(Text::new(String::new()));
+        if let Some(s) = font_size {
+            ec.insert(TextFont::from_font_size(s));
+        }
+        if let Some(c) = font_color {
+            ec.insert(TextColor(c));
+        }
+    }
 }
 
 /// Resolve one `AttrTokens` (a `key="{prop}"` style attribute) using the
@@ -666,7 +777,14 @@ fn apply_style(
         S::BorderColor(c) => *border = Some(*c),
         S::BorderRadius(r) => *border_radius_rect = Some(*r),
         S::Background(c) => *bg = Some(*c),
-        S::FontSize(f) => *font_size = Some(*f),
+        // Clamp to a finite, sane range. A malformed markup value (e.g. a
+        // huge number that overflows to inf) would otherwise produce
+        // infinite/NaN text dimensions and crash bevy_ui's layout
+        // (`BorderRadius::resolve` panics clamping against NaN).
+        S::FontSize(f) => {
+            let v = if f.is_finite() { f.clamp(1.0, 512.0) } else { 16.0 };
+            *font_size = Some(v);
+        }
         S::FontColor(c) => *font_color = Some(*c),
         S::GridAutoFlow(g) => n.grid_auto_flow = *g,
         S::GridTemplateRows(v) => n.grid_template_rows = v.clone(),

@@ -647,6 +647,22 @@ pub fn update_show_bindings(world: &mut World) {
     }
 }
 
+/// Read a single binding path to a display string, against `host`. Public so
+/// widgets (toggle, etc.) can read the current value of a bound target.
+/// Takes `&mut World` so it can build the name map via a query; only reads.
+pub fn read_path(world: &mut World, host: Entity, path: &str) -> Option<String> {
+    let mut names: HashMap<String, Entity> = HashMap::default();
+    {
+        let mut q = world.query::<(Entity, &Name)>();
+        for (e, n) in q.iter(world) {
+            names.insert(n.as_str().to_string(), e);
+        }
+    }
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let reg = registry.read();
+    resolve_path(world, &reg, &names, host, path)
+}
+
 pub fn plugin(app: &mut App) {
     app.add_systems(Update, (update_text_bindings, update_show_bindings));
 }

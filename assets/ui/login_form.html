@@ -1,0 +1,46 @@
+<!-- Login form. Inputs write to the "Account" entity's email/password script
+     vars; the button fires on_ui("submit_login") in account.lua.
+
+     Setup: an entity NAMED "Account" runs scripts/account.lua. A UiCanvas
+     entity has HtmlTemplate -> this file.
+
+     <input> = a focusable text field: click to focus, type to edit, value
+     two-way-bound to a script var via bind=. password="true" masks it. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          background="#0D0F14E6" justify_content="center" align_items="center">
+
+        <node flex_direction="column" row_gap="14px" padding="28px" width="340px"
+              background="#11151C" border="1px" border_color="#222B38" border_radius="14px">
+
+            <text font_size="20" font_color="#FFFFFF">Sign in to renzora.com</text>
+
+            <node flex_direction="column" row_gap="6px">
+                <text font_size="11" font_color="#8A93A2">Email</text>
+                <input bind="Account.email" placeholder="you@example.com"
+                       padding="10px" background="#0D0F14" border="1px" border_color="#2C3340"
+                       border_radius="6px" font_size="13" font_color="#FFFFFF" />
+            </node>
+
+            <node flex_direction="column" row_gap="6px">
+                <text font_size="11" font_color="#8A93A2">Password</text>
+                <input bind="Account.password" placeholder="••••••••" password="true"
+                       padding="10px" background="#0D0F14" border="1px" border_color="#2C3340"
+                       border_radius="6px" font_size="13" font_color="#FFFFFF" />
+            </node>
+
+            <button padding="12px" background="#4C8BF5" border_radius="8px"
+                    justify_content="center" on_press="submit_login">
+                <text font_size="14" font_color="#FFFFFF">Log in</text>
+            </button>
+
+            <text font_size="11" font_color="#8A93A2">{{ Account.login_status }}</text>
+
+            <!-- Success banner -->
+            <node show="{{ Account.login_status == online }}" padding="10px"
+                  background="#11251A" border_radius="6px" justify_content="center">
+                <icon name="check" font_size="13" font_color="#2ECC71" margin="0px 4px 0px 0px" /><text font_size="13" font_color="#2ECC71">Welcome, {{ Account.username }}</text>
+            </node>
+        </node>
+    </node>
+</template>

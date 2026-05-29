@@ -1,0 +1,68 @@
+<!-- Interactive widget kernel demo — drives the live Sun on "World Environment".
+     Setup: UiCanvas + HtmlTemplate -> this file; entity named "World Environment"
+     with a Sun component (+ day_night_cycle.lua optional).
+
+     Shows the three interaction kernels:
+       toggle      = click flips a bool
+       drag_value  = drag horizontally to set a number
+       toggles     = click shows/hides a named element -->
+<template>
+    <node position="absolute" top="24px" left="24px" flex_direction="column" row_gap="14px"
+          padding="18px" width="320px" background="#11151C" border="1px" border_color="#222B38" border_radius="12px">
+
+        <text font_size="15" font_color="#FFFFFF">Sun Controls</text>
+
+        <!-- CHECKBOX (toggle) -->
+        <node flex_direction="row" align_items="center" column_gap="10px">
+            <node toggle="World Environment.Sun.shadows_enabled"
+                  width="22px" height="22px" background="#1B1F27" border="2px" border_color="#4C8BF5"
+                  border_radius="5px" justify_content="center" align_items="center">
+                <icon name="check" show="{{ World Environment.Sun.shadows_enabled }}" font_size="14" font_color="#2ECC71" />
+            </node>
+            <text font_size="13" font_color="#AEB6C2">Shadows enabled</text>
+        </node>
+
+        <!-- SLIDER (drag_value) — drag across the track to set elevation -->
+        <node flex_direction="column" row_gap="4px">
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="12" font_color="#8A93A2">Elevation</text>
+                <text font_size="12" font_color="#FFFFFF">{{ World Environment.Sun.elevation }}</text>
+            </node>
+            <node drag_value="World Environment.Sun.elevation" drag_min="-90" drag_max="90"
+                  width="100%" height="20px" background="#1B1F27" border_radius="999px" align_items="center">
+                <node fill="World Environment.Sun.elevation" fill_min="-90" fill_max="90"
+                      height="100%" background="#4C8BF5" border_radius="999px" />
+            </node>
+        </node>
+
+        <!-- SLIDER — azimuth -->
+        <node flex_direction="column" row_gap="4px">
+            <node flex_direction="row" justify_content="space_between">
+                <text font_size="12" font_color="#8A93A2">Azimuth</text>
+                <text font_size="12" font_color="#FFFFFF">{{ World Environment.Sun.azimuth }}</text>
+            </node>
+            <node drag_value="World Environment.Sun.azimuth" drag_min="0" drag_max="360"
+                  width="100%" height="20px" background="#1B1F27" border_radius="999px" align_items="center">
+                <node fill="World Environment.Sun.azimuth" fill_min="0" fill_max="360"
+                      height="100%" background="#F1C40F" border_radius="999px" />
+            </node>
+        </node>
+
+        <!-- DISCLOSURE (toggles) — show/hide an advanced panel -->
+        <button toggles="advanced_panel" padding="8px" background="#1B1F27" border_radius="6px"
+                justify_content="center" align_items="center" column_gap="6px" hover:background="#222A36">
+            <text font_size="12" font_color="#4C8BF5">Advanced</text>
+            <icon name="caret-down" font_size="14" font_color="#4C8BF5" />
+        </button>
+        <node name="advanced_panel" display="none" flex_direction="column" row_gap="6px"
+              padding="10px" background="#0D0F14" border_radius="6px">
+            <text font_size="11" font_color="#8A93A2">Illuminance</text>
+            <node drag_value="World Environment.Sun.illuminance" drag_min="0" drag_max="100000"
+                  width="100%" height="16px" background="#1B1F27" border_radius="999px" align_items="center">
+                <node fill="World Environment.Sun.illuminance" fill_min="0" fill_max="100000"
+                      height="100%" background="#E67E22" border_radius="999px" />
+            </node>
+            <text font_size="11" font_color="#F1C40F">{{ World Environment.Sun.illuminance }} lx</text>
+        </node>
+    </node>
+</template>

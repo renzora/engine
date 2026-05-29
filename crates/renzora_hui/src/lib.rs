@@ -16,11 +16,15 @@ pub mod binding;
 pub mod cursor;
 pub mod drag;
 pub mod foreach;
+pub mod icons;
+pub mod input_field;
 pub mod interactions;
 pub mod loader;
+pub mod phosphor_map;
 pub mod lua_bridge;
 pub mod provenance;
 pub mod template;
+pub mod widgets;
 pub mod writeback;
 
 pub use provenance::MarkupSource;
@@ -64,6 +68,9 @@ impl Plugin for HuiPlugin {
         drag::plugin(app);
         binding::plugin(app);
         foreach::plugin(app);
+        input_field::plugin(app);
+        widgets::plugin(app);
+        icons::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.
