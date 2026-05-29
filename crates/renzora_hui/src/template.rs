@@ -58,11 +58,13 @@ fn on_template_path_inserted(
 ///     against the same entity).
 ///   * **Path edit** in the inspector (`HtmlTemplatePath` reinserted with a new
 ///     value; the observer re-queues `PendingTemplate`).
+#[allow(clippy::too_many_arguments)]
 fn finalize_pending_templates(
     server: Res<AssetServer>,
     templates: Res<Assets<HtmlTemplate>>,
     mut keeper: ResMut<TemplateHandles>,
     pending: Query<(Entity, &PendingTemplate)>,
+    has_node: Query<(), With<Node>>,
     children_q: Query<&Children>,
     mut commands: Commands,
 ) {
@@ -82,13 +84,29 @@ fn finalize_pending_templates(
         if !template_deps_ready(template, &server, &templates, &mut keeper) {
             continue;
         }
+
+        // Model: the `HtmlTemplatePath` holder is expected to be a `UiCanvas`
+        // root, and the markup tree builds as a **child** inside it. The canvas
+        // keeps its own full-size root node; the template is content within it.
+        // To read another entity's data, name it in the binding:
+        // `{{ World Environment.Sun.azimuth }}`.
+        //
+        // Clear the previous build first by despawning the holder's
+        // `Node`-bearing children (the old template root + stale scene builds);
+        // non-UI children are left intact.
         if let Ok(kids) = children_q.get(entity) {
             for child in kids.iter() {
-                commands.entity(child).despawn();
+                if has_node.get(child).is_ok() {
+                    commands.entity(child).despawn();
+                }
             }
         }
+
+        let child = commands.spawn_empty().id();
+        commands.entity(entity).add_child(child);
+
         info!(
-            "renzora_hui: building template `{}` onto {entity}",
+            "renzora_hui: building template `{}` under canvas {entity} (root {child})",
             server
                 .get_path(&marker.0)
                 .map(|p| p.to_string())
@@ -97,7 +115,8 @@ fn finalize_pending_templates(
         build_template_onto(
             &mut commands,
             &server,
-            entity,
+            entity, // host = the canvas holder (binding source for bare paths)
+            child,  // build target = the template root, a child of the canvas
             template,
             marker.0.clone(),
             &templates,

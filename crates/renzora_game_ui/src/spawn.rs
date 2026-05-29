@@ -306,6 +306,9 @@ pub fn spawn_html_template_at(
             Name::new(name),
             UiWidget::default(),
             HtmlTemplatePath(load_path),
+            // Dedicated UI entity dropped onto the canvas — build the markup
+            // tree directly onto it, not as a child.
+            crate::HuiBuildOnSelf,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),

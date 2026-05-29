@@ -29,7 +29,9 @@ pub mod palette;
 
 use bevy::prelude::*;
 
-pub use components::{HtmlTemplatePath, UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType};
+pub use components::{
+    HtmlTemplatePath, HuiBuildOnSelf, UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType,
+};
 
 #[derive(Default)]
 pub struct GameUiPlugin;
@@ -40,6 +42,7 @@ impl Plugin for GameUiPlugin {
         app.register_type::<components::UiCanvas>();
         app.register_type::<components::UiWidget>();
         app.register_type::<components::HtmlTemplatePath>();
+        app.register_type::<components::HuiBuildOnSelf>();
         app.register_type::<components::UiWidgetPart>();
         // Single-entity primitive (replaces ProgressBar / HealthBar / LoadingScreen)
         app.register_type::<components::UiBarFill>();
@@ -178,8 +181,23 @@ impl Plugin for GameUiPlugin {
                 icon: egui_phosphor::regular::FRAME_CORNERS,
                 category: "ui",
                 has_fn: |world, entity| world.get::<components::UiCanvas>(entity).is_some(),
-                add_fn: None,
-                remove_fn: None,
+                // Addable to any entity: insert the canvas marker plus a
+                // full-size root `Node` so it renders / camera-targets like a
+                // canvas spawned through the normal path.
+                add_fn: Some(|world, entity| {
+                    world.entity_mut(entity).insert((
+                        components::UiCanvas::default(),
+                        bevy::ui::Node {
+                            width: bevy::ui::Val::Percent(100.0),
+                            height: bevy::ui::Val::Percent(100.0),
+                            position_type: bevy::ui::PositionType::Absolute,
+                            ..Default::default()
+                        },
+                    ));
+                }),
+                remove_fn: Some(|world, entity| {
+                    world.entity_mut(entity).remove::<components::UiCanvas>();
+                }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
@@ -987,6 +1005,15 @@ fn auto_switch_view_on_selection(world: &mut World) {
         last.0 = current_sel;
     }
     let Some(entity) = current_sel else { return };
+
+    // Hybrid entity (a 3D mesh that *also* carries a `UiCanvas` to render UI
+    // onto itself): don't auto-switch either way. Yanking the viewport to UI
+    // every time you click a cube-with-a-canvas would make it impossible to
+    // manipulate its transform in 3D. The user toggles the view manually when
+    // they want to edit that entity's UI.
+    if world.get::<bevy::prelude::Mesh3d>(entity).is_some() {
+        return;
+    }
 
     let mut check = entity;
     let is_ui = loop {

@@ -13,7 +13,7 @@
 
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, GlobalZIndex, UiScale};
-use bevy::window::{CursorOptions, PrimaryWindow};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 /// Markup name that gets followed by the cursor system. Any entity with
 /// `Name(CURSOR_NAME)` has its `Node.left/top` driven from the cursor pos.
@@ -83,6 +83,16 @@ fn cursor_follow_system(
         let want_visible = !any_cursor_entity;
         if opts.visible != want_visible {
             opts.visible = want_visible;
+        }
+        // Confine the OS cursor to the window while a HUD cursor is alive so
+        // the markup (which is positioned from `window.cursor_position()`)
+        // can't drift off the window edge. Don't touch `Locked` — scripts
+        // that explicitly call `lock_cursor()` for FPS-style mouse-look
+        // should win over this confine.
+        match (any_cursor_entity, opts.grab_mode) {
+            (true, CursorGrabMode::None) => opts.grab_mode = CursorGrabMode::Confined,
+            (false, CursorGrabMode::Confined) => opts.grab_mode = CursorGrabMode::None,
+            _ => {}
         }
     }
 }

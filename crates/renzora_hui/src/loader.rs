@@ -42,9 +42,11 @@ use crate::provenance::{MarkupImage, MarkupSource};
 /// `template.source` when writing back to disk. Passing
 /// `Handle<HtmlTemplate>::default()` is valid for non-editor callers that
 /// don't need provenance.
+#[allow(clippy::too_many_arguments)]
 pub fn build_template_onto(
     commands: &mut Commands,
     server: &AssetServer,
+    host: Entity,
     entity: Entity,
     template: &HtmlTemplate,
     template_handle: Handle<HtmlTemplate>,
@@ -67,6 +69,7 @@ pub fn build_template_onto(
         props: &props,
         slot_children,
         template_handle: &template_handle,
+        host,
     };
 
     let Some(root) = template.root.first() else {
@@ -92,6 +95,12 @@ struct BuildCtx<'a> {
     /// expansions swap this with the inner template's handle in their child
     /// context so provenance keeps pointing at the right `.html`.
     template_handle: &'a Handle<HtmlTemplate>,
+    /// The entity that holds the `HtmlTemplatePath` this whole tree was built
+    /// from — the data source for `{{ Component.field }}` bindings. Stays
+    /// constant through nested `template="..."` expansions so a reused
+    /// component (e.g. a healthbar) reads the host entity's components, not
+    /// the intermediate UI node it expanded onto.
+    host: Entity,
 }
 
 fn spawn_subtree(
@@ -247,6 +256,7 @@ fn apply_xnode_to(
         build_template_onto(
             commands,
             ctx.server,
+            ctx.host,
             entity,
             component_template,
             handle,
@@ -416,6 +426,14 @@ fn apply_xnode_to(
                 .unwrap_or_default();
             let content = substitute_text(raw.trim(), ctx.props);
             if !content.is_empty() {
+                // Runtime binding (`{{ Component.field }}`): stamp a
+                // `TextBinding` so `binding::update_text_bindings` re-resolves
+                // it against `ctx.host`'s live components each frame. The
+                // initial `Text` is the raw token; the system overwrites it
+                // on the first tick.
+                if has_binding(&content) {
+                    ec.insert(crate::binding::TextBinding::new(content.clone(), ctx.host));
+                }
                 ec.insert(Text::new(content));
                 if let Some(s) = font_size {
                     ec.insert(TextFont::from_font_size(s));
@@ -461,8 +479,12 @@ fn compile_attr(
     tokens.compile(props, adapter)
 }
 
-/// Replace `{key}` occurrences in `s` with `props[key]`. Used for text content
-/// and for cascading overrides through component nesting.
+/// Replace build-time `{key}` occurrences in `s` with `props[key]`.
+///
+/// **Runtime bindings `{{ ... }}` are passed through verbatim** — they're a
+/// different mechanism (resolved every frame against live ECS components by
+/// `binding::update_text_bindings`), so the build-time pass must not touch
+/// them. A `{{` always wins over a single `{`.
 fn substitute_text(s: &str, props: &TemplateProperties) -> String {
     if !s.contains('{') {
         return s.to_string();
@@ -474,9 +496,23 @@ fn substitute_text(s: &str, props: &TemplateProperties) -> String {
             out.push(c);
             continue;
         }
+        // Runtime binding `{{ ... }}` — copy through (both braces + body +
+        // closing `}}`) untouched and leave it for the binding system.
+        if chars.peek() == Some(&'{') {
+            out.push('{');
+            out.push(chars.next().unwrap()); // second '{'
+            while let Some(pc) = chars.next() {
+                out.push(pc);
+                if pc == '}' && chars.peek() == Some(&'}') {
+                    out.push(chars.next().unwrap()); // closing second '}'
+                    break;
+                }
+            }
+            continue;
+        }
         let mut key = String::new();
         let mut closed = false;
-        while let Some(pc) = chars.next() {
+        for pc in chars.by_ref() {
             if pc == '}' {
                 closed = true;
                 break;
@@ -496,6 +532,11 @@ fn substitute_text(s: &str, props: &TemplateProperties) -> String {
         // If unknown, drop silently (matches bevy_hui's behaviour).
     }
     out
+}
+
+/// True if `s` contains a runtime binding token `{{ ... }}`.
+fn has_binding(s: &str) -> bool {
+    s.contains("{{")
 }
 
 /// Update a partial `Node` (and the color/text "side" slots) from one parsed

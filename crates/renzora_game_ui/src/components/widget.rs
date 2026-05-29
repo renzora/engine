@@ -178,6 +178,19 @@ impl Default for UiWidget {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct HtmlTemplatePath(pub String);
 
+/// Marks an entity as a *dedicated UI entity* — the markup tree should be
+/// built directly **onto** it (the original single-entity model). Added by the
+/// canvas drag-spawn and the Lua `hui_spawn` verb.
+///
+/// When this marker is **absent**, `renzora_hui` treats the `HtmlTemplatePath`
+/// holder as a *data-source* entity (e.g. a game entity like `World
+/// Environment` with a `Sun` component): the UI spawns as a **child** so the
+/// host entity keeps its own components/identity, and `{{ Component.field }}`
+/// bindings resolve against the host (and its ancestors).
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct HuiBuildOnSelf;
+
 /// Identifies a child entity's role within a composite widget.
 ///
 /// E.g. the fill bar inside a ProgressBar, the thumb on a Slider.

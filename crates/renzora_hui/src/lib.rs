@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 
+pub mod binding;
 pub mod cursor;
 pub mod drag;
 pub mod interactions;
@@ -60,6 +61,7 @@ impl Plugin for HuiPlugin {
         interactions::plugin(app);
         cursor::plugin(app);
         drag::plugin(app);
+        binding::plugin(app);
 
         // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
         // component inspectors with markup writeback.

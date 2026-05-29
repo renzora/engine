@@ -15,10 +15,12 @@
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use renzora::{ScriptAction, ScriptActionValue};
-use renzora_game_ui::HtmlTemplatePath;
+use renzora_game_ui::{HtmlTemplatePath, UiCanvas};
 
 /// `action("hui_spawn", { template = "templates/foo.html" })` — spawn a new
-/// entity carrying that path; the renzora_hui loader takes over from there.
+/// `UiCanvas` root carrying that path; the renzora_hui loader builds the markup
+/// tree as a child inside it. A canvas is the UI root, so the spawned menu /
+/// HUD renders and is camera-targeted like any other canvas.
 pub fn handle_hui_spawn(trigger: On<ScriptAction>, mut cmd: Commands) {
     let action = trigger.event();
     if action.name != "hui_spawn" {
@@ -28,7 +30,17 @@ pub fn handle_hui_spawn(trigger: On<ScriptAction>, mut cmd: Commands) {
         warn!("hui_spawn: missing string arg `template`");
         return;
     };
-    cmd.spawn(HtmlTemplatePath(path.clone()));
+    cmd.spawn((
+        Name::new("UI Canvas"),
+        UiCanvas::default(),
+        HtmlTemplatePath(path.clone()),
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+    ));
 }
 
 /// `action("hui_despawn", { template = "templates/foo.html" })`
