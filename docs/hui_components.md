@@ -88,6 +88,19 @@ Toggle, then Drag-value, then Disclosure.
 - Table ⬜ (`for` + grid; sortable needs script)
 - Tree view ⬜ (recursive template + disclosure)
 
+### Decoration (✅ have — `decor.rs`, native bevy_ui)
+- **`gradient="..."`** → `BackgroundGradient`. Space-separated, no commas:
+  - `gradient="linear 180deg #4C8BF5 #9B59B6"` — angle (deg) then ≥2 stops.
+  - `gradient="radial #1B2838 #0B0E14"` — radial from center.
+  - `linear`/`radial` keyword and `<n>deg` are optional (default linear, top→bottom).
+  - Renders over `background`, so a solid `background` is a safe fallback.
+- **`shadow="..."`** → `BoxShadow`, CSS `box-shadow` order `<x> <y> <blur> [spread] #color`:
+  - `shadow="0px 6px 16px #00000088"` (spread 0) or `shadow="0px 6px 16px 2px #00000088"`.
+  - Lengths accept `px` / `%` / bare-number (→ px). A `0px 0px <blur> #color`
+    makes a soft glow (used by the gradient progress fill in `decor_demo.html`).
+- See `assets/ui/decor_demo.html` for gradient panels, buttons, progress fill,
+  and radial swatches.
+
 ## 5. Polish layer (⬜ later)
 - **Transitions/tweens** — smooth hover/show, slide-in drawers, spinners.
   bevy_hui already parses `hover:` / `delay=` / `ease=`; needs a tween system.

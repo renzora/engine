@@ -610,6 +610,15 @@ fn apply_xnode_to(
         ec.insert(Interaction::default());
     }
 
+    // `gradient="linear 180deg #A #B"` / `shadow="0px 6px 16px #00000088"` —
+    // native bevy_ui decoration (see `decor.rs`). Static; no per-frame system.
+    if let Some(g) = node.defs.get("gradient").and_then(|v| crate::decor::parse_gradient(v)) {
+        ec.insert(g);
+    }
+    if let Some(s) = node.defs.get("shadow").and_then(|v| crate::decor::parse_shadow(v)) {
+        ec.insert(s);
+    }
+
     // Event listeners (`on_press="..."`, `on_enter="..."`, `on_exit="..."`,
     // `on_spawn`, `on_change`) get attached as bevy_hui's prelude components.
     // `interactions.rs` then watches `Changed<Interaction>` on these entities

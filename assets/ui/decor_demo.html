@@ -1,0 +1,74 @@
+<!-- Gradients & shadows showcase (native bevy_ui, no crate).
+
+     gradient="linear <deg> #A #B ..."  -> BackgroundGradient (linear)
+     gradient="radial #A #B ..."        -> BackgroundGradient (radial)
+     shadow="<x> <y> <blur> [spread] #color" -> BoxShadow
+
+     Drop a UiCanvas, add HtmlTemplate -> this file. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          flex_direction="column" justify_content="center" align_items="center" row_gap="24px"
+          gradient="radial #141A24 #090B10">
+
+        <!-- Hero panel: gradient fill + drop shadow + rounded corners -->
+        <node width="420px" flex_direction="column" row_gap="16px" padding="28px"
+              border_radius="18px" gradient="linear 160deg #1E2A44 #11151C"
+              border="1px" border_color="#2A3550" shadow="0px 18px 48px #000000AA">
+
+            <node flex_direction="row" align_items="center" column_gap="10px">
+                <icon name="sparkle" font_size="22" font_color="#7AA2FF" />
+                <text font_size="20" font_color="#FFFFFF">Gradients & Shadows</text>
+            </node>
+            <text font_size="13" font_color="#9AA7BD">Native bevy_ui decoration - no extra dependency.</text>
+
+            <!-- Gradient progress bar (track + gradient fill + soft glow) -->
+            <node width="100%" height="14px" border_radius="7px" background="#0C0F15"
+                  border="1px" border_color="#222B38">
+                <node width="68%" height="100%" border_radius="7px"
+                      gradient="linear 90deg #4C8BF5 #9B59B6"
+                      shadow="0px 0px 10px #6C7BFFAA" />
+            </node>
+
+            <!-- Gradient buttons with explicit hover -->
+            <node flex_direction="row" column_gap="12px" margin="6px 0px 0px 0px">
+                <button flex_grow="1" padding="12px" column_gap="8px" border_radius="10px"
+                        justify_content="center" align_items="center"
+                        gradient="linear 90deg #2E7DF6 #6C5CE7"
+                        hover:background="#7AA2FF"
+                        shadow="0px 8px 20px #2E7DF666"
+                        cursor="pointer" on_press="decor_primary">
+                    <icon name="lightning" font_size="16" font_color="#FFFFFF" />
+                    <text font_size="14" font_color="#FFFFFF">Primary</text>
+                </button>
+                <button flex_grow="1" padding="12px" column_gap="8px" border_radius="10px"
+                        justify_content="center" align_items="center"
+                        gradient="linear 90deg #21C16B #11A653"
+                        hover:background="#36E089"
+                        shadow="0px 8px 20px #21C16B55"
+                        cursor="pointer" on_press="decor_success">
+                    <icon name="check" font_size="16" font_color="#FFFFFF" />
+                    <text font_size="14" font_color="#FFFFFF">Success</text>
+                </button>
+            </node>
+        </node>
+
+        <!-- Swatch row: radial chips with a centered icon + shadow -->
+        <node flex_direction="row" column_gap="16px">
+            <node width="64px" height="64px" border_radius="32px"
+                  justify_content="center" align_items="center"
+                  gradient="radial #FF8A65 #C0392B" shadow="0px 10px 24px #C0392B66">
+                <icon name="fire" font_size="26" font_color="#FFFFFF" />
+            </node>
+            <node width="64px" height="64px" border_radius="32px"
+                  justify_content="center" align_items="center"
+                  gradient="radial #54E0C7 #1A8E78" shadow="0px 10px 24px #1A8E7866">
+                <icon name="drop" font_size="26" font_color="#FFFFFF" />
+            </node>
+            <node width="64px" height="64px" border_radius="32px"
+                  justify_content="center" align_items="center"
+                  gradient="radial #B388FF #6C3BD6" shadow="0px 10px 24px #6C3BD666">
+                <icon name="star" font_size="26" font_color="#FFFFFF" />
+            </node>
+        </node>
+    </node>
+</template>

@@ -14,6 +14,7 @@ use bevy::prelude::*;
 
 pub mod binding;
 pub mod cursor;
+pub mod decor;
 pub mod cursor_icon;
 pub mod dnd;
 pub mod drag;
