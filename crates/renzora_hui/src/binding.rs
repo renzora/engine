@@ -143,66 +143,105 @@ fn resolve_path(
     path: &str,
 ) -> Option<String> {
     let segments: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
-    if segments.len() < 2 {
+    if segments.is_empty() {
         return None;
     }
 
+    // Bare single segment (`{{ _time }}`) → a script variable on the host.
+    if segments.len() == 1 {
+        return resolve_script_var(world, host, segments[0]);
+    }
+
     // Decide whether segment 0 is a component type (→ host entity) or an
-    // entity name (→ that entity, with segment 1 as the component).
+    // entity name (→ that entity, with segment 1 as the member).
     let first_is_component = registry
         .get_with_short_type_path(segments[0])
         .and_then(|r| r.data::<ReflectComponent>())
         .is_some();
 
-    let (entity, component_name, field_segments): (Entity, &str, &[&str]) = if first_is_component {
+    let (entity, member, field_segments): (Entity, &str, &[&str]) = if first_is_component {
         (host, segments[0], &segments[1..])
     } else {
-        let entity = *names.get(segments[0])?;
-        if segments.len() < 3 {
-            return None;
-        }
-        (entity, segments[1], &segments[2..])
+        (*names.get(segments[0])?, segments[1], &segments[2..])
     };
 
-    let registration = registry.get_with_short_type_path(component_name)?;
-    let reflect_component = registration.data::<ReflectComponent>()?;
-
-    // For a bare component path (`{{ Sun.azimuth }}`) resolve against `entity`,
-    // and if it doesn't have the component, walk UP the `ChildOf` chain. This
-    // is what lets a UI subtree attached under a game entity read that
-    // ancestor's components — e.g. the markup root is a child of `World
-    // Environment`, and `{{ Sun.azimuth }}` finds `Sun` on the parent. For an
-    // explicit entity-name path we don't walk (the author named the entity).
-    let mut current = entity;
-    let reflected = loop {
-        if let Ok(entity_ref) = world.get_entity(current) {
-            if let Some(r) = reflect_component.reflect(entity_ref) {
-                break r;
+    // `member` is either a component type (→ reflect its field) or, failing
+    // that, a script variable on the entity. Components win.
+    if let Some(reflect_component) = registry
+        .get_with_short_type_path(member)
+        .and_then(|r| r.data::<ReflectComponent>())
+    {
+        // For a bare component path (`{{ Sun.azimuth }}`) resolve against
+        // `entity`, walking UP the `ChildOf` chain if it doesn't have the
+        // component — so a UI subtree under a game entity reads its ancestor's
+        // component. Named-entity paths don't walk (the author named it).
+        let mut current = entity;
+        let reflected = loop {
+            if let Ok(entity_ref) = world.get_entity(current) {
+                if let Some(r) = reflect_component.reflect(entity_ref) {
+                    break Some(r);
+                }
             }
-        }
-        if !first_is_component {
-            return None; // named entity: no ancestor fallback
-        }
-        match world.get::<ChildOf>(current) {
-            Some(parent) => current = parent.parent(),
-            None => return None,
-        }
-    };
+            if !first_is_component {
+                break None;
+            }
+            match world.get::<ChildOf>(current) {
+                Some(parent) => current = parent.parent(),
+                None => break None,
+            }
+        };
+        let reflected = reflected?;
+        let value: &dyn PartialReflect = if field_segments.is_empty() {
+            reflected.as_partial_reflect()
+        } else {
+            reflected
+                .reflect_path(format!(".{}", field_segments.join(".")).as_str())
+                .ok()?
+        };
+        return Some(format_reflect(value));
+    }
 
-    // `field_segments` like ["color", "x"] → reflect path ".color.x".
-    let field_path = if field_segments.is_empty() {
-        String::new()
-    } else {
-        format!(".{}", field_segments.join("."))
-    };
+    // Not a component — try `member` as a script variable on the entity.
+    resolve_script_var(world, entity, member)
+}
 
-    let value: &dyn PartialReflect = if field_path.is_empty() {
-        reflected.as_partial_reflect()
-    } else {
-        reflected.reflect_path(field_path.as_str()).ok()?
-    };
+/// Read a live script variable off an entity's `ScriptComponent`. Scans every
+/// attached script's variables (read back from the Lua VM each frame), so a
+/// `props()`-declared value like `_time` shows its current runtime value.
+fn resolve_script_var(world: &World, entity: Entity, name: &str) -> Option<String> {
+    let sc = world.get::<renzora_scripting::ScriptComponent>(entity)?;
+    for entry in &sc.scripts {
+        if let Some(value) = entry.variables.get(name) {
+            return Some(format_script_value(value));
+        }
+    }
+    None
+}
 
-    Some(format_reflect(value))
+/// Display formatting for a script variable value.
+fn format_script_value(value: &renzora_scripting::ScriptValue) -> String {
+    use renzora_scripting::ScriptValue as V;
+    match value {
+        V::Float(f) => trim_float(*f as f64),
+        V::Int(i) => i.to_string(),
+        V::Bool(b) => b.to_string(),
+        V::String(s) => s.clone(),
+        V::Entity(e) => e.clone(),
+        V::Vec2(v) => format!("{}, {}", trim_float(v.x as f64), trim_float(v.y as f64)),
+        V::Vec3(v) => format!(
+            "{}, {}, {}",
+            trim_float(v.x as f64),
+            trim_float(v.y as f64),
+            trim_float(v.z as f64)
+        ),
+        V::Color(c) => format!(
+            "{}, {}, {}, {}",
+            trim_float(c.x as f64),
+            trim_float(c.y as f64),
+            trim_float(c.z as f64),
+            trim_float(c.w as f64)
+        ),
+    }
 }
 
 /// Format a reflected scalar for display. Floats are trimmed of trailing
@@ -294,6 +333,114 @@ fn truthy(s: &str) -> bool {
     true
 }
 
+/// Evaluate a `show=` condition to a bool. Supports a single comparison
+/// (`<`, `>`, `<=`, `>=`, `==`, `!=`) between two operands, or a bare operand
+/// (truthy test). Operands are either a `{{ }}`-free binding path
+/// (`Player.Health.current`), a number, a `"quoted"` / bare string literal, or
+/// `true`/`false`. No boolean combinators (`and`/`or`) yet — one comparison.
+///
+/// `raw` is the attribute value, e.g. `"{{ Player.Health.current < 20 }}"` or
+/// a literal `"true"`. A single `{{ }}` wrapper is stripped; the *inside* is
+/// the expression (so the comparison operator isn't mistaken for markup).
+fn eval_condition(
+    world: &World,
+    registry: &TypeRegistry,
+    names: &HashMap<String, Entity>,
+    host: Entity,
+    raw: &str,
+) -> bool {
+    let inner = strip_binding_wrapper(raw);
+
+    // Two-char operators first so `<=` isn't read as `<`.
+    const OPS: &[&str] = &["==", "!=", "<=", ">=", "<", ">"];
+    for op in OPS {
+        if let Some(idx) = find_top_level_op(inner, op) {
+            let lhs = resolve_operand(world, registry, names, host, inner[..idx].trim());
+            let rhs = resolve_operand(world, registry, names, host, inner[idx + op.len()..].trim());
+            return compare(&lhs, &rhs, op);
+        }
+    }
+    // No operator → truthy test of the single resolved operand.
+    truthy(&resolve_operand(world, registry, names, host, inner.trim()))
+}
+
+/// Strip a single `{{ ... }}` wrapper, returning the inner expression. If
+/// there's no wrapper (a literal like `true`), returns the input unchanged.
+fn strip_binding_wrapper(raw: &str) -> &str {
+    let t = raw.trim();
+    if let Some(rest) = t.strip_prefix("{{") {
+        if let Some(inner) = rest.strip_suffix("}}") {
+            return inner.trim();
+        }
+    }
+    t
+}
+
+/// Find an operator outside of any quoted string. Returns its byte index.
+fn find_top_level_op(s: &str, op: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let op_bytes = op.as_bytes();
+    let mut in_quote = false;
+    let mut i = 0;
+    while i + op_bytes.len() <= bytes.len() {
+        let c = bytes[i];
+        if c == b'"' {
+            in_quote = !in_quote;
+            i += 1;
+            continue;
+        }
+        if !in_quote && &bytes[i..i + op_bytes.len()] == op_bytes {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Resolve one operand to a display string: a `"quoted"` literal (quotes
+/// stripped), a bare number / `true` / `false` literal (returned as-is), or a
+/// component/entity binding path resolved against the world.
+fn resolve_operand(
+    world: &World,
+    registry: &TypeRegistry,
+    names: &HashMap<String, Entity>,
+    host: Entity,
+    operand: &str,
+) -> String {
+    let o = operand.trim();
+    if let Some(inner) = o.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        return inner.to_string();
+    }
+    if o.parse::<f64>().is_ok() || o.eq_ignore_ascii_case("true") || o.eq_ignore_ascii_case("false")
+    {
+        return o.to_string();
+    }
+    // Otherwise treat as a binding path; fall back to the literal if unresolved.
+    resolve_path(world, registry, names, host, o).unwrap_or_else(|| o.to_string())
+}
+
+/// Compare two resolved operand strings. Numeric when both parse as numbers;
+/// otherwise string equality for `==`/`!=` (ordering ops require numbers).
+fn compare(lhs: &str, rhs: &str, op: &str) -> bool {
+    match (lhs.trim().parse::<f64>(), rhs.trim().parse::<f64>()) {
+        (Ok(l), Ok(r)) => match op {
+            "==" => l == r,
+            "!=" => l != r,
+            "<" => l < r,
+            ">" => l > r,
+            "<=" => l <= r,
+            ">=" => l >= r,
+            _ => false,
+        },
+        _ => match op {
+            "==" => lhs.eq_ignore_ascii_case(rhs),
+            "!=" => !lhs.eq_ignore_ascii_case(rhs),
+            // Ordering on non-numeric operands isn't meaningful — treat false.
+            _ => false,
+        },
+    }
+}
+
 /// Evaluate every `show` condition each frame and toggle `Node.display`.
 pub fn update_show_bindings(world: &mut World) {
     let mut binding_q = world.query::<(Entity, &ShowBinding)>();
@@ -318,8 +465,7 @@ pub fn update_show_bindings(world: &mut World) {
     {
         let registry = type_registry.read();
         for (ent, expr, source) in &bindings {
-            let rendered = render_template(world, &registry, &names, *source, expr);
-            updates.push((*ent, truthy(&rendered)));
+            updates.push((*ent, eval_condition(world, &registry, &names, *source, expr)));
         }
     }
 

@@ -14,6 +14,9 @@ bevy = { workspace = true }
 bevy_hui = { path = "../bevy_hui" }
 renzora = { path = "../renzora", default-features = false }
 renzora_game_ui = { path = "../renzora_game_ui" }
+# Lets `{{ Entity.script_var }}` bindings read live script variables off an
+# entity's ScriptComponent (no cycle: scripting doesn't depend on hui/game_ui).
+renzora_scripting = { path = "../renzora_scripting" }
 
 # Editor-only deps
 renzora_editor = { path = "../renzora_editor", optional = true }
