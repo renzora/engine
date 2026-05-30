@@ -402,6 +402,12 @@ fn apply_xnode_to(
         );
     }
 
+    // Effective property map = statically-parsed `defs` plus any `{prop}`
+    // attributes compiled below. This is what the widget/vector/decoration
+    // stampers read, so a component template can forward props into a widget
+    // (`<node vector="arc" value="{speed}" min="{min}">`).
+    let mut defs = node.defs.clone();
+
     // Attributes with `{prop}` refs — compile them now with the current scope.
     let mut adapter = AssetServerAdaptor { server: ctx.server };
     for tokens in &node.uncompiled {
@@ -417,9 +423,13 @@ fn apply_xnode_to(
                     &mut font_color,
                 ),
                 Attribute::Path(p) => image_src = Some(p),
-                // Other compiled attribute kinds (Action, Tag, PropertyDefinition, Name,
-                // Id, Target, Watch, Uncompiled) aren't applied per-node here — they're
-                // attribute-class concerns we'll wire as we add interaction (Phase D).
+                // A compiled `key="{prop}"` (non-style) → an effective def, so
+                // widget/vector attributes accept props from the call site.
+                Attribute::PropertyDefinition(k, v) => {
+                    defs.insert(k, v);
+                }
+                // Other compiled attribute kinds (Action, Tag, Name, Id, Target,
+                // Watch, Uncompiled) aren't applied per-node here.
                 _ => {}
             }
         }
@@ -454,16 +464,16 @@ fn apply_xnode_to(
 
     // Interactive widget behaviors (see `widgets.rs`). Each needs `Button` so
     // bevy_ui delivers `Interaction`. Targets are plain paths (not `{{ }}`).
-    if let Some(target) = node.defs.get("toggle") {
+    if let Some(target) = defs.get("toggle") {
         ec.insert(crate::widgets::Toggle {
             target: target.clone(),
             host: ctx.host,
         });
         ec.insert(Button);
     }
-    if let Some(target) = node.defs.get("drag_value") {
-        let min = node.defs.get("drag_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-        let max = node.defs.get("drag_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
+    if let Some(target) = defs.get("drag_value") {
+        let min = defs.get("drag_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        let max = defs.get("drag_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
         ec.insert(crate::widgets::DragValue {
             target: target.clone(),
             min,
@@ -475,9 +485,9 @@ fn apply_xnode_to(
         // gives the cursor's 0..1 position within the node — what the drag reads.
         ec.insert(bevy::ui::RelativeCursorPosition::default());
     }
-    if let Some(target) = node.defs.get("fill") {
-        let min = node.defs.get("fill_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-        let max = node.defs.get("fill_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
+    if let Some(target) = defs.get("fill") {
+        let min = defs.get("fill_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        let max = defs.get("fill_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
         ec.insert(crate::widgets::ValueFill {
             target: target.clone(),
             min,
@@ -488,7 +498,7 @@ fn apply_xnode_to(
         // beneath it so dragging works across the filled portion.
         ec.insert(bevy::ui::FocusPolicy::Pass);
     }
-    if let Some(target) = node.defs.get("toggles") {
+    if let Some(target) = defs.get("toggles") {
         ec.insert(crate::widgets::Disclose {
             target: target.clone(),
         });
@@ -500,7 +510,7 @@ fn apply_xnode_to(
     // `font_color`.
     if is_icon_node(node) {
         let raw_size = font_size
-            .or_else(|| node.defs.get("size").and_then(|s| s.parse().ok()))
+            .or_else(|| defs.get("size").and_then(|s| s.parse().ok()))
             .unwrap_or(16.0);
         let size = if raw_size.is_finite() {
             raw_size.clamp(1.0, 512.0)
@@ -512,7 +522,7 @@ fn apply_xnode_to(
         let icon_name = node
             .name
             .clone()
-            .or_else(|| node.defs.get("icon").cloned())
+            .or_else(|| defs.get("icon").cloned())
             .unwrap_or_default();
         ec.insert(crate::icons::Icon::new(icon_name, size, font_color));
     }
@@ -586,7 +596,7 @@ fn apply_xnode_to(
 
     // `drag_item` — a drag-and-drop source. Payload is the binding host (the
     // item entity inside a `<for>`). Needs Button for Interaction.
-    if node.defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
+    if defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
         ec.insert(crate::dnd::DragItem { payload: ctx.host });
         ec.insert(Button);
         // Pass so the item still receives Interaction (for pickup) but doesn't
@@ -594,17 +604,17 @@ fn apply_xnode_to(
         ec.insert(bevy::ui::FocusPolicy::Pass);
     }
     // `cursor="grab"` — OS cursor icon shown while this node is hovered.
-    if let Some(name) = node.defs.get("cursor") {
+    if let Some(name) = defs.get("cursor") {
         if let Some(icon) = crate::cursor_icon::parse_cursor(name) {
             ec.insert(crate::cursor_icon::HoverCursor(icon));
             ec.insert(Interaction::default());
         }
     }
     // `dropzone drop_tag="basket" on_drop="..."` — a drop target.
-    if node.defs.contains_key("dropzone") || node.tags.contains_key("dropzone") {
+    if defs.contains_key("dropzone") || node.tags.contains_key("dropzone") {
         ec.insert(crate::dnd::DropZone {
-            drop_tag: node.defs.get("drop_tag").cloned(),
-            on_drop: node.defs.get("on_drop").cloned(),
+            drop_tag: defs.get("drop_tag").cloned(),
+            on_drop: defs.get("on_drop").cloned(),
         });
         ec.insert(bevy::ui::RelativeCursorPosition::default());
         ec.insert(Interaction::default());
@@ -613,8 +623,8 @@ fn apply_xnode_to(
     // `vector="gauge|ring|bar|line|waveform"` — a vello-drawn vector graphic
     // (see `vector.rs`). bevy_ui lays the node out; the draw system fills its
     // `UiVelloScene` each frame from the spec + live `{{ }}` bindings.
-    if node.defs.contains_key("vector") {
-        if let Some(spec) = crate::vector::spec_from_defs(&node.defs, ctx.host) {
+    if defs.contains_key("vector") {
+        if let Some(spec) = crate::vector::spec_from_defs(&defs, ctx.host) {
             ec.insert(spec);
             ec.insert(bevy_vello::prelude::UiVelloScene::new());
             ec.insert(bevy::camera::visibility::RenderLayers::layer(
@@ -625,10 +635,10 @@ fn apply_xnode_to(
 
     // `gradient="linear 180deg #A #B"` / `shadow="0px 6px 16px #00000088"` —
     // native bevy_ui decoration (see `decor.rs`). Static; no per-frame system.
-    if let Some(g) = node.defs.get("gradient").and_then(|v| crate::decor::parse_gradient(v)) {
+    if let Some(g) = defs.get("gradient").and_then(|v| crate::decor::parse_gradient(v)) {
         ec.insert(g);
     }
-    if let Some(s) = node.defs.get("shadow").and_then(|v| crate::decor::parse_shadow(v)) {
+    if let Some(s) = defs.get("shadow").and_then(|v| crate::decor::parse_shadow(v)) {
         ec.insert(s);
     }
 

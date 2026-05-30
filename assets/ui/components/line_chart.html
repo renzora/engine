@@ -1,0 +1,22 @@
+<!-- Titled line chart. data is literal or a {{ binding }} to a comma string.
+
+       <node template="ui/components/line_chart.html"
+             title="Latency" data="{{ _line }}" color="#F39C12"
+             width="220px" height="120px" /> -->
+<template>
+    <property name="title">Line</property>
+    <property name="data">0.2,0.5,0.3,0.7,0.6,0.9,0.55,0.8</property>
+    <property name="color">#F39C12</property>
+    <property name="min">0</property>
+    <property name="max">1</property>
+    <property name="thickness">3</property>
+    <property name="width">220px</property>
+    <property name="height">120px</property>
+
+    <node width="{width}" flex_direction="column" row_gap="8px" padding="16px"
+          background="#11151C" border="1px" border_color="#222B38" border_radius="14px">
+        <text font_size="12" font_color="#9AA7BD">{title}</text>
+        <node vector="line" data="{data}" color="{color}" min="{min}" max="{max}"
+              thickness="{thickness}" width="100%" height="{height}" />
+    </node>
+</template>

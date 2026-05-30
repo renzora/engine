@@ -1,0 +1,22 @@
+<!-- Titled bar chart. data is literal "0.2,0.5,..." or a {{ binding }} to a
+     comma-separated string (e.g. a script var rebuilt each frame).
+
+       <node template="ui/components/bar_chart.html"
+             title="Throughput" data="{{ _bars }}" color="#9B59B6"
+             width="220px" height="120px" /> -->
+<template>
+    <property name="title">Bars</property>
+    <property name="data">0.3,0.6,0.45,0.8,0.55,0.9,0.7,1.0</property>
+    <property name="color">#9B59B6</property>
+    <property name="min">0</property>
+    <property name="max">1</property>
+    <property name="width">220px</property>
+    <property name="height">120px</property>
+
+    <node width="{width}" flex_direction="column" row_gap="8px" padding="16px"
+          background="#11151C" border="1px" border_color="#222B38" border_radius="14px">
+        <text font_size="12" font_color="#9AA7BD">{title}</text>
+        <node vector="bars" data="{data}" color="{color}" min="{min}" max="{max}"
+              width="100%" height="{height}" />
+    </node>
+</template>

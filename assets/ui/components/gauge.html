@@ -1,0 +1,22 @@
+<!-- Simple gauge: a 270° arc + centre readout (no ticks/needle), drawn as a
+     SINGLE vello node. Lighter than the full speedometer. Bind value.
+
+       <node template="ui/components/gauge.html"
+             value="{{ Engine.temp }}" min="0" max="120" unit="C"
+             color="#E0564B" size="160px" /> -->
+<template>
+    <property name="value">0</property>
+    <property name="min">0</property>
+    <property name="max">100</property>
+    <property name="color">#4C8BF5</property>
+    <property name="track">#1B2233</property>
+    <property name="thickness">14</property>
+    <property name="size">160px</property>
+    <property name="unit"></property>
+    <property name="readsize">28</property>
+
+    <node vector="gauge" width="{size}" height="{size}" min_width="{size}" flex_shrink="0"
+          value="{value}" min="{min}" max="{max}" start="135" sweep="270" inset="0.06"
+          color="{color}" track="{track}" thickness="{thickness}"
+          readout="{value}" unit="{unit}" readsize="{readsize}" />
+</template>

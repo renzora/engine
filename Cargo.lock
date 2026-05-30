@@ -9833,6 +9833,7 @@ dependencies = [
  "renzora_editor",
  "renzora_game_ui",
  "renzora_scripting",
+ "skrifa 0.40.0",
  "tempfile",
 ]
 

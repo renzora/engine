@@ -1,0 +1,22 @@
+<!-- Radial progress ring: a full-circle track + value arc from the top, with a
+     centre caption. Drawn as a SINGLE vello node. Bind value in [min,max].
+
+       <node template="ui/components/ring.html"
+             value="{{ Quest.progress }}" min="0" max="1"
+             caption="74%" color="#2ECC71" size="150px" /> -->
+<template>
+    <property name="value">0</property>
+    <property name="min">0</property>
+    <property name="max">1</property>
+    <property name="color">#2ECC71</property>
+    <property name="track">#1B2A1F</property>
+    <property name="thickness">14</property>
+    <property name="size">150px</property>
+    <property name="caption"></property>
+    <property name="readsize">22</property>
+
+    <node vector="ring" width="{size}" height="{size}" min_width="{size}" flex_shrink="0"
+          value="{value}" min="{min}" max="{max}" start="270" sweep="360" inset="0.05"
+          color="{color}" track="{track}" thickness="{thickness}"
+          readout="{caption}" readsize="{readsize}" />
+</template>

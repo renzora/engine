@@ -1,0 +1,29 @@
+<!-- Speedometer dial drawn as a SINGLE vello node: arc + ticks + labels +
+     needle + centre readout, all composited into one scene. One sized node
+     in normal flow — no absolutely-positioned overlay layers (those collapse
+     for childless vello nodes in taffy). Reusable: drop it anywhere, bind value.
+
+       <node template="ui/components/speedometer.html"
+             value="{{ Car.speed }}" min="0" max="240" unit="km/h"
+             count="8" size="240px" color="#4C8BF5" />
+
+     Props: value (number or {{ binding }}), min, max, count (divisions),
+     color, track, tickcolor, thickness, size (square px), unit, readsize. -->
+<template>
+    <property name="value">0</property>
+    <property name="min">0</property>
+    <property name="max">240</property>
+    <property name="count">8</property>
+    <property name="color">#4C8BF5</property>
+    <property name="track">#1B2233</property>
+    <property name="tickcolor">#8A93A6</property>
+    <property name="thickness">16</property>
+    <property name="size">240px</property>
+    <property name="unit"></property>
+    <property name="readsize">36</property>
+
+    <node vector="speedometer" width="{size}" height="{size}" min_width="{size}" flex_shrink="0"
+          value="{value}" min="{min}" max="{max}" count="{count}" start="135" sweep="270"
+          color="{color}" track="{track}" tickcolor="{tickcolor}" thickness="{thickness}"
+          readout="{value}" unit="{unit}" readsize="{readsize}" />
+</template>

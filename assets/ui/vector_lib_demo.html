@@ -1,0 +1,47 @@
+<!-- Live dashboard built entirely from REUSABLE component templates
+     (ui/components/*.html), each composed from vector primitives.
+
+     SETUP: UiCanvas → child with HtmlTemplate = this file, and attach
+     scripts/vector_anim.lua to that SAME child so the {{ _name }} bindings
+     animate. Every widget below is a <node template="..."> you can reuse,
+     re-skin, and point at any data. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          flex_direction="column" justify_content="center" align_items="center" row_gap="22px"
+          gradient="radial #141A24 #090B10">
+
+        <node flex_direction="row" align_items="center" column_gap="10px">
+            <icon name="gauge" font_size="22" font_color="#7AA2FF" />
+            <text font_size="20" font_color="#FFFFFF">Component Library</text>
+        </node>
+
+        <node flex_direction="row" column_gap="24px" align_items="center">
+            <node template="ui/components/speedometer.html"
+                  value="{{ _speed }}" min="0" max="240" unit="km/h" count="8"
+                  size="240px" color="#4C8BF5" />
+            <node template="ui/components/speedometer.html"
+                  value="{{ _rpm }}" min="0" max="8" unit="x1000 rpm" count="8"
+                  size="200px" color="#E0564B" />
+            <node flex_direction="column" row_gap="16px">
+                <node template="ui/components/gauge.html"
+                      value="{{ _temp }}" min="0" max="120" unit="C"
+                      color="#F39C12" size="150px" />
+                <node template="ui/components/ring.html"
+                      value="{{ _fuel }}" min="0" max="1" caption="FUEL"
+                      color="#2ECC71" size="130px" />
+            </node>
+        </node>
+
+        <node flex_direction="row" column_gap="20px">
+            <node template="ui/components/bar_chart.html"
+                  title="Throughput" data="{{ _bars }}" color="#9B59B6"
+                  width="240px" height="110px" />
+            <node template="ui/components/line_chart.html"
+                  title="Latency" data="{{ _line }}" color="#F39C12"
+                  width="240px" height="110px" />
+            <node template="ui/components/waveform.html"
+                  title="Signal" data="{{ _wave }}" color="#54E0C7"
+                  width="240px" height="110px" />
+        </node>
+    </node>
+</template>

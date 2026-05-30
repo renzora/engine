@@ -15,6 +15,8 @@ bevy_hui = { path = "../bevy_hui" }
 # Vector graphics (gauges, charts, waveforms) drawn into a VelloScene pinned to
 # a markup element's computed rect. Native-only (vello needs WebGPU compute).
 bevy_vello = { version = "0.13", default-features = false, features = ["text"] }
+# Map digit chars → glyph IDs/advances for in-scene speedometer dial numbers.
+skrifa = "0.40"
 renzora = { path = "../renzora", default-features = false }
 renzora_game_ui = { path = "../renzora_game_ui" }
 # Lets `{{ Entity.script_var }}` bindings read live script variables off an

@@ -102,25 +102,38 @@ Toggle, then Drag-value, then Disclosure.
   and radial swatches.
 
 ### Vector graphics (✅ have — `vector.rs`, via bevy_vello)
-- **`vector="gauge|ring|bar|line|waveform"`** → a vello scene drawn into a
-  `UiVelloScene` that bevy_ui lays out and positions (the node reserves its box
-  like any element; the scene fills it). Native desktop only (vello needs WebGPU
-  compute).
-- Attributes:
-  - `value` — scalar for `gauge`/`ring`; a literal number or a `{{ binding }}`
-    (re-resolved each frame against the host's live components — e.g.
-    `value="{{ Vehicle.speed }}"`).
-  - `min` / `max` — range (defaults: 0..1, except `waveform` −1..1).
-  - `color` / `track` — fill and background-track hex colors.
-  - `thickness` — stroke width in px.
-  - `data="0.2,0.5,..."` — comma-separated series for `bar`/`line`/`waveform`.
-- Compositing: a single managed `Camera2d` + `VelloView` mirrors the active
-  world camera's render target and draws just above it
-  (`ClearColorConfig::None`), on a dedicated `RenderLayers` layer. Spawned only
-  when a `vector=` element exists. (Live series binding for charts/waveforms is
-  a follow-up; chart `data` is currently literal.)
-- See `assets/ui/vector_demo.html` for a dashboard (dial, ring, bars, line,
-  waveform).
+Two layers: **primitives** (Rust, drawn with vello) and a **component library**
+(markup, composed from primitives). Native desktop only (vello needs WebGPU
+compute). Each `vector=` node draws into a `UiVelloScene` bevy_ui lays out.
+
+**Primitives** (`vector=`):
+- Radial (share `start`/`sweep` deg, `inset` px-or-fraction from the edge):
+  `arc` (track + value fill), `ticks` (`count`+1 marks, `len`), `labels`
+  (`count`+1 numbers `min`..`max`, in-scene text), `needle` (pointer to value).
+- Cartesian: `bars`, `line`, `waveform` — `data="0.2,0.5,…"` literal **or** a
+  `{{ path }}` binding to a comma-separated string (animate by rebuilding the
+  string in a script var each frame).
+- Common: `value` (literal or `{{ binding }}`), `min`/`max`, `color`/`track`,
+  `thickness`, `count`, `size`. `inset`/`len` ≤ 1 = fraction of radius (so a
+  composed widget scales with its box).
+- Overlay several absolutely-positioned primitives in one box (increasing
+  `inset` to nest) to compose a dial.
+
+**Component library** (`assets/ui/components/`, reuse via `template="…"`):
+`speedometer.html`, `gauge.html`, `ring.html`, `bar_chart.html`,
+`line_chart.html`, `waveform.html`. Each exposes props (value/min/max/count/
+color/size/unit/…). Props forward into widget attributes — a component template
+may pass a `{{ binding }}` straight through (`value="{value}"` where the call
+site set `value="{{ Car.speed }}"`).
+```html
+<node template="ui/components/speedometer.html"
+      value="{{ _speed }}" min="0" max="240" unit="km/h" size="240px" />
+```
+- Compositing: one managed `Camera2d` + `VelloView` mirrors the camera the UI
+  renders to (its target, MSAA, viewport) and draws just above it on a dedicated
+  `RenderLayers` layer; spawned only when a `vector=` element exists.
+- Demos: `assets/ui/vector_lib_demo.html` (animated dashboard, pair with
+  `scripts/vector_anim.lua`); `assets/ui/vector_demo.html` (raw primitives).
 
 ## 5. Polish layer (⬜ later)
 - **Transitions/tweens** — smooth hover/show, slide-in drawers, spinners.
