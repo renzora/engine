@@ -107,9 +107,12 @@ pub fn viewport_header(ui: &mut egui::Ui, world: &World) {
     // tool, so they don't get hidden by the mode-specific drawers below.
     let actions_w = render_left_actions(ui, world, cmds, theme, inner, hovered);
 
-    // Right-aligned dropdown strip (Display / Snap / Camera). Painted before
-    // the centered strip so the centering math can keep clear of it.
-    let dropdowns_w = render_right_dropdowns(ui, settings, cmds, theme, inner);
+    // Right-aligned dropdown strip (Maximize / Display / Snap / Camera).
+    // Painted before the centered strip so the centering math can keep clear.
+    let maximized = world
+        .get_resource::<renzora_ui::ViewportMaximized>()
+        .is_some_and(|m| m.0);
+    let dropdowns_w = render_right_dropdowns(ui, settings, cmds, theme, inner, maximized);
 
     // The mode dropdown / tool options / inline snapping / cam-speed strip
     // (formerly centered) now docks to the right next to the dropdowns. We
@@ -872,16 +875,19 @@ fn render_right_dropdowns(
     cmds: &EditorCommands,
     theme: &renzora_theme::Theme,
     inner: Rect,
+    maximized: bool,
 ) -> f32 {
     use renzora::core::viewport_types::ViewportView;
     let in_2d = settings.viewport_view == ViewportView::Two;
 
     const DROP_W: f32 = 40.0;
+    const MAX_W: f32 = 28.0;
     const GAP: f32 = 3.0;
     // Snap (object-snap) and Camera (projection / FOV) dropdowns are
-    // 3D-only. In 2D mode show only the Display dropdown.
+    // 3D-only. In 2D mode show only the Display dropdown. The maximize toggle
+    // is always present.
     let count: f32 = if in_2d { 1.0 } else { 3.0 };
-    let total_w = DROP_W * count + GAP * (count - 1.0).max(0.0);
+    let total_w = MAX_W + GAP + DROP_W * count + GAP * (count - 1.0).max(0.0);
 
     let strip_rect = Rect::from_min_max(
         Pos2::new(inner.max.x - total_w, inner.min.y),
@@ -898,6 +904,7 @@ fn render_right_dropdowns(
     strip.spacing_mut().button_padding = Vec2::new(0.0, 0.0);
 
     let icon_color = theme.text.secondary.to_color32();
+    let active = theme.semantic.accent.to_color32();
     let inactive = theme.widgets.inactive_bg.to_color32();
     let hovered = theme.widgets.hovered_bg.to_color32();
     let muted = theme.text.muted.to_color32();
@@ -913,8 +920,60 @@ fn render_right_dropdowns(
             &mut strip, settings, cmds, icon_color, inactive, hovered, muted, theme,
         );
     }
+    // Maximize toggle, last (rightmost).
+    maximize_button(
+        &mut strip, cmds, maximized, MAX_W, icon_color, active, hovered,
+    );
 
     total_w
+}
+
+/// Toggle the viewport filling the whole editor layout (a panel maximize, not
+/// OS fullscreen). Shows the fullscreen-arrows icon, or the collapse icon while
+/// maximized.
+fn maximize_button(
+    ui: &mut egui::Ui,
+    cmds: &EditorCommands,
+    maximized: bool,
+    width: f32,
+    icon_color: Color32,
+    active: Color32,
+    hovered: Color32,
+) {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, BTN_H), Sense::click());
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if ui.is_rect_visible(rect) {
+        let bg = if maximized {
+            active
+        } else if resp.hovered() {
+            hovered
+        } else {
+            Color32::TRANSPARENT
+        };
+        if bg != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        }
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            if maximized { ARROWS_IN } else { ARROWS_OUT },
+            FontId::proportional(14.0),
+            if maximized { Color32::WHITE } else { icon_color },
+        );
+    }
+    let resp = resp.on_hover_text(if maximized {
+        "Restore layout"
+    } else {
+        "Maximize viewport"
+    });
+    if resp.clicked() {
+        cmds.push(|w: &mut World| {
+            let mut m = w.get_resource_or_insert_with(renzora_ui::ViewportMaximized::default);
+            m.0 = !m.0;
+        });
+    }
 }
 
 fn snap_pair(

@@ -23,7 +23,7 @@ pub mod window_chrome;
 pub use asset_drag::{asset_drop_target, draw_asset_drag_ghost, AssetDragPayload, AssetDropResult};
 pub use dock_tree::{
     delete_saved_workspace, load_saved_workspace, save_workspace, DockTree, DockingState, DropZone,
-    SplitDirection,
+    SplitDirection, ViewportMaximized,
 };
 pub use document_tabs::{DocTabAction, DocTabKind, DocumentTab, DocumentTabState, EditorContext};
 pub use drag_drop::{DragState, DropTarget};

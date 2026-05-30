@@ -1008,6 +1008,14 @@ pub fn editor_ui_system(world: &mut World) {
                 None => return renzora_ui::dock_renderer::DockRenderResult::default(),
             };
 
+            // When the viewport is maximized, render a viewport-only leaf over
+            // the whole area without disturbing the saved layout tree.
+            let maximized = world
+                .get_resource::<renzora_ui::ViewportMaximized>()
+                .is_some_and(|m| m.0);
+            let max_tree = renzora_ui::DockTree::leaf("viewport");
+            let tree = if maximized { &max_tree } else { tree };
+
             renzora_ui::dock_renderer::render_dock_tree(
                 ui,
                 tree,

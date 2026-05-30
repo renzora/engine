@@ -331,6 +331,12 @@ pub struct DockingState {
     pub tree: DockTree,
 }
 
+/// When set, the editor renders only the `viewport` panel filling the whole
+/// layout (a render-time override — the real [`DockingState`] tree is left
+/// untouched, so toggling off restores the exact layout).
+#[derive(Resource, Default)]
+pub struct ViewportMaximized(pub bool);
+
 impl Default for DockingState {
     fn default() -> Self {
         // Use the Scene layout from LayoutManager so they start in sync.
