@@ -156,6 +156,9 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);
+                // Raise the "Preparing export runtime" overlay and pause the
+                // editor until the runtime window closes.
+                runtime.begin_preparing();
             }
             if let Some(mut pm) = world.get_resource_mut::<PlayModeState>() {
                 pm.request_play = false;

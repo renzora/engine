@@ -77,6 +77,8 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<external_runtime::ExternalRuntime>()
+            .init_resource::<external_runtime::PausedRenderState>()
+            .init_resource::<bevy::winit::WinitSettings>()
             .init_resource::<render_systems::OriginalMaterialStates>()
             .init_resource::<render_systems::LastToggleState>()
             // Per-material-type viz-swap state (one of each per registered type).
@@ -113,6 +115,7 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_shadow_settings,
                 play_mode::handle_play_mode_transitions,
                 external_runtime::poll_external_runtime,
+                external_runtime::advance_runtime_phase,
                 effect_routing::update_effect_routing,
                 (
                     model_drop::spawn_loaded_gltfs,
@@ -183,6 +186,18 @@ impl Plugin for ViewportPlugin {
             .register(150, draw_viewport_cursor_overlay);
 
         app.add_systems(Last, external_runtime::kill_on_app_exit);
+
+        // Throttle / restore the editor's render loop around external runs.
+        // Not gated on `SplashState` so the restore always runs.
+        app.add_systems(Update, external_runtime::apply_runtime_pause_render);
+
+        // Full-screen "preparing export runtime" / "editor paused" overlay,
+        // drawn on top of all editor UI while an external runtime is active.
+        app.add_systems(
+            bevy_egui::EguiPrimaryContextPass,
+            external_runtime::draw_runtime_overlay
+                .run_if(in_state(renzora_editor::SplashState::Editor)),
+        );
 
         app.register_panel(ViewportPanel);
         app.register_panel(CameraPreviewPanel);
@@ -1279,8 +1294,25 @@ fn sync_viewport_camera_activation(
             Without<renzora::core::EditorCamera2d>,
         ),
     >,
+    runtime: Option<Res<external_runtime::ExternalRuntime>>,
 ) {
     use renzora::core::viewport_types::ViewportView;
+
+    // While an external runtime owns the screen the editor is paused behind a
+    // full-screen overlay, so there's nothing to see through the offscreen
+    // viewport cameras. Force them all inactive to skip their (expensive)
+    // render passes and hand the GPU to the running game.
+    let runtime_active = runtime
+        .as_ref()
+        .is_some_and(|r| r.phase() != external_runtime::RuntimePhase::Idle);
+    if runtime_active {
+        for mut camera in cameras_3d.iter_mut().chain(cameras_2d.iter_mut()).chain(cameras_ui.iter_mut()) {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        return;
+    }
 
     let mounted = docking.is_none_or(|d| d.tree.contains_panel("viewport"));
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();

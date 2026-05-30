@@ -12,12 +12,36 @@ use bevy::prelude::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 
+/// How long the "Preparing export runtime" overlay stays up after we spawn
+/// the child, before flipping to the "runtime running / editor paused"
+/// overlay. We can't observe when the child actually opens its OS window
+/// from the parent process, so this grace period covers the typical
+/// window-open delay so the user sees "preparing…" first.
+const PREPARE_GRACE_SECS: f32 = 2.0;
+
+/// Which stage of the external-runtime lifecycle we're in. Drives the
+/// full-screen overlay that pauses the editor while the runtime owns the
+/// screen — see [`draw_runtime_overlay`].
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimePhase {
+    /// No external runtime — editor behaves normally.
+    #[default]
+    Idle,
+    /// Child spawned, window not up yet. Shows "Preparing export runtime".
+    Preparing,
+    /// Runtime window is up; editor is paused until the child exits.
+    Running,
+}
+
 /// Tracks the running runtime child process, if any. Created at startup
 /// and queried by the viewport header to decide whether the Play button
 /// should render as Play or Stop.
 #[derive(Resource, Default)]
 pub struct ExternalRuntime {
     child: Option<Child>,
+    phase: RuntimePhase,
+    /// Seconds spent in [`RuntimePhase::Preparing`] so far.
+    prepare_elapsed: f32,
 }
 
 impl ExternalRuntime {
@@ -25,6 +49,18 @@ impl ExternalRuntime {
     /// [`poll_external_runtime`] each frame; reading it is cheap.
     pub fn is_alive(&self) -> bool {
         self.child.is_some()
+    }
+
+    /// Current lifecycle phase, used to drive the pause overlay.
+    pub fn phase(&self) -> RuntimePhase {
+        self.phase
+    }
+
+    /// Mark the runtime as just-spawned: show the "preparing" overlay and
+    /// start the grace timer. Called right after a successful spawn.
+    pub fn begin_preparing(&mut self) {
+        self.phase = RuntimePhase::Preparing;
+        self.prepare_elapsed = 0.0;
     }
 }
 
@@ -65,6 +101,8 @@ pub fn spawn_runtime(binary: &Path, project_path: &Path) -> std::io::Result<Chil
 /// Detach the running child, if any, and kill it. Returns whether a child
 /// was killed (so callers can log meaningfully).
 pub fn kill_runtime(runtime: &mut ExternalRuntime) -> bool {
+    runtime.phase = RuntimePhase::Idle;
+    runtime.prepare_elapsed = 0.0;
     let Some(mut child) = runtime.child.take() else {
         return false;
     };
@@ -90,15 +128,125 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
     };
     match child.try_wait() {
         Ok(Some(_status)) => {
+            // Runtime window closed (or it crashed) — drop the handle and
+            // lift the pause overlay so the editor is usable again.
             runtime.child = None;
+            runtime.phase = RuntimePhase::Idle;
+            runtime.prepare_elapsed = 0.0;
         }
         Ok(None) => {}
         Err(_) => {
             // try_wait failure is unrecoverable for this handle — drop it
             // so we don't keep retrying every frame.
             runtime.child = None;
+            runtime.phase = RuntimePhase::Idle;
+            runtime.prepare_elapsed = 0.0;
         }
     }
+}
+
+/// Tick the "preparing" grace timer and flip to [`RuntimePhase::Running`]
+/// once it elapses, so the overlay transitions from "Preparing export
+/// runtime" to the "editor paused" message after the window has had time to
+/// appear.
+pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntime>) {
+    if runtime.phase != RuntimePhase::Preparing {
+        return;
+    }
+    // The child can die during the grace window (e.g. instant crash); poll
+    // will have reset us to Idle in that case, so only advance if still alive.
+    if !runtime.is_alive() {
+        runtime.phase = RuntimePhase::Idle;
+        return;
+    }
+    runtime.prepare_elapsed += time.delta_secs();
+    if runtime.prepare_elapsed >= PREPARE_GRACE_SECS {
+        runtime.phase = RuntimePhase::Running;
+    }
+}
+
+/// Full-screen overlay that pauses the editor while an external runtime is
+/// active. During [`RuntimePhase::Preparing`] it shows "Preparing export
+/// runtime" with a spinner; during [`RuntimePhase::Running`] it shows that
+/// the editor is paused until the runtime window closes. The dim backdrop
+/// swallows all pointer input so the editor underneath isn't interactable.
+pub fn draw_runtime_overlay(
+    mut contexts: bevy_egui::EguiContexts,
+    runtime: Res<ExternalRuntime>,
+    theme: Res<renzora_theme::ThemeManager>,
+) {
+    use bevy_egui::egui::{self, Align2, Color32, Id, Order, Sense};
+
+    let phase = runtime.phase;
+    if phase == RuntimePhase::Idle {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let ctx = ctx.clone();
+
+    // Deliberately do NOT request repaints here. The overlay is fully static,
+    // so the editor can sit idle — `apply_runtime_pause_render` drops it to a
+    // slow wakeup rate, and those wakeups (not repaint requests) are what
+    // redraw this screen and poll for the runtime window closing. The result
+    // is a frozen dark screen rather than a live, repainting editor.
+
+    let t = &theme.active_theme;
+    let panel_bg = t.surfaces.panel.0;
+    let border = t.widgets.border.0;
+    let text_primary = t.text.primary.0;
+    let text_secondary = t.text.secondary.0;
+
+    // Opaque near-black fill covering the whole window: a blank dark screen
+    // that fully hides the (no-longer-rendering) editor, and swallows all
+    // pointer input so nothing underneath is reachable.
+    let screen = ctx.content_rect();
+    egui::Area::new(Id::new("external_runtime_backdrop"))
+        .order(Order::Foreground)
+        .fixed_pos(screen.min)
+        .interactable(true)
+        .show(&ctx, |ui| {
+            let (_, resp) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+            ui.painter()
+                .rect_filled(resp.rect, 0.0, Color32::from_rgb(10, 10, 12));
+        });
+
+    let (heading, sub) = match phase {
+        RuntimePhase::Preparing => (
+            "Preparing export runtime",
+            "Launching the exported game window…",
+        ),
+        RuntimePhase::Running => (
+            "Export runtime running",
+            "Editor paused — close the runtime window to resume editing.",
+        ),
+        RuntimePhase::Idle => return,
+    };
+
+    egui::Area::new(Id::new("external_runtime_card"))
+        .order(Order::Foreground)
+        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(&ctx, |ui| {
+            egui::Frame::new()
+                .fill(panel_bg)
+                .stroke(egui::Stroke::new(1.0, border))
+                .inner_margin(egui::Margin::same(24))
+                .corner_radius(8)
+                .show(ui, |ui| {
+                    ui.set_min_width(320.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new(heading)
+                                .color(text_primary)
+                                .size(18.0)
+                                .strong(),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(sub).color(text_secondary).size(13.0));
+                    });
+                });
+        });
 }
 
 /// Reap any running child when the editor decides to exit. Without this
@@ -114,5 +262,57 @@ pub fn kill_on_app_exit(
 ) {
     if exits.read().next().is_some() {
         kill_runtime(&mut runtime);
+    }
+}
+
+/// How long winit waits between forced wakeups while the editor is paused.
+/// Each wakeup runs one update — enough to repaint the (static) pause
+/// overlay and let [`poll_external_runtime`] notice the runtime window
+/// closing — but slow enough that the editor stops continuously rendering
+/// and hands the GPU to the running game.
+const PAUSED_WAKE_INTERVAL_MS: u64 = 250;
+
+/// Stashes the editor's normal [`WinitSettings`] while it's paused so we can
+/// restore the exact cadence it had before the runtime took over.
+#[derive(Resource, Default)]
+pub struct PausedRenderState {
+    saved: Option<bevy::winit::WinitSettings>,
+}
+
+/// Throttle the editor's update/render loop while the external runtime is
+/// active, and restore it when the runtime window closes.
+///
+/// The throttle engages the moment Play is pressed (during `Preparing`, not
+/// just `Running`) so the editor stops rendering immediately rather than
+/// ramping down. While throttled, winit only wakes every
+/// [`PAUSED_WAKE_INTERVAL_MS`]; together with the deactivated editor cameras
+/// and the static overlay, the editor sits on a frozen dark screen instead
+/// of doing per-frame rendering until the runtime exits.
+pub fn apply_runtime_pause_render(
+    runtime: Res<ExternalRuntime>,
+    mut winit: ResMut<bevy::winit::WinitSettings>,
+    mut state: ResMut<PausedRenderState>,
+) {
+    use bevy::winit::UpdateMode;
+    use std::time::Duration;
+
+    let paused = runtime.phase != RuntimePhase::Idle;
+    match (paused, state.saved.is_some()) {
+        // Entering the paused state — stash the live settings, then drop both
+        // focused and unfocused cadence to the slow wakeup interval.
+        (true, false) => {
+            state.saved = Some(winit.clone());
+            let low =
+                UpdateMode::reactive_low_power(Duration::from_millis(PAUSED_WAKE_INTERVAL_MS));
+            winit.focused_mode = low;
+            winit.unfocused_mode = low;
+        }
+        // Leaving the paused state — restore the editor's normal cadence.
+        (false, true) => {
+            if let Some(prev) = state.saved.take() {
+                *winit = prev;
+            }
+        }
+        _ => {}
     }
 }
