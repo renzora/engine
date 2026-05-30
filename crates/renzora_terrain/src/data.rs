@@ -197,7 +197,11 @@ impl Default for TerrainData {
             chunks_z: 4,
             chunk_size: 64.0,
             chunk_resolution: 129,
-            max_height: 50.0,
+            // height range 50 with min=-10 → default initial chunk height 0.2 maps
+            // to y=0 in chunk-local space (-10 + 0.2*50). Combined with the
+            // parent terrain transform at y=0, fresh flat terrain sits on the
+            // editor grid plane.
+            max_height: 40.0,
             min_height: -10.0,
         }
     }

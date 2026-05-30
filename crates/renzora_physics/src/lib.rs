@@ -195,20 +195,33 @@ fn compute_kinematic_slides(
     mut queue: ResMut<PendingKinematicSlides>,
     mut resolved: ResMut<ResolvedSlides>,
     spatial_query: avian3d::prelude::SpatialQuery,
-    q: Query<(&Transform, &avian3d::prelude::Collider)>,
+    q: Query<(
+        &Transform,
+        &avian3d::prelude::Collider,
+        Option<&CollisionShapeData>,
+    )>,
 ) {
     if queue.0.is_empty() {
         return;
     }
     for slide in std::mem::take(&mut queue.0) {
-        let Ok((transform, collider)) = q.get(slide.entity) else {
+        let Ok((transform, collider, shape_data)) = q.get(slide.entity) else {
             continue;
         };
+        // The avian Collider is offset from the entity transform via
+        // ColliderTransform (see `spawn_collision_shape`). `shape_cast_slide`
+        // takes the shape's world centre, so we have to add that offset
+        // ourselves — otherwise the cast (especially the downward grounding
+        // probe) happens at a phantom location `offset` units from the real
+        // collider and the character ends up floating that distance off the
+        // floor.
+        let shape_offset = shape_data.map(|s| s.offset).unwrap_or(Vec3::ZERO);
+        let shape_origin = transform.translation + shape_offset;
         let filter = avian3d::prelude::SpatialQueryFilter::from_excluded_entities([slide.entity]);
         let result = backend::avian_character::shape_cast_slide(
             &spatial_query,
             collider,
-            transform.translation,
+            shape_origin,
             transform.rotation,
             slide.delta,
             slide.max_slope,

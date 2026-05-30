@@ -14,8 +14,8 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::{
-    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode, ViewportSettings,
-    ViewportState, ViewportView,
+    CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode, ViewportMode,
+    ViewportSettings, ViewportState, ViewportView,
 };
 use renzora::core::InputFocusState;
 use renzora::core::{EditorCamera, PlayModeCamera};
@@ -636,6 +636,14 @@ fn camera_controller(
     // Compute target velocity from held WASD/QE while right-dragging, then
     // lerp the current velocity toward it. Runs every frame so motion eases
     // out for a few frames after release rather than stopping instantly.
+    //
+    // In Edit mode we surrender E/Q to mesh-edit (E = extrude). WASD still
+    // flies the camera; users wanting vertical nav can scroll-dolly or
+    // middle-drag-pan.
+    let edit_mode_active = vp_settings
+        .as_ref()
+        .map(|s| s.viewport_mode == ViewportMode::Edit)
+        .unwrap_or(false);
     let mut target_velocity = Vec3::ZERO;
     if right_pressed && drag.dragging {
         let forward = Vec3::new(
@@ -659,11 +667,13 @@ fn camera_controller(
         if keyboard.pressed(KeyCode::KeyD) {
             move_delta += right_dir;
         }
-        if keyboard.pressed(KeyCode::KeyE) {
-            move_delta += Vec3::Y;
-        }
-        if keyboard.pressed(KeyCode::KeyQ) {
-            move_delta -= Vec3::Y;
+        if !edit_mode_active {
+            if keyboard.pressed(KeyCode::KeyE) {
+                move_delta += Vec3::Y;
+            }
+            if keyboard.pressed(KeyCode::KeyQ) {
+                move_delta -= Vec3::Y;
+            }
         }
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;

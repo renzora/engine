@@ -12,16 +12,78 @@ use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
 use renzora::MaterialRef;
 
+/// Depth of the flat floor plate appended under each chunk, in chunk-local
+/// units below `min_height`. Small gap avoids Z-fighting with terrain that's
+/// been sculpted all the way down to `min_height`.
+const TERRAIN_FLOOR_GAP: f32 = 0.5;
+
+/// Append a perimeter-wall strip to the mesh. `edge_top_indices` lists the
+/// surface vertex indices along one chunk edge in CCW order (interior on
+/// left); `outward` is the wall's outward-facing normal. For each segment we
+/// emit two new verts (a wall-normal copy of the top vert and a floor-level
+/// vert) and the two triangles bridging this pair to the previous pair.
+fn add_perimeter_wall(
+    positions: &mut Vec<Vec3>,
+    normals: &mut Vec<Vec3>,
+    uvs: &mut Vec<[f32; 2]>,
+    indices: &mut Vec<u32>,
+    edge_top_indices: &[u32],
+    floor_y: f32,
+    outward: Vec3,
+) {
+    let strip_len = edge_top_indices.len();
+    if strip_len < 2 {
+        return;
+    }
+    let base = positions.len() as u32;
+    for (i, &src) in edge_top_indices.iter().enumerate() {
+        // Read before we push so the borrow doesn't outlive itself.
+        let p = positions[src as usize];
+        let u = i as f32 / (strip_len - 1) as f32;
+        positions.push(p);
+        normals.push(outward);
+        uvs.push([u, 1.0]);
+        positions.push(Vec3::new(p.x, floor_y, p.z));
+        normals.push(outward);
+        uvs.push([u, 0.0]);
+    }
+    for i in 0..(strip_len as u32 - 1) {
+        let t0 = base + 2 * i;
+        let b0 = t0 + 1;
+        let t1 = base + 2 * (i + 1);
+        let b1 = t1 + 1;
+        // CCW from outside: (T0, T1, B1) + (T0, B1, B0). Works for all four
+        // walls because each `edge_top_indices` is walked CCW around the chunk.
+        indices.push(t0);
+        indices.push(t1);
+        indices.push(b1);
+        indices.push(t0);
+        indices.push(b1);
+        indices.push(b0);
+    }
+}
+
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
+///
+/// Output mesh is the heightmap surface on top, a flat floor plate underneath
+/// at `min_height - TERRAIN_FLOOR_GAP`, and vertical side walls on every
+/// edge that faces open space (no neighbouring chunk). Interior boundaries
+/// between adjacent chunks deliberately get no wall so the chunks meet flush.
+/// Closed solid means players can't fall through holes or off the edges.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {
     let resolution = terrain.chunk_resolution;
     let spacing = terrain.vertex_spacing();
     let height_range = terrain.height_range();
 
-    let vertex_count = (resolution * resolution) as usize;
-    let mut positions = Vec::with_capacity(vertex_count);
-    let mut normals = vec![Vec3::Y; vertex_count];
-    let mut uvs = Vec::with_capacity(vertex_count);
+    let surface_vert_count = (resolution * resolution) as usize;
+    // Hint: surface verts + floor 4 + worst-case 4 walls × 2 × resolution.
+    let total_vert_hint = surface_vert_count + 4 + 8 * resolution as usize;
+    let mut positions = Vec::with_capacity(total_vert_hint);
+    // Normals for the surface get computed by central differences below; size
+    // the buffer to match `positions` so indices line up, then push for floor
+    // and walls.
+    let mut normals = vec![Vec3::Y; surface_vert_count];
+    let mut uvs = Vec::with_capacity(total_vert_hint);
 
     // Generate vertices
     for z in 0..resolution {
@@ -57,7 +119,8 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
 
     // Generate indices (two triangles per quad)
     let quad_count = ((resolution - 1) * (resolution - 1)) as usize;
-    let mut indices = Vec::with_capacity(quad_count * 6);
+    // +6 indices for the floor plate (two triangles)
+    let mut indices = Vec::with_capacity(quad_count * 6 + 6);
 
     for z in 0..(resolution - 1) {
         for x in 0..(resolution - 1) {
@@ -74,6 +137,116 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
             indices.push(bl);
             indices.push(br);
         }
+    }
+
+    // Floor plate: 4 corner verts at the chunk's lowest sculpted height minus
+    // a small gap, facing up so anyone falling through a hole sees the
+    // basement floor rather than its back side. Tracking the chunk's actual
+    // minimum (rather than `terrain.min_height`) keeps the side walls thin on
+    // flat areas and only drops them where the user has carved down — saved
+    // scenes don't get a 10-unit slab hanging under default-flat terrain.
+    // `heights` is the composed buffer (base + layers). It's `#[serde(skip)]`,
+    // so on rehydrate it can briefly be empty before the composition system
+    // populates it — fall back to `base_heights` so the floor stays sane.
+    let height_source = if chunk.heights.is_empty() {
+        &chunk.base_heights
+    } else {
+        &chunk.heights
+    };
+    let chunk_min_h_norm = height_source
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min)
+        .clamp(0.0, 1.0);
+    let chunk_min_world_y = terrain.min_height + chunk_min_h_norm * height_range;
+    let floor_y = chunk_min_world_y - TERRAIN_FLOOR_GAP;
+    let chunk_extent = (resolution - 1) as f32 * spacing;
+    let floor_base = positions.len() as u32;
+    let floor_corners = [
+        Vec3::new(0.0, floor_y, 0.0),
+        Vec3::new(chunk_extent, floor_y, 0.0),
+        Vec3::new(chunk_extent, floor_y, chunk_extent),
+        Vec3::new(0.0, floor_y, chunk_extent),
+    ];
+    let floor_uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    for (corner, uv) in floor_corners.iter().zip(floor_uvs.iter()) {
+        positions.push(*corner);
+        normals.push(Vec3::Y);
+        uvs.push(*uv);
+    }
+    // Winding chosen so the surface normal points +Y (visible from above).
+    indices.push(floor_base);
+    indices.push(floor_base + 3);
+    indices.push(floor_base + 2);
+    indices.push(floor_base);
+    indices.push(floor_base + 2);
+    indices.push(floor_base + 1);
+
+    // Side walls along external perimeter edges only. Internal edges between
+    // neighbouring chunks would double-wall; suppress them. Each wall is
+    // walked CCW around the chunk (interior on the left) so the standardized
+    // quad winding in `add_perimeter_wall` faces outward.
+    let is_external_south = chunk.chunk_z == 0;
+    let is_external_east = chunk.chunk_x + 1 == terrain.chunks_x;
+    let is_external_north = chunk.chunk_z + 1 == terrain.chunks_z;
+    let is_external_west = chunk.chunk_x == 0;
+
+    if is_external_south {
+        // z=0, walk +X.
+        let strip: Vec<u32> = (0..resolution).collect();
+        add_perimeter_wall(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            &strip,
+            floor_y,
+            Vec3::NEG_Z,
+        );
+    }
+    if is_external_east {
+        // x=resolution-1, walk +Z.
+        let strip: Vec<u32> = (0..resolution)
+            .map(|z| z * resolution + (resolution - 1))
+            .collect();
+        add_perimeter_wall(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            &strip,
+            floor_y,
+            Vec3::X,
+        );
+    }
+    if is_external_north {
+        // z=resolution-1, walk -X.
+        let strip: Vec<u32> = (0..resolution)
+            .rev()
+            .map(|x| (resolution - 1) * resolution + x)
+            .collect();
+        add_perimeter_wall(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            &strip,
+            floor_y,
+            Vec3::Z,
+        );
+    }
+    if is_external_west {
+        // x=0, walk -Z.
+        let strip: Vec<u32> = (0..resolution).rev().map(|z| z * resolution).collect();
+        add_perimeter_wall(
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+            &mut indices,
+            &strip,
+            floor_y,
+            Vec3::NEG_X,
+        );
     }
 
     let mut mesh = Mesh::new(
@@ -131,11 +304,12 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
         }
     }
 
-    // Y=-2.0 so terrain surface sits on the grid at default 20% height
+    // Parent at origin — defaults are tuned so the initial flat heightmap
+    // (20% × range-50 + min=-10 = 0) lands on the editor grid plane.
     let terrain_entity = world
         .spawn((
             Name::new("Terrain"),
-            Transform::from_xyz(0.0, -2.0, 0.0),
+            Transform::IDENTITY,
             Visibility::default(),
             terrain_data,
             renzora::SelectionStop,

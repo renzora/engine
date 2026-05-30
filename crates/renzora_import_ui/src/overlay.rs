@@ -925,7 +925,7 @@ fn import_worker(
                     ..Default::default()
                 };
 
-                let glb_bytes = if opt_settings.any_enabled() {
+                let mut glb_bytes = if opt_settings.any_enabled() {
                     let _ = tx.send(ImportMsg::Progress {
                         current: i + 1,
                         total,
@@ -971,7 +971,6 @@ fn import_worker(
                 }
                 let output_path = model_dir.join(format!("{}.glb", stem));
 
-                let size_kb = glb_bytes.len() as f64 / 1024.0;
                 let warn_count = result.warnings.len();
 
                 // Materials: fire a PbrMaterialExtracted event per material.
@@ -1054,6 +1053,59 @@ fn import_worker(
                     }
                 }
 
+                // --- Phase: extract animations, then compact the GLB ---
+                // Conversion is additive — it leaves the source's embedded
+                // animation keyframes and (after texture extraction) the now-
+                // orphaned image bytes dead inside the GLB's binary chunk. Pull
+                // animations out to `.anim` first (the runtime plays those, not
+                // the GLB's embedded clips), then garbage-collect the buffer so
+                // the on-disk model carries only live geometry/skins.
+                if settings.extract_animations {
+                    let _ = tx.send(ImportMsg::Progress {
+                        current: i + 1,
+                        total,
+                        label: format!("Extracting animations from {}", file_name),
+                    });
+                    let anim_dir = model_dir.join("animations");
+                    match renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir) {
+                        Ok(anim_result) => {
+                            for anim_path in &anim_result.written_files {
+                                let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                                    file_name: std::path::Path::new(anim_path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("animation")
+                                        .to_string(),
+                                    success: true,
+                                    message: "animation extracted".to_string(),
+                                }));
+                            }
+                            for w in &anim_result.warnings {
+                                all_warnings.push(w.clone());
+                            }
+                        }
+                        Err(e) => {
+                            all_warnings.push(format!("animation extraction: {}", e));
+                        }
+                    }
+                }
+
+                // Reclaim the dead bytes: orphaned embedded textures (their
+                // pixels now live in external `textures/*.png`) and, when split
+                // out above, animation keyframes. Skipped entirely when the user
+                // extracts neither, so a passthrough import stays byte-for-byte.
+                if settings.extract_textures || settings.extract_animations {
+                    match renzora_import::compact_glb(&glb_bytes, settings.extract_animations) {
+                        Ok(compacted) => glb_bytes = compacted,
+                        Err(e) => {
+                            warn!("[import] GLB compaction failed for {}: {}", file_name, e);
+                            all_warnings.push(format!("GLB compaction: {}", e));
+                        }
+                    }
+                }
+
+                let size_kb = glb_bytes.len() as f64 / 1024.0;
+
                 match std::fs::write(&output_path, &glb_bytes) {
                     Ok(()) => {
                         imported += 1;
@@ -1072,42 +1124,6 @@ fn import_worker(
                         // asset browser — the registry will load + spawn
                         // it offscreen, capture, and write the PNG cache.
                         let _ = tx.send(ImportMsg::Imported(output_path.clone()));
-
-                        // --- Phase: extracting animations ---
-                        if !settings.extract_animations {
-                            // Skip animation extraction entirely when the
-                            // user has opted out.
-                            continue;
-                        }
-
-                        let _ = tx.send(ImportMsg::Progress {
-                            current: i + 1,
-                            total,
-                            label: format!("Extracting animations from {}", file_name),
-                        });
-
-                        let anim_dir = model_dir.join("animations");
-                        match renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir) {
-                            Ok(anim_result) => {
-                                for anim_path in &anim_result.written_files {
-                                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
-                                        file_name: std::path::Path::new(anim_path)
-                                            .file_name()
-                                            .and_then(|n| n.to_str())
-                                            .unwrap_or("animation")
-                                            .to_string(),
-                                        success: true,
-                                        message: "animation extracted".to_string(),
-                                    }));
-                                }
-                                for w in &anim_result.warnings {
-                                    all_warnings.push(w.clone());
-                                }
-                            }
-                            Err(e) => {
-                                all_warnings.push(format!("animation extraction: {}", e));
-                            }
-                        }
                     }
                     Err(e) => {
                         let msg = format!("write failed: {}", e);

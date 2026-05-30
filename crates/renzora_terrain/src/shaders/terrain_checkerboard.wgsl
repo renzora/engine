@@ -17,11 +17,25 @@ struct TerrainCheckerboardUniform {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-    let world_pos = in.world_position.xz;
     let scale = material.properties.x;
 
-    // Checkerboard pattern from world position
-    let checker = floor(world_pos.x * scale) + floor(world_pos.y * scale);
+    // Dominant-axis triplanar projection so the perimeter walls and floor
+    // also show the checker. world.xz alone collapses to a single stripe on
+    // any vertical face — pick whichever pair of world axes is parallel to
+    // the face by looking at the largest component of the world normal.
+    let world_pos = in.world_position.xyz;
+    let an = abs(normalize(in.world_normal));
+    var proj: vec2<f32>;
+    if an.y >= an.x && an.y >= an.z {
+        proj = world_pos.xz;
+    } else if an.x >= an.z {
+        proj = world_pos.yz;
+    } else {
+        proj = world_pos.xy;
+    }
+
+    // Checkerboard pattern from the projected coords
+    let checker = floor(proj.x * scale) + floor(proj.y * scale);
     let t = fract(checker * 0.5) * 2.0;
 
     let base_color = vec4<f32>(mix(material.color_a.rgb, material.color_b.rgb, t), 1.0);

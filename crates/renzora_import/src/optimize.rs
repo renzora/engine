@@ -361,7 +361,7 @@ fn remap_attribute_in_buffer(
 // ---------------------------------------------------------------------------
 
 /// Reconstruct a GLB binary from JSON and BIN chunks.
-fn rebuild_glb(json_bytes: &[u8], bin: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn rebuild_glb(json_bytes: &[u8], bin: &[u8]) -> Result<Vec<u8>, String> {
     // Pad JSON to 4-byte alignment with spaces
     let json_padded = (json_bytes.len() + 3) & !3;
     let json_pad = json_padded - json_bytes.len();

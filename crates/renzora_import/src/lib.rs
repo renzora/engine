@@ -4,6 +4,7 @@
 //! All formats are converted to GLB for use in Bevy.
 
 pub mod anim_extract;
+pub mod compact;
 mod convert;
 pub mod formats;
 pub mod glb_compat;
@@ -36,6 +37,7 @@ pub mod usd;
 
 pub use anim_extract::extract_animations_from_glb;
 pub use bvh::extract_animations_from_bvh;
+pub use compact::compact_glb;
 pub use convert::{
     convert_to_glb, convert_to_glb_with_progress, ExtractedAlphaMode, ExtractedPbrMaterial,
     ImportError, ImportResult, ProgressFn,
