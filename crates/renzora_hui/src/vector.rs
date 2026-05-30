@@ -103,6 +103,8 @@ pub struct VectorSpec {
     pub max: f32,
     pub color: Color,
     pub track: Color,
+    /// Filled disc behind an arc/dial face (transparent = none).
+    pub fill: Color,
     pub thickness: f32,
     /// Raw `data` attribute (literal `0.2,0.5,...` or `{{ path }}` → comma
     /// string) for bars/line/waveform; resolved each frame.
@@ -151,6 +153,7 @@ pub fn spec_from_defs(
         max: f("max", dmax),
         color: hex("color", Color::srgb(0.30, 0.55, 0.96)),
         track: hex("track", Color::srgba(1.0, 1.0, 1.0, 0.10)),
+        fill: hex("fill", Color::NONE),
         thickness: f("thickness", 10.0).clamp(0.5, 256.0),
         data: defs.get("data").cloned().unwrap_or_default(),
         count: defs
@@ -308,6 +311,11 @@ fn fmt_num(v: f32) -> String {
 fn draw_arc(scene: &mut Scene, w: f64, h: f64, f: f64, spec: &VectorSpec) {
     let (cx, cy, r0) = geom(w, h, spec);
     let r = (r0 - spec.thickness as f64 / 2.0).max(1.0);
+    // Filled dial face behind the ring (skipped when transparent).
+    if spec.fill.alpha() > 0.0 {
+        scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, pen(spec.fill), None,
+            &Circle::new((cx, cy), r0));
+    }
     let stroke = Stroke::new(spec.thickness as f64);
     let start = spec.start as f64 * DEG;
     let sweep = spec.sweep as f64 * DEG;

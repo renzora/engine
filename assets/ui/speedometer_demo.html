@@ -1,0 +1,16 @@
+<!-- Standalone speedometer.
+
+     SETUP: UiCanvas -> child with HtmlTemplate = this file, and attach
+     scripts/speedometer.lua to that SAME child so {{ _speed }} animates.
+
+     The dial itself is the reusable ui/components/speedometer.html
+     component (arc + ticks + numbers + needle + readout); this file just
+     centres one and points it at the script's _speed. -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%"
+          flex_direction="column" justify_content="center" align_items="center">
+        <node template="ui/components/speedometer.html"
+              value="{{ _speed }}" min="0" max="240" unit="km/h" count="8"
+              size="320px" color="#4C8BF5" />
+    </node>
+</template>
