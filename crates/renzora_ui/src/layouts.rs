@@ -53,7 +53,6 @@ impl Default for LayoutManager {
         let layouts = vec![
             // ── Scene-mode layouts (visible in title bar) ────────────────
             WorkspaceLayout::scene("Scene", scene_layout()),
-            WorkspaceLayout::scene("Quad", layout_quad()),
             WorkspaceLayout::scene("Blueprints", layout_blueprints()),
             WorkspaceLayout::scene("Scripting", layout_scripting()),
             WorkspaceLayout::scene("Animation", layout_animation()),
@@ -311,47 +310,6 @@ pub fn scene_layout() -> DockTree {
             0.72,
         ),
         // Right column: hierarchy/scenes/shapes tabs on top, inspector/gamepad/history below
-        DockTree::vertical(
-            DockTree::Leaf {
-                tabs: vec![
-                    "hierarchy".into(),
-                    "scenes".into(),
-                    "shape_library".into(),
-                ],
-                active_tab: 0,
-            },
-            DockTree::Leaf {
-                tabs: vec!["inspector".into(), "gamepad".into(), "history".into()],
-                active_tab: 0,
-            },
-            0.4,
-        ),
-        0.82,
-    )
-}
-
-/// Quad: 2×2 grid of the four viewport cameras in the main area, with the
-/// hierarchy/inspector column on the right (same as the Scene layout).
-///
-/// Each viewport panel drives its own camera, so this reads as the classic
-/// perspective / front / top / side multi-angle editing layout out of the box.
-pub fn layout_quad() -> DockTree {
-    DockTree::horizontal(
-        // Main area: 2×2 of the viewport slots.
-        DockTree::vertical(
-            DockTree::horizontal(
-                DockTree::leaf("viewport"),
-                DockTree::leaf("viewport-2"),
-                0.5,
-            ),
-            DockTree::horizontal(
-                DockTree::leaf("viewport-3"),
-                DockTree::leaf("viewport-4"),
-                0.5,
-            ),
-            0.5,
-        ),
-        // Right column: hierarchy/scenes/shapes over inspector/gamepad/history.
         DockTree::vertical(
             DockTree::Leaf {
                 tabs: vec![
