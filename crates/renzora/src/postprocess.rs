@@ -29,14 +29,15 @@ use bevy::render::{
         binding_types::{sampler, texture_2d, uniform_buffer},
         encase::internal::WriteInto,
         BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries,
-        CachedRenderPipelineId, ColorTargetState, ColorWrites, FragmentState, Operations,
+        CachedRenderPipelineId, ColorTargetState, ColorWrites, Extent3d, FragmentState, Operations,
         PipelineCache, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
-        Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, ShaderType, TextureFormat,
-        TextureSampleType,
+        Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, ShaderType, TextureDescriptor,
+        TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+        TextureViewDescriptor,
     },
     renderer::{RenderContext, RenderDevice},
     view::ViewTarget,
-    RenderApp, RenderStartup,
+    Render, RenderApp, RenderStartup, RenderSystems,
 };
 use bevy::shader::ShaderRef;
 use bevy::utils::default;
@@ -58,6 +59,23 @@ pub trait PostProcessEffect:
     /// after the uniform buffer. The effect must populate `ExtraTextureSource<Self>`
     /// so the handler can bind the texture at render time.
     fn has_extra_texture() -> bool {
+        false
+    }
+
+    /// When `true` (and `has_extra_texture()` is also `true`), the extra texture is
+    /// an auto-captured snapshot of the *previous* fully-composited frame, maintained
+    /// by the unified node. While idle the snapshot is refreshed every frame; while a
+    /// transition is active (see [`freeze_snapshot`](Self::freeze_snapshot)) it is
+    /// frozen, so the shader can blend the frozen outgoing frame (binding 3) against
+    /// the live incoming frame (binding 0). Used by the screen-transition effect.
+    fn extra_texture_is_snapshot() -> bool {
+        false
+    }
+
+    /// Per-frame: return `true` to FREEZE the snapshot (stop refreshing it) — i.e. a
+    /// transition is in progress. Return `false` when idle so the snapshot tracks the
+    /// live frame. Only consulted when `extra_texture_is_snapshot()` is `true`.
+    fn freeze_snapshot(&self) -> bool {
         false
     }
 
@@ -215,6 +233,106 @@ fn init_pipeline<T: PostProcessEffect>(
 }
 
 // ---------------------------------------------------------------------------
+// Snapshot support (for two-image transition effects)
+// ---------------------------------------------------------------------------
+
+/// Shared fullscreen "copy" pipeline used to blit the live frame into a
+/// per-view snapshot texture. One instance, reused by every snapshot effect.
+#[derive(Resource)]
+struct SnapshotBlitPipeline {
+    layout: BindGroupLayoutDescriptor,
+    sampler: Sampler,
+    pipeline_id: CachedRenderPipelineId,
+}
+
+fn init_snapshot_blit_pipeline(
+    mut commands: Commands,
+    render_device: Res<RenderDevice>,
+    asset_server: Res<AssetServer>,
+    fullscreen_shader: Res<FullscreenShader>,
+    pipeline_cache: Res<PipelineCache>,
+) {
+    let layout = BindGroupLayoutDescriptor::new(
+        "snapshot_blit_bind_group_layout",
+        &BindGroupLayoutEntries::sequential(
+            ShaderStages::FRAGMENT,
+            (
+                texture_2d(TextureSampleType::Float { filterable: true }),
+                sampler(SamplerBindingType::Filtering),
+            ),
+        ),
+    );
+    let sampler = render_device.create_sampler(&SamplerDescriptor::default());
+    let shader = asset_server.load("embedded://renzora/postprocess_copy.wgsl");
+    let pipeline_id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
+        label: Some("snapshot_blit_pipeline".into()),
+        layout: vec![layout.clone()],
+        vertex: fullscreen_shader.to_vertex_state(),
+        fragment: Some(FragmentState {
+            shader,
+            // Snapshot textures are always Rgba16Float so a single blit
+            // pipeline serves both LDR and HDR views.
+            targets: vec![Some(ColorTargetState {
+                format: TextureFormat::Rgba16Float,
+                blend: None,
+                write_mask: ColorWrites::ALL,
+            })],
+            ..default()
+        }),
+        ..default()
+    });
+    commands.insert_resource(SnapshotBlitPipeline {
+        layout,
+        sampler,
+        pipeline_id,
+    });
+}
+
+/// Per-view captured snapshot of the previous frame, used as the "frozen"
+/// image (binding 3) by snapshot-based transition effects. Lives on the
+/// render-world view entity, persisting across frames.
+#[derive(Component)]
+struct EffectSnapshot<T: PostProcessEffect> {
+    view: TextureView,
+    size: Extent3d,
+    _marker: PhantomData<fn() -> T>,
+}
+
+/// Allocate / resize the snapshot texture for every view running effect `T`.
+fn prepare_effect_snapshot<T: PostProcessEffect>(
+    mut commands: Commands,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ViewTarget, Option<&EffectSnapshot<T>>), With<T>>,
+) {
+    for (entity, view_target, existing) in &views {
+        let size = view_target.main_texture().size();
+        let needs_alloc = match existing {
+            Some(s) => s.size != size,
+            None => true,
+        };
+        if !needs_alloc {
+            continue;
+        }
+        let texture = render_device.create_texture(&TextureDescriptor {
+            label: Some("effect_snapshot"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&TextureViewDescriptor::default());
+        commands.entity(entity).insert(EffectSnapshot::<T> {
+            view,
+            size,
+            _marker: PhantomData,
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Type-erased effect handler
 // ---------------------------------------------------------------------------
 
@@ -265,6 +383,88 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
         };
 
         let post_process = view_target.post_process_write();
+
+        // ── Two-image (transition) effects: bind a frozen snapshot as the
+        //    extra texture and, while idle, refresh that snapshot from the
+        //    live frame via a blit. ────────────────────────────────────────
+        if T::has_extra_texture() {
+            let snapshot = world.get::<EffectSnapshot<T>>(view_entity);
+            let freeze = world
+                .get::<T>(view_entity)
+                .map(|s| s.freeze_snapshot())
+                .unwrap_or(false);
+
+            // Idle: copy the current frame into the snapshot so it always holds
+            // the *previous* frame at the moment a transition begins. Skipped
+            // while frozen so the outgoing shot is preserved during the blend.
+            if T::extra_texture_is_snapshot() && !freeze {
+                if let (Some(snap), Some(blit)) =
+                    (snapshot, world.get_resource::<SnapshotBlitPipeline>())
+                {
+                    if let Some(blit_pipeline) =
+                        pipeline_cache.get_render_pipeline(blit.pipeline_id)
+                    {
+                        let blit_bind_group = render_context.render_device().create_bind_group(
+                            "snapshot_blit_bind_group",
+                            &pipeline_cache.get_bind_group_layout(&blit.layout),
+                            &BindGroupEntries::sequential((post_process.source, &blit.sampler)),
+                        );
+                        let mut blit_pass =
+                            render_context.begin_tracked_render_pass(RenderPassDescriptor {
+                                label: Some("snapshot_blit_pass"),
+                                color_attachments: &[Some(RenderPassColorAttachment {
+                                    view: &snap.view,
+                                    depth_slice: None,
+                                    resolve_target: None,
+                                    ops: Operations::default(),
+                                })],
+                                depth_stencil_attachment: None,
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
+                            });
+                        blit_pass.set_render_pipeline(blit_pipeline);
+                        blit_pass.set_bind_group(0, &blit_bind_group, &[]);
+                        blit_pass.draw(0..3, 0..1);
+                    }
+                }
+            }
+
+            // Extra texture = the snapshot when available, otherwise fall back to
+            // the live source (A == B → the shader degrades to a no-op pass-through
+            // rather than sampling an uninitialized/blank texture).
+            let extra_view: &TextureView =
+                snapshot.map(|s| &s.view).unwrap_or(post_process.source);
+
+            let bind_group = render_context.render_device().create_bind_group(
+                "post_process_bind_group_extra",
+                &pipeline_cache.get_bind_group_layout(&pipeline.layout),
+                &BindGroupEntries::sequential((
+                    post_process.source,
+                    &pipeline.sampler,
+                    settings_binding.clone(),
+                    extra_view,
+                    &pipeline.sampler,
+                )),
+            );
+
+            let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
+                label: Some("post_process_pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: post_process.destination,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: Operations::default(),
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            render_pass.set_render_pipeline(render_pipeline);
+            render_pass.set_bind_group(0, &bind_group, &[settings_index.index()]);
+            render_pass.draw(0..3, 0..1);
+
+            return Ok(());
+        }
 
         let bind_group = render_context.render_device().create_bind_group(
             "post_process_bind_group",
@@ -349,11 +549,15 @@ struct PostProcessCorePlugin;
 impl Plugin for PostProcessCorePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] PostProcessCorePlugin");
+        // Passthrough shader used to blit the live frame into snapshot textures.
+        bevy::asset::embedded_asset!(app, "postprocess_copy.wgsl");
+
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app.init_resource::<PostProcessRegistry>();
+        render_app.add_systems(RenderStartup, init_snapshot_blit_pipeline);
 
         render_app.add_render_graph_node::<ViewNodeRunner<UnifiedPostProcessNode>>(
             Core3d,
@@ -443,6 +647,17 @@ impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
             Update,
             (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>),
         );
+
+        // Snapshot-backed effects need a per-view capture texture maintained
+        // each frame so the handler can blend the frozen previous frame.
+        if T::has_extra_texture() && T::extra_texture_is_snapshot() {
+            if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+                render_app.add_systems(
+                    Render,
+                    prepare_effect_snapshot::<T>.in_set(RenderSystems::PrepareResources),
+                );
+            }
+        }
 
         // Extract + uniform plugins handle moving data to the render world
         app.add_plugins((

@@ -1,0 +1,27 @@
+[package]
+name = "renzora_screen_transition"
+version = "0.1.0"
+edition = "2021"
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/`
+# directory at startup. See renzora_vignette/Cargo.toml for why this
+# stays cdylib-only.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["editor", "dlopen"]
+dlopen = []
+editor = ["renzora/editor", "dep:egui-phosphor"]
+
+[dependencies]
+renzora_postprocess = { path = "../renzora_postprocess" }
+renzora_editor = { path = "../renzora_editor" }
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

@@ -10594,6 +10594,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_screen_transition"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_editor",
+ "renzora_postprocess",
+ "serde",
+]
+
+[[package]]
 name = "renzora_script_variables"
 version = "0.1.0"
 dependencies = [
