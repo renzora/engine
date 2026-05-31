@@ -93,11 +93,21 @@ copy_shared_libs() {
     local SRC="$1"
     local OUT="$2"
     local EXT="$3"
+    local HOST_BIN="$4"
 
     mkdir -p "$OUT/plugins"
 
-    # bevy_dylib (newest only)
-    local BEVY_DLL=$(ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 || true)
+    # bevy_dylib — copy the EXACT one the host binary imports, NOT just the
+    # newest by mtime. deps/ accumulates one bevy_dylib-<hash> per feature
+    # config across builds; picking by mtime can copy a hash the binary does
+    # not link, giving "bevy_dylib-<hash>.dll not found" at runtime.
+    local WANT=""
+    [ -n "$HOST_BIN" ] && [ -f "$HOST_BIN" ] && \
+        WANT=$(grep -aoE "(lib)?bevy_dylib-[0-9a-f]+\.$EXT" "$HOST_BIN" 2>/dev/null | head -1)
+    local BEVY_DLL=""
+    [ -n "$WANT" ] && BEVY_DLL=$(ls "$SRC"/deps/"$WANT" 2>/dev/null | head -1)
+    # Fallback to newest-by-mtime only if the import name couldn't be read.
+    [ -z "$BEVY_DLL" ] && BEVY_DLL=$(ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 || true)
     [ -n "$BEVY_DLL" ] && cp "$BEVY_DLL" "$OUT/"
 
     # SDK — shared dylibs that the host binary AND every distribution
@@ -208,7 +218,9 @@ build_desktop() {
         chmod +x "$OUT/$DEST" 2>/dev/null || true
     fi
 
-    copy_shared_libs "$SRC" "$OUT" "$EXT"
+    local HOST_BIN
+    if [ "$EXT" = "dll" ]; then HOST_BIN="$OUT/$DEST.exe"; else HOST_BIN="$OUT/$DEST"; fi
+    copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN"
     return 0
 }
 
