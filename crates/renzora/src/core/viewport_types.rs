@@ -36,6 +36,102 @@ impl Default for ViewportState {
     }
 }
 
+/// Number of editor viewport slots (the maximum number of camera views you can
+/// dock at once). Slot 0 is the primary viewport (full 3D/2D/UI + toolbar);
+/// slots 1.. are additional 3D-only camera views of the same scene.
+pub const VIEWPORT_COUNT: usize = 4;
+
+/// Per-slot state for one editor viewport: its render-target image, panel rect,
+/// and its own orbit camera (focus / distance / yaw / pitch).
+///
+/// The orbit is stored as raw fields rather than `renzora_camera::OrbitCameraState`
+/// so this type can live in `renzora` core without depending on the camera crate.
+/// The camera controller mirrors the focused slot's fields in and out of its
+/// singleton `OrbitCameraState` each frame.
+#[derive(Debug, Clone)]
+pub struct ViewportSlot {
+    /// Render-target image this slot's camera draws into (and the panel displays).
+    pub image: Option<Handle<Image>>,
+    /// The 3D editor camera entity bound to this slot.
+    pub camera_entity: Option<Entity>,
+    /// Current render-target resolution (pixels).
+    pub current_size: UVec2,
+    /// Screen-space top-left of the panel rect.
+    pub screen_position: Vec2,
+    /// Screen-space size of the panel rect.
+    pub screen_size: Vec2,
+    /// Whether the cursor is over this viewport's panel.
+    pub hovered: bool,
+    /// Whether this slot's panel is currently present in the dock tree.
+    pub docked: bool,
+    /// Orbit focus point.
+    pub focus: Vec3,
+    /// Orbit distance from focus.
+    pub distance: f32,
+    /// Orbit yaw (radians).
+    pub yaw: f32,
+    /// Orbit pitch (radians).
+    pub pitch: f32,
+}
+
+impl ViewportSlot {
+    fn new(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -> Self {
+        Self {
+            image: None,
+            camera_entity: None,
+            current_size: UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
+            screen_position: Vec2::ZERO,
+            screen_size: Vec2::new(DEFAULT_WIDTH as f32, DEFAULT_HEIGHT as f32),
+            hovered: false,
+            docked: false,
+            focus,
+            distance,
+            yaw,
+            pitch,
+        }
+    }
+
+    /// Aspect ratio of the panel rect, falling back to 16:9.
+    pub fn aspect(&self) -> f32 {
+        if self.screen_size.y > 0.0 {
+            self.screen_size.x / self.screen_size.y
+        } else {
+            16.0 / 9.0
+        }
+    }
+}
+
+/// All editor viewport slots plus which one currently has focus.
+///
+/// The focused slot is the one the user is hovering / interacting with; the
+/// camera controller mirrors it into the singleton `OrbitCameraState` /
+/// [`ViewportState`] and ensures the `EditorCamera` marker sits on its camera,
+/// so the entire existing single-viewport tool/gizmo/overlay stack transparently
+/// operates on the focused view.
+#[derive(Resource)]
+pub struct Viewports {
+    pub slots: [ViewportSlot; VIEWPORT_COUNT],
+    pub focused: usize,
+}
+
+impl Default for Viewports {
+    fn default() -> Self {
+        use std::f32::consts::FRAC_PI_2;
+        // Slot 0 matches the historical single-viewport default angle; the
+        // extra slots start on classic orthographic-ish presets so a fresh
+        // quad layout reads as perspective / front / top / side.
+        Self {
+            slots: [
+                ViewportSlot::new(Vec3::ZERO, 4.5, 0.3, 0.4), // primary / user angle
+                ViewportSlot::new(Vec3::ZERO, 4.5, 0.0, 0.0), // front
+                ViewportSlot::new(Vec3::ZERO, 4.5, 0.0, FRAC_PI_2 - 0.001), // top
+                ViewportSlot::new(Vec3::ZERO, 4.5, FRAC_PI_2, 0.0), // right side
+            ],
+            focused: 0,
+        }
+    }
+}
+
 /// Atomically-writable nav overlay drag state from the panel's `ui()` method.
 ///
 /// The nav overlay buttons write drag deltas here (from `&World`), and the

@@ -18,7 +18,7 @@ use renzora::core::viewport_types::{
     ViewportSettings, ViewportState, ViewportView,
 };
 use renzora::core::InputFocusState;
-use renzora::core::{EditorCamera, PlayModeCamera};
+use renzora::core::{EditorCamera, PlayModeCamera, ViewportCamera};
 use renzora_editor::EditorSelection;
 
 /// Orbit camera state for the editor viewport.
@@ -167,14 +167,25 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraDragState>()
             .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
+            .init_resource::<OrbitMirror>()
             .add_systems(
                 Update,
                 toggle_pivot_lock.run_if(in_state(renzora_editor::SplashState::Editor)),
             )
             .add_systems(PostStartup, apply_initial_orbit)
+            // Relocate the EditorCamera marker to the focused viewport before
+            // the Update controller/gizmo systems read it (PreUpdate flushes
+            // its structural changes before Update).
+            .add_systems(
+                PreUpdate,
+                relocate_editor_camera_marker
+                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+            )
             .add_systems(
                 Update,
                 (
+                    // Load the focused slot's angle into the singleton orbit…
+                    mirror_focused_orbit_in,
                     sync_viewport_settings,
                     handle_view_angle_keys,
                     focus_selected,
@@ -186,6 +197,10 @@ impl Plugin for CameraPlugin {
                     update_camera_projection,
                     sync_orbit_snapshot,
                     apply_orbit_on_change,
+                    // …persist the edited angle back to the focused slot, then
+                    // drive the other views from their own stored angles.
+                    mirror_focused_orbit_out,
+                    apply_secondary_viewport_cameras,
                 )
                     .chain()
                     .run_if(in_state(renzora_editor::SplashState::Editor)),
@@ -888,27 +903,17 @@ fn apply_nav_overlay(
     }
 }
 
-/// Update camera projection based on orbit state (perspective/orthographic).
-fn update_camera_projection(
-    orbit: Res<OrbitCameraState>,
-    viewport: Option<Res<ViewportState>>,
-    mut camera_query: Query<&mut Projection, With<EditorCamera>>,
+/// Apply a perspective/orthographic projection to one camera, matching the
+/// editor's conventions (seamless ortho↔perspective at the orbit distance,
+/// metre-scale FixedVertical ortho). Shared by the focused-camera updater and
+/// the secondary-viewport sync.
+fn apply_projection(
+    projection: &mut Projection,
+    mode: ProjectionMode,
+    distance: f32,
+    aspect: f32,
 ) {
-    if !orbit.is_changed() {
-        return;
-    }
-
-    let Ok(mut projection) = camera_query.single_mut() else {
-        return;
-    };
-
-    let aspect = viewport
-        .as_ref()
-        .filter(|v| v.screen_size.x > 0.0 && v.screen_size.y > 0.0)
-        .map(|v| v.screen_size.x / v.screen_size.y)
-        .unwrap_or(16.0 / 9.0);
-
-    match orbit.projection_mode {
+    match mode {
         ProjectionMode::Perspective => {
             if !matches!(*projection, Projection::Perspective(_)) {
                 *projection = Projection::Perspective(PerspectiveProjection {
@@ -931,7 +936,7 @@ fn update_camera_projection(
             // FixedVertical pins the visible world-height directly in
             // metres, independent of viewport pixel size.
             let fov: f32 = std::f32::consts::FRAC_PI_4;
-            let viewport_height = 2.0 * orbit.distance * (fov * 0.5).tan();
+            let viewport_height = 2.0 * distance * (fov * 0.5).tan();
             if !matches!(*projection, Projection::Orthographic(_)) {
                 let mut ortho = OrthographicProjection::default_3d();
                 ortho.scaling_mode = bevy::camera::ScalingMode::FixedVertical { viewport_height };
@@ -944,6 +949,180 @@ fn update_camera_projection(
                 ortho.scale = 1.0;
             }
         }
+    }
+}
+
+/// Update the focused camera's projection based on orbit state.
+fn update_camera_projection(
+    orbit: Res<OrbitCameraState>,
+    viewport: Option<Res<ViewportState>>,
+    mut camera_query: Query<&mut Projection, With<EditorCamera>>,
+) {
+    if !orbit.is_changed() {
+        return;
+    }
+
+    let Ok(mut projection) = camera_query.single_mut() else {
+        return;
+    };
+
+    let aspect = viewport
+        .as_ref()
+        .filter(|v| v.screen_size.x > 0.0 && v.screen_size.y > 0.0)
+        .map(|v| v.screen_size.x / v.screen_size.y)
+        .unwrap_or(16.0 / 9.0);
+
+    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect);
+}
+
+// ── Multi-viewport plumbing ─────────────────────────────────────────────────
+//
+// The editor keeps one singleton `OrbitCameraState` (and the `EditorCamera`
+// marker) representing whichever viewport the user is focused on, so the whole
+// existing single-camera controller / gizmo / overlay stack "just works" on the
+// focused view. These systems mirror the focused slot in and out of that
+// singleton and drive the other slots' cameras directly from their stored orbit.
+
+/// Move the `EditorCamera` marker onto the focused viewport's camera (and off
+/// the others) so every `With<EditorCamera>` system targets the focused view.
+/// Runs in `PreUpdate` so the structural change is flushed before the `Update`
+/// controller/gizmo systems read it.
+fn relocate_editor_camera_marker(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    cameras: Query<(Entity, &ViewportCamera, Has<EditorCamera>)>,
+    mut commands: Commands,
+) {
+    let focused = viewports.focused;
+    for (entity, vc, has_marker) in cameras.iter() {
+        let want = vc.0 == focused;
+        if want && !has_marker {
+            commands.entity(entity).insert(EditorCamera);
+        } else if !want && has_marker {
+            commands.entity(entity).remove::<EditorCamera>();
+        }
+    }
+}
+
+/// Tracks the slot currently bound to the singleton `OrbitCameraState` and the
+/// last value mirrored out.
+///
+/// `active` is set by `mirror_in` and used by `mirror_out` so the write-back
+/// always targets the *same* slot that was loaded — even if `Viewports.focused`
+/// changes mid-frame (the focus resolver runs in another crate and the
+/// scheduler may interleave it between `mirror_in` and `mirror_out`). Without
+/// this, hovering a viewport would copy the previous view's angle into it.
+///
+/// `last_*` lets `mirror_in` tell an *external* write of the singleton (scene
+/// load / tab switch / reset) apart from the value the mirror round-trips.
+#[derive(Resource, Default)]
+struct OrbitMirror {
+    active: usize,
+    last_active: usize,
+    focus: Vec3,
+    distance: f32,
+    yaw: f32,
+    pitch: f32,
+    initialized: bool,
+}
+
+/// Load the focused slot's orbit into the singleton `OrbitCameraState` at the
+/// start of the camera update, so the controller edits the focused view.
+///
+/// If something outside the camera loop changed the singleton since the last
+/// mirror-out (e.g. a scene/tab switch restoring a saved camera), that change
+/// is adopted into the focused slot instead of being overwritten.
+fn mirror_focused_orbit_in(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut mirror: ResMut<OrbitMirror>,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    let externally_changed = mirror.initialized
+        && mirror.last_active == focused
+        && (orbit.focus != mirror.focus
+            || orbit.distance != mirror.distance
+            || orbit.yaw != mirror.yaw
+            || orbit.pitch != mirror.pitch);
+    // Lock the write-back target to the slot we're about to edit this frame.
+    mirror.active = focused;
+    if externally_changed {
+        // Keep the external value; mirror-out will persist it to the slot.
+        return;
+    }
+    if let Some(slot) = viewports.slots.get(focused) {
+        // Only the placement fields are per-view; projection mode stays shared
+        // (driven by the header), so leave `orbit.projection_mode` alone. Avoid
+        // a spurious change-tick when the value already matches.
+        if orbit.focus != slot.focus
+            || orbit.distance != slot.distance
+            || orbit.yaw != slot.yaw
+            || orbit.pitch != slot.pitch
+        {
+            orbit.focus = slot.focus;
+            orbit.distance = slot.distance;
+            orbit.yaw = slot.yaw;
+            orbit.pitch = slot.pitch;
+        }
+    }
+}
+
+/// Write the (possibly edited) singleton orbit back to the slot that
+/// `mirror_in` loaded this frame, so the focused view's angle persists and a
+/// mid-frame focus change can't redirect the write to the wrong slot.
+fn mirror_focused_orbit_out(
+    orbit: Res<OrbitCameraState>,
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut mirror: ResMut<OrbitMirror>,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    let active = mirror.active.min(VIEWPORT_COUNT - 1);
+    if let Some(slot) = viewports.slots.get_mut(active) {
+        slot.focus = orbit.focus;
+        slot.distance = orbit.distance;
+        slot.yaw = orbit.yaw;
+        slot.pitch = orbit.pitch;
+    }
+    mirror.last_active = active;
+    mirror.focus = orbit.focus;
+    mirror.distance = orbit.distance;
+    mirror.yaw = orbit.yaw;
+    mirror.pitch = orbit.pitch;
+    mirror.initialized = true;
+}
+
+/// Drive every *non-focused* viewport camera's transform + projection from its
+/// stored slot orbit. The focused camera is handled by the regular controller
+/// path, so it's skipped here to avoid double-writes.
+fn apply_secondary_viewport_cameras(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    vp_settings: Option<Res<ViewportSettings>>,
+    mut cameras: Query<(&ViewportCamera, &mut Transform, &mut Projection), Without<PlayModeCamera>>,
+) {
+    let focused = viewports.focused;
+    let mode = match vp_settings.map(|s| s.projection_mode).unwrap_or_default() {
+        VpProjectionMode::Perspective => ProjectionMode::Perspective,
+        VpProjectionMode::Orthographic => ProjectionMode::Orthographic,
+    };
+    let _ = focused;
+    for (vc, mut transform, mut projection) in cameras.iter_mut() {
+        let Some(slot) = viewports.slots.get(vc.0) else {
+            continue;
+        };
+        let orbit = OrbitCameraState {
+            focus: slot.focus,
+            distance: slot.distance,
+            yaw: slot.yaw,
+            pitch: slot.pitch,
+            projection_mode: mode,
+        };
+        // Drive *every* viewport camera from its own slot (not just the
+        // non-focused ones). The focused slot is kept up to date by the
+        // controller via `mirror_focused_orbit_out`, so the focused camera
+        // still tracks live input — but no camera ever reads a shared value,
+        // which makes it structurally impossible for the views to converge.
+        *transform = orbit.calculate_transform();
+        apply_projection(&mut projection, mode, slot.distance, slot.aspect());
     }
 }
 

@@ -62,10 +62,18 @@ fn sync_environment_map(
         Option<Ref<renzora_lighting::Sun>>,
     )>,
     mut env_lights: Query<&mut EnvironmentMapLight>,
+    probes: Query<(), With<AtmosphereEnvironmentMapLight>>,
     routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
+        // The IBL probe can't be added at runtime (Bevy specializes the layout
+        // at first render). Only *update* cameras that already carry it — the
+        // single environment/bake camera. Other routed cameras share its result
+        // (the baked cubemap is fanned out as a `Skybox`).
+        if probes.get(*target).is_err() {
+            continue;
+        }
         // Find a source on the routing list that has the settings, and
         // (optionally) a Sun on the same entity for day-night fading.
         let source = source_list.iter().find_map(|&src| sources.get(src).ok());
@@ -151,10 +159,15 @@ fn cleanup_environment_map(
     mut commands: Commands,
     mut removed: RemovedComponents<EnvironmentMapComponentSettings>,
     mut env_lights: Query<&mut EnvironmentMapLight>,
+    probes: Query<(), With<AtmosphereEnvironmentMapLight>>,
     routing: Res<renzora::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
+            // Only the bake camera carries the probe; never add it at runtime.
+            if probes.get(*target).is_err() {
+                continue;
+            }
             commands
                 .entity(*target)
                 .insert(AtmosphereEnvironmentMapLight {

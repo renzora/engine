@@ -1,13 +1,22 @@
 //! Runtime camera spawning and render target syncing.
 
-use crate::{EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, ViewportRenderTarget};
+use crate::{
+    EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, PrimaryViewportCamera,
+    ViewportCamera, ViewportRenderTarget,
+};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, RenderTarget};
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
+use bevy::core_pipeline::Skybox;
+use bevy::image::Image;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
-use bevy::light::AtmosphereEnvironmentMapLight;
+use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight};
 use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
 use bevy::prelude::*;
+use bevy::render::render_resource::{
+    Extent3d, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+    TextureViewDimension,
+};
 use bevy::render::view::Hdr;
 use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
 use renzora::core::PlayModeState;
@@ -34,73 +43,218 @@ use renzora::viewport_types::EditorCameraMatrix;
 /// The plugin replaces, never removes — see its file for the why.
 pub fn spawn_editor_camera(
     mut commands: Commands,
-    render_target: Res<ViewportRenderTarget>,
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // One ScatteringMedium asset shared by every viewport camera's atmosphere.
     let default_medium = mediums.add(ScatteringMedium::default());
 
-    let mut entity = commands.spawn((
-        Camera3d::default(),
-        Camera {
-            order: -1,
-            ..default()
-        },
-        Projection::Perspective(PerspectiveProjection {
-            far: 100_000.0,
-            ..default()
-        }),
-        Transform::from_xyz(5.0, 4.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        EditorCamera,
-        HideInHierarchy,
-        EditorLocked,
-        RenderLayers::from_layers(&[0, 1]),
-        Name::new("Editor Camera"),
-        Hdr,
-        Atmosphere {
-            bottom_radius: 6_360_000.0,
-            top_radius: 6_460_000.0,
-            ground_albedo: Vec3::splat(0.3),
-            medium: default_medium,
-        },
-        AtmosphereSettings::default(),
-        // IBL is off by default — `intensity: 0.0` keeps the bind-group
-        // slots present (Bevy 0.18 won't let us add this component at
-        // runtime without a pipeline crash) but contributes nothing
-        // visually. Adding an `EnvironmentMapComponentSettings` to any
-        // entity in the scene routes a non-zero intensity onto the
-        // camera; removing it pushes intensity back to 0. See
-        // `renzora_environment_map`.
-        AtmosphereEnvironmentMapLight {
-            intensity: 0.0,
-            ..default()
-        },
-        // Atmosphere/sky binds depth as non-multisampled (binding 13);
-        // any MSAA on the same camera trips a wgpu validation crash.
-        Msaa::Off,
-        // Force the prepass to carry world normals, depth, and motion
-        // vectors. NormalPrepass is required for `pbr_input_from_vertex_output`
-        // to compile against `alpha_mode = Mask` materials. DepthPrepass +
-        // MotionVectorPrepass are required for SSGI / Lumen `ScreenSpace`
-        // temporal reprojection. Bevy 0.18 specializes the prepass pipeline
-        // once on first render; all three must be present at spawn — adding
-        // any later trips a wgpu validation crash on the prepass attachment
-        // list. (TAA also auto-attaches MotionVectorPrepass; doing it here
-        // means the layout doesn't change when the user toggles TAA.)
-        //
-        // `DeferredPrepass` (and a matching `Msaa::Off`) is attached
-        // by `ensure_deferred_prepass_on_cameras` in `PostUpdate` when
-        // the resolved rendering mode is Deferred. That same system
-        // covers every other `Camera3d` in the editor (previews,
-        // thumbnails, etc.), so we don't special-case it here.
-        (NormalPrepass, DepthPrepass, MotionVectorPrepass),
-    ));
+    // Valid placeholder cubemap so the secondary cameras can carry an
+    // `EnvironmentMapLight` from spawn (the IBL bind-group slots can't be added
+    // at runtime). `share_ibl_to_secondary_viewports` swaps these handles for
+    // the primary's real prefiltered maps once the bake is ready.
+    let placeholder_cube = make_placeholder_cube(&mut images);
 
-    if let Some(ref image) = render_target.image {
-        info!("[camera] Editor camera spawned with offscreen render target");
-        entity.insert(RenderTarget::Image(image.clone().into()));
-    } else {
-        info!("[camera] Editor camera spawned rendering to window (no viewport image yet)");
+    for i in 0..VIEWPORT_COUNT {
+        let slot = &viewports.slots[i];
+        let transform = orbit_transform(slot.focus, slot.distance, slot.yaw, slot.pitch);
+        let slot_image = slot.image.clone();
+
+        let mut entity = commands.spawn((
+            Camera3d::default(),
+            Camera {
+                order: -1,
+                // Secondary views start inactive; the panel-visibility gate in
+                // `renzora_viewport` activates each one when its panel is docked.
+                is_active: i == 0,
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                far: 100_000.0,
+                ..default()
+            }),
+            transform,
+            ViewportCamera(i),
+            HideInHierarchy,
+            EditorLocked,
+            RenderLayers::from_layers(&[0, 1]),
+            Name::new(format!("Editor Camera {i}")),
+            Hdr,
+            // Atmosphere/sky binds depth as non-multisampled (binding 13);
+            // any MSAA on the same camera trips a wgpu validation crash.
+            Msaa::Off,
+            // Force the prepass to carry world normals, depth, and motion
+            // vectors. NormalPrepass is required for `pbr_input_from_vertex_output`
+            // to compile against `alpha_mode = Mask` materials. DepthPrepass +
+            // MotionVectorPrepass are required for SSGI / Lumen `ScreenSpace`
+            // temporal reprojection. Bevy 0.18 specializes the prepass pipeline
+            // once on first render; all three must be present at spawn — adding
+            // any later trips a wgpu validation crash on the prepass attachment
+            // list. (TAA also auto-attaches MotionVectorPrepass; doing it here
+            // means the layout doesn't change when the user toggles TAA.)
+            //
+            // `DeferredPrepass` (and a matching `Msaa::Off`) is attached
+            // by `ensure_deferred_prepass_on_cameras` in `PostUpdate` when
+            // the resolved rendering mode is Deferred. That same system
+            // covers every other `Camera3d` in the editor (previews,
+            // thumbnails, etc.), so we don't special-case it here.
+            (NormalPrepass, DepthPrepass, MotionVectorPrepass),
+        ));
+
+        // Only the PRIMARY camera carries the procedural sky + IBL. In Bevy
+        // 0.18 the `Atmosphere` component makes a camera's mesh-view layout
+        // expect the environment-map (IBL) bindings, and the per-camera IBL
+        // bake can't be duplicated (four bakes race → "26 vs 29" wgpu crash) or
+        // toggled at runtime — so sky and IBL are an inseparable, single-camera
+        // unit. The extra views are lightweight 3D angles (prepass + HDR). True
+        // sharing across views requires rendering the atmosphere to one shared
+        // cubemap and feeding it back as a Skybox + EnvironmentMapLight; see the
+        // multi-viewport notes.
+        // Only the PRIMARY camera carries the atmosphere + IBL bake (one bake,
+        // shared out). Secondary views carry an `EnvironmentMapLight` from spawn
+        // (placeholder maps + zero intensity — invisible, but keeps the IBL
+        // bind-group slots stable since they can't be added at runtime);
+        // `share_ibl_to_secondary_viewports` swaps in the primary's prefiltered
+        // maps, and `share_sky_to_secondary_viewports` gives them the primary's
+        // baked cubemap as a Skybox.
+        if i == 0 {
+            entity.insert((
+                PrimaryViewportCamera,
+                EditorCamera,
+                Atmosphere {
+                    bottom_radius: 6_360_000.0,
+                    top_radius: 6_460_000.0,
+                    ground_albedo: Vec3::splat(0.3),
+                    medium: default_medium.clone(),
+                },
+                AtmosphereSettings::default(),
+                AtmosphereEnvironmentMapLight {
+                    intensity: 0.0,
+                    ..default()
+                },
+            ));
+        } else {
+            entity.insert(EnvironmentMapLight {
+                diffuse_map: placeholder_cube.clone(),
+                specular_map: placeholder_cube.clone(),
+                intensity: 0.0,
+                rotation: Quat::IDENTITY,
+                affects_lightmapped_mesh_diffuse: true,
+            });
+        }
+
+        if let Some(ref image) = slot_image {
+            entity.insert(RenderTarget::Image(image.clone().into()));
+        }
+
+        let id = entity.id();
+        viewports.slots[i].camera_entity = Some(id);
     }
+
+    info!("[camera] Spawned {VIEWPORT_COUNT} editor viewport cameras (primary bakes the shared environment)");
+}
+
+/// Create a tiny valid Rgba16Float cubemap to seed the secondary cameras'
+/// `EnvironmentMapLight` at spawn. It's only ever displayed for the frame or two
+/// before [`share_ibl_to_secondary_viewports`] swaps in the primary's real
+/// prefiltered maps, so 1×1×6 is plenty.
+fn make_placeholder_cube(images: &mut Assets<Image>) -> Handle<Image> {
+    // 1 texel × 6 faces × 8 bytes (Rgba16Float = 4×f16).
+    let mut image = Image {
+        data: Some(vec![0u8; 6 * 8]),
+        ..default()
+    };
+    image.texture_descriptor.size = Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 6,
+    };
+    image.texture_descriptor.dimension = TextureDimension::D2;
+    image.texture_descriptor.format = TextureFormat::Rgba16Float;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING;
+    image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+    images.add(image)
+}
+
+/// Share the primary's prefiltered IBL (diffuse + specular environment maps,
+/// produced once by its atmosphere bake) with every other viewport camera, so
+/// all views are lit by the same environment — no per-camera bake. The maps are
+/// shared as handles (one set of textures in VRAM); only intensity/rotation are
+/// copied. Runs when the primary's `EnvironmentMapLight` changes.
+pub fn share_ibl_to_secondary_viewports(
+    primary: Query<Ref<EnvironmentMapLight>, With<PrimaryViewportCamera>>,
+    mut secondary: Query<
+        &mut EnvironmentMapLight,
+        (With<ViewportCamera>, Without<PrimaryViewportCamera>),
+    >,
+) {
+    let Ok(source) = primary.single() else {
+        return;
+    };
+    if !source.is_changed() {
+        return;
+    }
+    for mut env in secondary.iter_mut() {
+        env.diffuse_map = source.diffuse_map.clone();
+        env.specular_map = source.specular_map.clone();
+        env.intensity = source.intensity;
+        env.rotation = source.rotation;
+        env.affects_lightmapped_mesh_diffuse = source.affects_lightmapped_mesh_diffuse;
+    }
+}
+
+/// Brightness multiplier for the shared-sky `Skybox` on the secondary viewport
+/// cameras. The primary's baked atmosphere cubemap is HDR radiance; this scales
+/// it into the cd/m² the skybox pass expects. TUNABLE — if the extra views'
+/// sky comes out too dark or blown out vs. the primary, this is the knob.
+const SHARED_SKY_BRIGHTNESS: f32 = 1.0;
+
+/// Fan the primary camera's baked atmosphere cubemap out to the other viewport
+/// cameras as a `Skybox`, so every view shows the same sky from the single bake.
+/// The primary renders its sky through its own `Atmosphere` pass. `Skybox` is a
+/// standalone render pass (not a mesh-view binding), so attaching it at runtime
+/// is safe. We only (re)insert when the cubemap handle changes.
+pub fn share_sky_to_secondary_viewports(
+    primary: Query<&GeneratedEnvironmentMapLight, With<PrimaryViewportCamera>>,
+    secondary: Query<
+        (Entity, Option<&Skybox>),
+        (With<ViewportCamera>, Without<PrimaryViewportCamera>),
+    >,
+    mut commands: Commands,
+) {
+    let Ok(generated) = primary.single() else {
+        return;
+    };
+    let image = &generated.environment_map;
+    for (entity, skybox) in &secondary {
+        let up_to_date = skybox.is_some_and(|s| s.image.id() == image.id());
+        if !up_to_date {
+            commands.entity(entity).insert(Skybox {
+                image: image.clone(),
+                brightness: SHARED_SKY_BRIGHTNESS,
+                rotation: Quat::IDENTITY,
+            });
+        }
+    }
+}
+
+/// Compute a look-at transform from orbit parameters. Mirrors
+/// `renzora_camera::OrbitCameraState::calculate_transform` but lives here so
+/// the engine crate doesn't depend on the camera crate.
+pub fn orbit_transform(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -> Transform {
+    let pos = focus
+        + Vec3::new(
+            distance * pitch.cos() * yaw.sin(),
+            distance * pitch.sin(),
+            distance * pitch.cos() * yaw.cos(),
+        );
+    Transform::from_translation(pos).looking_at(focus, Vec3::Y)
 }
 
 /// Spawns the editor's 2D scene-navigation camera.
@@ -346,14 +500,15 @@ pub fn on_projection_inserted_for_2d(
     }
 }
 
-/// Watches for changes to `ViewportRenderTarget` and updates both editor
-/// cameras accordingly.
+/// Watches for changes to `ViewportRenderTarget` and points the editor 2D
+/// camera at the primary viewport's offscreen image.
 ///
-/// Only acts when an image handle is set (editor mode). When `None`, the cameras
-/// keep their default window target — we never remove `RenderTarget`.
+/// The 3D viewport cameras are handled per-slot by
+/// [`sync_viewport_camera_targets`]; the 2D camera shares the primary slot's
+/// image (it's a mode of the primary viewport, mutually exclusive with the
+/// primary 3D camera).
 pub fn sync_camera_render_target(
     render_target: Res<ViewportRenderTarget>,
-    cameras_3d: Query<Entity, With<EditorCamera>>,
     cameras_2d: Query<Entity, With<EditorCamera2d>>,
     mut commands: Commands,
 ) {
@@ -362,16 +517,47 @@ pub fn sync_camera_render_target(
     }
 
     if let Some(ref image) = render_target.image {
-        info!(
-            "[camera] ViewportRenderTarget changed — redirecting editor cameras to offscreen image"
-        );
-        for entity in cameras_3d.iter().chain(cameras_2d.iter()) {
+        for entity in cameras_2d.iter() {
             commands
                 .entity(entity)
                 .insert(RenderTarget::Image(image.clone().into()));
         }
-    } else {
-        info!("[camera] ViewportRenderTarget changed — but image is None");
+    }
+}
+
+/// Set once every 3D viewport camera has been pointed at its slot image.
+#[derive(Resource, Default)]
+pub struct ViewportTargetsBound(pub bool);
+
+/// Assigns each 3D viewport camera its own slot render-target image.
+///
+/// The slot images are created once (in `setup_viewport`) and only resized in
+/// place afterwards, so we bind targets exactly once — when all cameras and all
+/// images exist — then idle. Resizing keeps the handle, so it needs no rebind.
+pub fn sync_viewport_camera_targets(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    cameras: Query<(Entity, &ViewportCamera)>,
+    mut bound: ResMut<ViewportTargetsBound>,
+    mut commands: Commands,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    if bound.0 {
+        return;
+    }
+    let mut all_ready = true;
+    for (entity, vc) in cameras.iter() {
+        match viewports.slots.get(vc.0).and_then(|s| s.image.as_ref()) {
+            Some(image) => {
+                commands
+                    .entity(entity)
+                    .insert(RenderTarget::Image(image.clone().into()));
+            }
+            None => all_ready = false,
+        }
+    }
+    if all_ready && cameras.iter().count() == VIEWPORT_COUNT {
+        bound.0 = true;
+        info!("[camera] All {VIEWPORT_COUNT} viewport cameras bound to render targets");
     }
 }
 

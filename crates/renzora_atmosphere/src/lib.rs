@@ -68,6 +68,14 @@ fn sync_atmosphere(
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
+        // `Atmosphere` can't be added at runtime (Bevy specializes the bind
+        // group layout at first render). So only *update* cameras that already
+        // carry it — i.e. the dedicated environment/bake camera. Other routed
+        // cameras (extra viewports, previews) share that camera's baked sky via
+        // a `Skybox` instead of getting their own atmosphere pass.
+        if existing.get(*target).is_err() {
+            continue;
+        }
         for &src in source_list {
             if let Ok((entity, settings, existing_handle)) = sources.get(src) {
                 if !routing_changed && !settings.is_changed() {

@@ -11,7 +11,7 @@
 
 use bevy::prelude::*;
 use renzora::core::{
-    DefaultCamera, EditorCamera, EffectRouting, PlayModeCamera, PlayModeState, SceneCamera,
+    DefaultCamera, EffectRouting, PlayModeCamera, PlayModeState, SceneCamera, ViewportCamera,
 };
 
 use crate::camera_preview::{CameraPreviewMarker, CameraPreviewState};
@@ -28,7 +28,7 @@ fn collect_global_sources(
 pub fn update_effect_routing(
     mut routing: ResMut<EffectRouting>,
     play_mode: Option<Res<PlayModeState>>,
-    editor_cameras: Query<Entity, With<EditorCamera>>,
+    viewport_cameras: Query<(Entity, &ViewportCamera)>,
     scene_cameras: Query<(Entity, Option<&DefaultCamera>), With<SceneCamera>>,
     preview_cameras: Query<Entity, With<CameraPreviewMarker>>,
     preview_state: Option<Res<CameraPreviewState>>,
@@ -54,21 +54,28 @@ pub fn update_effect_routing(
             routes.push((play_cam, sources));
         }
     } else {
-        // Editing mode: route to EditorCamera from default scene camera + globals
-        if let Ok(editor_cam) = editor_cameras.single() {
-            // Find default scene camera, fall back to first
-            let default_cam = scene_cameras
-                .iter()
-                .find(|(_, dc)| dc.is_some())
-                .map(|(e, _)| e)
-                .or_else(|| scene_cameras.iter().next().map(|(e, _)| e));
+        // Editing mode: route the same sources to EVERY viewport camera so all
+        // effects fan out to all views automatically. Each effect's sync system
+        // decides what to do per target: post-process effects (bloom, AO, fog,
+        // tonemapping, …) insert themselves per-camera at runtime, while the
+        // spawn-time-fragile atmosphere/IBL only *update* the one camera that
+        // already carries them (the bake camera) and share their result to the
+        // rest via a Skybox. This is the generic mechanism — a new effect that
+        // routes through `EffectRouting` is shared across all views for free.
+        let default_cam = scene_cameras
+            .iter()
+            .find(|(_, dc)| dc.is_some())
+            .map(|(e, _)| e)
+            .or_else(|| scene_cameras.iter().next().map(|(e, _)| e));
 
-            let mut sources = Vec::new();
-            if let Some(src) = default_cam {
-                sources.push(src);
-            }
-            sources.extend(&global_sources);
-            routes.push((editor_cam, sources));
+        let mut sources = Vec::new();
+        if let Some(src) = default_cam {
+            sources.push(src);
+        }
+        sources.extend(&global_sources);
+
+        for (cam, _) in viewport_cameras.iter() {
+            routes.push((cam, sources.clone()));
         }
     }
 

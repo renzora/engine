@@ -36,7 +36,6 @@ use bevy_egui::egui;
 use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
 use egui_phosphor::regular;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::EditorCamera;
 use renzora::core::ViewportRenderTarget;
 use renzora_editor::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
 use renzora_theme::ThemeManager;
@@ -104,7 +103,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
-                handle_viewport_resize,
+                resolve_viewport_slots,
                 render_systems::update_render_toggles,
                 (
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
@@ -199,7 +198,9 @@ impl Plugin for ViewportPlugin {
                 .run_if(in_state(renzora_editor::SplashState::Editor)),
         );
 
-        app.register_panel(ViewportPanel);
+        for i in 0..renzora::core::viewport_types::VIEWPORT_COUNT {
+            app.register_panel(ViewportPanel { index: i });
+        }
         app.register_panel(CameraPreviewPanel);
     }
 }
@@ -275,12 +276,9 @@ fn hide_cursor_for_brushes(
     }
 }
 
-/// Atomically-writable resize request from the panel's `ui()` method.
-///
-/// The panel writes the desired size here (from `&World`), and an `Update`
-/// system reads it to resize the render texture when needed.
-#[derive(Resource)]
-pub struct ViewportResizeRequest {
+/// Atomically-writable resize request for one viewport slot's `ui()` method.
+#[derive(Default)]
+pub struct SlotResizeRequest {
     pub width: AtomicU32,
     pub height: AtomicU32,
     pub hovered: AtomicBool,
@@ -288,8 +286,8 @@ pub struct ViewportResizeRequest {
     pub screen_y: AtomicU32,
 }
 
-impl Default for ViewportResizeRequest {
-    fn default() -> Self {
+impl SlotResizeRequest {
+    fn new() -> Self {
         Self {
             width: AtomicU32::new(DEFAULT_WIDTH),
             height: AtomicU32::new(DEFAULT_HEIGHT),
@@ -300,95 +298,160 @@ impl Default for ViewportResizeRequest {
     }
 }
 
-/// Creates the offscreen render target and wires it to the runtime camera.
+/// One resize request per viewport slot. Each panel writes its slot's entry
+/// from `&World`; [`resolve_viewport_slots`] reads them each frame.
+#[derive(Resource)]
+pub struct ViewportResizeRequest {
+    pub slots: [SlotResizeRequest; renzora::core::viewport_types::VIEWPORT_COUNT],
+}
+
+impl Default for ViewportResizeRequest {
+    fn default() -> Self {
+        Self {
+            slots: std::array::from_fn(|_| SlotResizeRequest::new()),
+        }
+    }
+}
+
+/// Creates one offscreen render target per viewport slot and registers each
+/// with egui. Slot 0's image is also published as the shared
+/// `ViewportRenderTarget` (the UI-canvas backdrop / recorder read from it) and
+/// mirrored into the focused-viewport `ViewportState`.
 fn setup_viewport(
     mut images: ResMut<Assets<Image>>,
     mut render_target: ResMut<ViewportRenderTarget>,
     mut user_textures: ResMut<EguiUserTextures>,
     mut viewport_state: ResMut<ViewportState>,
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
 ) {
-    bevy::log::info!("[viewport] setup_viewport running — creating render target image");
-    let size = Extent3d {
-        width: DEFAULT_WIDTH,
-        height: DEFAULT_HEIGHT,
-        depth_or_array_layers: 1,
-    };
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    bevy::log::info!("[viewport] setup_viewport — creating {VIEWPORT_COUNT} render targets");
 
-    let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
-        ..default()
-    };
-    image.texture_descriptor.size = size;
-    image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
-        | TextureUsages::COPY_DST
-        | TextureUsages::COPY_SRC
-        | TextureUsages::RENDER_ATTACHMENT;
+    for i in 0..VIEWPORT_COUNT {
+        let size = Extent3d {
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            depth_or_array_layers: 1,
+        };
 
-    let image_handle = images.add(image);
+        let mut image = Image {
+            data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+            ..default()
+        };
+        image.texture_descriptor.size = size;
+        image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+        image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
+            | TextureUsages::COPY_DST
+            | TextureUsages::COPY_SRC
+            | TextureUsages::RENDER_ATTACHMENT;
 
-    // Register with egui so the panel can display it
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
+        let image_handle = images.add(image);
+        user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
 
-    // Tell the runtime camera to render here
-    render_target.image = Some(image_handle.clone());
+        viewports.slots[i].image = Some(image_handle.clone());
+        viewports.slots[i].current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
-    // Store for the panel and resize system
-    viewport_state.image_handle = Some(image_handle);
-    viewport_state.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-}
-
-/// Checks if the panel requested a resize and updates the render texture.
-fn handle_viewport_resize(
-    resize_req: Res<ViewportResizeRequest>,
-    mut viewport_state: ResMut<ViewportState>,
-    mut images: ResMut<Assets<Image>>,
-) {
-    // Sync hover state and screen position
-    viewport_state.hovered = resize_req.hovered.load(Ordering::Relaxed);
-    viewport_state.screen_position = Vec2::new(
-        f32::from_bits(resize_req.screen_x.load(Ordering::Relaxed)),
-        f32::from_bits(resize_req.screen_y.load(Ordering::Relaxed)),
-    );
-
-    let w = resize_req.width.load(Ordering::Relaxed);
-    let h = resize_req.height.load(Ordering::Relaxed);
-
-    // Clamp to reasonable bounds
-    let w = w.clamp(64, 7680);
-    let h = h.clamp(64, 4320);
-
-    viewport_state.screen_size = Vec2::new(w as f32, h as f32);
-
-    let requested = UVec2::new(w, h);
-    if viewport_state.current_size == requested {
-        return;
-    }
-
-    if let Some(ref handle) = viewport_state.image_handle {
-        if let Some(image) = images.get_mut(handle) {
-            image.resize(Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            });
-            viewport_state.current_size = requested;
+        if i == 0 {
+            render_target.image = Some(image_handle.clone());
+            viewport_state.image_handle = Some(image_handle);
+            viewport_state.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         }
     }
 }
 
+/// Per-frame resolver: applies each slot's pending resize, tracks dock
+/// membership + hover, picks the focused slot, and mirrors it into the
+/// singleton [`ViewportState`] that the gizmo / picking / overlay stack reads.
+fn resolve_viewport_slots(
+    resize_req: Res<ViewportResizeRequest>,
+    docking: Option<Res<DockingState>>,
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewport_state: ResMut<ViewportState>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    let mut newly_hovered: Option<usize> = None;
+    for i in 0..VIEWPORT_COUNT {
+        let req = &resize_req.slots[i];
+        let docked = docking
+            .as_ref()
+            .is_none_or(|d| d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]));
+        let hovered = req.hovered.load(Ordering::Relaxed) && docked;
+        let screen_position = Vec2::new(
+            f32::from_bits(req.screen_x.load(Ordering::Relaxed)),
+            f32::from_bits(req.screen_y.load(Ordering::Relaxed)),
+        );
+        let w = req.width.load(Ordering::Relaxed).clamp(64, 7680);
+        let h = req.height.load(Ordering::Relaxed).clamp(64, 4320);
+
+        let slot = &mut viewports.slots[i];
+        slot.docked = docked;
+        slot.hovered = hovered;
+        slot.screen_position = screen_position;
+        slot.screen_size = Vec2::new(w as f32, h as f32);
+        if hovered {
+            newly_hovered = Some(i);
+        }
+
+        let requested = UVec2::new(w, h);
+        if slot.current_size != requested {
+            if let Some(image) = slot.image.as_ref().and_then(|h| images.get_mut(h)) {
+                image.resize(Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                });
+                slot.current_size = requested;
+            }
+        }
+    }
+
+    // Focus follows the hovered viewport, and sticks when the pointer leaves
+    // all of them so the gizmo/camera keep targeting the last-used view.
+    if let Some(i) = newly_hovered {
+        viewports.focused = i;
+    }
+    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    viewports.focused = focused;
+
+    // Mirror the focused slot into the singleton ViewportState.
+    let slot = &viewports.slots[focused];
+    viewport_state.image_handle = slot.image.clone();
+    viewport_state.current_size = slot.current_size;
+    viewport_state.hovered = slot.hovered;
+    viewport_state.screen_position = slot.screen_position;
+    viewport_state.screen_size = slot.screen_size;
+}
+
 // ── Viewport Panel ──────────────────────────────────────────────────────────
 
-/// Editor panel that displays the 3D game world rendered by the runtime camera.
-pub struct ViewportPanel;
+/// Editor panel that displays the 3D game world rendered by one of the editor's
+/// viewport cameras. There is one instance per slot (`index` 0..`VIEWPORT_COUNT`);
+/// slot 0 is the primary viewport (full header / 2D / UI), the rest are extra
+/// 3D camera angles of the same scene. Each draws its own slot's render image;
+/// the focused slot additionally draws the gizmo/grid/nav overlays.
+pub struct ViewportPanel {
+    pub index: usize,
+}
+
+/// Dock panel id for each viewport slot. Slot 0 keeps the historical `"viewport"`
+/// id so existing saved layouts and `contains_panel("viewport")` checks keep working.
+const VIEWPORT_PANEL_IDS: [&str; renzora::core::viewport_types::VIEWPORT_COUNT] =
+    ["viewport", "viewport-2", "viewport-3", "viewport-4"];
 
 impl EditorPanel for ViewportPanel {
     fn id(&self) -> &str {
-        "viewport"
+        VIEWPORT_PANEL_IDS[self.index.min(VIEWPORT_PANEL_IDS.len() - 1)]
     }
 
     fn title(&self) -> &str {
-        "Viewport"
+        match self.index {
+            0 => "Viewport",
+            1 => "Viewport 2",
+            2 => "Viewport 3",
+            _ => "Viewport 4",
+        }
     }
 
     fn icon(&self) -> Option<&str> {
@@ -400,73 +463,72 @@ impl EditorPanel for ViewportPanel {
     }
 
     fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        // Header bar with toggles and dropdowns
-        header::viewport_header(ui, world);
+        use renzora::core::viewport_types::{ViewportView, Viewports};
 
-        // Dispatch on viewport view: 3D draws the scene render target, UI
-        // hands off to the canvas panel, 2D is a placeholder until 2D nodes land.
-        let view = world
-            .get_resource::<ViewportSettings>()
-            .map(|s| s.viewport_view)
-            .unwrap_or_default();
-        match view {
-            // 3D and 2D both fall through to the existing render-target
-            // display path — `sync_viewport_camera_activation` makes sure
-            // exactly one editor camera writes to the shared image.
-            renzora::core::viewport_types::ViewportView::Three
-            | renzora::core::viewport_types::ViewportView::Two => {}
-            renzora::core::viewport_types::ViewportView::Ui => {
-                if let Some(panel) = world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>()
-                {
-                    panel.ui(ui, world);
+        let index = self.index;
+        let is_primary = index == 0;
+        let is_focused = world
+            .get_resource::<Viewports>()
+            .map(|v| v.focused == index)
+            .unwrap_or(is_primary);
+
+        // Only the primary viewport owns the shared header bar and the
+        // 3D / 2D / UI mode switch. The extra views are always 3D.
+        if is_primary {
+            header::viewport_header(ui, world);
+
+            let view = world
+                .get_resource::<ViewportSettings>()
+                .map(|s| s.viewport_view)
+                .unwrap_or_default();
+            match view {
+                ViewportView::Three | ViewportView::Two => {}
+                ViewportView::Ui => {
+                    if let Some(panel) =
+                        world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>()
+                    {
+                        panel.ui(ui, world);
+                    }
+                    return;
                 }
-                return;
             }
         }
 
         let rect = ui.available_rect_before_wrap();
 
-        // Request resize to match panel dimensions + track hover
-        if let Some(req) = world.get_resource::<ViewportResizeRequest>() {
+        // Report this slot's size / position / hover to the resolver, which
+        // resizes the render image and picks the focused slot.
+        if let Some(slot_req) = world
+            .get_resource::<ViewportResizeRequest>()
+            .and_then(|req| req.slots.get(index))
+        {
             let w = (rect.width().max(1.0)) as u32;
             let h = (rect.height().max(1.0)) as u32;
-            req.width.store(w, Ordering::Relaxed);
-            req.height.store(h, Ordering::Relaxed);
-            req.screen_x.store(rect.min.x.to_bits(), Ordering::Relaxed);
-            req.screen_y.store(rect.min.y.to_bits(), Ordering::Relaxed);
+            slot_req.width.store(w, Ordering::Relaxed);
+            slot_req.height.store(h, Ordering::Relaxed);
+            slot_req.screen_x.store(rect.min.x.to_bits(), Ordering::Relaxed);
+            slot_req.screen_y.store(rect.min.y.to_bits(), Ordering::Relaxed);
             // Treat the viewport as NOT hovered while any egui widget is
             // being dragged (panel resize handle, tab undock, hierarchy
             // drag, etc.) so the gizmo's box-select gesture doesn't arm
             // and viewport-only systems sleep until the drag releases.
             let egui_dragging = ui.ctx().dragged_id().is_some() || ui.ctx().is_using_pointer();
             let is_hovered = ui.rect_contains_pointer(rect) && !egui_dragging;
-            req.hovered.store(is_hovered, Ordering::Relaxed);
+            slot_req.hovered.store(is_hovered, Ordering::Relaxed);
         }
 
-        // Look up the egui texture ID for our render target
+        // Look up the egui texture id for THIS slot's render image.
         let texture_id = world
-            .get_resource::<ViewportState>()
-            .and_then(|vs| vs.image_handle.as_ref())
+            .get_resource::<Viewports>()
+            .and_then(|v| v.slots.get(index).and_then(|s| s.image.clone()))
             .and_then(|handle| {
                 world
                     .get_resource::<EguiUserTextures>()
                     .and_then(|ut| ut.image_id(handle.id()))
             });
 
-        if let Some(texture_id) = texture_id {
-            let size = egui::vec2(rect.width(), rect.height());
-            ui.put(
-                rect,
-                egui::Image::new(egui::load::SizedTexture::new(texture_id, size)),
-            );
-
-            // CPU-projected overlays (grid, gizmos) paint on top of the 3D
-            // image, bypassing the Bevy render pipeline entirely.
-            if let Some(overlay) = world.get_resource::<renzora_editor::ViewportOverlayRegistry>() {
-                overlay.draw_all(ui, world, rect);
-            }
-        } else {
-            // Fallback while render target is being set up
+        let Some(texture_id) = texture_id else {
+            // Fallback while the render target is being set up.
             ui.painter()
                 .rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
             ui.painter().text(
@@ -476,25 +538,49 @@ impl EditorPanel for ViewportPanel {
                 egui::FontId::proportional(14.0),
                 egui::Color32::from_white_alpha(80),
             );
+            return;
+        };
+
+        let size = egui::vec2(rect.width(), rect.height());
+        ui.put(
+            rect,
+            egui::Image::new(egui::load::SizedTexture::new(texture_id, size)),
+        );
+
+        // The gizmo / grid / drop / nav stack all act through the focused
+        // viewport mirror (`ViewportState` + the `EditorCamera` marker), so it
+        // only makes sense on the focused slot — a background view just shows
+        // its image with a faint border hinting that clicking focuses it.
+        if !is_focused {
+            ui.painter().rect_stroke(
+                rect,
+                0.0,
+                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(12)),
+                egui::StrokeKind::Inside,
+            );
+            return;
         }
 
-        // Check for model asset drops on the viewport
+        // Focus ring on the active viewport.
+        ui.painter().rect_stroke(
+            rect,
+            0.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(90, 130, 200)),
+            egui::StrokeKind::Inside,
+        );
+
+        // CPU-projected overlays (grid, gizmos) paint on top of the 3D
+        // image, bypassing the Bevy render pipeline entirely.
+        if let Some(overlay) = world.get_resource::<renzora_editor::ViewportOverlayRegistry>() {
+            overlay.draw_all(ui, world, rect);
+        }
+
+        // Asset drops on the focused viewport.
         model_drop::check_viewport_model_drop(ui, world, rect);
-
-        // Check for .material asset drops on the viewport
         material_drop::check_viewport_material_drop(ui, world, rect);
-
-        // Check for .ron scene drops (spawns a SceneInstance)
         scene_drop::check_viewport_scene_drop(ui, world, rect);
-
-        // Check for shape library drops on the viewport
         shape_drop::check_viewport_shape_drop(ui, world, rect);
-
-        // 2D-only: image asset drops retarget the sprite under the
-        // pointer or spawn a new Sprite at the drop point.
         sprite_drop::check_viewport_sprite_drop(ui, world, rect);
-
-        // Check for .html template drops (spawns a UI Canvas + HtmlTemplatePath)
         html_drop::check_viewport_html_drop(ui, world, rect);
 
         // Overlay: modal transform HUD (scale circle, mode text, axis info)
@@ -506,19 +592,21 @@ impl EditorPanel for ViewportPanel {
         // Overlay: on-screen console logs during play mode
         render_viewport_logs(ui, world, rect);
 
-        // Overlay: resolution indicator
+        // Overlay: resolution indicator (this slot's render size)
         let theme = world
             .get_resource::<ThemeManager>()
             .map(|tm| &tm.active_theme);
         let info_color = theme
             .map(|t| t.text.muted.to_color32())
             .unwrap_or(egui::Color32::from_white_alpha(50));
-
-        if let Some(vs) = world.get_resource::<ViewportState>() {
+        if let Some(slot) = world
+            .get_resource::<Viewports>()
+            .and_then(|v| v.slots.get(index).cloned())
+        {
             ui.painter().text(
                 egui::Pos2::new(rect.max.x - 8.0, rect.min.y + 6.0),
                 egui::Align2::RIGHT_TOP,
-                format!("{} x {}", vs.current_size.x, vs.current_size.y),
+                format!("{} x {}", slot.current_size.x, slot.current_size.y),
                 egui::FontId::proportional(10.0),
                 info_color,
             );
@@ -527,14 +615,14 @@ impl EditorPanel for ViewportPanel {
         // Overlay: model load progress (mesh-only ghost + textured drops)
         render_model_load_progress(ui, world, rect);
 
-        // Overlay: axis orientation gizmo. 3D-only — meaningless in
-        // orthographic 2D and worse-than-meaningless in UI canvas mode.
+        // Overlay: axis orientation gizmo. The extra views are always 3D; the
+        // primary follows its mode (meaningless in 2D / UI).
         let settings_for_overlays = world.get_resource::<ViewportSettings>();
         let show_axis = settings_for_overlays.is_none_or(|s| s.show_axis_gizmo);
         let view = settings_for_overlays
             .map(|s| s.viewport_view)
             .unwrap_or_default();
-        let is_three = view == renzora::core::viewport_types::ViewportView::Three;
+        let is_three = !is_primary || view == ViewportView::Three;
         let play_mode = world.get_resource::<renzora::core::PlayModeState>();
         let in_play = play_mode.is_some_and(|p| p.is_in_play_mode());
         if show_axis && !in_play && is_three {
@@ -542,15 +630,15 @@ impl EditorPanel for ViewportPanel {
         }
 
         // Overlay: nav pan/zoom buttons. The drag handles drive the 3D
-        // orbit camera state — irrelevant in 2D (middle-mouse + scroll
-        // handle pan/zoom there) and UI mode.
+        // orbit camera state — irrelevant in 2D / UI mode.
         if !in_play && is_three {
             toolbar::render_nav_overlay(ui.ctx(), world, rect);
         }
     }
 
     fn closable(&self) -> bool {
-        false
+        // The primary viewport is permanent; extra views can be closed.
+        self.index != 0
     }
 
     fn default_location(&self) -> PanelLocation {
@@ -1262,18 +1350,20 @@ fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Re
         });
 }
 
-/// Toggles editor camera `is_active` based on whether the Viewport panel is
-/// mounted *and* which view (3D / 2D / UI) is selected. The viewport hosts
-/// all three exclusively — switching tabs is a mode change, not a
-/// multi-camera composition — so only one renders at a time and the rest
-/// stay off to keep the shared offscreen target clean and the GPU idle.
+/// Toggles each viewport camera's `is_active` based on whether its panel is
+/// docked. The primary (slot 0) camera additionally follows the shared 3D / 2D
+/// / UI mode — it backs UI authoring and steps aside for the 2D camera — while
+/// the extra slots are plain 3D views that render whenever their panel is open.
+///
+/// Cameras whose panels aren't docked stay off so unused views cost no GPU; the
+/// later optional "freeze" toggle will additionally gate the non-focused live
+/// views here.
 fn sync_viewport_camera_activation(
-    docking: Option<Res<DockingState>>,
     settings: Option<Res<ViewportSettings>>,
+    viewports: Res<renzora::core::viewport_types::Viewports>,
     mut cameras_3d: Query<
-        &mut Camera,
+        (&mut Camera, &renzora::core::ViewportCamera),
         (
-            With<EditorCamera>,
             Without<renzora::core::EditorCamera2d>,
             Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
         ),
@@ -1282,7 +1372,7 @@ fn sync_viewport_camera_activation(
         &mut Camera,
         (
             With<renzora::core::EditorCamera2d>,
-            Without<EditorCamera>,
+            Without<renzora::core::ViewportCamera>,
             Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
         ),
     >,
@@ -1290,7 +1380,7 @@ fn sync_viewport_camera_activation(
         &mut Camera,
         (
             With<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
-            Without<EditorCamera>,
+            Without<renzora::core::ViewportCamera>,
             Without<renzora::core::EditorCamera2d>,
         ),
     >,
@@ -1306,7 +1396,12 @@ fn sync_viewport_camera_activation(
         .as_ref()
         .is_some_and(|r| r.phase() != external_runtime::RuntimePhase::Idle);
     if runtime_active {
-        for mut camera in cameras_3d.iter_mut().chain(cameras_2d.iter_mut()).chain(cameras_ui.iter_mut()) {
+        for (mut camera, _) in cameras_3d.iter_mut() {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        for mut camera in cameras_2d.iter_mut().chain(cameras_ui.iter_mut()) {
             if camera.is_active {
                 camera.is_active = false;
             }
@@ -1314,23 +1409,32 @@ fn sync_viewport_camera_activation(
         return;
     }
 
-    let mounted = docking.is_none_or(|d| d.tree.contains_panel("viewport"));
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
+    let primary_docked = viewports.slots.first().is_some_and(|s| s.docked);
 
-    // The 3D editor camera also serves as the *backdrop* in UI authoring
-    // mode (the canvas panel blits `ViewportRenderTarget` underneath the
-    // UI widgets so designers get a "game feel" while laying out the
-    // interface). So `Three` and `Ui` both keep it active; only `Two`
-    // turns it off in favour of the 2D camera.
-    let want_3d = mounted && (view == ViewportView::Three || view == ViewportView::Ui);
-    let want_2d = mounted && view == ViewportView::Two;
-    let want_ui = mounted && view == ViewportView::Ui;
-
-    for mut camera in cameras_3d.iter_mut() {
-        if camera.is_active != want_3d {
-            camera.is_active = want_3d;
+    for (mut camera, vc) in cameras_3d.iter_mut() {
+        let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
+        let want = if vc.0 == 0 {
+            // The primary camera owns the atmosphere + IBL probe. Bevy's
+            // atmosphere environment bake panics if that probe exists with no
+            // active atmosphere view, and the probe can't be added/removed at
+            // runtime without a separate pipeline crash. So while the editor is
+            // rendering (the external-runtime case already returned above), the
+            // primary stays active as the atmosphere/IBL source — it renders to
+            // its own offscreen image regardless of whether its panel is
+            // docked or the 2D view is selected. Keeping it on is cheap next to
+            // the crash it prevents.
+            true
+        } else {
+            docked
+        };
+        if camera.is_active != want {
+            camera.is_active = want;
         }
     }
+
+    let want_2d = primary_docked && view == ViewportView::Two;
+    let want_ui = primary_docked && view == ViewportView::Ui;
     for mut camera in cameras_2d.iter_mut() {
         if camera.is_active != want_2d {
             camera.is_active = want_2d;

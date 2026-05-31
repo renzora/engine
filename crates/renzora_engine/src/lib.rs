@@ -20,8 +20,8 @@ pub use renzora::{
     open_project, CurrentProject, DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked,
     EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
     PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
-    RenderingMode, ResolvedRenderingMode, SceneCamera, ShapeEntry, ShapeRegistry,
-    ViewportRenderTarget, WindowConfig,
+    EnvironmentBakeCamera, PrimaryViewportCamera, RenderingMode, ResolvedRenderingMode, SceneCamera,
+    ShapeEntry, ShapeRegistry, ViewportCamera, ViewportRenderTarget, WindowConfig,
 };
 pub use vfs::Vfs;
 
@@ -337,6 +337,8 @@ impl Plugin for RuntimePlugin {
         app.add_systems(PostUpdate, ensure_deferred_prepass_on_cameras);
 
         app.init_resource::<ViewportRenderTarget>()
+            .init_resource::<renzora::core::viewport_types::Viewports>()
+            .init_resource::<camera::ViewportTargetsBound>()
             .init_resource::<scene_io::SceneLoadState>()
             .init_resource::<scene_io::SceneReferenceCache>()
             .init_resource::<asset_progress::AssetLoadProgress>()
@@ -652,6 +654,9 @@ impl Plugin for RuntimePlugin {
                     Update,
                     (
                         camera::sync_camera_render_target,
+                        camera::sync_viewport_camera_targets,
+                        camera::share_sky_to_secondary_viewports,
+                        camera::share_ibl_to_secondary_viewports,
                         camera::update_editor_camera_matrix,
                         camera::editor_2d_camera_controller,
                         camera::auto_switch_view_on_2d_selection,
