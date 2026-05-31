@@ -8,6 +8,7 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use nvml_wrapper::Nvml;
 
+use renzora::{RenderingMode, ResolvedRenderingMode};
 use renzora_editor::{AppEditorExt, SplashState, StatusBarAlignment, StatusBarItem};
 use renzora_theme::ThemeManager;
 
@@ -181,6 +182,26 @@ impl StatusBarItem for SystemMonitorStatusItem {
                 egui::RichText::new(format!("{} {}", regular::GRAPHICS_CARD, state.gpu_name))
                     .size(11.0)
                     .color(muted_color),
+            );
+        }
+
+        // Rendering mode (Forward/Deferred), shown next to the renderer. Read
+        // live every frame so the deferred-prepass race is observable: watch
+        // whether a load resolves to "Deferred" (the crash-prone path) and
+        // whether it differs between project loads. Never "Auto" — by now the
+        // abstract preference is resolved to a concrete path.
+        if let Some(mode) = world.get_resource::<ResolvedRenderingMode>() {
+            let (label, color) = match mode.0 {
+                RenderingMode::Deferred => {
+                    // amber — the known-fragile path that triggers the crash
+                    ("Deferred", egui::Color32::from_rgb(220, 180, 50))
+                }
+                _ => ("Forward", text_color),
+            };
+            ui.label(
+                egui::RichText::new(format!("{} {}", regular::STACK, label))
+                    .size(11.0)
+                    .color(color),
             );
         }
 
