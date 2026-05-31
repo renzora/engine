@@ -173,7 +173,10 @@ impl Plugin for ViewportPlugin {
         // Camera-preview spawn/update logic only when its panel is mounted.
         app.add_systems(
             Update,
-            camera_preview::update_camera_preview
+            (
+                camera_preview::update_camera_preview,
+                camera_preview::resize_camera_preview,
+            )
                 .run_if(in_state(renzora_editor::SplashState::Editor))
                 .run_if(camera_preview::camera_preview_panel_mounted),
         );
@@ -719,8 +722,18 @@ impl EditorPanel for CameraPreviewPanel {
             }
         });
 
-        let available_width = ui.available_width();
-        let preview_height = available_width * (9.0 / 16.0);
+        // Fill the rest of the panel with the preview.
+        let rect = ui.available_rect_before_wrap();
+
+        // Drive the render target to this rect at native (physical) pixel size
+        // so the preview is crisp instead of upscaled from a fixed 640×360.
+        let ppp = ui.ctx().pixels_per_point();
+        if let Some(req) = world.get_resource::<camera_preview::PreviewResizeRequest>() {
+            let w = (rect.width().max(1.0) * ppp) as u32;
+            let h = (rect.height().max(1.0) * ppp) as u32;
+            req.width.store(w, std::sync::atomic::Ordering::Relaxed);
+            req.height.store(h, std::sync::atomic::Ordering::Relaxed);
+        }
 
         let texture_id = preview.and_then(|p| {
             p.texture_id
@@ -728,10 +741,13 @@ impl EditorPanel for CameraPreviewPanel {
         });
 
         if let Some(texture_id) = texture_id {
-            ui.add(egui::Image::new(egui::load::SizedTexture::new(
-                texture_id,
-                [available_width, preview_height],
-            )));
+            ui.put(
+                rect,
+                egui::Image::new(egui::load::SizedTexture::new(
+                    texture_id,
+                    [rect.width(), rect.height()],
+                )),
+            );
         } else {
             let bg = theme
                 .map(|t| t.surfaces.faint.to_color32())
@@ -740,12 +756,14 @@ impl EditorPanel for CameraPreviewPanel {
                 .map(|t| t.text.disabled.to_color32())
                 .unwrap_or(egui::Color32::from_white_alpha(50));
 
-            egui::Frame::new().fill(bg).show(ui, |ui| {
-                ui.set_min_size(egui::Vec2::new(available_width, preview_height));
-                ui.centered_and_justified(|ui| {
-                    ui.label(egui::RichText::new("Preview loading...").color(text_color));
-                });
-            });
+            ui.painter().rect_filled(rect, 0.0, bg);
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Preview loading...",
+                egui::FontId::proportional(13.0),
+                text_color,
+            );
         }
     }
 

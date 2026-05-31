@@ -7,6 +7,8 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
+use bevy::render::view::Hdr;
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::TextureId;
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
@@ -178,6 +180,10 @@ pub fn setup_studio_preview(
     // Camera
     commands.spawn((
         Camera3d::default(),
+            Hdr,
+            NormalPrepass,
+            DepthPrepass,
+            MotionVectorPrepass,
         Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.12, 0.12, 0.14, 1.0)),

@@ -8,6 +8,8 @@ use std::marker::PhantomData;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
+use bevy::render::view::Hdr;
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_egui::egui::{self, RichText, TextureId};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
@@ -163,6 +165,10 @@ fn setup_material_preview(
     // Camera
     commands.spawn((
         Camera3d::default(),
+            Hdr,
+            NormalPrepass,
+            DepthPrepass,
+            MotionVectorPrepass,
         Msaa::Off,
         Camera {
             clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),

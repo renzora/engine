@@ -23,6 +23,8 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
+use bevy::render::view::Hdr;
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
@@ -484,6 +486,17 @@ fn arm_one_capture(
     let camera = commands
         .spawn((
             Camera3d::default(),
+            // Render HDR like the editor viewport cameras. Bevy's mesh pipeline
+            // key only carries a coarse `hdr` bit, so a non-HDR offscreen camera
+            // specializes `pbr_opaque_mesh_pipeline` for an LDR target — which,
+            // under heavy thumbnail load, the HDR viewport pass can pick up,
+            // crashing wgpu ("Rgba8UnormSrgb vs Rgba16Float"). Matching HDR keeps
+            // a single pbr pipeline format across every camera. Tonemapping still
+            // resolves down to the LDR thumbnail image on output.
+            Hdr,
+            NormalPrepass,
+            DepthPrepass,
+            MotionVectorPrepass,
             // MSAA 4× — the thumbnail is a small 1-object render with high
             // contrast between the lit sphere and the flat background, so
             // silhouette aliasing is very visible at 128px.

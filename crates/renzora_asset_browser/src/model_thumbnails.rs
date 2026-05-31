@@ -21,6 +21,8 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
+use bevy::render::view::Hdr;
+use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::scene::SceneInstanceReady;
@@ -528,6 +530,10 @@ fn place_capture_camera(
     let camera = commands
         .spawn((
             Camera3d::default(),
+            // Match the editor viewport camera's render config so the pbr +
+            // prepass pipelines specialize to one consistent format (grouped to
+            // stay under the 15-element bundle-tuple limit).
+            (Hdr, NormalPrepass, DepthPrepass, MotionVectorPrepass),
             Msaa::Sample4,
             Camera {
                 clear_color: ClearColorConfig::Custom(Color::srgba(0.08, 0.08, 0.1, 1.0)),

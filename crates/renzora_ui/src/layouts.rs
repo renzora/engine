@@ -293,7 +293,6 @@ pub fn scene_layout() -> DockTree {
                     "viewport".into(),
                     "render_pipeline".into(),
                     "code_editor".into(),
-                    "node_explorer".into(),
                 ],
                 active_tab: 0,
             },

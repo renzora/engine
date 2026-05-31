@@ -607,15 +607,22 @@ fn proxy_effect_to_camera<T: PostProcessEffect>(
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                commands.entity(*target).insert(*settings);
+                // `try_insert`, not `insert`: a routed camera can be despawned
+                // the SAME frame its route is still in the table (closing the
+                // camera-preview panel despawns its camera, then this queued
+                // command flushes at apply_deferred). A `get_entity` guard
+                // doesn't help — the entity is alive at queue time and only
+                // despawned by the time the command applies. `try_insert`
+                // no-ops on a despawned entity instead of panicking.
+                commands.entity(*target).try_insert(*settings);
                 found = true;
                 break;
             }
         }
         if !found && (routing.is_changed() || any_removed) {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<T>();
-            }
+            // try_remove (deferred-safe, like try_insert above) — the target
+            // may be despawned by the time this command flushes.
+            commands.entity(*target).try_remove::<T>();
         }
     }
 }
@@ -628,9 +635,9 @@ fn cleanup_proxy_effect<T: PostProcessEffect>(
 ) {
     if sources.is_empty() {
         for (target, _) in routing.iter() {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<T>();
-            }
+            // try_remove (deferred-safe) — a routed camera may be despawned by
+            // the time this flushes (e.g. closing the camera-preview panel).
+            commands.entity(*target).try_remove::<T>();
         }
     }
 }
