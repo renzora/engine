@@ -22,7 +22,26 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Video".into(), layout_video()),
         ("Audio".into(), layout_audio()),
         ("Debug".into(), layout_debug()),
+        ("Gallery".into(), layout_gallery()),
     ]
+}
+
+/// Gallery: a 2×2 showcase of the `renzora_ember` component categories, each in
+/// its own panel — the living catalog of the bevy_ui widget set.
+fn layout_gallery() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf("gallery_buttons"),
+            DockTree::leaf("gallery_inputs"),
+            0.5,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf("gallery_selection"),
+            DockTree::leaf("gallery_colors"),
+            0.5,
+        ),
+        0.5,
+    )
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
@@ -220,7 +239,6 @@ pub fn scene_layout() -> DockTree {
                 "sequencer",
                 "timeline",
                 "record",
-                "widget_gallery",
             ]),
             0.72,
         ),

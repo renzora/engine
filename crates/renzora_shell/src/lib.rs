@@ -157,8 +157,8 @@ fn apply_panel_meta(
 struct ContentShows(String);
 
 /// Fill each leaf's content with the active panel's UI. The editor's panels
-/// (eventually) register their own builders; for now: a `widget_gallery`
-/// showcase, and a centered title placeholder for everything else.
+/// (eventually) register their own builders; for now: the `gallery_*` ember
+/// component showcases, and a centered title placeholder for everything else.
 fn content_dispatch(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
@@ -190,8 +190,12 @@ fn content_dispatch(
 
 /// Build the bevy_ui content for a panel id.
 fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) -> Entity {
+    use renzora_ember::widgets;
     match id {
-        "widget_gallery" => renzora_ember::widgets::build_gallery(commands, fonts),
+        "gallery_buttons" => widgets::gallery_buttons(commands, fonts),
+        "gallery_inputs" => widgets::gallery_inputs(commands, fonts),
+        "gallery_selection" => widgets::gallery_selection(commands, fonts),
+        "gallery_colors" => widgets::gallery_colors(commands, fonts),
         _ => {
             // Placeholder: the panel's name, centered.
             let container = commands
@@ -364,6 +368,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         "Video",
         "Audio",
         "Debug",
+        "Gallery",
     ]
     .into_iter()
     .enumerate()

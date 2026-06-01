@@ -2,10 +2,12 @@
 //! used by the editor and games. These are plain entity builders + the systems
 //! that animate their interaction states. [`build_gallery`] showcases them.
 
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use crate::font::{ui_font, EmberFonts};
+use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::{
     rgb, ACCENT_BLUE, CLOSE_RED, HEADER_BG, PLAY_GREEN, TAB_ACTIVE_BG, TAB_HOVER_BG, TEXT_MUTED,
     TEXT_PRIMARY,
@@ -26,6 +28,11 @@ impl Plugin for WidgetsPlugin {
                 radio_interact,
                 segmented_interact,
                 stepper_interact,
+                dropdown_toggle,
+                dropdown_select,
+                dropdown_option_hover,
+                text_input_focus,
+                text_input_type,
             ),
         );
     }
@@ -656,6 +663,297 @@ fn format_num(v: f32) -> String {
     }
 }
 
+// ── Dropdown / combobox ──────────────────────────────────────────────────────
+
+#[derive(Component)]
+struct EmberDropdown {
+    selected: usize,
+    open: bool,
+    menu: Entity,
+    label: Entity,
+    options: Vec<String>,
+}
+
+#[derive(Component)]
+struct EmberDropdownOption {
+    dropdown: Entity,
+    value: usize,
+}
+
+/// A dropdown / combobox: a box showing the current option; click to open a
+/// menu of options below it, click an option to select.
+pub fn dropdown(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    options: &[&str],
+    selected: usize,
+) -> Entity {
+    let sel = selected.min(options.len().saturating_sub(1));
+    let box_e = commands
+        .spawn((
+            Node {
+                min_width: Val::Px(140.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("dropdown"),
+        ))
+        .id();
+    let label = commands
+        .spawn((
+            Text::new(options.get(sel).copied().unwrap_or("")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            Node {
+                flex_grow: 1.0,
+                ..default()
+            },
+        ))
+        .id();
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", TEXT_MUTED, 12.0);
+    let menu = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                min_width: Val::Px(140.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(2.0)),
+                margin: UiRect::top(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            GlobalZIndex(500),
+            Name::new("dropdown-menu"),
+        ))
+        .id();
+    let mut rows = Vec::new();
+    for (i, opt) in options.iter().enumerate() {
+        let row = commands
+            .spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                EmberDropdownOption {
+                    dropdown: box_e,
+                    value: i,
+                },
+                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                Name::new("dropdown-option"),
+            ))
+            .with_children(|p| {
+                p.spawn((
+                    Text::new(*opt),
+                    ui_font(&fonts.ui, 12.0),
+                    TextColor(rgb(TEXT_PRIMARY)),
+                ));
+            })
+            .id();
+        rows.push(row);
+    }
+    commands.entity(menu).add_children(&rows);
+    commands.entity(box_e).insert(EmberDropdown {
+        selected: sel,
+        open: false,
+        menu,
+        label,
+        options: options.iter().map(|s| s.to_string()).collect(),
+    });
+    commands.entity(box_e).add_children(&[label, caret, menu]);
+    box_e
+}
+
+fn dropdown_toggle(
+    mut dropdowns: Query<(&Interaction, &mut EmberDropdown), Changed<Interaction>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (interaction, mut dd) in &mut dropdowns {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        dd.open = !dd.open;
+        if let Ok(mut n) = nodes.get_mut(dd.menu) {
+            n.display = if dd.open {
+                Display::Flex
+            } else {
+                Display::None
+            };
+        }
+    }
+}
+
+fn dropdown_select(
+    options: Query<(&Interaction, &EmberDropdownOption), Changed<Interaction>>,
+    mut dropdowns: Query<&mut EmberDropdown>,
+    mut nodes: Query<&mut Node>,
+    mut texts: Query<&mut Text>,
+) {
+    for (interaction, opt) in &options {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let Ok(mut dd) = dropdowns.get_mut(opt.dropdown) {
+            dd.selected = opt.value;
+            dd.open = false;
+            let (menu, label) = (dd.menu, dd.label);
+            let text = dd.options.get(opt.value).cloned().unwrap_or_default();
+            if let Ok(mut n) = nodes.get_mut(menu) {
+                n.display = Display::None;
+            }
+            if let Ok(mut t) = texts.get_mut(label) {
+                *t = Text::new(text);
+            }
+        }
+    }
+}
+
+fn dropdown_option_hover(
+    mut options: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<EmberDropdownOption>)>,
+) {
+    for (interaction, mut bg) in &mut options {
+        bg.0 = match *interaction {
+            Interaction::Hovered | Interaction::Pressed => rgb(TAB_HOVER_BG),
+            Interaction::None => Color::NONE,
+        };
+    }
+}
+
+// ── Text input ───────────────────────────────────────────────────────────────
+
+#[derive(Component)]
+struct EmberTextInput {
+    value: String,
+    focused: bool,
+    text_entity: Entity,
+    placeholder: String,
+}
+
+/// A single-line text input. Click to focus, type to edit (basic: character
+/// entry + backspace; no cursor/selection yet).
+pub fn text_input(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    placeholder: &str,
+    value: &str,
+) -> Entity {
+    let empty = value.is_empty();
+    let box_e = commands
+        .spawn((
+            Node {
+                min_width: Val::Px(180.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((28, 28, 34))),
+            BorderColor::all(rgb((70, 70, 82))),
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),
+            Name::new("text-input"),
+        ))
+        .id();
+    let text = commands
+        .spawn((
+            Text::new(if empty { placeholder } else { value }),
+            ui_font(font, 12.0),
+            TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
+        ))
+        .id();
+    commands.entity(box_e).insert(EmberTextInput {
+        value: value.to_string(),
+        focused: false,
+        text_entity: text,
+        placeholder: placeholder.to_string(),
+    });
+    commands.entity(box_e).add_child(text);
+    box_e
+}
+
+fn text_input_focus(
+    pressed: Query<(Entity, &Interaction), (With<EmberTextInput>, Changed<Interaction>)>,
+    mut inputs: Query<(Entity, &mut EmberTextInput)>,
+    mut borders: Query<&mut BorderColor>,
+) {
+    let mut clicked = None;
+    for (e, interaction) in &pressed {
+        if *interaction == Interaction::Pressed {
+            clicked = Some(e);
+            break;
+        }
+    }
+    let Some(clicked) = clicked else {
+        return;
+    };
+    for (e, mut inp) in &mut inputs {
+        let focus = e == clicked;
+        if inp.focused != focus {
+            inp.focused = focus;
+            if let Ok(mut b) = borders.get_mut(e) {
+                *b = BorderColor::all(rgb(if focus {
+                    ACCENT_BLUE
+                } else {
+                    (70, 70, 82)
+                }));
+            }
+        }
+    }
+}
+
+fn text_input_type(
+    mut events: MessageReader<KeyboardInput>,
+    mut inputs: Query<&mut EmberTextInput>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
+) {
+    for ev in events.read() {
+        if ev.state != ButtonState::Pressed {
+            continue;
+        }
+        for mut inp in &mut inputs {
+            if !inp.focused {
+                continue;
+            }
+            match &ev.logical_key {
+                Key::Character(s) => inp.value.push_str(s),
+                Key::Space => inp.value.push(' '),
+                Key::Backspace => {
+                    inp.value.pop();
+                }
+                _ => {}
+            }
+            let (text_e, val, ph) = (inp.text_entity, inp.value.clone(), inp.placeholder.clone());
+            if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
+                if val.is_empty() {
+                    *t = Text::new(ph);
+                    c.0 = rgb(TEXT_MUTED);
+                } else {
+                    *t = Text::new(val);
+                    c.0 = rgb(TEXT_PRIMARY);
+                }
+            }
+            break;
+        }
+    }
+}
+
 // ── Field row helper ─────────────────────────────────────────────────────────
 
 /// A labeled row: a fixed-width label on the left, a control on the right.
@@ -734,10 +1032,13 @@ pub fn hstack(commands: &mut Commands, gap: f32, children: &[Entity]) -> Entity 
 
 // ── Gallery ──────────────────────────────────────────────────────────────────
 
-/// A scrollable showcase of the available ember widgets — the editor's first
-/// real bevy_ui panel content.
-pub fn build_gallery(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let font = &fonts.ui;
+/// A titled panel column — the shell of each gallery category panel.
+fn panel_column(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    title: &str,
+    rows: Vec<Entity>,
+) -> Entity {
     let root = commands
         .spawn((
             Node {
@@ -747,20 +1048,27 @@ pub fn build_gallery(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 align_items: AlignItems::FlexStart,
                 padding: UiRect::all(Val::Px(16.0)),
                 row_gap: Val::Px(12.0),
+                overflow: Overflow::clip(),
                 ..default()
             },
-            Name::new("widget-gallery"),
+            Name::new("gallery-panel"),
         ))
         .id();
-
-    let title = commands
+    let heading = commands
         .spawn((
-            Text::new("renzora_ember — components"),
-            ui_font(font, 16.0),
+            Text::new(title),
+            ui_font(font, 15.0),
             TextColor(rgb(TEXT_PRIMARY)),
         ))
         .id();
+    commands.entity(root).add_child(heading);
+    commands.entity(root).add_children(&rows);
+    root
+}
 
+/// Gallery panel: buttons & toggles.
+pub fn gallery_buttons(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
     let btns = [
         button(commands, font, "Primary"),
         button(commands, font, "Secondary"),
@@ -773,6 +1081,35 @@ pub fn build_gallery(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let toggles = hstack(commands, 10.0, &togs);
     let f_toggle = field(commands, font, "Toggles", toggles);
 
+    panel_column(commands, font, "Buttons & Toggles", vec![f_buttons, f_toggle])
+}
+
+/// Gallery panel: text / numeric / list inputs.
+pub fn gallery_inputs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let ti = text_input(commands, font, "Type here…", "");
+    let f_text = field(commands, font, "Text", ti);
+
+    let dd = dropdown(commands, fonts, &["Forward", "Deferred", "Mobile"], 0);
+    let f_dropdown = field(commands, font, "Dropdown", dd);
+
+    let sld = slider(commands, 0.6);
+    let f_slider = field(commands, font, "Slider", sld);
+
+    let step = number_stepper(commands, font, 12.0, 1.0);
+    let f_step = field(commands, font, "Stepper", step);
+
+    panel_column(
+        commands,
+        font,
+        "Inputs",
+        vec![f_text, f_dropdown, f_slider, f_step],
+    )
+}
+
+/// Gallery panel: selection controls.
+pub fn gallery_selection(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
     let cbs = [checkbox(commands, true), checkbox(commands, false)];
     let checks = hstack(commands, 10.0, &cbs);
     let f_check = field(commands, font, "Checkbox", checks);
@@ -783,12 +1120,12 @@ pub fn build_gallery(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let seg = segmented(commands, font, &["One", "Two", "Three"], 1);
     let f_seg = field(commands, font, "Segmented", seg);
 
-    let sld = slider(commands, 0.6);
-    let f_slider = field(commands, font, "Slider", sld);
+    panel_column(commands, font, "Selection", vec![f_check, f_radio, f_seg])
+}
 
-    let step = number_stepper(commands, font, 12.0, 1.0);
-    let f_step = field(commands, font, "Stepper", step);
-
+/// Gallery panel: color swatches.
+pub fn gallery_colors(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
     let chips = [
         swatch(commands, ACCENT_BLUE),
         swatch(commands, PLAY_GREEN),
@@ -798,9 +1135,5 @@ pub fn build_gallery(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     ];
     let swatches = hstack(commands, 8.0, &chips);
     let f_swatch = field(commands, font, "Swatches", swatches);
-
-    commands.entity(root).add_children(&[
-        title, f_buttons, f_toggle, f_check, f_radio, f_seg, f_slider, f_step, f_swatch,
-    ]);
-    root
+    panel_column(commands, font, "Colors", vec![f_swatch])
 }
