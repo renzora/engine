@@ -39,12 +39,18 @@ fn layout_gallery() -> DockTree {
         DockTree::tabs(&[
             "gallery_feedback",
             "gallery_inspector",
+            "gallery_charts",
             "gallery_colors",
         ]),
         0.5,
     );
     let bottom = DockTree::horizontal(
-        DockTree::tabs(&["gallery_containers", "gallery_nav", "gallery_data"]),
+        DockTree::tabs(&[
+            "gallery_containers",
+            "gallery_nav",
+            "gallery_data",
+            "gallery_node_graph",
+        ]),
         DockTree::tabs(&[
             "gallery_forms",
             "gallery_overlays",

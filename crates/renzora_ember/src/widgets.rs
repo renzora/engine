@@ -72,10 +72,12 @@ mod popover;
 mod tooltip;
 
 // Menus / interaction / utilities.
+mod chart;
 mod context_menu;
 mod hamburger;
 mod menu;
 mod multi_select;
+mod node_graph;
 mod rich_text;
 mod scroll_area;
 mod sortable;
@@ -140,9 +142,11 @@ pub use modal::*;
 pub use popover::*;
 pub use tooltip::*;
 
+pub use chart::*;
 pub use context_menu::*;
 pub use hamburger::*;
 pub use multi_select::*;
+pub use node_graph::*;
 pub use rich_text::*;
 pub use scroll_area::*;
 pub use sortable::*;
@@ -205,5 +209,7 @@ impl Plugin for WidgetsPlugin {
                 ),
             ),
         );
+        app.add_plugins(node_graph::NodeGraphPlugin);
+        app.add_plugins(chart::ChartPlugin);
     }
 }

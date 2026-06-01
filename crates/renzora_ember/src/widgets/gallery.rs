@@ -327,6 +327,30 @@ pub fn gallery_extras(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     panel_column(commands, font, "More", vec![f_rt, f_sp, f_ms, f_sl, f_sa])
 }
 
+/// Gallery panel: the node graph editor.
+pub fn gallery_node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let ng = node_graph(commands, fonts);
+    panel_column(commands, &fonts.ui, "Node Graph", vec![ng])
+}
+
+/// Gallery panel: charts.
+pub fn gallery_charts(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let series = [
+        0.2, 0.5, 0.35, 0.8, 0.55, 0.9, 0.45, 0.7, 0.5, 0.85, 0.6, 0.95, 0.4, 0.75,
+    ];
+    let lc = line_chart(commands, &series);
+    let f_lc = field(commands, font, "Line", lc);
+
+    let bc = bar_chart(commands, &[0.3, 0.6, 0.45, 0.8, 0.5, 0.7, 0.9, 0.4, 0.65]);
+    let f_bc = field(commands, font, "Bars", bc);
+
+    let sp = sparkline(commands, &series);
+    let f_sp = field(commands, font, "Sparkline", sp);
+
+    panel_column(commands, font, "Charts", vec![f_lc, f_bc, f_sp])
+}
+
 /// Gallery panel: color swatches.
 pub fn gallery_colors(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let font = &fonts.ui;
