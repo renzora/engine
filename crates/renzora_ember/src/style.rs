@@ -194,6 +194,7 @@ impl Default for Theme {
             button: StyleToken::new(rgb(TAB_ACTIVE_BG))
                 .hover(rgb((64, 64, 78)))
                 .pressed(rgb(ACCENT_BLUE))
+                .active(rgb(ACCENT_BLUE))
                 .radius(4.0)
                 .padding(text_pad),
             button_accent: StyleToken::new(rgb(ACCENT_BLUE))
