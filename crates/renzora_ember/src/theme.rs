@@ -16,6 +16,7 @@ pub const TEXT_PRIMARY: (u8, u8, u8) = (230, 230, 240);
 pub const TEXT_MUTED: (u8, u8, u8) = (148, 148, 160);
 pub const PLACEHOLDER: (u8, u8, u8) = (110, 110, 122); // dim placeholder
 pub const PLAY_GREEN: (u8, u8, u8) = (89, 191, 115); // semantic.success
+pub const WARN_AMBER: (u8, u8, u8) = (224, 170, 72); // semantic.warning
 pub const ACCENT_BLUE: (u8, u8, u8) = (80, 140, 255); // accent / active underline
 
 /// An sRGB byte triple as a bevy `Color`.

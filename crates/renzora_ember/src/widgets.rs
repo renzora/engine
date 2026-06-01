@@ -8,9 +8,10 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::style::{Role, Styled, WidgetState};
 use crate::theme::{
     rgb, ACCENT_BLUE, CLOSE_RED, HEADER_BG, PLAY_GREEN, TAB_ACTIVE_BG, TAB_HOVER_BG, TEXT_MUTED,
-    TEXT_PRIMARY,
+    TEXT_PRIMARY, WARN_AMBER,
 };
 
 /// Registers the widget interaction systems.
@@ -57,6 +58,7 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
             BackgroundColor(rgb(TAB_ACTIVE_BG)),
             Interaction::default(),
             EmberButton,
+            Styled::new(Role::Button),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("button"),
         ))
@@ -73,13 +75,13 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
 }
 
 fn button_interact(
-    mut q: Query<(&Interaction, &mut BackgroundColor), (With<EmberButton>, Changed<Interaction>)>,
+    mut q: Query<(&Interaction, &mut Styled), (With<EmberButton>, Changed<Interaction>)>,
 ) {
-    for (interaction, mut bg) in &mut q {
-        bg.0 = match interaction {
-            Interaction::Pressed => rgb(ACCENT_BLUE),
-            Interaction::Hovered => rgb((64, 64, 78)),
-            Interaction::None => rgb(TAB_ACTIVE_BG),
+    for (interaction, mut styled) in &mut q {
+        styled.state = match interaction {
+            Interaction::Pressed => WidgetState::Pressed,
+            Interaction::Hovered => WidgetState::Hover,
+            Interaction::None => WidgetState::Normal,
         };
     }
 }
@@ -111,6 +113,14 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
             BackgroundColor(if on { rgb(ACCENT_BLUE) } else { rgb((60, 60, 70)) }),
             Interaction::default(),
             EmberToggle { on },
+            Styled::with_state(
+                Role::Toggle,
+                if on {
+                    WidgetState::Active
+                } else {
+                    WidgetState::Normal
+                },
+            ),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("toggle"),
         ))
@@ -132,18 +142,15 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
 }
 
 fn toggle_interact(
-    mut q: Query<
-        (&Interaction, &mut EmberToggle, &mut BackgroundColor, &mut Node),
-        Changed<Interaction>,
-    >,
+    mut q: Query<(&Interaction, &mut EmberToggle, &mut Styled, &mut Node), Changed<Interaction>>,
 ) {
-    for (interaction, mut tog, mut bg, mut node) in &mut q {
+    for (interaction, mut tog, mut styled, mut node) in &mut q {
         if *interaction == Interaction::Pressed {
             tog.on = !tog.on;
-            bg.0 = if tog.on {
-                rgb(ACCENT_BLUE)
+            styled.state = if tog.on {
+                WidgetState::Active
             } else {
-                rgb((60, 60, 70))
+                WidgetState::Normal
             };
             node.justify_content = if tog.on {
                 JustifyContent::FlexEnd
@@ -285,6 +292,14 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
             }),
             BorderColor::all(rgb((92, 92, 104))),
             Interaction::default(),
+            Styled::with_state(
+                Role::Checkbox,
+                if checked {
+                    WidgetState::Active
+                } else {
+                    WidgetState::Normal
+                },
+            ),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("checkbox"),
         ))
@@ -314,18 +329,18 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
 }
 
 fn checkbox_interact(
-    mut boxes: Query<(&Interaction, &mut EmberCheckbox, &mut BackgroundColor), Changed<Interaction>>,
+    mut boxes: Query<(&Interaction, &mut EmberCheckbox, &mut Styled), Changed<Interaction>>,
     mut nodes: Query<&mut Node>,
 ) {
-    for (interaction, mut cb, mut bg) in &mut boxes {
+    for (interaction, mut cb, mut styled) in &mut boxes {
         if *interaction != Interaction::Pressed {
             continue;
         }
         cb.checked = !cb.checked;
-        bg.0 = if cb.checked {
-            rgb(ACCENT_BLUE)
+        styled.state = if cb.checked {
+            WidgetState::Active
         } else {
-            Color::NONE
+            WidgetState::Normal
         };
         if let Ok(mut n) = nodes.get_mut(cb.mark) {
             n.display = if cb.checked {
@@ -505,6 +520,14 @@ pub fn segmented(
                 }),
                 Interaction::default(),
                 EmberSegment { group, value: i },
+                Styled::with_state(
+                    Role::Segment,
+                    if on {
+                        WidgetState::Active
+                    } else {
+                        WidgetState::Normal
+                    },
+                ),
                 renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("segment"),
             ))
@@ -524,8 +547,7 @@ pub fn segmented(
 
 fn segmented_interact(
     pressed: Query<(&Interaction, &EmberSegment), Changed<Interaction>>,
-    segments: Query<(Entity, &EmberSegment)>,
-    mut backgrounds: Query<&mut BackgroundColor>,
+    mut segments: Query<(&EmberSegment, &mut Styled)>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
     for (interaction, s) in &pressed {
@@ -537,17 +559,15 @@ fn segmented_interact(
     let Some((group, value)) = chosen else {
         return;
     };
-    for (entity, s) in &segments {
+    for (s, mut styled) in &mut segments {
         if s.group != group {
             continue;
         }
-        if let Ok(mut bg) = backgrounds.get_mut(entity) {
-            bg.0 = if s.value == value {
-                rgb(ACCENT_BLUE)
-            } else {
-                Color::NONE
-            };
-        }
+        styled.state = if s.value == value {
+            WidgetState::Active
+        } else {
+            WidgetState::Normal
+        };
     }
 }
 
@@ -622,6 +642,7 @@ fn step_button(
             BackgroundColor(rgb(TAB_ACTIVE_BG)),
             Interaction::default(),
             EmberButton,
+            Styled::new(Role::IconButton),
             EmberStepButton { stepper, dir },
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("step-button"),
@@ -867,6 +888,7 @@ pub fn text_input(
             BackgroundColor(rgb((28, 28, 34))),
             BorderColor::all(rgb((70, 70, 82))),
             Interaction::default(),
+            Styled::new(Role::Input),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("text-input"),
         ))
@@ -890,8 +912,7 @@ pub fn text_input(
 
 fn text_input_focus(
     pressed: Query<(Entity, &Interaction), (With<EmberTextInput>, Changed<Interaction>)>,
-    mut inputs: Query<(Entity, &mut EmberTextInput)>,
-    mut borders: Query<&mut BorderColor>,
+    mut inputs: Query<(Entity, &mut EmberTextInput, &mut Styled)>,
 ) {
     let mut clicked = None;
     for (e, interaction) in &pressed {
@@ -903,17 +924,15 @@ fn text_input_focus(
     let Some(clicked) = clicked else {
         return;
     };
-    for (e, mut inp) in &mut inputs {
+    for (e, mut inp, mut styled) in &mut inputs {
         let focus = e == clicked;
         if inp.focused != focus {
             inp.focused = focus;
-            if let Ok(mut b) = borders.get_mut(e) {
-                *b = BorderColor::all(rgb(if focus {
-                    ACCENT_BLUE
-                } else {
-                    (70, 70, 82)
-                }));
-            }
+            styled.state = if focus {
+                WidgetState::Active
+            } else {
+                WidgetState::Normal
+            };
         }
     }
 }
@@ -1030,6 +1049,254 @@ pub fn hstack(commands: &mut Commands, gap: f32, children: &[Entity]) -> Entity 
     row
 }
 
+// ── Typography ───────────────────────────────────────────────────────────────
+
+fn text_node(commands: &mut Commands, font: &Handle<Font>, text: &str, size: f32, color: (u8, u8, u8)) -> Entity {
+    commands
+        .spawn((Text::new(text), ui_font(font, size), TextColor(rgb(color))))
+        .id()
+}
+
+/// Display heading, level 1 (largest).
+pub fn h1(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 26.0, TEXT_PRIMARY)
+}
+/// Heading, level 2.
+pub fn h2(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 21.0, TEXT_PRIMARY)
+}
+/// Heading, level 3.
+pub fn h3(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 17.0, TEXT_PRIMARY)
+}
+/// Heading, level 4 (smallest).
+pub fn h4(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 14.0, TEXT_PRIMARY)
+}
+/// Body paragraph text.
+pub fn paragraph(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 13.0, TEXT_PRIMARY)
+}
+/// Small, muted caption.
+pub fn caption(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 11.0, TEXT_MUTED)
+}
+/// A muted form/field label.
+pub fn label(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    text_node(commands, font, text, 12.0, TEXT_MUTED)
+}
+/// An accent-colored hyperlink (pointer cursor; click handling is the caller's).
+pub fn link(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    commands
+        .spawn((
+            Text::new(text),
+            ui_font(font, 12.0),
+            TextColor(rgb(ACCENT_BLUE)),
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("link"),
+        ))
+        .id()
+}
+/// Inline code — a subtle chip around monospaced-looking text.
+pub fn code(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+    commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((28, 28, 34))),
+            Name::new("code"),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Text::new(text),
+                ui_font(font, 12.0),
+                TextColor(rgb((200, 210, 235))),
+            ));
+        })
+        .id()
+}
+
+// ── Feedback ─────────────────────────────────────────────────────────────────
+
+/// Semantic tone for badges / alerts / toasts.
+#[derive(Clone, Copy)]
+pub enum Tone {
+    Neutral,
+    Info,
+    Success,
+    Warn,
+    Error,
+}
+
+impl Tone {
+    fn color(self) -> (u8, u8, u8) {
+        match self {
+            Tone::Neutral => (120, 120, 134),
+            Tone::Info => ACCENT_BLUE,
+            Tone::Success => PLAY_GREEN,
+            Tone::Warn => WARN_AMBER,
+            Tone::Error => CLOSE_RED,
+        }
+    }
+    fn icon(self) -> &'static str {
+        match self {
+            Tone::Neutral => "info",
+            Tone::Info => "info",
+            Tone::Success => "check-circle",
+            Tone::Warn => "warning",
+            Tone::Error => "x-circle",
+        }
+    }
+}
+
+/// A small pill badge in a semantic tone.
+pub fn badge(commands: &mut Commands, font: &Handle<Font>, text: &str, tone: Tone) -> Entity {
+    commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)),
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(9.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tone.color())),
+            Name::new("badge"),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Text::new(text),
+                ui_font(font, 11.0),
+                TextColor(rgb((255, 255, 255))),
+            ));
+        })
+        .id()
+}
+
+/// An inline alert box (themed container + tone icon + title/body).
+pub fn alert(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    tone: Tone,
+    title: &str,
+    body: &str,
+) -> Entity {
+    let box_e = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(10.0),
+                align_items: AlignItems::FlexStart,
+                min_width: Val::Px(240.0),
+                ..default()
+            },
+            BackgroundColor(rgb((38, 38, 48))),
+            BorderColor::all(rgb((60, 60, 74))),
+            Styled::new(Role::Alert),
+            Name::new("alert"),
+        ))
+        .id();
+    let icon = icon_text(commands, &fonts.phosphor, tone.icon(), tone.color(), 16.0);
+    let col = commands
+        .spawn((Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..default()
+        },))
+        .id();
+    let t = text_node(commands, &fonts.ui, title, 13.0, TEXT_PRIMARY);
+    let b = text_node(commands, &fonts.ui, body, 12.0, TEXT_MUTED);
+    commands.entity(col).add_children(&[t, b]);
+    commands.entity(box_e).add_children(&[icon, col]);
+    box_e
+}
+
+/// A toast notification (themed card + tone icon + message + close ×).
+pub fn toast(commands: &mut Commands, fonts: &EmberFonts, tone: Tone, message: &str) -> Entity {
+    let box_e = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(8.0),
+                align_items: AlignItems::Center,
+                min_width: Val::Px(220.0),
+                ..default()
+            },
+            BackgroundColor(rgb((44, 44, 55))),
+            BorderColor::all(rgb((64, 64, 78))),
+            Styled::new(Role::Toast),
+            Name::new("toast"),
+        ))
+        .id();
+    let icon = icon_text(commands, &fonts.phosphor, tone.icon(), tone.color(), 14.0);
+    let msg = commands
+        .spawn((
+            Text::new(message),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            Node {
+                flex_grow: 1.0,
+                ..default()
+            },
+        ))
+        .id();
+    let close = icon_text(commands, &fonts.phosphor, "x", TEXT_MUTED, 12.0);
+    commands.entity(box_e).add_children(&[icon, msg, close]);
+    box_e
+}
+
+/// A determinate progress bar (`value` 0..1).
+pub fn progress(commands: &mut Commands, value: f32) -> Entity {
+    let v = value.clamp(0.0, 1.0);
+    let track = commands
+        .spawn((
+            Node {
+                width: Val::Px(180.0),
+                height: Val::Px(8.0),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb((40, 40, 48))),
+            Name::new("progress"),
+        ))
+        .id();
+    let fill = commands
+        .spawn((
+            Node {
+                width: Val::Percent(v * 100.0),
+                height: Val::Percent(100.0),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            Name::new("progress-fill"),
+        ))
+        .id();
+    commands.entity(track).add_child(fill);
+    track
+}
+
+/// A skeleton placeholder block (loading state; shimmer animation comes later).
+pub fn skeleton(commands: &mut Commands, width: f32, height: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(width),
+                height: Val::Px(height),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((48, 48, 58))),
+            Name::new("skeleton"),
+        ))
+        .id()
+}
+
 // ── Gallery ──────────────────────────────────────────────────────────────────
 
 /// A titled panel column — the shell of each gallery category panel.
@@ -1121,6 +1388,57 @@ pub fn gallery_selection(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let f_seg = field(commands, font, "Segmented", seg);
 
     panel_column(commands, font, "Selection", vec![f_check, f_radio, f_seg])
+}
+
+/// Gallery panel: typography scale.
+pub fn gallery_typography(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let rows = vec![
+        h1(commands, font, "Heading 1"),
+        h2(commands, font, "Heading 2"),
+        h3(commands, font, "Heading 3"),
+        h4(commands, font, "Heading 4"),
+        paragraph(commands, font, "Body paragraph in the UI font."),
+        caption(commands, font, "Caption — small and muted."),
+        link(commands, font, "A hyperlink"),
+        code(commands, font, "inline_code()"),
+    ];
+    panel_column(commands, font, "Typography", rows)
+}
+
+/// Gallery panel: feedback components.
+pub fn gallery_feedback(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let badges = [
+        badge(commands, font, "Info", Tone::Info),
+        badge(commands, font, "OK", Tone::Success),
+        badge(commands, font, "Warn", Tone::Warn),
+        badge(commands, font, "Error", Tone::Error),
+    ];
+    let badge_row = hstack(commands, 6.0, &badges);
+    let f_badge = field(commands, font, "Badge", badge_row);
+
+    let al = alert(
+        commands,
+        fonts,
+        Tone::Info,
+        "Heads up",
+        "This is an inline alert message.",
+    );
+    let to = toast(commands, fonts, Tone::Success, "Saved successfully");
+
+    let pr = progress(commands, 0.7);
+    let f_prog = field(commands, font, "Progress", pr);
+
+    let sk = skeleton(commands, 180.0, 12.0);
+    let f_skel = field(commands, font, "Skeleton", sk);
+
+    panel_column(
+        commands,
+        font,
+        "Feedback",
+        vec![f_badge, al, to, f_prog, f_skel],
+    )
 }
 
 /// Gallery panel: color swatches.

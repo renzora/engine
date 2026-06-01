@@ -26,22 +26,28 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// Gallery: a 2×2 showcase of the `renzora_ember` component categories, each in
+/// Gallery: a 2×3 showcase of the `renzora_ember` component categories, each in
 /// its own panel — the living catalog of the bevy_ui widget set.
 fn layout_gallery() -> DockTree {
-    DockTree::vertical(
+    let top = DockTree::horizontal(
+        DockTree::leaf("gallery_typography"),
         DockTree::horizontal(
             DockTree::leaf("gallery_buttons"),
             DockTree::leaf("gallery_inputs"),
             0.5,
         ),
+        0.34,
+    );
+    let bottom = DockTree::horizontal(
+        DockTree::leaf("gallery_selection"),
         DockTree::horizontal(
-            DockTree::leaf("gallery_selection"),
+            DockTree::leaf("gallery_feedback"),
             DockTree::leaf("gallery_colors"),
             0.5,
         ),
-        0.5,
-    )
+        0.34,
+    );
+    DockTree::vertical(top, bottom, 0.5)
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
