@@ -1,0 +1,11 @@
+[package]
+name = "renzora_ember"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets, docking, and particle UI (cinder) — shared by the editor and exported games."
+
+[dependencies]
+bevy = { workspace = true }
+
+[lints]
+workspace = true

@@ -7,6 +7,9 @@ description = "bevy_ui-native editor shell (dock host + chrome). The egui → be
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# The bevy_ui UI framework. The dock model lives here; the reconciler +
+# interactions migrate over next.
+renzora_ember = { path = "../renzora_ember" }
 # Phosphor icon system (`Icon` component + `apply_icons`) — same icons the egui
 # editor uses, rendered into bevy_ui. HuiPlugin runs the resolver globally.
 renzora_hui = { path = "../renzora_hui" }

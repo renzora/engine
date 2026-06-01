@@ -9447,6 +9447,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_ember"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+]
+
+[[package]]
 name = "renzora_emboss"
 version = "0.1.0"
 dependencies = [
@@ -10744,6 +10751,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
+ "renzora_ember",
  "renzora_hui",
 ]
 
