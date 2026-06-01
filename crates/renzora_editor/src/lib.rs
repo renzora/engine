@@ -375,6 +375,7 @@ impl Plugin for RenzoraEditorPlugin {
         app.init_state::<EditorState>()
             .init_resource::<ThemeManager>()
             .init_resource::<PanelRegistry>()
+            .init_resource::<renzora::ShellPanelRegistry>()
             .insert_resource(initial_docking)
             .insert_resource(initial_manager)
             .init_resource::<FloatingPanels>()
@@ -431,6 +432,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<renzora_ui::Toasts>()
             .add_plugins(renzora_ui::window_chrome::WindowChromePlugin)
             .add_systems(PostStartup, camera::spawn_ui_camera)
+            .add_systems(Update, bridge_panel_registry)
             .add_systems(
                 EguiPrimaryContextPass,
                 editor_ui_system
@@ -774,6 +776,35 @@ fn load_project_custom_fonts(world: &mut World, ctx: &egui::Context) {
         world.insert_resource(CustomFonts { names: all_names });
     } else if !world.contains_resource::<CustomFonts>() {
         world.insert_resource(CustomFonts::default());
+    }
+}
+
+/// Bridge: copy each egui `EditorPanel`'s id/title/icon/category into the
+/// bevy-native [`renzora::ShellPanelRegistry`] so `renzora_shell` shows real
+/// metadata without linking egui. Runs until the panel registry is populated,
+/// then stops. Transitional — removed once panels register the bevy-native way.
+fn bridge_panel_registry(
+    panels: Res<PanelRegistry>,
+    mut shell: ResMut<renzora::ShellPanelRegistry>,
+    mut done: Local<bool>,
+) {
+    if *done {
+        return;
+    }
+    let mut count = 0;
+    for p in panels.iter() {
+        shell.panels.insert(
+            p.id().to_string(),
+            renzora::ShellPanelInfo {
+                title: p.title().to_string(),
+                icon: p.icon().unwrap_or_default().to_string(),
+                category: p.category().to_string(),
+            },
+        );
+        count += 1;
+    }
+    if count > 0 {
+        *done = true;
     }
 }
 

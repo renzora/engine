@@ -39,6 +39,7 @@ impl Plugin for ShellPlugin {
             tree: layouts[0].1.clone(),
         });
         app.insert_resource(ShellLayouts { layouts, active: 0 });
+        app.init_resource::<renzora::ShellPanelRegistry>();
         app.init_resource::<DraggedDivider>();
         app.init_resource::<TabDrag>();
         app.init_resource::<DockDirty>();
@@ -52,6 +53,7 @@ impl Plugin for ShellPlugin {
                 divider_drag,
                 tab_drag,
                 apply_tab_switch,
+                apply_panel_meta,
                 tab_hover,
                 tab_close_hover,
                 ribbon_switch,
@@ -785,6 +787,38 @@ fn apply_tab_switch(
     if let Ok(leaf_data) = leaves.get(leaf) {
         if let Ok(mut text) = texts.get_mut(leaf_data.content_text) {
             *text = Text::new(panel_meta(&id).0);
+        }
+    }
+}
+
+/// Apply real panel titles/icons from [`renzora::ShellPanelRegistry`] onto the
+/// tabs (overriding the build-time `panel_meta` placeholders). Runs cheaply
+/// each frame, guarded so it only writes when a value actually differs.
+fn apply_panel_meta(
+    registry: Res<renzora::ShellPanelRegistry>,
+    tabs: Query<&DockTab>,
+    mut texts: Query<&mut Text>,
+) {
+    if registry.panels.is_empty() {
+        return;
+    }
+    for tab in &tabs {
+        let Some(info) = registry.panels.get(&tab.id) else {
+            continue;
+        };
+        if !info.title.is_empty() {
+            if let Ok(mut t) = texts.get_mut(tab.label) {
+                if t.0 != info.title {
+                    t.0 = info.title.clone();
+                }
+            }
+        }
+        if !info.icon.is_empty() {
+            if let Ok(mut t) = texts.get_mut(tab.icon) {
+                if t.0 != info.icon {
+                    t.0 = info.icon.clone();
+                }
+            }
         }
     }
 }

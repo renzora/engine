@@ -1253,6 +1253,26 @@ pub fn editor_backend_is_bevy_ui(backend: Option<Res<EditorUiBackend>>) -> bool 
     backend.as_ref().map(|b| b.is_bevy_ui()).unwrap_or(false)
 }
 
+/// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.
+///
+/// Transitional bridge for the egui → bevy_ui migration: `renzora_editor`
+/// populates this from its egui `PanelRegistry` (so the shell gets each panel's
+/// real title/icon without linking egui). Once panels register a bevy-native
+/// renderer directly, this becomes their primary registration.
+#[derive(Resource, Default)]
+pub struct ShellPanelRegistry {
+    pub panels: bevy::platform::collections::HashMap<String, ShellPanelInfo>,
+}
+
+#[derive(Clone, Default)]
+pub struct ShellPanelInfo {
+    pub title: String,
+    /// Phosphor glyph string for the panel's icon (empty if none). The Phosphor
+    /// font shares codepoints with egui-phosphor, so the glyph renders directly.
+    pub icon: String,
+    pub category: String,
+}
+
 /// Run condition: returns true when the viewport is in 3D view. Use on
 /// editor systems whose visuals (transform gizmo arrows, collider wireframes,
 /// rotation pies, etc.) only make sense projecting through a 3D camera.
