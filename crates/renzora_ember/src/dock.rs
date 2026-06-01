@@ -12,6 +12,8 @@
 //! content is left to the consumer — query the public [`DockLeaf`] and fill it
 //! (the editor fills it with panels; a game with whatever).
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 
 use crate::font::{glyph, icon_text, ui_font, EmberFonts};
@@ -266,8 +268,11 @@ impl Plugin for DockPlugin {
                     apply_tab_switch,
                     tab_hover,
                     tab_close_hover,
+                    // Rebuild last, in the same frame the model mutates, so the
+                    // dock doesn't show a stale layout for a frame (flicker).
                     rebuild_dock,
-                ),
+                )
+                    .chain(),
             );
     }
 }
@@ -529,9 +534,9 @@ fn tab_drag(
     fonts: Option<Res<EmberFonts>>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    tabs: Query<(&Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
-    tabbars: Query<(&TabBarOf, &bevy::ui::RelativeCursorPosition)>,
-    leaves: Query<(Entity, &DockLeaf, &bevy::ui::RelativeCursorPosition)>,
+    tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
+    tabbars: Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
+    mut leaves: Query<(Entity, &mut DockLeaf, &bevy::ui::RelativeCursorPosition)>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
 ) {
@@ -539,7 +544,7 @@ fn tab_drag(
 
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         if let Some(cur) = cursor {
-            for (interaction, tab, _) in &tabs {
+            for (_, interaction, tab, _) in &tabs {
                 if *interaction == Interaction::Pressed {
                     drag.0 = Some(TabDragState {
                         id: tab.id.clone(),
@@ -569,8 +574,41 @@ fn tab_drag(
             }
             if state.active {
                 if let Some(action) = state.action {
+                    // A reorder within the same leaf only changes tab order, not
+                    // structure — do it in place (move the tab entity) instead of
+                    // rebuilding the dock subtree, which avoids the layout flicker.
+                    let inplace = match &action {
+                        DropAction::Tab { rep, before } => leaves
+                            .get(state.leaf)
+                            .ok()
+                            .filter(|(_, ld, _)| ld.tabs.contains(rep))
+                            .map(|(_, ld, _)| reordered(&ld.tabs, &state.id, before.as_deref())),
+                        _ => None,
+                    };
                     apply_action(&mut dock.tree, &state.id, action);
-                    dirty.0 = true;
+                    match inplace {
+                        Some(new_tabs) => {
+                            if let Ok((_, mut ld, _)) = leaves.get_mut(state.leaf) {
+                                ld.tabs = new_tabs.clone();
+                            }
+                            if let Some((tabbar, _, _)) =
+                                tabbars.iter().find(|(_, b, _)| b.0 == state.leaf)
+                            {
+                                let ordered: Vec<Entity> = new_tabs
+                                    .iter()
+                                    .filter_map(|id| {
+                                        tabs.iter()
+                                            .find(|(_, _, t, _)| &t.id == id)
+                                            .map(|(e, _, _, _)| e)
+                                    })
+                                    .collect();
+                                if !ordered.is_empty() {
+                                    commands.entity(tabbar).insert_children(0, &ordered);
+                                }
+                            }
+                        }
+                        None => dirty.0 = true,
+                    }
                 }
             } else {
                 pending.0 = Some((state.leaf, state.id));
@@ -609,14 +647,14 @@ fn tab_drag(
 
     let over_bar = tabbars
         .iter()
-        .find(|(_, rcp)| rcp.cursor_over)
-        .map(|(bar, _)| bar.0);
+        .find(|(_, _, rcp)| rcp.cursor_over)
+        .map(|(_, bar, _)| bar.0);
     if let Some(leaf_ent) = over_bar {
         if let Some((_, ld, _)) = leaves.iter().find(|(e, _, _)| *e == leaf_ent) {
             let mut before: Option<String> = None;
             let mut marker: Option<(Entity, bool)> = None;
             for id in ld.tabs.iter() {
-                if let Some((_, tab, rcp)) = tabs.iter().find(|(_, t, _)| &t.id == id) {
+                if let Some((_, _, tab, rcp)) = tabs.iter().find(|(_, _, t, _)| &t.id == id) {
                     let nx = rcp.normalized.map_or(f32::INFINITY, |n| n.x);
                     if nx < 0.0 {
                         before = Some(id.clone());
@@ -629,8 +667,8 @@ fn tab_drag(
                 if let Some(last) = ld.tabs.last() {
                     marker = tabs
                         .iter()
-                        .find(|(_, t, _)| &t.id == last)
-                        .map(|(_, t, _)| (t.marker, true));
+                        .find(|(_, _, t, _)| &t.id == last)
+                        .map(|(_, _, t, _)| (t.marker, true));
                 }
                 before = None;
             }
@@ -762,6 +800,17 @@ fn set_zone_rect(n: &mut Node, zone: DropZone) {
     n.height = Val::Percent(h);
 }
 
+/// The new tab order for a same-leaf reorder: `dragged` removed and re-inserted
+/// before `before` (or appended).
+fn reordered(old: &[String], dragged: &str, before: Option<&str>) -> Vec<String> {
+    let mut v: Vec<String> = old.iter().filter(|t| t.as_str() != dragged).cloned().collect();
+    match before.and_then(|b| v.iter().position(|t| t == b)) {
+        Some(idx) => v.insert(idx, dragged.to_string()),
+        None => v.push(dragged.to_string()),
+    }
+    v
+}
+
 fn apply_action(tree: &mut DockTree, dragged: &str, action: DropAction) {
     match action {
         DropAction::Split { rep, zone } => {
@@ -785,6 +834,7 @@ fn rebuild_dock(
     fonts: Option<Res<EmberFonts>>,
     dock: Res<Dock>,
     area: Query<(Entity, Option<&Children>), With<DockArea>>,
+    leaves: Query<&DockLeaf>,
 ) {
     if !dirty.0 {
         return;
@@ -795,6 +845,19 @@ fn rebuild_dock(
     let Ok((area_entity, children)) = area.single() else {
         return;
     };
+
+    // Preserve each leaf's content entity (keyed by its active panel) and detach
+    // it from the hierarchy so the despawn below doesn't take it — `build_tree`
+    // re-parents it, so reordering/moving tabs keeps the panel (and its state)
+    // instead of recreating it.
+    let mut preserved: HashMap<String, Entity> = HashMap::new();
+    for leaf in &leaves {
+        if !leaf.active.is_empty() {
+            preserved.insert(leaf.active.clone(), leaf.content);
+            commands.entity(leaf.content).remove::<ChildOf>();
+        }
+    }
+
     if let Some(children) = children {
         for child in children.iter() {
             commands.entity(child).despawn();
@@ -807,8 +870,14 @@ fn rebuild_dock(
         None,
         Vec::new(),
         &dock.tree,
+        &mut preserved,
     );
     commands.entity(area_entity).add_child(tree_root);
+
+    // Any preserved content not reused (its panel no longer exists) → despawn.
+    for (_, content) in preserved.drain() {
+        commands.entity(content).despawn();
+    }
     dirty.0 = false;
 }
 
@@ -881,6 +950,7 @@ fn build_tree(
     parent: Option<ParentSplit>,
     path: Vec<bool>,
     tree: &DockTree,
+    preserved: &mut HashMap<String, Entity>,
 ) -> Entity {
     match tree {
         DockTree::Split {
@@ -931,7 +1001,7 @@ fn build_tree(
                 is_second: false,
                 path: path.clone(),
             };
-            let child_a = build_tree(commands, font, phosphor, Some(info_a), path_a, first);
+            let child_a = build_tree(commands, font, phosphor, Some(info_a), path_a, first, preserved);
             commands.entity(wrap_a).add_child(child_a);
 
             let mut dv = Node {
@@ -970,7 +1040,7 @@ fn build_tree(
                 is_second: true,
                 path: path.clone(),
             };
-            let child_b = build_tree(commands, font, phosphor, Some(info_b), path_b, second);
+            let child_b = build_tree(commands, font, phosphor, Some(info_b), path_b, second, preserved);
             commands.entity(wrap_b).add_child(child_b);
 
             const GRAB: f32 = 11.0;
@@ -1018,7 +1088,7 @@ fn build_tree(
             container
         }
         DockTree::Leaf { tabs, active_tab } => {
-            build_leaf(commands, font, phosphor, parent, tabs, *active_tab)
+            build_leaf(commands, font, phosphor, parent, tabs, *active_tab, preserved)
         }
         DockTree::Empty => commands
             .spawn((
@@ -1040,6 +1110,7 @@ fn build_leaf(
     parent: Option<ParentSplit>,
     tabs: &[String],
     active: usize,
+    preserved: &mut HashMap<String, Entity>,
 ) -> Entity {
     let leaf = commands
         .spawn((
@@ -1055,7 +1126,7 @@ fn build_leaf(
             Name::new("leaf"),
         ))
         .id();
-    populate_leaf(commands, font, phosphor, parent, leaf, tabs, active);
+    populate_leaf(commands, font, phosphor, parent, leaf, tabs, active, preserved);
     leaf
 }
 
@@ -1067,6 +1138,7 @@ fn populate_leaf(
     leaf: Entity,
     tabs: &[String],
     active: usize,
+    preserved: &mut HashMap<String, Entity>,
 ) {
     let tabbar = commands
         .spawn((
@@ -1190,19 +1262,23 @@ fn populate_leaf(
     bar_kids.push(filler);
     commands.entity(tabbar).add_children(&bar_kids);
 
-    // Content region — left empty; the consumer fills it based on the active
-    // panel (see `DockLeaf::content` / `active`).
-    let content = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_grow: 1.0,
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            Name::new("content"),
-        ))
-        .id();
+    // Content region. Reuse the active panel's preserved content entity (kept
+    // across this rebuild) so reordering/moving tabs doesn't recreate the panel;
+    // otherwise spawn an empty node for the consumer to fill.
+    let active_id = tabs.get(active).cloned().unwrap_or_default();
+    let content = preserved.remove(&active_id).unwrap_or_else(|| {
+        commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                Name::new("content"),
+            ))
+            .id()
+    });
 
     let overlay = commands
         .spawn((
@@ -1227,7 +1303,7 @@ fn populate_leaf(
     commands.entity(leaf).insert(DockLeaf {
         tabs: tabs.to_vec(),
         content,
-        active: tabs.get(active).cloned().unwrap_or_default(),
+        active: active_id,
         overlay,
     });
     commands
