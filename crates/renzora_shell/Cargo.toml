@@ -1,0 +1,15 @@
+[package]
+name = "renzora_shell"
+version = "0.1.0"
+edition = "2021"
+description = "bevy_ui-native editor shell (dock host + chrome). The egui → bevy_ui/HUI migration target for the editor layout."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Phosphor icon system (`Icon` component + `apply_icons`) — same icons the egui
+# editor uses, rendered into bevy_ui. HuiPlugin runs the resolver globally.
+renzora_hui = { path = "../renzora_hui" }
+
+[lints]
+workspace = true

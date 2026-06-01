@@ -10538,6 +10538,7 @@ dependencies = [
  "renzora_shader",
  "renzora_shader_editor",
  "renzora_shape_library",
+ "renzora_shell",
  "renzora_skybox",
  "renzora_splash",
  "renzora_spline",
@@ -10735,6 +10736,15 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
+]
+
+[[package]]
+name = "renzora_shell"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_hui",
 ]
 
 [[package]]

@@ -1218,6 +1218,41 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
     !play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())
 }
 
+/// Which UI backend the editor renders with.
+///
+/// Transitional state for the egui → bevy_ui/HUI migration. `Egui` is the
+/// legacy immediate-mode editor; `BevyUi` is the new `renzora_shell` bevy_ui
+/// host. The two are mutually exclusive — the egui `editor_ui_system` only runs
+/// under `Egui`, and the shell only spawns under `BevyUi`. Toggle at runtime
+/// (F10) to compare. Defaults to `Egui` until the shell reaches parity.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum EditorUiBackend {
+    #[default]
+    Egui,
+    BevyUi,
+}
+
+impl EditorUiBackend {
+    pub fn is_egui(&self) -> bool {
+        matches!(self, EditorUiBackend::Egui)
+    }
+    pub fn is_bevy_ui(&self) -> bool {
+        matches!(self, EditorUiBackend::BevyUi)
+    }
+}
+
+/// Run condition: true when the legacy egui editor should render. Absent
+/// resource defaults to egui so the editor works even if the shell crate isn't
+/// linked. Use as `.run_if(editor_backend_is_egui)`.
+pub fn editor_backend_is_egui(backend: Option<Res<EditorUiBackend>>) -> bool {
+    backend.as_ref().map(|b| b.is_egui()).unwrap_or(true)
+}
+
+/// Run condition: true when the bevy_ui shell should render.
+pub fn editor_backend_is_bevy_ui(backend: Option<Res<EditorUiBackend>>) -> bool {
+    backend.as_ref().map(|b| b.is_bevy_ui()).unwrap_or(false)
+}
+
 /// Run condition: returns true when the viewport is in 3D view. Use on
 /// editor systems whose visuals (transform gizmo arrows, collider wireframes,
 /// rotation pies, etc.) only make sense projecting through a 3D camera.

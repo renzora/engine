@@ -25,6 +25,7 @@ editor = [
     "dep:renzora_scene",
     "dep:renzora_keybindings",
     "dep:renzora_console",
+    "dep:renzora_shell",
     # First-party editor panels
     "dep:renzora_animation_editor",
     "dep:renzora_asset_browser",
@@ -167,6 +168,7 @@ renzora_grid = { path = "../renzora_grid", optional = true }
 renzora_scene = { path = "../renzora_scene", optional = true }
 renzora_keybindings = { path = "../renzora_keybindings", optional = true }
 renzora_console = { path = "../renzora_console", optional = true }
+renzora_shell = { path = "../renzora_shell", optional = true }
 
 # First-party editor panels — statically linked when `editor` feature is on.
 # Third-party plugins still load dynamically from plugins/ via the SDK.

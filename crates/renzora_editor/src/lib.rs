@@ -433,7 +433,8 @@ impl Plugin for RenzoraEditorPlugin {
             .add_systems(PostStartup, camera::spawn_ui_camera)
             .add_systems(
                 EguiPrimaryContextPass,
-                editor_ui_system.run_if(in_state(SplashState::Editor)),
+                editor_ui_system
+                    .run_if(in_state(SplashState::Editor).and(renzora::editor_backend_is_egui)),
             )
             .add_observer(show_script_reload_toasts)
             .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
