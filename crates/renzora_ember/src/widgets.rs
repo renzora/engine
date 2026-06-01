@@ -74,6 +74,7 @@ mod tooltip;
 
 // Menus / interaction / utilities.
 mod chart;
+mod code_editor;
 mod context_menu;
 mod hamburger;
 mod menu;
@@ -146,6 +147,7 @@ pub use popover::*;
 pub use tooltip::*;
 
 pub use chart::*;
+pub use code_editor::*;
 pub use context_menu::*;
 pub use hamburger::*;
 pub use multi_select::*;
@@ -217,5 +219,6 @@ impl Plugin for WidgetsPlugin {
         app.add_plugins(chart::ChartPlugin);
         app.add_plugins(timeline::TimelinePlugin);
         app.add_plugins(gauge::GaugePlugin);
+        app.add_plugins(code_editor::CodeEditorPlugin);
     }
 }

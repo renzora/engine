@@ -51,6 +51,7 @@ fn layout_gallery() -> DockTree {
             "gallery_data",
             "gallery_node_graph",
             "gallery_timeline",
+            "gallery_code",
         ]),
         DockTree::tabs(&[
             "gallery_forms",

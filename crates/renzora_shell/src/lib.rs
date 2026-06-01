@@ -207,6 +207,7 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
         "gallery_extras" => widgets::gallery_extras(commands, fonts),
         "gallery_node_graph" => widgets::gallery_node_graph(commands, fonts),
         "gallery_timeline" => widgets::gallery_timeline(commands, fonts),
+        "gallery_code" => widgets::gallery_code(commands, fonts),
         "gallery_charts" => widgets::gallery_charts(commands, fonts),
         "gallery_colors" => widgets::gallery_colors(commands, fonts),
         _ => {

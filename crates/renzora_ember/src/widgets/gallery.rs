@@ -337,6 +337,26 @@ pub fn gallery_node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     panel_column(commands, &fonts.ui, "Node Graph", vec![ng])
 }
 
+/// Gallery panel: the code editor.
+pub fn gallery_code(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let sample = r#"// ember code editor — click to focus, then type
+fn main() {
+    let mut count = 0;
+    for i in 0..10 {
+        count += i * 2;
+    }
+    let name: String = "renzora".into();
+}
+
+struct Widget {
+    id: u32,
+    label: String,
+}"#;
+    let ed = code_editor(commands, sample);
+    panel_column(commands, font, "Code Editor", vec![ed])
+}
+
 /// Gallery panel: the timeline.
 pub fn gallery_timeline(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let font = &fonts.ui;

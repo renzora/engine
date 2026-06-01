@@ -11,6 +11,9 @@ use crate::theme::rgb;
 /// asset-root.
 const NOTO_SANS: &[u8] = include_bytes!("../embedded/NotoSans-Regular.ttf");
 
+/// JetBrains Mono — the monospace font for the code editor.
+const JETBRAINS_MONO: &[u8] = include_bytes!("../embedded/JetBrainsMono-Regular.ttf");
+
 /// Slight global down-scale so text matches the editor's size.
 const TEXT_SCALE: f32 = 0.92;
 
@@ -20,6 +23,7 @@ const TEXT_SCALE: f32 = 0.92;
 pub struct EmberFonts {
     pub ui: Handle<Font>,
     pub phosphor: Handle<Font>,
+    pub mono: Handle<Font>,
 }
 
 /// Build [`EmberFonts`] once the Phosphor font (loaded by HUI) is available.
@@ -42,9 +46,17 @@ pub(crate) fn load_fonts(
             Handle::default()
         }
     };
+    let mono = match Font::try_from_bytes(JETBRAINS_MONO.to_vec()) {
+        Ok(font) => fonts.add(font),
+        Err(e) => {
+            error!("[ember] failed to load embedded JetBrains Mono: {e:?}");
+            Handle::default()
+        }
+    };
     commands.insert_resource(EmberFonts {
         ui,
         phosphor: phosphor.0.clone(),
+        mono,
     });
 }
 
