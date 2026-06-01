@@ -105,6 +105,19 @@ impl DockTree {
         }
     }
 
+    /// Is `panel` the active (visible) tab in its leaf?
+    pub fn is_active_tab(&self, panel: &str) -> bool {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.is_active_tab(panel) || second.is_active_tab(panel)
+            }
+            DockTree::Leaf { tabs, active_tab } => {
+                tabs.get(*active_tab).is_some_and(|t| t == panel)
+            }
+            DockTree::Empty => false,
+        }
+    }
+
     /// Make `panel` the active tab in its leaf.
     pub fn set_active_tab(&mut self, panel: &str) {
         if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(panel) {
@@ -223,6 +236,200 @@ pub enum DropZone {
     Right,
     Top,
     Bottom,
+}
+
+/// The ribbon workspace layouts, in ribbon order (Scene … Debug). Ports
+/// `renzora_ui::layouts` (the visible, non-asset layouts) into the shell's
+/// egui-free dock model.
+pub fn workspace_layouts() -> Vec<(String, DockTree)> {
+    vec![
+        ("Scene".into(), scene_layout()),
+        ("Blueprints".into(), layout_blueprints()),
+        ("Scripting".into(), layout_scripting()),
+        ("Animation".into(), layout_animation()),
+        ("Materials".into(), layout_materials()),
+        ("Particles".into(), layout_particles()),
+        ("Video".into(), layout_video()),
+        ("Audio".into(), layout_audio()),
+        ("Debug".into(), layout_debug()),
+    ]
+}
+
+/// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
+fn layout_blueprints() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("blueprint_properties"),
+            0.5,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("blueprint_graph"),
+                DockTree::leaf("console"),
+                0.75,
+            ),
+            DockTree::leaf("inspector"),
+            0.78,
+        ),
+        0.18,
+    )
+}
+
+/// Scripting: Hierarchy/Scripts/Assets | CodeEditor+Console | Viewport/Outline/Vars
+fn layout_scripting() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::vertical(
+                DockTree::leaf("scripts_on_entity"),
+                DockTree::leaf("assets"),
+                0.4,
+            ),
+            0.4,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("code_editor"),
+                DockTree::tabs(&["console", "problems"]),
+                0.7,
+            ),
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::vertical(
+                    DockTree::leaf("outline"),
+                    DockTree::leaf("script_variables"),
+                    0.4,
+                ),
+                0.6,
+            ),
+            0.7,
+        ),
+        0.16,
+    )
+}
+
+/// Animation: Hierarchy | (StudioPreview/StateMachine) | (Properties/Params) | Timeline
+fn layout_animation() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(
+                DockTree::vertical(
+                    DockTree::leaf("studio_preview"),
+                    DockTree::leaf("animator_state_machine"),
+                    0.55,
+                ),
+                DockTree::vertical(
+                    DockTree::leaf("animation"),
+                    DockTree::leaf("animator_params"),
+                    0.55,
+                ),
+                0.72,
+            ),
+            0.15,
+        ),
+        DockTree::leaf("timeline"),
+        0.60,
+    )
+}
+
+/// Materials: Preview + Properties | MaterialGraph
+fn layout_materials() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("material_preview"),
+            DockTree::leaf("material_inspector"),
+            0.5,
+        ),
+        DockTree::leaf("material_graph"),
+        0.25,
+    )
+}
+
+/// Particles: ParticlePreview | ParticleEditor
+fn layout_particles() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf("particle_preview"),
+        DockTree::leaf("particle_editor"),
+        0.8,
+    )
+}
+
+/// Video: Hierarchy | Viewport | Inspector  /  Sequencer+Mixer+Assets
+fn layout_video() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(DockTree::leaf("viewport"), DockTree::leaf("inspector"), 0.78),
+            0.15,
+        ),
+        DockTree::tabs(&["sequencer", "mixer", "assets"]),
+        0.55,
+    )
+}
+
+/// Audio: Hierarchy | DAW | Inspector  /  Mixer | Assets+Console
+fn layout_audio() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(DockTree::leaf("daw"), DockTree::leaf("inspector"), 0.78),
+            0.15,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf("mixer"),
+            DockTree::tabs(&["assets", "console"]),
+            0.6,
+        ),
+        0.6,
+    )
+}
+
+/// Debug: Hierarchy/Performance | Viewport+diag panels | Inspector/ECS + diagnostics
+fn layout_debug() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
+            DockTree::leaf("performance"),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::horizontal(
+                    DockTree::horizontal(
+                        DockTree::leaf("system_profiler"),
+                        DockTree::tabs(&["render_stats", "render_pipeline"]),
+                        0.5,
+                    ),
+                    DockTree::horizontal(
+                        DockTree::leaf("memory_profiler"),
+                        DockTree::horizontal(
+                            DockTree::leaf("physics_debug"),
+                            DockTree::leaf("camera_debug"),
+                            0.5,
+                        ),
+                        0.33,
+                    ),
+                    0.4,
+                ),
+                0.65,
+            ),
+            DockTree::vertical(
+                DockTree::tabs(&["inspector", "gamepad", "ecs_stats"]),
+                DockTree::tabs(&[
+                    "scene_diagnostics",
+                    "material_resolver_diag",
+                    "lumen_diag",
+                    "scripting_diag",
+                ]),
+                0.5,
+            ),
+            0.75,
+        ),
+        0.15,
+    )
 }
 
 /// Scene workspace: main area (viewport + bottom tabs) on the left, a right

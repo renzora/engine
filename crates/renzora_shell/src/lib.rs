@@ -34,9 +34,11 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
         app.init_resource::<EditorUiBackend>();
+        let layouts = dock::workspace_layouts();
         app.insert_resource(ShellDock {
-            tree: dock::scene_layout(),
+            tree: layouts[0].1.clone(),
         });
+        app.insert_resource(ShellLayouts { layouts, active: 0 });
         app.init_resource::<DraggedDivider>();
         app.init_resource::<TabDrag>();
         app.init_resource::<DockDirty>();
@@ -50,6 +52,9 @@ impl Plugin for ShellPlugin {
                 divider_drag,
                 tab_drag,
                 apply_tab_switch,
+                tab_hover,
+                tab_close_hover,
+                ribbon_switch,
                 rebuild_dock,
             ),
         );
@@ -59,10 +64,28 @@ impl Plugin for ShellPlugin {
 renzora::add!(ShellPlugin, Editor);
 
 /// The live dock layout. Divider drags write ratios back here so they persist
-/// across shell rebuilds (e.g. F10 toggles) and, later, layout switching.
+/// across shell rebuilds (e.g. F10 toggles) and layout switching.
 #[derive(Resource)]
 struct ShellDock {
     tree: DockTree,
+}
+
+/// The ribbon's workspace layouts and which one is active. Switching saves the
+/// current dock tree back into the active slot (so per-layout edits persist)
+/// and loads the chosen one into [`ShellDock`].
+#[derive(Resource)]
+struct ShellLayouts {
+    layouts: Vec<(String, DockTree)>,
+    active: usize,
+}
+
+/// A ribbon workspace button (Scene, Blueprints, …). Carries its layout index
+/// and the entities to restyle when the active layout changes.
+#[derive(Component)]
+struct RibbonItem {
+    index: usize,
+    text: Entity,
+    underline: Entity,
 }
 
 /// The active divider drag (latched on press, cleared on release) so dragging
@@ -131,6 +154,11 @@ struct DockTab {
 /// The vertical line shown between tabs to mark a drop insertion point.
 #[derive(Component)]
 struct InsertMarker;
+
+/// A tab's close button — turns red on hover (via its `RelativeCursorPosition`,
+/// so it doesn't steal the tab's hover state).
+#[derive(Component)]
+struct TabClose;
 
 /// A dock leaf — the drop target for tab drags. `tabs` is its panel ids,
 /// `overlay` its hidden drop-zone highlight, `content_text` the placeholder
@@ -241,6 +269,8 @@ const WINDOW_BG: (u8, u8, u8) = (24, 24, 30); // chrome (top bar/doc tabs/status
 const PANEL_BG: (u8, u8, u8) = (33, 33, 39); // leaf content (lighter than chrome)
 const HEADER_BG: (u8, u8, u8) = (37, 37, 44); // doc tabs + panel tab headers
 const TAB_ACTIVE_BG: (u8, u8, u8) = (50, 50, 62); // active tab
+const TAB_HOVER_BG: (u8, u8, u8) = (42, 42, 52); // hovered (inactive) tab
+const CLOSE_RED: (u8, u8, u8) = (216, 84, 84); // close × on hover
 const DIVIDER: (u8, u8, u8) = (14, 14, 20); // split dividers (not black)
 const TEXT_PRIMARY: (u8, u8, u8) = (230, 230, 240); // text.primary
 const TEXT_MUTED: (u8, u8, u8) = (148, 148, 160); // text.muted
@@ -729,7 +759,6 @@ fn apply_tab_switch(
     mut dock: ResMut<ShellDock>,
     tabs: Query<(Entity, &DockTab)>,
     leaves: Query<&DockLeaf>,
-    mut backgrounds: Query<&mut BackgroundColor>,
     mut colors: Query<&mut TextColor>,
     mut texts: Query<&mut Text>,
 ) {
@@ -738,19 +767,13 @@ fn apply_tab_switch(
     };
     dock.tree.set_active_tab(&id);
 
-    for (tab_entity, tab) in &tabs {
+    // Tab backgrounds are owned by `tab_hover`; here we just recolor the
+    // label/icon and swap the content text.
+    for (_tab_entity, tab) in &tabs {
         if tab.leaf != leaf {
             continue;
         }
-        let is_active = tab.id == id;
-        let fg = rgb(if is_active { TEXT_PRIMARY } else { TEXT_MUTED });
-        if let Ok(mut bg) = backgrounds.get_mut(tab_entity) {
-            bg.0 = if is_active {
-                rgb(TAB_ACTIVE_BG)
-            } else {
-                Color::NONE
-            };
-        }
+        let fg = rgb(if tab.id == id { TEXT_PRIMARY } else { TEXT_MUTED });
         if let Ok(mut c) = colors.get_mut(tab.label) {
             c.0 = fg;
         }
@@ -762,6 +785,87 @@ fn apply_tab_switch(
     if let Ok(leaf_data) = leaves.get(leaf) {
         if let Ok(mut text) = texts.get_mut(leaf_data.content_text) {
             *text = Text::new(panel_meta(&id).0);
+        }
+    }
+}
+
+/// Tab background follows hover + active state (active wins). Owns the tab
+/// background so `apply_tab_switch` doesn't have to.
+fn tab_hover(dock: Res<ShellDock>, mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>) {
+    for (interaction, tab, mut bg) in &mut tabs {
+        let target = if dock.tree.is_active_tab(&tab.id) {
+            rgb(TAB_ACTIVE_BG)
+        } else if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            rgb(TAB_HOVER_BG)
+        } else {
+            Color::NONE
+        };
+        if bg.0 != target {
+            bg.0 = target;
+        }
+    }
+}
+
+/// A tab's close × reddens while the cursor is over it. Uses
+/// `RelativeCursorPosition` (geometric) so it doesn't steal the tab's hover.
+fn tab_close_hover(
+    mut closes: Query<(&bevy::ui::RelativeCursorPosition, &mut TextColor), With<TabClose>>,
+) {
+    for (rcp, mut color) in &mut closes {
+        let target = rgb(if rcp.cursor_over { CLOSE_RED } else { TEXT_MUTED });
+        if color.0 != target {
+            color.0 = target;
+        }
+    }
+}
+
+/// Clicking a ribbon workspace button switches the dock layout. The current
+/// dock is saved back into its slot first (so per-layout edits persist), the
+/// chosen layout is loaded, the dock is rebuilt, and the ribbon is restyled.
+fn ribbon_switch(
+    triggers: Query<(&RibbonItem, &Interaction), Changed<Interaction>>,
+    items: Query<&RibbonItem>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<ShellDock>,
+    mut dirty: ResMut<DockDirty>,
+    mut backgrounds: Query<&mut BackgroundColor>,
+    mut colors: Query<&mut TextColor>,
+) {
+    let mut switch_to = None;
+    for (item, interaction) in &triggers {
+        if *interaction == Interaction::Pressed {
+            switch_to = Some(item.index);
+            break;
+        }
+    }
+    let Some(index) = switch_to else {
+        return;
+    };
+    if index == layouts.active || index >= layouts.layouts.len() {
+        return;
+    }
+
+    // Save the current dock into the active slot, then load the chosen layout.
+    let active = layouts.active;
+    if let Some(slot) = layouts.layouts.get_mut(active) {
+        slot.1 = dock.tree.clone();
+    }
+    dock.tree = layouts.layouts[index].1.clone();
+    layouts.active = index;
+    dirty.0 = true;
+
+    // Restyle the ribbon — active item gets primary text + the blue underline.
+    for item in &items {
+        let is_active = item.index == index;
+        if let Ok(mut c) = colors.get_mut(item.text) {
+            c.0 = rgb(if is_active { TEXT_PRIMARY } else { TEXT_MUTED });
+        }
+        if let Ok(mut b) = backgrounds.get_mut(item.underline) {
+            b.0 = if is_active {
+                rgb(ACCENT_BLUE)
+            } else {
+                Color::NONE
+            };
         }
     }
 }
@@ -865,20 +969,25 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     // content-sized so it sits centered between the two growing side zones.
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
     let mut center_kids = vec![glyph(commands, "magnifying-glass", TEXT_MUTED, 14.0)];
-    for (label, active) in [
-        ("Scene", true),
-        ("Blueprints", false),
-        ("Scripting", false),
-        ("Animation", false),
-        ("Materials", false),
-        ("Particles", false),
-        ("Video", false),
-        ("Audio", false),
-        ("Debug", false),
-        ("+", false),
-    ] {
-        center_kids.push(ribbon_item(commands, font, label, active));
+    // Workspace switcher buttons, in the same order as `dock::workspace_layouts`.
+    for (i, label) in [
+        "Scene",
+        "Blueprints",
+        "Scripting",
+        "Animation",
+        "Materials",
+        "Particles",
+        "Video",
+        "Audio",
+        "Debug",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        center_kids.push(ribbon_item(commands, font, label, i, i == 0));
     }
+    // "+" — add workspace (not a switcher; wired later).
+    center_kids.push(text_item(commands, font, "+", TEXT_MUTED, 12.0));
     commands.entity(center).add_children(&center_kids);
 
     // Right: action buttons, account group, then window controls.
@@ -936,8 +1045,15 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 }
 
 /// A top-bar ribbon entry (workspace switcher). Full height so the active
-/// item's blue underline pins to the bottom edge of the top bar.
-fn ribbon_item(commands: &mut Commands, font: &Handle<Font>, label: &str, active: bool) -> Entity {
+/// item's blue underline pins to the bottom edge of the top bar. Clicking it
+/// switches to workspace `index` (see [`ribbon_switch`]).
+fn ribbon_item(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    label: &str,
+    index: usize,
+    active: bool,
+) -> Entity {
     let item = commands
         .spawn((
             Node {
@@ -946,7 +1062,16 @@ fn ribbon_item(commands: &mut Commands, font: &Handle<Font>, label: &str, active
                 align_items: AlignItems::Center,
                 ..default()
             },
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
+        ))
+        .id();
+    let text = commands
+        .spawn((
+            Text::new(label),
+            ui_font(font, 12.0),
+            TextColor(rgb(if active { TEXT_PRIMARY } else { TEXT_MUTED })),
         ))
         .id();
     let text_wrap = commands
@@ -960,14 +1085,8 @@ fn ribbon_item(commands: &mut Commands, font: &Handle<Font>, label: &str, active
             },
             Name::new("ribbon-label"),
         ))
-        .with_children(|p| {
-            p.spawn((
-                Text::new(label),
-                ui_font(font, 12.0),
-                TextColor(rgb(if active { TEXT_PRIMARY } else { TEXT_MUTED })),
-            ));
-        })
         .id();
+    commands.entity(text_wrap).add_child(text);
     let underline = commands
         .spawn((
             Node {
@@ -979,6 +1098,11 @@ fn ribbon_item(commands: &mut Commands, font: &Handle<Font>, label: &str, active
             Name::new("ribbon-underline"),
         ))
         .id();
+    commands.entity(item).insert(RibbonItem {
+        index,
+        text,
+        underline,
+    });
     commands.entity(item).add_children(&[text_wrap, underline]);
     item
 }
@@ -1331,10 +1455,10 @@ fn build_tree(
                 ..default()
             };
             if row {
-                dv.width = Val::Px(2.0);
+                dv.width = Val::Px(1.0);
                 dv.height = Val::Percent(100.0);
             } else {
-                dv.height = Val::Px(2.0);
+                dv.height = Val::Px(1.0);
                 dv.width = Val::Percent(100.0);
             }
             let divider = commands
@@ -1505,6 +1629,9 @@ fn populate_leaf(
                     column_gap: Val::Px(5.0),
                     padding: UiRect::axes(Val::Px(9.0), Val::Px(4.0)),
                     position_type: PositionType::Relative,
+                    // Keep the tab at its label's natural width so the text
+                    // never gets squeezed and wrapped.
+                    flex_shrink: 0.0,
                     ..default()
                 },
                 BackgroundColor(if is_active {
@@ -1521,10 +1648,21 @@ fn populate_leaf(
             .id();
         let tab_icon = icon_text(commands, phosphor, icon, fg, 13.0);
         let tab_label = commands
-            .spawn((Text::new(title), ui_font(font, 12.0), TextColor(rgb(fg))))
+            .spawn((
+                Text::new(title),
+                ui_font(font, 12.0),
+                TextColor(rgb(fg)),
+                bevy::text::TextLayout::new_with_no_wrap(),
+            ))
             .id();
-        // Close button — shown on every tab.
+        // Close button — shown on every tab; reddens on hover. `Pass` so it
+        // doesn't block the tab's own hover state.
         let close = icon_text(commands, phosphor, "x", TEXT_MUTED, 11.0);
+        commands.entity(close).insert((
+            TabClose,
+            bevy::ui::RelativeCursorPosition::default(),
+            bevy::ui::FocusPolicy::Pass,
+        ));
         // Vertical insertion marker at this tab's left edge (toggled during a
         // drag; re-anchored to the right edge for end-insertion).
         let marker = commands
