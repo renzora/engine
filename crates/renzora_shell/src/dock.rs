@@ -26,10 +26,11 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     ]
 }
 
-/// Gallery: a 2×3 showcase of the `renzora_ember` component categories, each in
-/// its own panel — the living catalog of the bevy_ui widget set.
+/// Gallery: a showcase of the `renzora_ember` component categories, each in its
+/// own panel — the living catalog of the bevy_ui widget set. Two 3-column rows
+/// over a full-width Inspector row.
 fn layout_gallery() -> DockTree {
-    let top = DockTree::horizontal(
+    let row1 = DockTree::horizontal(
         DockTree::leaf("gallery_typography"),
         DockTree::horizontal(
             DockTree::leaf("gallery_buttons"),
@@ -38,7 +39,7 @@ fn layout_gallery() -> DockTree {
         ),
         0.34,
     );
-    let bottom = DockTree::horizontal(
+    let row2 = DockTree::horizontal(
         DockTree::leaf("gallery_selection"),
         DockTree::horizontal(
             DockTree::leaf("gallery_feedback"),
@@ -47,7 +48,11 @@ fn layout_gallery() -> DockTree {
         ),
         0.34,
     );
-    DockTree::vertical(top, bottom, 0.5)
+    DockTree::vertical(
+        row1,
+        DockTree::vertical(row2, DockTree::leaf("gallery_inspector"), 0.55),
+        0.3,
+    )
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector

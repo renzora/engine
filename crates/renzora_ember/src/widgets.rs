@@ -34,6 +34,11 @@ impl Plugin for WidgetsPlugin {
                 dropdown_option_hover,
                 text_input_focus,
                 text_input_type,
+                drag_value_drag,
+                color_picker_sync,
+                knob_drag,
+                fader_drag,
+                xy_pad_drag,
             ),
         );
     }
@@ -1297,6 +1302,447 @@ pub fn skeleton(commands: &mut Commands, width: f32, height: f32) -> Entity {
         .id()
 }
 
+// ── Inspector controls ──────────────────────────────────────────────────────
+
+/// An inspector property row: a muted label on the left, a control pushed to
+/// the right.
+pub fn property_row(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    label: &str,
+    control: Entity,
+) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                column_gap: Val::Px(10.0),
+                ..default()
+            },
+            Name::new("property-row"),
+        ))
+        .id();
+    let lbl = text_node(commands, font, label, 12.0, TEXT_MUTED);
+    commands.entity(row).add_children(&[lbl, control]);
+    row
+}
+
+/// A scrubbable numeric field (drag horizontally to change). `axis` is an
+/// optional colored prefix (e.g. "X").
+#[derive(Component)]
+struct EmberDragValue {
+    value: f32,
+    step: f32,
+    text: Entity,
+    last_x: Option<f32>,
+}
+
+pub fn drag_value(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    axis: &str,
+    axis_color: (u8, u8, u8),
+    value: f32,
+    step: f32,
+) -> Entity {
+    let box_e = commands
+        .spawn((
+            Node {
+                min_width: Val::Px(58.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(5.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((28, 28, 34))),
+            BorderColor::all(rgb((70, 70, 82))),
+            Styled::new(Role::Input),
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
+            Name::new("drag-value"),
+        ))
+        .id();
+    let text = text_node(commands, font, &format_num(value), 12.0, TEXT_PRIMARY);
+    let mut kids = Vec::new();
+    if !axis.is_empty() {
+        kids.push(text_node(commands, font, axis, 11.0, axis_color));
+    }
+    kids.push(text);
+    commands.entity(box_e).insert(EmberDragValue {
+        value,
+        step,
+        text,
+        last_x: None,
+    });
+    commands.entity(box_e).add_children(&kids);
+    box_e
+}
+
+fn drag_value_drag(
+    windows: Query<&Window>,
+    mut values: Query<(&Interaction, &mut EmberDragValue)>,
+    mut texts: Query<&mut Text>,
+) {
+    let cursor_x = windows.single().ok().and_then(|w| w.cursor_position()).map(|p| p.x);
+    for (interaction, mut dv) in &mut values {
+        if *interaction == Interaction::Pressed {
+            if let (Some(cx), Some(last)) = (cursor_x, dv.last_x) {
+                let delta = cx - last;
+                if delta != 0.0 {
+                    dv.value += delta * dv.step;
+                    let (t, v) = (dv.text, dv.value);
+                    if let Ok(mut text) = texts.get_mut(t) {
+                        *text = Text::new(format_num(v));
+                    }
+                }
+            }
+            dv.last_x = cursor_x;
+        } else if dv.last_x.is_some() {
+            dv.last_x = None;
+        }
+    }
+}
+
+/// Three colored drag-value fields (X/Y/Z) for editing a vector.
+pub fn vec3_edit(commands: &mut Commands, font: &Handle<Font>, x: f32, y: f32, z: f32) -> Entity {
+    let fields = [
+        drag_value(commands, font, "X", (224, 110, 110), x, 0.05),
+        drag_value(commands, font, "Y", (130, 200, 130), y, 0.05),
+        drag_value(commands, font, "Z", (120, 150, 240), z, 0.05),
+    ];
+    hstack(commands, 6.0, &fields)
+}
+
+/// A color picker: a live preview swatch driven by R/G/B sliders.
+#[derive(Component)]
+struct EmberColorPicker {
+    r: Entity,
+    g: Entity,
+    b: Entity,
+    preview: Entity,
+}
+
+pub fn color_picker(commands: &mut Commands, color: (u8, u8, u8)) -> Entity {
+    let (r0, g0, b0) = color;
+    let root = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                ..default()
+            },
+            Name::new("color-picker"),
+        ))
+        .id();
+    let preview = commands
+        .spawn((
+            Node {
+                width: Val::Px(36.0),
+                height: Val::Px(36.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(color)),
+            BorderColor::all(rgb((70, 70, 82))),
+            Name::new("color-preview"),
+        ))
+        .id();
+    let r = slider(commands, r0 as f32 / 255.0);
+    let g = slider(commands, g0 as f32 / 255.0);
+    let b = slider(commands, b0 as f32 / 255.0);
+    let sliders = commands
+        .spawn((Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(4.0),
+            ..default()
+        },))
+        .id();
+    commands.entity(sliders).add_children(&[r, g, b]);
+    commands.entity(root).add_children(&[preview, sliders]);
+    commands
+        .entity(root)
+        .insert(EmberColorPicker { r, g, b, preview });
+    root
+}
+
+fn color_picker_sync(
+    pickers: Query<&EmberColorPicker>,
+    sliders: Query<&EmberSlider>,
+    mut bgs: Query<&mut BackgroundColor>,
+) {
+    for p in &pickers {
+        let (Ok(r), Ok(g), Ok(b)) = (sliders.get(p.r), sliders.get(p.g), sliders.get(p.b)) else {
+            continue;
+        };
+        let col = Color::srgb(r.value, g.value, b.value);
+        if let Ok(mut bg) = bgs.get_mut(p.preview) {
+            if bg.0 != col {
+                bg.0 = col;
+            }
+        }
+    }
+}
+
+/// A rotary knob (drag vertically to change `value` 0..1).
+#[derive(Component)]
+struct EmberKnob {
+    value: f32,
+    indicator: Entity,
+}
+
+/// Top-left offset of the knob indicator dot for a given value (270° sweep).
+fn knob_offset(value: f32) -> (f32, f32) {
+    let theta = (-135.0 + value * 270.0_f32).to_radians();
+    let cx = 22.0 + 14.0 * theta.sin();
+    let cy = 22.0 - 14.0 * theta.cos();
+    (cx - 3.0, cy - 3.0)
+}
+
+pub fn knob(commands: &mut Commands, value: f32) -> Entity {
+    let v = value.clamp(0.0, 1.0);
+    let body = commands
+        .spawn((
+            Node {
+                width: Val::Px(44.0),
+                height: Val::Px(44.0),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(22.0)),
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            BackgroundColor(rgb((40, 40, 48))),
+            BorderColor::all(rgb((70, 70, 82))),
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
+            Name::new("knob"),
+        ))
+        .id();
+    let (lx, ty) = knob_offset(v);
+    let indicator = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(lx),
+                top: Val::Px(ty),
+                width: Val::Px(6.0),
+                height: Val::Px(6.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("knob-indicator"),
+        ))
+        .id();
+    commands.entity(body).add_child(indicator);
+    commands.entity(body).insert(EmberKnob { value: v, indicator });
+    body
+}
+
+fn knob_drag(
+    mut knobs: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut EmberKnob)>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (interaction, rcp, mut k) in &mut knobs {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(n) = rcp.normalized else {
+            continue;
+        };
+        let v = (0.5 - n.y).clamp(0.0, 1.0);
+        if (v - k.value).abs() < 0.001 {
+            continue;
+        }
+        k.value = v;
+        let (lx, ty) = knob_offset(v);
+        if let Ok(mut node) = nodes.get_mut(k.indicator) {
+            node.left = Val::Px(lx);
+            node.top = Val::Px(ty);
+        }
+    }
+}
+
+/// A vertical fader (drag to change `value` 0..1).
+#[derive(Component)]
+struct EmberFader {
+    value: f32,
+    fill: Entity,
+    thumb: Entity,
+}
+
+pub fn fader(commands: &mut Commands, value: f32) -> Entity {
+    let v = value.clamp(0.0, 1.0);
+    let col = commands
+        .spawn((
+            Node {
+                width: Val::Px(24.0),
+                height: Val::Px(120.0),
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
+            Name::new("fader"),
+        ))
+        .id();
+    let track = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(9.0),
+                width: Val::Px(6.0),
+                height: Val::Percent(100.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((55, 55, 66))),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("fader-track"),
+        ))
+        .id();
+    let fill = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(9.0),
+                bottom: Val::Px(0.0),
+                width: Val::Px(6.0),
+                height: Val::Percent(v * 100.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("fader-fill"),
+        ))
+        .id();
+    let thumb = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(3.0),
+                bottom: Val::Percent(v * 100.0),
+                margin: UiRect::bottom(Val::Px(-5.0)),
+                width: Val::Px(18.0),
+                height: Val::Px(10.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((240, 240, 245))),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("fader-thumb"),
+        ))
+        .id();
+    commands.entity(col).add_children(&[track, fill, thumb]);
+    commands.entity(col).insert(EmberFader { value: v, fill, thumb });
+    col
+}
+
+fn fader_drag(
+    mut faders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut EmberFader)>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (interaction, rcp, mut f) in &mut faders {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(n) = rcp.normalized else {
+            continue;
+        };
+        let v = (0.5 - n.y).clamp(0.0, 1.0);
+        if (v - f.value).abs() < 0.001 {
+            continue;
+        }
+        f.value = v;
+        if let Ok(mut node) = nodes.get_mut(f.fill) {
+            node.height = Val::Percent(v * 100.0);
+        }
+        if let Ok(mut node) = nodes.get_mut(f.thumb) {
+            node.bottom = Val::Percent(v * 100.0);
+        }
+    }
+}
+
+/// A 2D XY pad (drag the handle; `x`/`y` are 0..1, y up).
+#[derive(Component)]
+struct EmberXyPad {
+    handle: Entity,
+}
+
+pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
+    let px = x.clamp(0.0, 1.0);
+    let py = y.clamp(0.0, 1.0);
+    let pad = commands
+        .spawn((
+            Node {
+                width: Val::Px(120.0),
+                height: Val::Px(120.0),
+                position_type: PositionType::Relative,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 72))),
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Move),
+            Name::new("xy-pad"),
+        ))
+        .id();
+    let handle = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(px * 100.0),
+                top: Val::Percent((1.0 - py) * 100.0),
+                margin: UiRect::new(Val::Px(-6.0), Val::Px(0.0), Val::Px(-6.0), Val::Px(0.0)),
+                width: Val::Px(12.0),
+                height: Val::Px(12.0),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("xy-handle"),
+        ))
+        .id();
+    commands.entity(pad).add_child(handle);
+    commands.entity(pad).insert(EmberXyPad { handle });
+    pad
+}
+
+fn xy_pad_drag(
+    pads: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &EmberXyPad)>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (interaction, rcp, pad) in &pads {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(n) = rcp.normalized else {
+            continue;
+        };
+        let nx = (n.x + 0.5).clamp(0.0, 1.0);
+        let ny = (n.y + 0.5).clamp(0.0, 1.0);
+        if let Ok(mut node) = nodes.get_mut(pad.handle) {
+            node.left = Val::Percent(nx * 100.0);
+            node.top = Val::Percent(ny * 100.0);
+        }
+    }
+}
+
 // ── Gallery ──────────────────────────────────────────────────────────────────
 
 /// A titled panel column — the shell of each gallery category panel.
@@ -1438,6 +1884,35 @@ pub fn gallery_feedback(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         font,
         "Feedback",
         vec![f_badge, al, to, f_prog, f_skel],
+    )
+}
+
+/// Gallery panel: inspector value editors.
+pub fn gallery_inspector(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+
+    let pos = vec3_edit(commands, font, 0.0, 1.0, 0.0);
+    let r_pos = property_row(commands, font, "Position", pos);
+
+    let dv = drag_value(commands, font, "", TEXT_MUTED, 1.0, 0.05);
+    let r_scale = property_row(commands, font, "Scale", dv);
+
+    let cp = color_picker(commands, (80, 140, 255));
+    let r_color = property_row(commands, font, "Color", cp);
+
+    let knobs = [knob(commands, 0.3), knob(commands, 0.7)];
+    let knob_row = hstack(commands, 12.0, &knobs);
+    let r_knob = property_row(commands, font, "Knobs", knob_row);
+
+    let pads = [fader(commands, 0.6), xy_pad(commands, 0.5, 0.5)];
+    let pad_row = hstack(commands, 16.0, &pads);
+    let r_pads = property_row(commands, font, "Fader / XY", pad_row);
+
+    panel_column(
+        commands,
+        font,
+        "Inspector",
+        vec![r_pos, r_scale, r_color, r_knob, r_pads],
     )
 }
 

@@ -197,6 +197,7 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
         "gallery_inputs" => widgets::gallery_inputs(commands, fonts),
         "gallery_selection" => widgets::gallery_selection(commands, fonts),
         "gallery_feedback" => widgets::gallery_feedback(commands, fonts),
+        "gallery_inspector" => widgets::gallery_inspector(commands, fonts),
         "gallery_colors" => widgets::gallery_colors(commands, fonts),
         _ => {
             // Placeholder: the panel's name, centered.
