@@ -71,6 +71,16 @@ mod modal;
 mod popover;
 mod tooltip;
 
+// Menus / interaction / utilities.
+mod context_menu;
+mod hamburger;
+mod menu;
+mod multi_select;
+mod rich_text;
+mod scroll_area;
+mod sortable;
+mod spinner;
+
 // The gallery showcase panels.
 mod gallery;
 
@@ -130,6 +140,14 @@ pub use modal::*;
 pub use popover::*;
 pub use tooltip::*;
 
+pub use context_menu::*;
+pub use hamburger::*;
+pub use multi_select::*;
+pub use rich_text::*;
+pub use scroll_area::*;
+pub use sortable::*;
+pub use spinner::*;
+
 pub use gallery::*;
 
 /// Registers every widget interaction system.
@@ -172,6 +190,18 @@ impl Plugin for WidgetsPlugin {
                     tooltip::tooltip_hover,
                     popover::popover_toggle,
                     modal::modal_toggle,
+                ),
+                (
+                    spinner::spinner_anim,
+                    scroll_area::scroll_drive,
+                    multi_select::multi_select_toggle,
+                    menu::menu_hover,
+                    menu::submenu_hover,
+                    menu::menu_item_close,
+                    hamburger::hamburger_toggle,
+                    context_menu::context_menu_open,
+                    sortable::sortable_drag,
+                    text_input::caret_blink,
                 ),
             ),
         );

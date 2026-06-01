@@ -26,7 +26,6 @@ fn panel_column(
                 align_items: AlignItems::FlexStart,
                 padding: UiRect::all(Val::Px(16.0)),
                 row_gap: Val::Px(12.0),
-                overflow: Overflow::clip(),
                 ..default()
             },
             Name::new("gallery-panel"),
@@ -256,6 +255,76 @@ pub fn gallery_overlays(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let f_pop = field(commands, font, "Popover", pop);
     let md = modal(commands, fonts, "Dialog title", "Modal body text goes here.");
     panel_column(commands, font, "Overlays", vec![f_tip, f_pop, md])
+}
+
+/// Gallery panel: menus (hamburger + context menu with submenu).
+pub fn gallery_menus(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let hb = hamburger(commands, fonts, &["New", "Open", "Save", "Quit"]);
+    let f_hb = field(commands, font, "Hamburger", hb);
+
+    let target = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 74))),
+            Name::new("ctx-target"),
+        ))
+        .id();
+    let hint = paragraph(commands, font, "Right-click me");
+    commands.entity(target).add_child(hint);
+    let cm = context_menu(
+        commands,
+        fonts,
+        target,
+        &[
+            ("Cut", &[][..]),
+            ("Copy", &[][..]),
+            ("Paste", &[][..]),
+            ("More", &["Duplicate", "Rename", "Delete"][..]),
+        ],
+    );
+    let f_cm = field(commands, font, "Context", cm);
+
+    panel_column(commands, font, "Menus", vec![f_hb, f_cm])
+}
+
+/// Gallery panel: rich text, spinner, multi-select, sortable, scroll area.
+pub fn gallery_extras(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let rt = rich_text(
+        commands,
+        font,
+        &[
+            ("Colored ", TEXT_PRIMARY),
+            ("rich ", ACCENT_BLUE),
+            ("text", PLAY_GREEN),
+        ],
+    );
+    let f_rt = field(commands, font, "Rich text", rt);
+
+    let sp = spinner(commands);
+    let f_sp = field(commands, font, "Spinner", sp);
+
+    let ms = multi_select(commands, font, &["Alpha", "Beta", "Gamma"], &[true, false, true]);
+    let f_ms = field(commands, font, "Multi-select", ms);
+
+    let sl = sortable_list(commands, fonts, &["Drag me", "Reorder", "Sortable", "Rows"]);
+    let f_sl = field(commands, font, "Sortable", sl);
+
+    let lines: Vec<Entity> = (0..12)
+        .map(|i| paragraph(commands, font, &format!("Scrollable row {}", i + 1)))
+        .collect();
+    let tall = vstack(commands, 4.0, &lines);
+    let sa = scroll_area(commands, tall, 90.0);
+    let f_sa = field(commands, font, "Scroll area", sa);
+
+    panel_column(commands, font, "More", vec![f_rt, f_sp, f_ms, f_sl, f_sa])
 }
 
 /// Gallery panel: color swatches.

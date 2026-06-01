@@ -203,6 +203,8 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
         "gallery_data" => widgets::gallery_data(commands, fonts),
         "gallery_forms" => widgets::gallery_forms(commands, fonts),
         "gallery_overlays" => widgets::gallery_overlays(commands, fonts),
+        "gallery_menus" => widgets::gallery_menus(commands, fonts),
+        "gallery_extras" => widgets::gallery_extras(commands, fonts),
         "gallery_colors" => widgets::gallery_colors(commands, fonts),
         _ => {
             // Placeholder: the panel's name, centered.

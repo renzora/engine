@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, TEXT_MUTED};
+use crate::theme::{rgb, PANEL_BG, TEXT_MUTED};
 
 /// A `Text` entity in the UI font at `size` and `color`.
 pub(crate) fn text_node(
@@ -95,6 +95,58 @@ pub fn heading(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Enti
             Text::new(text),
             ui_font(font, 13.0),
             TextColor(rgb(TEXT_MUTED)),
+        ))
+        .id()
+}
+
+// ── Layout / style utilities ──────────────────────────────────────────────────
+
+/// A vertical column of widgets with a gap.
+pub fn vstack(commands: &mut Commands, gap: f32, children: &[Entity]) -> Entity {
+    let col = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(gap),
+                ..default()
+            },
+            Name::new("vstack"),
+        ))
+        .id();
+    commands.entity(col).add_children(children);
+    col
+}
+
+/// A fixed empty box (use to push siblings apart).
+pub fn spacer(commands: &mut Commands, width: f32, height: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(width),
+                height: Val::Px(height),
+                ..default()
+            },
+            Name::new("spacer"),
+        ))
+        .id()
+}
+
+/// A styled container box (rounded, padded, bordered) — fill it with children.
+/// The utility for "rounded corners / padding / border" in one call.
+pub fn frame(commands: &mut Commands, padding: f32, radius: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(6.0),
+                padding: UiRect::all(Val::Px(padding)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(radius)),
+                ..default()
+            },
+            BackgroundColor(rgb(PANEL_BG)),
+            BorderColor::all(rgb((48, 48, 58))),
+            Name::new("frame"),
         ))
         .id()
 }

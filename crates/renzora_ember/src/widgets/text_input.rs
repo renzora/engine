@@ -7,7 +7,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 
 /// Shared state for text-input-like widgets (single line + textarea).
 #[derive(Component)]
@@ -16,6 +16,25 @@ pub(crate) struct EmberTextInput {
     pub(crate) focused: bool,
     pub(crate) text_entity: Entity,
     pub(crate) placeholder: String,
+    pub(crate) caret: Entity,
+}
+
+/// Spawn a blinking-caret bar (hidden until the input is focused).
+pub(crate) fn caret(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(2.0),
+                height: Val::Px(14.0),
+                margin: UiRect::left(Val::Px(1.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("caret"),
+        ))
+        .id()
 }
 
 /// A single-line text input. Click to focus, type to edit (basic: character
@@ -52,13 +71,15 @@ pub fn text_input(
             TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
         ))
         .id();
+    let car = caret(commands);
     commands.entity(box_e).insert(EmberTextInput {
         value: value.to_string(),
         focused: false,
         text_entity: text,
         placeholder: placeholder.to_string(),
+        caret: car,
     });
-    commands.entity(box_e).add_child(text);
+    commands.entity(box_e).add_children(&[text, car]);
     box_e
 }
 
@@ -122,6 +143,26 @@ pub(crate) fn text_input_type(
                 }
             }
             break;
+        }
+    }
+}
+
+pub(crate) fn caret_blink(
+    time: Res<Time>,
+    inputs: Query<&EmberTextInput>,
+    mut nodes: Query<&mut Node>,
+) {
+    let on = (time.elapsed_secs() * 1.6).fract() < 0.5;
+    for inp in &inputs {
+        if let Ok(mut n) = nodes.get_mut(inp.caret) {
+            let display = if inp.focused && on {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if n.display != display {
+                n.display = display;
+            }
         }
     }
 }

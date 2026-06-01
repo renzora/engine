@@ -7,7 +7,7 @@ use crate::font::ui_font;
 use crate::style::{Role, Styled};
 use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
 
-use super::text_input::EmberTextInput;
+use super::text_input::{caret, EmberTextInput};
 
 /// A multi-line text area (reuses the text-input focus/typing systems; Enter
 /// inserts a newline).
@@ -39,12 +39,14 @@ pub fn textarea(commands: &mut Commands, font: &Handle<Font>, placeholder: &str,
             TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
         ))
         .id();
+    let car = caret(commands);
     commands.entity(box_e).insert(EmberTextInput {
         value: value.to_string(),
         focused: false,
         text_entity: text,
         placeholder: placeholder.to_string(),
+        caret: car,
     });
-    commands.entity(box_e).add_child(text);
+    commands.entity(box_e).add_children(&[text, car]);
     box_e
 }

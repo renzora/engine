@@ -6,7 +6,7 @@ use bevy::window::SystemCursorIcon;
 use renzora_hui::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
 
 use super::common::text_node;
 
@@ -95,6 +95,23 @@ pub fn tree_node(
         .id();
     commands.entity(kids).add_children(&children);
     if has_children {
+        // A vertical guide line down the left of the children (under the caret).
+        let line = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(depth as f32 * 14.0 + 9.0),
+                    top: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    width: Val::Px(1.0),
+                    ..default()
+                },
+                BackgroundColor(rgb((55, 55, 66))),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("tree-line"),
+            ))
+            .id();
+        commands.entity(kids).add_child(line);
         commands
             .entity(row)
             .insert(EmberTreeToggle { kids, caret, open });
