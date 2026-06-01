@@ -6,11 +6,14 @@
 //! that the plugin ABI relies on (see `docs/editor-runtime-plugin-architecture.md`),
 //! so everything ships together.
 //!
-//! Planned modules (migrating in):
-//! - [`dock`] — the docking layout component (model is here; the bevy_ui
-//!   reconciler + interactions follow from `renzora_shell`).
-//! - `markup` — folds in `renzora_hui` (`.html` → bevy_ui, data-binding, vello).
-//! - `widgets` — the bevy_ui rewrites of the egui `renzora_ui` widgets.
-//! - `cinder` — the particle UI.
+//! Modules:
+//! - [`theme`] — the bevy-native palette (shared colors).
+//! - [`font`] — fonts + text/icon helpers.
+//! - [`dock`] — the dockable panel layout component ([`dock::DockPlugin`]).
+//!
+//! Migrating in next: `markup` (folds in `renzora_hui`), `widgets`, and
+//! `cinder` (particle UI).
 
 pub mod dock;
+pub mod font;
+pub mod theme;

@@ -9451,6 +9451,8 @@ name = "renzora_ember"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "renzora",
+ "renzora_hui",
 ]
 
 [[package]]

@@ -6,6 +6,11 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 
 [dependencies]
 bevy = { workspace = true }
+# HideInHierarchy + core types.
+renzora = { path = "../renzora", default-features = false }
+# Phosphor icon font + glyph lookup + CSS-style cursor icons (folding HUI into
+# ember over time; for now ember reuses HUI's icon font + helpers).
+renzora_hui = { path = "../renzora_hui" }
 
 [lints]
 workspace = true
