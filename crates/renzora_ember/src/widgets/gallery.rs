@@ -333,6 +333,33 @@ pub fn gallery_node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     panel_column(commands, &fonts.ui, "Node Graph", vec![ng])
 }
 
+/// Gallery panel: the timeline.
+pub fn gallery_timeline(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+    let video = [(0.5f32, 3.0, "Intro"), (4.0, 5.0, "Scene A"), (9.5, 2.0, "Outro")];
+    let audio = [(0.0f32, 8.0, "Music"), (8.5, 3.2, "VO")];
+    let keys = [1.0f32, 2.5, 4.0, 6.0, 8.0, 10.5];
+    let tracks = [
+        Track {
+            name: "Video",
+            color: (90, 140, 230),
+            lane: Lane::Clips(&video),
+        },
+        Track {
+            name: "Audio",
+            color: (90, 191, 115),
+            lane: Lane::Clips(&audio),
+        },
+        Track {
+            name: "Anim",
+            color: (224, 170, 72),
+            lane: Lane::Keys(&keys),
+        },
+    ];
+    let tl = timeline(commands, fonts, 12.0, &tracks);
+    panel_column(commands, font, "Timeline", vec![tl])
+}
+
 /// Gallery panel: charts.
 pub fn gallery_charts(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let font = &fonts.ui;

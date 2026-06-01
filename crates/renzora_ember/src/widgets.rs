@@ -82,6 +82,7 @@ mod rich_text;
 mod scroll_area;
 mod sortable;
 mod spinner;
+mod timeline;
 
 // The gallery showcase panels.
 mod gallery;
@@ -151,6 +152,7 @@ pub use rich_text::*;
 pub use scroll_area::*;
 pub use sortable::*;
 pub use spinner::*;
+pub use timeline::*;
 
 pub use gallery::*;
 
@@ -211,5 +213,6 @@ impl Plugin for WidgetsPlugin {
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(chart::ChartPlugin);
+        app.add_plugins(timeline::TimelinePlugin);
     }
 }
