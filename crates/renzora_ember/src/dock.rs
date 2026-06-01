@@ -16,8 +16,8 @@ use bevy::prelude::*;
 
 use crate::font::{glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::{
-    rgb, ACCENT_BLUE, CLOSE_RED, DIVIDER, HEADER_BG, PANEL_BG, PLACEHOLDER, TAB_ACTIVE_BG,
-    TAB_HOVER_BG, TEXT_MUTED, TEXT_PRIMARY,
+    rgb, ACCENT_BLUE, CLOSE_RED, DIVIDER, HEADER_BG, PANEL_BG, TAB_ACTIVE_BG, TAB_HOVER_BG,
+    TEXT_MUTED, TEXT_PRIMARY,
 };
 
 // ── Model ────────────────────────────────────────────────────────────────────
@@ -311,14 +311,16 @@ pub struct DockTab {
 }
 
 /// A dock leaf — the drop target for tab drags, and where consumers put panel
-/// content. `content` is an empty node to fill; `content_text` is the built-in
-/// placeholder label.
+/// content. Fill the `content` node based on `active` (the visible panel id);
+/// ember leaves `content` empty so the consumer owns it.
 #[derive(Component)]
 pub struct DockLeaf {
     pub tabs: Vec<String>,
+    /// The container to put the active panel's content into.
     pub content: Entity,
+    /// Id of the currently-visible tab — drives what content to show.
+    pub active: String,
     overlay: Entity,
-    content_text: Entity,
 }
 
 #[derive(Component)]
@@ -810,14 +812,14 @@ fn rebuild_dock(
     dirty.0 = false;
 }
 
-/// Apply a pending tab switch in place (recolor label/icon, swap content text).
+/// Apply a pending tab switch in place: recolor label/icon and update the
+/// leaf's `active` id (the consumer's content system reacts to that).
 fn apply_tab_switch(
     mut pending: ResMut<PendingSwitch>,
     mut dock: ResMut<Dock>,
     tabs: Query<(Entity, &DockTab)>,
-    leaves: Query<&DockLeaf>,
+    mut leaves: Query<&mut DockLeaf>,
     mut colors: Query<&mut TextColor>,
-    mut texts: Query<&mut Text>,
 ) {
     let Some((leaf, id)) = pending.0.take() else {
         return;
@@ -837,10 +839,8 @@ fn apply_tab_switch(
         }
     }
 
-    if let Ok(leaf_data) = leaves.get(leaf) {
-        if let Ok(mut text) = texts.get_mut(leaf_data.content_text) {
-            *text = Text::new(tab_meta(&id).0);
-        }
+    if let Ok(mut ld) = leaves.get_mut(leaf) {
+        ld.active = id;
     }
 }
 
@@ -1190,28 +1190,19 @@ fn populate_leaf(
     bar_kids.push(filler);
     commands.entity(tabbar).add_children(&bar_kids);
 
-    // Content region — a node consumers fill; built-in placeholder label.
+    // Content region — left empty; the consumer fills it based on the active
+    // panel (see `DockLeaf::content` / `active`).
     let content = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
                 flex_grow: 1.0,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
                 ..default()
             },
             Name::new("content"),
         ))
         .id();
-    let title = tabs.get(active).map(|s| tab_meta(s).0).unwrap_or_default();
-    let content_text = commands
-        .spawn((
-            Text::new(title),
-            ui_font(font, 13.0),
-            TextColor(rgb(PLACEHOLDER)),
-        ))
-        .id();
-    commands.entity(content).add_child(content_text);
 
     let overlay = commands
         .spawn((
@@ -1236,8 +1227,8 @@ fn populate_leaf(
     commands.entity(leaf).insert(DockLeaf {
         tabs: tabs.to_vec(),
         content,
+        active: tabs.get(active).cloned().unwrap_or_default(),
         overlay,
-        content_text,
     });
     commands
         .entity(leaf)

@@ -13,12 +13,13 @@
 use bevy::prelude::*;
 
 use renzora::EditorUiBackend;
-use renzora_ember::dock::{Dock, DockArea, DockDirty, DockPlugin, DockTab};
+use renzora_ember::dock::{Dock, DockArea, DockDirty, DockLeaf, DockTab};
 use renzora_ember::font::{glyph, icon_item, ui_font, EmberFonts};
 use renzora_ember::theme::{
-    rgb, ACCENT_BLUE, DIVIDER, HEADER_BG, PLAY_GREEN, TAB_ACTIVE_BG, TEXT_MUTED, TEXT_PRIMARY,
-    WINDOW_BG,
+    rgb, ACCENT_BLUE, DIVIDER, HEADER_BG, PLACEHOLDER, PLAY_GREEN, TAB_ACTIVE_BG, TEXT_MUTED,
+    TEXT_PRIMARY, WINDOW_BG,
 };
+use renzora_ember::EmberPlugin;
 
 pub mod dock;
 
@@ -30,7 +31,7 @@ pub struct ShellPlugin;
 impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
-        app.add_plugins(DockPlugin);
+        app.add_plugins(EmberPlugin);
         app.init_resource::<EditorUiBackend>();
         let layouts = dock::workspace_layouts();
         // The dock starts on the first workspace (overrides DockPlugin's empty).
@@ -41,7 +42,13 @@ impl Plugin for ShellPlugin {
         app.init_resource::<renzora::ShellPanelRegistry>();
         app.add_systems(
             Update,
-            (toggle_backend, manage_shell_root, apply_panel_meta, ribbon_switch),
+            (
+                toggle_backend,
+                manage_shell_root,
+                apply_panel_meta,
+                ribbon_switch,
+                content_dispatch,
+            ),
         );
     }
 }
@@ -140,6 +147,74 @@ fn apply_panel_meta(
                     t.0 = info.icon.clone();
                 }
             }
+        }
+    }
+}
+
+/// Tracks which panel a leaf's content node currently renders, so the dispatch
+/// only rebuilds when the active panel changes.
+#[derive(Component)]
+struct ContentShows(String);
+
+/// Fill each leaf's content with the active panel's UI. The editor's panels
+/// (eventually) register their own builders; for now: a `widget_gallery`
+/// showcase, and a centered title placeholder for everything else.
+fn content_dispatch(
+    mut commands: Commands,
+    fonts: Option<Res<EmberFonts>>,
+    leaves: Query<&DockLeaf>,
+    shows: Query<&ContentShows>,
+    children_q: Query<&Children>,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    for leaf in &leaves {
+        let current = shows.get(leaf.content).ok().map(|s| s.0.as_str());
+        if current == Some(leaf.active.as_str()) {
+            continue;
+        }
+        // Clear whatever the content was showing, then build for the new panel.
+        if let Ok(kids) = children_q.get(leaf.content) {
+            for child in kids.iter() {
+                commands.entity(child).despawn();
+            }
+        }
+        let built = build_panel_content(&mut commands, &fonts, &leaf.active);
+        commands.entity(leaf.content).add_child(built);
+        commands
+            .entity(leaf.content)
+            .insert(ContentShows(leaf.active.clone()));
+    }
+}
+
+/// Build the bevy_ui content for a panel id.
+fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) -> Entity {
+    match id {
+        "widget_gallery" => renzora_ember::widgets::build_gallery(commands, fonts),
+        _ => {
+            // Placeholder: the panel's name, centered.
+            let container = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    Name::new("placeholder"),
+                ))
+                .id();
+            let text = commands
+                .spawn((
+                    Text::new(renzora_ember::dock::humanize(id)),
+                    ui_font(&fonts.ui, 13.0),
+                    TextColor(rgb(PLACEHOLDER)),
+                ))
+                .id();
+            commands.entity(container).add_child(text);
+            container
         }
     }
 }

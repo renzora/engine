@@ -9,11 +9,24 @@
 //! Modules:
 //! - [`theme`] — the bevy-native palette (shared colors).
 //! - [`font`] — fonts + text/icon helpers.
-//! - [`dock`] — the dockable panel layout component ([`dock::DockPlugin`]).
+//! - [`dock`] — the dockable panel layout component.
+//! - [`widgets`] — reusable UI components (buttons, toggles, …).
 //!
-//! Migrating in next: `markup` (folds in `renzora_hui`), `widgets`, and
-//! `cinder` (particle UI).
+//! Add [`EmberPlugin`] to register the dock + widget systems. Migrating in
+//! next: `markup` (folds in `renzora_hui`) and `cinder` (particle UI).
+
+use bevy::prelude::*;
 
 pub mod dock;
 pub mod font;
 pub mod theme;
+pub mod widgets;
+
+/// Registers all of ember's runtime systems (dock + widgets + font loading).
+pub struct EmberPlugin;
+
+impl Plugin for EmberPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((dock::DockPlugin, widgets::WidgetsPlugin));
+    }
+}
