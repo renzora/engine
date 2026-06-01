@@ -10,7 +10,7 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
@@ -21,6 +21,12 @@ const RULER_H: f32 = 22.0;
 const TRACK_H: f32 = 34.0;
 const CLIP_H: f32 = 22.0;
 const INITIAL_PPS: f32 = 70.0;
+const SNAP: f32 = 0.25;
+const MIN_CLIP: f32 = 0.25;
+
+fn snap(t: f32) -> f32 {
+    (t / SNAP).round() * SNAP
+}
 
 /// A track's content: ranged clips or point keyframes.
 pub enum Lane<'a> {
@@ -99,6 +105,14 @@ pub(crate) struct TlKey {
 #[derive(Component)]
 pub(crate) struct TlPlayhead {
     root: Entity,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Drag {
+    ClipMove,
+    ClipLeft,
+    ClipRight,
+    Key,
 }
 
 fn cursor(windows: &Query<&Window>) -> Option<Vec2> {
@@ -339,6 +353,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                             },
                             BackgroundColor(rgb(track.color)),
                             Interaction::default(),
+                            RelativeCursorPosition::default(),
                             TlClip { root, start, len },
                             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                             Name::new("tl-clip"),
@@ -515,7 +530,7 @@ pub(crate) fn timeline_scrub(
         }
         if let Some(nrm) = rcp.normalized {
             if let Ok(mut r) = roots.get_mut(ruler.root) {
-                r.playhead = ((nrm.x + 0.5) * r.duration).clamp(0.0, r.duration);
+                r.playhead = snap((nrm.x + 0.5) * r.duration).clamp(0.0, r.duration);
             }
         }
     }
@@ -524,8 +539,8 @@ pub(crate) fn timeline_scrub(
 pub(crate) fn timeline_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    mut active: Local<Option<(Entity, Vec2, bool)>>,
-    clip_press: Query<(Entity, &Interaction), With<TlClip>>,
+    mut active: Local<Option<(Entity, Vec2, Drag)>>,
+    clip_press: Query<(Entity, &Interaction, &RelativeCursorPosition, &ComputedNode), With<TlClip>>,
     key_press: Query<(Entity, &Interaction), With<TlKey>>,
     mut clips: Query<&mut TlClip>,
     mut keys: Query<&mut TlKey>,
@@ -534,15 +549,25 @@ pub(crate) fn timeline_drag(
     if active.is_none() {
         if mouse.just_pressed(MouseButton::Left) {
             if let Some(c) = cursor(&windows) {
-                for (e, i) in &clip_press {
+                for (e, i, rcp, cn) in &clip_press {
                     if *i == Interaction::Pressed {
-                        *active = Some((e, c, true));
+                        // Grab near an edge → resize, otherwise move.
+                        let w = cn.size().x * cn.inverse_scale_factor();
+                        let gx = rcp.normalized.map(|n| (n.x + 0.5) * w).unwrap_or(w * 0.5);
+                        let kind = if gx < 8.0 {
+                            Drag::ClipLeft
+                        } else if gx > w - 8.0 {
+                            Drag::ClipRight
+                        } else {
+                            Drag::ClipMove
+                        };
+                        *active = Some((e, c, kind));
                         return;
                     }
                 }
                 for (e, i) in &key_press {
                     if *i == Interaction::Pressed {
-                        *active = Some((e, c, false));
+                        *active = Some((e, c, Drag::Key));
                         return;
                     }
                 }
@@ -554,23 +579,46 @@ pub(crate) fn timeline_drag(
         *active = None;
         return;
     }
-    let (Some((e, last, is_clip)), Some(c)) = (*active, cursor(&windows)) else {
+    let (Some((e, last, kind)), Some(c)) = (*active, cursor(&windows)) else {
         return;
     };
     let dx = c.x - last.x;
-    *active = Some((e, c, is_clip));
+    *active = Some((e, c, kind));
     if dx == 0.0 {
         return;
     }
-    if is_clip {
-        if let Ok(mut clip) = clips.get_mut(e) {
-            let pps = roots.get(clip.root).map(|r| r.pps).unwrap_or(INITIAL_PPS);
-            let dur = roots.get(clip.root).map(|r| r.duration).unwrap_or(0.0);
-            clip.start = (clip.start + dx / pps).clamp(0.0, (dur - clip.len).max(0.0));
+    if let Drag::Key = kind {
+        if let Ok(mut key) = keys.get_mut(e) {
+            let (pps, dur) = roots
+                .get(key.root)
+                .map(|r| (r.pps, r.duration))
+                .unwrap_or((INITIAL_PPS, 0.0));
+            key.time = snap(key.time + dx / pps).clamp(0.0, dur);
         }
-    } else if let Ok(mut key) = keys.get_mut(e) {
-        let pps = roots.get(key.root).map(|r| r.pps).unwrap_or(INITIAL_PPS);
-        let dur = roots.get(key.root).map(|r| r.duration).unwrap_or(0.0);
-        key.time = (key.time + dx / pps).clamp(0.0, dur);
+        return;
+    }
+    if let Ok(mut clip) = clips.get_mut(e) {
+        let (pps, dur) = roots
+            .get(clip.root)
+            .map(|r| (r.pps, r.duration))
+            .unwrap_or((INITIAL_PPS, 0.0));
+        let dt = dx / pps;
+        match kind {
+            Drag::ClipMove => {
+                let len = clip.len;
+                clip.start = snap(clip.start + dt).clamp(0.0, (dur - len).max(0.0));
+            }
+            Drag::ClipLeft => {
+                let right = clip.start + clip.len;
+                let new_start = snap(clip.start + dt).clamp(0.0, right - MIN_CLIP);
+                clip.start = new_start;
+                clip.len = right - new_start;
+            }
+            Drag::ClipRight => {
+                let new_end = snap(clip.start + clip.len + dt).clamp(clip.start + MIN_CLIP, dur);
+                clip.len = new_end - clip.start;
+            }
+            Drag::Key => {}
+        }
     }
 }

@@ -56,9 +56,17 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let line_y = mix(ay, by, clamp((p.x - ax) / max(bx - ax, 1e-4), 0.0, 1.0));
     let fill = smoothstep(line_y - 1.0, line_y + 1.0, p.y) * fill_a;
 
-    let alpha = max(stroke, fill);
+    // Faint horizontal grid lines at 0/¼/½/¾/1 of the height.
+    let yy = in.uv.y * 4.0;
+    let gd = abs(yy - round(yy)) / 4.0 * sz.y;
+    let grid_a = (1.0 - smoothstep(0.0, 1.0, gd)) * 0.16;
+
+    let la = max(stroke, fill) * u.color.a;
+    let ga = grid_a * (1.0 - la);
+    let alpha = la + ga;
     if (alpha <= 0.0) {
         discard;
     }
-    return vec4<f32>(u.color.rgb, u.color.a * alpha);
+    let rgb = (u.color.rgb * la + vec3<f32>(0.42, 0.42, 0.5) * ga) / max(alpha, 1e-4);
+    return vec4<f32>(rgb, alpha);
 }

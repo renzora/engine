@@ -10,7 +10,8 @@ use bevy::shader::ShaderRef;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::font::{ui_font, EmberFonts};
+use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED};
 
 const MAX_SAMPLES: usize = 32;
 
@@ -85,9 +86,35 @@ fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) 
     outer
 }
 
-/// A line + area chart of `values` (any range; auto-normalized).
-pub fn line_chart(commands: &mut Commands, values: &[f32]) -> Entity {
-    chart_node(commands, values, 200.0, 80.0)
+fn axis_label(commands: &mut Commands, font: &Handle<Font>, text: &str, top: bool) -> Entity {
+    commands
+        .spawn((
+            Text::new(text),
+            ui_font(font, 9.0),
+            TextColor(rgb(TEXT_MUTED)),
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(3.0),
+                top: if top { Val::Px(2.0) } else { Val::Auto },
+                bottom: if top { Val::Auto } else { Val::Px(2.0) },
+                ..default()
+            },
+        ))
+        .id()
+}
+
+/// A line + area chart of `values` (any range; auto-normalized) with grid +
+/// min/max value labels.
+pub fn line_chart(commands: &mut Commands, fonts: &EmberFonts, values: &[f32]) -> Entity {
+    let node = chart_node(commands, values, 200.0, 80.0);
+    if values.len() >= 2 {
+        let max = values.iter().cloned().fold(f32::MIN, f32::max);
+        let min = values.iter().cloned().fold(f32::MAX, f32::min);
+        let top = axis_label(commands, &fonts.ui, &format!("{max:.1}"), true);
+        let bot = axis_label(commands, &fonts.ui, &format!("{min:.1}"), false);
+        commands.entity(node).add_children(&[top, bot]);
+    }
+    node
 }
 
 /// A compact inline sparkline.

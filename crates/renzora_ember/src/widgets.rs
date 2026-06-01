@@ -24,6 +24,7 @@ mod toggle;
 mod color_picker;
 mod drag_value;
 mod fader;
+mod gauge;
 mod knob;
 mod property_row;
 mod vec3_edit;
@@ -103,6 +104,7 @@ pub use toggle::*;
 pub use color_picker::*;
 pub use drag_value::*;
 pub use fader::*;
+pub use gauge::*;
 pub use knob::*;
 pub use property_row::*;
 pub use vec3_edit::*;
@@ -214,5 +216,6 @@ impl Plugin for WidgetsPlugin {
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(chart::ChartPlugin);
         app.add_plugins(timeline::TimelinePlugin);
+        app.add_plugins(gauge::GaugePlugin);
     }
 }

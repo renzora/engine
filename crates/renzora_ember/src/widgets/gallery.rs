@@ -168,6 +168,10 @@ pub fn gallery_inspector(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let knob_row = hstack(commands, 12.0, &knobs);
     let r_knob = property_row(commands, font, "Knobs", knob_row);
 
+    let gauges = [gauge(commands, fonts, 0.65), gauge(commands, fonts, 0.3)];
+    let gauge_row = hstack(commands, 12.0, &gauges);
+    let r_gauge = property_row(commands, font, "Gauges", gauge_row);
+
     let pads = [fader(commands, 0.6), xy_pad(commands, 0.5, 0.5)];
     let pad_row = hstack(commands, 16.0, &pads);
     let r_pads = property_row(commands, font, "Fader / XY", pad_row);
@@ -176,7 +180,7 @@ pub fn gallery_inspector(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         commands,
         font,
         "Inspector",
-        vec![r_pos, r_scale, r_color, r_knob, r_pads],
+        vec![r_pos, r_scale, r_color, r_knob, r_gauge, r_pads],
     )
 }
 
@@ -366,7 +370,7 @@ pub fn gallery_charts(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let series = [
         0.2, 0.5, 0.35, 0.8, 0.55, 0.9, 0.45, 0.7, 0.5, 0.85, 0.6, 0.95, 0.4, 0.75,
     ];
-    let lc = line_chart(commands, &series);
+    let lc = line_chart(commands, fonts, &series);
     let f_lc = field(commands, font, "Line", lc);
 
     let bc = bar_chart(commands, &[0.3, 0.6, 0.45, 0.8, 0.5, 0.7, 0.9, 0.4, 0.65]);
