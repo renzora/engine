@@ -21,14 +21,27 @@ mod text_input;
 mod toggle;
 
 // Inspector value editors.
+mod asset_slot;
 mod color_picker;
+mod colorpicker;
 mod drag_value;
 mod fader;
 mod gauge;
 mod knob;
 mod property_row;
+mod spin_slider;
+mod tags_input;
 mod vec3_edit;
 mod xy_pad;
+
+// Animation editors.
+mod curve;
+mod gradient;
+
+// Audio.
+mod mixer;
+mod vu_meter;
+mod waveform;
 
 // Typography.
 mod typography;
@@ -102,14 +115,25 @@ pub use stepper::*;
 pub use text_input::*;
 pub use toggle::*;
 
+pub use asset_slot::*;
 pub use color_picker::*;
+pub use colorpicker::*;
 pub use drag_value::*;
 pub use fader::*;
 pub use gauge::*;
 pub use knob::*;
 pub use property_row::*;
+pub use spin_slider::*;
+pub use tags_input::*;
 pub use vec3_edit::*;
 pub use xy_pad::*;
+
+pub use curve::*;
+pub use gradient::*;
+
+pub use mixer::*;
+pub use vu_meter::*;
+pub use waveform::*;
 
 pub use typography::*;
 
@@ -213,6 +237,12 @@ impl Plugin for WidgetsPlugin {
                     sortable::sortable_drag,
                     text_input::caret_blink,
                 ),
+                (
+                    spin_slider::spin_drag,
+                    tags_input::tags_commit,
+                    vu_meter::vu_animate,
+                    mixer::mixer_toggle,
+                ),
             ),
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
@@ -220,5 +250,10 @@ impl Plugin for WidgetsPlugin {
         app.add_plugins(timeline::TimelinePlugin);
         app.add_plugins(gauge::GaugePlugin);
         app.add_plugins(code_editor::CodeEditorPlugin);
+        app.add_plugins(asset_slot::DndPlugin);
+        app.add_plugins(colorpicker::ColorPickerPlugin);
+        app.add_plugins(curve::CurveEditorPlugin);
+        app.add_plugins(gradient::GradientEditorPlugin);
+        app.add_plugins(waveform::WaveformPlugin);
     }
 }

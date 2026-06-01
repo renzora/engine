@@ -402,6 +402,91 @@ pub fn gallery_charts(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     panel_column(commands, font, "Charts", vec![f_lc, f_bc, f_sp])
 }
 
+/// Gallery panel: pickers & drag-and-drop inspector controls.
+pub fn gallery_pickers(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+
+    let hsv = hsv_picker(commands, 0.58, 0.7, 0.9);
+    let r_hsv = property_row(commands, font, "HSV", hsv);
+
+    let spin = spin_slider(commands, font, "Mass", 1.0, 0.0, 10.0);
+    let r_spin = property_row(commands, font, "Spin slider", spin);
+
+    let tags = tags_input(commands, fonts, &["player", "solid", "spawn"]);
+    let r_tags = property_row(commands, font, "Tags", tags);
+
+    let files = [
+        draggable_file(commands, fonts, "albedo.png"),
+        draggable_file(commands, fonts, "mesh.glb"),
+    ];
+    let file_row = hstack(commands, 8.0, &files);
+    let r_files = property_row(commands, font, "Drag from", file_row);
+
+    let slot = asset_slot(commands, fonts, "");
+    let r_slot = property_row(commands, font, "Drop onto", slot);
+
+    let v2 = vec2_edit(commands, font, 0.5, 0.5);
+    let r_v2 = property_row(commands, font, "Vec2", v2);
+    let v4 = vec4_edit(commands, font, 0.0, 0.0, 0.0, 1.0);
+    let r_v4 = property_row(commands, font, "Quat", v4);
+
+    panel_column(
+        commands,
+        font,
+        "Pickers & DnD",
+        vec![r_hsv, r_spin, r_tags, r_files, r_slot, r_v2, r_v4],
+    )
+}
+
+/// Gallery panel: animation editors (easing curve + gradient).
+pub fn gallery_animation(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+
+    let curve = curve_editor(commands, Vec2::new(0.25, 0.1), Vec2::new(0.75, 0.9));
+    let f_curve = field(commands, font, "Easing curve", curve);
+
+    let grad = gradient_editor(
+        commands,
+        &[
+            (0.0, (40, 60, 200)),
+            (0.45, (200, 60, 160)),
+            (1.0, (250, 220, 80)),
+        ],
+    );
+    let f_grad = field(commands, font, "Gradient", grad);
+
+    panel_column(commands, font, "Animation", vec![f_curve, f_grad])
+}
+
+/// Gallery panel: audio (waveform, VU meter, mixer strips).
+pub fn gallery_audio(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let font = &fonts.ui;
+
+    let amps = [
+        0.1, 0.35, 0.6, 0.45, 0.8, 0.55, 0.9, 0.4, 0.7, 0.3, 0.65, 0.5, 0.85, 0.45, 0.6, 0.25,
+    ];
+    let wf = waveform(commands, &amps);
+    let f_wf = field(commands, font, "Waveform", wf);
+
+    let meters = [
+        vu_meter(commands),
+        vu_meter(commands),
+        vu_meter(commands),
+    ];
+    let meter_row = hstack(commands, 8.0, &meters);
+    let f_vu = field(commands, font, "VU meters", meter_row);
+
+    let strips = [
+        mixer_strip(commands, fonts, "Master", 0.8),
+        mixer_strip(commands, fonts, "Music", 0.6),
+        mixer_strip(commands, fonts, "SFX", 0.7),
+    ];
+    let mix_row = hstack(commands, 10.0, &strips);
+    let f_mix = field(commands, font, "Mixer", mix_row);
+
+    panel_column(commands, font, "Audio", vec![f_wf, f_vu, f_mix])
+}
+
 /// Gallery panel: color swatches.
 pub fn gallery_colors(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let font = &fonts.ui;

@@ -39,6 +39,7 @@ fn layout_gallery() -> DockTree {
         DockTree::tabs(&[
             "gallery_feedback",
             "gallery_inspector",
+            "gallery_pickers",
             "gallery_charts",
             "gallery_colors",
         ]),
@@ -58,6 +59,8 @@ fn layout_gallery() -> DockTree {
             "gallery_overlays",
             "gallery_menus",
             "gallery_extras",
+            "gallery_animation",
+            "gallery_audio",
         ]),
         0.5,
     );

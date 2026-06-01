@@ -209,6 +209,9 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
         "gallery_timeline" => widgets::gallery_timeline(commands, fonts),
         "gallery_code" => widgets::gallery_code(commands, fonts),
         "gallery_charts" => widgets::gallery_charts(commands, fonts),
+        "gallery_pickers" => widgets::gallery_pickers(commands, fonts),
+        "gallery_animation" => widgets::gallery_animation(commands, fonts),
+        "gallery_audio" => widgets::gallery_audio(commands, fonts),
         "gallery_colors" => widgets::gallery_colors(commands, fonts),
         _ => {
             // Placeholder: the panel's name, centered.
