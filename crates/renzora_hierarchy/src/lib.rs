@@ -1,6 +1,7 @@
 //! Hierarchy panel — shows the scene entity tree.
 
 mod cache;
+pub mod native;
 mod state;
 mod tree;
 
@@ -972,6 +973,9 @@ impl Plugin for HierarchyPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] HierarchyPanelPlugin");
         app.register_panel(HierarchyPanel::default());
+        // Bevy-native (ember) hierarchy for the bevy_ui shell; coexists with the
+        // egui panel (both read the same HierarchyTreeCache + EditorSelection).
+        native::register_native_hierarchy(app);
         app.init_resource::<RenameRequest>();
         app.init_resource::<HierarchyTreeCache>();
         app.init_resource::<HierarchyDirty>();
