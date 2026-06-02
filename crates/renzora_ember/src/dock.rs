@@ -1105,6 +1105,12 @@ fn build_tree(
                 overflow: Overflow::clip(),
                 flex_grow: 1.0,
                 flex_basis: Val::Px(0.0),
+                // Without a zero minimum, this flex child's automatic min-size is
+                // its (tall) content, so it inflates instead of shrinking to the
+                // remaining space — tall panels then clip at the bottom with no
+                // scroll. (The first child is capped by its explicit pct size.)
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
                 ..default()
             };
             if row {
