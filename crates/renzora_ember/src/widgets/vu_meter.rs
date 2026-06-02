@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 
+use crate::reactive::bind_with;
 use crate::theme::rgb;
 
 const GREEN: (u8, u8, u8) = (90, 200, 110);
@@ -40,6 +41,22 @@ pub fn vu_meter(commands: &mut Commands) -> Entity {
 /// A VU meter you drive by writing [`VuMeter::level`] (no self-animation).
 pub fn vu_meter_driven(commands: &mut Commands) -> Entity {
     build_vu(commands, false)
+}
+
+/// A VU meter whose level is driven (one-way) from `get` each frame — e.g. a
+/// channel's `peak_level`. The `VuMeter` is crate-private, so this is the public
+/// way to feed it from another crate.
+pub fn vu_meter_bound<G>(commands: &mut Commands, get: G) -> Entity
+where
+    G: Fn(&World) -> f32 + Send + Sync + 'static,
+{
+    let m = build_vu(commands, false);
+    bind_with(commands, m, get, |world, e, v: &f32| {
+        if let Some(mut vu) = world.get_mut::<VuMeter>(e) {
+            vu.level = *v;
+        }
+    });
+    m
 }
 
 fn build_vu(commands: &mut Commands, auto: bool) -> Entity {

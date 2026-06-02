@@ -4,6 +4,7 @@
 use bevy::prelude::*;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::reactive::Bound;
 use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
 
 use super::fader::fader;
@@ -13,10 +14,12 @@ use super::vu_meter::vu_meter;
 pub(crate) struct MixerButton {
     on: Color,
     off: Color,
-    active: bool,
 }
 
-fn toggle_btn(commands: &mut Commands, fonts: &EmberFonts, label: &str, on: Color) -> Entity {
+/// A small square latch button (e.g. mute "M" / solo "S") that lights up when
+/// on. Carries `Bound<bool>` so it can be two-way bound with `bind_2way`.
+pub fn mixer_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, on: Color) -> Entity {
+    let off = rgb((42, 42, 52));
     let btn = commands
         .spawn((
             Node {
@@ -27,13 +30,10 @@ fn toggle_btn(commands: &mut Commands, fonts: &EmberFonts, label: &str, on: Colo
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((42, 42, 52))),
+            BackgroundColor(off),
             Interaction::default(),
-            MixerButton {
-                on,
-                off: rgb((42, 42, 52)),
-                active: false,
-            },
+            MixerButton { on, off },
+            Bound::<bool>(false),
             Name::new("mixer-toggle"),
         ))
         .id();
@@ -91,20 +91,29 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
             ..default()
         },))
         .id();
-    let mute = toggle_btn(commands, fonts, "M", rgb((225, 90, 80)));
-    let solo = toggle_btn(commands, fonts, "S", rgb(ACCENT_BLUE));
+    let mute = mixer_button(commands, fonts, "M", rgb((225, 90, 80)));
+    let solo = mixer_button(commands, fonts, "S", rgb(ACCENT_BLUE));
     commands.entity(buttons).add_children(&[mute, solo]);
     commands.entity(root).add_children(&[label, meters, buttons]);
     root
 }
 
+/// Click → flip the model (`Bound<bool>`); colour follows via [`mixer_button_apply`].
 pub(crate) fn mixer_toggle(
-    mut buttons: Query<(&Interaction, &mut MixerButton, &mut BackgroundColor), Changed<Interaction>>,
+    mut buttons: Query<(&Interaction, &mut Bound<bool>), (With<MixerButton>, Changed<Interaction>)>,
 ) {
-    for (interaction, mut btn, mut bg) in &mut buttons {
+    for (interaction, mut b) in &mut buttons {
         if *interaction == Interaction::Pressed {
-            btn.active = !btn.active;
-            bg.0 = if btn.active { btn.on } else { btn.off };
+            b.0 = !b.0;
         }
+    }
+}
+
+/// Model (`Bound<bool>`) → button colour (click or a `bind_2way` state push).
+pub(crate) fn mixer_button_apply(
+    mut buttons: Query<(&MixerButton, &Bound<bool>, &mut BackgroundColor), Changed<Bound<bool>>>,
+) {
+    for (btn, b, mut bg) in &mut buttons {
+        bg.0 = if b.0 { btn.on } else { btn.off };
     }
 }

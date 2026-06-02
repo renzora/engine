@@ -248,6 +248,8 @@ impl Plugin for WidgetsPlugin {
                     tags_input::tags_commit,
                     vu_meter::vu_animate,
                     mixer::mixer_toggle,
+                    mixer::mixer_button_apply,
+                    knob::knob_apply,
                 ),
             ),
         );
