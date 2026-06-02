@@ -464,6 +464,24 @@ fn current_folder(w: &World) -> Option<PathBuf> {
         .or_else(|| project_root(w))
 }
 
+/// Accent color for a folder's icon, by well-known name (ported from the egui
+/// browser's `folder_icon_color`).
+fn folder_color(name: &str) -> (u8, u8, u8) {
+    match name.to_lowercase().as_str() {
+        "assets" => (255, 210, 100),
+        "scenes" | "blueprints" => (100, 180, 255),
+        "scripts" => (130, 230, 180),
+        "materials" => (255, 130, 200),
+        "textures" | "images" => (150, 230, 130),
+        "models" | "meshes" => (255, 170, 100),
+        "audio" | "sounds" | "music" => (200, 130, 230),
+        "prefabs" => (130, 180, 255),
+        "src" => (255, 130, 80),
+        "shaders" => (180, 130, 255),
+        _ => (170, 175, 190),
+    }
+}
+
 fn icon_for(path: &Path, is_dir: bool) -> &'static str {
     if is_dir {
         return "folder";
@@ -1000,7 +1018,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32) -
             ..default()
         })
         .id();
-    let color = if entry.is_dir { (220, 200, 130) } else { TEXT_MUTED };
+    let color = if entry.is_dir { folder_color(&entry.name) } else { TEXT_MUTED };
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, icon_sz);
     commands.entity(preview).add_child(icon);
 
@@ -1197,7 +1215,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity 
         commands,
         &fonts.phosphor,
         if r.expanded { "folder-open" } else { "folder" },
-        (220, 200, 130),
+        folder_color(&r.name),
         13.0,
     );
     let name = commands
