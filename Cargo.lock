@@ -10635,6 +10635,7 @@ dependencies = [
  "renzora",
  "renzora_code_editor",
  "renzora_editor",
+ "renzora_ember",
  "renzora_scripting",
  "renzora_theme",
 ]

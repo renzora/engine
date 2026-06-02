@@ -1,3 +1,4 @@
+mod native;
 pub mod render;
 
 use std::sync::RwLock;
@@ -117,6 +118,7 @@ impl Plugin for ScriptVariablesPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScriptVariablesPlugin");
         app.register_panel(ScriptVariablesPanel::new());
+        native::register_native_script_variables(app);
     }
 }
 
