@@ -4,6 +4,8 @@
 //! value-diffed binding and every graph is a reactive [`line_chart_live`], so an
 //! idle panel costs nothing.
 
+mod ecs;
+
 use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -14,15 +16,16 @@ use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
 use crate::state::{DiagnosticsState, RenderStats};
 
-/// Register the native debug panels (this batch: Render Stats, Performance).
+/// Register the native debug panels.
 pub fn register_native_debug(app: &mut App) {
     app.register_panel_content("render_stats", true, build_render_stats);
     app.register_panel_content("performance", true, build_performance);
+    ecs::register_ecs_stats(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
 
-fn root(commands: &mut Commands) -> Entity {
+pub(super) fn root(commands: &mut Commands) -> Entity {
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -35,7 +38,7 @@ fn root(commands: &mut Commands) -> Entity {
         .id()
 }
 
-fn column(commands: &mut Commands, gap: f32) -> Entity {
+pub(super) fn column(commands: &mut Commands, gap: f32) -> Entity {
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -46,7 +49,7 @@ fn column(commands: &mut Commands, gap: f32) -> Entity {
         .id()
 }
 
-fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+pub(super) fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
     commands
         .spawn((
             Text::new(label),
@@ -61,7 +64,7 @@ fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
 }
 
 /// A big colored value + a muted unit suffix (e.g. `28  FPS`).
-fn big_stat<T, C>(commands: &mut Commands, fonts: &EmberFonts, unit: &str, value: T, color: C) -> Entity
+pub(super) fn big_stat<T, C>(commands: &mut Commands, fonts: &EmberFonts, unit: &str, value: T, color: C) -> Entity
 where
     T: Fn(&World) -> String + Send + Sync + 'static,
     C: Fn(&World) -> Color + Send + Sync + 'static,

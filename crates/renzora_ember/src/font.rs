@@ -69,6 +69,10 @@ pub fn ui_font(font: &Handle<Font>, size: f32) -> TextFont {
     }
 }
 
+/// Resolve a Phosphor icon name (e.g. `"caret-down"`) to its glyph char, for
+/// binding an icon that changes at runtime. Returns `None` for unknown names.
+pub use renzora_hui::phosphor_map::icon_glyph;
+
 /// An inline Phosphor glyph resolved immediately (real glyph + Phosphor font),
 /// so rebuilding the entity doesn't flash a blank frame like the deferred
 /// `Icon` component would.
