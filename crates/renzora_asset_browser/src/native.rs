@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
 
@@ -67,6 +67,8 @@ pub(crate) struct NativeAssets {
     hovered: Option<PathBuf>,
     /// The asset the open context menu acts on (`None` = menu closed).
     context: Option<PathBuf>,
+    /// Last tile click (path, time) for double-click detection.
+    last_click: Option<(PathBuf, f64)>,
 }
 
 #[derive(Clone, Copy)]
@@ -484,6 +486,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", TEXT_PRIMARY, 13.0);
     commands.entity(back).add_child(back_icon);
+    // Hidden at the project root (nowhere to go up to).
+    bind_display(commands, back, |w| current_folder(w) != project_root(w));
 
     let new_folder = toolbar_btn(commands, fonts, "folder-plus", "New Folder");
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
@@ -1033,8 +1037,10 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity 
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 flex_grow: 1.0,
+                min_width: Val::Px(0.0),
                 height: Val::Percent(100.0),
                 column_gap: Val::Px(4.0),
+                overflow: Overflow::clip(),
                 ..default()
             },
             Interaction::default(),
@@ -1055,7 +1061,11 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity 
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(TEXT_PRIMARY)),
             bevy::text::TextLayout::new_with_no_wrap(),
-            Node { overflow: Overflow::clip(), ..default() },
+            Node {
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
         ))
         .id();
     commands.entity(nav).add_children(&[folder_icon, name]);
@@ -1088,6 +1098,12 @@ fn tree_nav_click(
         if *interaction == Interaction::Pressed {
             state.current = Some(nav.0.clone());
             state.selected = None;
+            // Clicking anywhere on a folder row also toggles its expansion.
+            if state.expanded.contains(&nav.0) {
+                state.expanded.remove(&nav.0);
+            } else {
+                state.expanded.insert(nav.0.clone());
+            }
         }
     }
 }
@@ -1095,16 +1111,49 @@ fn tree_nav_click(
 fn tile_click(
     q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
+    time: Res<Time>,
 ) {
+    let now = time.elapsed_secs_f64();
     for (interaction, tile) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let double = state
+            .last_click
+            .as_ref()
+            .is_some_and(|(p, t)| p == &tile.path && now - t < 0.4);
+        if double {
+            state.last_click = None;
             if tile.is_dir {
                 state.current = Some(tile.path.clone());
                 state.selected = None;
             } else {
-                state.selected = Some(tile.path.clone());
+                os_open(&tile.path);
             }
+        } else {
+            // Single click selects; the next click within 0.4s opens/navigates.
+            state.selected = Some(tile.path.clone());
+            state.last_click = Some((tile.path.clone(), now));
         }
+    }
+}
+
+/// Open a file with its OS default application.
+fn os_open(path: &Path) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", ""])
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(path).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
     }
 }
 
