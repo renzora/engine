@@ -77,24 +77,33 @@ fn build_viewport(commands: &mut Commands, _fonts: &EmberFonts, index: usize) ->
 /// resolver resizes the render image and the gizmo/drop/nav systems can map the
 /// cursor into the scene.
 fn report_viewport_geometry(
-    viewports: Query<(&ComputedNode, &GlobalTransform, &RelativeCursorPosition, &NativeViewport)>,
+    viewports: Query<(
+        &ComputedNode,
+        &RelativeCursorPosition,
+        &NativeViewport,
+        Option<&GlobalTransform>,
+    )>,
     req: Option<Res<ViewportResizeRequest>>,
 ) {
     let Some(req) = req else {
         return;
     };
-    for (cn, gt, rcp, vp) in &viewports {
+    for (cn, rcp, vp, gt) in &viewports {
         let Some(slot) = req.slots.get(vp.0) else {
             continue;
         };
         let inv = cn.inverse_scale_factor();
         let size = cn.size() * inv;
-        let center = gt.translation().truncate() * inv;
-        let top_left = center - size * 0.5;
+        // Size + hover drive the render-image resize — always reported.
         slot.width.store(size.x.max(1.0) as u32, Ordering::Relaxed);
         slot.height.store(size.y.max(1.0) as u32, Ordering::Relaxed);
-        slot.screen_x.store(top_left.x.to_bits(), Ordering::Relaxed);
-        slot.screen_y.store(top_left.y.to_bits(), Ordering::Relaxed);
         slot.hovered.store(rcp.cursor_over, Ordering::Relaxed);
+        // Screen top-left (logical px) is for cursor→scene raycasting.
+        if let Some(gt) = gt {
+            let center = gt.translation().truncate() * inv;
+            let top_left = center - size * 0.5;
+            slot.screen_x.store(top_left.x.to_bits(), Ordering::Relaxed);
+            slot.screen_y.store(top_left.y.to_bits(), Ordering::Relaxed);
+        }
     }
 }
