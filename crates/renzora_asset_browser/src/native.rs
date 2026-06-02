@@ -11,14 +11,45 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
-use renzora_editor::SplashState;
+use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{text_input, EmberTextInput};
 
-use crate::thumbnails::{supports_thumbnail, ThumbnailCache};
+use crate::thumbnails::{
+    supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail, ThumbnailCache,
+};
+
+/// Which thumbnail source a file uses.
+#[derive(Clone, Copy, PartialEq)]
+enum ThumbKind {
+    Image,
+    Model,
+    Material,
+}
+
+fn thumb_kind(name: &str) -> Option<ThumbKind> {
+    if supports_thumbnail(name) {
+        Some(ThumbKind::Image)
+    } else if supports_model_thumbnail(name) {
+        Some(ThumbKind::Model)
+    } else if supports_material_thumbnail(name) {
+        Some(ThumbKind::Material)
+    } else {
+        None
+    }
+}
+
+/// The ready thumbnail handle for `path`, from whichever registry owns `kind`.
+fn handle_for(w: &World, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image>> {
+    match kind {
+        ThumbKind::Image => w.get_resource::<ThumbnailCache>().and_then(|c| c.handle(path)),
+        ThumbKind::Model => w.get_resource::<ModelThumbnailRegistry>().and_then(|r| r.handle(path)),
+        ThumbKind::Material => w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(path)),
+    }
+}
 
 const TILE_W: f32 = 84.0;
 const HOVER_BG: (u8, u8, u8) = (40, 40, 50);
@@ -288,7 +319,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, 30.0);
     commands.entity(preview).add_child(icon);
 
-    if !entry.is_dir && supports_thumbnail(&entry.name) {
+    if let Some(kind) = (!entry.is_dir).then(|| thumb_kind(&entry.name)).flatten() {
         let img = commands
             .spawn((
                 ImageNode::default(),
@@ -307,7 +338,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
         bind_with(
             commands,
             img,
-            move |w| w.get_resource::<ThumbnailCache>().and_then(|c| c.handle(&p)),
+            move |w| handle_for(w, kind, &p),
             move |w, e, h: &Option<Handle<Image>>| {
                 let Some(handle) = h else { return };
                 if let Some(mut n) = w.get_mut::<ImageNode>(e) {
@@ -378,10 +409,12 @@ fn back_click(
     }
 }
 
-/// Kick off thumbnail loads for visible image tiles (the cache de-dupes).
+/// Kick off thumbnail loads for visible tiles (each registry de-dupes).
 fn request_thumbnails(
     tiles: Query<&AssetTile>,
     mut cache: ResMut<ThumbnailCache>,
+    mut model: Option<ResMut<ModelThumbnailRegistry>>,
+    mut material: Option<ResMut<MaterialThumbnailRegistry>>,
     asset_server: Res<AssetServer>,
     project: Option<Res<renzora::core::CurrentProject>>,
 ) {
@@ -390,10 +423,24 @@ fn request_thumbnails(
         if tile.is_dir {
             continue;
         }
-        if let Some(name) = tile.path.file_name().and_then(|n| n.to_str()) {
-            if supports_thumbnail(name) {
+        let Some(name) = tile.path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        match thumb_kind(name) {
+            Some(ThumbKind::Image) => {
                 cache.request(tile.path.clone(), &asset_server, project);
             }
+            Some(ThumbKind::Model) => {
+                if let Some(model) = model.as_mut() {
+                    model.request(tile.path.clone());
+                }
+            }
+            Some(ThumbKind::Material) => {
+                if let Some(material) = material.as_mut() {
+                    material.request(tile.path.clone());
+                }
+            }
+            None => {}
         }
     }
 }

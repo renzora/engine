@@ -615,7 +615,7 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
                     let captured_handle = images.add(captured);
                     user_textures.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
                     match user_textures.image_id(captured_handle.id()) {
-                        Some(tid) => registry.complete(material_path.clone(), tid),
+                        Some(tid) => registry.complete(material_path.clone(), tid, captured_handle.clone()),
                         None => registry.cancel(&material_path),
                     }
 
@@ -742,7 +742,7 @@ fn resolve_disk_loads(
                     .to_string();
                 user_textures.add_image(EguiTextureHandle::Strong(entry.handle.clone()));
                 match user_textures.image_id(entry.handle.id()) {
-                    Some(tid) => registry.complete(entry.material_path, tid),
+                    Some(tid) => registry.complete(entry.material_path, tid, entry.handle.clone()),
                     None => registry.cancel(&entry.material_path),
                 }
                 if let Some(job) = job.as_ref() {

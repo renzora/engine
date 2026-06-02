@@ -801,7 +801,7 @@ fn resolve_model_disk_loads(
                 let entry = disk_loads.entries.swap_remove(i);
                 user_textures.add_image(EguiTextureHandle::Strong(entry.handle.clone()));
                 match user_textures.image_id(entry.handle.id()) {
-                    Some(tid) => registry.complete(entry.model_path, tid),
+                    Some(tid) => registry.complete(entry.model_path, tid, entry.handle.clone()),
                     None => registry.cancel(&entry.model_path),
                 }
             }
@@ -929,7 +929,7 @@ pub(crate) fn tick_warmup_and_dispatch(
                     let captured_handle = imgs.add(captured);
                     tex.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
                     match tex.image_id(captured_handle.id()) {
-                        Some(tid) => reg.complete(model_path.clone(), tid),
+                        Some(tid) => reg.complete(model_path.clone(), tid, captured_handle.clone()),
                         None => reg.cancel(&model_path),
                     }
 

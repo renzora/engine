@@ -23,6 +23,9 @@ use renzora::core::CurrentProject;
 #[derive(Resource, Default)]
 pub struct ModelThumbnailRegistry {
     entries: HashMap<PathBuf, egui::TextureId>,
+    /// The `Handle<Image>` per path, for the bevy-native browser (which shows
+    /// it via `ImageNode` rather than the egui `TextureId`).
+    handles: HashMap<PathBuf, Handle<Image>>,
     in_flight: HashSet<PathBuf>,
     pub incoming_requests: VecDeque<PathBuf>,
 }
@@ -30,6 +33,11 @@ pub struct ModelThumbnailRegistry {
 impl ModelThumbnailRegistry {
     pub fn get(&self, path: &PathBuf) -> Option<egui::TextureId> {
         self.entries.get(path).copied()
+    }
+
+    /// The rendered thumbnail's image handle, if ready.
+    pub fn handle(&self, path: &PathBuf) -> Option<Handle<Image>> {
+        self.handles.get(path).cloned()
     }
 
     pub fn entries(&self) -> &HashMap<PathBuf, egui::TextureId> {
@@ -48,8 +56,9 @@ impl ModelThumbnailRegistry {
 
     /// Called by the renderer when a thumbnail becomes available (either
     /// fresh capture or disk-cache reload).
-    pub fn complete(&mut self, path: PathBuf, id: egui::TextureId) {
+    pub fn complete(&mut self, path: PathBuf, id: egui::TextureId, handle: Handle<Image>) {
         self.in_flight.remove(&path);
+        self.handles.insert(path.clone(), handle);
         self.entries.insert(path, id);
     }
 
@@ -64,6 +73,7 @@ impl ModelThumbnailRegistry {
     /// the source file changes on disk.
     pub fn invalidate(&mut self, path: &PathBuf) {
         self.entries.remove(path);
+        self.handles.remove(path);
         self.in_flight.remove(path);
     }
 
@@ -74,6 +84,7 @@ impl ModelThumbnailRegistry {
     /// session had thumbnailed.
     pub fn reset(&mut self) {
         self.entries.clear();
+        self.handles.clear();
         self.in_flight.clear();
         self.incoming_requests.clear();
     }
