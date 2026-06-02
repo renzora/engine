@@ -9793,6 +9793,7 @@ dependencies = [
  "renzora_editor",
  "renzora_ember",
  "renzora_engine",
+ "renzora_hui",
  "renzora_macros",
  "renzora_physics",
  "renzora_theme",

@@ -300,6 +300,18 @@ pub enum EditorState {
     Inactive,
 }
 
+/// Apply queued [`EditorCommands`] under the bevy_ui shell (the egui
+/// `editor_ui_system` does this in egui mode; it doesn't run under BevyUi).
+fn drain_editor_commands_native(world: &mut World) {
+    let cmds = world
+        .get_resource::<EditorCommands>()
+        .map(|ec| ec.drain())
+        .unwrap_or_default();
+    for cmd in cmds {
+        cmd(world);
+    }
+}
+
 /// Plugin that adds the Renzora editor overlay to any Bevy app.
 #[derive(Default)]
 pub struct RenzoraEditorPlugin;
@@ -437,6 +449,15 @@ impl Plugin for RenzoraEditorPlugin {
                 EguiPrimaryContextPass,
                 editor_ui_system
                     .run_if(in_state(SplashState::Editor).and(renzora::editor_backend_is_egui)),
+            )
+            // The egui `editor_ui_system` drains `EditorCommands` as part of its
+            // pass; under the bevy_ui shell that system doesn't run, so drain the
+            // queue with a standalone exclusive system instead (otherwise panel
+            // actions — visibility/lock toggles, undo/redo, etc. — never apply).
+            .add_systems(
+                Update,
+                drain_editor_commands_native
+                    .run_if(in_state(SplashState::Editor).and(renzora::editor_backend_is_bevy_ui)),
             )
             .add_observer(show_script_reload_toasts)
             .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)

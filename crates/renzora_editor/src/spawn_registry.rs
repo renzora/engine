@@ -108,7 +108,8 @@ impl ComponentIconRegistry {
     pub fn register(&mut self, entry: ComponentIconEntry) {
         self.entries.push(entry);
         // Keep sorted by priority (descending) so higher-priority icons win
-        self.entries.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.entries
+            .sort_by_key(|e| std::cmp::Reverse(e.priority));
     }
 
     /// Look up the icon for an entity by checking its archetype against

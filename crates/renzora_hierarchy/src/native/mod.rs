@@ -37,8 +37,9 @@ pub fn register_native_hierarchy(app: &mut App) {
         Update,
         (
             (hierarchy_content_system, tree::hierarchy_refresh).chain(),
-            systems::hierarchy_caret_click,
             systems::hierarchy_row_click,
+            systems::hierarchy_vis_toggle,
+            systems::hierarchy_lock_toggle,
             systems::hierarchy_row_visual,
         )
             .run_if(in_state(SplashState::Editor)),
@@ -76,8 +77,7 @@ pub(crate) fn hierarchy_content_system(
                     ..default()
                 },
                 HierarchyView {
-                    version: u64::MAX,
-                    expanded_hash: 0,
+                    content_hash: u64::MAX,
                 },
                 Name::new("hierarchy-list"),
             ))
