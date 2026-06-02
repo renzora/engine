@@ -27,7 +27,7 @@ end
 /// Create a new `.lua` file under `<project>/scripts/` with a unique name,
 /// attach it to `entity` via its `ScriptComponent` (creating one if absent),
 /// and open it in the code editor.
-fn create_and_attach_new_script(
+pub(crate) fn create_and_attach_new_script(
     world: &mut World,
     entity: Entity,
     project_root: std::path::PathBuf,
