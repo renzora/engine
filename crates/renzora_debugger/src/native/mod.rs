@@ -5,6 +5,7 @@
 //! idle panel costs nothing.
 
 mod ecs;
+mod memory;
 
 use bevy::prelude::*;
 
@@ -21,6 +22,7 @@ pub fn register_native_debug(app: &mut App) {
     app.register_panel_content("render_stats", true, build_render_stats);
     app.register_panel_content("performance", true, build_performance);
     ecs::register_ecs_stats(app);
+    memory::register_memory(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
@@ -102,7 +104,7 @@ where
 }
 
 /// A `label   value` row (value is a binding).
-fn label_row<T>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: T) -> Entity
+pub(super) fn label_row<T>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: T) -> Entity
 where
     T: Fn(&World) -> String + Send + Sync + 'static,
 {
