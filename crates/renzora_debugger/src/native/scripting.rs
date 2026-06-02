@@ -246,8 +246,12 @@ fn cell(commands: &mut Commands, fonts: &EmberFonts, text: &str, width: f32, col
             Text::new(text),
             ui_font(font, size),
             TextColor(color),
+            // Single line, clipped to the column so long names don't bleed over.
+            bevy::text::TextLayout::new_with_no_wrap(),
             Node {
                 width: Val::Px(width),
+                overflow: Overflow::clip(),
+                flex_shrink: 0.0,
                 ..default()
             },
         ))

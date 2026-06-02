@@ -6,6 +6,7 @@
 
 mod ecs;
 mod lumen;
+mod material;
 mod memory;
 mod scripting;
 mod system;
@@ -29,6 +30,7 @@ pub fn register_native_debug(app: &mut App) {
     system::register_system_profiler(app);
     lumen::register_lumen(app);
     scripting::register_scripting(app);
+    material::register_material_resolver(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
