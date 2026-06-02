@@ -14,9 +14,11 @@ use renzora_audio::{ChannelStrip, MixerState};
 use renzora_editor::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_2way, bind_bg, keyed_list, react, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{fader, knob, mixer_button, text_input, vu_meter_bound, EmberTextInput};
+use renzora_ember::widgets::{
+    fader, icon_popover, knob, mixer_button, text_input, vu_meter_bound, EmberTextInput,
+};
 
 const RED: (u8, u8, u8) = (225, 90, 80);
 /// Max linear volume (1.0 = unity, 1.5 = +3.5 dB head-room).
@@ -205,7 +207,8 @@ where
     let label = commands
         .spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
         .id();
-    let mut header_kids = vec![label];
+    let cog = device_cog(commands, fonts, sel, sel_mut);
+    let mut header_kids = vec![label, cog];
     if let Some(i) = delete {
         let del = commands
             .spawn((
@@ -300,6 +303,123 @@ where
         .entity(col)
         .add_children(&[header, meters, pan, pan_label, buttons]);
     col
+}
+
+/// Read a bus's current input/output device name.
+fn read_device<Sel: Fn(&MixerState) -> Option<&ChannelStrip>>(w: &World, sel: Sel, input: bool) -> Option<String> {
+    read(w, sel, |s| {
+        if input {
+            s.input_device.clone()
+        } else {
+            s.output_device.clone()
+        }
+    })
+}
+
+/// The per-strip device-routing cog: a gear that opens a popover with selectable
+/// input/output device lists, writing the bus's `input_device`/`output_device`.
+fn device_cog<Sel, SelMut>(commands: &mut Commands, fonts: &EmberFonts, sel: Sel, sel_mut: SelMut) -> Entity
+where
+    Sel: Fn(&MixerState) -> Option<&ChannelStrip> + Copy + Send + Sync + 'static,
+    SelMut: Fn(&mut MixerState) -> Option<&mut ChannelStrip> + Copy + Send + Sync + 'static,
+{
+    let content = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Px(200.0),
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+
+    let mut kids: Vec<Entity> = Vec::new();
+    kids.push(section_label(commands, fonts, "Input device"));
+    kids.push(device_row(commands, fonts, "(none)", None, true, sel, sel_mut));
+    for name in renzora_audio::list_input_devices() {
+        kids.push(device_row(commands, fonts, &name.clone(), Some(name), true, sel, sel_mut));
+    }
+    kids.push(spacer(commands, 6.0));
+    kids.push(section_label(commands, fonts, "Output device"));
+    kids.push(device_row(commands, fonts, "(none)", None, false, sel, sel_mut));
+    for name in renzora_audio::list_output_devices() {
+        kids.push(device_row(commands, fonts, &name.clone(), Some(name), false, sel, sel_mut));
+    }
+    commands.entity(content).add_children(&kids);
+
+    icon_popover(commands, fonts, "gear", 13.0, content)
+}
+
+fn section_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+    commands
+        .spawn((Text::new(text), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .id()
+}
+
+fn spacer(commands: &mut Commands, h: f32) -> Entity {
+    commands
+        .spawn(Node {
+            height: Val::Px(h),
+            ..default()
+        })
+        .id()
+}
+
+/// A selectable device row: highlights when it's the bus's current device, and
+/// on click writes it (one-shot edge-detected via `react`).
+fn device_row<Sel, SelMut>(commands: &mut Commands, fonts: &EmberFonts, label: &str, device: Option<String>, input: bool, sel: Sel, sel_mut: SelMut) -> Entity
+where
+    Sel: Fn(&MixerState) -> Option<&ChannelStrip> + Copy + Send + Sync + 'static,
+    SelMut: Fn(&mut MixerState) -> Option<&mut ChannelStrip> + Copy + Send + Sync + 'static,
+{
+    let row = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            Name::new("device-row"),
+        ))
+        .id();
+    let t = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(TEXT_PRIMARY))))
+        .id();
+    commands.entity(row).add_child(t);
+
+    // Highlight when selected.
+    let dev_hi = device.clone();
+    bind_bg(commands, row, move |w| {
+        if read_device(w, sel, input).as_deref() == dev_hi.as_deref() {
+            rgb(ACCENT_BLUE).with_alpha(0.30)
+        } else {
+            Color::NONE
+        }
+    });
+
+    // Click → set the device (edge-detected).
+    let dev_set = device;
+    let mut was_pressed = false;
+    react(commands, move |world| {
+        if world.get_entity(row).is_err() {
+            return false;
+        }
+        let pressed = matches!(world.get::<Interaction>(row), Some(Interaction::Pressed));
+        if pressed && !was_pressed {
+            let d = dev_set.clone();
+            write(world, sel_mut, move |s| {
+                if input {
+                    s.input_device = d.clone();
+                } else {
+                    s.output_device = d.clone();
+                }
+            });
+        }
+        was_pressed = pressed;
+        true
+    });
+    row
 }
 
 fn custom_snapshot(world: &World) -> KeyedSnapshot {

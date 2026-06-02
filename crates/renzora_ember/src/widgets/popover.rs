@@ -2,8 +2,8 @@
 
 use bevy::prelude::*;
 
-use crate::font::EmberFonts;
-use crate::theme::rgb;
+use crate::font::{icon_text, EmberFonts};
+use crate::theme::{rgb, TEXT_MUTED};
 
 use super::button::button;
 
@@ -33,6 +33,51 @@ pub fn popover(commands: &mut Commands, fonts: &EmberFonts, label: &str, content
                 left: Val::Px(0.0),
                 margin: UiRect::top(Val::Px(4.0)),
                 padding: UiRect::all(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 74))),
+            GlobalZIndex(600),
+            Name::new("popover-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_child(content);
+    commands
+        .entity(trigger)
+        .insert(EmberPopover { panel, open: false });
+    commands.entity(wrap).add_children(&[trigger, panel]);
+    wrap
+}
+
+/// Like [`popover`] but triggered by a Phosphor icon instead of a text label
+/// (e.g. a gear/cog). Returns the wrapper entity.
+pub fn icon_popover(commands: &mut Commands, fonts: &EmberFonts, icon: &str, size: f32, content: Entity) -> Entity {
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("popover"),
+        ))
+        .id();
+    let trigger = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, size);
+    commands.entity(trigger).insert((
+        Interaction::default(),
+        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+    ));
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                padding: UiRect::all(Val::Px(10.0)),
+                flex_direction: FlexDirection::Column,
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 display: Display::None,
