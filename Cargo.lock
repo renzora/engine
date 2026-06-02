@@ -10600,6 +10600,7 @@ dependencies = [
  "renzora",
  "renzora_camera",
  "renzora_editor",
+ "renzora_ember",
  "renzora_engine",
  "renzora_keybindings",
  "renzora_shader",

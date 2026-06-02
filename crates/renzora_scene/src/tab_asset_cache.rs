@@ -544,7 +544,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
         world.get_resource::<Assets<Image>>(),
     ) {
         let mut sample_missing: Vec<bevy::asset::AssetId<Image>> = Vec::new();
-        for (_id, h) in &unique_std {
+        for h in unique_std.values() {
             let Some(mat) = mats.get(h) else { continue };
             material.mats_loaded += 1;
             let mut had_handle = false;

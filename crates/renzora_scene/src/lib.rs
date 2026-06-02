@@ -26,7 +26,9 @@ mod tab_asset_cache;
 pub use tab_asset_cache::TabAssetCache;
 
 mod diagnostics_panel;
+mod native_diagnostics;
 pub use diagnostics_panel::SceneDiagnosticsPanel;
+use native_diagnostics::NativeSceneDiagnostics;
 
 pub mod runtime_warnings;
 pub use runtime_warnings::runtime_warnings_layer;
@@ -1069,6 +1071,7 @@ impl Plugin for ScenePlugin {
                     .run_if(in_state(SplashState::Editor)),
             )
             .register_panel(SceneDiagnosticsPanel)
+            .add_plugins(NativeSceneDiagnostics)
             // When the user closes a tab, drop its strong handles so
             // the assets it pinned can evict (assuming no other tab
             // still references them).
