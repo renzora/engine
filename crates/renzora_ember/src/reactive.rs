@@ -74,6 +74,78 @@ where
     });
 }
 
+/// Register a raw reaction: a closure run every frame with `&mut World` that
+/// returns `false` once it should be dropped. This is the low-level escape hatch
+/// the `bind_*` helpers build on; widgets use it to implement two-way bindings
+/// (read a widget's value and write it back to state, or vice-versa). Registered
+/// (deferred) via `commands`.
+pub fn react<F>(commands: &mut Commands, reaction: F)
+where
+    F: FnMut(&mut World) -> bool + Send + Sync + 'static,
+{
+    commands.queue(move |world: &mut World| {
+        if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
+            reg.0.push(Box::new(reaction));
+        }
+    });
+}
+
+/// A widget's bound model value — the "signal" a user input edits and a binding
+/// keeps in sync with state. Interactive widgets carry `Bound<T>` (e.g.
+/// `Bound<f32>` on a fader/knob/slider, `Bound<bool>` on a toggle/checkbox):
+/// their input system writes it, and a small per-widget system mirrors it to the
+/// visuals. [`bind_2way`] is the generic glue to a piece of state.
+#[derive(Component)]
+pub struct Bound<T: Send + Sync + 'static>(pub T);
+
+/// Two-way-bind any widget that carries a [`Bound<T>`] to a piece of state.
+/// `get` reads the state value each frame; `set` writes the user's edit back.
+/// Value-diffed in both directions (no feedback loop): an external state change
+/// wins ties, otherwise the user's edit propagates to state. Generic over the
+/// model type, so one function serves every interactive widget — the widget owns
+/// only "input → `Bound`" and "`Bound` → visuals".
+pub fn bind_2way<T, G, S>(commands: &mut Commands, target: Entity, get: G, set: S)
+where
+    T: PartialEq + Clone + Send + Sync + 'static,
+    G: Fn(&World) -> T + Send + Sync + 'static,
+    S: Fn(&mut World, &T) + Send + Sync + 'static,
+{
+    commands.queue(move |world: &mut World| {
+        // Seed the model from state if the widget doesn't already carry one.
+        if world.get::<Bound<T>>(target).is_none() {
+            let sv = get(world);
+            if let Ok(mut em) = world.get_entity_mut(target) {
+                em.insert(Bound(sv));
+            }
+        }
+        let mut last: Option<T> = None;
+        if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
+            reg.0.push(Box::new(move |world: &mut World| {
+                if world.get_entity(target).is_err() {
+                    return false;
+                }
+                let sv = get(world);
+                if last.as_ref() != Some(&sv) {
+                    // First run, or state changed externally → model ← state.
+                    if let Some(mut b) = world.get_mut::<Bound<T>>(target) {
+                        if b.0 != sv {
+                            b.0 = sv.clone();
+                        }
+                    }
+                    last = Some(sv);
+                } else if let Some(bv) = world.get::<Bound<T>>(target).map(|b| b.0.clone()) {
+                    // State stable; the user edited the widget → state ← model.
+                    if bv != sv {
+                        set(world, &bv);
+                        last = Some(bv);
+                    }
+                }
+                true
+            }));
+        }
+    });
+}
+
 /// Bind a node's [`Text`] to a computed string.
 pub fn bind_text<F>(commands: &mut Commands, target: Entity, value: F)
 where

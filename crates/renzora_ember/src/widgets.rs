@@ -213,6 +213,7 @@ impl Plugin for WidgetsPlugin {
                     color_picker::color_picker_sync,
                     knob::knob_drag,
                     fader::fader_drag,
+                    fader::fader_apply,
                     xy_pad::xy_pad_drag,
                     accordion::accordion_toggle,
                     tabs::tab_select,

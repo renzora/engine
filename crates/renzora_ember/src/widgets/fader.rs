@@ -3,11 +3,13 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Bound;
 use crate::theme::{rgb, ACCENT_BLUE};
 
+/// References to the fader's fill/thumb so the model→visuals system can move
+/// them. The value itself lives in `Bound<f32>` (so [`bind_2way`] can drive it).
 #[derive(Component)]
 pub(crate) struct EmberFader {
-    value: f32,
     fill: Entity,
     thumb: Entity,
 }
@@ -78,15 +80,17 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
         ))
         .id();
     commands.entity(col).add_children(&[track, fill, thumb]);
-    commands.entity(col).insert(EmberFader { value: v, fill, thumb });
+    commands
+        .entity(col)
+        .insert((EmberFader { fill, thumb }, Bound::<f32>(v)));
     col
 }
 
+/// User drag → write the model (`Bound<f32>`). Visuals follow via [`fader_apply`].
 pub(crate) fn fader_drag(
-    mut faders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut EmberFader)>,
-    mut nodes: Query<&mut Node>,
+    mut faders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut Bound<f32>), With<EmberFader>>,
 ) {
-    for (interaction, rcp, mut f) in &mut faders {
+    for (interaction, rcp, mut b) in &mut faders {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -94,10 +98,20 @@ pub(crate) fn fader_drag(
             continue;
         };
         let v = (0.5 - n.y).clamp(0.0, 1.0);
-        if (v - f.value).abs() < 0.001 {
-            continue;
+        if (v - b.0).abs() >= 0.001 {
+            b.0 = v;
         }
-        f.value = v;
+    }
+}
+
+/// Model (`Bound<f32>`) → fill/thumb position. Runs whenever the model changes,
+/// whether the user dragged or [`bind_2way`] pushed a new value from state.
+pub(crate) fn fader_apply(
+    faders: Query<(&EmberFader, &Bound<f32>), Changed<Bound<f32>>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (f, b) in &faders {
+        let v = b.0.clamp(0.0, 1.0);
         if let Ok(mut node) = nodes.get_mut(f.fill) {
             node.height = Val::Percent(v * 100.0);
         }
