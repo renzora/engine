@@ -88,6 +88,7 @@ mod tooltip;
 // Menus / interaction / utilities.
 mod chart;
 mod code_editor;
+mod collapsible;
 mod context_menu;
 mod hamburger;
 mod menu;
@@ -171,6 +172,7 @@ pub use popover::*;
 pub use tooltip::*;
 
 pub use chart::*;
+pub use collapsible::collapsible;
 pub use code_editor::*;
 pub use context_menu::*;
 pub use hamburger::*;
@@ -251,6 +253,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<scroll_area::ScrollGrab>();
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(chart::ChartPlugin);
+        app.add_plugins(collapsible::CollapsiblePlugin);
         app.add_plugins(timeline::TimelinePlugin);
         app.add_plugins(gauge::GaugePlugin);
         app.add_plugins(code_editor::CodeEditorPlugin);
