@@ -5,7 +5,9 @@
 //! idle panel costs nothing.
 
 mod ecs;
+mod lumen;
 mod memory;
+mod scripting;
 mod system;
 
 use bevy::prelude::*;
@@ -25,6 +27,8 @@ pub fn register_native_debug(app: &mut App) {
     ecs::register_ecs_stats(app);
     memory::register_memory(app);
     system::register_system_profiler(app);
+    lumen::register_lumen(app);
+    scripting::register_scripting(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
