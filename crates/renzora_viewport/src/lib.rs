@@ -14,6 +14,7 @@ pub mod material_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
+mod native_viewport;
 pub mod persistence;
 pub mod play_mode;
 pub mod render_systems;
@@ -204,6 +205,7 @@ impl Plugin for ViewportPlugin {
         for i in 0..renzora::core::viewport_types::VIEWPORT_COUNT {
             app.register_panel(ViewportPanel { index: i });
         }
+        native_viewport::register_native_viewport(app);
         app.register_panel(CameraPreviewPanel);
     }
 }
@@ -375,6 +377,7 @@ fn resolve_viewport_slots(
     use renzora::core::viewport_types::VIEWPORT_COUNT;
 
     let mut newly_hovered: Option<usize> = None;
+    #[allow(clippy::needless_range_loop)] // `i` indexes several parallel arrays
     for i in 0..VIEWPORT_COUNT {
         let req = &resize_req.slots[i];
         let docked = docking
