@@ -2,9 +2,12 @@
 //! panel: per-controller analog sticks (drawn by a `UiMaterial`), trigger bars,
 //! a button grid, and the non-zero raw-axes list.
 //!
-//! Structure is rebuilt only when the connected-gamepad count changes; the live
-//! values (stick position, trigger fill, button highlight, axis readouts) are
-//! updated in place each frame from `GamepadDebugState`.
+//! Built once into its dock pane. The set of controllers is a reactive
+//! `keyed_list` (rows added/removed as gamepads connect); every live value
+//! (stick position, trigger fill, button highlight, axis readouts) is a
+//! value-diffed binding, so an idle controller costs nothing.
+
+use std::hash::{Hash, Hasher};
 
 use bevy::asset::Asset;
 use bevy::prelude::*;
@@ -16,6 +19,7 @@ use bevy::ui_render::UiMaterialPlugin;
 
 use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::reactive::{bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::rgb;
 
 use crate::state::{GamepadButtonState, GamepadDebugState};
@@ -24,6 +28,14 @@ const PANEL_ID: &str = "gamepad";
 
 fn gray(v: u8) -> Color {
     rgb((v, v, v))
+}
+
+/// Read gamepad `pad` out of the debug state (or `None` if absent/disconnected).
+fn with_pad<R>(world: &World, pad: usize, f: impl FnOnce(&crate::state::GamepadInfo) -> R) -> Option<R> {
+    world
+        .get_resource::<GamepadDebugState>()
+        .and_then(|s| s.gamepads.get(pad))
+        .map(f)
 }
 
 // ── Stick material (UiMaterial) ──────────────────────────────────────────────
@@ -70,7 +82,7 @@ fn stick_sync(
     }
 }
 
-// ── Components ──────────────────────────────────────────────────────────────
+// ── Buttons ───────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq)]
 enum Side {
@@ -121,44 +133,6 @@ impl GpBtn {
     }
 }
 
-/// On the list container: connected-gamepad count last built (rebuild on change).
-#[derive(Component)]
-pub(crate) struct GamepadRoot {
-    count: usize,
-}
-
-#[derive(Component)]
-pub(crate) struct GpStick {
-    pad: usize,
-    side: Side,
-}
-#[derive(Component)]
-pub(crate) struct GpStickLabel {
-    pad: usize,
-    side: Side,
-}
-#[derive(Component)]
-pub(crate) struct GpTriggerFill {
-    pad: usize,
-    side: Side,
-}
-#[derive(Component)]
-pub(crate) struct GpTriggerLabel {
-    pad: usize,
-    side: Side,
-}
-#[derive(Component)]
-pub(crate) struct GpButton {
-    pad: usize,
-    btn: GpBtn,
-    label: Entity,
-}
-#[derive(Component)]
-pub(crate) struct GpRawAxes {
-    pad: usize,
-    last: Vec<String>,
-}
-
 // ── Build ───────────────────────────────────────────────────────────────────
 
 fn text(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: Color) -> Entity {
@@ -188,6 +162,28 @@ fn row(commands: &mut Commands, gap: f32) -> Entity {
         .id()
 }
 
+fn stick_side(world: &World, pad: usize, side: Side) -> Vec2 {
+    with_pad(world, pad, |g| {
+        if side == Side::Left {
+            g.left_stick
+        } else {
+            g.right_stick
+        }
+    })
+    .unwrap_or(Vec2::ZERO)
+}
+
+fn trigger_side(world: &World, pad: usize, side: Side) -> f32 {
+    with_pad(world, pad, |g| {
+        if side == Side::Left {
+            g.left_trigger
+        } else {
+            g.right_trigger
+        }
+    })
+    .unwrap_or(0.0)
+}
+
 fn stick_widget(commands: &mut Commands, fonts: &EmberFonts, pad: usize, side: Side, name: &str) -> Entity {
     let c = col(commands, 4.0);
     let label = text(commands, fonts, name, 11.0, gray(150));
@@ -199,18 +195,32 @@ fn stick_widget(commands: &mut Commands, fonts: &EmberFonts, pad: usize, side: S
                 ..default()
             },
             StickData::default(),
-            GpStick { pad, side },
             Name::new("gp-stick"),
         ))
         .id();
+    // Drive the stick's StickData (→ material) from the live stick position.
+    bind_with(
+        commands,
+        stick,
+        move |w| stick_side(w, pad, side),
+        |w, e, v: &Vec2| {
+            if let Some(mut d) = w.get_mut::<StickData>(e) {
+                d.x = v.x;
+                d.y = v.y;
+            }
+        },
+    );
     let value = commands
         .spawn((
             Text::new("X: 0.00  Y: 0.00"),
             ui_font(&fonts.ui, 10.0),
             TextColor(gray(120)),
-            GpStickLabel { pad, side },
         ))
         .id();
+    bind_text(commands, value, move |w| {
+        let v = stick_side(w, pad, side);
+        format!("X: {:.2}  Y: {:.2}", v.x, v.y)
+    });
     commands.entity(c).add_children(&[label, stick, value]);
     c
 }
@@ -244,19 +254,42 @@ fn trigger_widget(commands: &mut Commands, fonts: &EmberFonts, pad: usize, side:
                 ..default()
             },
             BackgroundColor(gray(80)),
-            GpTriggerFill { pad, side },
             Name::new("gp-trigger-fill"),
         ))
         .id();
+    // Fill height + color from the live trigger value. Quantize to whole pixels
+    // so tiny analog jitter doesn't churn the binding.
+    bind_with(
+        commands,
+        fill,
+        move |w| (trigger_side(w, pad, side).clamp(0.0, 1.0) * 58.0).round() as i32,
+        |w, e, px: &i32| {
+            // Pixel height off the bar's inner extent (60px bar − 2px border);
+            // percent height on an absolutely-positioned node is unreliable.
+            if let Some(mut n) = w.get_mut::<Node>(e) {
+                n.height = Val::Px(*px as f32);
+            }
+            let target = if *px > 6 {
+                rgb((100, 200, 100))
+            } else {
+                gray(80)
+            };
+            if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
+                bg.0 = target;
+            }
+        },
+    );
     commands.entity(bar).add_child(fill);
     let value = commands
         .spawn((
             Text::new("0.00"),
             ui_font(&fonts.ui, 10.0),
             TextColor(gray(120)),
-            GpTriggerLabel { pad, side },
         ))
         .id();
+    bind_text(commands, value, move |w| {
+        format!("{:.2}", trigger_side(w, pad, side))
+    });
     commands.entity(c).add_children(&[label, bar, value]);
     c
 }
@@ -279,9 +312,25 @@ fn button(commands: &mut Commands, fonts: &EmberFonts, pad: usize, label: &str, 
         ))
         .id();
     let tx = text(commands, fonts, label, 10.0, gray(120));
-    commands
-        .entity(b)
-        .insert(GpButton { pad, btn, label: tx });
+    // Highlight the node + label together when the button is pressed.
+    bind_with(
+        commands,
+        b,
+        move |w| with_pad(w, pad, |g| btn.pressed(&g.buttons)).unwrap_or(false),
+        move |w, node, pressed: &bool| {
+            let (bg, fg) = if *pressed {
+                (rgb((80, 160, 80)), Color::WHITE)
+            } else {
+                (rgb((50, 52, 58)), gray(120))
+            };
+            if let Some(mut c) = w.get_mut::<BackgroundColor>(node) {
+                c.0 = bg;
+            }
+            if let Some(mut c) = w.get_mut::<TextColor>(tx) {
+                c.0 = fg;
+            }
+        },
+    );
     commands.entity(b).add_child(tx);
     b
 }
@@ -336,9 +385,51 @@ fn spacer(commands: &mut Commands, h: f32) -> Entity {
         .id()
 }
 
+/// The non-zero raw-axes readout for `pad` (header + one line per axis).
+fn raw_axes_snapshot(pad: usize) -> impl Fn(&World) -> KeyedSnapshot + Send + Sync {
+    move |world| {
+        let lines: Vec<String> = with_pad(world, pad, |g| {
+            if g.raw_axes.is_empty() {
+                Vec::new()
+            } else {
+                std::iter::once("Raw Axes (non-zero)".to_string())
+                    .chain(g.raw_axes.iter().map(|(n, v)| format!("{}: {:.3}", n, v)))
+                    .collect()
+            }
+        })
+        .unwrap_or_default();
+        let items: Vec<(u64, u64)> = lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                l.hash(&mut h);
+                (i as u64, h.finish())
+            })
+            .collect();
+        KeyedSnapshot {
+            items,
+            build: Box::new(move |c, f, i| {
+                let (size, color) = if i == 0 {
+                    (11.0, gray(150))
+                } else {
+                    (10.0, gray(120))
+                };
+                text(c, f, &lines[i], size, color)
+            }),
+        }
+    }
+}
+
 fn build_gamepad(commands: &mut Commands, fonts: &EmberFonts, pad: usize) -> Entity {
     let root = col(commands, 0.0);
     let mut kids: Vec<Entity> = Vec::new();
+
+    // Separator above every gamepad after the first.
+    if pad > 0 {
+        kids.push(spacer(commands, 16.0));
+        kids.push(hsep(commands));
+    }
 
     kids.push(text(commands, fonts, &format!("Gamepad {}", pad + 1), 13.0, gray(230)));
     kids.push(spacer(commands, 8.0));
@@ -376,7 +467,7 @@ fn build_gamepad(commands: &mut Commands, fonts: &EmberFonts, pad: usize) -> Ent
     commands.entity(btn_col).add_children(&btn_rows);
     kids.push(btn_col);
 
-    // Raw axes (filled each frame).
+    // Raw axes — a reactive nested list (header + non-zero axes).
     let raw = commands
         .spawn((
             Node {
@@ -385,10 +476,10 @@ fn build_gamepad(commands: &mut Commands, fonts: &EmberFonts, pad: usize) -> Ent
                 margin: UiRect::top(Val::Px(12.0)),
                 ..default()
             },
-            GpRawAxes { pad, last: Vec::new() },
             Name::new("gp-raw-axes"),
         ))
         .id();
+    keyed_list(commands, raw, raw_axes_snapshot(pad));
     kids.push(raw);
 
     commands.entity(root).add_children(&kids);
@@ -412,6 +503,43 @@ fn empty_state(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
+/// What the top-level list renders at a given slot.
+#[derive(Clone, Copy)]
+enum Slot {
+    Empty,
+    Pad(usize),
+}
+
+/// The keyed-list snapshot for the controller set: one row per connected pad
+/// (added/removed as controllers connect), or a single empty-state row.
+fn gamepad_snapshot(world: &World) -> KeyedSnapshot {
+    let count = world
+        .get_resource::<GamepadDebugState>()
+        .map(|s| s.gamepads.len())
+        .unwrap_or(0);
+    let slots: Vec<Slot> = if count == 0 {
+        vec![Slot::Empty]
+    } else {
+        (0..count).map(Slot::Pad).collect()
+    };
+    // Structure is value-independent (live values are bindings), so the hash is
+    // constant per key; rows only appear/disappear as pads connect.
+    let items: Vec<(u64, u64)> = slots
+        .iter()
+        .map(|s| match s {
+            Slot::Empty => (u64::MAX, 0),
+            Slot::Pad(p) => (*p as u64, 0),
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| match slots[i] {
+            Slot::Empty => empty_state(c, f),
+            Slot::Pad(p) => build_gamepad(c, f, p),
+        }),
+    }
+}
+
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_gamepad(app: &mut App) {
@@ -422,16 +550,7 @@ pub fn register_native_gamepad(app: &mut App) {
     app.register_native_panel(PANEL_ID);
     app.add_systems(
         Update,
-        (
-            (gamepad_content_system, gamepad_structure).chain(),
-            stick_attach,
-            stick_sync,
-            gamepad_sticks,
-            gamepad_triggers,
-            gamepad_buttons,
-            gamepad_raw_axes,
-        )
-            .run_if(in_state(SplashState::Editor)),
+        (gamepad_content_system, stick_attach, stick_sync).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -468,205 +587,12 @@ pub(crate) fn gamepad_content_system(
                     padding: UiRect::all(Val::Px(8.0)),
                     ..default()
                 },
-                GamepadRoot { count: usize::MAX },
                 Name::new("gamepad-list"),
             ))
             .id();
+        // Reactive keyed list drives the controller rows from here on.
+        keyed_list(&mut commands, list, gamepad_snapshot);
         let pane = tab_pane(&mut commands, PANEL_ID, list, true);
         commands.entity(leaf.content).add_child(pane);
-    }
-}
-
-/// Rebuild the per-gamepad structure when the connected count changes.
-pub(crate) fn gamepad_structure(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    state: Option<Res<GamepadDebugState>>,
-    mut roots: Query<(Entity, &mut GamepadRoot)>,
-    children: Query<&Children>,
-) {
-    let (Some(fonts), Some(state)) = (fonts, state) else {
-        return;
-    };
-    let count = state.gamepads.len();
-    for (list, mut root) in &mut roots {
-        if root.count == count {
-            continue;
-        }
-        root.count = count;
-        if let Ok(kids) = children.get(list) {
-            for k in kids.iter() {
-                commands.entity(k).despawn();
-            }
-        }
-        if count == 0 {
-            let e = empty_state(&mut commands, &fonts);
-            commands.entity(list).add_child(e);
-            continue;
-        }
-        let mut kids: Vec<Entity> = Vec::new();
-        for pad in 0..count {
-            if pad > 0 {
-                kids.push(spacer(&mut commands, 16.0));
-                kids.push(hsep(&mut commands));
-            }
-            kids.push(build_gamepad(&mut commands, &fonts, pad));
-        }
-        commands.entity(list).add_children(&kids);
-    }
-}
-
-/// Update stick positions + value labels each frame.
-pub(crate) fn gamepad_sticks(
-    state: Option<Res<GamepadDebugState>>,
-    mut sticks: Query<(&GpStick, &mut StickData)>,
-    mut labels: Query<(&GpStickLabel, &mut Text)>,
-) {
-    let Some(state) = state else {
-        return;
-    };
-    for (s, mut data) in &mut sticks {
-        if let Some(g) = state.gamepads.get(s.pad) {
-            let v = if s.side == Side::Left {
-                g.left_stick
-            } else {
-                g.right_stick
-            };
-            if data.x != v.x || data.y != v.y {
-                data.x = v.x;
-                data.y = v.y;
-            }
-        }
-    }
-    for (l, mut t) in &mut labels {
-        if let Some(g) = state.gamepads.get(l.pad) {
-            let v = if l.side == Side::Left {
-                g.left_stick
-            } else {
-                g.right_stick
-            };
-            *t = Text::new(format!("X: {:.2}  Y: {:.2}", v.x, v.y));
-        }
-    }
-}
-
-/// Update trigger fills + value labels each frame.
-pub(crate) fn gamepad_triggers(
-    state: Option<Res<GamepadDebugState>>,
-    mut fills: Query<(&GpTriggerFill, &mut Node, &mut BackgroundColor)>,
-    mut labels: Query<(&GpTriggerLabel, &mut Text)>,
-) {
-    let Some(state) = state else {
-        return;
-    };
-    for (f, mut node, mut bg) in &mut fills {
-        if let Some(g) = state.gamepads.get(f.pad) {
-            let v = if f.side == Side::Left {
-                g.left_trigger
-            } else {
-                g.right_trigger
-            };
-            // Pixel height off the bar's inner extent (60px bar − 2px border);
-            // percent height on an absolutely-positioned node is unreliable.
-            let h = Val::Px(v.clamp(0.0, 1.0) * 58.0);
-            if node.height != h {
-                node.height = h;
-            }
-            let target = if v > 0.1 {
-                rgb((100, 200, 100))
-            } else {
-                gray(80)
-            };
-            if bg.0 != target {
-                bg.0 = target;
-            }
-        }
-    }
-    for (l, mut t) in &mut labels {
-        if let Some(g) = state.gamepads.get(l.pad) {
-            let v = if l.side == Side::Left {
-                g.left_trigger
-            } else {
-                g.right_trigger
-            };
-            *t = Text::new(format!("{:.2}", v));
-        }
-    }
-}
-
-/// Highlight pressed buttons each frame (node background + label color).
-pub(crate) fn gamepad_buttons(
-    state: Option<Res<GamepadDebugState>>,
-    buttons: Query<(Entity, &GpButton)>,
-    mut bgs: Query<&mut BackgroundColor>,
-    mut colors: Query<&mut TextColor>,
-) {
-    let Some(state) = state else {
-        return;
-    };
-    for (node, b) in &buttons {
-        let Some(g) = state.gamepads.get(b.pad) else {
-            continue;
-        };
-        let pressed = b.btn.pressed(&g.buttons);
-        let (bg, fg) = if pressed {
-            (rgb((80, 160, 80)), Color::WHITE)
-        } else {
-            (rgb((50, 52, 58)), gray(120))
-        };
-        if let Ok(mut c) = bgs.get_mut(node) {
-            if c.0 != bg {
-                c.0 = bg;
-            }
-        }
-        if let Ok(mut c) = colors.get_mut(b.label) {
-            if c.0 != fg {
-                c.0 = fg;
-            }
-        }
-    }
-}
-
-/// Rebuild the non-zero raw-axes list when its formatted text changes.
-pub(crate) fn gamepad_raw_axes(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    state: Option<Res<GamepadDebugState>>,
-    mut areas: Query<(Entity, &mut GpRawAxes)>,
-    children: Query<&Children>,
-) {
-    let (Some(fonts), Some(state)) = (fonts, state) else {
-        return;
-    };
-    for (container, mut area) in &mut areas {
-        let Some(g) = state.gamepads.get(area.pad) else {
-            continue;
-        };
-        let lines: Vec<String> = if g.raw_axes.is_empty() {
-            Vec::new()
-        } else {
-            std::iter::once("Raw Axes (non-zero)".to_string())
-                .chain(g.raw_axes.iter().map(|(n, v)| format!("{}: {:.3}", n, v)))
-                .collect()
-        };
-        if area.last == lines {
-            continue;
-        }
-        area.last = lines.clone();
-        if let Ok(kids) = children.get(container) {
-            for k in kids.iter() {
-                commands.entity(k).despawn();
-            }
-        }
-        let mut rows: Vec<Entity> = Vec::new();
-        for (i, line) in lines.iter().enumerate() {
-            let (size, color) = if i == 0 {
-                (11.0, gray(150))
-            } else {
-                (10.0, gray(120))
-            };
-            rows.push(text(&mut commands, &fonts, line, size, color));
-        }
-        commands.entity(container).add_children(&rows);
     }
 }

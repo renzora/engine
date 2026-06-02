@@ -3,18 +3,19 @@
 //! count, timestamp/frame/auto-scroll toggles), category chips, the log list, and
 //! the command input bar.
 //!
-//! Reactivity is Bevy change detection, not egui's per-frame redraw, and the log
-//! list is **append-only**: the shell builds once into the leaf's `content`
-//! entity, then each frame only the *new* entries (`ConsoleState::pushed` advanced)
-//! are appended as rows and the front is trimmed past [`MAX_ROWS`]. A full rebuild
-//! happens only when the filter set changes. (The egui panel virtualized to
-//! visible rows; rebuilding the whole list every frame here would thrash layout.)
-//! Toolbar controls write straight back to `ConsoleState` — no egui `Arc<Mutex>`.
+//! The shell is built once into the leaf's `content` entity; everything live is
+//! reactive: the log list and chips are `keyed_list`s (only changed/added/removed
+//! rows are touched — never a full respawn, which is what used to freeze the
+//! editor), the count label and toggle icons are value-diffed bindings. Toolbar
+//! clicks + text fields write straight back to `ConsoleState`.
+
+use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
 use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{
     rgb, ACCENT_BLUE, CLOSE_RED, PLACEHOLDER, PLAY_GREEN, TEXT_MUTED, TEXT_PRIMARY, WARN_AMBER,
 };
@@ -49,6 +50,15 @@ fn level_icon(level: LogLevel) -> &'static str {
     }
 }
 
+fn level_idx(level: LogLevel) -> u8 {
+    match level {
+        LogLevel::Info => 0,
+        LogLevel::Success => 1,
+        LogLevel::Warning => 2,
+        LogLevel::Error => 3,
+    }
+}
+
 /// Does this entry pass the current filters? (Mirrors `ConsoleState::filtered_entries`.)
 fn passes(s: &ConsoleState, e: &LogEntry) -> bool {
     let level_ok = match e.level {
@@ -78,53 +88,6 @@ fn passes(s: &ConsoleState, e: &LogEntry) -> bool {
 
 // ── Components ──────────────────────────────────────────────────────────────
 
-/// On the leaf's `content` entity: references to the sub-parts the systems
-/// update, the last-rendered filter signature, the append cursor, and the
-/// current real-row count.
-#[derive(Component)]
-pub(crate) struct ConsoleView {
-    log_list: Entity,
-    count_label: Entity,
-    chips_row: Entity,
-    filter: FilterSig,
-    rendered_pushed: u64,
-    rows: usize,
-}
-
-/// Everything that forces a *full* log-list rebuild when it changes (level
-/// filters, search/category text, hidden/seen categories, timestamp/frame
-/// columns). New entries alone never change this — they're appended.
-#[derive(Clone, PartialEq, Default)]
-struct FilterSig {
-    show_info: bool,
-    show_success: bool,
-    show_warnings: bool,
-    show_errors: bool,
-    search: String,
-    category: String,
-    hidden: usize,
-    seen: usize,
-    show_timestamps: bool,
-    show_frame: bool,
-}
-
-impl FilterSig {
-    fn of(s: &ConsoleState) -> Self {
-        Self {
-            show_info: s.show_info,
-            show_success: s.show_success,
-            show_warnings: s.show_warnings,
-            show_errors: s.show_errors,
-            search: s.search_filter.clone(),
-            category: s.category_filter.clone(),
-            hidden: s.hidden_categories.len(),
-            seen: s.seen_categories.len(),
-            show_timestamps: s.show_timestamps,
-            show_frame: s.show_frame,
-        }
-    }
-}
-
 #[derive(Component, Clone, Copy, PartialEq)]
 pub(crate) enum ConsoleBtn {
     Clear,
@@ -136,12 +99,6 @@ pub(crate) enum ConsoleBtn {
     Timestamps,
     Frame,
     AutoScroll,
-}
-
-/// A toolbar button whose icon recolors with the toggle's on/off state.
-#[derive(Component)]
-pub(crate) struct ConsoleToggle {
-    icon: Entity,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -216,9 +173,28 @@ fn text_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &
     b
 }
 
-/// An icon-only toggle button whose glyph recolors with `on`/`off`.
+/// Current color of a toggle's glyph from the matching `ConsoleState` flag.
+fn toggle_color(world: &World, btn: ConsoleBtn) -> Color {
+    let Some(s) = world.get_resource::<ConsoleState>() else {
+        return rgb(PLACEHOLDER);
+    };
+    let (active, on) = match btn {
+        ConsoleBtn::Info => (s.show_info, ACCENT_BLUE),
+        ConsoleBtn::Success => (s.show_success, PLAY_GREEN),
+        ConsoleBtn::Warn => (s.show_warnings, WARN_AMBER),
+        ConsoleBtn::Error => (s.show_errors, CLOSE_RED),
+        ConsoleBtn::Timestamps => (s.show_timestamps, ACCENT_BLUE),
+        ConsoleBtn::Frame => (s.show_frame, ACCENT_BLUE),
+        ConsoleBtn::AutoScroll => (s.auto_scroll, ACCENT_BLUE),
+        _ => return rgb(PLACEHOLDER),
+    };
+    rgb(if active { on } else { PLACEHOLDER })
+}
+
+/// An icon-only toggle button whose glyph recolors with its `ConsoleState` flag.
 fn toggle_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, btn: ConsoleBtn, size: f32) -> Entity {
     let ic = icon_text(commands, &fonts.phosphor, icon, PLACEHOLDER, size);
+    bind_text_color(commands, ic, move |w| toggle_color(w, btn));
     let b = commands
         .spawn((
             Node {
@@ -231,7 +207,6 @@ fn toggle_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, btn: C
             },
             Interaction::default(),
             btn,
-            ConsoleToggle { icon: ic },
             Name::new("console-toggle"),
         ))
         .id();
@@ -259,8 +234,8 @@ fn mono_text(commands: &mut Commands, fonts: &EmberFonts, text: &str, color: (u8
         .id()
 }
 
-/// Build the whole console into a root node; returns `(root, ConsoleView)`.
-fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleState) -> (Entity, ConsoleView) {
+/// Build the whole console into a root node and wire its reactive parts.
+fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleState) -> Entity {
     let root = commands
         .spawn((
             Node {
@@ -312,9 +287,16 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
         },))
         .id();
     let count_label = label_text(commands, fonts, "0/0", TEXT_MUTED, 11.0);
+    bind_text(commands, count_label, |w| {
+        let Some(s) = w.get_resource::<ConsoleState>() else {
+            return "0/0".to_string();
+        };
+        format!("{}/{}", s.filtered_entries().count(), s.entries.len())
+    });
     let t_frame = toggle_button(commands, fonts, "hash", ConsoleBtn::Frame, 13.0);
     let t_ts = toggle_button(commands, fonts, "clock", ConsoleBtn::Timestamps, 13.0);
     let auto_icon = icon_text(commands, &fonts.phosphor, "check-circle", PLACEHOLDER, 13.0);
+    bind_text_color(commands, auto_icon, |w| toggle_color(w, ConsoleBtn::AutoScroll));
     let auto = commands
         .spawn((
             Node {
@@ -327,7 +309,6 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
             },
             Interaction::default(),
             ConsoleBtn::AutoScroll,
-            ConsoleToggle { icon: auto_icon },
             Name::new("console-autoscroll"),
         ))
         .id();
@@ -339,7 +320,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
         count_label, t_frame, t_ts, auto,
     ]);
 
-    // ── Category chips (filled by refresh) ──
+    // ── Category chips (reactive list) ──
     let chips_row = commands
         .spawn((Node {
             width: Val::Percent(100.0),
@@ -352,10 +333,11 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
             ..default()
         },))
         .id();
+    keyed_list(commands, chips_row, chips_snapshot);
 
     let div1 = hsep(commands);
 
-    // ── Log list (scrollable, flex-fills) ──
+    // ── Log list (scrollable, flex-fills, reactive) ──
     let log_list = commands
         .spawn((Node {
             width: Val::Percent(100.0),
@@ -364,6 +346,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
             ..default()
         },))
         .id();
+    keyed_list(commands, log_list, log_snapshot);
     let scroll = scroll_view_pinned(commands, log_list);
 
     let div2 = hsep(commands);
@@ -396,19 +379,39 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
         .entity(root)
         .add_children(&[toolbar, chips_row, div1, scroll, div2, input_row]);
 
-    let view = ConsoleView {
-        log_list,
-        count_label,
-        chips_row,
-        filter: FilterSig::default(),
-        rendered_pushed: 0,
-        rows: 0,
-    };
-    (root, view)
+    root
 }
 
-fn build_log_row(commands: &mut Commands, fonts: &EmberFonts, entry: &LogEntry, state: &ConsoleState) -> Entity {
-    let color = level_color(entry.level);
+/// Owned snapshot of one log entry's rendering inputs (so the keyed-list builder
+/// can outlive the world borrow).
+#[derive(Clone)]
+struct RowData {
+    level: LogLevel,
+    category: String,
+    message: String,
+    timestamp: f64,
+    frame: u64,
+    show_ts: bool,
+    show_frame: bool,
+}
+
+fn hash_row(r: &RowData) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (
+        level_idx(r.level),
+        &r.category,
+        &r.message,
+        r.timestamp.to_bits(),
+        r.frame,
+        r.show_ts,
+        r.show_frame,
+    )
+        .hash(&mut h);
+    h.finish()
+}
+
+fn build_log_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entity {
+    let color = level_color(r.level);
     let row = commands
         .spawn((Node {
             flex_direction: FlexDirection::Row,
@@ -419,71 +422,148 @@ fn build_log_row(commands: &mut Commands, fonts: &EmberFonts, entry: &LogEntry, 
         .id();
     let mut kids: Vec<Entity> = Vec::new();
 
-    if state.show_timestamps {
-        let secs = entry.timestamp;
+    if r.show_ts {
+        let secs = r.timestamp;
         let mins = (secs / 60.0) as u64;
         let s = secs % 60.0;
         kids.push(mono_text(commands, fonts, &format!("{:02}:{:05.2}", mins, s), DIM, 10.0));
     }
-    if state.show_frame && entry.frame > 0 {
-        kids.push(mono_text(commands, fonts, &format!("f{}", entry.frame), DIM, 10.0));
+    if r.show_frame && r.frame > 0 {
+        kids.push(mono_text(commands, fonts, &format!("f{}", r.frame), DIM, 10.0));
     }
-    kids.push(icon_text(commands, &fonts.phosphor, level_icon(entry.level), color, 12.0));
-    if !entry.category.is_empty() {
-        kids.push(label_text(commands, fonts, &format!("[{}]", entry.category), HYPERLINK, 11.0));
+    kids.push(icon_text(commands, &fonts.phosphor, level_icon(r.level), color, 12.0));
+    if !r.category.is_empty() {
+        kids.push(label_text(commands, fonts, &format!("[{}]", r.category), HYPERLINK, 11.0));
     }
-    let is_repl = entry.category == "Input" || entry.category == "Output";
+    let is_repl = r.category == "Input" || r.category == "Output";
     if is_repl {
-        kids.push(mono_text(commands, fonts, &entry.message, TEXT_PRIMARY, 12.0));
+        kids.push(mono_text(commands, fonts, &r.message, TEXT_PRIMARY, 12.0));
     } else {
-        kids.push(label_text(commands, fonts, &entry.message, TEXT_PRIMARY, 12.0));
+        kids.push(label_text(commands, fonts, &r.message, TEXT_PRIMARY, 12.0));
     }
 
     commands.entity(row).add_children(&kids);
     row
 }
 
-fn rebuild_chips(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleState, chips_row: Entity, children: &Query<&Children>) {
-    if let Ok(kids) = children.get(chips_row) {
-        for k in kids.iter() {
-            commands.entity(k).despawn();
+/// Keyed-list snapshot for the log list: filtered entries (keyed by their
+/// monotonic push index so appends/trims/filter-changes are granular), trimmed
+/// to the last [`MAX_ROWS`], or a single "No log entries" placeholder.
+fn log_snapshot(world: &World) -> KeyedSnapshot {
+    let Some(state) = world.get_resource::<ConsoleState>() else {
+        return KeyedSnapshot {
+            items: Vec::new(),
+            build: Box::new(|_, _, _| Entity::PLACEHOLDER),
+        };
+    };
+    let show_ts = state.show_timestamps;
+    let show_frame = state.show_frame;
+    // Absolute (stable) index of `entries[0]`: total pushed minus what's retained.
+    let base = state.pushed.saturating_sub(state.entries.len() as u64);
+    let mut visible: Vec<(u64, RowData)> = state
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| passes(state, e))
+        .map(|(i, e)| {
+            (
+                base + i as u64,
+                RowData {
+                    level: e.level,
+                    category: e.category.clone(),
+                    message: e.message.clone(),
+                    timestamp: e.timestamp,
+                    frame: e.frame,
+                    show_ts,
+                    show_frame,
+                },
+            )
+        })
+        .collect();
+    let start = visible.len().saturating_sub(MAX_ROWS);
+    let visible = visible.split_off(start);
+
+    if visible.is_empty() {
+        return KeyedSnapshot {
+            items: vec![(u64::MAX, 0)],
+            build: Box::new(|c, f, _| label_text(c, f, "No log entries", TEXT_MUTED, 13.0)),
+        };
+    }
+
+    let items: Vec<(u64, u64)> = visible.iter().map(|(k, r)| (*k, hash_row(r))).collect();
+    let rows: Vec<RowData> = visible.into_iter().map(|(_, r)| r).collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| build_log_row(c, f, &rows[i])),
+    }
+}
+
+/// One chip in the category-filter list.
+enum ChipItem {
+    Tag,
+    Chip { cat: String, hidden: bool },
+}
+
+fn build_chip(commands: &mut Commands, fonts: &EmberFonts, cat: &str, hidden: bool) -> Entity {
+    let (fg, bg) = if hidden {
+        (PLACEHOLDER, Color::NONE)
+    } else {
+        (TEXT_MUTED, rgb(CHIP_BG))
+    };
+    let chip = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(7.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(bg),
+            Interaction::default(),
+            ConsoleChip(cat.to_string()),
+            Name::new("console-chip"),
+        ))
+        .id();
+    let txt = commands
+        .spawn((
+            Text::new(cat),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(fg)),
+        ))
+        .id();
+    commands.entity(chip).add_child(txt);
+    chip
+}
+
+/// Keyed-list snapshot for the category chips (tag icon + one chip per seen
+/// category, keyed by name, rebuilt only when its hidden state flips).
+fn chips_snapshot(world: &World) -> KeyedSnapshot {
+    let mut data: Vec<ChipItem> = Vec::new();
+    let mut items: Vec<(u64, u64)> = Vec::new();
+    if let Some(state) = world.get_resource::<ConsoleState>() {
+        if !state.seen_categories.is_empty() {
+            data.push(ChipItem::Tag);
+            items.push((u64::MAX, 0));
+            for cat in &state.seen_categories {
+                let hidden = state.hidden_categories.contains(cat);
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                cat.hash(&mut h);
+                // Odd, and strictly below the Tag's sentinel key.
+                let key = (h.finish() >> 1) | 1;
+                data.push(ChipItem::Chip {
+                    cat: cat.clone(),
+                    hidden,
+                });
+                items.push((key, hidden as u64));
+            }
         }
     }
-    if state.seen_categories.is_empty() {
-        return;
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| match &data[i] {
+            ChipItem::Tag => icon_text(c, &f.phosphor, "tag", TEXT_MUTED, 11.0),
+            ChipItem::Chip { cat, hidden } => build_chip(c, f, cat, *hidden),
+        }),
     }
-    let mut chips: Vec<Entity> = vec![icon_text(commands, &fonts.phosphor, "tag", TEXT_MUTED, 11.0)];
-    for cat in &state.seen_categories {
-        let hidden = state.hidden_categories.contains(cat);
-        let (fg, bg) = if hidden {
-            (PLACEHOLDER, Color::NONE)
-        } else {
-            (TEXT_MUTED, rgb(CHIP_BG))
-        };
-        let chip = commands
-            .spawn((
-                Node {
-                    padding: UiRect::axes(Val::Px(7.0), Val::Px(2.0)),
-                    border_radius: BorderRadius::all(Val::Px(10.0)),
-                    ..default()
-                },
-                BackgroundColor(bg),
-                Interaction::default(),
-                ConsoleChip(cat.clone()),
-                Name::new("console-chip"),
-            ))
-            .id();
-        let txt = commands
-            .spawn((
-                Text::new(cat),
-                ui_font(&fonts.ui, 10.0),
-                TextColor(rgb(fg)),
-            ))
-            .id();
-        commands.entity(chip).add_child(txt);
-        chips.push(chip);
-    }
-    commands.entity(chips_row).add_children(&chips);
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -496,13 +576,8 @@ pub fn register_native_console(app: &mut App) {
     app.add_systems(
         Update,
         (
-            // Chained so the build's commands (despawn old subtree + insert the
-            // fresh ConsoleView) apply via an auto-inserted sync point BEFORE the
-            // refresh runs — otherwise the refresh can append to a log_list that
-            // the build just despawned and panic at apply time.
-            (console_content_system, console_log_refresh).chain(),
+            console_content_system,
             console_buttons,
-            console_toolbar_sync,
             console_chips,
             console_text_sync,
         )
@@ -537,106 +612,9 @@ pub(crate) fn console_content_system(
             continue;
         }
         // `scroll = false`: the console manages its own internal log scroll.
-        let (root, view) = build_console(&mut commands, &fonts, &state);
-        commands.entity(root).insert(view);
+        let root = build_console(&mut commands, &fonts, &state);
         let pane = tab_pane(&mut commands, PANEL_ID, root, false);
         commands.entity(leaf.content).add_child(pane);
-    }
-}
-
-/// Keep the log list in sync: full rebuild on filter change, otherwise append
-/// only the new entries and trim the front past [`MAX_ROWS`].
-pub(crate) fn console_log_refresh(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    state: Res<ConsoleState>,
-    mut views: Query<&mut ConsoleView>,
-    children: Query<&Children>,
-    mut texts: Query<&mut Text>,
-) {
-    let Some(fonts) = fonts else {
-        return;
-    };
-    let fsig = FilterSig::of(&state);
-    for mut view in &mut views {
-        // The log_list handle can go stale if a dock rebuild despawned and reused
-        // its slot — skip rather than despawn/parent a now-different entity.
-        if commands.get_entity(view.log_list).is_err() {
-            continue;
-        }
-        let filter_changed = view.filter != fsig;
-        // `pushed` ran backwards → the log was cleared; rebuild from scratch.
-        let reset = view.rendered_pushed > state.pushed;
-        let has_new = state.pushed > view.rendered_pushed;
-        if !filter_changed && !reset && !has_new {
-            continue;
-        }
-
-        if filter_changed || reset {
-            view.filter = fsig.clone();
-            if let Ok(kids) = children.get(view.log_list) {
-                for k in kids.iter() {
-                    commands.entity(k).despawn();
-                }
-            }
-            let filtered: Vec<&LogEntry> = state.filtered_entries().collect();
-            let start = filtered.len().saturating_sub(MAX_ROWS);
-            if filtered.is_empty() {
-                let empty = label_text(&mut commands, &fonts, "No log entries", TEXT_MUTED, 13.0);
-                commands.entity(view.log_list).add_child(empty);
-                view.rows = 0;
-            } else {
-                let rows: Vec<Entity> = filtered[start..]
-                    .iter()
-                    .map(|e| build_log_row(&mut commands, &fonts, e, &state))
-                    .collect();
-                view.rows = rows.len();
-                commands.entity(view.log_list).add_children(&rows);
-            }
-            rebuild_chips(&mut commands, &fonts, &state, view.chips_row, &children);
-        } else {
-            // Append only the entries pushed since last frame (filtered).
-            let new = (state.pushed - view.rendered_pushed).min(state.entries.len() as u64) as usize;
-            let skip = state.entries.len() - new;
-            let rows: Vec<Entity> = state
-                .entries
-                .iter()
-                .skip(skip)
-                .filter(|e| passes(&state, e))
-                .map(|e| build_log_row(&mut commands, &fonts, e, &state))
-                .collect();
-            if !rows.is_empty() {
-                if view.rows == 0 {
-                    // Clear the "No log entries" placeholder.
-                    if let Ok(kids) = children.get(view.log_list) {
-                        for k in kids.iter() {
-                            commands.entity(k).despawn();
-                        }
-                    }
-                }
-                let total = view.rows + rows.len();
-                if total > MAX_ROWS {
-                    let excess = total - MAX_ROWS;
-                    if let Ok(kids) = children.get(view.log_list) {
-                        for k in kids.iter().take(excess) {
-                            commands.entity(k).despawn();
-                        }
-                    }
-                    view.rows = MAX_ROWS;
-                } else {
-                    view.rows = total;
-                }
-                commands.entity(view.log_list).add_children(&rows);
-            }
-        }
-
-        view.rendered_pushed = state.pushed;
-
-        if let Ok(mut t) = texts.get_mut(view.count_label) {
-            let filtered_count = state.filtered_entries().count();
-            *t = Text::new(format!("{}/{}", filtered_count, state.entries.len()));
-        }
-        // Auto-follow the bottom is handled by the pinned scroll view.
     }
 }
 
@@ -659,32 +637,6 @@ pub(crate) fn console_buttons(
             ConsoleBtn::Timestamps => state.show_timestamps = !state.show_timestamps,
             ConsoleBtn::Frame => state.show_frame = !state.show_frame,
             ConsoleBtn::AutoScroll => state.auto_scroll = !state.auto_scroll,
-        }
-    }
-}
-
-/// Recolor toggle icons from the current flags (guarded so it never churns).
-pub(crate) fn console_toolbar_sync(
-    state: Res<ConsoleState>,
-    toggles: Query<(&ConsoleBtn, &ConsoleToggle)>,
-    mut colors: Query<&mut TextColor>,
-) {
-    for (btn, tog) in &toggles {
-        let (active, on) = match btn {
-            ConsoleBtn::Info => (state.show_info, ACCENT_BLUE),
-            ConsoleBtn::Success => (state.show_success, PLAY_GREEN),
-            ConsoleBtn::Warn => (state.show_warnings, WARN_AMBER),
-            ConsoleBtn::Error => (state.show_errors, CLOSE_RED),
-            ConsoleBtn::Timestamps => (state.show_timestamps, ACCENT_BLUE),
-            ConsoleBtn::Frame => (state.show_frame, ACCENT_BLUE),
-            ConsoleBtn::AutoScroll => (state.auto_scroll, ACCENT_BLUE),
-            _ => continue,
-        };
-        let target = rgb(if active { on } else { PLACEHOLDER });
-        if let Ok(mut c) = colors.get_mut(tog.icon) {
-            if c.0 != target {
-                c.0 = target;
-            }
         }
     }
 }

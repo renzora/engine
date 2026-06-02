@@ -2,15 +2,19 @@
 //! History panel: Undo Stack / Current State / Redo Stack sections of clickable
 //! rows that jump through the undo/redo stack.
 //!
-//! Built once into its dock pane; the row list rebuilds only when the
-//! `UndoStacks` labels change (compared via a signature). Clicks push undo/redo
-//! through `EditorCommands` — the same write path the egui panel used.
+//! Built once into its dock pane; the row list is a reactive `keyed_list` that
+//! diffs `(key, hash)` and rebuilds only changed rows (no manual gate). Hover is
+//! a `bind_bg` effect. Clicks push undo/redo through `EditorCommands` — the same
+//! write path the egui panel used.
+
+use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
 use renzora_editor::EditorCommands;
 use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, HEADER_BG, PLACEHOLDER, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_undo::UndoStacks;
 
@@ -22,30 +26,105 @@ const CURRENT_BG_A: f32 = 40.0 / 255.0;
 /// Hover wash on past/future rows (egui used white @ 12/255).
 const HOVER_A: f32 = 12.0 / 255.0;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum HistoryAction {
     Undo(usize),
     Redo(usize),
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum RowKind {
     Past,
     Current,
     Future,
 }
 
-/// On the list container: the last-rendered labels, to rebuild only on change.
-#[derive(Component)]
-pub(crate) struct HistoryView {
-    sig: (Vec<String>, Vec<String>),
-}
-
 /// A clickable history row. `action` is `None` for the current state.
 #[derive(Component)]
 pub(crate) struct HistoryRow {
     action: Option<HistoryAction>,
-    current: bool,
+}
+
+/// One entry in the flattened list (section header / hint / row / empty state).
+#[derive(Clone)]
+enum Item {
+    Header(&'static str),
+    Hint(&'static str),
+    Row {
+        icon: &'static str,
+        label: String,
+        kind: RowKind,
+        action: Option<HistoryAction>,
+    },
+    Empty,
+}
+
+/// Content hash for an item — bump only when its rendering would differ.
+fn hash_item(it: &Item) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    match it {
+        Item::Header(s) => (0u8, s).hash(&mut h),
+        Item::Hint(s) => (1u8, s).hash(&mut h),
+        Item::Empty => 2u8.hash(&mut h),
+        Item::Row {
+            icon,
+            label,
+            kind,
+            action,
+        } => (3u8, icon, label, kind, action).hash(&mut h),
+    }
+    h.finish()
+}
+
+/// Flatten the undo/redo labels into the display list (mirrors the egui layout).
+fn build_items(undo: &[String], redo: &[String]) -> Vec<Item> {
+    if undo.is_empty() && redo.is_empty() {
+        return vec![Item::Empty];
+    }
+
+    let mut items = Vec::new();
+    let n_undo = undo.len();
+
+    items.push(Item::Header("Undo Stack"));
+    if n_undo <= 1 {
+        items.push(Item::Hint("No earlier states."));
+    } else {
+        // Exclude the most recent entry — it IS the current state.
+        for (i, label) in undo.iter().take(n_undo - 1).enumerate() {
+            items.push(Item::Row {
+                icon: "arrow-bend-up-left",
+                label: label.clone(),
+                kind: RowKind::Past,
+                action: Some(HistoryAction::Undo(n_undo - 1 - i)),
+            });
+        }
+    }
+
+    items.push(Item::Header("Current State"));
+    let current_label = undo.last().map(|s| s.as_str()).unwrap_or("Initial state");
+    items.push(Item::Row {
+        icon: "caret-right",
+        label: current_label.to_string(),
+        kind: RowKind::Current,
+        action: None,
+    });
+
+    items.push(Item::Header("Redo Stack"));
+    if redo.is_empty() {
+        items.push(Item::Hint("Nothing to redo."));
+    } else {
+        // Most-immediate redo first (back of the deque).
+        for (i, label) in redo.iter().rev().enumerate() {
+            items.push(Item::Row {
+                icon: "arrow-bend-up-right",
+                label: label.clone(),
+                kind: RowKind::Future,
+                action: Some(HistoryAction::Redo(i + 1)),
+            });
+        }
+    }
+
+    items
 }
 
 // ── Build helpers ─────────────────────────────────────────────────────────
@@ -107,7 +186,7 @@ fn history_row(
         RowKind::Future => (TEXT_MUTED, TEXT_MUTED),
     };
     let current = kind == RowKind::Current;
-    let bg = if current {
+    let base = if current {
         rgb(CURRENT_BG).with_alpha(CURRENT_BG_A)
     } else {
         Color::NONE
@@ -122,9 +201,9 @@ fn history_row(
             column_gap: Val::Px(6.0),
             ..default()
         },
-        BackgroundColor(bg),
+        BackgroundColor(base),
         Interaction::default(),
-        HistoryRow { action, current },
+        HistoryRow { action },
         Name::new("history-row"),
     ));
     if !current {
@@ -133,6 +212,18 @@ fn history_row(
         ));
     }
     let row = row.id();
+    // Hover wash (past/future only) — value-diffed effect, no per-frame system.
+    bind_bg(commands, row, move |world| {
+        if current {
+            return base;
+        }
+        match world.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(1.0, 1.0, 1.0, HOVER_A)
+            }
+            _ => Color::NONE,
+        }
+    });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, 12.0);
     let tx = commands
         .spawn((
@@ -177,69 +268,45 @@ fn empty_state(commands: &mut Commands, fonts: &EmberFonts, icon: &str, title: &
     root
 }
 
-/// Rebuild the list's children from the current undo/redo labels.
-fn populate(commands: &mut Commands, fonts: &EmberFonts, list: Entity, undo: &[String], redo: &[String]) {
-    if undo.is_empty() && redo.is_empty() {
-        let e = empty_state(
+fn build_item(commands: &mut Commands, fonts: &EmberFonts, it: &Item) -> Entity {
+    match it {
+        Item::Header(s) => section_header(commands, fonts, s),
+        Item::Hint(s) => section_hint(commands, fonts, s),
+        Item::Empty => empty_state(
             commands,
             fonts,
             "clock-counter-clockwise",
             "No History",
             "Actions you perform will appear here.",
-        );
-        commands.entity(list).add_child(e);
-        return;
+        ),
+        Item::Row {
+            icon,
+            label,
+            kind,
+            action,
+        } => history_row(commands, fonts, icon, label, *kind, *action),
     }
+}
 
-    let mut kids: Vec<Entity> = Vec::new();
-    let n_undo = undo.len();
-
-    kids.push(section_header(commands, fonts, "Undo Stack"));
-    if n_undo <= 1 {
-        kids.push(section_hint(commands, fonts, "No earlier states."));
-    } else {
-        // Exclude the most recent entry — it IS the current state.
-        for (i, label) in undo.iter().take(n_undo - 1).enumerate() {
-            kids.push(history_row(
-                commands,
-                fonts,
-                "arrow-bend-up-left",
-                label,
-                RowKind::Past,
-                Some(HistoryAction::Undo(n_undo - 1 - i)),
-            ));
+/// The keyed-list snapshot: index-keyed (the list reshuffles wholesale on
+/// undo/redo, which is rare), content-hashed so unchanged rows are kept.
+fn history_snapshot(world: &World) -> KeyedSnapshot {
+    let data: Vec<Item> = match world.get_resource::<UndoStacks>() {
+        Some(stacks) => {
+            let (undo, redo) = stacks.labels(&stacks.active);
+            build_items(&undo, &redo)
         }
+        None => Vec::new(),
+    };
+    let items: Vec<(u64, u64)> = data
+        .iter()
+        .enumerate()
+        .map(|(i, it)| (i as u64, hash_item(it)))
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| build_item(c, f, &data[i])),
     }
-
-    kids.push(section_header(commands, fonts, "Current State"));
-    let current_label = undo.last().map(|s| s.as_str()).unwrap_or("Initial state");
-    kids.push(history_row(
-        commands,
-        fonts,
-        "caret-right",
-        current_label,
-        RowKind::Current,
-        None,
-    ));
-
-    kids.push(section_header(commands, fonts, "Redo Stack"));
-    if redo.is_empty() {
-        kids.push(section_hint(commands, fonts, "Nothing to redo."));
-    } else {
-        // Most-immediate redo first (back of the deque).
-        for (i, label) in redo.iter().rev().enumerate() {
-            kids.push(history_row(
-                commands,
-                fonts,
-                "arrow-bend-up-right",
-                label,
-                RowKind::Future,
-                Some(HistoryAction::Redo(i + 1)),
-            ));
-        }
-    }
-
-    commands.entity(list).add_children(&kids);
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -250,12 +317,7 @@ pub fn register_native_history(app: &mut App) {
     app.register_native_panel(PANEL_ID);
     app.add_systems(
         Update,
-        (
-            (history_content_system, history_refresh).chain(),
-            history_click,
-            history_hover,
-        )
-            .run_if(in_state(SplashState::Editor)),
+        (history_content_system, history_click).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -292,41 +354,13 @@ pub(crate) fn history_content_system(
                     padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(4.0), Val::Px(8.0)),
                     ..default()
                 },
-                HistoryView {
-                    sig: (Vec::new(), vec!["\u{0}".to_string()]), // force first rebuild
-                },
                 Name::new("history-list"),
             ))
             .id();
+        // Reactive keyed list drives the rows from here on (build once).
+        keyed_list(&mut commands, list, history_snapshot);
         let pane = tab_pane(&mut commands, PANEL_ID, list, true);
         commands.entity(leaf.content).add_child(pane);
-    }
-}
-
-/// Rebuild the row list when the undo/redo labels change.
-pub(crate) fn history_refresh(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    stacks: Option<Res<UndoStacks>>,
-    mut views: Query<(Entity, &mut HistoryView)>,
-    children: Query<&Children>,
-) {
-    let (Some(fonts), Some(stacks)) = (fonts, stacks) else {
-        return;
-    };
-    let (undo, redo) = stacks.labels(&stacks.active);
-    let sig = (undo.clone(), redo.clone());
-    for (list, mut view) in &mut views {
-        if view.sig == sig {
-            continue;
-        }
-        view.sig = sig.clone();
-        if let Ok(kids) = children.get(list) {
-            for k in kids.iter() {
-                commands.entity(k).despawn();
-            }
-        }
-        populate(&mut commands, &fonts, list, &undo, &redo);
     }
 }
 
@@ -359,20 +393,5 @@ pub(crate) fn history_click(
             }
             None => {}
         }
-    }
-}
-
-/// Hover wash on past/future rows (current row keeps its selection tint).
-pub(crate) fn history_hover(
-    mut rows: Query<(&Interaction, &HistoryRow, &mut BackgroundColor), Changed<Interaction>>,
-) {
-    for (interaction, row, mut bg) in &mut rows {
-        if row.current {
-            continue;
-        }
-        bg.0 = match interaction {
-            Interaction::Hovered | Interaction::Pressed => Color::srgba(1.0, 1.0, 1.0, HOVER_A),
-            Interaction::None => Color::NONE,
-        };
     }
 }
