@@ -21,6 +21,8 @@ mod inspectors;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
+mod native_strips;
+#[cfg(not(target_arch = "wasm32"))]
 mod render;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -28,6 +30,7 @@ impl Plugin for MixerPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] MixerPlugin");
         native::build(app);
+        app.add_plugins(native_strips::NativeMixer);
     }
 }
 
