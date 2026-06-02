@@ -11,8 +11,9 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 use bevy_egui::egui::Color32;
 
+use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
 use renzora_editor::EditorCommands;
-use renzora_ember::font::{icon_glyph, icon_text, EmberFonts};
+use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
@@ -68,14 +69,17 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let gap2 = gap(commands, 6.0);
     let play = action_btn(commands, fonts, HeaderAction::Play, "play");
     let scripts = action_btn(commands, fonts, HeaderAction::Scripts, "code");
+    let gap3 = gap(commands, 8.0);
+    let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
+    let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
     let spacer = commands
         .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-hdr-spacer")))
         .id();
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
 
-    commands
-        .entity(row)
-        .add_children(&[undo, redo, gap1, save, gap2, play, scripts, spacer, maximize]);
+    commands.entity(row).add_children(&[
+        undo, redo, gap1, save, gap2, play, scripts, gap3, view_dd, mode_dd, spacer, maximize,
+    ]);
     row
 }
 
@@ -118,8 +122,276 @@ pub(crate) fn register(app: &mut App) {
     use renzora_editor::SplashState;
     app.add_systems(
         Update,
-        (update_header_visuals, header_action_click).run_if(in_state(SplashState::Editor)),
+        (
+            update_header_visuals,
+            header_action_click,
+            dropdown_toggle,
+            dropdown_option_click,
+            update_dropdown_visuals,
+        )
+            .run_if(in_state(SplashState::Editor)),
     );
+}
+
+// ── View / Mode dropdowns (A2) ───────────────────────────────────────────────
+
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum DropKind {
+    View,
+    Mode,
+}
+
+impl DropKind {
+    /// Option labels for this dropdown, in `ALL` order.
+    fn labels(self) -> Vec<&'static str> {
+        match self {
+            DropKind::View => ViewportView::ALL.iter().map(|v| v.label()).collect(),
+            DropKind::Mode => ViewportMode::ALL.iter().map(|m| m.label()).collect(),
+        }
+    }
+}
+
+/// The dropdown trigger button; owns its popup panel + label text entity.
+#[derive(Component)]
+struct DropTrigger {
+    kind: DropKind,
+    panel: Entity,
+    label: Entity,
+    open: bool,
+}
+
+/// A selectable row inside a dropdown popup (`index` into `kind.labels()`).
+#[derive(Component)]
+struct DropOption {
+    kind: DropKind,
+    index: usize,
+}
+
+fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: f32) -> Entity {
+    let labels = kind.labels();
+
+    // Popup panel (hidden until the trigger is clicked).
+    let mut rows = Vec::with_capacity(labels.len());
+    for (i, label) in labels.iter().enumerate() {
+        let txt = commands
+            .spawn((
+                Text::new(*label),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(Color::srgb_u8(230, 230, 240)),
+            ))
+            .id();
+        let row = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(BTN_H),
+                    align_items: AlignItems::Center,
+                    padding: UiRect::left(Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                DropOption { kind, index: i },
+                HoverCursor(SystemCursorIcon::Pointer),
+                Name::new("vp-drop-option"),
+            ))
+            .id();
+        commands.entity(row).add_child(txt);
+        rows.push(row);
+    }
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                min_width: Val::Px(120.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(30, 30, 38)),
+            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            GlobalZIndex(600),
+            Name::new("vp-drop-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_children(&rows);
+
+    // Trigger button: current label + caret.
+    let label_e = commands
+        .spawn((
+            Text::new(labels.first().copied().unwrap_or("")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(Color::srgb_u8(230, 230, 240)),
+        ))
+        .id();
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (200, 200, 210), 10.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                width: Val::Px(width),
+                height: Val::Px(BTN_H),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::horizontal(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(50, 50, 62)),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            DropTrigger {
+                kind,
+                panel,
+                label: label_e,
+                open: false,
+            },
+            Name::new("vp-dropdown"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[label_e, caret]);
+
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("vp-dropdown-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[trigger, panel]);
+    wrap
+}
+
+fn dropdown_toggle(
+    mut triggers: Query<(&Interaction, &mut DropTrigger), Changed<Interaction>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (interaction, mut t) in &mut triggers {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        t.open = !t.open;
+        if let Ok(mut n) = nodes.get_mut(t.panel) {
+            n.display = if t.open { Display::Flex } else { Display::None };
+        }
+    }
+}
+
+fn dropdown_option_click(
+    options: Query<(&Interaction, &DropOption), Changed<Interaction>>,
+    mut triggers: Query<&mut DropTrigger>,
+    mut nodes: Query<&mut Node>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, opt) in &options {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let idx = opt.index;
+        match opt.kind {
+            DropKind::View => cmds.push(move |w: &mut World| {
+                if let (Some(mut s), Some(v)) = (
+                    w.get_resource_mut::<ViewportSettings>(),
+                    ViewportView::ALL.get(idx).copied(),
+                ) {
+                    s.viewport_view = v;
+                }
+            }),
+            DropKind::Mode => cmds.push(move |w: &mut World| {
+                if let (Some(mut s), Some(m)) = (
+                    w.get_resource_mut::<ViewportSettings>(),
+                    ViewportMode::ALL.get(idx).copied(),
+                ) {
+                    s.viewport_mode = m;
+                }
+            }),
+        }
+        // Close the dropdown this option belongs to.
+        for mut t in &mut triggers {
+            if t.kind == opt.kind {
+                t.open = false;
+                if let Ok(mut n) = nodes.get_mut(t.panel) {
+                    n.display = Display::None;
+                }
+            }
+        }
+    }
+}
+
+fn update_dropdown_visuals(
+    settings: Option<Res<ViewportSettings>>,
+    theme: Option<Res<ThemeManager>>,
+    triggers: Query<(&DropTrigger, &Interaction, &mut BackgroundColor)>,
+    options: Query<
+        (&DropOption, &Interaction, &mut BackgroundColor),
+        Without<DropTrigger>,
+    >,
+    mut texts: Query<&mut Text>,
+) {
+    let (Some(settings), Some(theme)) = (settings, theme) else {
+        return;
+    };
+    let t = &theme.active_theme;
+    let accent = col(t.semantic.accent.to_color32());
+    let inactive = col(t.widgets.inactive_bg.to_color32());
+    let hovered = col(t.widgets.hovered_bg.to_color32());
+
+    let current_view = ViewportView::ALL
+        .iter()
+        .position(|v| *v == settings.viewport_view);
+    let current_mode = ViewportMode::ALL
+        .iter()
+        .position(|m| *m == settings.viewport_mode);
+    let current = |k: DropKind| match k {
+        DropKind::View => current_view,
+        DropKind::Mode => current_mode,
+    };
+
+    for (trig, interaction, mut bg) in triggers {
+        // Trigger label tracks the live setting.
+        if let Ok(mut text) = texts.get_mut(trig.label) {
+            let label = match trig.kind {
+                DropKind::View => settings.viewport_view.label(),
+                DropKind::Mode => settings.viewport_mode.label(),
+            };
+            if text.0 != label {
+                text.0 = label.to_string();
+            }
+        }
+        let want = if trig.open || *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            inactive
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+
+    for (opt, interaction, mut bg) in options {
+        let is_current = current(opt.kind) == Some(opt.index);
+        let want = if is_current {
+            accent
+        } else if *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            Color::NONE
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
 }
 
 /// Resolved header palette + the booleans that drive each button's glyph,
