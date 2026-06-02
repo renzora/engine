@@ -271,6 +271,8 @@ impl Plugin for DockPlugin {
                     // Rebuild last, in the same frame the model mutates, so the
                     // dock doesn't show a stale layout for a frame (flicker).
                     rebuild_dock,
+                    // Toggle per-tab pane visibility after any rebuild.
+                    sync_panes,
                 )
                     .chain(),
             );
@@ -328,13 +330,82 @@ pub struct DockLeaf {
     overlay: Entity,
 }
 
-/// Records which panel id is currently built into a leaf's `content` entity.
-/// Both the shell (placeholders) and a panel's own bevy-native content system
-/// read/write this so they share one source of truth and never desync: a system
-/// rebuilds only when `PanelContent.0 != leaf.active` (panel switched) or its
-/// source data changed.
-#[derive(Component, Default)]
-pub struct PanelContent(pub String);
+/// A per-tab content pane that lives inside a leaf's `content` container. Panes
+/// are built **once** (lazily, when their tab is first activated) and kept; tab
+/// switches just toggle their [`Node::display`] via [`sync_panes`] instead of
+/// despawning + rebuilding. This is the persistent-content model — it avoids the
+/// despawn/rebuild churn (and entity-reuse races) of swapping a single content
+/// node on every tab switch.
+#[derive(Component)]
+pub struct TabPane {
+    pub id: String,
+}
+
+/// Wrap built panel `content` in a tab pane for tab `id`. `scroll` adds a
+/// wheel-scrollable viewport + scrollbar (use `false` for panels that manage
+/// their own scrolling, e.g. the console or a viewport). Panes are built only
+/// when their tab is active, so they start visible; [`sync_panes`] toggles
+/// visibility thereafter. Add the returned pane to the leaf's `content`.
+pub fn tab_pane(commands: &mut Commands, id: &str, content: Entity, scroll: bool) -> Entity {
+    let outer = if scroll {
+        crate::widgets::scroll_view(commands, content)
+    } else {
+        let p = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
+                    flex_direction: FlexDirection::Column,
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                Name::new(format!("pane:{id}")),
+            ))
+            .id();
+        commands.entity(p).add_child(content);
+        p
+    };
+    commands.entity(outer).insert(TabPane { id: id.to_string() });
+    outer
+}
+
+/// Toggle each pane's visibility to match its leaf's active tab, and drop panes
+/// whose tab has left the leaf (e.g. moved to another leaf). Runs every frame;
+/// writes are guarded so it never churns.
+fn sync_panes(
+    mut commands: Commands,
+    leaves: Query<&DockLeaf>,
+    children: Query<&Children>,
+    panes: Query<&TabPane>,
+    mut nodes: Query<&mut Node>,
+) {
+    for leaf in &leaves {
+        let Ok(kids) = children.get(leaf.content) else {
+            continue;
+        };
+        for child in kids.iter() {
+            let Ok(pane) = panes.get(child) else {
+                continue;
+            };
+            if !leaf.tabs.contains(&pane.id) {
+                commands.entity(child).despawn();
+                continue;
+            }
+            let display = if pane.id == leaf.active {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if let Ok(mut n) = nodes.get_mut(child) {
+                if n.display != display {
+                    n.display = display;
+                }
+            }
+        }
+    }
+}
 
 #[derive(Component)]
 struct InsertMarker;

@@ -21,8 +21,10 @@ fn panel_column(
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                // Size to content (not 100% height) so it can overflow — and
+                // therefore scroll within — its host pane.
                 flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
                 align_items: AlignItems::FlexStart,
                 padding: UiRect::all(Val::Px(16.0)),
                 row_gap: Val::Px(12.0),

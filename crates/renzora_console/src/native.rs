@@ -12,14 +12,13 @@
 //! Toolbar controls write straight back to `ConsoleState` — no egui `Arc<Mutex>`.
 
 use bevy::prelude::*;
-use bevy::ui::ScrollPosition;
 
-use renzora_ember::dock::{DockLeaf, PanelContent};
+use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{
     rgb, ACCENT_BLUE, CLOSE_RED, PLACEHOLDER, PLAY_GREEN, TEXT_MUTED, TEXT_PRIMARY, WARN_AMBER,
 };
-use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
+use renzora_ember::widgets::{scroll_view_pinned, text_input, EmberTextInput};
 
 use crate::state::{ConsoleState, LogEntry, LogLevel};
 
@@ -85,7 +84,6 @@ fn passes(s: &ConsoleState, e: &LogEntry) -> bool {
 #[derive(Component)]
 pub(crate) struct ConsoleView {
     log_list: Entity,
-    scroll: Entity,
     count_label: Entity,
     chips_row: Entity,
     filter: FilterSig,
@@ -366,7 +364,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
             ..default()
         },))
         .id();
-    let scroll = scroll_view(commands, log_list);
+    let scroll = scroll_view_pinned(commands, log_list);
 
     let div2 = hsep(commands);
 
@@ -400,7 +398,6 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
 
     let view = ConsoleView {
         log_list,
-        scroll,
         count_label,
         chips_row,
         filter: FilterSig::default(),
@@ -515,13 +512,15 @@ pub fn register_native_console(app: &mut App) {
 
 // ── Systems ───────────────────────────────────────────────────────────────
 
-/// Build the console shell once into the active leaf's `content` entity.
+/// Build the console pane once (lazily) when its tab is first activated, then
+/// keep it — `sync_panes` toggles its visibility on tab switch (no despawn).
 pub(crate) fn console_content_system(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     state: Res<ConsoleState>,
     leaves: Query<&DockLeaf>,
-    content_q: Query<(Option<&PanelContent>, Option<&Children>)>,
+    children: Query<&Children>,
+    panes: Query<&TabPane>,
 ) {
     let Some(fonts) = fonts else {
         return;
@@ -530,22 +529,18 @@ pub(crate) fn console_content_system(
         if leaf.active != PANEL_ID {
             continue;
         }
-        let Ok((pc, children)) = content_q.get(leaf.content) else {
-            continue;
-        };
-        if pc.map(|p| p.0.as_str()) == Some(PANEL_ID) {
+        let exists = children.get(leaf.content).is_ok_and(|kids| {
+            kids.iter()
+                .any(|c| panes.get(c).is_ok_and(|p| p.id == PANEL_ID))
+        });
+        if exists {
             continue;
         }
-        if let Some(kids) = children {
-            for k in kids.iter() {
-                commands.entity(k).despawn();
-            }
-        }
+        // `scroll = false`: the console manages its own internal log scroll.
         let (root, view) = build_console(&mut commands, &fonts, &state);
-        commands.entity(leaf.content).add_child(root);
-        commands
-            .entity(leaf.content)
-            .insert((PanelContent(PANEL_ID.to_string()), view));
+        commands.entity(root).insert(view);
+        let pane = tab_pane(&mut commands, PANEL_ID, root, false);
+        commands.entity(leaf.content).add_child(pane);
     }
 }
 
@@ -558,7 +553,6 @@ pub(crate) fn console_log_refresh(
     mut views: Query<&mut ConsoleView>,
     children: Query<&Children>,
     mut texts: Query<&mut Text>,
-    mut scrolls: Query<&mut ScrollPosition>,
 ) {
     let Some(fonts) = fonts else {
         return;
@@ -642,11 +636,7 @@ pub(crate) fn console_log_refresh(
             let filtered_count = state.filtered_entries().count();
             *t = Text::new(format!("{}/{}", filtered_count, state.entries.len()));
         }
-        if state.auto_scroll {
-            if let Ok(mut sp) = scrolls.get_mut(view.scroll) {
-                sp.y = 1.0e6;
-            }
-        }
+        // Auto-follow the bottom is handled by the pinned scroll view.
     }
 }
 

@@ -13,7 +13,7 @@
 use bevy::prelude::*;
 
 use renzora::{EditorUiBackend, NativePanelIds};
-use renzora_ember::dock::{Dock, DockArea, DockDirty, DockLeaf, DockTab, PanelContent};
+use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, ui_font, EmberFonts};
 use renzora_ember::theme::{
     rgb, ACCENT_BLUE, DIVIDER, HEADER_BG, PLACEHOLDER, PLAY_GREEN, TAB_ACTIVE_BG, TEXT_MUTED,
@@ -161,13 +161,16 @@ fn content_dispatch(
     fonts: Option<Res<EmberFonts>>,
     native: Option<Res<NativePanelIds>>,
     leaves: Query<&DockLeaf>,
-    shows: Query<&PanelContent>,
+    panes: Query<&TabPane>,
     children_q: Query<&Children>,
 ) {
     let Some(fonts) = fonts else {
         return;
     };
     for leaf in &leaves {
+        if leaf.active.is_empty() {
+            continue;
+        }
         // A panel crate renders this id itself — leave its content alone.
         if native
             .as_ref()
@@ -175,21 +178,18 @@ fn content_dispatch(
         {
             continue;
         }
-        let current = shows.get(leaf.content).ok().map(|s| s.0.as_str());
-        if current == Some(leaf.active.as_str()) {
+        // Build the active tab's pane once (lazily). If it already exists, do
+        // nothing — `sync_panes` toggles its visibility on tab switch.
+        let exists = children_q.get(leaf.content).is_ok_and(|kids| {
+            kids.iter()
+                .any(|c| panes.get(c).is_ok_and(|p| p.id == leaf.active))
+        });
+        if exists {
             continue;
         }
-        // Clear whatever the content was showing, then build for the new panel.
-        if let Ok(kids) = children_q.get(leaf.content) {
-            for child in kids.iter() {
-                commands.entity(child).despawn();
-            }
-        }
         let built = build_panel_content(&mut commands, &fonts, &leaf.active);
-        commands.entity(leaf.content).add_child(built);
-        commands
-            .entity(leaf.content)
-            .insert(PanelContent(leaf.active.clone()));
+        let pane = tab_pane(&mut commands, &leaf.active, built, true);
+        commands.entity(leaf.content).add_child(pane);
     }
 }
 
