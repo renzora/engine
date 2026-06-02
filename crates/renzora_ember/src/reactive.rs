@@ -46,9 +46,11 @@ pub(crate) fn run_reactions(world: &mut World) {
     });
 }
 
-/// Core binding: recompute `value`, and when it differs from last frame, `apply`
-/// it to `target`. Registered (deferred) via `commands`.
-fn bind<V, F, A>(commands: &mut Commands, target: Entity, value: F, apply: A)
+/// Generic binding: recompute `value` each frame and, when it differs from last
+/// frame, `apply` it to `target`. The named `bind_*` helpers are thin wrappers
+/// over this; use it directly to bind any node property without a named helper.
+/// Registered (deferred) via `commands`; auto-dropped when `target` despawns.
+pub fn bind_with<V, F, A>(commands: &mut Commands, target: Entity, value: F, apply: A)
 where
     V: PartialEq + Send + Sync + 'static,
     F: Fn(&World) -> V + Send + Sync + 'static,
@@ -77,7 +79,7 @@ pub fn bind_text<F>(commands: &mut Commands, target: Entity, value: F)
 where
     F: Fn(&World) -> String + Send + Sync + 'static,
 {
-    bind(commands, target, value, |world, target, v: &String| {
+    bind_with(commands, target, value, |world, target, v: &String| {
         if let Some(mut t) = world.get_mut::<Text>(target) {
             t.0.clone_from(v);
         }
@@ -89,7 +91,7 @@ pub fn bind_text_color<F>(commands: &mut Commands, target: Entity, value: F)
 where
     F: Fn(&World) -> Color + Send + Sync + 'static,
 {
-    bind(commands, target, value, |world, target, v: &Color| {
+    bind_with(commands, target, value, |world, target, v: &Color| {
         if let Some(mut c) = world.get_mut::<TextColor>(target) {
             c.0 = *v;
         }
@@ -101,7 +103,7 @@ pub fn bind_bg<F>(commands: &mut Commands, target: Entity, value: F)
 where
     F: Fn(&World) -> Color + Send + Sync + 'static,
 {
-    bind(commands, target, value, |world, target, v: &Color| {
+    bind_with(commands, target, value, |world, target, v: &Color| {
         if let Some(mut bg) = world.get_mut::<BackgroundColor>(target) {
             bg.0 = *v;
         }
@@ -113,7 +115,7 @@ pub fn bind_display<F>(commands: &mut Commands, target: Entity, value: F)
 where
     F: Fn(&World) -> bool + Send + Sync + 'static,
 {
-    bind(commands, target, value, |world, target, v: &bool| {
+    bind_with(commands, target, value, |world, target, v: &bool| {
         if let Some(mut n) = world.get_mut::<Node>(target) {
             let d = if *v { Display::Flex } else { Display::None };
             if n.display != d {

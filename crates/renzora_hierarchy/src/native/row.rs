@@ -1,49 +1,75 @@
-//! Build a single hierarchy tree row, faithful to `renzora_ui::widgets::tree_row`:
-//! 12px indent per depth, 24px rows, connector lines, a caret, a type icon, and
-//! the label — plus the alternating row stripe and label-color tint.
+//! Build one hierarchy row from an owned [`RowSnapshot`], with reactive bindings
+//! for selection/hover (so selecting/hovering never rebuilds the row — the keyed
+//! list only rebuilds a row when its *content* hash changes).
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
-use bevy_egui::egui::Color32;
-use renzora_hui::cursor_icon::HoverCursor;
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
 };
-
+use renzora_editor::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::reactive::{bind_bg, bind_text_color};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use renzora_hui::cursor_icon::HoverCursor;
 
-use crate::state::EntityNode;
-
-use super::components::{HierLockToggle, HierRow, HierRowClick, HierVisToggle};
+use super::components::{HierLockToggle, HierRowClick, HierVisToggle};
 
 const INDENT: f32 = 12.0;
 const ROW_H: f32 = 24.0;
-/// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).
-const SUFFIX_W: f32 = 44.0;
 const BASE_X: f32 = 4.0;
 const LINE_OFFSET: f32 = INDENT / 2.0 - 1.0; // 5.0
 const CENTER_Y: f32 = ROW_H / 2.0;
+/// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).
+const SUFFIX_W: f32 = 44.0;
 
 const HIER_LINE: (u8, u8, u8) = (64, 64, 76);
-const ROW_ODD: (u8, u8, u8) = (38, 38, 45);
 const CARET_EXPANDED: (u8, u8, u8) = (150, 150, 160);
 const CARET_COLLAPSED: (u8, u8, u8) = (110, 110, 120);
 
-/// A flattened, ready-to-render tree row.
-pub(crate) struct RowData<'a> {
-    pub node: &'a EntityNode,
+/// An owned, ready-to-build row (captured into the keyed-list snapshot).
+pub(crate) struct RowSnapshot {
+    pub entity: Entity,
+    pub name: String,
+    pub icon: &'static str,
+    pub icon_color: Color,
+    pub label_color: Option<[u8; 3]>,
+    pub is_visible: bool,
+    pub is_locked: bool,
+    pub is_default_camera: bool,
     pub depth: usize,
     pub is_last: bool,
     pub parent_lines: Vec<bool>,
-    pub row_index: usize,
     pub is_expanded: bool,
-    pub is_selected: bool,
+    pub has_children: bool,
 }
 
-fn c32(c: Color32) -> Color {
-    Color::srgba_u8(c.r(), c.g(), c.b(), c.a())
+impl RowSnapshot {
+    /// A stable identity for the keyed list (the entity).
+    pub fn key(&self) -> u64 {
+        self.entity.to_bits()
+    }
+
+    /// Content hash — everything that changes how the row *looks/positions*,
+    /// excluding selection/hover (those ride on bindings).
+    pub fn content_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.entity.to_bits().hash(&mut h);
+        self.depth.hash(&mut h);
+        self.is_last.hash(&mut h);
+        self.is_expanded.hash(&mut h);
+        self.has_children.hash(&mut h);
+        self.name.hash(&mut h);
+        self.icon.hash(&mut h);
+        self.is_visible.hash(&mut h);
+        self.is_locked.hash(&mut h);
+        self.is_default_camera.hash(&mut h);
+        self.label_color.hash(&mut h);
+        self.parent_lines.hash(&mut h);
+        h.finish()
+    }
 }
 
 fn vline(commands: &mut Commands, x: f32, top: f32, full: bool, height: f32) -> Entity {
@@ -81,42 +107,36 @@ fn hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
         .id()
 }
 
-/// Build one row entity; returns it (caller parents it into the list).
-pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData) -> Entity {
-    let node = d.node;
-    let has_children = !node.children.is_empty();
-    let content_x = BASE_X + d.depth as f32 * INDENT;
+/// Composite `top` over `base` (straight sRGBA) — for the hover wash.
+fn over(base: Color, top: Color) -> Color {
+    let b = base.to_srgba();
+    let t = top.to_srgba();
+    let a = t.alpha + b.alpha * (1.0 - t.alpha);
+    if a <= 0.0 {
+        return Color::NONE;
+    }
+    Color::srgba(
+        (t.red * t.alpha + b.red * b.alpha * (1.0 - t.alpha)) / a,
+        (t.green * t.alpha + b.green * b.alpha * (1.0 - t.alpha)) / a,
+        (t.blue * t.alpha + b.blue * b.alpha * (1.0 - t.alpha)) / a,
+        a,
+    )
+}
 
-    // Base (unselected) background: label-color tint, else the alternating stripe.
-    let base_bg = if let Some([r, g, b]) = node.label_color {
+/// Build one row entity (returns it; the keyed list parents it).
+pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, s: &RowSnapshot) -> Entity {
+    let content_x = BASE_X + s.depth as f32 * INDENT;
+
+    let base_bg = if let Some([r, g, b]) = s.label_color {
         Color::srgba_u8(r, g, b, 26)
-    } else if d.row_index % 2 == 1 {
-        rgb(ROW_ODD)
     } else {
         Color::NONE
     };
-    let label_color = node
+    let label_color = s
         .label_color
         .map(|[r, g, b]| Color::srgb_u8(r, g, b))
         .unwrap_or_else(|| rgb(TEXT_PRIMARY));
 
-    // Bake the selected look in at build time (white label on the accent bg) so a
-    // freshly rebuilt row shows selection immediately; `base_bg`/`label_color` are
-    // stored on `HierRow` so the visual system can restore the unselected look.
-    let init_bg = if d.is_selected {
-        rgb(ACCENT_BLUE).with_alpha(0.63)
-    } else {
-        base_bg
-    };
-    let init_label = if d.is_selected {
-        Color::WHITE
-    } else {
-        label_color
-    };
-
-    // The row is a plain layout box with no Interaction of its own; the
-    // selection target is a separate full-row layer (below) so the caret/eye/
-    // lock — its siblings — win their clicks purely by z-order.
     let row = commands
         .spawn((
             Node {
@@ -133,23 +153,19 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
 
     let mut kids: Vec<Entity> = Vec::new();
 
-    // Ancestor continuation lines.
-    for (level, &has_more) in d.parent_lines.iter().enumerate() {
+    for (level, &has_more) in s.parent_lines.iter().enumerate() {
         if has_more {
             let x = BASE_X + level as f32 * INDENT + LINE_OFFSET;
             kids.push(vline(commands, x, 0.0, true, 0.0));
         }
     }
-    // This node's connector (vertical stub + horizontal arm).
-    if d.depth > 0 {
-        let x = BASE_X + (d.depth - 1) as f32 * INDENT + LINE_OFFSET;
-        // └ stops at center for the last sibling, ├ runs full height otherwise.
-        kids.push(vline(commands, x, 0.0, !d.is_last, CENTER_Y));
+    if s.depth > 0 {
+        let x = BASE_X + (s.depth - 1) as f32 * INDENT + LINE_OFFSET;
+        kids.push(vline(commands, x, 0.0, !s.is_last, CENTER_Y));
         kids.push(hline(commands, x, 5.0));
     }
 
-    // 3px left color stripe for label-colored entities.
-    if let Some([r, g, b]) = node.label_color {
+    if let Some([r, g, b]) = s.label_color {
         kids.push(
             commands
                 .spawn((
@@ -183,8 +199,7 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
             .id(),
     );
 
-    // Caret (16px slot; purely visual — expansion is toggled by clicking the row,
-    // which also covers the caret area, so the caret never captures the click).
+    // Caret (visual only).
     let caret = commands
         .spawn((
             Node {
@@ -198,8 +213,8 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
             Pickable::IGNORE,
         ))
         .id();
-    if has_children {
-        let (glyph, color) = if d.is_expanded {
+    if s.has_children {
+        let (glyph, color) = if s.is_expanded {
             (CARET_DOWN, CARET_EXPANDED)
         } else {
             (CARET_RIGHT, CARET_COLLAPSED)
@@ -220,16 +235,16 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
     }
     kids.push(caret);
 
-    // Type icon (a raw Phosphor glyph string carried on the node).
+    // Type icon.
     let icon = commands
         .spawn((
-            Text::new(node.icon),
+            Text::new(s.icon),
             TextFont {
                 font: fonts.phosphor.clone(),
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(c32(node.icon_color)),
+            TextColor(s.icon_color),
             Node {
                 margin: UiRect::left(Val::Px(6.0)),
                 ..default()
@@ -239,8 +254,7 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
         .id();
     kids.push(icon);
 
-    // Label container (flex-grows so the eye/lock toggles pin to the right edge;
-    // clips long names instead of running them under the toggles).
+    // Label container + label (+ default-camera star).
     let label_box = commands
         .spawn((
             Node {
@@ -259,15 +273,15 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
         .id();
     let label = commands
         .spawn((
-            Text::new(&node.name),
+            Text::new(&s.name),
             ui_font(&fonts.ui, 13.0),
-            TextColor(init_label),
+            TextColor(label_color),
             bevy::text::TextLayout::new_with_no_wrap(),
             Pickable::IGNORE,
         ))
         .id();
     commands.entity(label_box).add_child(label);
-    if node.is_default_camera {
+    if s.is_default_camera {
         let star = commands
             .spawn((
                 Text::new(STAR),
@@ -284,44 +298,42 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
     }
     kids.push(label_box);
 
-    // Right-edge toggles: visibility then lock.
     kids.push(suffix_toggle(
         commands,
         fonts,
-        if node.is_visible { EYE } else { EYE_SLASH },
-        if node.is_visible {
+        if s.is_visible { EYE } else { EYE_SLASH },
+        if s.is_visible {
             Color::srgb_u8(140, 180, 220)
         } else {
             Color::srgb_u8(90, 90, 100)
         },
         Some(HierVisToggle {
-            entity: node.entity,
-            visible: node.is_visible,
+            entity: s.entity,
+            visible: s.is_visible,
         }),
         None,
     ));
     kids.push(suffix_toggle(
         commands,
         fonts,
-        if node.is_locked {
+        if s.is_locked {
             LOCK_SIMPLE
         } else {
             LOCK_SIMPLE_OPEN
         },
-        if node.is_locked {
+        if s.is_locked {
             Color::srgb_u8(220, 80, 80)
         } else {
             Color::srgb_u8(90, 90, 100)
         },
         None,
         Some(HierLockToggle {
-            entity: node.entity,
-            locked: node.is_locked,
+            entity: s.entity,
+            locked: s.is_locked,
         }),
     ));
 
-    // Dim overlay for hidden entities (covers the content, not the toggles).
-    if !node.is_visible {
+    if !s.is_visible {
         kids.push(
             commands
                 .spawn((
@@ -330,7 +342,7 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
                         left: Val::Px(0.0),
                         top: Val::Px(0.0),
                         bottom: Val::Px(0.0),
-                        right: Val::Px(44.0),
+                        right: Val::Px(SUFFIX_W),
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.235)),
@@ -340,9 +352,7 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
         );
     }
 
-    // Click layer: covers the row except the suffix zone, so clicking the eye/
-    // lock (which live in that zone) never lands here. Carries the select/expand
-    // target.
+    // Click layer (covers row except suffix zone).
     let click_layer = commands
         .spawn((
             Node {
@@ -356,14 +366,13 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierRowClick {
-                entity: node.entity,
-                has_children,
+                entity: s.entity,
+                has_children: s.has_children,
             },
             Name::new("hier-row-hit"),
         ))
         .id();
-    // Full-row background layer (visual only, lowest z): the bg/selection tint
-    // spans the whole row including under the toggles.
+    // Full-row background layer (visual, lowest z).
     let bg_visual = commands
         .spawn((
             Node {
@@ -374,15 +383,8 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
                 bottom: Val::Px(0.0),
                 ..default()
             },
-            BackgroundColor(init_bg),
+            BackgroundColor(base_bg),
             Pickable::IGNORE,
-            HierRow {
-                entity: node.entity,
-                base_bg,
-                label,
-                label_color,
-                click: click_layer,
-            },
             Name::new("hier-row-bg"),
         ))
         .id();
@@ -390,10 +392,41 @@ pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, d: &RowData
     kids.insert(0, bg_visual);
 
     commands.entity(row).add_children(&kids);
+
+    // Reactive selection/hover — value-diffed, so selecting only repaints the
+    // rows whose computed color changed (no rebuild).
+    let (ent, click, base) = (s.entity, click_layer, base_bg);
+    bind_bg(commands, bg_visual, move |world: &World| {
+        if world
+            .get_resource::<EditorSelection>()
+            .is_some_and(|sel| sel.is_selected(ent))
+        {
+            return rgb(ACCENT_BLUE).with_alpha(0.63);
+        }
+        let hovered = world
+            .get::<Interaction>(click)
+            .is_some_and(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        if hovered {
+            over(base, Color::srgba(1.0, 1.0, 1.0, 0.06))
+        } else {
+            base
+        }
+    });
+    bind_text_color(commands, label, move |world: &World| {
+        if world
+            .get_resource::<EditorSelection>()
+            .is_some_and(|sel| sel.is_selected(ent))
+        {
+            Color::WHITE
+        } else {
+            label_color
+        }
+    });
+
     row
 }
 
-/// A right-edge toggle icon (eye / lock). Exactly one of the two marker args is `Some`.
+/// A right-edge toggle icon (eye / lock). Exactly one marker arg is `Some`.
 fn suffix_toggle(
     commands: &mut Commands,
     fonts: &EmberFonts,

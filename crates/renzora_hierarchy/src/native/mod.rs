@@ -16,8 +16,6 @@ mod tree;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
-pub(crate) use components::*;
-
 use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::EmberFonts;
 
@@ -36,11 +34,10 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.add_systems(
         Update,
         (
-            (hierarchy_content_system, tree::hierarchy_refresh).chain(),
+            hierarchy_content_system,
             systems::hierarchy_row_click,
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
-            systems::hierarchy_row_visual,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -76,12 +73,11 @@ pub(crate) fn hierarchy_content_system(
                     flex_shrink: 0.0,
                     ..default()
                 },
-                HierarchyView {
-                    content_hash: u64::MAX,
-                },
                 Name::new("hierarchy-list"),
             ))
             .id();
+        // Reactive keyed list drives the rows from here on (build once).
+        renzora_ember::reactive::keyed_list(&mut commands, list, tree::hierarchy_snapshot);
         let pane = tab_pane(&mut commands, PANEL_ID, list, true);
         commands.entity(leaf.content).add_child(pane);
     }
