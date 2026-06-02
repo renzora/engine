@@ -15,9 +15,9 @@ use bevy::prelude::*;
 use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
+use renzora_ember::widgets::{scroll_view, slider, text_input, EmberTextInput};
 
 use crate::thumbnails::{
     supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail, ThumbnailCache,
@@ -56,7 +56,7 @@ const TILE_W: f32 = 84.0;
 const HOVER_BG: (u8, u8, u8) = (40, 40, 50);
 
 /// Lean native state for the browser (independent of the egui panel's state).
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub(crate) struct NativeAssets {
     current: Option<PathBuf>,
     selected: Option<PathBuf>,
@@ -69,6 +69,31 @@ pub(crate) struct NativeAssets {
     context: Option<PathBuf>,
     /// Last tile click (path, time) for double-click detection.
     last_click: Option<(PathBuf, f64)>,
+    /// Grid tile zoom (0.5–1.5).
+    zoom: f32,
+    /// Folder-tree pane width (px).
+    tree_width: f32,
+    /// Active divider drag: `(start cursor x, start tree width)`. Persists the
+    /// drag even when the cursor leaves the thin splitter (bevy_ui drops
+    /// `Pressed` off-element).
+    divider_drag: Option<(f32, f32)>,
+}
+
+impl Default for NativeAssets {
+    fn default() -> Self {
+        Self {
+            current: None,
+            selected: None,
+            search: String::new(),
+            expanded: HashSet::new(),
+            hovered: None,
+            context: None,
+            last_click: None,
+            zoom: 1.0,
+            tree_width: 180.0,
+            divider_drag: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -84,6 +109,8 @@ struct AssetRoot;
 struct AssetContextMenu;
 #[derive(Component)]
 struct ContextAction(Action);
+#[derive(Component)]
+struct Splitter;
 
 #[derive(Component)]
 struct AssetTile {
@@ -188,6 +215,63 @@ pub fn register_native_asset_browser(app: &mut App) {
             .chain()
             .run_if(in_state(SplashState::Editor)),
     );
+    app.add_systems(Update, splitter_drag.run_if(in_state(SplashState::Editor)));
+    // Force the resize cursor while hovering/dragging the divider. In PostUpdate
+    // so it wins over renzora_hui's Update cursor system (which would otherwise
+    // reset to Default once the cursor leaves the thin splitter mid-drag).
+    app.add_systems(PostUpdate, divider_cursor.run_if(in_state(SplashState::Editor)));
+}
+
+/// Drag the tree/content divider to resize the tree pane. The drag persists via
+/// `divider_drag` (captured on press) so it keeps tracking even when the cursor
+/// moves off the thin splitter — mirrors the dock's divider.
+fn splitter_drag(
+    splitter: Query<&Interaction, With<Splitter>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    mut state: ResMut<NativeAssets>,
+) {
+    if mouse.just_released(MouseButton::Left) {
+        state.divider_drag = None;
+    }
+    let Some(cx) = windows.iter().next().and_then(|w| w.cursor_position()).map(|p| p.x) else {
+        return;
+    };
+    if state.divider_drag.is_none()
+        && mouse.just_pressed(MouseButton::Left)
+        && splitter.iter().any(|i| *i == Interaction::Pressed)
+    {
+        state.divider_drag = Some((cx, state.tree_width));
+    }
+    if let Some((start_x, start_w)) = state.divider_drag {
+        state.tree_width = (start_w + (cx - start_x)).clamp(120.0, 420.0);
+    }
+}
+
+/// Show the ew-resize cursor whenever the divider is hovered or being dragged.
+fn divider_cursor(
+    splitter: Query<&Interaction, With<Splitter>>,
+    state: Res<NativeAssets>,
+    windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    mut commands: Commands,
+    mut forcing: Local<bool>,
+) {
+    let want = state.divider_drag.is_some()
+        || splitter.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+    let Ok(win) = windows.single() else {
+        return;
+    };
+    if want {
+        commands
+            .entity(win)
+            .insert(bevy::window::CursorIcon::System(bevy::window::SystemCursorIcon::EwResize));
+        *forcing = true;
+    } else if *forcing {
+        *forcing = false;
+        commands
+            .entity(win)
+            .insert(bevy::window::CursorIcon::System(bevy::window::SystemCursorIcon::Default));
+    }
 }
 
 fn create_asset_click(
@@ -434,13 +518,50 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
                 min_height: Val::Px(0.0),
-                border: UiRect::right(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb((22, 22, 28))),
         ))
         .id();
     commands.entity(tree_pane).add_child(tree_scroll);
+    bind_with(
+        commands,
+        tree_pane,
+        |w| w.get_resource::<NativeAssets>().map(|s| s.tree_width).unwrap_or(180.0),
+        |w, e, width: &f32| {
+            if let Some(mut n) = w.get_mut::<Node>(e) {
+                n.width = Val::Px(*width);
+            }
+        },
+    );
+
+    // Draggable divider (highlights on hover/drag).
+    let splitter = commands
+        .spawn((
+            Node {
+                width: Val::Px(4.0),
+                height: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb((48, 48, 58))),
+            Interaction::default(),
+            Splitter,
+            Name::new("assets-splitter"),
+        ))
+        .id();
+    bind_bg(commands, splitter, move |w| {
+        let dragging = w.get_resource::<NativeAssets>().is_some_and(|s| s.divider_drag.is_some());
+        let hovered = matches!(
+            w.get::<Interaction>(splitter),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        );
+        if dragging || hovered {
+            rgb(ACCENT_BLUE)
+        } else {
+            rgb((48, 48, 58))
+        }
+    });
 
     // ── Content (toolbar + grid, own scroll) ──
     let content = commands
@@ -504,13 +625,32 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, crumbs, crumb_snapshot);
 
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    // Zoom slider (maps 0..1 → 0.5..1.5 tile scale).
+    let zoom = slider(commands, 0.5);
+    bind_2way(
+        commands,
+        zoom,
+        |w| w.get_resource::<NativeAssets>().map(|s| (s.zoom - 0.5).clamp(0.0, 1.0)).unwrap_or(0.5),
+        |w, v| {
+            if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
+                s.zoom = 0.5 + *v;
+            }
+        },
+    );
+    commands.entity(zoom).insert(Node {
+        width: Val::Px(70.0),
+        height: Val::Px(18.0),
+        position_type: PositionType::Relative,
+        align_items: AlignItems::Center,
+        ..default()
+    });
     let import = toolbar_btn(commands, fonts, "download-simple", "Import");
     commands.entity(import).insert(ImportBtn);
     let search = text_input(commands, &fonts.ui, "Search...", "");
     commands.entity(search).insert(AssetSearch);
     commands
         .entity(toolbar)
-        .add_children(&[back, new_folder, add, crumbs, spacer, import, search]);
+        .add_children(&[back, new_folder, add, crumbs, spacer, zoom, import, search]);
 
     // Grid.
     let grid = commands
@@ -534,7 +674,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Context menu (shared, repositioned on right-click).
     let menu = context_menu(commands, fonts);
 
-    commands.entity(root).add_children(&[tree_pane, content, menu]);
+    commands.entity(root).add_children(&[tree_pane, splitter, content, menu]);
     root
 }
 
@@ -791,11 +931,13 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
             }),
         };
     }
+    let zoom = world.get_resource::<NativeAssets>().map(|s| s.zoom).unwrap_or(1.0);
+    let zoom_q = (zoom * 20.0).round() as u64;
     let items: Vec<(u64, u64)> = entries
         .iter()
         .map(|e| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&e.name, e.is_dir).hash(&mut h);
+            (&e.name, e.is_dir, zoom_q).hash(&mut h);
             let mut k = std::collections::hash_map::DefaultHasher::new();
             e.path.hash(&mut k);
             (k.finish(), h.finish())
@@ -803,16 +945,19 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| tile(c, f, &entries[i])),
+        build: Box::new(move |c, f, i| tile(c, f, &entries[i], zoom)),
     }
 }
 
-fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
+fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32) -> Entity {
+    let tile_w = TILE_W * zoom;
+    let preview_sz = 64.0 * zoom;
+    let icon_sz = 30.0 * zoom;
     let path = entry.path.clone();
     let col = commands
         .spawn((
             Node {
-                width: Val::Px(TILE_W),
+                width: Val::Px(tile_w),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 row_gap: Val::Px(3.0),
@@ -846,8 +991,8 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
     // reveals once the cached Handle<Image> is ready (image files only for now).
     let preview = commands
         .spawn(Node {
-            width: Val::Px(64.0),
-            height: Val::Px(64.0),
+            width: Val::Px(preview_sz),
+            height: Val::Px(preview_sz),
             position_type: PositionType::Relative,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
@@ -856,7 +1001,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
         })
         .id();
     let color = if entry.is_dir { (220, 200, 130) } else { TEXT_MUTED };
-    let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, 30.0);
+    let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, icon_sz);
     commands.entity(preview).add_child(icon);
 
     if let Some(kind) = (!entry.is_dir).then(|| thumb_kind(&entry.name)).flatten() {
@@ -900,7 +1045,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(TEXT_PRIMARY)),
             bevy::text::TextLayout::new_with_no_wrap(),
-            Node { max_width: Val::Px(TILE_W - 4.0), overflow: Overflow::clip(), ..default() },
+            Node { max_width: Val::Px(tile_w - 4.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();
     commands.entity(col).add_children(&[preview, name]);
