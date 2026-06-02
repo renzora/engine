@@ -6,17 +6,18 @@
 //! menu are later increments; the egui `AssetBrowserPanel` stays the source for
 //! those until then.
 
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
 use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{text_input, EmberTextInput};
+use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
 
 use crate::thumbnails::{
     supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail, ThumbnailCache,
@@ -60,6 +61,8 @@ pub(crate) struct NativeAssets {
     current: Option<PathBuf>,
     selected: Option<PathBuf>,
     search: String,
+    /// Expanded folders in the left tree.
+    expanded: HashSet<PathBuf>,
 }
 
 #[derive(Component)]
@@ -71,13 +74,25 @@ struct AssetTile {
 struct AssetBack;
 #[derive(Component)]
 struct AssetSearch;
+#[derive(Component)]
+struct TreeToggle(PathBuf);
+#[derive(Component)]
+struct TreeNav(PathBuf);
 
 pub fn register_native_asset_browser(app: &mut App) {
     app.init_resource::<NativeAssets>();
-    app.register_panel_content("assets", true, build);
+    app.register_panel_content("assets", false, build);
     app.add_systems(
         Update,
-        (tile_click, back_click, search_sync, request_thumbnails).run_if(in_state(SplashState::Editor)),
+        (
+            tile_click,
+            back_click,
+            search_sync,
+            request_thumbnails,
+            tree_toggle_click,
+            tree_nav_click,
+        )
+            .run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -114,8 +129,49 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn(Node {
             width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            min_width: Val::Px(0.0),
+            min_height: Val::Px(0.0),
+            ..default()
+        })
+        .id();
+
+    // ── Folder tree (left pane, own scroll) ──
+    let tree_list = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
             flex_shrink: 0.0,
+            padding: UiRect::vertical(Val::Px(4.0)),
+            ..default()
+        })
+        .id();
+    keyed_list(commands, tree_list, tree_snapshot);
+    let tree_scroll = scroll_view(commands, tree_list);
+    let tree_pane = commands
+        .spawn((
+            Node {
+                width: Val::Px(180.0),
+                height: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Column,
+                min_height: Val::Px(0.0),
+                border: UiRect::right(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(rgb((48, 48, 58))),
+        ))
+        .id();
+    commands.entity(tree_pane).add_child(tree_scroll);
+
+    // ── Content (toolbar + grid, own scroll) ──
+    let content = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            flex_direction: FlexDirection::Column,
+            min_width: Val::Px(0.0),
+            min_height: Val::Px(0.0),
             ..default()
         })
         .id();
@@ -177,8 +233,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     keyed_list(commands, grid, grid_snapshot);
+    let grid_scroll = scroll_view(commands, grid);
 
-    commands.entity(root).add_children(&[toolbar, grid]);
+    commands.entity(content).add_children(&[toolbar, grid_scroll]);
+    commands.entity(root).add_children(&[tree_pane, content]);
     root
 }
 
@@ -367,7 +425,194 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
     col
 }
 
+// ── Folder tree ──────────────────────────────────────────────────────────────
+
+struct TreeRow {
+    path: PathBuf,
+    name: String,
+    depth: usize,
+    expanded: bool,
+    has_children: bool,
+}
+
+fn has_subdirs(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                !e.file_name().to_string_lossy().starts_with('.')
+                    && e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn flatten_dirs(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut Vec<TreeRow>) {
+    let mut subs: Vec<(PathBuf, String)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                subs.push((e.path(), name));
+            }
+        }
+    }
+    subs.sort_by_key(|a| a.1.to_lowercase());
+    for (path, name) in subs {
+        let is_exp = expanded.contains(&path);
+        let has = has_subdirs(&path);
+        out.push(TreeRow {
+            path: path.clone(),
+            name,
+            depth,
+            expanded: is_exp,
+            has_children: has,
+        });
+        if is_exp && has {
+            flatten_dirs(&path, depth + 1, expanded, out);
+        }
+    }
+}
+
+fn tree_snapshot(world: &World) -> KeyedSnapshot {
+    let Some(root) = project_root(world) else {
+        return KeyedSnapshot {
+            items: Vec::new(),
+            build: Box::new(|_, _, _| Entity::PLACEHOLDER),
+        };
+    };
+    let expanded = world
+        .get_resource::<NativeAssets>()
+        .map(|s| s.expanded.clone())
+        .unwrap_or_default();
+    let mut rows = Vec::new();
+    flatten_dirs(&root, 0, &expanded, &mut rows);
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .map(|r| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            r.path.hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| tree_row(c, f, &rows[i])),
+    }
+}
+
+fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                width: Val::Percent(100.0),
+                height: Val::Px(20.0),
+                padding: UiRect::left(Val::Px(r.depth as f32 * 12.0 + 2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Name::new("tree-row"),
+        ))
+        .id();
+    let sel_path = r.path.clone();
+    bind_bg(commands, row, move |w| {
+        if current_folder(w).as_deref() == Some(sel_path.as_path()) {
+            rgb(ACCENT_BLUE).with_alpha(0.25)
+        } else {
+            Color::NONE
+        }
+    });
+
+    // Caret (only when there are subfolders).
+    let caret = commands
+        .spawn(Node {
+            width: Val::Px(14.0),
+            height: Val::Percent(100.0),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .id();
+    if r.has_children {
+        let glyph = icon_glyph(if r.expanded { "caret-down" } else { "caret-right" }).unwrap_or(' ');
+        let g = commands
+            .spawn((Text::new(glyph.to_string()), ui_font(&fonts.phosphor, 10.0), TextColor(rgb(TEXT_MUTED))))
+            .id();
+        commands.entity(caret).insert((Interaction::default(), TreeToggle(r.path.clone())));
+        commands.entity(caret).add_child(g);
+    }
+
+    // Nav zone (icon + name).
+    let nav = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                flex_grow: 1.0,
+                height: Val::Percent(100.0),
+                column_gap: Val::Px(4.0),
+                ..default()
+            },
+            Interaction::default(),
+            TreeNav(r.path.clone()),
+            Name::new("tree-nav"),
+        ))
+        .id();
+    let folder_icon = icon_text(
+        commands,
+        &fonts.phosphor,
+        if r.expanded { "folder-open" } else { "folder" },
+        (220, 200, 130),
+        13.0,
+    );
+    let name = commands
+        .spawn((
+            Text::new(r.name.clone()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node { overflow: Overflow::clip(), ..default() },
+        ))
+        .id();
+    commands.entity(nav).add_children(&[folder_icon, name]);
+    commands.entity(row).add_children(&[caret, nav]);
+    row
+}
+
 // ── Click systems ────────────────────────────────────────────────────────────
+
+fn tree_toggle_click(
+    q: Query<(&Interaction, &TreeToggle), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    for (interaction, toggle) in &q {
+        if *interaction == Interaction::Pressed {
+            if state.expanded.contains(&toggle.0) {
+                state.expanded.remove(&toggle.0);
+            } else {
+                state.expanded.insert(toggle.0.clone());
+            }
+        }
+    }
+}
+
+fn tree_nav_click(
+    q: Query<(&Interaction, &TreeNav), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    for (interaction, nav) in &q {
+        if *interaction == Interaction::Pressed {
+            state.current = Some(nav.0.clone());
+            state.selected = None;
+        }
+    }
+}
 
 fn tile_click(
     q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
