@@ -37,7 +37,7 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let n = i32(u.params.x);
     let lw = u.params.y;
     let fill_a = u.params.z;
-    let target = u.params.w;
+    let tgt = u.params.w;
     let sz = in.size;
     let p = in.uv * sz;
     let denom = f32(max(n - 1, 1));
@@ -70,8 +70,8 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
 
     // Optional target line.
     var tgt_a = 0.0;
-    if (target >= 0.0) {
-        let ty = (1.0 - target) * sz.y;
+    if (tgt >= 0.0) {
+        let ty = (1.0 - tgt) * sz.y;
         let td = abs(p.y - ty);
         let taa = max(fwidth(td), 0.75);
         tgt_a = (1.0 - smoothstep(0.75 - taa, 0.75 + taa, td)) * 0.5;
