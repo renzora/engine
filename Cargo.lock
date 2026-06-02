@@ -9058,6 +9058,7 @@ dependencies = [
  "image",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_theme",
  "zip 2.4.2",
 ]

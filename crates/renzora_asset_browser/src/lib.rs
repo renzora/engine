@@ -2,6 +2,7 @@
 
 mod grid;
 mod list;
+mod native;
 pub mod model_thumbnails;
 mod state;
 pub mod thumbnails;
@@ -1220,6 +1221,7 @@ impl Plugin for AssetBrowserPlugin {
             .add_systems(Update, thumbnails::update_thumbnail_cache)
             .add_plugins(model_thumbnails::ModelThumbnailPlugin)
             .register_panel(AssetBrowserPanel::default());
+        native::register_native_asset_browser(app);
     }
 }
 
