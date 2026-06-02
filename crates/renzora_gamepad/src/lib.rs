@@ -1,5 +1,6 @@
 //! Gamepad debug panel — visualizes controller input (sticks, triggers, buttons).
 
+pub mod native;
 mod render;
 mod state;
 
@@ -87,6 +88,9 @@ impl Plugin for GamepadPlugin {
             update_gamepad_debug_state.run_if(in_state(SplashState::Editor)),
         );
         app.register_panel(GamepadPanel::default());
+        // Bevy-native (ember) gamepad panel for the bevy_ui shell; coexists with
+        // the egui panel (both read the same `GamepadDebugState`).
+        native::register_native_gamepad(app);
     }
 }
 

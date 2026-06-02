@@ -84,8 +84,17 @@ pub fn update_gamepad_debug_state(
                 gamepad.get(GamepadAxis::RightStickX).unwrap_or(0.0),
                 gamepad.get(GamepadAxis::RightStickY).unwrap_or(0.0),
             ),
-            left_trigger: gamepad.get(GamepadAxis::LeftZ).unwrap_or(0.0),
-            right_trigger: gamepad.get(GamepadAxis::RightZ).unwrap_or(0.0),
+            // Analog triggers: the Z axes on some controllers, the
+            // LeftTrigger2/RightTrigger2 analog buttons on others (e.g. Windows
+            // XInput). Take whichever reports a value.
+            left_trigger: gamepad
+                .get(GamepadAxis::LeftZ)
+                .unwrap_or(0.0)
+                .max(gamepad.get(GamepadButton::LeftTrigger2).unwrap_or(0.0)),
+            right_trigger: gamepad
+                .get(GamepadAxis::RightZ)
+                .unwrap_or(0.0)
+                .max(gamepad.get(GamepadButton::RightTrigger2).unwrap_or(0.0)),
             buttons: GamepadButtonState {
                 south: gamepad.pressed(GamepadButton::South),
                 east: gamepad.pressed(GamepadButton::East),
