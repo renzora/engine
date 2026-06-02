@@ -63,7 +63,25 @@ pub(crate) struct NativeAssets {
     search: String,
     /// Expanded folders in the left tree.
     expanded: HashSet<PathBuf>,
+    /// The grid tile the cursor is currently over (for right-click targeting).
+    hovered: Option<PathBuf>,
+    /// The asset the open context menu acts on (`None` = menu closed).
+    context: Option<PathBuf>,
 }
+
+#[derive(Clone, Copy)]
+enum Action {
+    Duplicate,
+    Delete,
+    Reveal,
+}
+
+#[derive(Component)]
+struct AssetRoot;
+#[derive(Component)]
+struct AssetContextMenu;
+#[derive(Component)]
+struct ContextAction(Action);
 
 #[derive(Component)]
 struct AssetTile {
@@ -162,6 +180,12 @@ pub fn register_native_asset_browser(app: &mut App) {
         )
             .run_if(in_state(SplashState::Editor)),
     );
+    app.add_systems(
+        Update,
+        (track_hover, context_action_click, context_open)
+            .chain()
+            .run_if(in_state(SplashState::Editor)),
+    );
 }
 
 fn create_asset_click(
@@ -216,6 +240,133 @@ fn crumb_click(
     }
 }
 
+// ── Context menu ─────────────────────────────────────────────────────────────
+
+fn track_hover(tiles: Query<(&Interaction, &AssetTile)>, mut state: ResMut<NativeAssets>) {
+    for (interaction, tile) in &tiles {
+        if matches!(interaction, Interaction::Hovered | Interaction::Pressed)
+            && state.hovered.as_deref() != Some(tile.path.as_path())
+        {
+            state.hovered = Some(tile.path.clone());
+        }
+    }
+}
+
+fn context_action_click(
+    q: Query<(&Interaction, &ContextAction), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+    mut menu: Query<&mut Node, With<AssetContextMenu>>,
+) {
+    for (interaction, action) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(path) = state.context.clone() else {
+            continue;
+        };
+        match action.0 {
+            Action::Duplicate => duplicate_asset(&path),
+            Action::Delete => {
+                let _ = if path.is_dir() {
+                    std::fs::remove_dir_all(&path)
+                } else {
+                    std::fs::remove_file(&path)
+                };
+                if state.selected.as_deref() == Some(path.as_path()) {
+                    state.selected = None;
+                }
+            }
+            Action::Reveal => reveal_in_explorer(&path),
+        }
+        state.context = None;
+        for mut n in &mut menu {
+            n.display = Display::None;
+        }
+    }
+}
+
+fn context_open(
+    mouse: Res<ButtonInput<MouseButton>>,
+    roots: Query<(&bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode), With<AssetRoot>>,
+    mut menu: Query<&mut Node, With<AssetContextMenu>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    let right = mouse.just_pressed(MouseButton::Right);
+    let left = mouse.just_pressed(MouseButton::Left);
+    if !right && !left {
+        return;
+    }
+    for (rcp, computed) in &roots {
+        if right && rcp.cursor_over {
+            if let (Some(nrm), Some(path)) = (rcp.normalized, state.hovered.clone()) {
+                let size = computed.size() * computed.inverse_scale_factor();
+                state.context = Some(path);
+                for mut n in &mut menu {
+                    n.left = Val::Px((nrm.x + 0.5) * size.x);
+                    n.top = Val::Px((nrm.y + 0.5) * size.y);
+                    n.display = Display::Flex;
+                }
+            }
+        } else if left && state.context.is_some() {
+            state.context = None;
+            for mut n in &mut menu {
+                n.display = Display::None;
+            }
+        }
+    }
+}
+
+/// Copy a file (or directory tree) next to itself with a " copy" suffix.
+fn duplicate_asset(path: &Path) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("copy");
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{e}"))
+        .unwrap_or_default();
+    let is_dir = path.is_dir();
+    let dest = unique_path(parent, &format!("{stem} copy{ext}"), is_dir);
+    if is_dir {
+        let _ = copy_dir_recursive(path, &dest);
+    } else {
+        let _ = std::fs::copy(path, &dest);
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(src)?.flatten() {
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Open the OS file manager at `path` (selecting it where supported).
+fn reveal_in_explorer(path: &Path) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg("/select,").arg(path).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let dir = path.parent().unwrap_or(path);
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
+}
+
 fn project_root(w: &World) -> Option<PathBuf> {
     w.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
 }
@@ -247,14 +398,18 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            min_width: Val::Px(0.0),
-            min_height: Val::Px(0.0),
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
+                ..default()
+            },
+            bevy::ui::RelativeCursorPosition::default(),
+            AssetRoot,
+        ))
         .id();
 
     // ── Folder tree (left pane, own scroll) ──
@@ -371,8 +526,74 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let grid_scroll = scroll_view(commands, grid);
 
     commands.entity(content).add_children(&[toolbar, grid_scroll]);
-    commands.entity(root).add_children(&[tree_pane, content]);
+
+    // Context menu (shared, repositioned on right-click).
+    let menu = context_menu(commands, fonts);
+
+    commands.entity(root).add_children(&[tree_pane, content, menu]);
     root
+}
+
+/// The shared right-click context menu (hidden until opened).
+fn context_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let menu = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(140.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 74))),
+            GlobalZIndex(700),
+            AssetContextMenu,
+            Name::new("asset-context-menu"),
+        ))
+        .id();
+    let items = [
+        ("copy", "Duplicate", Action::Duplicate),
+        ("folder-open", "Reveal in Explorer", Action::Reveal),
+        ("trash", "Delete", Action::Delete),
+    ];
+    let rows: Vec<Entity> = items
+        .iter()
+        .map(|(icon, label, action)| {
+            let row = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    Interaction::default(),
+                    ContextAction(*action),
+                    Name::new("ctx-action"),
+                ))
+                .id();
+            let danger = matches!(action, Action::Delete);
+            let color = if danger { (220, 90, 80) } else { TEXT_MUTED };
+            let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
+            let t = commands
+                .spawn((
+                    Text::new(*label),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(if danger { (220, 90, 80) } else { TEXT_PRIMARY })),
+                ))
+                .id();
+            commands.entity(row).add_children(&[ic, t]);
+            row
+        })
+        .collect();
+    commands.entity(menu).add_children(&rows);
+    menu
 }
 
 /// A framed icon+label toolbar button (caller inserts the marker component).
