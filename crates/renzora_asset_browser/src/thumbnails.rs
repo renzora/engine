@@ -313,6 +313,12 @@ impl ThumbnailCache {
         self.texture_ids.get(path).copied()
     }
 
+    /// Get the `Handle<Image>` for a loaded thumbnail, if ready — for the
+    /// bevy-native browser, which displays it via `ImageNode` (no egui texture).
+    pub fn handle(&self, path: &PathBuf) -> Option<Handle<Image>> {
+        self.handles.get(path).cloned()
+    }
+
     /// Request a thumbnail load. Converts the absolute `path` to an
     /// asset-relative path via `CurrentProject` before handing it to the
     /// asset server. Returns `true` if the request was enqueued.

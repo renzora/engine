@@ -14,9 +14,11 @@ use bevy::prelude::*;
 use renzora_editor::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{text_input, EmberTextInput};
+
+use crate::thumbnails::{supports_thumbnail, ThumbnailCache};
 
 const TILE_W: f32 = 84.0;
 const HOVER_BG: (u8, u8, u8) = (40, 40, 50);
@@ -44,7 +46,7 @@ pub fn register_native_asset_browser(app: &mut App) {
     app.register_panel_content("assets", true, build);
     app.add_systems(
         Update,
-        (tile_click, back_click, search_sync).run_if(in_state(SplashState::Editor)),
+        (tile_click, back_click, search_sync, request_thumbnails).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -269,8 +271,58 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
             _ => Color::NONE,
         }
     });
+    // Preview box: an icon, with a thumbnail ImageNode layered on top that
+    // reveals once the cached Handle<Image> is ready (image files only for now).
+    let preview = commands
+        .spawn(Node {
+            width: Val::Px(64.0),
+            height: Val::Px(64.0),
+            position_type: PositionType::Relative,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            overflow: Overflow::clip(),
+            ..default()
+        })
+        .id();
     let color = if entry.is_dir { (220, 200, 130) } else { TEXT_MUTED };
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, 30.0);
+    commands.entity(preview).add_child(icon);
+
+    if !entry.is_dir && supports_thumbnail(&entry.name) {
+        let img = commands
+            .spawn((
+                ImageNode::default(),
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    display: Display::None,
+                    ..default()
+                },
+                Name::new("asset-thumb"),
+            ))
+            .id();
+        commands.entity(preview).add_child(img);
+        let p = entry.path.clone();
+        bind_with(
+            commands,
+            img,
+            move |w| w.get_resource::<ThumbnailCache>().and_then(|c| c.handle(&p)),
+            move |w, e, h: &Option<Handle<Image>>| {
+                let Some(handle) = h else { return };
+                if let Some(mut n) = w.get_mut::<ImageNode>(e) {
+                    n.image = handle.clone();
+                }
+                if let Some(mut node) = w.get_mut::<Node>(e) {
+                    node.display = Display::Flex;
+                }
+                if let Some(mut node) = w.get_mut::<Node>(icon) {
+                    node.display = Display::None;
+                }
+            },
+        );
+    }
+
     let name = commands
         .spawn((
             Text::new(entry.name.clone()),
@@ -280,7 +332,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
             Node { max_width: Val::Px(TILE_W - 4.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();
-    commands.entity(col).add_children(&[icon, name]);
+    commands.entity(col).add_children(&[preview, name]);
     col
 }
 
@@ -322,6 +374,26 @@ fn back_click(
         if parent.starts_with(&root) || parent == root {
             state.current = Some(parent.to_path_buf());
             state.selected = None;
+        }
+    }
+}
+
+/// Kick off thumbnail loads for visible image tiles (the cache de-dupes).
+fn request_thumbnails(
+    tiles: Query<&AssetTile>,
+    mut cache: ResMut<ThumbnailCache>,
+    asset_server: Res<AssetServer>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    let project = project.as_deref();
+    for tile in &tiles {
+        if tile.is_dir {
+            continue;
+        }
+        if let Some(name) = tile.path.file_name().and_then(|n| n.to_str()) {
+            if supports_thumbnail(name) {
+                cache.request(tile.path.clone(), &asset_server, project);
+            }
         }
     }
 }
