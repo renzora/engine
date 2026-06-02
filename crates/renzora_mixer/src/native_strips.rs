@@ -11,22 +11,75 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 
 use renzora_audio::{ChannelStrip, MixerState};
+use renzora_editor::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{fader, knob, mixer_button, vu_meter_bound};
+use renzora_ember::widgets::{fader, knob, mixer_button, text_input, vu_meter_bound, EmberTextInput};
 
 const RED: (u8, u8, u8) = (225, 90, 80);
 /// Max linear volume (1.0 = unity, 1.5 = +3.5 dB head-room).
 const VOL_MAX: f64 = 1.5;
 
-/// Registers the bevy-native Mixer content.
+/// Click target for a custom bus's delete (×) button.
+#[derive(Component)]
+struct BusDelete(usize);
+
+/// The "create custom bus" text field + button markers.
+#[derive(Component)]
+struct BusNameInput;
+#[derive(Component)]
+struct BusCreate;
+
+/// Registers the bevy-native Mixer content + its bus-management systems.
 pub struct NativeMixer;
 
 impl Plugin for NativeMixer {
     fn build(&self, app: &mut App) {
         app.register_panel_content("mixer", false, build);
+        app.add_systems(
+            Update,
+            (bus_create, bus_delete).run_if(in_state(SplashState::Editor)),
+        );
+    }
+}
+
+/// Create a custom bus when the field is submitted (Enter) or Create is clicked.
+fn bus_create(
+    create: Query<&Interaction, (With<BusCreate>, Changed<Interaction>)>,
+    mut input: Query<&mut EmberTextInput, With<BusNameInput>>,
+    mut mixer: ResMut<MixerState>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
+) {
+    let clicked = create.iter().any(|i| *i == Interaction::Pressed);
+    for mut inp in &mut input {
+        let entered = inp.value.contains('\n');
+        if !clicked && !entered {
+            continue;
+        }
+        let name = inp.value.split('\n').next().unwrap_or("").trim().to_string();
+        let (text_e, ph) = (inp.text_entity, inp.placeholder.clone());
+        if !name.is_empty() {
+            mixer.custom_buses.push((name, ChannelStrip::default()));
+        }
+        inp.value.clear();
+        if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
+            *t = Text::new(ph);
+            c.0 = rgb(TEXT_MUTED);
+        }
+    }
+}
+
+/// Delete a custom bus when its × button is clicked.
+fn bus_delete(
+    buttons: Query<(&Interaction, &BusDelete), Changed<Interaction>>,
+    mut mixer: ResMut<MixerState>,
+) {
+    for (interaction, del) in &buttons {
+        if *interaction == Interaction::Pressed && del.0 < mixer.custom_buses.len() {
+            mixer.custom_buses.remove(del.0);
+        }
     }
 }
 
@@ -55,10 +108,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
 
-    let master = strip(commands, fonts, "Master", |m| Some(&m.master), |m| Some(&mut m.master));
-    let sfx = strip(commands, fonts, "SFX", |m| Some(&m.sfx), |m| Some(&mut m.sfx));
-    let music = strip(commands, fonts, "Music", |m| Some(&m.music), |m| Some(&mut m.music));
-    let ambient = strip(commands, fonts, "Ambient", |m| Some(&m.ambient), |m| Some(&mut m.ambient));
+    let master = strip(commands, fonts, "Master", None, |m| Some(&m.master), |m| Some(&mut m.master));
+    let sfx = strip(commands, fonts, "SFX", None, |m| Some(&m.sfx), |m| Some(&mut m.sfx));
+    let music = strip(commands, fonts, "Music", None, |m| Some(&m.music), |m| Some(&mut m.music));
+    let ambient = strip(commands, fonts, "Ambient", None, |m| Some(&m.ambient), |m| Some(&mut m.ambient));
 
     let custom = commands
         .spawn(Node {
@@ -70,13 +123,55 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, custom, custom_snapshot);
 
-    commands.entity(root).add_children(&[master, sfx, music, ambient, custom]);
+    let add = add_bus_field(commands, fonts);
+
+    commands.entity(root).add_children(&[master, sfx, music, ambient, custom, add]);
     root
 }
 
+/// The "+ new custom bus" field at the end of the strip row.
+fn add_bus_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Px(120.0),
+            row_gap: Val::Px(4.0),
+            padding: UiRect::all(Val::Px(8.0)),
+            ..default()
+        })
+        .id();
+    let label = commands
+        .spawn((Text::new("New bus"), ui_font(&fonts.ui, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .id();
+    let input = text_input(commands, &fonts.ui, "Bus name", "");
+    commands.entity(input).insert(BusNameInput);
+    let create = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((42, 42, 52))),
+            Interaction::default(),
+            BusCreate,
+            Name::new("mixer-add-bus"),
+        ))
+        .id();
+    let create_label = commands
+        .spawn((Text::new("Create"), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .id();
+    commands.entity(create).add_child(create_label);
+    commands.entity(col).add_children(&[label, input, create]);
+    col
+}
+
 /// One channel strip: name, fader + VU, pan knob, mute/solo — all two-way bound
-/// to the bus the `sel`/`sel_mut` accessors point at.
-fn strip<Sel, SelMut>(commands: &mut Commands, fonts: &EmberFonts, name: &str, sel: Sel, sel_mut: SelMut) -> Entity
+/// to the bus the `sel`/`sel_mut` accessors point at. `delete` (custom buses
+/// only) adds a × button that removes that bus.
+fn strip<Sel, SelMut>(commands: &mut Commands, fonts: &EmberFonts, name: &str, delete: Option<usize>, sel: Sel, sel_mut: SelMut) -> Entity
 where
     Sel: Fn(&MixerState) -> Option<&ChannelStrip> + Copy + Send + Sync + 'static,
     SelMut: Fn(&mut MixerState) -> Option<&mut ChannelStrip> + Copy + Send + Sync + 'static,
@@ -98,9 +193,43 @@ where
         ))
         .id();
 
+    // Header: name + (custom buses) a × delete button.
+    let header = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            ..default()
+        })
+        .id();
     let label = commands
         .spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
         .id();
+    let mut header_kids = vec![label];
+    if let Some(i) = delete {
+        let del = commands
+            .spawn((
+                Node {
+                    width: Val::Px(16.0),
+                    height: Val::Px(16.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb((50, 40, 40))),
+                Interaction::default(),
+                BusDelete(i),
+                Name::new("mixer-bus-delete"),
+            ))
+            .id();
+        let x = commands
+            .spawn((Text::new("\u{00d7}"), ui_font(&fonts.ui, 12.0), TextColor(rgb((220, 120, 110)))))
+            .id();
+        commands.entity(del).add_child(x);
+        header_kids.push(del);
+    }
+    commands.entity(header).add_children(&header_kids);
 
     let meters = commands
         .spawn(Node {
@@ -169,7 +298,7 @@ where
 
     commands
         .entity(col)
-        .add_children(&[label, meters, pan, pan_label, buttons]);
+        .add_children(&[header, meters, pan, pan_label, buttons]);
     col
 }
 
@@ -196,6 +325,7 @@ fn custom_snapshot(world: &World) -> KeyedSnapshot {
                 c,
                 f,
                 &names[i],
+                Some(i),
                 move |m: &MixerState| m.custom_buses.get(i).map(|(_, s)| s),
                 move |m: &mut MixerState| m.custom_buses.get_mut(i).map(|(_, s)| s),
             )
