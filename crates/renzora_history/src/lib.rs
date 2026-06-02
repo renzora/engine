@@ -1,5 +1,7 @@
 //! History panel — view and jump through the undo/redo stack.
 
+pub mod native;
+
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense};
 use egui_phosphor::regular;
@@ -246,6 +248,9 @@ impl Plugin for HistoryPanelPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] HistoryPanelPlugin");
         app.register_panel(HistoryPanel);
+        // Bevy-native (ember) History for the bevy_ui shell; coexists with the
+        // egui panel above (both read the same `UndoStacks`).
+        native::register_native_history(app);
     }
 }
 
