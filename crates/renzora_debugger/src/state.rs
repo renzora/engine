@@ -748,7 +748,7 @@ pub fn update_camera_debug_state(
         });
     }
 
-    state.cameras.sort_by(|a, b| a.order.cmp(&b.order));
+    state.cameras.sort_by_key(|c| c.order);
 
     if let Some(selected) = state.selected_camera {
         if !state.cameras.iter().any(|c| c.entity == selected) {
@@ -920,7 +920,7 @@ pub fn update_ecs_stats(world: &mut World) {
     }
 
     let archetype_count = archetype_infos.len();
-    archetype_infos.sort_by(|a, b| b.entity_count.cmp(&a.entity_count));
+    archetype_infos.sort_by_key(|a| std::cmp::Reverse(a.entity_count));
     let top_archetypes: Vec<ArchetypeInfo> = archetype_infos.into_iter().take(20).collect();
 
     let mut stats: Vec<ComponentTypeStats> = component_counts
@@ -933,7 +933,7 @@ pub fn update_ecs_stats(world: &mut World) {
             },
         )
         .collect();
-    stats.sort_by(|a, b| b.instance_count.cmp(&a.instance_count));
+    stats.sort_by_key(|s| std::cmp::Reverse(s.instance_count));
 
     let mut state = world.resource_mut::<EcsStatsState>();
     state.entity_count = entity_count;

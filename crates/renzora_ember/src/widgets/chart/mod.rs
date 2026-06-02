@@ -1,5 +1,10 @@
 //! Charts — a GPU-painted line/area chart (via [`UiMaterial`]), a pure-bevy_ui
 //! bar chart, and a compact sparkline. Debug-graph style.
+//!
+//! [`line_chart_live`] is the reactive variant: it re-samples a closure each
+//! frame and updates the plot in place (fixed range, target line, custom color),
+//! which is what the debug/diagnostic panels use for rolling FPS/GPU/entity
+//! graphs.
 
 use bevy::asset::Asset;
 use bevy::picking::Pickable;
@@ -11,18 +16,19 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::reactive::bind_with;
 use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED};
 
 const MAX_SAMPLES: usize = 32;
 
-/// Registers the chart material + shader and the attach system.
+/// Registers the chart material + shader and the attach/sync systems.
 pub(crate) struct ChartPlugin;
 
 impl Plugin for ChartPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "chart.wgsl");
         app.add_plugins(UiMaterialPlugin::<ChartMaterial>::default());
-        app.add_systems(Update, chart_attach);
+        app.add_systems(Update, (chart_attach, chart_sync));
     }
 }
 
@@ -42,18 +48,77 @@ impl UiMaterial for ChartMaterial {
     }
 }
 
-/// Holds the raw chart samples until [`chart_attach`] turns them into a material.
+/// Holds the raw chart samples + style; [`chart_attach`]/[`chart_sync`] turn it
+/// into the material uniforms.
 #[derive(Component)]
 pub(crate) struct ChartData {
     values: Vec<f32>,
+    /// Fixed range; `None` auto-fits to the visible samples.
+    min: Option<f32>,
+    max: Option<f32>,
+    color: Color,
+    /// Raw value at which to draw the target line (`None` = no line).
+    target: Option<f32>,
 }
 
-fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) -> Entity {
+impl ChartData {
+    fn solid(values: Vec<f32>) -> Self {
+        Self {
+            values,
+            min: None,
+            max: None,
+            color: rgb(ACCENT_BLUE),
+            target: None,
+        }
+    }
+}
+
+/// Build the material uniforms for the current samples + style, or `None` if
+/// there isn't enough data to draw a line yet.
+fn chart_material(cd: &ChartData) -> Option<ChartMaterial> {
+    if cd.values.len() < 2 {
+        return None;
+    }
+    // Show the most recent MAX_SAMPLES (a rolling window for time series).
+    let start = cd.values.len().saturating_sub(MAX_SAMPLES);
+    let slice = &cd.values[start..];
+
+    let auto_min = slice.iter().cloned().fold(f32::MAX, f32::min);
+    let auto_max = slice.iter().cloned().fold(f32::MIN, f32::max);
+    let min = cd.min.unwrap_or(auto_min);
+    let max = cd.max.unwrap_or(auto_max);
+    let range = (max - min).max(1e-4);
+
+    let n = slice.len().min(MAX_SAMPLES);
+    let mut flat = [0.0f32; MAX_SAMPLES];
+    for (i, v) in slice.iter().take(MAX_SAMPLES).enumerate() {
+        flat[i] = ((v - min) / range).clamp(0.0, 1.0);
+    }
+    let mut data = [Vec4::ZERO; 8];
+    for (g, slot) in data.iter_mut().enumerate() {
+        *slot = Vec4::new(flat[g * 4], flat[g * 4 + 1], flat[g * 4 + 2], flat[g * 4 + 3]);
+    }
+    let lin = cd.color.to_linear();
+    let target = cd
+        .target
+        .map(|t| (t - min) / range)
+        .filter(|v| (0.0..=1.0).contains(v))
+        .unwrap_or(-1.0);
+    Some(ChartMaterial {
+        data,
+        color: Vec4::new(lin.red, lin.green, lin.blue, 1.0),
+        params: Vec4::new(n as f32, 2.0, 0.22, target),
+    })
+}
+
+/// The chart frame (border + clip) and its absolutely-filled plot node. Returns
+/// `(outer, plot)` — bind the plot's [`ChartData`] to drive it live.
+fn chart_shell(commands: &mut Commands, width: Val, height: Val, data: ChartData) -> (Entity, Entity) {
     let outer = commands
         .spawn((
             Node {
-                width: Val::Px(width),
-                height: Val::Px(height),
+                width,
+                height,
                 position_type: PositionType::Relative,
                 overflow: Overflow::clip(),
                 border: UiRect::all(Val::Px(1.0)),
@@ -75,14 +140,22 @@ fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) 
                 height: Val::Percent(100.0),
                 ..default()
             },
-            ChartData {
-                values: values.to_vec(),
-            },
+            data,
             Pickable::IGNORE,
             Name::new("chart-plot"),
         ))
         .id();
     commands.entity(outer).add_child(plot);
+    (outer, plot)
+}
+
+fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) -> Entity {
+    let (outer, _) = chart_shell(
+        commands,
+        Val::Px(width),
+        Val::Px(height),
+        ChartData::solid(values.to_vec()),
+    );
     outer
 }
 
@@ -120,6 +193,56 @@ pub fn line_chart(commands: &mut Commands, fonts: &EmberFonts, values: &[f32]) -
 /// A compact inline sparkline.
 pub fn sparkline(commands: &mut Commands, values: &[f32]) -> Entity {
     chart_node(commands, values, 110.0, 28.0)
+}
+
+/// Styling for a [`line_chart_live`].
+pub struct ChartStyle {
+    pub color: Color,
+    /// Fixed value range; leave `None` to auto-fit the visible window.
+    pub min: Option<f32>,
+    pub max: Option<f32>,
+    /// Optional target line (e.g. the 60-FPS / 16.67-ms budget line).
+    pub target: Option<f32>,
+    pub height: f32,
+}
+
+impl Default for ChartStyle {
+    fn default() -> Self {
+        Self {
+            color: rgb(ACCENT_BLUE),
+            min: None,
+            max: None,
+            target: None,
+            height: 48.0,
+        }
+    }
+}
+
+/// A full-width, reactive line/area chart: `sampler` is re-read each frame and
+/// the plot is updated in place (value-diffed — no work when the data is
+/// unchanged). Use for rolling debug graphs.
+pub fn line_chart_live<F>(commands: &mut Commands, style: ChartStyle, sampler: F) -> Entity
+where
+    F: Fn(&World) -> Vec<f32> + Send + Sync + 'static,
+{
+    let (outer, plot) = chart_shell(
+        commands,
+        Val::Percent(100.0),
+        Val::Px(style.height),
+        ChartData {
+            values: Vec::new(),
+            min: style.min,
+            max: style.max,
+            color: style.color,
+            target: style.target,
+        },
+    );
+    bind_with(commands, plot, sampler, |w, e, v: &Vec<f32>| {
+        if let Some(mut cd) = w.get_mut::<ChartData>(e) {
+            cd.values.clone_from(v);
+        }
+    });
+    outer
 }
 
 /// A simple vertical bar chart (pure bevy_ui rectangles).
@@ -173,29 +296,23 @@ fn chart_attach(
     charts: Query<(Entity, &ChartData), Without<MaterialNode<ChartMaterial>>>,
 ) {
     for (e, cd) in &charts {
-        if cd.values.len() < 2 {
-            continue;
+        if let Some(material) = chart_material(cd) {
+            commands
+                .entity(e)
+                .insert(MaterialNode(materials.add(material)));
         }
-        let min = cd.values.iter().cloned().fold(f32::MAX, f32::min);
-        let max = cd.values.iter().cloned().fold(f32::MIN, f32::max);
-        let range = (max - min).max(1e-4);
-        let n = cd.values.len().min(MAX_SAMPLES);
-        let mut flat = [0.0f32; MAX_SAMPLES];
-        for (i, v) in cd.values.iter().take(MAX_SAMPLES).enumerate() {
-            flat[i] = (v - min) / range;
+    }
+}
+
+fn chart_sync(
+    mut materials: ResMut<Assets<ChartMaterial>>,
+    charts: Query<(&ChartData, &MaterialNode<ChartMaterial>), Changed<ChartData>>,
+) {
+    for (cd, node) in &charts {
+        if let Some(material) = chart_material(cd) {
+            if let Some(slot) = materials.get_mut(&node.0) {
+                *slot = material;
+            }
         }
-        let mut data = [Vec4::ZERO; 8];
-        for (g, slot) in data.iter_mut().enumerate() {
-            *slot = Vec4::new(flat[g * 4], flat[g * 4 + 1], flat[g * 4 + 2], flat[g * 4 + 3]);
-        }
-        let accent = rgb(ACCENT_BLUE).to_linear();
-        let material = ChartMaterial {
-            data,
-            color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),
-            params: Vec4::new(n as f32, 2.0, 0.22, 0.0),
-        };
-        commands
-            .entity(e)
-            .insert(MaterialNode(materials.add(material)));
     }
 }

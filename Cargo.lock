@@ -9348,6 +9348,7 @@ dependencies = [
  "memory-stats",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_lumen",
  "renzora_macros",
  "renzora_rt",

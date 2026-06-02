@@ -3,6 +3,7 @@
 //! Panels: System Profiler, Memory Profiler, Camera Debug, Physics Debug, Culling Debug.
 //! For Tracy profiler integration see the `renzora_tracy` crate.
 
+pub mod native;
 pub mod panels;
 pub mod state;
 
@@ -813,6 +814,8 @@ impl Plugin for DebuggerPlugin {
         app.register_panel(MemoryProfilerPanel);
         app.register_panel(PerformancePanel);
         app.register_panel(RenderStatsPanel);
+        // bevy-native (ember) content for the read-only stat panels.
+        native::register_native_debug(app);
         app.register_panel(RenderPipelinePanel::new());
         app.register_panel(EcsStatsPanel::new());
         app.register_panel(CameraDebugPanel::new(arc.clone()));
