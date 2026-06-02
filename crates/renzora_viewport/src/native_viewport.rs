@@ -37,15 +37,20 @@ pub fn register_native_viewport(app: &mut App) {
         Update,
         report_viewport_geometry.run_if(in_state(SplashState::Editor)),
     );
+    crate::native_header::register(app);
 }
 
-fn build_viewport(commands: &mut Commands, _fonts: &EmberFonts, index: usize) -> Entity {
+fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> Entity {
     let img = commands
         .spawn((
             ImageNode::default(),
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                // Grow to fill whatever the header leaves; `min_height: 0` lets
+                // the flex child shrink below its intrinsic size so the image
+                // tracks the panel instead of inflating it.
+                flex_grow: 1.0,
+                min_height: Val::Px(0.0),
                 ..default()
             },
             BackgroundColor(Color::srgb(0.08, 0.08, 0.10)),
@@ -69,7 +74,27 @@ fn build_viewport(commands: &mut Commands, _fonts: &EmberFonts, index: usize) ->
             }
         },
     );
-    img
+
+    // The primary viewport (slot 0) owns the shared header bar; the extra
+    // slots are bare camera-angle views. Wrap both in a column.
+    let root = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            Name::new("native-viewport-root"),
+        ))
+        .id();
+    if index == 0 {
+        let header = crate::native_header::build_header(commands, fonts);
+        commands.entity(root).add_children(&[header, img]);
+    } else {
+        commands.entity(root).add_child(img);
+    }
+    root
 }
 
 /// Publish each native viewport's on-screen rect + hover to

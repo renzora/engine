@@ -14,6 +14,7 @@ pub mod material_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
+mod native_header;
 mod native_viewport;
 pub mod persistence;
 pub mod play_mode;
