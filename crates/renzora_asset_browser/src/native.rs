@@ -83,6 +83,9 @@ pub(crate) struct NativeAssets {
     recent: Vec<PathBuf>,
     /// Whether favorites/recent have been loaded from disk this session.
     loaded: bool,
+    /// A pending tile press `(path, is_dir, origin)` — promoted to a drag once
+    /// the cursor moves >5px (for drag-to-viewport).
+    drag_press: Option<(PathBuf, bool, Vec2)>,
 }
 
 impl Default for NativeAssets {
@@ -101,6 +104,7 @@ impl Default for NativeAssets {
             favorites: Vec::new(),
             recent: Vec::new(),
             loaded: false,
+            drag_press: None,
         }
     }
 }
@@ -250,6 +254,7 @@ pub fn register_native_asset_browser(app: &mut App) {
             crumb_click,
             load_persisted,
             shortcut_click,
+            asset_drag,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -369,6 +374,51 @@ fn load_persisted(mut state: ResMut<NativeAssets>, project: Option<Res<renzora::
     state.favorites = load_list(&root, "favorites");
     state.recent = load_list(&root, "recent");
     state.loaded = true;
+}
+
+/// Drag a tile out toward the viewport: records the press, and once the cursor
+/// moves >5px inserts an `AssetDragPayload` (the viewport shows a live preview
+/// while it exists and commits the spawn when it's removed on release). Mirrors
+/// the egui drag lifecycle, which only runs in the egui pass.
+fn asset_drag(
+    tiles: Query<(&Interaction, &AssetTile)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    mut state: ResMut<NativeAssets>,
+    payload: Option<Res<renzora_editor::AssetDragPayload>>,
+    mut commands: Commands,
+) {
+    if mouse.just_released(MouseButton::Left) {
+        state.drag_press = None;
+        if payload.is_some() {
+            commands.remove_resource::<renzora_editor::AssetDragPayload>();
+        }
+        return;
+    }
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    if mouse.just_pressed(MouseButton::Left) {
+        if let Some(c) = cursor {
+            if let Some((_, tile)) = tiles.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
+                state.drag_press = Some((tile.path.clone(), tile.is_dir, c));
+            }
+        }
+    }
+    if payload.is_none() {
+        if let (Some((path, is_dir, origin)), Some(c)) = (state.drag_press.clone(), cursor) {
+            if !is_dir && c.distance(origin) > 5.0 {
+                commands.insert_resource(renzora_editor::AssetDragPayload {
+                    name: file_name_of(&path),
+                    paths: vec![path.clone()],
+                    icon: String::new(),
+                    color: bevy_egui::egui::Color32::from_rgb(170, 175, 190),
+                    origin: bevy_egui::egui::Pos2::new(origin.x, origin.y),
+                    is_detached: true,
+                    drag_count: 1,
+                    path,
+                });
+            }
+        }
+    }
 }
 
 /// A favorites/recent shortcut row: navigate (folder) or open (file).
