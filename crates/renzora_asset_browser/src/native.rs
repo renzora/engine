@@ -77,6 +77,12 @@ pub(crate) struct NativeAssets {
     /// drag even when the cursor leaves the thin splitter (bevy_ui drops
     /// `Pressed` off-element).
     divider_drag: Option<(f32, f32)>,
+    /// Favorited folders (persisted to `<root>/.editor/favorites`).
+    favorites: Vec<PathBuf>,
+    /// Recently opened files (persisted to `<root>/.editor/recent`).
+    recent: Vec<PathBuf>,
+    /// Whether favorites/recent have been loaded from disk this session.
+    loaded: bool,
 }
 
 impl Default for NativeAssets {
@@ -92,12 +98,43 @@ impl Default for NativeAssets {
             zoom: 1.0,
             tree_width: 180.0,
             divider_drag: None,
+            favorites: Vec::new(),
+            recent: Vec::new(),
+            loaded: false,
         }
     }
 }
 
+// ── Favorites / recent persistence (<root>/.editor/{favorites,recent}) ─────────
+
+fn load_list(root: &Path, file: &str) -> Vec<PathBuf> {
+    let path = root.join(".editor").join(file);
+    std::fs::read_to_string(&path)
+        .ok()
+        .map(|c| {
+            c.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| root.join(l.trim()))
+                .filter(|p| p.exists())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn save_list(root: &Path, file: &str, list: &[PathBuf]) {
+    let dir = root.join(".editor");
+    let _ = std::fs::create_dir_all(&dir);
+    let content: String = list
+        .iter()
+        .filter_map(|p| p.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let _ = std::fs::write(dir.join(file), content);
+}
+
 #[derive(Clone, Copy)]
 enum Action {
+    Favorite,
     Duplicate,
     Delete,
     Reveal,
@@ -131,6 +168,11 @@ struct NewAssetBtn(NewAsset);
 struct ImportBtn;
 #[derive(Component)]
 struct CrumbNav(PathBuf);
+#[derive(Component)]
+struct ShortcutClick {
+    path: PathBuf,
+    is_dir: bool,
+}
 
 /// What the New-Folder / Add menu creates.
 #[derive(Clone, Copy)]
@@ -206,6 +248,8 @@ pub fn register_native_asset_browser(app: &mut App) {
             create_asset_click,
             import_click,
             crumb_click,
+            load_persisted,
+            shortcut_click,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -314,6 +358,50 @@ fn import_click(
     }
 }
 
+/// Load favorites + recent from disk once the project is known.
+fn load_persisted(mut state: ResMut<NativeAssets>, project: Option<Res<renzora::core::CurrentProject>>) {
+    if state.loaded {
+        return;
+    }
+    let Some(root) = project.map(|p| p.path.clone()) else {
+        return;
+    };
+    state.favorites = load_list(&root, "favorites");
+    state.recent = load_list(&root, "recent");
+    state.loaded = true;
+}
+
+/// A favorites/recent shortcut row: navigate (folder) or open (file).
+fn shortcut_click(
+    q: Query<(&Interaction, &ShortcutClick), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    for (interaction, shortcut) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if shortcut.is_dir {
+            state.current = Some(shortcut.path.clone());
+            state.selected = None;
+        } else {
+            os_open(&shortcut.path);
+            let root = project.as_ref().map(|p| p.path.clone());
+            track_recent(&mut state, &shortcut.path, root.as_deref());
+        }
+    }
+}
+
+/// Move `path` to the front of the recent list (max 20) + persist.
+fn track_recent(state: &mut NativeAssets, path: &Path, root: Option<&Path>) {
+    state.recent.retain(|p| p != path);
+    state.recent.insert(0, path.to_path_buf());
+    state.recent.truncate(20);
+    if let Some(root) = root {
+        save_list(root, "recent", &state.recent);
+    }
+}
+
 fn crumb_click(
     q: Query<(&Interaction, &CrumbNav), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
@@ -342,6 +430,7 @@ fn context_action_click(
     q: Query<(&Interaction, &ContextAction), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     mut menu: Query<&mut Node, With<AssetContextMenu>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
 ) {
     for (interaction, action) in &q {
         if *interaction != Interaction::Pressed {
@@ -351,6 +440,16 @@ fn context_action_click(
             continue;
         };
         match action.0 {
+            Action::Favorite => {
+                if let Some(i) = state.favorites.iter().position(|f| f == &path) {
+                    state.favorites.remove(i);
+                } else {
+                    state.favorites.push(path.clone());
+                }
+                if let Some(root) = project.as_ref().map(|p| p.path.clone()) {
+                    save_list(&root, "favorites", &state.favorites);
+                }
+            }
             Action::Duplicate => duplicate_asset(&path),
             Action::Delete => {
                 let _ = if path.is_dir() {
@@ -718,6 +817,7 @@ fn context_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let items = [
+        ("star", "Favorite", Action::Favorite),
         ("copy", "Duplicate", Action::Duplicate),
         ("folder-open", "Reveal in Explorer", Action::Reveal),
         ("trash", "Delete", Action::Delete),
@@ -951,11 +1051,15 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
     }
     let zoom = world.get_resource::<NativeAssets>().map(|s| s.zoom).unwrap_or(1.0);
     let zoom_q = (zoom * 20.0).round() as u64;
+    let favs: HashSet<PathBuf> = world
+        .get_resource::<NativeAssets>()
+        .map(|s| s.favorites.iter().cloned().collect())
+        .unwrap_or_default();
     let items: Vec<(u64, u64)> = entries
         .iter()
         .map(|e| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&e.name, e.is_dir, zoom_q).hash(&mut h);
+            (&e.name, e.is_dir, zoom_q, favs.contains(&e.path)).hash(&mut h);
             let mut k = std::collections::hash_map::DefaultHasher::new();
             e.path.hash(&mut k);
             (k.finish(), h.finish())
@@ -963,11 +1067,11 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| tile(c, f, &entries[i], zoom)),
+        build: Box::new(move |c, f, i| tile(c, f, &entries[i], zoom, favs.contains(&entries[i].path))),
     }
 }
 
-fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32) -> Entity {
+fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, fav: bool) -> Entity {
     let tile_w = TILE_W * zoom;
     let preview_sz = 64.0 * zoom;
     let icon_sz = 30.0 * zoom;
@@ -1021,6 +1125,18 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32) -
     let color = if entry.is_dir { folder_color(&entry.name) } else { TEXT_MUTED };
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, icon_sz);
     commands.entity(preview).add_child(icon);
+
+    // Star badge on favorited assets.
+    if fav {
+        let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 70), 12.0);
+        commands.entity(star).insert(Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(2.0),
+            right: Val::Px(2.0),
+            ..default()
+        });
+        commands.entity(preview).add_child(star);
+    }
 
     if let Some(kind) = (!entry.is_dir).then(|| thumb_kind(&entry.name)).flatten() {
         let img = commands
@@ -1121,6 +1237,17 @@ fn flatten_dirs(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut
     }
 }
 
+/// A row in the tree: a section header, a favorites/recent shortcut, or a folder.
+enum TreeItem {
+    Header(&'static str),
+    Shortcut { name: String, path: PathBuf, is_dir: bool },
+    Folder(TreeRow),
+}
+
+fn file_name_of(p: &Path) -> String {
+    p.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string()
+}
+
 fn tree_snapshot(world: &World) -> KeyedSnapshot {
     let Some(root) = project_root(world) else {
         return KeyedSnapshot {
@@ -1128,26 +1255,130 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
             build: Box::new(|_, _, _| Entity::PLACEHOLDER),
         };
     };
-    let expanded = world
-        .get_resource::<NativeAssets>()
-        .map(|s| s.expanded.clone())
-        .unwrap_or_default();
+    let st = world.get_resource::<NativeAssets>();
+    let expanded = st.map(|s| s.expanded.clone()).unwrap_or_default();
+    let favorites = st.map(|s| s.favorites.clone()).unwrap_or_default();
+    let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
+
+    let mut items: Vec<TreeItem> = Vec::new();
+    if !favorites.is_empty() {
+        items.push(TreeItem::Header("FAVORITES"));
+        for p in &favorites {
+            items.push(TreeItem::Shortcut {
+                name: file_name_of(p),
+                path: p.clone(),
+                is_dir: p.is_dir(),
+            });
+        }
+    }
+    if !recent.is_empty() {
+        items.push(TreeItem::Header("RECENT"));
+        for p in recent.iter().take(20) {
+            items.push(TreeItem::Shortcut {
+                name: file_name_of(p),
+                path: p.clone(),
+                is_dir: false,
+            });
+        }
+    }
+    items.push(TreeItem::Header("FOLDERS"));
     let mut rows = Vec::new();
     flatten_dirs(&root, 0, &expanded, &mut rows);
-    let items: Vec<(u64, u64)> = rows
+    items.extend(rows.into_iter().map(TreeItem::Folder));
+
+    let keyed: Vec<(u64, u64)> = items
         .iter()
-        .map(|r| {
+        .map(|it| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
-            r.path.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
+            match it {
+                TreeItem::Header(s) => {
+                    (0u8, s).hash(&mut k);
+                    s.hash(&mut h);
+                }
+                TreeItem::Shortcut { name, path, is_dir } => {
+                    (1u8, path).hash(&mut k);
+                    (name, is_dir).hash(&mut h);
+                }
+                TreeItem::Folder(r) => {
+                    (2u8, &r.path).hash(&mut k);
+                    (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
+                }
+            }
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| tree_row(c, f, &rows[i])),
+        items: keyed,
+        build: Box::new(move |c, f, i| match &items[i] {
+            TreeItem::Header(s) => tree_header(c, f, s),
+            TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir),
+            TreeItem::Folder(r) => tree_row(c, f, r),
+        }),
     }
+}
+
+fn tree_header(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+    commands
+        .spawn((
+            Text::new(text),
+            ui_font(&fonts.ui, 9.0),
+            TextColor(rgb(TEXT_MUTED)),
+            Node {
+                padding: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(6.0), Val::Px(2.0)),
+                ..default()
+            },
+        ))
+        .id()
+}
+
+fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &Path, is_dir: bool) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                width: Val::Percent(100.0),
+                height: Val::Px(20.0),
+                padding: UiRect::left(Val::Px(8.0)),
+                column_gap: Val::Px(4.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            ShortcutClick {
+                path: path.to_path_buf(),
+                is_dir,
+            },
+            Name::new("tree-shortcut"),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(HOVER_BG),
+        _ => Color::NONE,
+    });
+    let (icon_name, icon_color) = if is_dir {
+        ("folder", folder_color(name))
+    } else {
+        (icon_for(path, false), TEXT_MUTED)
+    };
+    let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 12.0);
+    let label = commands
+        .spawn((
+            Text::new(name.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node {
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(row).add_children(&[ic, label]);
+    row
 }
 
 fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity {
@@ -1275,8 +1506,10 @@ fn tile_click(
     q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
+    project: Option<Res<renzora::core::CurrentProject>>,
 ) {
     let now = time.elapsed_secs_f64();
+    let root = project.as_ref().map(|p| p.path.clone());
     for (interaction, tile) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -1292,6 +1525,7 @@ fn tile_click(
                 state.selected = None;
             } else {
                 os_open(&tile.path);
+                track_recent(&mut state, &tile.path, root.as_deref());
             }
         } else {
             // Single click selects; the next click within 0.4s opens/navigates.
