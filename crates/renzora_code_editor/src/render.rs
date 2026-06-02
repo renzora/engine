@@ -2197,7 +2197,7 @@ fn multi_backspace(
         .collect();
 
     // Apply largest-first.
-    ranges.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    ranges.sort_unstable_by_key(|b| std::cmp::Reverse(b.0));
     for (s_byte, e_byte) in &ranges {
         let s = (*s_byte).min(file.content.len());
         let e = (*e_byte).min(file.content.len());
