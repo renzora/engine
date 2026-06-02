@@ -3,11 +3,12 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Bound;
 use crate::theme::{rgb, ACCENT_BLUE};
 
+/// Fill/thumb refs; the value lives in `Bound<f32>` (so `bind_2way` can drive it).
 #[derive(Component)]
 pub(crate) struct EmberSlider {
-    pub(crate) value: f32,
     fill: Entity,
     thumb: Entity,
 }
@@ -76,15 +77,17 @@ pub fn slider(commands: &mut Commands, value: f32) -> Entity {
         .id();
     commands.entity(track).add_child(fill);
     commands.entity(row).add_children(&[track, thumb]);
-    commands.entity(row).insert(EmberSlider { value: v, fill, thumb });
+    commands
+        .entity(row)
+        .insert((EmberSlider { fill, thumb }, Bound::<f32>(v)));
     row
 }
 
+/// User drag → write the model (`Bound<f32>`); visuals follow via [`slider_apply`].
 pub(crate) fn slider_drag(
-    mut sliders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut EmberSlider)>,
-    mut nodes: Query<&mut Node>,
+    mut sliders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut Bound<f32>), With<EmberSlider>>,
 ) {
-    for (interaction, rcp, mut s) in &mut sliders {
+    for (interaction, rcp, mut b) in &mut sliders {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -93,10 +96,19 @@ pub(crate) fn slider_drag(
         };
         // `normalized` is centered (-0.5..0.5); shift to 0..1.
         let v = (n.x + 0.5).clamp(0.0, 1.0);
-        if (v - s.value).abs() < 0.001 {
-            continue;
+        if (v - b.0).abs() >= 0.001 {
+            b.0 = v;
         }
-        s.value = v;
+    }
+}
+
+/// Model (`Bound<f32>`) → fill/thumb (user drag or a `bind_2way` state push).
+pub(crate) fn slider_apply(
+    sliders: Query<(&EmberSlider, &Bound<f32>), Changed<Bound<f32>>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (s, b) in &sliders {
+        let v = b.0.clamp(0.0, 1.0);
         if let Ok(mut fnode) = nodes.get_mut(s.fill) {
             fnode.width = Val::Percent(v * 100.0);
         }

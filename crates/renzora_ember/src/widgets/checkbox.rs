@@ -3,12 +3,13 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Bound;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::{rgb, ACCENT_BLUE};
 
+/// Mark ref; the checked state lives in `Bound<bool>` (so `bind_2way` can drive it).
 #[derive(Component)]
 pub(crate) struct EmberCheckbox {
-    checked: bool,
     mark: Entity,
 }
 
@@ -63,31 +64,36 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
             Name::new("check"),
         ))
         .id();
-    commands.entity(box_e).insert(EmberCheckbox { checked, mark });
+    commands.entity(box_e).insert((EmberCheckbox { mark }, Bound::<bool>(checked)));
     commands.entity(box_e).add_child(mark);
     box_e
 }
 
+/// Click → flip the model (`Bound<bool>`); visuals follow via [`checkbox_apply`].
 pub(crate) fn checkbox_interact(
-    mut boxes: Query<(&Interaction, &mut EmberCheckbox, &mut Styled), Changed<Interaction>>,
+    mut boxes: Query<(&Interaction, &mut Bound<bool>), (With<EmberCheckbox>, Changed<Interaction>)>,
+) {
+    for (interaction, mut b) in &mut boxes {
+        if *interaction == Interaction::Pressed {
+            b.0 = !b.0;
+        }
+    }
+}
+
+/// Model (`Bound<bool>`) → box fill + mark + styled state (click or state push).
+pub(crate) fn checkbox_apply(
+    mut boxes: Query<(&EmberCheckbox, &Bound<bool>, &mut BackgroundColor, &mut Styled), Changed<Bound<bool>>>,
     mut nodes: Query<&mut Node>,
 ) {
-    for (interaction, mut cb, mut styled) in &mut boxes {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        cb.checked = !cb.checked;
-        styled.state = if cb.checked {
+    for (cb, b, mut bg, mut styled) in &mut boxes {
+        bg.0 = if b.0 { rgb(ACCENT_BLUE) } else { Color::NONE };
+        styled.state = if b.0 {
             WidgetState::Active
         } else {
             WidgetState::Normal
         };
         if let Ok(mut n) = nodes.get_mut(cb.mark) {
-            n.display = if cb.checked {
-                Display::Flex
-            } else {
-                Display::None
-            };
+            n.display = if b.0 { Display::Flex } else { Display::None };
         }
     }
 }

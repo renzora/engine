@@ -2,9 +2,10 @@
 
 use bevy::prelude::*;
 
+use crate::reactive::Bound;
 use crate::theme::rgb;
 
-use super::slider::{slider, EmberSlider};
+use super::slider::slider;
 
 #[derive(Component)]
 pub(crate) struct EmberColorPicker {
@@ -62,14 +63,14 @@ pub fn color_picker(commands: &mut Commands, color: (u8, u8, u8)) -> Entity {
 
 pub(crate) fn color_picker_sync(
     pickers: Query<&EmberColorPicker>,
-    sliders: Query<&EmberSlider>,
+    sliders: Query<&Bound<f32>>,
     mut bgs: Query<&mut BackgroundColor>,
 ) {
     for p in &pickers {
         let (Ok(r), Ok(g), Ok(b)) = (sliders.get(p.r), sliders.get(p.g), sliders.get(p.b)) else {
             continue;
         };
-        let col = Color::srgb(r.value, g.value, b.value);
+        let col = Color::srgb(r.0, g.0, b.0);
         if let Ok(mut bg) = bgs.get_mut(p.preview) {
             if bg.0 != col {
                 bg.0 = col;
