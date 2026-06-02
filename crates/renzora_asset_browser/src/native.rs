@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_text, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{scroll_view, text_input, EmberTextInput};
 
@@ -78,6 +78,71 @@ struct AssetSearch;
 struct TreeToggle(PathBuf);
 #[derive(Component)]
 struct TreeNav(PathBuf);
+#[derive(Component)]
+struct NewAssetBtn(NewAsset);
+#[derive(Component)]
+struct ImportBtn;
+#[derive(Component)]
+struct CrumbNav(PathBuf);
+
+/// What the New-Folder / Add menu creates.
+#[derive(Clone, Copy)]
+enum NewAsset {
+    Folder,
+    Material,
+    Blueprint,
+    Lua,
+    Rhai,
+    Particle,
+}
+
+impl NewAsset {
+    fn filename(self) -> &'static str {
+        match self {
+            NewAsset::Folder => "New Folder",
+            NewAsset::Material => "NewMaterial.material",
+            NewAsset::Blueprint => "NewBlueprint.blueprint",
+            NewAsset::Lua => "new_script.lua",
+            NewAsset::Rhai => "new_script.rhai",
+            NewAsset::Particle => "NewParticle.particle",
+        }
+    }
+    fn content(self) -> &'static str {
+        match self {
+            NewAsset::Folder => "",
+            NewAsset::Material | NewAsset::Blueprint => "{}",
+            NewAsset::Lua => "-- New Lua script\n",
+            NewAsset::Rhai => "// New Rhai script\n",
+            NewAsset::Particle => "(name: \"New Particle\")",
+        }
+    }
+    fn is_folder(self) -> bool {
+        matches!(self, NewAsset::Folder)
+    }
+}
+
+/// A free path in `folder` for `filename`, suffixing " 2", " 3"… on collision.
+fn unique_path(folder: &Path, filename: &str, is_folder: bool) -> PathBuf {
+    let candidate = folder.join(filename);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let (stem, ext) = if is_folder {
+        (filename.to_string(), String::new())
+    } else {
+        let p = Path::new(filename);
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(filename).to_string();
+        let ext = p.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+        (stem, ext)
+    };
+    for n in 2..1000 {
+        let cand = folder.join(format!("{stem} {n}{ext}"));
+        if !cand.exists() {
+            return cand;
+        }
+    }
+    candidate
+}
 
 pub fn register_native_asset_browser(app: &mut App) {
     app.init_resource::<NativeAssets>();
@@ -91,9 +156,64 @@ pub fn register_native_asset_browser(app: &mut App) {
             request_thumbnails,
             tree_toggle_click,
             tree_nav_click,
+            create_asset_click,
+            import_click,
+            crumb_click,
         )
             .run_if(in_state(SplashState::Editor)),
     );
+}
+
+fn create_asset_click(
+    q: Query<(&Interaction, &NewAssetBtn), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(folder) = state.current.clone().or_else(|| project.as_ref().map(|p| p.path.clone())) else {
+            continue;
+        };
+        let kind = btn.0;
+        let path = unique_path(&folder, kind.filename(), kind.is_folder());
+        let ok = if kind.is_folder() {
+            std::fs::create_dir_all(&path).is_ok()
+        } else {
+            std::fs::write(&path, kind.content()).is_ok()
+        };
+        if ok {
+            state.selected = Some(path);
+        }
+    }
+}
+
+fn import_click(
+    q: Query<&Interaction, (With<ImportBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+    state: Res<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    commands.insert_resource(renzora::core::ImportRequested);
+    if let Some(folder) = state.current.clone().or_else(|| project.map(|p| p.path.clone())) {
+        commands.insert_resource(renzora::core::ImportTargetDir(folder.to_string_lossy().to_string()));
+    }
+}
+
+fn crumb_click(
+    q: Query<(&Interaction, &CrumbNav), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    for (interaction, nav) in &q {
+        if *interaction == Interaction::Pressed {
+            state.current = Some(nav.0.clone());
+            state.selected = None;
+        }
+    }
 }
 
 fn project_root(w: &World) -> Option<PathBuf> {
@@ -209,14 +329,29 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", TEXT_PRIMARY, 13.0);
     commands.entity(back).add_child(back_icon);
-    let crumb = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(TEXT_MUTED))))
+
+    let new_folder = toolbar_btn(commands, fonts, "folder-plus", "New Folder");
+    commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
+    let add = add_menu(commands, fonts);
+
+    let crumbs = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(2.0),
+            ..default()
+        })
         .id();
-    bind_text(commands, crumb, breadcrumb);
+    keyed_list(commands, crumbs, crumb_snapshot);
+
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    let import = toolbar_btn(commands, fonts, "download-simple", "Import");
+    commands.entity(import).insert(ImportBtn);
     let search = text_input(commands, &fonts.ui, "Search...", "");
     commands.entity(search).insert(AssetSearch);
-    commands.entity(toolbar).add_children(&[back, crumb, spacer, search]);
+    commands
+        .entity(toolbar)
+        .add_children(&[back, new_folder, add, crumbs, spacer, import, search]);
 
     // Grid.
     let grid = commands
@@ -240,21 +375,143 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn breadcrumb(w: &World) -> String {
-    let (Some(cur), Some(root)) = (current_folder(w), project_root(w)) else {
-        return String::new();
-    };
-    cur.strip_prefix(&root)
-        .ok()
-        .map(|rel| {
-            let r = rel.to_string_lossy();
-            if r.is_empty() {
-                "assets".to_string()
-            } else {
-                format!("assets/{}", r.replace('\\', "/"))
-            }
+/// A framed icon+label toolbar button (caller inserts the marker component).
+fn toolbar_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
+    let b = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((42, 42, 52))),
+            Interaction::default(),
+            Name::new("toolbar-btn"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+    let t = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_MUTED))))
+        .id();
+    commands.entity(b).add_children(&[ic, t]);
+    b
+}
+
+/// The "Add" asset-creation popover (material/blueprint/lua/rhai/particle).
+fn add_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let content = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Px(150.0),
+            row_gap: Val::Px(2.0),
+            ..default()
         })
-        .unwrap_or_else(|| cur.to_string_lossy().to_string())
+        .id();
+    let items = [
+        ("palette", "Material", NewAsset::Material),
+        ("blueprint", "Blueprint", NewAsset::Blueprint),
+        ("code", "Lua Script", NewAsset::Lua),
+        ("code", "Rhai Script", NewAsset::Rhai),
+        ("sparkle", "Particle", NewAsset::Particle),
+    ];
+    let rows: Vec<Entity> = items
+        .iter()
+        .map(|(icon, label, kind)| {
+            let row = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        padding: UiRect::axes(Val::Px(4.0), Val::Px(3.0)),
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    Interaction::default(),
+                    NewAssetBtn(*kind),
+                    Name::new("add-asset"),
+                ))
+                .id();
+            let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+            let t = commands
+                .spawn((Text::new(*label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+                .id();
+            commands.entity(row).add_children(&[ic, t]);
+            row
+        })
+        .collect();
+    commands.entity(content).add_children(&rows);
+    renzora_ember::widgets::popover(commands, fonts, "Add", content)
+}
+
+/// Clickable breadcrumb segments (project root + each path component).
+fn crumb_snapshot(world: &World) -> KeyedSnapshot {
+    let Some(root) = project_root(world) else {
+        return KeyedSnapshot {
+            items: Vec::new(),
+            build: Box::new(|_, _, _| Entity::PLACEHOLDER),
+        };
+    };
+    let cur = current_folder(world).unwrap_or_else(|| root.clone());
+    let root_name = root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Project")
+        .to_string();
+    let mut segs: Vec<(String, PathBuf)> = vec![(root_name, root.clone())];
+    if let Ok(rel) = cur.strip_prefix(&root) {
+        let mut acc = root.clone();
+        for comp in rel.components() {
+            acc = acc.join(comp);
+            segs.push((comp.as_os_str().to_string_lossy().to_string(), acc.clone()));
+        }
+    }
+    let items: Vec<(u64, u64)> = segs
+        .iter()
+        .enumerate()
+        .map(|(i, (name, path))| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            (i, path).hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            name.hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| crumb_seg(c, f, i, &segs[i].0, &segs[i].1)),
+    }
+}
+
+fn crumb_seg(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str, path: &Path) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    let mut kids = Vec::new();
+    if idx > 0 {
+        kids.push(icon_text(commands, &fonts.phosphor, "caret-right", TEXT_MUTED, 9.0));
+    }
+    let label = commands
+        .spawn((
+            Text::new(name.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            Interaction::default(),
+            CrumbNav(path.to_path_buf()),
+            Name::new("crumb"),
+        ))
+        .id();
+    kids.push(label);
+    commands.entity(row).add_children(&kids);
+    row
 }
 
 // ── Grid ─────────────────────────────────────────────────────────────────────
