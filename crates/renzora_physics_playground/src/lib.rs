@@ -8,6 +8,7 @@
 //! - **Physics Metrics** — energy, velocity, momentum tracking
 //! - **Physics Scenarios** — one-click preset scene spawner
 
+mod native_debug;
 pub mod panels;
 pub mod state;
 
@@ -4635,6 +4636,7 @@ impl Plugin for PhysicsPanelPlugin {
         );
 
         app.register_panel(PhysicsDebugPanel::new(arc.clone()));
+        native_debug::register_native_physics_debug(app);
         app.register_panel(PhysicsPlaygroundPanel::new(arc.clone()));
         app.register_panel(PhysicsPropertiesPanel);
         app.register_panel(PhysicsForcesPanel::new(arc.clone()));
