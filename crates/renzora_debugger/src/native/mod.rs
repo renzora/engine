@@ -6,6 +6,7 @@
 
 mod ecs;
 mod memory;
+mod system;
 
 use bevy::prelude::*;
 
@@ -23,6 +24,7 @@ pub fn register_native_debug(app: &mut App) {
     app.register_panel_content("performance", true, build_performance);
     ecs::register_ecs_stats(app);
     memory::register_memory(app);
+    system::register_system_profiler(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
