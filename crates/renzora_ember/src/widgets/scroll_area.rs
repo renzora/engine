@@ -3,8 +3,11 @@
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 
+/// Wheel-scrollable viewport marker. Public so panels can spawn their own
+/// scroll viewports (e.g. a flex-fill log list) and have [`scroll_drive`] drive
+/// them.
 #[derive(Component)]
-pub(crate) struct EmberScroll;
+pub struct EmberScroll;
 
 /// Wraps `content` in a fixed-height viewport that scrolls vertically on wheel.
 pub fn scroll_area(commands: &mut Commands, content: Entity, max_height: f32) -> Entity {
@@ -20,6 +23,30 @@ pub fn scroll_area(commands: &mut Commands, content: Entity, max_height: f32) ->
             ScrollPosition::default(),
             EmberScroll,
             Name::new("scroll-area"),
+        ))
+        .id();
+    commands.entity(view).add_child(content);
+    view
+}
+
+/// Like [`scroll_area`] but flex-fills its parent (grows to take remaining
+/// space) instead of sizing to a fixed max height — for panels whose scroll
+/// region should fill the leaf.
+pub fn scroll_view(commands: &mut Commands, content: Entity) -> Entity {
+    let view = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                width: Val::Percent(100.0),
+                min_height: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                overflow: Overflow::scroll_y(),
+                ..default()
+            },
+            bevy::ui::RelativeCursorPosition::default(),
+            ScrollPosition::default(),
+            EmberScroll,
+            Name::new("scroll-view"),
         ))
         .id();
     commands.entity(view).add_child(content);

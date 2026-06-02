@@ -1,5 +1,6 @@
 //! Console panel crate for the Renzora editor.
 
+pub mod native;
 pub mod render;
 pub mod state;
 
@@ -129,6 +130,7 @@ impl EditorPanel for ConsolePanel {
                     history_index: local.history_index,
                     saved_input: local.saved_input.clone(),
                     focus_input: local.focus_input,
+                    pushed: local.pushed,
                 };
                 *pending = Some(state);
             }
@@ -220,6 +222,10 @@ impl Plugin for ConsolePlugin {
             (drain_log_buffer, drain_script_logs, sync_console_bridge)
                 .run_if(in_state(SplashState::Editor)),
         );
+
+        // Bevy-native (ember) console for the bevy_ui editor shell (instrumented
+        // with rate-limited logging while a panel-disappear regression is traced).
+        native::register_native_console(app);
 
         app.register_panel(ConsolePanel::new(arc));
     }

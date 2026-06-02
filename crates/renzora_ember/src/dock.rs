@@ -328,6 +328,14 @@ pub struct DockLeaf {
     overlay: Entity,
 }
 
+/// Records which panel id is currently built into a leaf's `content` entity.
+/// Both the shell (placeholders) and a panel's own bevy-native content system
+/// read/write this so they share one source of truth and never desync: a system
+/// rebuilds only when `PanelContent.0 != leaf.active` (panel switched) or its
+/// source data changed.
+#[derive(Component, Default)]
+pub struct PanelContent(pub String);
+
 #[derive(Component)]
 struct InsertMarker;
 
@@ -965,12 +973,15 @@ fn build_tree(
                     Node {
                         width: Val::Percent(100.0),
                         height: Val::Percent(100.0),
+                        min_width: Val::Px(0.0),
+                        min_height: Val::Px(0.0),
                         flex_direction: if row {
                             FlexDirection::Row
                         } else {
                             FlexDirection::Column
                         },
                         position_type: PositionType::Relative,
+                        overflow: Overflow::clip(),
                         ..default()
                     },
                     Name::new("split"),
@@ -1117,8 +1128,13 @@ fn build_leaf(
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
+                // Force a zero minimum so tall panel content can't push the
+                // leaf's content-based min-size up and disturb sibling splits.
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
                 position_type: PositionType::Relative,
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(PANEL_BG)),
@@ -1272,6 +1288,11 @@ fn populate_leaf(
                 Node {
                     width: Val::Percent(100.0),
                     flex_grow: 1.0,
+                    // Zero minimum so the active panel's content size never
+                    // reserves space in the leaf's column layout.
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
+                    flex_basis: Val::Px(0.0),
                     overflow: Overflow::clip(),
                     ..default()
                 },

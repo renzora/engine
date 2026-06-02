@@ -1273,6 +1273,29 @@ pub struct ShellPanelInfo {
     pub category: String,
 }
 
+/// Panel ids that have a **bevy-native** (ember) content renderer — i.e. their
+/// own crate builds the panel into the dock leaf and keeps it in sync, instead
+/// of the shell's placeholder/`content_dispatch`. The shell skips these ids so
+/// the two never fight over the same `content` entity.
+#[derive(Resource, Default)]
+pub struct NativePanelIds(pub bevy::platform::collections::HashSet<String>);
+
+/// Lets a panel crate declare it owns the bevy_ui rendering for an id.
+pub trait NativePanelExt {
+    /// Mark `id` as having a native ember content renderer (order-independent).
+    fn register_native_panel(&mut self, id: &str) -> &mut Self;
+}
+
+impl NativePanelExt for App {
+    fn register_native_panel(&mut self, id: &str) -> &mut Self {
+        self.init_resource::<NativePanelIds>();
+        if let Some(mut ids) = self.world_mut().get_resource_mut::<NativePanelIds>() {
+            ids.0.insert(id.to_string());
+        }
+        self
+    }
+}
+
 /// Run condition: returns true when the viewport is in 3D view. Use on
 /// editor systems whose visuals (transform gizmo arrows, collider wireframes,
 /// rotation pies, etc.) only make sense projecting through a 3D camera.

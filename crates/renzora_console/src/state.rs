@@ -36,6 +36,10 @@ pub struct ConsoleState {
     pub history_index: Option<usize>,
     pub saved_input: String,
     pub focus_input: bool,
+    /// Monotonic count of entries ever appended (never decreases, even as the
+    /// ring buffer drops old entries). Lets a retained renderer append only the
+    /// new rows each frame instead of rebuilding the whole list.
+    pub pushed: u64,
 }
 
 impl Default for ConsoleState {
@@ -61,6 +65,7 @@ impl Default for ConsoleState {
             history_index: None,
             saved_input: String::new(),
             focus_input: false,
+            pushed: 0,
         }
     }
 }
@@ -85,6 +90,7 @@ impl ConsoleState {
             category: cat,
         };
         self.entries.push_back(entry);
+        self.pushed += 1;
         while self.entries.len() > MAX_LOG_ENTRIES {
             self.entries.pop_front();
         }
@@ -102,6 +108,7 @@ impl ConsoleState {
                     self.seen_categories.push(entry.category.clone());
                 }
                 self.entries.push_back(entry);
+                self.pushed += 1;
             }
             while self.entries.len() > MAX_LOG_ENTRIES {
                 self.entries.pop_front();
@@ -109,9 +116,11 @@ impl ConsoleState {
         }
     }
 
-    /// Clear all entries.
+    /// Clear all entries. Resets `pushed` so a retained renderer detects the
+    /// reset (its cursor will be ahead of the new `pushed`) and rebuilds.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.pushed = 0;
     }
 
     /// Get filtered entries.

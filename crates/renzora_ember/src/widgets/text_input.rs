@@ -9,14 +9,15 @@ use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
 
-/// Shared state for text-input-like widgets (single line + textarea).
+/// Shared state for text-input-like widgets (single line + textarea). Public so
+/// panels in other crates can read the typed `value` (and clear it on submit).
 #[derive(Component)]
-pub(crate) struct EmberTextInput {
-    pub(crate) value: String,
-    pub(crate) focused: bool,
-    pub(crate) text_entity: Entity,
-    pub(crate) placeholder: String,
-    pub(crate) caret: Entity,
+pub struct EmberTextInput {
+    pub value: String,
+    pub focused: bool,
+    pub text_entity: Entity,
+    pub placeholder: String,
+    pub caret: Entity,
 }
 
 /// Spawn a blinking-caret bar (hidden until the input is focused).

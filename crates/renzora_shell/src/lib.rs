@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 
-use renzora::EditorUiBackend;
-use renzora_ember::dock::{Dock, DockArea, DockDirty, DockLeaf, DockTab};
+use renzora::{EditorUiBackend, NativePanelIds};
+use renzora_ember::dock::{Dock, DockArea, DockDirty, DockLeaf, DockTab, PanelContent};
 use renzora_ember::font::{glyph, icon_item, ui_font, EmberFonts};
 use renzora_ember::theme::{
     rgb, ACCENT_BLUE, DIVIDER, HEADER_BG, PLACEHOLDER, PLAY_GREEN, TAB_ACTIVE_BG, TEXT_MUTED,
@@ -151,25 +151,30 @@ fn apply_panel_meta(
     }
 }
 
-/// Tracks which panel a leaf's content node currently renders, so the dispatch
-/// only rebuilds when the active panel changes.
-#[derive(Component)]
-struct ContentShows(String);
-
-/// Fill each leaf's content with the active panel's UI. The editor's panels
-/// (eventually) register their own builders; for now: the `gallery_*` ember
-/// component showcases, and a centered title placeholder for everything else.
+/// Fill each leaf's content with the active panel's UI. Panels that registered a
+/// **bevy-native** renderer (`NativePanelIds`) own their own `content` entity and
+/// are skipped here. For the rest: the `gallery_*` ember showcases, and a
+/// centered title placeholder for everything else. Shares the `PanelContent`
+/// marker with native panels so the two never desync over one content entity.
 fn content_dispatch(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
+    native: Option<Res<NativePanelIds>>,
     leaves: Query<&DockLeaf>,
-    shows: Query<&ContentShows>,
+    shows: Query<&PanelContent>,
     children_q: Query<&Children>,
 ) {
     let Some(fonts) = fonts else {
         return;
     };
     for leaf in &leaves {
+        // A panel crate renders this id itself — leave its content alone.
+        if native
+            .as_ref()
+            .is_some_and(|n| n.0.contains(&leaf.active))
+        {
+            continue;
+        }
         let current = shows.get(leaf.content).ok().map(|s| s.0.as_str());
         if current == Some(leaf.active.as_str()) {
             continue;
@@ -184,7 +189,7 @@ fn content_dispatch(
         commands.entity(leaf.content).add_child(built);
         commands
             .entity(leaf.content)
-            .insert(ContentShows(leaf.active.clone()));
+            .insert(PanelContent(leaf.active.clone()));
     }
 }
 
@@ -316,6 +321,13 @@ fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
             Node {
                 width: Val::Percent(100.0),
                 flex_grow: 1.0,
+                // Zero minimum so a tall panel's content can't inflate the dock
+                // area's min-content height and push it past the window (the
+                // flexbox min-content trap — `overflow: clip` alone doesn't
+                // override it). Without this, tall content blows up every leaf.
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
+                flex_basis: Val::Px(0.0),
                 overflow: Overflow::clip(),
                 ..default()
             },
