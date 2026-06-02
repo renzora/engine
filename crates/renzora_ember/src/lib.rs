@@ -20,15 +20,22 @@ use bevy::prelude::*;
 
 pub mod dock;
 pub mod font;
+pub mod reactive;
 pub mod style;
 pub mod theme;
 pub mod widgets;
 
-/// Registers all of ember's runtime systems (theme + dock + widgets + fonts).
+/// Registers all of ember's runtime systems (theme + dock + widgets + fonts +
+/// the reactive bindings/keyed-list drivers).
 pub struct EmberPlugin;
 
 impl Plugin for EmberPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((style::ThemePlugin, dock::DockPlugin, widgets::WidgetsPlugin));
+        app.add_plugins((
+            style::ThemePlugin,
+            dock::DockPlugin,
+            widgets::WidgetsPlugin,
+            reactive::ReactivePlugin,
+        ));
     }
 }

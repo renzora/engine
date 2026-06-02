@@ -19,7 +19,7 @@ const TEXT_SCALE: f32 = 0.92;
 
 /// The fonts ember renders with. `ui` = Noto (proportional); `phosphor` = the
 /// Phosphor icon font. Inserted once both are ready.
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct EmberFonts {
     pub ui: Handle<Font>,
     pub phosphor: Handle<Font>,
