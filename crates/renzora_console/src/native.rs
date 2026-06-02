@@ -13,8 +13,8 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{
     rgb, ACCENT_BLUE, CLOSE_RED, PLACEHOLDER, PLAY_GREEN, TEXT_MUTED, TEXT_PRIMARY, WARN_AMBER,
@@ -235,7 +235,7 @@ fn mono_text(commands: &mut Commands, fonts: &EmberFonts, text: &str, color: (u8
 }
 
 /// Build the whole console into a root node and wire its reactive parts.
-fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleState) -> Entity {
+fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
             Node {
@@ -274,10 +274,11 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts, state: &ConsoleSta
     let t_err = toggle_button(commands, fonts, "x-circle", ConsoleBtn::Error, 14.0);
     let sep2 = vsep(commands);
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", TEXT_MUTED, 12.0);
-    let search = text_input(commands, &fonts.ui, "Search...", &state.search_filter);
+    // Fields start empty; `console_text_sync` mirrors them into `ConsoleState`.
+    let search = text_input(commands, &fonts.ui, "Search...", "");
     commands.entity(search).insert(ConsoleField::Search);
     let funnel = icon_text(commands, &fonts.phosphor, "funnel", TEXT_MUTED, 12.0);
-    let category = text_input(commands, &fonts.ui, "Category...", &state.category_filter);
+    let category = text_input(commands, &fonts.ui, "Category...", "");
     commands.entity(category).insert(ConsoleField::Category);
 
     let spacer = commands
@@ -570,53 +571,16 @@ fn chips_snapshot(world: &World) -> KeyedSnapshot {
 
 /// Wire the bevy-native console into the editor (a single call from `ConsolePlugin`).
 pub fn register_native_console(app: &mut App) {
-    use renzora::NativePanelExt;
     use renzora_editor::SplashState;
-    app.register_native_panel(PANEL_ID);
+    // `scroll = false`: the console manages its own internal log scroll.
+    app.register_panel_content(PANEL_ID, false, build_console);
     app.add_systems(
         Update,
-        (
-            console_content_system,
-            console_buttons,
-            console_chips,
-            console_text_sync,
-        )
-            .run_if(in_state(SplashState::Editor)),
+        (console_buttons, console_chips, console_text_sync).run_if(in_state(SplashState::Editor)),
     );
 }
 
 // ── Systems ───────────────────────────────────────────────────────────────
-
-/// Build the console pane once (lazily) when its tab is first activated, then
-/// keep it — `sync_panes` toggles its visibility on tab switch (no despawn).
-pub(crate) fn console_content_system(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    state: Res<ConsoleState>,
-    leaves: Query<&DockLeaf>,
-    children: Query<&Children>,
-    panes: Query<&TabPane>,
-) {
-    let Some(fonts) = fonts else {
-        return;
-    };
-    for leaf in &leaves {
-        if leaf.active != PANEL_ID {
-            continue;
-        }
-        let exists = children.get(leaf.content).is_ok_and(|kids| {
-            kids.iter()
-                .any(|c| panes.get(c).is_ok_and(|p| p.id == PANEL_ID))
-        });
-        if exists {
-            continue;
-        }
-        // `scroll = false`: the console manages its own internal log scroll.
-        let root = build_console(&mut commands, &fonts, &state);
-        let pane = tab_pane(&mut commands, PANEL_ID, root, false);
-        commands.entity(leaf.content).add_child(pane);
-    }
-}
 
 /// Toolbar button clicks → mutate `ConsoleState`.
 pub(crate) fn console_buttons(

@@ -16,8 +16,7 @@ mod tree;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
-use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
-use renzora_ember::font::EmberFonts;
+use renzora_ember::panel::RegisterPanelContent;
 
 const PANEL_ID: &str = "hierarchy";
 
@@ -27,44 +26,10 @@ const PANEL_ID: &str = "hierarchy";
 pub(crate) struct HierExpanded(pub HashSet<Entity>);
 
 pub fn register_native_hierarchy(app: &mut App) {
-    use renzora::NativePanelExt;
     use renzora_editor::SplashState;
     app.init_resource::<HierExpanded>();
-    app.register_native_panel(PANEL_ID);
-    app.add_systems(
-        Update,
-        (
-            hierarchy_content_system,
-            systems::hierarchy_row_click,
-            systems::hierarchy_vis_toggle,
-            systems::hierarchy_lock_toggle,
-        )
-            .run_if(in_state(SplashState::Editor)),
-    );
-}
-
-/// Build the hierarchy list pane once (lazily) when its tab is first activated.
-pub(crate) fn hierarchy_content_system(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    leaves: Query<&DockLeaf>,
-    children: Query<&Children>,
-    panes: Query<&TabPane>,
-) {
-    let Some(_fonts) = fonts else {
-        return;
-    };
-    for leaf in &leaves {
-        if leaf.active != PANEL_ID {
-            continue;
-        }
-        let exists = children.get(leaf.content).is_ok_and(|kids| {
-            kids.iter()
-                .any(|c| panes.get(c).is_ok_and(|p| p.id == PANEL_ID))
-        });
-        if exists {
-            continue;
-        }
+    // Build once; the reactive keyed list drives the rows from here on.
+    app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands
             .spawn((
                 Node {
@@ -76,9 +41,16 @@ pub(crate) fn hierarchy_content_system(
                 Name::new("hierarchy-list"),
             ))
             .id();
-        // Reactive keyed list drives the rows from here on (build once).
-        renzora_ember::reactive::keyed_list(&mut commands, list, tree::hierarchy_snapshot);
-        let pane = tab_pane(&mut commands, PANEL_ID, list, true);
-        commands.entity(leaf.content).add_child(pane);
-    }
+        renzora_ember::reactive::keyed_list(commands, list, tree::hierarchy_snapshot);
+        list
+    });
+    app.add_systems(
+        Update,
+        (
+            systems::hierarchy_row_click,
+            systems::hierarchy_vis_toggle,
+            systems::hierarchy_lock_toggle,
+        )
+            .run_if(in_state(SplashState::Editor)),
+    );
 }

@@ -17,8 +17,8 @@ use bevy::shader::ShaderRef;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
-use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::rgb;
 
@@ -543,41 +543,11 @@ fn gamepad_snapshot(world: &World) -> KeyedSnapshot {
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_gamepad(app: &mut App) {
-    use renzora::NativePanelExt;
     use renzora_editor::SplashState;
     bevy::asset::embedded_asset!(app, "stick.wgsl");
     app.add_plugins(UiMaterialPlugin::<StickMaterial>::default());
-    app.register_native_panel(PANEL_ID);
-    app.add_systems(
-        Update,
-        (gamepad_content_system, stick_attach, stick_sync).run_if(in_state(SplashState::Editor)),
-    );
-}
-
-// ── Systems ───────────────────────────────────────────────────────────────
-
-/// Build the gamepad list pane once (lazily) when its tab is first activated.
-pub(crate) fn gamepad_content_system(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    leaves: Query<&DockLeaf>,
-    children: Query<&Children>,
-    panes: Query<&TabPane>,
-) {
-    let Some(_fonts) = fonts else {
-        return;
-    };
-    for leaf in &leaves {
-        if leaf.active != PANEL_ID {
-            continue;
-        }
-        let exists = children.get(leaf.content).is_ok_and(|kids| {
-            kids.iter()
-                .any(|c| panes.get(c).is_ok_and(|p| p.id == PANEL_ID))
-        });
-        if exists {
-            continue;
-        }
+    // Build once; the reactive keyed list drives the controller rows from here on.
+    app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands
             .spawn((
                 Node {
@@ -590,9 +560,11 @@ pub(crate) fn gamepad_content_system(
                 Name::new("gamepad-list"),
             ))
             .id();
-        // Reactive keyed list drives the controller rows from here on.
-        keyed_list(&mut commands, list, gamepad_snapshot);
-        let pane = tab_pane(&mut commands, PANEL_ID, list, true);
-        commands.entity(leaf.content).add_child(pane);
-    }
+        keyed_list(commands, list, gamepad_snapshot);
+        list
+    });
+    app.add_systems(
+        Update,
+        (stick_attach, stick_sync).run_if(in_state(SplashState::Editor)),
+    );
 }

@@ -20,6 +20,7 @@ use bevy::prelude::*;
 
 pub mod dock;
 pub mod font;
+pub mod panel;
 pub mod reactive;
 pub mod style;
 pub mod theme;

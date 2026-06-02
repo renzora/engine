@@ -12,8 +12,8 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 
 use renzora_editor::EditorCommands;
-use renzora_ember::dock::{tab_pane, DockLeaf, TabPane};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, HEADER_BG, PLACEHOLDER, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_undo::UndoStacks;
@@ -312,39 +312,9 @@ fn history_snapshot(world: &World) -> KeyedSnapshot {
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_history(app: &mut App) {
-    use renzora::NativePanelExt;
     use renzora_editor::SplashState;
-    app.register_native_panel(PANEL_ID);
-    app.add_systems(
-        Update,
-        (history_content_system, history_click).run_if(in_state(SplashState::Editor)),
-    );
-}
-
-// ── Systems ───────────────────────────────────────────────────────────────
-
-/// Build the history list pane once (lazily) when its tab is first activated.
-pub(crate) fn history_content_system(
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    leaves: Query<&DockLeaf>,
-    children: Query<&Children>,
-    panes: Query<&TabPane>,
-) {
-    let Some(_fonts) = fonts else {
-        return;
-    };
-    for leaf in &leaves {
-        if leaf.active != PANEL_ID {
-            continue;
-        }
-        let exists = children.get(leaf.content).is_ok_and(|kids| {
-            kids.iter()
-                .any(|c| panes.get(c).is_ok_and(|p| p.id == PANEL_ID))
-        });
-        if exists {
-            continue;
-        }
+    // Build once; the reactive keyed list drives the rows from here on.
+    app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands
             .spawn((
                 Node {
@@ -357,12 +327,13 @@ pub(crate) fn history_content_system(
                 Name::new("history-list"),
             ))
             .id();
-        // Reactive keyed list drives the rows from here on (build once).
-        keyed_list(&mut commands, list, history_snapshot);
-        let pane = tab_pane(&mut commands, PANEL_ID, list, true);
-        commands.entity(leaf.content).add_child(pane);
-    }
+        keyed_list(commands, list, history_snapshot);
+        list
+    });
+    app.add_systems(Update, history_click.run_if(in_state(SplashState::Editor)));
 }
+
+// ── Systems ───────────────────────────────────────────────────────────────
 
 /// Row click → push the corresponding undo/redo onto `EditorCommands`.
 pub(crate) fn history_click(
