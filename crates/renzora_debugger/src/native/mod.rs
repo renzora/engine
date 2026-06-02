@@ -4,6 +4,7 @@
 //! value-diffed binding and every graph is a reactive [`line_chart_live`], so an
 //! idle panel costs nothing.
 
+mod camera;
 mod culling;
 mod ecs;
 mod lumen;
@@ -33,6 +34,7 @@ pub fn register_native_debug(app: &mut App) {
     scripting::register_scripting(app);
     material::register_material_resolver(app);
     culling::register_culling(app);
+    camera::register_camera(app);
 }
 
 // ── Shared builders ─────────────────────────────────────────────────────────
