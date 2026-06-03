@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::Viewports;
 use renzora_ember::font::EmberFonts;
@@ -102,31 +103,31 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
 /// resolver resizes the render image and the gizmo/drop/nav systems can map the
 /// cursor into the scene.
 fn report_viewport_geometry(
-    viewports: Query<(
-        &ComputedNode,
-        &RelativeCursorPosition,
-        &NativeViewport,
-        Option<&GlobalTransform>,
-    )>,
+    viewports: Query<(&ComputedNode, &RelativeCursorPosition, &NativeViewport)>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     req: Option<Res<ViewportResizeRequest>>,
 ) {
     let Some(req) = req else {
         return;
     };
-    for (cn, rcp, vp, gt) in &viewports {
+    // Logical px from the window's top-left — the same space picking / camera
+    // read `window.cursor_position()` in.
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    for (cn, rcp, vp) in &viewports {
         let Some(slot) = req.slots.get(vp.0) else {
             continue;
         };
         let inv = cn.inverse_scale_factor();
-        let size = cn.size() * inv;
-        // Size + hover drive the render-image resize — always reported.
+        let size = cn.size() * inv; // logical
         slot.width.store(size.x.max(1.0) as u32, Ordering::Relaxed);
         slot.height.store(size.y.max(1.0) as u32, Ordering::Relaxed);
         slot.hovered.store(rcp.cursor_over, Ordering::Relaxed);
-        // Screen top-left (logical px) is for cursor→scene raycasting.
-        if let Some(gt) = gt {
-            let center = gt.translation().truncate() * inv;
-            let top_left = center - size * 0.5;
+        // Derive the node's screen top-left from the cursor + its normalized
+        // position in the node ((-0.5,-0.5) = top-left). Scale-invariant, so it
+        // lands in logical px regardless of DPI — and avoids UI `GlobalTransform`
+        // coordinate-space ambiguity. Drives cursor→scene raycasting (picking).
+        if let (Some(cursor), Some(norm)) = (cursor, rcp.normalized) {
+            let top_left = cursor - (norm + Vec2::splat(0.5)) * size;
             slot.screen_x.store(top_left.x.to_bits(), Ordering::Relaxed);
             slot.screen_y.store(top_left.y.to_bits(), Ordering::Relaxed);
         }

@@ -371,6 +371,7 @@ fn setup_viewport(
 fn resolve_viewport_slots(
     resize_req: Res<ViewportResizeRequest>,
     docking: Option<Res<DockingState>>,
+    ember_dock: Option<Res<renzora_ember::dock::Dock>>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
@@ -381,9 +382,18 @@ fn resolve_viewport_slots(
     #[allow(clippy::needless_range_loop)] // `i` indexes several parallel arrays
     for i in 0..VIEWPORT_COUNT {
         let req = &resize_req.slots[i];
-        let docked = docking
+        // "Docked" = the slot's panel is present in whichever dock is live. The
+        // egui `DockingState` only knows about the egui dock, so when the
+        // bevy_ui dock is active it reports the viewport as absent — which would
+        // kill `hovered` (and with it camera nav + picking). OR in the ember
+        // dock so the native viewport stays interactive.
+        let egui_docked = docking
             .as_ref()
             .is_none_or(|d| d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]));
+        let ember_docked = ember_dock
+            .as_ref()
+            .is_some_and(|d| d.tree.is_active_tab(VIEWPORT_PANEL_IDS[i]));
+        let docked = egui_docked || ember_docked;
         let hovered = req.hovered.load(Ordering::Relaxed) && docked;
         let screen_position = Vec2::new(
             f32::from_bits(req.screen_x.load(Ordering::Relaxed)),
