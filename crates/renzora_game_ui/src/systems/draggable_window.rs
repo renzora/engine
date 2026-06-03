@@ -18,6 +18,7 @@ pub struct WindowDragState {
     pub last_cursor: Option<Vec2>,
 }
 
+#[allow(clippy::collapsible_match)] // button-id arms read clearer un-collapsed
 pub fn draggable_window_system(
     mut commands: Commands,
     mut windows: Query<(

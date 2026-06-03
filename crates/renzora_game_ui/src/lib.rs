@@ -200,7 +200,28 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: vec![
+                    renzora_editor::int_field!("Sort Order", components::UiCanvas, sort_order, i32, 1.0, -100.0, 100.0),
+                    renzora_editor::FieldDef {
+                        name: "Visibility",
+                        field_type: renzora_editor::FieldType::Enum {
+                            options: &["always", "play_only", "editor_only"],
+                        },
+                        get_fn: |w, e| {
+                            w.get::<components::UiCanvas>(e)
+                                .map(|c| renzora_editor::FieldValue::Enum(c.visibility_mode.clone()))
+                        },
+                        set_fn: |w, e, v| {
+                            if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                                (v, w.get_mut::<components::UiCanvas>(e))
+                            {
+                                c.visibility_mode = s;
+                            }
+                        },
+                    },
+                    renzora_editor::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
+                    renzora_editor::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
+                ],
                 custom_ui_fn: Some(inspector::render_canvas_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
