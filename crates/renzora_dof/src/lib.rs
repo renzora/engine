@@ -107,7 +107,13 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        fields: vec![
+            renzora_editor::enum_u32_field!("Mode", DepthOfFieldSettings, mode, ["Gaussian", "Bokeh"]),
+            renzora_editor::float_field!("Focal Distance", DepthOfFieldSettings, focal_distance, 0.1, 0.1, 1000.0),
+            renzora_editor::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
+            renzora_editor::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
+        ],
         custom_ui_fn: Some(dof_custom_ui),
     }
 }

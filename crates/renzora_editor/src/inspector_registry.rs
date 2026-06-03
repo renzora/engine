@@ -192,3 +192,35 @@ macro_rules! bool_field {
         }
     };
 }
+
+/// Declare an [`FieldDef`] for a `u32` index-style enum field rendered as a
+/// dropdown of `labels` (index 0 = first label). For settings that store an
+/// enum mode as a plain `u32` (atmosphere/dof/...).
+///
+/// ```ignore
+/// renzora_editor::enum_u32_field!("Mode", MySettings, mode, ["Gaussian", "Bokeh"]),
+/// ```
+#[macro_export]
+macro_rules! enum_u32_field {
+    ($name:expr, $comp:ty, $field:ident, [$($label:expr),+ $(,)?]) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Enum { options: &[$($label),+] },
+            get_fn: |w, e| {
+                w.get::<$comp>(e).map(|comp| {
+                    let opts = [$($label),+];
+                    let i = (comp.$field as usize).min(opts.len().saturating_sub(1));
+                    $crate::FieldValue::Enum(opts[i].to_string())
+                })
+            },
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Enum(label), Some(mut comp)) = (v, w.get_mut::<$comp>(e)) {
+                    let opts = [$($label),+];
+                    if let Some(i) = opts.iter().position(|l| *l == label) {
+                        comp.$field = i as u32;
+                    }
+                }
+            },
+        }
+    };
+}
