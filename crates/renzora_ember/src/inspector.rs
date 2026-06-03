@@ -35,7 +35,8 @@ pub const INSPECTOR_LABEL_W: f32 = 112.0;
 /// `BackgroundColor` so panels stripe consistently.
 pub fn inspector_stripe(row_index: usize) -> Color {
     if row_index % 2 == 1 {
-        Color::srgb_u8(40, 40, 48)
+        // A faint white overlay — subtle on any background.
+        Color::srgba(1.0, 1.0, 1.0, 0.022)
     } else {
         Color::NONE
     }
