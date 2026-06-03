@@ -63,9 +63,15 @@ pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
         let mut parent_lines = Vec::new();
         flatten(&cache.nodes, &exp, &mut parent_lines, &mut rows);
     }
-    let items: Vec<(u64, u64)> = rows.iter().map(|r| (r.key(), r.content_hash())).collect();
+    // Fold the row's parity into its content hash so a row that changes odd/even
+    // (e.g. when a sibling above is added/removed) repaints with the right stripe.
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.key(), r.content_hash().wrapping_mul(31).wrapping_add((i & 1) as u64)))
+        .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |commands, fonts, i| build_row(commands, fonts, &rows[i])),
+        build: Box::new(move |commands, fonts, i| build_row(commands, fonts, &rows[i], i)),
     }
 }

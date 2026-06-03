@@ -30,6 +30,17 @@ use crate::theme::{rgb, TEXT_MUTED};
 /// so the value controls line up in a column directly to their right.
 pub const INSPECTOR_LABEL_W: f32 = 112.0;
 
+/// Alternating row background for an inspector/list row at `row_index`
+/// (odd rows tinted, even rows transparent). Insert as the row's
+/// `BackgroundColor` so panels stripe consistently.
+pub fn inspector_stripe(row_index: usize) -> Color {
+    if row_index % 2 == 1 {
+        Color::srgb_u8(40, 40, 48)
+    } else {
+        Color::NONE
+    }
+}
+
 /// A consistent inspector property row: a **left-aligned** fixed-width label
 /// column + the `control` immediately to its right (also left-aligned). Both the
 /// declarative field renderer and native drawers use this so every row matches.

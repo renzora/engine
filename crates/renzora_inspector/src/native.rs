@@ -497,8 +497,11 @@ fn build_section(
         let note = empty_label(commands, fonts, "Custom inspector — pending native UI");
         commands.entity(body).add_child(note);
     } else {
-        for field in &sec.fields {
+        for (i, field) in sec.fields.iter().enumerate() {
             let r = build_field_row(commands, fonts, field, entity);
+            commands
+                .entity(r)
+                .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(i)));
             commands.entity(body).add_child(r);
         }
     }

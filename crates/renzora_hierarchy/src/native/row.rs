@@ -124,13 +124,20 @@ fn over(base: Color, top: Color) -> Color {
 }
 
 /// Build one row entity (returns it; the keyed list parents it).
-pub(crate) fn build_row(commands: &mut Commands, fonts: &EmberFonts, s: &RowSnapshot) -> Entity {
+pub(crate) fn build_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    s: &RowSnapshot,
+    row_index: usize,
+) -> Entity {
     let content_x = BASE_X + s.depth as f32 * INDENT;
 
+    // An entity's label color tints its row; otherwise alternate odd/even
+    // striping (shared with the inspector for a consistent look).
     let base_bg = if let Some([r, g, b]) = s.label_color {
         Color::srgba_u8(r, g, b, 26)
     } else {
-        Color::NONE
+        renzora_ember::inspector::inspector_stripe(row_index)
     };
     let label_color = s
         .label_color

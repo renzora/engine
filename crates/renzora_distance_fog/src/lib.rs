@@ -173,7 +173,7 @@ fn inspector_entry() -> InspectorEntry {
 /// swatch built from three separate float channels, plus bound numeric rows.
 #[cfg(feature = "editor")]
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
-    use renzora_ember::inspector::{inspector_body, inspector_row};
+    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
     use renzora_ember::reactive::{bind_2way, bind_with};
     use renzora_ember::widgets::{drag_value, DragRange};
 
@@ -260,6 +260,11 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
         kids.push(frow!("End", end, end, 0.5, 0.0, 10000.0));
         kids.push(frow!("Density", density, density, 0.001, 0.0, 1.0));
 
+        for (i, &row) in kids.iter().enumerate() {
+            commands
+                .entity(row)
+                .insert(BackgroundColor(inspector_stripe(i)));
+        }
         commands.entity(col).add_children(&kids);
         col
     })
