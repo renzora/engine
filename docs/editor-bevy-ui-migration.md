@@ -105,11 +105,21 @@ only re-source their *input* and re-implement egui's *"who owns the pointer"*.
 `renzora_camera` and is a **pure bevy system**: it reads `MouseMotion`,
 `MouseWheel`, and `ButtonInput<MouseButton>` directly, and gates on
 `ViewportState.hovered`. That `hovered` flag is mirrored by the viewport resolver
-from `ViewportResizeRequest`, which the **native panel already publishes** (from
-its `RelativeCursorPosition`). So **mouse-drag look / orbit / scroll-zoom already
-works in the bevy_ui viewport** — no egui involved. The same is true of the
-transform gizmo, selection picking, and the drop *spawn* logic: all bevy systems
-reading `ViewportResizeRequest` + raw input.
+from `ViewportResizeRequest`, which the **native panel publishes** (from its
+`RelativeCursorPosition`). So mouse-drag look / orbit / scroll-zoom works in the
+bevy_ui viewport with **no egui involved** — the behaviour never had to move. The
+same holds for the transform gizmo, selection picking, and the drop *spawn* logic.
+
+> ⚠️ **The seam where this broke (now fixed).** Two native-panel feed bugs made
+> the camera/selection dead in the bevy_ui dock even though the systems were fine:
+> (1) the resolver computed `docked` only from the **egui** `DockingState`, so in
+> the bevy_ui dock the viewport read as "not docked" → `hovered` forced false →
+> every gated system bailed. Fixed by OR-ing ember `Dock.tree.is_active_tab`.
+> (2) `screen_position` was derived from a UI `GlobalTransform` of ambiguous
+> coordinate space, throwing the picking ray off; now derived from
+> `cursor + RelativeCursorPosition.normalized`. **Lesson: "moving functionality
+> over" = making sure the native panel feeds the shared signals correctly, not
+> rewriting the behaviour.**
 
 So the three things egui actually provided, and their bevy_ui replacements:
 
