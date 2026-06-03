@@ -31,6 +31,7 @@ impl Plugin for ThemePlugin {
         app.init_resource::<Theme>()
             .register_type::<Theme>()
             .register_type::<StyleToken>()
+            .register_type::<NodeGraphStyle>()
             .register_type::<Rgba>()
             .add_systems(Update, (refresh_style_theme, apply_theme).chain());
     }
@@ -240,6 +241,47 @@ impl StyleToken {
     }
 }
 
+// ── Bespoke per-widget styles (multi-element widgets) ────────────────────────
+//
+// Box widgets share [`StyleToken`]; widgets with several distinct, independently
+// targetable elements get their own struct so editing one element (e.g. a node
+// graph's cable) never smears across the others (its card bg, header, …).
+
+/// Style for the node-graph widget — every element individually targetable.
+#[derive(Reflect, Clone, Serialize, Deserialize)]
+pub struct NodeGraphStyle {
+    pub canvas_bg: Rgba,
+    pub canvas_border: Rgba,
+    pub node_bg: Rgba,
+    pub node_border: Rgba,
+    pub node_header: Rgba,
+    pub node_selected_bg: Rgba,
+    pub node_selected_border: Rgba,
+    pub cable: Rgba,
+    pub cable_selected: Rgba,
+    pub title_text: Rgba,
+    pub port_text: Rgba,
+}
+
+impl Default for NodeGraphStyle {
+    fn default() -> Self {
+        let c = Rgba::rgb;
+        Self {
+            canvas_bg: c(popup_bg()),
+            canvas_border: c(border()),
+            node_bg: c(section_bg()),
+            node_border: c(border()),
+            node_header: c(tab_active()),
+            node_selected_bg: c(hover_bg()),
+            node_selected_border: c(accent()),
+            cable: c(accent()),
+            cable_selected: c(accent()),
+            title_text: c(text_primary()),
+            port_text: c(text_muted()),
+        }
+    }
+}
+
 // ── Theme: all per-role tokens ───────────────────────────────────────────────
 
 /// The active theme — one [`StyleToken`] per [`Role`]. Swap or mutate this and
@@ -263,6 +305,8 @@ pub struct Theme {
     pub tab: StyleToken,
     pub panel: StyleToken,
     pub menu: StyleToken,
+    // Bespoke multi-element widget styles.
+    pub node_graph: NodeGraphStyle,
 }
 
 impl Theme {
@@ -345,7 +389,71 @@ impl Default for Theme {
                 .pad(10.0, 5.0),
             panel: StyleToken::new(c(panel_bg())).radius(0.0),
             menu: StyleToken::new(c(popup_bg())).radius(4.0).pad(2.0, 2.0),
+            node_graph: NodeGraphStyle::default(),
         }
+    }
+}
+
+impl Theme {
+    /// Load a theme from TOML, **cascading over the palette-derived defaults** —
+    /// a theme only specifies the elements it overrides (any depth: a whole
+    /// `[button]` table, or just `button.bg`). Built on a deep merge of the
+    /// loaded TOML over the serialized default.
+    pub fn from_toml(s: &str) -> Result<Theme, toml::de::Error> {
+        let base = toml::Value::try_from(Theme::default())
+            .expect("Theme always serializes to a TOML value");
+        let over: toml::Value = toml::from_str(s)?;
+        deep_merge(base, over).try_into()
+    }
+}
+
+/// Recursively merge `over` onto `base`: tables merge key-by-key, leaves are
+/// replaced by `over`. Lets a theme override individual elements.
+fn deep_merge(base: toml::Value, over: toml::Value) -> toml::Value {
+    match (base, over) {
+        (toml::Value::Table(mut b), toml::Value::Table(o)) => {
+            for (k, ov) in o {
+                let merged = match b.remove(&k) {
+                    Some(bv) => deep_merge(bv, ov),
+                    None => ov,
+                };
+                b.insert(k, merged);
+            }
+            toml::Value::Table(b)
+        }
+        (_, over) => over,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toml_cascade_overrides_only_specified() {
+        // A theme that only sets the button background.
+        let t = Theme::from_toml("[button]\nbg = \"#FF0000\"\n").unwrap();
+        assert_eq!(t.button.bg, Rgba { r: 255, g: 0, b: 0, a: 255 });
+        // Everything else keeps the palette-derived default.
+        let d = Theme::default();
+        assert_eq!(t.button.bg_hover, d.button.bg_hover);
+        assert_eq!(t.input.bg, d.input.bg);
+        assert_eq!(t.node_graph.cable, d.node_graph.cable);
+    }
+
+    #[test]
+    fn toml_overrides_a_bespoke_element() {
+        let t = Theme::from_toml("[node_graph]\ncable = \"#8CD0D3\"\n").unwrap();
+        assert_eq!(t.node_graph.cable, Rgba { r: 0x8C, g: 0xD0, b: 0xD3, a: 255 });
+        // The node's card bg is untouched — no smearing.
+        assert_eq!(t.node_graph.node_bg, Theme::default().node_graph.node_bg);
+    }
+
+    #[test]
+    fn rgba_hex_roundtrips() {
+        let c = Rgba { r: 18, g: 52, b: 86, a: 255 };
+        assert_eq!(c.to_hex(), "#123456");
+        assert_eq!(Rgba::from_hex("#123456"), Some(c));
     }
 }
 
