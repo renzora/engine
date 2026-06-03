@@ -133,3 +133,201 @@ pub fn accent() -> (u8, u8, u8) {
 pub fn rgb((r, g, b): (u8, u8, u8)) -> Color {
     Color::srgb_u8(r, g, b)
 }
+
+// ── Per-widget-type style (geometry + typography + colors) ───────────────────
+//
+// The full style system: every widget *type* has an editable [`WidgetStyle`]
+// (the Settings → Theme tab lists them). Like [`Palette`], the active
+// [`StyleSheet`] is process-wide and runtime-safe (no egui) so the exported game
+// runtime uses the same theme. Widgets resolve `style(Role::Button)` at spawn.
+
+/// Which font family a widget renders with.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FontRole {
+    #[default]
+    Ui,
+    Mono,
+}
+
+/// A simple drop shadow (logical px). `enabled == false` ⇒ no shadow.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub enabled: bool,
+    pub x: f32,
+    pub y: f32,
+    pub blur: f32,
+    pub spread: f32,
+    pub color: (u8, u8, u8),
+    pub alpha: f32,
+}
+
+impl Default for Shadow {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            x: 0.0,
+            y: 2.0,
+            blur: 6.0,
+            spread: 0.0,
+            color: (0, 0, 0),
+            alpha: 0.35,
+        }
+    }
+}
+
+/// The full editable style for one widget type: colors + geometry + typography.
+/// All lengths are logical px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WidgetStyle {
+    pub bg: (u8, u8, u8),
+    pub fg: (u8, u8, u8),
+    pub border_color: (u8, u8, u8),
+    pub border_width: f32,
+    pub radius: f32,
+    pub pad_x: f32,
+    pub pad_y: f32,
+    /// Inter-child gap (rows / icon+label spacing).
+    pub gap: f32,
+    pub margin: f32,
+    pub font: FontRole,
+    pub font_size: f32,
+    pub shadow: Shadow,
+}
+
+impl WidgetStyle {
+    /// A neutral base other roles tweak (transparent fill, primary text).
+    const fn base() -> Self {
+        Self {
+            bg: PANEL_BG,
+            fg: TEXT_PRIMARY,
+            border_color: DIVIDER,
+            border_width: 0.0,
+            radius: 4.0,
+            pad_x: 10.0,
+            pad_y: 4.0,
+            gap: 6.0,
+            margin: 0.0,
+            font: FontRole::Ui,
+            font_size: 12.0,
+            shadow: Shadow {
+                enabled: false,
+                x: 0.0,
+                y: 2.0,
+                blur: 6.0,
+                spread: 0.0,
+                color: (0, 0, 0),
+                alpha: 0.35,
+            },
+        }
+    }
+}
+
+/// The widget types that carry their own [`WidgetStyle`]. Extend as more widgets
+/// adopt the style system (each new variant gets a field on [`StyleSheet`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Role {
+    Button,
+    Dropdown,
+    Input,
+    Checkbox,
+    Toggle,
+    Slider,
+    Panel,
+    PanelHeader,
+    Tab,
+    TabActive,
+    MenuItem,
+    SectionHeader,
+    Tooltip,
+    Card,
+    ScrollThumb,
+    Row,
+}
+
+/// The active per-widget-type style table. Loaded from a theme `.toml`; defaults
+/// reproduce the built-in dark look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StyleSheet {
+    pub button: WidgetStyle,
+    pub dropdown: WidgetStyle,
+    pub input: WidgetStyle,
+    pub checkbox: WidgetStyle,
+    pub toggle: WidgetStyle,
+    pub slider: WidgetStyle,
+    pub panel: WidgetStyle,
+    pub panel_header: WidgetStyle,
+    pub tab: WidgetStyle,
+    pub tab_active: WidgetStyle,
+    pub menu_item: WidgetStyle,
+    pub section_header: WidgetStyle,
+    pub tooltip: WidgetStyle,
+    pub card: WidgetStyle,
+    pub scroll_thumb: WidgetStyle,
+    pub row: WidgetStyle,
+}
+
+impl StyleSheet {
+    pub fn get(&self, role: Role) -> WidgetStyle {
+        match role {
+            Role::Button => self.button,
+            Role::Dropdown => self.dropdown,
+            Role::Input => self.input,
+            Role::Checkbox => self.checkbox,
+            Role::Toggle => self.toggle,
+            Role::Slider => self.slider,
+            Role::Panel => self.panel,
+            Role::PanelHeader => self.panel_header,
+            Role::Tab => self.tab,
+            Role::TabActive => self.tab_active,
+            Role::MenuItem => self.menu_item,
+            Role::SectionHeader => self.section_header,
+            Role::Tooltip => self.tooltip,
+            Role::Card => self.card,
+            Role::ScrollThumb => self.scroll_thumb,
+            Role::Row => self.row,
+        }
+    }
+}
+
+impl Default for StyleSheet {
+    fn default() -> Self {
+        let base = WidgetStyle::base();
+        Self {
+            button: WidgetStyle { bg: TAB_ACTIVE_BG, pad_x: 12.0, pad_y: 5.0, ..base },
+            dropdown: WidgetStyle { bg: TAB_ACTIVE_BG, pad_x: 10.0, pad_y: 5.0, ..base },
+            input: WidgetStyle { bg: (30, 30, 38), border_color: (60, 60, 74), border_width: 1.0, pad_x: 8.0, pad_y: 4.0, ..base },
+            checkbox: WidgetStyle { bg: (0, 0, 0), border_color: (92, 92, 104), border_width: 1.0, radius: 3.0, ..base },
+            toggle: WidgetStyle { radius: 7.0, ..base },
+            slider: WidgetStyle { bg: (46, 46, 56), radius: 3.0, ..base },
+            panel: WidgetStyle { bg: PANEL_BG, radius: 0.0, pad_x: 0.0, pad_y: 0.0, ..base },
+            panel_header: WidgetStyle { bg: HEADER_BG, fg: TEXT_MUTED, radius: 0.0, pad_x: 8.0, pad_y: 5.0, ..base },
+            tab: WidgetStyle { bg: HEADER_BG, fg: TEXT_MUTED, radius: 0.0, pad_x: 10.0, pad_y: 6.0, ..base },
+            tab_active: WidgetStyle { bg: TAB_ACTIVE_BG, fg: TEXT_PRIMARY, radius: 0.0, pad_x: 10.0, pad_y: 6.0, ..base },
+            menu_item: WidgetStyle { bg: (0, 0, 0), radius: 3.0, pad_x: 8.0, pad_y: 4.0, ..base },
+            section_header: WidgetStyle { bg: (40, 40, 50), radius: 4.0, pad_x: 6.0, pad_y: 5.0, ..base },
+            tooltip: WidgetStyle { bg: (30, 30, 38), border_color: (60, 60, 74), border_width: 1.0, radius: 4.0, pad_x: 8.0, pad_y: 4.0, ..base },
+            card: WidgetStyle { bg: (28, 28, 34), border_color: (60, 60, 74), border_width: 1.0, radius: 8.0, pad_x: 12.0, pad_y: 12.0, ..base },
+            scroll_thumb: WidgetStyle { bg: (96, 96, 112), radius: 5.0, ..base },
+            row: WidgetStyle { bg: PANEL_BG, radius: 3.0, pad_x: 8.0, pad_y: 5.0, ..base },
+        }
+    }
+}
+
+static SHEET: LazyLock<RwLock<StyleSheet>> = LazyLock::new(|| RwLock::new(StyleSheet::default()));
+
+/// Replace the active style sheet (called by the theme bridge / loader).
+pub fn set_stylesheet(s: StyleSheet) {
+    if let Ok(mut g) = SHEET.write() {
+        *g = s;
+    }
+}
+
+/// The current style sheet.
+pub fn stylesheet() -> StyleSheet {
+    SHEET.read().map(|g| *g).unwrap_or_default()
+}
+
+/// Resolve one widget type's style from the active sheet.
+pub fn style(role: Role) -> WidgetStyle {
+    stylesheet().get(role)
+}
