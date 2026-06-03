@@ -361,7 +361,15 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![
+            renzora_editor::float_field!("Density", NightStarsData, density, 0.01, 0.0, 1.0),
+            renzora_editor::float_field!("Brightness", NightStarsData, brightness, 0.05, 0.0, 10.0),
+            renzora_editor::float_field!("Star Size", NightStarsData, star_size, 0.05, 0.2, 5.0),
+            renzora_editor::float_field!("Twinkle Speed", NightStarsData, twinkle_speed, 0.05, 0.0, 10.0),
+            renzora_editor::float_field!("Twinkle Amount", NightStarsData, twinkle_amount, 0.01, 0.0, 1.0),
+            renzora_editor::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
+            renzora_editor::tuple_color_field!("Color", NightStarsData, color),
+        ],
         custom_ui_fn: Some(night_stars_custom_ui),
     }
 }

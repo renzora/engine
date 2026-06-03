@@ -451,7 +451,7 @@ fn taa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![renzora_editor::bool_field!("Reset", TaaSettings, reset)],
         custom_ui_fn: Some(taa_custom_ui),
     }
 }

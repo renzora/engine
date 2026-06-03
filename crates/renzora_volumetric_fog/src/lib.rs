@@ -135,7 +135,12 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![
+            renzora_editor::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
+            renzora_editor::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
+            renzora_editor::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
+            renzora_editor::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
+        ],
         custom_ui_fn: Some(volumetric_fog_custom_ui),
     }
 }

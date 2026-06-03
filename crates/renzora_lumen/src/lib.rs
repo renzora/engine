@@ -254,7 +254,77 @@ fn inspector_entry() -> InspectorEntry {
                 s.quality = if val { LumenQuality::ScreenSpace } else { LumenQuality::Off };
             }
         }),
-        fields: vec![],
+        fields: vec![
+            renzora_editor::FieldDef {
+                name: "Quality",
+                field_type: renzora_editor::FieldType::Enum {
+                    options: &[
+                        "Off",
+                        "Screen Space (SSGI)",
+                        "SDF Low (Phase 5)",
+                        "SDF High (Phase 5)",
+                        "Hardware RT (Phase 10)",
+                    ],
+                },
+                get_fn: |w, e| {
+                    w.get::<LumenLighting>(e).map(|c| {
+                        renzora_editor::FieldValue::Enum(
+                            match c.quality {
+                                LumenQuality::Off => "Off",
+                                LumenQuality::ScreenSpace => "Screen Space (SSGI)",
+                                LumenQuality::SdfLow => "SDF Low (Phase 5)",
+                                LumenQuality::SdfHigh => "SDF High (Phase 5)",
+                                LumenQuality::Hwrt => "Hardware RT (Phase 10)",
+                            }
+                            .to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                        (v, w.get_mut::<LumenLighting>(e))
+                    {
+                        c.quality = match s.as_str() {
+                            "Off" => LumenQuality::Off,
+                            "SDF Low (Phase 5)" => LumenQuality::SdfLow,
+                            "SDF High (Phase 5)" => LumenQuality::SdfHigh,
+                            "Hardware RT (Phase 10)" => LumenQuality::Hwrt,
+                            _ => LumenQuality::ScreenSpace,
+                        };
+                    }
+                },
+            },
+            renzora_editor::float_field!("Intensity", LumenLighting, intensity, 0.05, 0.0, 5.0),
+            renzora_editor::FieldDef {
+                name: "Debug",
+                field_type: renzora_editor::FieldType::Enum {
+                    options: &["None", "Indirect Only", "Voxel Cache"],
+                },
+                get_fn: |w, e| {
+                    w.get::<LumenLighting>(e).map(|c| {
+                        renzora_editor::FieldValue::Enum(
+                            match c.debug {
+                                LumenDebug::None => "None",
+                                LumenDebug::IndirectOnly => "Indirect Only",
+                                LumenDebug::VoxelCache => "Voxel Cache",
+                            }
+                            .to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                        (v, w.get_mut::<LumenLighting>(e))
+                    {
+                        c.debug = match s.as_str() {
+                            "Indirect Only" => LumenDebug::IndirectOnly,
+                            "Voxel Cache" => LumenDebug::VoxelCache,
+                            _ => LumenDebug::None,
+                        };
+                    }
+                },
+            },
+        ],
         custom_ui_fn: Some(lumen_custom_ui),
     }
 }

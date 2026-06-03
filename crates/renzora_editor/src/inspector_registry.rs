@@ -260,3 +260,67 @@ impl NativeInspectorRegistry {
         self.drawers.get(type_id).copied()
     }
 }
+
+/// A `Color` [`FieldDef`] for a `Vec3`-stored RGB component field.
+#[macro_export]
+macro_rules! vec3_color_field {
+    ($name:expr, $comp:ty, $field:ident $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Color,
+            get_fn: |w, e| {
+                w.get::<$comp>(e)
+                    .map(|c| $crate::FieldValue::Color([c.$field.x, c.$field.y, c.$field.z]))
+            },
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Color(rgb), Some(mut c)) = (v, w.get_mut::<$comp>(e)) {
+                    c.$field.x = rgb[0];
+                    c.$field.y = rgb[1];
+                    c.$field.z = rgb[2];
+                }
+            },
+        }
+    };
+}
+
+/// A `Color` [`FieldDef`] for a `(f32, f32, f32)`-stored RGB component field.
+#[macro_export]
+macro_rules! tuple_color_field {
+    ($name:expr, $comp:ty, $field:ident $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Color,
+            get_fn: |w, e| {
+                w.get::<$comp>(e)
+                    .map(|c| $crate::FieldValue::Color([c.$field.0, c.$field.1, c.$field.2]))
+            },
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Color(rgb), Some(mut c)) = (v, w.get_mut::<$comp>(e)) {
+                    c.$field = (rgb[0], rgb[1], rgb[2]);
+                }
+            },
+        }
+    };
+}
+
+/// A [`FieldDef`] for an integer field (`$ty`, e.g. `u32`/`i32`) rendered as a
+/// `Float` drag and cast back on write.
+#[macro_export]
+macro_rules! int_field {
+    ($name:expr, $comp:ty, $field:ident, $ty:ty, $speed:expr, $min:expr, $max:expr $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Float {
+                speed: $speed,
+                min: $min,
+                max: $max,
+            },
+            get_fn: |w, e| w.get::<$comp>(e).map(|c| $crate::FieldValue::Float(c.$field as f32)),
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Float(f), Some(mut c)) = (v, w.get_mut::<$comp>(e)) {
+                    c.$field = f as $ty;
+                }
+            },
+        }
+    };
+}

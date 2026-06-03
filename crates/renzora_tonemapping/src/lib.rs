@@ -142,7 +142,24 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![
+            renzora_editor::enum_u32_field!(
+                "Mode",
+                TonemappingSettings,
+                mode,
+                [
+                    "None",
+                    "Reinhard",
+                    "Reinhard Luminance",
+                    "ACES Fitted",
+                    "AgX",
+                    "Somewhat Boring",
+                    "Tony McMapface",
+                    "Blender Filmic"
+                ]
+            ),
+            renzora_editor::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
+        ],
         custom_ui_fn: Some(tonemapping_custom_ui),
     }
 }

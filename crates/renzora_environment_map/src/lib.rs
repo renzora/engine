@@ -227,7 +227,14 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![renzora_editor::float_field!(
+            "Intensity",
+            EnvironmentMapComponentSettings,
+            intensity,
+            0.01,
+            0.0,
+            10.0
+        )],
         custom_ui_fn: Some(environment_map_custom_ui),
     }
 }
