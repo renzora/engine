@@ -6,8 +6,8 @@
 use bevy::prelude::Color;
 
 pub const WINDOW_BG: (u8, u8, u8) = (24, 24, 30); // chrome (top bar/doc tabs/status/dock gaps)
-pub const PANEL_BG: (u8, u8, u8) = (33, 33, 39); // leaf content (lighter than chrome)
-pub const HEADER_BG: (u8, u8, u8) = (37, 37, 44); // doc tabs + panel tab headers
+pub const PANEL_BG: (u8, u8, u8) = (26, 26, 31); // leaf content (matches egui surfaces.panel)
+pub const HEADER_BG: (u8, u8, u8) = (30, 30, 36); // doc tabs + panel tab headers
 pub const TAB_ACTIVE_BG: (u8, u8, u8) = (50, 50, 62); // active tab
 pub const TAB_HOVER_BG: (u8, u8, u8) = (42, 42, 52); // hovered (inactive) tab
 pub const CLOSE_RED: (u8, u8, u8) = (216, 84, 84); // close × on hover

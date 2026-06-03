@@ -12,12 +12,13 @@ use bevy::window::SystemCursorIcon;
 use bevy_egui::egui::Color32;
 
 use renzora::core::viewport_types::{
-    CollisionGizmoVisibility, ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
+    CollisionGizmoVisibility, SnapSettings, ViewportMode, ViewportSettings, ViewportView,
+    VisualizationMode,
 };
 use renzora_editor::EditorCommands;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
-use renzora_ember::widgets::checkbox;
+use renzora_ember::widgets::{checkbox, drag_value_flat, DragRange};
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
@@ -61,7 +62,8 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(38, 38, 46)),
+            BackgroundColor(Color::srgb_u8(26, 26, 31)),
+            HeaderBg,
             Name::new("viewport-header"),
         ))
         .id();
@@ -76,6 +78,49 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let gap3 = gap(commands, 8.0);
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
     let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
+
+    // Inline snapping: translate doubles as the 2D grid snap; rotate / scale and
+    // the camera-speed widget are 3D-only (hidden in 2D — `ThreeDOnly`).
+    let gap5 = gap(commands, 6.0);
+    let translate = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Translate,
+        "arrows-out-cardinal",
+        0.01,
+        100.0,
+        0.02,
+        |w| snap_val(w, |s| s.translate_snap),
+        |w, v| set_snap(w, |s| &mut s.translate_snap, v),
+    );
+    let rotate = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Rotate,
+        "arrow-clockwise",
+        1.0,
+        90.0,
+        0.2,
+        |w| snap_val(w, |s| s.rotate_snap),
+        |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
+    );
+    let scale = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Scale,
+        "arrows-out",
+        0.01,
+        10.0,
+        0.01,
+        |w| snap_val(w, |s| s.scale_snap),
+        |w, v| set_snap(w, |s| &mut s.scale_snap, v),
+    );
+    commands.entity(rotate).insert(ThreeDOnly);
+    commands.entity(scale).insert(ThreeDOnly);
+    let gap6 = gap(commands, 6.0);
+    let cam_speed = cam_speed_widget(commands, fonts);
+    commands.entity(cam_speed).insert(ThreeDOnly);
+
     let spacer = commands
         .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-hdr-spacer")))
         .id();
@@ -83,9 +128,11 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let gap4 = gap(commands, 3.0);
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
 
+    // Left: session actions (+ tools, later). Right: view/mode, inline snapping,
+    // camera speed, then the Display dropdown + maximize.
     commands.entity(row).add_children(&[
-        undo, redo, gap1, save, gap2, play, scripts, gap3, view_dd, mode_dd, spacer, display_dd,
-        gap4, maximize,
+        undo, redo, gap1, save, gap2, play, scripts, spacer, view_dd, mode_dd, gap5, translate,
+        rotate, scale, gap6, cam_speed, gap3, display_dd, gap4, maximize,
     ]);
     row
 }
@@ -138,6 +185,10 @@ pub(crate) fn register(app: &mut App) {
             panel_toggle,
             display_option_click,
             update_display_visuals,
+            snap_toggle_click,
+            update_snap_toggles,
+            update_three_d_only,
+            update_header_chrome,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -926,6 +977,244 @@ fn update_display_visuals(
         };
         if bg.0 != want {
             bg.0 = want;
+        }
+    }
+}
+
+// ── Inline snapping + camera speed (A5) ──────────────────────────────────────
+
+/// Which snap the icon toggle in a snap-pair enables/disables.
+#[derive(Component, Clone, Copy)]
+enum SnapToggle {
+    Translate,
+    Rotate,
+    Scale,
+}
+
+/// The snap-pair pill, tagged with which snap it represents so its *whole*
+/// background fills accent when that snap is enabled.
+#[derive(Component, Clone, Copy)]
+struct SnapPillOf(SnapToggle);
+
+/// Tags header widgets hidden in 2D view (rotate/scale snap, camera speed).
+#[derive(Component)]
+struct ThreeDOnly;
+
+/// The header bar background (driven from `theme.surfaces.panel`).
+#[derive(Component)]
+struct HeaderBg;
+
+/// A pill background behind a header widget (driven from `theme.widgets.inactive_bg`).
+#[derive(Component)]
+struct WidgetBg;
+
+/// Keep the header bar + widget pills matched to the active egui theme so the
+/// native toolbar reads identically to the egui one.
+fn update_header_chrome(
+    theme: Option<Res<ThemeManager>>,
+    mut panels: Query<&mut BackgroundColor, (With<HeaderBg>, Without<WidgetBg>)>,
+    mut widgets: Query<&mut BackgroundColor, (With<WidgetBg>, Without<HeaderBg>)>,
+) {
+    let Some(theme) = theme else { return };
+    let t = &theme.active_theme;
+    let panel = col(t.surfaces.panel.to_color32());
+    let widget = col(t.widgets.inactive_bg.to_color32());
+    for mut bg in &mut panels {
+        if bg.0 != panel {
+            bg.0 = panel;
+        }
+    }
+    for mut bg in &mut widgets {
+        if bg.0 != widget {
+            bg.0 = widget;
+        }
+    }
+}
+
+fn snap_val(w: &World, f: impl Fn(&SnapSettings) -> f32) -> f32 {
+    w.get_resource::<ViewportSettings>()
+        .map(|s| f(&s.snap))
+        .unwrap_or(0.0)
+}
+
+fn set_snap(w: &mut World, f: impl Fn(&mut SnapSettings) -> &mut f32, v: f32) {
+    if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+        *f(&mut s.snap) = v;
+    }
+}
+
+/// An icon toggle (enable/disable) + a scrubbable snap amount, in a pill.
+#[allow(clippy::too_many_arguments)]
+fn snap_pair(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    which: SnapToggle,
+    icon: &str,
+    min: f32,
+    max: f32,
+    step: f32,
+    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    set: impl Fn(&mut World, f32) + Send + Sync + 'static,
+) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, icon, (210, 210, 220), 13.0);
+    let toggle = commands
+        .spawn((
+            Node {
+                width: Val::Px(22.0),
+                height: Val::Px(BTN_H),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            which,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("vp-snap-toggle"),
+        ))
+        .id();
+    commands.entity(toggle).add_child(glyph);
+
+    let dv = drag_value_flat(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    commands.entity(dv).insert(DragRange { min, max });
+    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
+
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                padding: UiRect::horizontal(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            SnapPillOf(which),
+            Name::new("vp-snap-pair"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[toggle, dv]);
+    row
+}
+
+/// A camera icon + scrubbable move-speed (3D fly-cam).
+fn cam_speed_widget(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, "video-camera", (230, 230, 240), 13.0);
+    let iconbox = commands
+        .spawn((
+            Node {
+                width: Val::Px(20.0),
+                height: Val::Px(BTN_H),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            Name::new("vp-cam-icon"),
+        ))
+        .id();
+    commands.entity(iconbox).add_child(glyph);
+
+    let dv = drag_value_flat(commands, &fonts.ui, "", (210, 210, 220), 1.0, 0.5);
+    commands.entity(dv).insert(DragRange {
+        min: 0.1,
+        max: 100.0,
+    });
+    bind_2way(
+        commands,
+        dv,
+        |w| {
+            w.get_resource::<ViewportSettings>()
+                .map(|s| s.camera.move_speed)
+                .unwrap_or(1.0)
+        },
+        |w, v: &f32| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                s.camera.move_speed = *v;
+            }
+        },
+    );
+
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                padding: UiRect::horizontal(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            WidgetBg,
+            Name::new("vp-cam-speed"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[iconbox, dv]);
+    row
+}
+
+fn snap_toggle_click(
+    q: Query<(&Interaction, &SnapToggle), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, which) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let which = *which;
+        cmds.push(move |w: &mut World| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                let flag = match which {
+                    SnapToggle::Translate => &mut s.snap.translate_enabled,
+                    SnapToggle::Rotate => &mut s.snap.rotate_enabled,
+                    SnapToggle::Scale => &mut s.snap.scale_enabled,
+                };
+                *flag = !*flag;
+            }
+        });
+    }
+}
+
+fn update_snap_toggles(
+    settings: Option<Res<ViewportSettings>>,
+    theme: Option<Res<ThemeManager>>,
+    mut pills: Query<(&SnapPillOf, &mut BackgroundColor)>,
+) {
+    let (Some(settings), Some(theme)) = (settings, theme) else {
+        return;
+    };
+    let t = &theme.active_theme;
+    let accent = col(t.semantic.accent.to_color32());
+    let inactive = col(t.widgets.inactive_bg.to_color32());
+
+    for (pill, mut bg) in &mut pills {
+        let enabled = match pill.0 {
+            SnapToggle::Translate => settings.snap.translate_enabled,
+            SnapToggle::Rotate => settings.snap.rotate_enabled,
+            SnapToggle::Scale => settings.snap.scale_enabled,
+        };
+        // The whole pill fills accent when the snap is on, so the widget reads as
+        // one cohesive filled background (not a bright box beside the number).
+        let want = if enabled { accent } else { inactive };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+}
+
+fn update_three_d_only(
+    settings: Option<Res<ViewportSettings>>,
+    mut q: Query<&mut Node, With<ThreeDOnly>>,
+) {
+    let Some(settings) = settings else { return };
+    let show = settings.viewport_view != ViewportView::Two;
+    for mut n in &mut q {
+        let want = if show { Display::Flex } else { Display::None };
+        if n.display != want {
+            n.display = want;
         }
     }
 }

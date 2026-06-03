@@ -24,7 +24,8 @@ pub struct DragRange {
     pub max: f32,
 }
 
-/// A scrubbable numeric field. `axis` is an optional colored prefix (e.g. "X").
+/// A scrubbable numeric field with the standard inset (dark box + border) look.
+/// `axis` is an optional colored prefix (e.g. "X").
 ///
 /// The live value lives in `Bound<f32>`, so `bind_2way` can drive it both ways;
 /// insert a [`DragRange`] to clamp the scrub.
@@ -36,26 +37,63 @@ pub fn drag_value(
     value: f32,
     step: f32,
 ) -> Entity {
+    drag_value_impl(commands, font, axis, axis_color, value, step, false)
+}
+
+/// Like [`drag_value`] but *flat*: no inset box, no border, transparent
+/// background — for inline use on a toolbar pill where the number should blend
+/// into the surrounding fill rather than read as its own dark field.
+pub fn drag_value_flat(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    axis: &str,
+    axis_color: (u8, u8, u8),
+    value: f32,
+    step: f32,
+) -> Entity {
+    drag_value_impl(commands, font, axis, axis_color, value, step, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn drag_value_impl(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    axis: &str,
+    axis_color: (u8, u8, u8),
+    value: f32,
+    step: f32,
+    flat: bool,
+) -> Entity {
     let box_e = commands
         .spawn((
             Node {
-                min_width: Val::Px(58.0),
+                min_width: Val::Px(if flat { 44.0 } else { 58.0 }),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 column_gap: Val::Px(5.0),
-                border: UiRect::all(Val::Px(1.0)),
+                border: if flat {
+                    UiRect::all(Val::Px(0.0))
+                } else {
+                    UiRect::all(Val::Px(1.0))
+                },
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
-            BorderColor::all(rgb((70, 70, 82))),
-            Styled::new(Role::Input),
+            BackgroundColor(if flat { Color::NONE } else { rgb((28, 28, 34)) }),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("drag-value"),
         ))
         .id();
+    // The boxed look is owned by the `Styled` style system (so it repaints with
+    // the theme); the flat variant deliberately opts out so nothing repaints a
+    // background over it.
+    if !flat {
+        commands
+            .entity(box_e)
+            .insert((BorderColor::all(rgb((70, 70, 82))), Styled::new(Role::Input)));
+    }
     let text = text_node(commands, font, &format_num(value), 12.0, TEXT_PRIMARY);
     let mut kids = Vec::new();
     if !axis.is_empty() {
