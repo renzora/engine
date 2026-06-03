@@ -27,7 +27,9 @@ use renzora_editor::{
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_with};
-use renzora_ember::widgets::{drag_value, toggle_switch, DragRange};
+use renzora_ember::widgets::{
+    bind_text_input, drag_value, text_input, toggle_switch, DragRange, Popup,
+};
 use renzora_theme::ThemeManager;
 
 type GetFn = fn(&World, Entity) -> Option<FieldValue>;
@@ -82,7 +84,6 @@ pub fn register_native_inspector(app: &mut App) {
             add_button_click,
             add_option_click,
             lock_click,
-            enum_toggle,
             enum_option_click,
         )
             .run_if(in_state(SplashState::Editor)),
@@ -98,6 +99,7 @@ enum FieldKind {
     Vec3 { speed: f32 },
     Bool,
     Color,
+    Text,
     Enum { options: &'static [&'static str] },
     ReadOnly,
 }
@@ -371,6 +373,9 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 }
                 (FieldType::Color, Some(FieldValue::Color(col))) => {
                     (FieldKind::Color, FieldInit::Color(*col))
+                }
+                (FieldType::String, Some(FieldValue::String(s))) => {
+                    (FieldKind::Text, FieldInit::Text(s.clone()))
                 }
                 (FieldType::Enum { options }, Some(FieldValue::Enum(s))) => {
                     (FieldKind::Enum { options }, FieldInit::Text(s.clone()))
@@ -683,35 +688,28 @@ fn build_field_value(
             } else {
                 [1.0; 3]
             };
-            let swatch = commands
-                .spawn((
-                    Node {
-                        width: Val::Px(44.0),
-                        height: Val::Px(16.0),
-                        border: UiRect::all(Val::Px(1.0)),
-                        border_radius: BorderRadius::all(Val::Px(3.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgb(init[0], init[1], init[2])),
-                    BorderColor::all(c((70, 70, 82))),
-                    Name::new("color-swatch"),
-                ))
-                .id();
-            let get_fn = field.get_fn;
-            bind_with(
+            let editor =
+                build_color_editor(commands, fonts, entity, field.get_fn, field.set_fn, init);
+            commands.entity(value_parent).add_child(editor);
+        }
+        FieldKind::Text => {
+            let init = if let FieldInit::Text(ref s) = field.init {
+                s.clone()
+            } else {
+                String::new()
+            };
+            let ti = text_input(commands, &fonts.ui, "—", &init);
+            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            bind_text_input(
                 commands,
-                swatch,
+                ti,
                 move |w| match get_fn(w, entity) {
-                    Some(FieldValue::Color(col)) => col,
-                    _ => [0.0; 3],
+                    Some(FieldValue::String(s)) => s,
+                    _ => String::new(),
                 },
-                |w, e, col: &[f32; 3]| {
-                    if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
-                        bg.0 = Color::srgb(col[0], col[1], col[2]);
-                    }
-                },
+                move |w, v: String| set_fn(w, entity, FieldValue::String(v)),
             );
-            commands.entity(value_parent).add_child(swatch);
+            commands.entity(value_parent).add_child(ti);
         }
         FieldKind::Enum { options } => {
             let cur = if let FieldInit::Text(ref s) = field.init {
@@ -740,13 +738,112 @@ fn build_field_value(
     }
 }
 
-// ── Enum dropdown ────────────────────────────────────────────────────────────
+// ── Color editor (swatch + R/G/B popup) ──────────────────────────────────────
 
-#[derive(Component)]
-struct EnumTrigger {
-    panel: Entity,
-    open: bool,
+/// A clickable swatch (live-bound to the color) that toggles a popup of R/G/B
+/// drag values, each two-way bound to one channel.
+fn build_color_editor(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    get_fn: GetFn,
+    set_fn: SetFn,
+    init: [f32; 3],
+) -> Entity {
+    const CH: [(&str, (u8, u8, u8)); 3] = [
+        ("R", (230, 90, 90)),
+        ("G", (130, 200, 90)),
+        ("B", (90, 150, 230)),
+    ];
+    let mut rows = Vec::with_capacity(3);
+    for (i, (label, color)) in CH.iter().enumerate() {
+        let dv = drag_value(commands, &fonts.ui, label, *color, init[i], 0.01);
+        commands.entity(dv).insert(DragRange { min: 0.0, max: 1.0 });
+        bind_2way(
+            commands,
+            dv,
+            move |w| match get_fn(w, entity) {
+                Some(FieldValue::Color(c)) => c[i],
+                _ => 0.0,
+            },
+            move |w, v: &f32| {
+                if let Some(FieldValue::Color(mut c)) = get_fn(w, entity) {
+                    c[i] = v.clamp(0.0, 1.0);
+                    set_fn(w, entity, FieldValue::Color(c));
+                }
+            },
+        );
+        rows.push(dv);
+    }
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(c(PANEL_DARK)),
+            BorderColor::all(c(BORDER)),
+            GlobalZIndex(700),
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("color-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_children(&rows);
+
+    let swatch = commands
+        .spawn((
+            Node {
+                width: Val::Px(44.0),
+                height: Val::Px(16.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(init[0], init[1], init[2])),
+            BorderColor::all(c((70, 70, 82))),
+            Interaction::default(),
+            Popup::new(panel),
+            Name::new("color-swatch"),
+        ))
+        .id();
+    bind_with(
+        commands,
+        swatch,
+        move |w| match get_fn(w, entity) {
+            Some(FieldValue::Color(c)) => c,
+            _ => [0.0; 3],
+        },
+        |w, e, col: &[f32; 3]| {
+            if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
+                bg.0 = Color::srgb(col[0], col[1], col[2]);
+            }
+        },
+    );
+
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Name::new("color-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[swatch, panel]);
+    wrap
 }
+
+// ── Enum dropdown ────────────────────────────────────────────────────────────
 
 #[derive(Component)]
 struct EnumOption {
@@ -784,6 +881,7 @@ fn build_enum_dropdown(
             BackgroundColor(c(PANEL_DARK)),
             BorderColor::all(c(BORDER)),
             GlobalZIndex(700),
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("enum-panel"),
         ))
         .id();
@@ -864,7 +962,7 @@ fn build_enum_dropdown(
             BackgroundColor(c((28, 28, 34))),
             BorderColor::all(c((70, 70, 82))),
             Interaction::default(),
-            EnumTrigger { panel, open: false },
+            Popup::new(panel),
             Name::new("enum-trigger"),
         ))
         .id();
@@ -1123,24 +1221,11 @@ fn add_option_click(
     }
 }
 
-fn enum_toggle(
-    mut triggers: Query<(&Interaction, &mut EnumTrigger), Changed<Interaction>>,
-    mut nodes: Query<&mut Node>,
-) {
-    for (interaction, mut t) in &mut triggers {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        t.open = !t.open;
-        if let Ok(mut n) = nodes.get_mut(t.panel) {
-            n.display = if t.open { Display::Flex } else { Display::None };
-        }
-    }
-}
-
+// Open/close is handled by ember's generic `Popup` (toggle + click-outside
+// dismiss); this only applies the selection + closes the popup.
 fn enum_option_click(
     q: Query<(&Interaction, &EnumOption), Changed<Interaction>>,
-    mut triggers: Query<&mut EnumTrigger>,
+    mut popups: Query<&mut Popup>,
     mut nodes: Query<&mut Node>,
     cmds: Option<Res<EditorCommands>>,
 ) {
@@ -1151,14 +1236,14 @@ fn enum_option_click(
         }
         let (set_fn, entity, label) = (opt.set_fn, opt.entity, opt.label.to_string());
         cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Enum(label.clone())));
-        // Close the popup.
+        // Close the popup whose panel this option belongs to.
+        for mut p in &mut popups {
+            if p.panel == opt.panel {
+                p.open = false;
+            }
+        }
         if let Ok(mut n) = nodes.get_mut(opt.panel) {
             n.display = Display::None;
-        }
-        for mut t in &mut triggers {
-            if t.panel == opt.panel {
-                t.open = false;
-            }
         }
     }
 }

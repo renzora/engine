@@ -84,6 +84,55 @@ pub fn text_input(
     box_e
 }
 
+/// Two-way bind a [`text_input`] to a `String` piece of state. While the input
+/// is focused, the user's edits flow to state; while unfocused, external changes
+/// flow back into the input (without clobbering typing).
+pub fn bind_text_input(
+    commands: &mut Commands,
+    input: Entity,
+    get: impl Fn(&World) -> String + Send + Sync + 'static,
+    set: impl Fn(&mut World, String) + Send + Sync + 'static,
+) {
+    crate::reactive::react(commands, move |world: &mut World| {
+        if world.get_entity(input).is_err() {
+            return false;
+        }
+        let Some((focused, widget_val, text_e, ph)) = world
+            .get::<EmberTextInput>(input)
+            .map(|i| (i.focused, i.value.clone(), i.text_entity, i.placeholder.clone()))
+        else {
+            return true;
+        };
+        let state_val = get(world);
+        if focused {
+            // User is editing → push to state.
+            if widget_val != state_val {
+                set(world, widget_val);
+            }
+        } else if widget_val != state_val {
+            // External change → reflect into the input + its displayed text.
+            if let Some(mut i) = world.get_mut::<EmberTextInput>(input) {
+                i.value = state_val.clone();
+            }
+            if let Some(mut t) = world.get_mut::<Text>(text_e) {
+                t.0 = if state_val.is_empty() {
+                    ph
+                } else {
+                    state_val.clone()
+                };
+            }
+            if let Some(mut col) = world.get_mut::<TextColor>(text_e) {
+                col.0 = rgb(if state_val.is_empty() {
+                    TEXT_MUTED
+                } else {
+                    TEXT_PRIMARY
+                });
+            }
+        }
+        true
+    });
+}
+
 pub(crate) fn text_input_focus(
     pressed: Query<(Entity, &Interaction), (With<EmberTextInput>, Changed<Interaction>)>,
     mut inputs: Query<(Entity, &mut EmberTextInput, &mut Styled)>,

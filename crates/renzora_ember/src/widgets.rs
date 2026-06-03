@@ -17,6 +17,7 @@ mod radio;
 mod segmented;
 mod slider;
 mod stepper;
+mod popup;
 mod text_input;
 mod toggle;
 mod toggle_switch;
@@ -115,6 +116,7 @@ pub use segmented::*;
 pub use slider::*;
 pub use stepper::*;
 pub use text_input::*;
+pub use popup::*;
 pub use toggle::*;
 pub use toggle_switch::*;
 
@@ -217,6 +219,8 @@ impl Plugin for WidgetsPlugin {
                     drag_value::drag_value_apply,
                     toggle_switch::switch_interact,
                     toggle_switch::switch_apply,
+                    popup::popup_toggle,
+                    popup::popup_dismiss,
                     color_picker::color_picker_sync,
                     knob::knob_drag,
                     fader::fader_drag,
