@@ -109,6 +109,16 @@ fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette
         play_green: tc(&t.semantic.success),
         warn_amber: tc(&t.semantic.warning),
         accent: tc(&t.semantic.accent),
+        border: tc(&t.widgets.border_light),
+        popup_bg: tc(&t.surfaces.popup),
+        row_even: tc(&t.panels.inspector_row_even),
+        row_odd: tc(&t.panels.inspector_row_odd),
+        value_text: tc(&t.text.secondary),
+        selection: tc(&t.semantic.selection),
+        section_bg: tc(&t.panels.category_frame_bg),
+        hover_bg: tc(&t.panels.item_hover),
+        card_bg: tc(&t.panels.item_bg),
+        tree_line: tc(&t.panels.tree_line),
     }
 }
 

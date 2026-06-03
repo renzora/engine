@@ -16,9 +16,6 @@ use crate::LABEL_COLORS;
 
 use super::components::HierRowClick;
 
-const MUTED: (u8, u8, u8) = (188, 188, 200);
-const TEXT: (u8, u8, u8) = (222, 222, 232);
-const DANGER: (u8, u8, u8) = (224, 96, 88);
 
 /// Right-click a row → open a menu of actions for that entity.
 pub(crate) fn hier_context_menu(
@@ -77,7 +74,7 @@ pub(crate) fn hier_context_menu(
 
     if is_cam {
         kids.push(menu_sep(&mut commands));
-        kids.push(menu_item_styled(&mut commands, &fonts, "star", "Set as Default Camera", (255, 200, 80), TEXT, move |w| {
+        kids.push(menu_item_styled(&mut commands, &fonts, "star", "Set as Default Camera", (255, 200, 80), renzora_ember::theme::text_primary(), move |w| {
             set_default_camera(w, target)
         }));
         kids.push(menu_item(&mut commands, &fonts, "frame-corners", "Snap to Viewport", move |w| {
@@ -97,7 +94,7 @@ pub(crate) fn hier_context_menu(
     }
 
     kids.push(menu_sep(&mut commands));
-    kids.push(menu_item_styled(&mut commands, &fonts, "trash", "Delete", DANGER, DANGER, move |w| {
+    kids.push(menu_item_styled(&mut commands, &fonts, "trash", "Delete", renzora_ember::theme::close_red(), renzora_ember::theme::close_red(), move |w| {
         let entities: Vec<Entity> = match w.get_resource::<EditorSelection>() {
             Some(s) if s.is_selected(target) => s.get_all(),
             _ => vec![target],
@@ -120,12 +117,12 @@ fn color_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, "palette", MUTED, 11.0);
+    let ic = icon_text(commands, &fonts.phosphor, "palette", renzora_ember::theme::text_muted(), 11.0);
     let label = commands
         .spawn((
             Text::new("Label Color"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(MUTED)),
+            TextColor(rgb(renzora_ember::theme::text_muted())),
         ))
         .id();
     commands.entity(row).add_children(&[ic, label]);

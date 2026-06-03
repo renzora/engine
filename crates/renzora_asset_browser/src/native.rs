@@ -58,16 +58,8 @@ fn handle_for(w: &World, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image
 }
 
 const TILE_W: f32 = 96.0;
-const HOVER_BG: (u8, u8, u8) = (40, 40, 50);
 
 // Content-area surfaces (Unreal-style: flat, dark).
-const CONTENT_BG: (u8, u8, u8) = (30, 30, 35);
-const BAR_BG: (u8, u8, u8) = (24, 24, 30);
-const THUMB_BG: (u8, u8, u8) = (24, 24, 28);
-const CARD_BG: (u8, u8, u8) = (41, 41, 48);
-const CARD_BG_HOVER: (u8, u8, u8) = (49, 49, 58);
-const CARD_BG_SEL: (u8, u8, u8) = (50, 54, 66);
-const CARD_BORDER: (u8, u8, u8) = (56, 56, 64);
 
 /// Lean native state for the browser (independent of the egui panel's state).
 #[derive(Resource)]
@@ -965,7 +957,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 min_height: Val::Px(0.0),
                 ..default()
             },
-            BackgroundColor(rgb(CONTENT_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::panel_bg())),
         ))
         .id();
 
@@ -1116,7 +1108,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border: UiRect::top(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(rgb(BAR_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
             BorderColor::all(rgb((48, 48, 56))),
         ))
         .id();
@@ -1321,7 +1313,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            BorderColor::all(rgb(CARD_BORDER)),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
             Interaction::default(),
             AssetTile {
                 path: entry.path.clone(),
@@ -1341,11 +1333,11 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             Some(Interaction::Hovered) | Some(Interaction::Pressed)
         );
         if selected {
-            rgb(CARD_BG_SEL)
+            rgb(renzora_ember::theme::selection())
         } else if hovered {
-            rgb(CARD_BG_HOVER)
+            rgb(renzora_ember::theme::hover_bg())
         } else {
-            rgb(CARD_BG)
+            rgb(renzora_ember::theme::card_bg())
         }
     });
     // Accent border on hover/select.
@@ -1372,7 +1364,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                 *bc = BorderColor::all(match st {
                     2 => rgb(ACCENT_BLUE),
                     1 => rgb((92, 92, 108)),
-                    _ => rgb(CARD_BORDER),
+                    _ => rgb(renzora_ember::theme::border()),
                 });
             }
         },
@@ -1390,7 +1382,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb(THUMB_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
         ))
         .id();
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, icon_sz);
@@ -1506,7 +1498,6 @@ const TREE_ROW_H: f32 = 20.0;
 const TREE_BASE_X: f32 = 4.0;
 const TREE_LINE_OFFSET: f32 = TREE_INDENT / 2.0 - 1.0; // 5.0
 const TREE_CENTER_Y: f32 = TREE_ROW_H / 2.0;
-const TREE_LINE: (u8, u8, u8) = (64, 64, 76);
 
 struct TreeRow {
     path: PathBuf,
@@ -1548,7 +1539,7 @@ fn tree_vline(commands: &mut Commands, x: f32, full: bool, height: f32) -> Entit
         node.height = Val::Px(height);
     }
     commands
-        .spawn((node, BackgroundColor(rgb(TREE_LINE)), Pickable::IGNORE))
+        .spawn((node, BackgroundColor(rgb(renzora_ember::theme::tree_line())), Pickable::IGNORE))
         .id()
 }
 
@@ -1564,7 +1555,7 @@ fn tree_hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
                 height: Val::Px(1.5),
                 ..default()
             },
-            BackgroundColor(rgb(TREE_LINE)),
+            BackgroundColor(rgb(renzora_ember::theme::tree_line())),
             Pickable::IGNORE,
         ))
         .id()
@@ -1807,7 +1798,7 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(HOVER_BG),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
     let (icon_name, icon_color) = if is_dir {

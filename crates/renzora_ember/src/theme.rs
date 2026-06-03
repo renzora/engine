@@ -51,6 +51,17 @@ pub struct Palette {
     pub play_green: (u8, u8, u8),
     pub warn_amber: (u8, u8, u8),
     pub accent: (u8, u8, u8),
+    // Richer surface/row/border colors used by panels.
+    pub border: (u8, u8, u8),
+    pub popup_bg: (u8, u8, u8),
+    pub row_even: (u8, u8, u8),
+    pub row_odd: (u8, u8, u8),
+    pub value_text: (u8, u8, u8),
+    pub selection: (u8, u8, u8),
+    pub section_bg: (u8, u8, u8),
+    pub hover_bg: (u8, u8, u8),
+    pub card_bg: (u8, u8, u8),
+    pub tree_line: (u8, u8, u8),
 }
 
 impl Default for Palette {
@@ -69,6 +80,16 @@ impl Default for Palette {
             play_green: PLAY_GREEN,
             warn_amber: WARN_AMBER,
             accent: ACCENT_BLUE,
+            border: (60, 60, 74),
+            popup_bg: (30, 30, 38),
+            row_even: (34, 34, 42),
+            row_odd: (30, 30, 37),
+            value_text: (210, 210, 220),
+            selection: (50, 54, 66),
+            section_bg: (44, 44, 54),
+            hover_bg: (40, 40, 50),
+            card_bg: (41, 41, 48),
+            tree_line: (64, 64, 76),
         }
     }
 }
@@ -127,6 +148,36 @@ pub fn warn_amber() -> (u8, u8, u8) {
 }
 pub fn accent() -> (u8, u8, u8) {
     palette().accent
+}
+pub fn border() -> (u8, u8, u8) {
+    palette().border
+}
+pub fn popup_bg() -> (u8, u8, u8) {
+    palette().popup_bg
+}
+pub fn row_even() -> (u8, u8, u8) {
+    palette().row_even
+}
+pub fn row_odd() -> (u8, u8, u8) {
+    palette().row_odd
+}
+pub fn value_text() -> (u8, u8, u8) {
+    palette().value_text
+}
+pub fn selection() -> (u8, u8, u8) {
+    palette().selection
+}
+pub fn section_bg() -> (u8, u8, u8) {
+    palette().section_bg
+}
+pub fn hover_bg() -> (u8, u8, u8) {
+    palette().hover_bg
+}
+pub fn card_bg() -> (u8, u8, u8) {
+    palette().card_bg
+}
+pub fn tree_line() -> (u8, u8, u8) {
+    palette().tree_line
 }
 
 /// An sRGB byte triple as a bevy `Color`.

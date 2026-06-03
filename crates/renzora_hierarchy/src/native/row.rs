@@ -27,9 +27,6 @@ const CENTER_Y: f32 = ROW_H / 2.0;
 /// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).
 const SUFFIX_W: f32 = 44.0;
 
-const HIER_LINE: (u8, u8, u8) = (64, 64, 76);
-const CARET_EXPANDED: (u8, u8, u8) = (150, 150, 160);
-const CARET_COLLAPSED: (u8, u8, u8) = (110, 110, 120);
 
 /// An owned, ready-to-build row (captured into the keyed-list snapshot).
 pub(crate) struct RowSnapshot {
@@ -89,7 +86,7 @@ fn vline(commands: &mut Commands, x: f32, top: f32, full: bool, height: f32) -> 
         node.height = Val::Px(height);
     }
     commands
-        .spawn((node, BackgroundColor(rgb(HIER_LINE)), Pickable::IGNORE))
+        .spawn((node, BackgroundColor(rgb(renzora_ember::theme::tree_line())), Pickable::IGNORE))
         .id()
 }
 
@@ -104,7 +101,7 @@ fn hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
                 height: Val::Px(1.5),
                 ..default()
             },
-            BackgroundColor(rgb(HIER_LINE)),
+            BackgroundColor(rgb(renzora_ember::theme::tree_line())),
             Pickable::IGNORE,
         ))
         .id()
@@ -222,9 +219,9 @@ pub(crate) fn build_row(
         .id();
     if s.has_children {
         let (glyph, color) = if s.is_expanded {
-            (CARET_DOWN, CARET_EXPANDED)
+            (CARET_DOWN, renzora_ember::theme::text_muted())
         } else {
-            (CARET_RIGHT, CARET_COLLAPSED)
+            (CARET_RIGHT, renzora_ember::theme::placeholder())
         };
         let g = commands
             .spawn((

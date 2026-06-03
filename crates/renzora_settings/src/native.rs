@@ -39,11 +39,6 @@ const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
 const SIDEBAR_W: f32 = 160.0;
 const LABEL_W: f32 = 110.0;
-const EXTREME_BG: (u8, u8, u8) = (18, 18, 23);
-const SECTION_HEADER_BG: (u8, u8, u8) = (40, 40, 50);
-const ROW_EVEN: (u8, u8, u8) = (34, 34, 42);
-const ROW_ODD: (u8, u8, u8) = (30, 30, 37);
-const VALUE_COL: (u8, u8, u8) = (210, 210, 220);
 
 // Accent colors per category — matches the egui `CategoryStyle` palette.
 const A_BLUE: (u8, u8, u8) = (80, 140, 255);
@@ -341,7 +336,7 @@ fn spawn_overlay(
                 },
                 ..default()
             },
-            BackgroundColor(rgb(EXTREME_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
             FocusPolicy::Block,
             Name::new("settings-panel"),
         ))
@@ -484,7 +479,7 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts, active: SettingsTa
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(EXTREME_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
             Name::new("settings-sidebar"),
         ))
         .id();
@@ -587,7 +582,7 @@ fn section(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(SECTION_HEADER_BG)),
+            BackgroundColor(rgb(renzora_ember::theme::section_bg())),
             Interaction::default(),
             SettingsSection {
                 body,
@@ -624,7 +619,7 @@ fn settings_row(
     label: &str,
     control: Entity,
 ) {
-    let bg = if idx.is_multiple_of(2) { ROW_EVEN } else { ROW_ODD };
+    let bg = if idx.is_multiple_of(2) { renzora_ember::theme::row_even() } else { renzora_ember::theme::row_odd() };
     let lbl = commands
         .spawn((
             Text::new(label),
@@ -715,7 +710,7 @@ where
     G: Fn(&World) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
-    let dv = drag_value(commands, &fonts.ui, "", VALUE_COL, init, step);
+    let dv = drag_value(commands, &fonts.ui, "", renzora_ember::theme::value_text(), init, step);
     if max > min {
         commands.entity(dv).insert(DragRange { min, max });
     }
@@ -1801,7 +1796,7 @@ fn build_action_row(
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ROW_ODD)),
+            BackgroundColor(rgb(renzora_ember::theme::row_odd())),
         ))
         .id();
     commands.entity(header).add_children(&[caret, name, kind, del]);
@@ -1861,7 +1856,7 @@ fn build_action_row(
             .spawn((
                 Text::new(format_binding(b)),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(rgb(VALUE_COL)),
+                TextColor(rgb(renzora_ember::theme::value_text())),
                 Node {
                     flex_grow: 1.0,
                     ..default()

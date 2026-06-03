@@ -38,11 +38,6 @@ type Pred = fn(&World, Entity) -> bool;
 type Mutate = fn(&mut World, Entity);
 type SetEnabled = fn(&mut World, Entity, bool);
 
-const TEXT_VALUE: (u8, u8, u8) = (210, 210, 220);
-const TEXT_MUTED: (u8, u8, u8) = (150, 150, 162);
-const HEADER_BG: (u8, u8, u8) = (44, 44, 54);
-const PANEL_DARK: (u8, u8, u8) = (30, 30, 38);
-const BORDER: (u8, u8, u8) = (60, 60, 74);
 
 fn c(rgb: (u8, u8, u8)) -> Color {
     Color::srgb_u8(rgb.0, rgb.1, rgb.2)
@@ -487,7 +482,7 @@ fn build_section(
     }
 
     // Header: caret · icon · title · spacer · [lock] · [enable] · [trash]
-    let caret = phosphor_glyph(commands, fonts, "caret-down", TEXT_MUTED, 11.0);
+    let caret = phosphor_glyph(commands, fonts, "caret-down", renzora_ember::theme::text_muted(), 11.0);
     let icon = glyph_str(commands, fonts, sec.icon, sec.accent, 14.0);
     let title = commands
         .spawn((
@@ -508,7 +503,7 @@ fn build_section(
             commands,
             fonts,
             if locked_here { "lock-simple" } else { "lock-simple-open" },
-            if locked_here { (120, 170, 255) } else { TEXT_MUTED },
+            if locked_here { (120, 170, 255) } else { renzora_ember::theme::text_muted() },
             14.0,
         );
         commands
@@ -528,7 +523,7 @@ fn build_section(
         header_kids.push(sw);
     }
     if let Some(remove_fn) = sec.remove_fn {
-        let trash = phosphor_glyph(commands, fonts, "trash", TEXT_MUTED, 13.0);
+        let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
         commands
             .entity(trash)
             .insert((Interaction::default(), FocusPolicy::Block, RemoveBtn { remove_fn, entity }));
@@ -598,7 +593,7 @@ fn build_field_value(
     match field.kind {
         FieldKind::Float { speed, min, max } => {
             let init = if let FieldInit::Float(v) = field.init { v } else { 0.0 };
-            let dv = drag_value(commands, &fonts.ui, "", TEXT_VALUE, init, speed.max(0.001));
+            let dv = drag_value(commands, &fonts.ui, "", renzora_ember::theme::value_text(), init, speed.max(0.001));
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }
@@ -718,7 +713,7 @@ fn build_field_value(
                 .spawn((
                     Text::new(text),
                     ui_font(&fonts.ui, 11.0),
-                    TextColor(c(TEXT_MUTED)),
+                    TextColor(c(renzora_ember::theme::text_muted())),
                 ))
                 .id();
             commands.entity(value_parent).add_child(t);
@@ -763,8 +758,8 @@ fn build_enum_dropdown(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(c(PANEL_DARK)),
-            BorderColor::all(c(BORDER)),
+            BackgroundColor(c(renzora_ember::theme::popup_bg())),
+            BorderColor::all(c(renzora_ember::theme::border())),
             GlobalZIndex(700),
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("enum-panel"),
@@ -776,7 +771,7 @@ fn build_enum_dropdown(
             .spawn((
                 Text::new(*opt),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(c(TEXT_VALUE)),
+                TextColor(c(renzora_ember::theme::value_text())),
                 FocusPolicy::Pass,
             ))
             .id();
@@ -809,7 +804,7 @@ fn build_enum_dropdown(
         .spawn((
             Text::new(current),
             ui_font(&fonts.ui, 11.0),
-            TextColor(c(TEXT_VALUE)),
+            TextColor(c(renzora_ember::theme::value_text())),
             FocusPolicy::Pass,
         ))
         .id();
@@ -829,7 +824,7 @@ fn build_enum_dropdown(
             }
         },
     );
-    let caret = phosphor_glyph(commands, fonts, "caret-down", TEXT_MUTED, 9.0);
+    let caret = phosphor_glyph(commands, fonts, "caret-down", renzora_ember::theme::text_muted(), 9.0);
     commands.entity(caret).insert(FocusPolicy::Pass);
     let trigger = commands
         .spawn((
@@ -909,7 +904,7 @@ fn build_asset_field(
         .spawn((
             Text::new("Drag asset here"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(c(TEXT_MUTED)),
+            TextColor(c(renzora_ember::theme::text_muted())),
             bevy::text::TextLayout::new_with_no_wrap(),
             FocusPolicy::Pass,
         ))
@@ -958,7 +953,7 @@ fn build_asset_field(
         .spawn((
             Text::new("\u{2715}"), // ✕
             ui_font(&fonts.ui, 11.0),
-            TextColor(c(TEXT_MUTED)),
+            TextColor(c(renzora_ember::theme::text_muted())),
             Node {
                 padding: UiRect::horizontal(Val::Px(2.0)),
                 ..default()
@@ -1103,7 +1098,7 @@ fn empty_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 12.0),
-            TextColor(c(TEXT_MUTED)),
+            TextColor(c(renzora_ember::theme::text_muted())),
             Node {
                 margin: UiRect::all(Val::Px(8.0)),
                 ..default()
@@ -1118,12 +1113,12 @@ fn empty_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
 struct AddButton;
 
 fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let icon = phosphor_glyph(commands, fonts, "puzzle-piece", TEXT_VALUE, 13.0);
+    let icon = phosphor_glyph(commands, fonts, "puzzle-piece", renzora_ember::theme::value_text(), 13.0);
     let label = commands
         .spawn((
             Text::new("Add Component"),
             ui_font(&fonts.ui, 12.0),
-            TextColor(c(TEXT_VALUE)),
+            TextColor(c(renzora_ember::theme::value_text())),
             FocusPolicy::Pass,
         ))
         .id();
@@ -1139,7 +1134,7 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(c(HEADER_BG)),
+            BackgroundColor(c(renzora_ember::theme::section_bg())),
             Interaction::default(),
             AddButton,
             Name::new("add-component"),
