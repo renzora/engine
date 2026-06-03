@@ -6,6 +6,10 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 
 [dependencies]
 bevy = { workspace = true }
+# Theme serialization: the per-widget Theme loads from project themes/*.toml
+# (runtime-safe — the exported game uses the same Theme).
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
 # HideInHierarchy + core types.
 renzora = { path = "../renzora", default-features = false }
 # Phosphor icon font + glyph lookup + CSS-style cursor icons (folding HUI into

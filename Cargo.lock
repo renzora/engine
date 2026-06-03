@@ -9458,6 +9458,8 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_hui",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]

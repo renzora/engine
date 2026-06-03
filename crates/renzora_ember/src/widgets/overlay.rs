@@ -9,10 +9,6 @@ use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::*;
 
-const CARD_BG: (u8, u8, u8) = (28, 28, 34);
-const CARD_BORDER: (u8, u8, u8) = (60, 60, 74);
-const TEXT: (u8, u8, u8) = (224, 224, 234);
-const MUTED: (u8, u8, u8) = (150, 150, 164);
 
 /// The backdrop root of an open overlay (despawn it to close).
 #[derive(Component)]
@@ -79,8 +75,8 @@ pub fn overlay_sized(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb(CARD_BG)),
-            BorderColor::all(rgb(CARD_BORDER)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             FocusPolicy::Block,
             RelativeCursorPosition::default(),
             OverlayCard,
@@ -106,7 +102,7 @@ pub fn overlay_sized(
         .spawn((
             Text::new(title),
             ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(TEXT)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
@@ -123,7 +119,7 @@ pub fn overlay_sized(
             Name::new("overlay-close"),
         ))
         .id();
-    let close_icon = icon_text(commands, &fonts.phosphor, "x", MUTED, 13.0);
+    let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
     commands.entity(close).add_child(close_icon);
     commands
         .entity(titlebar)

@@ -928,7 +928,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb((48, 48, 58))),
+            BackgroundColor(rgb(renzora_ember::theme::border())),
             Interaction::default(),
             Splitter,
             Name::new("assets-splitter"),
@@ -943,7 +943,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if dragging || hovered {
             rgb(ACCENT_BLUE)
         } else {
-            rgb((48, 48, 58))
+            rgb(renzora_ember::theme::border())
         }
     });
 
@@ -973,7 +973,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
+            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
         ))
         .id();
     let back = commands
@@ -986,7 +986,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((42, 42, 52))),
+            BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
             Interaction::default(),
             AssetBack,
             Name::new("assets-back"),
@@ -1051,8 +1051,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((34, 34, 40))),
-            BorderColor::all(rgb((52, 52, 62))),
+            BackgroundColor(rgb(renzora_ember::theme::row_even())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
             Name::new("zoom-box"),
         ))
         .id();
@@ -1109,7 +1109,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::window_bg())),
-            BorderColor::all(rgb((48, 48, 56))),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
         ))
         .id();
     let footer_spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
@@ -1363,7 +1363,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             if let Some(mut bc) = w.get_mut::<BorderColor>(e) {
                 *bc = BorderColor::all(match st {
                     2 => rgb(ACCENT_BLUE),
-                    1 => rgb((92, 92, 108)),
+                    1 => rgb(renzora_ember::theme::border()),
                     _ => rgb(renzora_ember::theme::border()),
                 });
             }
@@ -1463,7 +1463,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         .spawn((
             Text::new(type_label),
             ui_font(&fonts.ui, 9.0),
-            TextColor(rgb((142, 144, 158))),
+            TextColor(rgb(renzora_ember::theme::text_muted())),
             bevy::text::TextLayout::new_with_no_wrap(),
             Node {
                 overflow: Overflow::clip(),
@@ -1743,7 +1743,7 @@ fn tree_header(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(if boxed { rgb((33, 33, 40)) } else { Color::NONE }),
+            BackgroundColor(if boxed { rgb(renzora_ember::theme::popup_bg()) } else { Color::NONE }),
             Name::new("tree-header"),
         ))
         .id();
@@ -1934,7 +1934,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
             w.get::<Interaction>(nav),
             Some(Interaction::Hovered) | Some(Interaction::Pressed)
         ) {
-            return rgb((48, 48, 58));
+            return rgb(renzora_ember::theme::border());
         }
         stripe
     });
