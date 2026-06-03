@@ -38,7 +38,7 @@ pub fn inspector_stripe(row_index: usize) -> Color {
     // unchanged. Odd rows get a faint darkening overlay, so the alternation is
     // subtle and the panel base is untouched.
     if row_index % 2 == 1 {
-        Color::srgba(0.0, 0.0, 0.0, 0.18)
+        Color::srgba(0.0, 0.0, 0.0, 0.22)
     } else {
         Color::NONE
     }
