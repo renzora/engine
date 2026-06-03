@@ -14,7 +14,8 @@ use bevy::prelude::*;
 
 use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
-use renzora_ember::font::{glyph, icon_item, ui_font, EmberFonts};
+use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
+use renzora_ember::widgets::{menu_item, Popup};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -172,6 +173,7 @@ fn manage_shell_root(
     mut commands: Commands,
     backend: Res<EditorUiBackend>,
     fonts: Option<Res<EmberFonts>>,
+    tm: Option<Res<renzora_theme::ThemeManager>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
@@ -182,7 +184,11 @@ fn manage_shell_root(
         let Some(fonts) = fonts else {
             return;
         };
-        spawn_shell(&mut commands, &fonts.ui);
+        let (themes, active) = tm
+            .as_ref()
+            .map(|t| (t.available_themes.clone(), t.active_theme_name.clone()))
+            .unwrap_or_default();
+        spawn_shell(&mut commands, &fonts, &themes, &active);
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
         dirty.0 = true;
@@ -370,7 +376,8 @@ fn ribbon_switch(
 
 // ── Chrome ──────────────────────────────────────────────────────────────────
 
-fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
+fn spawn_shell(commands: &mut Commands, fonts: &EmberFonts, themes: &[String], active: &str) {
+    let font = &fonts.ui;
     let root = commands
         .spawn((
             Node {
@@ -410,7 +417,7 @@ fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
         ))
         .id();
 
-    let statusbar = build_status_bar(commands, font);
+    let statusbar = build_status_bar(commands, fonts, themes, active);
 
     commands
         .entity(root)
@@ -420,7 +427,12 @@ fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
 /// The bottom status bar: a "Ready" label + plugin-contributed items from the
 /// bevy-native `ShellStatusRegistry`, rendered via a reactive keyed list (so live
 /// metrics update without rebuilding the bar).
-fn build_status_bar(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
+fn build_status_bar(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    themes: &[String],
+    active: &str,
+) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -428,7 +440,7 @@ fn build_status_bar(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
                 height: Val::Px(22.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(14.0),
+                column_gap: Val::Px(10.0),
                 padding: UiRect::horizontal(Val::Px(10.0)),
                 flex_shrink: 0.0,
                 ..default()
@@ -437,8 +449,102 @@ fn build_status_bar(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
             Name::new("status-bar"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, bar, status_snapshot);
+
+    // Left: the theme dropup (a fixed element — kept out of the reactive list).
+    let dropup = theme_dropup(commands, fonts, themes, active);
+
+    // The rest is reconciled by the keyed list into a flex-filling container.
+    let content = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(14.0),
+                min_width: Val::Px(0.0),
+                ..default()
+            },
+            Name::new("status-content"),
+        ))
+        .id();
+    renzora_ember::reactive::keyed_list(commands, content, status_snapshot);
+
+    commands.entity(bar).add_children(&[dropup, content]);
     bar
+}
+
+/// The theme picker dropup in the status bar: shows the active theme and opens a
+/// menu (flipped up — it's at the window bottom) of available themes; picking one
+/// calls `ThemeManager::load_theme`, which the theme bridge applies + rebuilds.
+fn theme_dropup(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    themes: &[String],
+    active: &str,
+) -> Entity {
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(160.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb(divider())),
+            GlobalZIndex(600),
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("theme-menu"),
+        ))
+        .id();
+    let mut rows = Vec::new();
+    for name in themes {
+        let n = name.clone();
+        let icon = if name == active { "check" } else { "palette" };
+        rows.push(menu_item(commands, fonts, icon, name, move |w| {
+            if let Some(mut tm) = w.get_resource_mut::<renzora_theme::ThemeManager>() {
+                tm.load_theme(&n);
+            }
+        }));
+    }
+    commands.entity(panel).add_children(&rows);
+
+    let icon = icon_text(commands, &fonts.phosphor, "palette", text_muted(), 12.0);
+    let label = commands
+        .spawn((
+            Text::new(if active.is_empty() { "Theme" } else { active }),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let caret = icon_text(commands, &fonts.phosphor, "caret-up", text_muted(), 9.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                position_type: PositionType::Relative,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            Popup::new(panel),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("theme-dropup"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[icon, label, caret, panel]);
+    trigger
 }
 
 enum StatusRow {
