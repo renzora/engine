@@ -58,10 +58,24 @@ pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
         .get_resource::<HierExpanded>()
         .map(|e| e.0.clone())
         .unwrap_or_default();
+    // Active component-type filter (the funnel popup) prunes the tree.
+    let filter = world
+        .get_resource::<super::filter::HierFilter>()
+        .map(|f| f.types.clone())
+        .unwrap_or_default();
+    let filtered = (!filter.is_empty())
+        .then(|| world.get_resource::<HierarchyTreeCache>())
+        .flatten()
+        .map(|c| crate::state::filter_tree_by_type(c.nodes.clone(), &filter));
     let mut rows = Vec::new();
-    if let Some(cache) = world.get_resource::<HierarchyTreeCache>() {
+    let cache = world.get_resource::<HierarchyTreeCache>();
+    let nodes: &[crate::state::EntityNode] = match &filtered {
+        Some(v) => v.as_slice(),
+        None => cache.map_or(&[][..], |c| c.nodes.as_slice()),
+    };
+    {
         let mut parent_lines = Vec::new();
-        flatten(&cache.nodes, &exp, &mut parent_lines, &mut rows);
+        flatten(nodes, &exp, &mut parent_lines, &mut rows);
     }
     // Fold the row's parity into its content hash so a row that changes odd/even
     // (e.g. when a sibling above is added/removed) repaints with the right stripe.

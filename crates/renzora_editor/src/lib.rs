@@ -1830,7 +1830,8 @@ fn undock_panel_to_floating(world: &mut World, panel_id: &str, pos: egui::Pos2) 
 }
 
 /// Handle "New Project" — close current project and return to splash screen.
-fn handle_new_project(world: &mut World) {
+/// Public so the bevy_ui shell can drive File > New/Open Project.
+pub fn handle_new_project(world: &mut World) {
     world.remove_resource::<renzora::CurrentProject>();
     world
         .resource_mut::<NextState<SplashState>>()
@@ -1841,7 +1842,7 @@ fn handle_new_project(world: &mut World) {
 /// Handle "Open Project" — emit a marker resource the splash plugin
 /// consumes (it owns the file dialog + AppConfig + state transition).
 /// Keeps `renzora_editor` decoupled from `renzora_splash`.
-fn handle_open_project(world: &mut World) {
+pub fn handle_open_project(world: &mut World) {
     world.insert_resource(renzora::RequestOpenProject);
 }
 

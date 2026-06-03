@@ -275,7 +275,8 @@ impl Plugin for DockPlugin {
                     sync_panes,
                 )
                     .chain(),
-            );
+            )
+            .add_systems(Update, add_panel_click);
     }
 }
 
@@ -1223,6 +1224,78 @@ fn build_leaf(
     leaf
 }
 
+/// The tab bar's `+` button — opens the Add-Panel picker for its leaf.
+#[derive(Component)]
+struct AddPanelButton {
+    leaf: Entity,
+}
+
+/// Click the tab bar `+` → open the shared search overlay of panels not already
+/// in that leaf; selecting one adds it as a tab (mirrors the egui panel picker).
+fn add_panel_click(
+    q: Query<(&Interaction, &AddPanelButton), Changed<Interaction>>,
+    leaves: Query<&DockLeaf>,
+    fonts: Option<Res<EmberFonts>>,
+    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let leaf = btn.leaf;
+        let existing: std::collections::HashSet<String> = leaves
+            .get(leaf)
+            .map(|l| l.tabs.iter().cloned().collect())
+            .unwrap_or_default();
+        let mut entries: Vec<crate::widgets::SearchEntry> = Vec::new();
+        if let Some(reg) = &registry {
+            let mut items: Vec<(&String, &renzora::core::ShellPanelInfo)> =
+                reg.panels.iter().collect();
+            items.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+            for (id, info) in items {
+                if existing.contains(id.as_str()) {
+                    continue;
+                }
+                let id = id.clone();
+                let icon = if info.icon.is_empty() {
+                    "circle".to_string()
+                } else {
+                    info.icon.clone()
+                };
+                let category = if info.category.is_empty() {
+                    "General".to_string()
+                } else {
+                    info.category.clone()
+                };
+                entries.push(crate::widgets::SearchEntry::new(
+                    icon,
+                    info.title.clone(),
+                    category,
+                    move |w: &mut World| {
+                        let sibling = w.get::<DockLeaf>(leaf).and_then(|l| l.tabs.first().cloned());
+                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                            match sibling {
+                                Some(sib) => {
+                                    dock.tree.add_tab(&sib, id.clone());
+                                }
+                                None => dock.tree = DockTree::leaf(id.clone()),
+                            }
+                        }
+                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                            d.0 = true;
+                        }
+                    },
+                ));
+            }
+        }
+        crate::widgets::grid_overlay(&mut commands, &fonts, "Add Panel", entries);
+    }
+}
+
 fn populate_leaf(
     commands: &mut Commands,
     font: &Handle<Font>,
@@ -1337,7 +1410,14 @@ fn populate_leaf(
             .add_children(&[tab_icon, tab_label, close, marker]);
         bar_kids.push(tab);
     }
-    bar_kids.push(icon_text(commands, phosphor, "plus", TEXT_MUTED, 13.0));
+    let add_btn = icon_text(commands, phosphor, "plus", TEXT_MUTED, 13.0);
+    commands.entity(add_btn).insert((
+        Interaction::default(),
+        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        AddPanelButton { leaf },
+        Name::new("dock-add-panel"),
+    ));
+    bar_kids.push(add_btn);
     let filler = commands
         .spawn((
             Node {

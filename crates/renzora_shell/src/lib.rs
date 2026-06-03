@@ -48,6 +48,7 @@ impl Plugin for ShellPlugin {
                 apply_panel_meta,
                 ribbon_switch,
                 content_dispatch,
+                top_menu_open,
             ),
         );
     }
@@ -377,12 +378,12 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         .id();
 
     let left = zone(commands, "top-left", JustifyContent::FlexStart, 2.0, 1.0);
-    let left_kids = text_items(
-        commands,
-        font,
-        &[("File", false), ("Edit", false), ("View", false), ("Help", false)],
-        14.0,
-    );
+    let left_kids = vec![
+        top_menu_item(commands, font, "File", TopMenuKind::File),
+        top_menu_item(commands, font, "Edit", TopMenuKind::Edit),
+        top_menu_item(commands, font, "View", TopMenuKind::View),
+        top_menu_item(commands, font, "Help", TopMenuKind::Help),
+    ];
     commands.entity(left).add_children(&left_kids);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
@@ -611,21 +612,6 @@ fn zone(
 }
 
 /// A padded text item (menu entry, ribbon "+"). `active` → primary, else muted.
-fn text_items(
-    commands: &mut Commands,
-    font: &Handle<Font>,
-    items: &[(&str, bool)],
-    size: f32,
-) -> Vec<Entity> {
-    items
-        .iter()
-        .map(|(label, active)| {
-            let color = if *active { TEXT_PRIMARY } else { TEXT_MUTED };
-            text_item(commands, font, label, color, size)
-        })
-        .collect()
-}
-
 fn text_item(
     commands: &mut Commands,
     font: &Handle<Font>,
@@ -685,4 +671,226 @@ fn chrome_row(
         .collect();
     commands.entity(row).add_children(&kids);
     row
+}
+
+// ── Top-bar menus (File / Edit / View / Help) ────────────────────────────────
+
+#[derive(Clone, Copy)]
+enum TopMenuKind {
+    File,
+    Edit,
+    View,
+    Help,
+}
+
+#[derive(Component)]
+struct TopMenu(TopMenuKind);
+
+/// An interactive top-bar menu title (File/Edit/View/Help).
+fn top_menu_item(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    label: &str,
+    kind: TopMenuKind,
+) -> Entity {
+    let item = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            TopMenu(kind),
+            Name::new(format!("menu:{label}")),
+        ))
+        .id();
+    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb((46, 46, 54)),
+        _ => Color::NONE,
+    });
+    commands.entity(item).with_children(|p| {
+        p.spawn((
+            Text::new(label),
+            ui_font(font, 14.0),
+            TextColor(rgb(TEXT_MUTED)),
+        ));
+    });
+    item
+}
+
+/// Click a top-bar title → open its menu via the shared ember `screen_menu`,
+/// anchored to the button's bottom-left (stable, independent of cursor position).
+fn top_menu_open(
+    q: Query<
+        (
+            &Interaction,
+            &TopMenu,
+            &bevy::ui::RelativeCursorPosition,
+            &bevy::ui::ComputedNode,
+        ),
+        Changed<Interaction>,
+    >,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    for (interaction, menu, rcp, cn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(pos) = anchor_below(&windows, rcp, cn) else {
+            continue;
+        };
+        let root = renzora_ember::widgets::screen_menu(&mut commands, pos.x, pos.y);
+        let kids = build_menu_items(&mut commands, &fonts, menu.0);
+        commands.entity(root).add_children(&kids);
+    }
+}
+
+/// The bottom-left of a node in logical window px, derived from the cursor + the
+/// node's normalized cursor position (scale-invariant; avoids UI `GlobalTransform`
+/// coordinate ambiguity). Used to anchor button dropdowns just under the button.
+fn anchor_below(
+    windows: &Query<&Window>,
+    rcp: &bevy::ui::RelativeCursorPosition,
+    cn: &bevy::ui::ComputedNode,
+) -> Option<Vec2> {
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position())?;
+    let size = cn.size() * cn.inverse_scale_factor();
+    let norm = rcp.normalized.unwrap_or(Vec2::ZERO);
+    let top_left = cursor - (norm + Vec2::splat(0.5)) * size;
+    Some(Vec2::new(top_left.x, top_left.y + size.y + 2.0))
+}
+
+fn build_menu_items(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    kind: TopMenuKind,
+) -> Vec<Entity> {
+    use renzora_ember::widgets::{menu_item, menu_sep};
+    match kind {
+        TopMenuKind::File => vec![
+            menu_item(commands, fonts, "folder-plus", "New Project", |w| {
+                renzora_editor::handle_new_project(w)
+            }),
+            menu_item(commands, fonts, "folder-open", "Open Project…", |w| {
+                renzora_editor::handle_open_project(w)
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "file-plus", "New Scene", |w| {
+                w.insert_resource(renzora::core::NewSceneRequested);
+            }),
+            menu_item(commands, fonts, "file", "Open Scene…", |w| {
+                w.insert_resource(renzora::core::OpenSceneRequested);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "floppy-disk", "Save", |w| {
+                w.insert_resource(renzora::core::SaveSceneRequested);
+            }),
+            menu_item(commands, fonts, "floppy-disk-back", "Save As…", |w| {
+                w.insert_resource(renzora::core::SaveAsSceneRequested);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "package", "Export Project…", |w| {
+                w.insert_resource(renzora::core::ExportRequested);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "gear", "Settings", |w| {
+                if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
+                    s.show_settings = !s.show_settings;
+                }
+            }),
+        ],
+        TopMenuKind::Edit => vec![
+            menu_item(commands, fonts, "arrow-u-up-left", "Undo", |w| {
+                let f = w.get_resource::<renzora_editor::EditorActionHooks>().and_then(|h| h.undo);
+                if let Some(f) = f {
+                    f(w);
+                }
+            }),
+            menu_item(commands, fonts, "arrow-u-up-right", "Redo", |w| {
+                let f = w.get_resource::<renzora_editor::EditorActionHooks>().and_then(|h| h.redo);
+                if let Some(f) = f {
+                    f(w);
+                }
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "layout", "Reset Layout", reset_layout_action),
+        ],
+        TopMenuKind::View => vec![
+            menu_item(commands, fonts, "magnifying-glass-plus", "Zoom In", |w| {
+                w.insert_resource(renzora::core::CameraViewRequest::ZoomIn);
+            }),
+            menu_item(commands, fonts, "magnifying-glass-minus", "Zoom Out", |w| {
+                w.insert_resource(renzora::core::CameraViewRequest::ZoomOut);
+            }),
+            menu_item(commands, fonts, "magnifying-glass", "Reset Zoom", |w| {
+                w.insert_resource(renzora::core::CameraViewRequest::ResetZoom);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "corners-out", "Fit All", |w| {
+                w.insert_resource(renzora::core::CameraViewRequest::FrameAll);
+            }),
+            menu_item(commands, fonts, "eye", "Isolation Mode", |w| {
+                let mut iso = w
+                    .remove_resource::<renzora::core::IsolationMode>()
+                    .unwrap_or_default();
+                iso.active = !iso.active;
+                w.insert_resource(iso);
+            }),
+        ],
+        TopMenuKind::Help => vec![
+            menu_item(commands, fonts, "graduation-cap", "Getting Started Tutorial", |w| {
+                w.insert_resource(renzora::core::TutorialRequested);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "book-open", "Documentation", |_| {
+                open_url("https://renzora.com/docs")
+            }),
+            menu_item(commands, fonts, "youtube-logo", "YouTube", |_| {
+                open_url("https://youtube.com/@renzoragame")
+            }),
+            menu_item(commands, fonts, "discord-logo", "Discord", |_| {
+                open_url("https://discord.gg/9UHUGUyDJv")
+            }),
+            menu_item(commands, fonts, "github-logo", "GitHub", |_| {
+                open_url("https://github.com/renzora/engine")
+            }),
+        ],
+    }
+}
+
+/// Reset the active workspace's dock tree to its registered layout.
+fn reset_layout_action(w: &mut World) {
+    let tree = w
+        .get_resource::<ShellLayouts>()
+        .and_then(|l| l.layouts.get(l.active).map(|(_, t)| t.clone()));
+    if let Some(tree) = tree {
+        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+            dock.tree = tree;
+        }
+    }
+    if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+        d.0 = true;
+    }
+}
+
+/// Open `url` in the user's default browser (cross-platform).
+fn open_url(url: &str) {
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }

@@ -628,7 +628,14 @@ fn asset_context_menu(
 /// Click the toolbar "Add" button → open the shared ember menu of new-asset
 /// types at the cursor.
 fn add_menu_open(
-    q: Query<&Interaction, (With<AddMenuBtn>, Changed<Interaction>)>,
+    q: Query<
+        (
+            &Interaction,
+            &bevy::ui::RelativeCursorPosition,
+            &bevy::ui::ComputedNode,
+        ),
+        (With<AddMenuBtn>, Changed<Interaction>),
+    >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
@@ -636,13 +643,16 @@ fn add_menu_open(
     let Some(fonts) = fonts else {
         return;
     };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
         return;
-    }
+    };
     let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
         return;
     };
-    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    // Anchor the menu to the button's bottom-left (stable, cursor-independent).
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
     let items = [
         ("palette", "Material", NewAsset::Material),
         ("blueprint", "Blueprint", NewAsset::Blueprint),
@@ -998,7 +1008,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let new_folder = icon_label_button(commands, fonts, "folder-plus", "New Folder");
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
     let add = icon_label_button(commands, fonts, "plus", "Add");
-    commands.entity(add).insert(AddMenuBtn);
+    commands
+        .entity(add)
+        .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
     let import = icon_label_button(commands, fonts, "download-simple", "Import");
     commands.entity(import).insert(ImportBtn);
 

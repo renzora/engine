@@ -55,7 +55,6 @@ struct InspectorRoot;
 struct NativeInspectorState {
     sig: Option<u64>,
     locked: Option<Entity>,
-    add_open: bool,
 }
 
 pub fn register_native_inspector(app: &mut App) {
@@ -82,7 +81,6 @@ pub fn register_native_inspector(app: &mut App) {
             section_collapse,
             remove_click,
             add_button_click,
-            add_option_click,
             lock_click,
             enum_option_click,
             asset_drop,
@@ -167,13 +165,6 @@ fn category_rgb(theme: &renzora_theme::Theme, category: &str) -> ((u8, u8, u8), 
     (c32(s.accent.to_color32()), c32(s.header_bg.to_color32()))
 }
 
-/// An addable component for the "Add Component" overlay.
-struct AddSpec {
-    label: &'static str,
-    icon: &'static str,
-    add_fn: Mutate,
-}
-
 // ── Rebuild ──────────────────────────────────────────────────────────────────
 
 fn rebuild_inspector(world: &mut World) {
@@ -190,7 +181,6 @@ fn rebuild_inspector(world: &mut World) {
         }
     }
     let locked = world.resource::<NativeInspectorState>().locked;
-    let add_open = world.resource::<NativeInspectorState>().add_open;
     let entity = locked.or_else(|| {
         world
             .get_resource::<EditorSelection>()
@@ -202,17 +192,12 @@ fn rebuild_inspector(world: &mut World) {
         return;
     };
 
-    let sig = inspector_signature(world, container, entity, locked.is_some(), add_open);
+    let sig = inspector_signature(world, container, entity, locked.is_some());
     if world.resource::<NativeInspectorState>().sig == Some(sig) {
         return;
     }
 
     let sections = collect_sections(world, entity);
-    let adds = if add_open {
-        collect_adds(world, entity)
-    } else {
-        Vec::new()
-    };
     let existing: Vec<Entity> = world
         .get::<Children>(container)
         .map(|ch| ch.iter().collect())
@@ -241,10 +226,6 @@ fn rebuild_inspector(world: &mut World) {
                 commands.entity(container).add_child(l);
             }
             Some(entity) => {
-                if add_open {
-                    let pop = add_overlay(&mut commands, &fonts, &adds);
-                    commands.entity(container).add_child(pop);
-                }
                 if sections.is_empty() {
                     let l = empty_label(&mut commands, &fonts, "No inspectable components.");
                     commands.entity(container).add_child(l);
@@ -279,12 +260,10 @@ fn inspector_signature(
     container: Entity,
     entity: Option<Entity>,
     locked: bool,
-    add_open: bool,
 ) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     container.to_bits().hash(&mut h);
     locked.hash(&mut h);
-    add_open.hash(&mut h);
     match entity {
         Some(e) => {
             1u8.hash(&mut h);
@@ -420,25 +399,6 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         });
     }
     out
-}
-
-fn collect_adds(world: &World, entity: Option<Entity>) -> Vec<AddSpec> {
-    let Some(entity) = entity else {
-        return Vec::new();
-    };
-    let Some(reg) = world.get_resource::<InspectorRegistry>() else {
-        return Vec::new();
-    };
-    reg.iter()
-        .filter_map(|e| {
-            let add_fn = e.add_fn?;
-            (!(e.has_fn)(world, entity)).then_some(AddSpec {
-                label: e.display_name,
-                icon: e.icon,
-                add_fn,
-            })
-        })
-        .collect()
 }
 
 fn format_value(v: Option<&FieldValue>) -> String {
@@ -1157,11 +1117,6 @@ fn empty_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
 #[derive(Component)]
 struct AddButton;
 
-#[derive(Component)]
-struct AddOption {
-    add_fn: Mutate,
-}
-
 fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let icon = phosphor_glyph(commands, fonts, "puzzle-piece", TEXT_VALUE, 13.0);
     let label = commands
@@ -1192,65 +1147,6 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(btn).add_children(&[icon, label]);
     btn
-}
-
-fn add_overlay(commands: &mut Commands, fonts: &EmberFonts, adds: &[AddSpec]) -> Entity {
-    let panel = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                max_height: Val::Px(260.0),
-                overflow: Overflow::clip(),
-                padding: UiRect::all(Val::Px(3.0)),
-                row_gap: Val::Px(1.0),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(c(PANEL_DARK)),
-            BorderColor::all(c(BORDER)),
-            Name::new("add-overlay"),
-        ))
-        .id();
-    if adds.is_empty() {
-        let l = empty_label(commands, fonts, "No components to add.");
-        commands.entity(panel).add_child(l);
-        return panel;
-    }
-    let mut rows = Vec::with_capacity(adds.len());
-    for a in adds {
-        let icon = glyph_str(commands, fonts, a.icon, TEXT_MUTED, 13.0);
-        let label = commands
-            .spawn((
-                Text::new(a.label),
-                ui_font(&fonts.ui, 12.0),
-                TextColor(c(TEXT_VALUE)),
-                FocusPolicy::Pass,
-            ))
-            .id();
-        let row = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(6.0),
-                    padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Interaction::default(),
-                AddOption { add_fn: a.add_fn },
-                Name::new("add-option"),
-            ))
-            .id();
-        commands.entity(row).add_children(&[icon, label]);
-        rows.push(row);
-    }
-    commands.entity(panel).add_children(&rows);
-    panel
 }
 
 // ── Systems ──────────────────────────────────────────────────────────────────
@@ -1309,34 +1205,68 @@ fn lock_click(
 
 fn add_button_click(
     q: Query<&Interaction, (With<AddButton>, Changed<Interaction>)>,
-    mut state: ResMut<NativeInspectorState>,
+    cmds: Option<Res<EditorCommands>>,
 ) {
-    for interaction in &q {
-        if *interaction == Interaction::Pressed {
-            state.add_open = !state.add_open;
-        }
+    let Some(cmds) = cmds else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        cmds.push(open_add_component);
     }
 }
 
-fn add_option_click(
-    q: Query<(&Interaction, &AddOption), Changed<Interaction>>,
-    cmds: Option<Res<EditorCommands>>,
-    selection: Option<Res<EditorSelection>>,
-    mut state: ResMut<NativeInspectorState>,
-) {
-    let Some(cmds) = cmds else { return };
-    let entity = state
-        .locked
-        .or_else(|| selection.and_then(|s| s.get()));
-    let Some(entity) = entity else { return };
-    for (interaction, opt) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
+/// Open the shared ember search overlay listing every addable component that the
+/// inspected entity doesn't already have.
+fn open_add_component(world: &mut World) {
+    let entity = {
+        let st = world.resource::<NativeInspectorState>();
+        st.locked
+            .or_else(|| world.get_resource::<EditorSelection>().and_then(|s| s.get()))
+    };
+    let Some(entity) = entity else {
+        return;
+    };
+    // Snapshot the registry (copying fn ptrs + &'static metadata) so the
+    // has_fn / overlay build don't alias the registry borrow.
+    type Spec = (
+        &'static str,
+        &'static str,
+        &'static str,
+        fn(&World, Entity) -> bool,
+        fn(&mut World, Entity),
+    );
+    let specs: Vec<Spec> = world
+        .get_resource::<renzora_editor::InspectorRegistry>()
+        .map(|reg| {
+            reg.iter()
+                .filter_map(|e| {
+                    e.add_fn
+                        .map(|af| (e.display_name, e.icon, e.category, e.has_fn, af))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut entries: Vec<renzora_ember::widgets::SearchEntry> = Vec::new();
+    for (label, icon, category, has_fn, add_fn) in specs {
+        if has_fn(world, entity) {
+            continue; // already present
         }
-        let add_fn = opt.add_fn;
-        cmds.push(move |w: &mut World| add_fn(w, entity));
-        state.add_open = false;
+        entries.push(renzora_ember::widgets::SearchEntry::new(
+            icon,
+            label,
+            category,
+            move |w: &mut World| add_fn(w, entity),
+        ));
     }
+
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    let mut queue = CommandQueue::default();
+    {
+        let mut commands = Commands::new(&mut queue, world);
+        renzora_ember::widgets::search_overlay(&mut commands, &fonts, "Add Component", entries);
+    }
+    queue.apply(world);
 }
 
 // Open/close is handled by ember's generic `Popup` (toggle + click-outside

@@ -304,6 +304,141 @@ pub fn search_list(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<Sea
     col
 }
 
+/// Convenience: a wide [`Overlay`] whose content is a [`search_grid`] — the
+/// multi-column category picker (the ember port of the egui panel picker).
+pub fn grid_overlay(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    entries: Vec<SearchEntry>,
+) -> Entity {
+    let (root, content) = super::overlay::overlay_sized(commands, fonts, title, 840.0, 600.0, true);
+    let grid = search_grid(commands, fonts, entries, 4);
+    commands.entity(content).add_child(grid);
+    root
+}
+
+/// Like [`search_list`] but lays the categories out as `columns` balanced
+/// columns (by item count) instead of a sidebar + single list. Reuses the same
+/// `SearchEntry` rows + filter/select/Enter systems.
+pub fn search_grid(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entries: Vec<SearchEntry>,
+    columns: usize,
+) -> Entity {
+    // Group by first-seen category order.
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: Vec<Vec<SearchEntry>> = Vec::new();
+    for entry in entries {
+        if let Some(idx) = order.iter().position(|c| c == &entry.category) {
+            groups[idx].push(entry);
+        } else {
+            order.push(entry.category.clone());
+            groups.push(vec![entry]);
+        }
+    }
+
+    let col = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                flex_grow: 1.0,
+                min_height: Val::Px(0.0),
+                ..default()
+            },
+            Name::new("search-grid"),
+        ))
+        .id();
+
+    let input = text_input(commands, &fonts.ui, "Search…", "");
+    commands.entity(input).insert((
+        SearchInput,
+        Node {
+            width: Val::Percent(100.0),
+            min_width: Val::Px(0.0),
+            flex_grow: 1.0,
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+    ));
+    let search_bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(8.0)),
+                ..default()
+            },
+            Name::new("search-bar"),
+        ))
+        .id();
+    commands.entity(search_bar).add_child(input);
+
+    // Balanced column packing: largest categories first, into the shortest column.
+    let mut packed: Vec<(String, Vec<SearchEntry>)> = order.into_iter().zip(groups).collect();
+    packed.sort_by_key(|(_, items)| std::cmp::Reverse(items.len()));
+    let n = columns.clamp(1, packed.len().max(1));
+    let mut cols: Vec<Vec<(String, Vec<SearchEntry>)>> = (0..n).map(|_| Vec::new()).collect();
+    let mut heights = vec![0usize; n];
+    for (cat, items) in packed {
+        let idx = heights
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, h)| **h)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        heights[idx] += items.len() + 2;
+        cols[idx].push((cat, items));
+    }
+    for c in &mut cols {
+        c.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+
+    let mut order_idx: usize = 0;
+    let columns_row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::FlexStart,
+            column_gap: Val::Px(14.0),
+            padding: UiRect::horizontal(Val::Px(4.0)),
+            ..default()
+        })
+        .id();
+    let mut col_entities: Vec<Entity> = Vec::new();
+    for col_cats in cols {
+        let column = commands
+            .spawn(Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            })
+            .id();
+        let mut kids: Vec<Entity> = Vec::new();
+        for (cat, items) in col_cats {
+            let accent = category_color(&cat);
+            kids.push(category_header_styled(commands, fonts, input, &cat, accent, 0, false));
+            for entry in items {
+                kids.push(item_row(commands, fonts, input, &cat, accent, 0, order_idx, entry));
+                order_idx += 1;
+            }
+        }
+        commands.entity(column).add_children(&kids);
+        col_entities.push(column);
+    }
+    commands.entity(columns_row).add_children(&col_entities);
+    let scroll = scroll_view_bar(commands, columns_row);
+
+    commands.entity(col).add_children(&[search_bar, scroll]);
+    col
+}
+
 fn sidebar_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -348,33 +483,55 @@ fn category_header(
     accent: (u8, u8, u8),
     zebra: usize,
 ) -> Entity {
-    let header = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                width: Val::Percent(100.0),
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
-                ..default()
-            },
-            BackgroundColor(zebra_bg(zebra)),
-            Interaction::default(),
-            Name::new("search-cat"),
-        ))
-        .id();
-    let caret = commands
-        .spawn((
-            Text::new(icon_glyph("caret-down").unwrap_or('v').to_string()),
-            TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 11.0,
-                ..default()
-            },
-            TextColor(rgb((140, 140, 152))),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
+    category_header_styled(commands, fonts, input, cat, accent, zebra, true)
+}
+
+/// `collapsible` headers (list mode) get a caret + click-to-collapse; the grid
+/// uses plain headers (no caret), matching the egui panel picker.
+fn category_header_styled(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    input: Entity,
+    cat: &str,
+    accent: (u8, u8, u8),
+    zebra: usize,
+    collapsible: bool,
+) -> Entity {
+    let mut header = commands.spawn((
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            width: Val::Percent(100.0),
+            column_gap: Val::Px(6.0),
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
+            ..default()
+        },
+        BackgroundColor(zebra_bg(zebra)),
+        Name::new("search-cat"),
+    ));
+    if collapsible {
+        header.insert(Interaction::default());
+    }
+    let header = header.id();
+    let mut kids = Vec::new();
+    let caret = if collapsible {
+        let c = commands
+            .spawn((
+                Text::new(icon_glyph("caret-down").unwrap_or('v').to_string()),
+                TextFont {
+                    font: fonts.phosphor.clone(),
+                    font_size: 11.0,
+                    ..default()
+                },
+                TextColor(rgb((140, 140, 152))),
+                bevy::ui::FocusPolicy::Pass,
+            ))
+            .id();
+        kids.push(c);
+        c
+    } else {
+        Entity::PLACEHOLDER
+    };
     let label = commands
         .spawn((
             Text::new(capitalize(cat)),
@@ -383,7 +540,8 @@ fn category_header(
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    commands.entity(header).add_children(&[caret, label]);
+    kids.push(label);
+    commands.entity(header).add_children(&kids);
     commands.entity(header).insert(SearchCat {
         input,
         category: cat.to_string(),

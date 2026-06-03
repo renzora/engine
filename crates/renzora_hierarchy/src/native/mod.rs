@@ -12,6 +12,7 @@ mod add_entity;
 mod components;
 mod context_menu;
 mod drag;
+mod filter;
 mod row;
 mod systems;
 mod tree;
@@ -32,6 +33,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     use renzora_editor::SplashState;
     app.init_resource::<HierExpanded>();
     app.init_resource::<drag::HierDrag>();
+    app.init_resource::<filter::HierFilter>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -49,6 +51,8 @@ pub fn register_native_hierarchy(app: &mut App) {
 
         let add = renzora_ember::widgets::icon_label_button(commands, fonts, "plus", "Add Entity");
         commands.entity(add).insert(add_entity::HierAddEntity);
+        let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+        let funnel = filter::build_filter_funnel(commands, fonts);
         let header = commands
             .spawn((
                 Node {
@@ -63,7 +67,7 @@ pub fn register_native_hierarchy(app: &mut App) {
                 Name::new("hierarchy-header"),
             ))
             .id();
-        commands.entity(header).add_child(add);
+        commands.entity(header).add_children(&[add, spacer, funnel]);
 
         let list = commands
             .spawn((
@@ -93,6 +97,8 @@ pub fn register_native_hierarchy(app: &mut App) {
             drag::hier_drag_tooltip,
             context_menu::hier_context_menu,
             add_entity::hier_add_entity_open,
+            filter::hier_filter_toggle,
+            filter::hier_filter_clear,
         )
             .run_if(in_state(SplashState::Editor)),
     );
