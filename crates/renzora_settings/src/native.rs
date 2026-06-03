@@ -321,6 +321,8 @@ fn spawn_overlay(
             GlobalZIndex(100),
             FocusPolicy::Block,
             Interaction::default(),
+            // Capture the wheel so scrolling doesn't bleed to the dock behind.
+            renzora_ember::widgets::ModalSurface,
             NativeSettingsRoot,
             Name::new("settings-overlay"),
         ))

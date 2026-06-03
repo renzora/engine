@@ -178,13 +178,13 @@ fn content_h(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
         .unwrap_or(0.0)
 }
 
-/// Wheel over a viewport → nudge its smooth-scroll target. While a modal
-/// [`super::overlay::Overlay`] is open, only scroll areas inside that overlay
+/// Wheel over a viewport → nudge its smooth-scroll target. While a
+/// [`super::overlay::ModalSurface`] is open, only scroll areas inside that modal
 /// respond — the wheel never bleeds through to panels behind it.
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
     mut areas: Query<(Entity, &RelativeCursorPosition, &mut EmberScroll)>,
-    overlays: Query<Entity, With<super::overlay::Overlay>>,
+    modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
 ) {
     let mut dy = 0.0;
@@ -194,12 +194,12 @@ pub(crate) fn scroll_wheel(
     if dy == 0.0 {
         return;
     }
-    let modal_open = !overlays.is_empty();
+    let modal_open = !modals.is_empty();
     for (e, rcp, mut s) in &mut areas {
         if !rcp.cursor_over {
             continue;
         }
-        if modal_open && !under_overlay(e, &parents, &overlays) {
+        if modal_open && !under_overlay(e, &parents, &modals) {
             continue;
         }
         s.target -= dy * WHEEL_STEP;
@@ -207,14 +207,14 @@ pub(crate) fn scroll_wheel(
     }
 }
 
-/// Is `e` itself or any ancestor an [`super::overlay::Overlay`]?
+/// Is `e` itself or any ancestor a [`super::overlay::ModalSurface`]?
 fn under_overlay(
     mut e: Entity,
     parents: &Query<&ChildOf>,
-    overlays: &Query<Entity, With<super::overlay::Overlay>>,
+    modals: &Query<Entity, With<super::overlay::ModalSurface>>,
 ) -> bool {
     loop {
-        if overlays.get(e).is_ok() {
+        if modals.get(e).is_ok() {
             return true;
         }
         match parents.get(e) {

@@ -215,6 +215,7 @@ impl Plugin for WidgetsPlugin {
                     dropdown::dropdown_toggle,
                     dropdown::dropdown_select,
                     dropdown::dropdown_apply,
+                    dropdown::dropdown_dismiss,
                     dropdown::dropdown_option_hover,
                     text_input::text_input_focus,
                     text_input::text_input_type,

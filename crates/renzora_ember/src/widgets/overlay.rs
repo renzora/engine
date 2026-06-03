@@ -19,6 +19,13 @@ const MUTED: (u8, u8, u8) = (150, 150, 164);
 #[derive(Component)]
 pub struct Overlay;
 
+/// Marks a full-screen modal surface that should capture wheel/scroll so it
+/// never bleeds through to panels behind it — *without* the click-outside
+/// dismiss behavior of [`Overlay`]. [`overlay`] roots carry both; a custom modal
+/// (e.g. the Settings overlay, which closes via its own button) adds just this.
+#[derive(Component)]
+pub struct ModalSurface;
+
 #[derive(Component)]
 pub(crate) struct OverlayCard;
 
@@ -56,6 +63,7 @@ pub fn overlay_sized(
             GlobalZIndex(8000),
             FocusPolicy::Block,
             Overlay,
+            ModalSurface,
             Name::new("overlay"),
         ))
         .id();

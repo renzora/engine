@@ -193,6 +193,33 @@ pub(crate) fn dropdown_apply(
     }
 }
 
+/// Press anywhere that isn't a dropdown box or one of its options → close every
+/// open dropdown. The toggle/select systems handle clicks that land on a box or
+/// option, so this only fires for true outside clicks.
+pub(crate) fn dropdown_dismiss(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut dropdowns: Query<(&Interaction, &mut EmberDropdown)>,
+    options: Query<&Interaction, With<EmberDropdownOption>>,
+    mut nodes: Query<&mut Node>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let on_box = dropdowns.iter().any(|(i, _)| *i != Interaction::None);
+    let on_option = options.iter().any(|i| *i != Interaction::None);
+    if on_box || on_option {
+        return;
+    }
+    for (_, mut dd) in &mut dropdowns {
+        if dd.open {
+            dd.open = false;
+            if let Ok(mut n) = nodes.get_mut(dd.menu) {
+                n.display = Display::None;
+            }
+        }
+    }
+}
+
 pub(crate) fn dropdown_option_hover(
     mut options: Query<
         (&Interaction, &mut BackgroundColor),

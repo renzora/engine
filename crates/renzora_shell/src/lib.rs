@@ -50,8 +50,25 @@ impl Plugin for ShellPlugin {
                 ribbon_switch,
                 content_dispatch,
                 top_menu_open,
+                settings_btn_click,
             ),
         );
+    }
+}
+
+/// The top-bar gear button — toggles the Settings overlay.
+#[derive(Component)]
+struct TopBarSettingsBtn;
+
+fn settings_btn_click(
+    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarSettingsBtn>)>,
+    settings: Option<ResMut<renzora_editor::EditorSettings>>,
+) {
+    let Some(mut settings) = settings else { return };
+    for interaction in &btns {
+        if *interaction == Interaction::Pressed {
+            settings.show_settings = !settings.show_settings;
+        }
     }
 }
 
@@ -536,6 +553,11 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     let play = icon_item(commands, "play", PLAY_GREEN, 16.0);
     let code = icon_item(commands, "code", TEXT_MUTED, 16.0);
     let settings = icon_item(commands, "gear", TEXT_MUTED, 16.0);
+    commands.entity(settings).insert((
+        Interaction::default(),
+        TopBarSettingsBtn,
+        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+    ));
 
     let account = commands
         .spawn((
