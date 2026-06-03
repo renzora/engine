@@ -24,7 +24,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
+            BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb((60, 60, 72))),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),

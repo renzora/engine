@@ -27,7 +27,7 @@ pub fn alert(
                 ..default()
             },
             BackgroundColor(rgb((38, 38, 48))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BorderColor::all(rgb(border())),
             Styled::new(Role::Alert),
             Name::new("alert"),
         ))

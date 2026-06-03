@@ -140,8 +140,8 @@ pub fn color_field(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(700),
             RelativeCursorPosition::default(),
             Name::new("color-panel"),
@@ -159,7 +159,7 @@ pub fn color_field(
                 ..default()
             },
             BackgroundColor(rgb((128, 128, 128))),
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
             Popup::new(panel),
             Name::new("color-swatch"),

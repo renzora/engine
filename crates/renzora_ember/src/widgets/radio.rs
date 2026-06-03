@@ -59,7 +59,7 @@ pub fn radio_group(
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
-                BorderColor::all(rgb((92, 92, 104))),
+                BorderColor::all(rgb(border())),
                 bevy::ui::FocusPolicy::Pass,
                 Name::new("radio-ring"),
             ))

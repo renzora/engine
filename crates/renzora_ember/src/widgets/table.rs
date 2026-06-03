@@ -55,7 +55,7 @@ pub fn table(commands: &mut Commands, font: &Handle<Font>, headers: &[&str], row
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
+            BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb((48, 48, 58))),
             Name::new("table"),
         ))

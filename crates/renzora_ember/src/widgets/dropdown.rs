@@ -76,7 +76,7 @@ pub fn dropdown(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
+            BackgroundColor(rgb(popup_bg())),
             GlobalZIndex(500),
             Name::new("dropdown-menu"),
         ))

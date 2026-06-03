@@ -31,7 +31,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
             } else {
                 Color::NONE
             }),
-            BorderColor::all(rgb((92, 92, 104))),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
             Styled::with_state(
                 Role::Checkbox,

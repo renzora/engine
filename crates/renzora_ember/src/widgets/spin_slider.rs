@@ -39,8 +39,8 @@ pub fn spin_slider(commands: &mut Commands, font: &Handle<Font>, label: &str, va
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
-            BorderColor::all(rgb((70, 70, 82))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             Styled::new(Role::Input),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),

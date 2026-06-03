@@ -57,8 +57,8 @@ pub fn text_input(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
-            BorderColor::all(rgb((70, 70, 82))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
             Styled::new(Role::Input),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),

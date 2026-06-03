@@ -34,7 +34,7 @@ pub fn input_group(commands: &mut Commands, font: &Handle<Font>, addon: &str, pl
                 ..default()
             },
             BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             Name::new("input-addon"),
         ))
         .id();

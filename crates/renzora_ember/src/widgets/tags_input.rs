@@ -31,8 +31,8 @@ pub fn tags_input(commands: &mut Commands, fonts: &EmberFonts, initial: &[&str])
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
-            BorderColor::all(rgb((70, 70, 82))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("tags-input"),
         ))
         .id();

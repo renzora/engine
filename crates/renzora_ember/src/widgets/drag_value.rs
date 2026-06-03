@@ -80,7 +80,7 @@ fn drag_value_impl(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(if flat { Color::NONE } else { rgb((28, 28, 34)) }),
+            BackgroundColor(if flat { Color::NONE } else { rgb(popup_bg()) }),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("drag-value"),
@@ -92,7 +92,7 @@ fn drag_value_impl(
     if !flat {
         commands
             .entity(box_e)
-            .insert((BorderColor::all(rgb((70, 70, 82))), Styled::new(Role::Input)));
+            .insert((BorderColor::all(rgb(border())), Styled::new(Role::Input)));
     }
     let text = text_node(commands, font, &format_num(value), 12.0, text_primary());
     let mut kids = Vec::new();

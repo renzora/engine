@@ -51,8 +51,8 @@ pub(crate) fn build_menu(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(700),
             Name::new("menu"),
         ))
@@ -105,8 +105,8 @@ pub(crate) fn build_menu(
                         display: Display::None,
                         ..default()
                     },
-                    BackgroundColor(rgb((30, 30, 38))),
-                    BorderColor::all(rgb((60, 60, 74))),
+                    BackgroundColor(rgb(popup_bg())),
+                    BorderColor::all(rgb(border())),
                     bevy::ui::RelativeCursorPosition::default(),
                     GlobalZIndex(701),
                     Name::new("submenu"),

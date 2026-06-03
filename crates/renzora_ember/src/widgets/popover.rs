@@ -38,8 +38,8 @@ pub fn popover(commands: &mut Commands, fonts: &EmberFonts, label: &str, content
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
             Name::new("popover-panel"),
         ))
@@ -84,8 +84,8 @@ pub fn labeled_icon_popover(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
             Name::new("popover-panel"),
         ))
@@ -129,8 +129,8 @@ pub fn icon_popover(commands: &mut Commands, fonts: &EmberFonts, icon: &str, siz
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
             Name::new("popover-panel"),
         ))

@@ -91,7 +91,7 @@ pub fn curve_editor(commands: &mut Commands, p1: Vec2, p2: Vec2) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             CurveData { p1, p2 },
             RelativeCursorPosition::default(),
             Name::new("curve-editor"),

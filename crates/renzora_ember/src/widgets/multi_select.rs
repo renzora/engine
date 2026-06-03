@@ -65,7 +65,7 @@ pub fn multi_select(commands: &mut Commands, font: &Handle<Font>, items: &[&str]
                     justify_content: JustifyContent::Center,
                     ..default()
                 },
-                BorderColor::all(rgb((92, 92, 104))),
+                BorderColor::all(rgb(border())),
                 Name::new("multi-box"),
             ))
             .id();

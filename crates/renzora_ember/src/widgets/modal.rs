@@ -67,7 +67,7 @@ pub fn modal(commands: &mut Commands, fonts: &EmberFonts, title: &str, body: &st
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
-            BorderColor::all(rgb((60, 60, 74))),
+            BorderColor::all(rgb(border())),
             Styled::new(Role::Card),
             Name::new("modal-dialog"),
         ))

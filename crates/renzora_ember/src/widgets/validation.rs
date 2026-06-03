@@ -30,7 +30,7 @@ pub fn validation(commands: &mut Commands, fonts: &EmberFonts, tone: Tone, value
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
+            BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(tone.color())),
             Name::new("validation-input"),
         ))

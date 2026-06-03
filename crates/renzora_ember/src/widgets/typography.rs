@@ -61,7 +61,7 @@ pub fn code(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity 
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((28, 28, 34))),
+            BackgroundColor(rgb(popup_bg())),
             Name::new("code"),
         ))
         .with_children(|p| {
