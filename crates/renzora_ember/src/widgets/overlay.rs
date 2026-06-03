@@ -25,17 +25,20 @@ pub(crate) struct OverlayCard;
 #[derive(Component)]
 pub(crate) struct OverlayClose;
 
-/// Spawn a centered modal (default width). Returns `(backdrop_root, content)`.
+/// Spawn a centered modal (default size, bordered). Returns
+/// `(backdrop_root, content)`.
 pub fn overlay(commands: &mut Commands, fonts: &EmberFonts, title: &str) -> (Entity, Entity) {
-    overlay_sized(commands, fonts, title, 540.0)
+    overlay_sized(commands, fonts, title, 540.0, 520.0, true)
 }
 
-/// [`overlay`] with an explicit card width.
+/// [`overlay`] with an explicit fixed `width`×`height` and optional border.
 pub fn overlay_sized(
     commands: &mut Commands,
     fonts: &EmberFonts,
     title: &str,
     width: f32,
+    height: f32,
+    bordered: bool,
 ) -> (Entity, Entity) {
     let root = commands
         .spawn((
@@ -61,10 +64,10 @@ pub fn overlay_sized(
         .spawn((
             Node {
                 width: Val::Px(width),
-                max_height: Val::Percent(72.0),
+                height: Val::Px(height),
                 flex_direction: FlexDirection::Column,
                 min_height: Val::Px(0.0),
-                border: UiRect::all(Val::Px(1.0)),
+                border: UiRect::all(Val::Px(if bordered { 1.0 } else { 0.0 })),
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 overflow: Overflow::clip(),
                 ..default()
@@ -86,12 +89,10 @@ pub fn overlay_sized(
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(8.0),
                 padding: UiRect::axes(Val::Px(12.0), Val::Px(9.0)),
-                border: UiRect::bottom(Val::Px(1.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
             BackgroundColor(rgb(HEADER_BG)),
-            BorderColor::all(rgb(CARD_BORDER)),
         ))
         .id();
     let title_text = commands

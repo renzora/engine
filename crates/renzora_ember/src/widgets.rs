@@ -249,8 +249,11 @@ impl Plugin for WidgetsPlugin {
                     popup::screen_menu_dismiss,
                     overlay::overlay_dismiss,
                     search::search_list_focus,
-                    search::search_list_filter,
+                    search::search_list_visibility,
                     search::search_list_select,
+                    search::search_cat_toggle,
+                    search::search_sidebar_jump,
+                    search::search_list_enter,
                 ),
                 (
                     spinner::spinner_anim,

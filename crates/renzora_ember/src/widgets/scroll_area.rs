@@ -34,6 +34,8 @@ pub struct EmberScroll {
     /// scroll views are `false` and must never auto-stick, or they'd jump to the
     /// bottom (e.g. on the first frame before content height is measured).
     pinned: bool,
+    /// Keep the scrollbar visible whenever content overflows (not only on hover).
+    always_bar: bool,
     thumb: Entity,
     track: Entity,
 }
@@ -50,6 +52,7 @@ fn build_scroll(
     content: Entity,
     max_height: Option<f32>,
     stick: bool,
+    always_bar: bool,
 ) -> Entity {
     let viewport = commands
         .spawn((
@@ -115,6 +118,7 @@ fn build_scroll(
         target: 0.0,
         stick,
         pinned: stick,
+        always_bar,
         thumb,
         track,
     });
@@ -145,18 +149,24 @@ fn build_scroll(
 /// Wraps `content` in a flex-filling scrollable viewport (grows to fill its
 /// parent; scrolls when content overflows).
 pub fn scroll_view(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false)
+    build_scroll(commands, content, None, false, false)
+}
+
+/// Like [`scroll_view`] but the scrollbar stays visible whenever the content
+/// overflows (not only while hovered).
+pub fn scroll_view_bar(commands: &mut Commands, content: Entity) -> Entity {
+    build_scroll(commands, content, None, false, true)
 }
 
 /// Like [`scroll_view`] but auto-follows the bottom as content grows (for logs /
 /// chat); releases when the user scrolls up, re-follows at the bottom.
 pub fn scroll_view_pinned(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, true)
+    build_scroll(commands, content, None, true, false)
 }
 
 /// Wraps `content` in a scrollable viewport capped at `max_height` px.
 pub fn scroll_area(commands: &mut Commands, content: Entity, max_height: f32) -> Entity {
-    build_scroll(commands, content, Some(max_height), false)
+    build_scroll(commands, content, Some(max_height), false, false)
 }
 
 /// Content height (logical px) of a viewport = its single content child's size.
@@ -168,10 +178,14 @@ fn content_h(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
         .unwrap_or(0.0)
 }
 
-/// Wheel over a viewport → nudge its smooth-scroll target.
+/// Wheel over a viewport → nudge its smooth-scroll target. While a modal
+/// [`super::overlay::Overlay`] is open, only scroll areas inside that overlay
+/// respond — the wheel never bleeds through to panels behind it.
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
-    mut areas: Query<(&RelativeCursorPosition, &mut EmberScroll)>,
+    mut areas: Query<(Entity, &RelativeCursorPosition, &mut EmberScroll)>,
+    overlays: Query<Entity, With<super::overlay::Overlay>>,
+    parents: Query<&ChildOf>,
 ) {
     let mut dy = 0.0;
     for ev in wheel.read() {
@@ -180,10 +194,32 @@ pub(crate) fn scroll_wheel(
     if dy == 0.0 {
         return;
     }
-    for (rcp, mut s) in &mut areas {
-        if rcp.cursor_over {
-            s.target -= dy * WHEEL_STEP;
-            s.stick = false; // user took control; scroll_update re-sticks at bottom
+    let modal_open = !overlays.is_empty();
+    for (e, rcp, mut s) in &mut areas {
+        if !rcp.cursor_over {
+            continue;
+        }
+        if modal_open && !under_overlay(e, &parents, &overlays) {
+            continue;
+        }
+        s.target -= dy * WHEEL_STEP;
+        s.stick = false; // user took control; scroll_update re-sticks at bottom
+    }
+}
+
+/// Is `e` itself or any ancestor an [`super::overlay::Overlay`]?
+fn under_overlay(
+    mut e: Entity,
+    parents: &Query<&ChildOf>,
+    overlays: &Query<Entity, With<super::overlay::Overlay>>,
+) -> bool {
+    loop {
+        if overlays.get(e).is_ok() {
+            return true;
+        }
+        match parents.get(e) {
+            Ok(c) => e = c.parent(),
+            Err(_) => return false,
         }
     }
 }
@@ -233,7 +269,7 @@ pub(crate) fn scroll_update(
         let dragging = interactions
             .get(s.thumb)
             .is_ok_and(|i| *i == Interaction::Pressed);
-        let show = max > 0.5 && (rcp.cursor_over || dragging);
+        let show = max > 0.5 && (rcp.cursor_over || dragging || s.always_bar);
         if let Ok(mut track) = nodes.get_mut(s.track) {
             let d = if show { Display::Flex } else { Display::None };
             if track.display != d {
