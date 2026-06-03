@@ -134,21 +134,21 @@ pub fn bind_text_input(
 }
 
 pub(crate) fn text_input_focus(
-    pressed: Query<(Entity, &Interaction), (With<EmberTextInput>, Changed<Interaction>)>,
-    mut inputs: Query<(Entity, &mut EmberTextInput, &mut Styled)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut inputs: Query<(Entity, &Interaction, &mut EmberTextInput, &mut Styled)>,
 ) {
-    let mut clicked = None;
-    for (e, interaction) in &pressed {
-        if *interaction == Interaction::Pressed {
-            clicked = Some(e);
-            break;
-        }
-    }
-    let Some(clicked) = clicked else {
+    // Only react to the press itself. The input under the press (if any) takes
+    // focus; a press anywhere else — empty space or another widget — blurs every
+    // input (off-click to dismiss).
+    if !mouse.just_pressed(MouseButton::Left) {
         return;
-    };
-    for (e, mut inp, mut styled) in &mut inputs {
-        let focus = e == clicked;
+    }
+    let clicked = inputs
+        .iter()
+        .find(|(_, i, _, _)| matches!(i, Interaction::Pressed))
+        .map(|(e, _, _, _)| e);
+    for (e, _, mut inp, mut styled) in &mut inputs {
+        let focus = Some(e) == clicked;
         if inp.focused != focus {
             inp.focused = focus;
             styled.state = if focus {

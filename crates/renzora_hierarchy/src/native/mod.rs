@@ -9,6 +9,8 @@
 //! visibility/lock suffix toggles.
 
 mod components;
+mod context_menu;
+mod drag;
 mod row;
 mod systems;
 mod tree;
@@ -28,6 +30,7 @@ pub(crate) struct HierExpanded(pub HashSet<Entity>);
 pub fn register_native_hierarchy(app: &mut App) {
     use renzora_editor::SplashState;
     app.init_resource::<HierExpanded>();
+    app.init_resource::<drag::HierDrag>();
     // Build once; the reactive keyed list drives the rows from here on.
     app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands
@@ -48,8 +51,12 @@ pub fn register_native_hierarchy(app: &mut App) {
         Update,
         (
             systems::hierarchy_row_click,
+            systems::hierarchy_caret_click,
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
+            drag::hier_drag,
+            drag::hier_drag_tooltip,
+            context_menu::hier_context_menu,
         )
             .run_if(in_state(SplashState::Editor)),
     );

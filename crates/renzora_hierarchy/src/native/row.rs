@@ -8,13 +8,16 @@ use bevy::window::SystemCursorIcon;
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
 };
-use renzora_editor::EditorSelection;
+use renzora_editor::{EditorSelection, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_text_color};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
 use renzora_hui::cursor_icon::HoverCursor;
 
-use super::components::{HierLockToggle, HierRowClick, HierVisToggle};
+use super::components::{
+    HierCaretToggle, HierDropEdge, HierLockToggle, HierRowClick, HierVisToggle,
+};
+use super::drag::HierDrag;
 
 const INDENT: f32 = 12.0;
 const ROW_H: f32 = 24.0;
@@ -206,19 +209,16 @@ pub(crate) fn build_row(
             .id(),
     );
 
-    // Caret (visual only).
+    // Caret — interactive (toggles expansion) when the row has children.
     let caret = commands
-        .spawn((
-            Node {
-                width: Val::Px(16.0),
-                height: Val::Px(ROW_H),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                flex_shrink: 0.0,
-                ..default()
-            },
-            Pickable::IGNORE,
-        ))
+        .spawn(Node {
+            width: Val::Px(16.0),
+            height: Val::Px(ROW_H),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            flex_shrink: 0.0,
+            ..default()
+        })
         .id();
     if s.has_children {
         let (glyph, color) = if s.is_expanded {
@@ -238,7 +238,14 @@ pub(crate) fn build_row(
                 Pickable::IGNORE,
             ))
             .id();
+        commands.entity(caret).insert((
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            HierCaretToggle(s.entity),
+        ));
         commands.entity(caret).add_child(g);
+    } else {
+        commands.entity(caret).insert(Pickable::IGNORE);
     }
     kids.push(caret);
 
@@ -371,14 +378,54 @@ pub(crate) fn build_row(
                 ..default()
             },
             Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
             HoverCursor(SystemCursorIcon::Pointer),
-            HierRowClick {
-                entity: s.entity,
-                has_children: s.has_children,
-            },
+            HierRowClick { entity: s.entity },
             Name::new("hier-row-hit"),
         ))
         .id();
+    // Drop-indicator lines at the row's top/bottom edges (hidden until a drag
+    // targets this row Before/After).
+    let edge_before = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(-1.0),
+                height: Val::Px(2.0),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            Pickable::IGNORE,
+            HierDropEdge {
+                entity: s.entity,
+                after: false,
+            },
+        ))
+        .id();
+    let edge_after = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(-1.0),
+                height: Val::Px(2.0),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(ACCENT_BLUE)),
+            Pickable::IGNORE,
+            HierDropEdge {
+                entity: s.entity,
+                after: true,
+            },
+        ))
+        .id();
+    kids.push(edge_before);
+    kids.push(edge_after);
     // Full-row background layer (visual, lowest z).
     let bg_visual = commands
         .spawn((
@@ -404,6 +451,14 @@ pub(crate) fn build_row(
     // rows whose computed color changed (no rebuild).
     let (ent, click, base) = (s.entity, click_layer, base_bg);
     bind_bg(commands, bg_visual, move |world: &World| {
+        // Drop-target tint while dragging onto this row (reparent).
+        if let Some(drag) = world.get_resource::<HierDrag>() {
+            if drag.active
+                && matches!(drag.target, Some((t, TreeDropZone::AsChild)) if t == ent)
+            {
+                return over(base, rgb(ACCENT_BLUE).with_alpha(0.35));
+            }
+        }
         if world
             .get_resource::<EditorSelection>()
             .is_some_and(|sel| sel.is_selected(ent))

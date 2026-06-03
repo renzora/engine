@@ -9,8 +9,217 @@
 //! over it.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
-use bevy::window::PrimaryWindow;
+use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition};
+use bevy::window::{PrimaryWindow, SystemCursorIcon};
+
+use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::reactive::bind_bg;
+use crate::theme::rgb;
+
+const MENU_BG: (u8, u8, u8) = (30, 30, 38);
+const MENU_BORDER: (u8, u8, u8) = (60, 60, 74);
+const MENU_ITEM_HOVER: (u8, u8, u8) = (46, 46, 54);
+const MENU_TEXT: (u8, u8, u8) = (222, 222, 232);
+const MENU_ICON: (u8, u8, u8) = (188, 188, 200);
+const MENU_SEP: (u8, u8, u8) = (48, 48, 56);
+
+/// A menu item's one-shot action, run with `&mut World` when the item is
+/// clicked. The menu closes immediately after.
+#[derive(Component)]
+pub struct MenuAction(pub Box<dyn Fn(&mut World) + Send + Sync>);
+
+/// Spawn a floating menu root at window position `(x, y)`. It's a [`ScreenMenu`]
+/// (kept on-screen + pointer-blocking), dismissed by clicking outside it. Fill it
+/// with [`menu_item`] / [`menu_item_styled`] / [`menu_sep`] children, then it
+/// runs itself. Returns the root.
+pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x),
+                top: Val::Px(y),
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(184.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(MENU_BG)),
+            BorderColor::all(rgb(MENU_BORDER)),
+            GlobalZIndex(9000),
+            ScreenMenu,
+            RelativeCursorPosition::default(),
+            Name::new("screen-menu"),
+        ))
+        .id()
+}
+
+/// An icon + label menu row that runs `on_click` (and closes the menu) when
+/// pressed. Standard colors.
+pub fn menu_item<F>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    on_click: F,
+) -> Entity
+where
+    F: Fn(&mut World) + Send + Sync + 'static,
+{
+    menu_item_styled(commands, fonts, icon, label, MENU_ICON, MENU_TEXT, on_click)
+}
+
+/// [`menu_item`] with explicit icon/text colors (e.g. a red Delete).
+pub fn menu_item_styled<F>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+    text_color: (u8, u8, u8),
+    on_click: F,
+) -> Entity
+where
+    F: Fn(&mut World) + Send + Sync + 'static,
+{
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            MenuAction(Box::new(on_click)),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("menu-item"),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(MENU_ITEM_HOVER),
+        _ => Color::NONE,
+    });
+    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, 12.0);
+    let t = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_color)),
+        ))
+        .id();
+    commands.entity(row).add_children(&[ic, t]);
+    row
+}
+
+/// A thin divider for a [`screen_menu`].
+pub fn menu_sep(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(MENU_SEP)),
+        ))
+        .id()
+}
+
+/// Click a [`MenuAction`] item → run its action (deferred, with `&mut World`) and
+/// close every open [`ScreenMenu`].
+pub(crate) fn menu_action_run(
+    q: Query<(Entity, &Interaction), (Changed<Interaction>, With<MenuAction>)>,
+    menus: Query<Entity, With<ScreenMenu>>,
+    mut commands: Commands,
+) {
+    let mut any = false;
+    for (e, interaction) in &q {
+        if *interaction == Interaction::Pressed {
+            any = true;
+            commands.queue(move |world: &mut World| {
+                let action = world
+                    .get_entity_mut(e)
+                    .ok()
+                    .and_then(|mut em| em.take::<MenuAction>());
+                if let Some(action) = action {
+                    (action.0)(world);
+                }
+            });
+        }
+    }
+    if any {
+        for m in &menus {
+            commands.entity(m).despawn();
+        }
+    }
+}
+
+/// Press outside an open [`ScreenMenu`] → close it.
+pub(crate) fn screen_menu_dismiss(
+    mouse: Res<ButtonInput<MouseButton>>,
+    menus: Query<(Entity, &RelativeCursorPosition), With<ScreenMenu>>,
+    mut commands: Commands,
+) {
+    if !mouse.just_pressed(MouseButton::Left) && !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    for (e, rcp) in &menus {
+        if !rcp.cursor_over {
+            commands.entity(e).despawn();
+        }
+    }
+}
+
+/// Marks a floating menu/overlay positioned in **window coordinates** (absolute
+/// `left`/`top`, e.g. a context menu opened at the cursor). Ember gives it two
+/// behaviors for free: it absorbs pointer events so hover/click never leaks to
+/// nodes behind it, and it's clamped to stay fully on-screen (an overlay opened
+/// near an edge is pulled back into view instead of being cut off). Add it to
+/// the overlay's root node — that's all.
+#[derive(Component)]
+pub struct ScreenMenu;
+
+/// One-time: make every new [`ScreenMenu`] block pointer events behind it.
+pub(crate) fn screen_menu_block(mut commands: Commands, q: Query<Entity, Added<ScreenMenu>>) {
+    for e in &q {
+        commands.entity(e).insert(FocusPolicy::Block);
+    }
+}
+
+/// Clamp each [`ScreenMenu`]'s absolute top-left so its measured box fits inside
+/// the window.
+pub(crate) fn screen_menu_clamp(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut menus: Query<(&mut Node, &ComputedNode), With<ScreenMenu>>,
+) {
+    let Some(win) = windows.iter().next() else {
+        return;
+    };
+    let (ww, wh) = (win.width(), win.height());
+    for (mut node, cn) in &mut menus {
+        let size = cn.size() * cn.inverse_scale_factor();
+        if let Val::Px(x) = node.left {
+            let nx = x.min((ww - size.x).max(0.0)).max(0.0);
+            if (nx - x).abs() > 0.5 {
+                node.left = Val::Px(nx);
+            }
+        }
+        if let Val::Px(y) = node.top {
+            let ny = y.min((wh - size.y).max(0.0)).max(0.0);
+            if (ny - y).abs() > 0.5 {
+                node.top = Val::Px(ny);
+            }
+        }
+    }
+}
 
 /// Marks a trigger that opens/closes `panel`. Build the panel with
 /// `display: Display::None` + a `RelativeCursorPosition`.

@@ -394,8 +394,6 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         "Animation",
         "Materials",
         "Particles",
-        "Video",
-        "Audio",
         "Debug",
         "Gallery",
     ]

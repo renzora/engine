@@ -20,7 +20,8 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{
-    icon_label_button, labeled_icon_popover, scroll_view, slider, text_input, EmberTextInput,
+    icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
+    text_input, EmberTextInput,
 };
 
 use crate::thumbnails::{
@@ -78,8 +79,6 @@ pub(crate) struct NativeAssets {
     expanded: HashSet<PathBuf>,
     /// The grid tile the cursor is currently over (for right-click targeting).
     hovered: Option<PathBuf>,
-    /// The asset the open context menu acts on (`None` = menu closed).
-    context: Option<PathBuf>,
     /// Last tile click (path, time) for double-click detection.
     last_click: Option<(PathBuf, f64)>,
     /// Grid tile zoom (0.5–1.5).
@@ -115,7 +114,6 @@ impl Default for NativeAssets {
             search: String::new(),
             expanded: HashSet::new(),
             hovered: None,
-            context: None,
             last_click: None,
             zoom: 1.0,
             tree_width: 180.0,
@@ -158,22 +156,13 @@ fn save_list(root: &Path, file: &str, list: &[PathBuf]) {
     let _ = std::fs::write(dir.join(file), content);
 }
 
-#[derive(Clone, Copy)]
-enum Action {
-    Favorite,
-    Duplicate,
-    Delete,
-    Reveal,
-}
-
 #[derive(Component)]
 struct AssetRoot;
 #[derive(Component)]
-struct AssetContextMenu;
-#[derive(Component)]
 struct DragGhost;
+/// The toolbar "Add" button — clicking it opens the new-asset menu.
 #[derive(Component)]
-struct ContextAction(Action);
+struct AddMenuBtn;
 #[derive(Component)]
 struct Splitter;
 
@@ -291,12 +280,13 @@ pub fn register_native_asset_browser(app: &mut App) {
             shortcut_click,
             asset_drag,
             drag_ghost,
+            add_menu_open,
         )
             .run_if(in_state(SplashState::Editor)),
     );
     app.add_systems(
         Update,
-        (track_hover, context_action_click, context_open)
+        (track_hover, asset_context_menu)
             .chain()
             .run_if(in_state(SplashState::Editor)),
     );
@@ -582,77 +572,144 @@ fn track_hover(tiles: Query<(&Interaction, &AssetTile)>, mut state: ResMut<Nativ
     }
 }
 
-fn context_action_click(
-    q: Query<(&Interaction, &ContextAction), Changed<Interaction>>,
-    mut state: ResMut<NativeAssets>,
-    mut menu: Query<&mut Node, With<AssetContextMenu>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+/// Right-click a tile → open the shared ember menu (Favorite / Duplicate /
+/// Reveal / Delete) for the hovered asset.
+fn asset_context_menu(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    state: Res<NativeAssets>,
+    roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
+    mut commands: Commands,
 ) {
-    for (interaction, action) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let Some(path) = state.context.clone() else {
-            continue;
-        };
-        match action.0 {
-            Action::Favorite => {
-                if let Some(i) = state.favorites.iter().position(|f| f == &path) {
-                    state.favorites.remove(i);
-                } else {
-                    state.favorites.push(path.clone());
-                }
-                if let Some(root) = project.as_ref().map(|p| p.path.clone()) {
-                    save_list(&root, "favorites", &state.favorites);
-                }
-            }
-            Action::Duplicate => duplicate_asset(&path),
-            Action::Delete => {
-                let _ = if path.is_dir() {
-                    std::fs::remove_dir_all(&path)
-                } else {
-                    std::fs::remove_file(&path)
-                };
-                if state.selected.as_deref() == Some(path.as_path()) {
-                    state.selected = None;
-                }
-            }
-            Action::Reveal => reveal_in_explorer(&path),
-        }
-        state.context = None;
-        for mut n in &mut menu {
-            n.display = Display::None;
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Some(fonts) = fonts else {
+        return;
+    };
+    if !roots.iter().any(|rcp| rcp.cursor_over) {
+        return;
+    }
+    let Some(path) = state.hovered.clone() else {
+        return;
+    };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    let fav_label = if state.favorites.contains(&path) {
+        "Unfavorite"
+    } else {
+        "Favorite"
+    };
+    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    let kids = vec![
+        menu_item(&mut commands, &fonts, "star", fav_label, {
+            let path = path.clone();
+            move |w| toggle_favorite(w, &path)
+        }),
+        menu_item(&mut commands, &fonts, "copy", "Duplicate", {
+            let path = path.clone();
+            move |_| duplicate_asset(&path)
+        }),
+        menu_item(&mut commands, &fonts, "folder-open", "Reveal in Explorer", {
+            let path = path.clone();
+            move |_| reveal_in_explorer(&path)
+        }),
+        menu_sep(&mut commands),
+        menu_item_styled(&mut commands, &fonts, "trash", "Delete", (224, 96, 88), (224, 96, 88), {
+            let path = path.clone();
+            move |w| delete_asset(w, &path)
+        }),
+    ];
+    commands.entity(menu).add_children(&kids);
+}
+
+/// Click the toolbar "Add" button → open the shared ember menu of new-asset
+/// types at the cursor.
+fn add_menu_open(
+    q: Query<&Interaction, (With<AddMenuBtn>, Changed<Interaction>)>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    let items = [
+        ("palette", "Material", NewAsset::Material),
+        ("blueprint", "Blueprint", NewAsset::Blueprint),
+        ("code", "Lua Script", NewAsset::Lua),
+        ("code", "Rhai Script", NewAsset::Rhai),
+        ("sparkle", "Particle", NewAsset::Particle),
+    ];
+    let kids: Vec<Entity> = items
+        .iter()
+        .map(|&(icon, label, kind)| {
+            menu_item(&mut commands, &fonts, icon, label, move |w| create_asset(w, kind))
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+/// Create a new asset (folder or file) in the current folder + select it.
+fn create_asset(world: &mut World, kind: NewAsset) {
+    let folder = world
+        .get_resource::<NativeAssets>()
+        .and_then(|s| s.current.clone())
+        .or_else(|| {
+            world
+                .get_resource::<renzora::core::CurrentProject>()
+                .map(|p| p.path.clone())
+        });
+    let Some(folder) = folder else {
+        return;
+    };
+    let path = unique_path(&folder, kind.filename(), kind.is_folder());
+    let ok = if kind.is_folder() {
+        std::fs::create_dir_all(&path).is_ok()
+    } else {
+        std::fs::write(&path, kind.content()).is_ok()
+    };
+    if ok {
+        if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+            s.selected = Some(path);
         }
     }
 }
 
-fn context_open(
-    mouse: Res<ButtonInput<MouseButton>>,
-    roots: Query<(&bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode), With<AssetRoot>>,
-    mut menu: Query<&mut Node, With<AssetContextMenu>>,
-    mut state: ResMut<NativeAssets>,
-) {
-    let right = mouse.just_pressed(MouseButton::Right);
-    let left = mouse.just_pressed(MouseButton::Left);
-    if !right && !left {
-        return;
+fn toggle_favorite(world: &mut World, path: &Path) {
+    let root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|p| p.path.clone());
+    if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        if let Some(i) = s.favorites.iter().position(|f| f == path) {
+            s.favorites.remove(i);
+        } else {
+            s.favorites.push(path.to_path_buf());
+        }
+        if let Some(root) = root {
+            save_list(&root, "favorites", &s.favorites);
+        }
     }
-    for (rcp, computed) in &roots {
-        if right && rcp.cursor_over {
-            if let (Some(nrm), Some(path)) = (rcp.normalized, state.hovered.clone()) {
-                let size = computed.size() * computed.inverse_scale_factor();
-                state.context = Some(path);
-                for mut n in &mut menu {
-                    n.left = Val::Px((nrm.x + 0.5) * size.x);
-                    n.top = Val::Px((nrm.y + 0.5) * size.y);
-                    n.display = Display::Flex;
-                }
-            }
-        } else if left && state.context.is_some() {
-            state.context = None;
-            for mut n in &mut menu {
-                n.display = Display::None;
-            }
+}
+
+fn delete_asset(world: &mut World, path: &Path) {
+    let _ = if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    };
+    if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        if s.selected.as_deref() == Some(path) {
+            s.selected = None;
         }
     }
 }
@@ -940,7 +997,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let new_folder = icon_label_button(commands, fonts, "folder-plus", "New Folder");
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
-    let add = add_menu(commands, fonts);
+    let add = icon_label_button(commands, fonts, "plus", "Add");
+    commands.entity(add).insert(AddMenuBtn);
     let import = icon_label_button(commands, fonts, "download-simple", "Import");
     commands.entity(import).insert(ImportBtn);
 
@@ -954,23 +1012,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     keyed_list(commands, crumbs, crumb_snapshot);
-    let crumb_box = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb((19, 19, 24))),
-            BorderColor::all(rgb((48, 48, 58))),
-            Name::new("crumb-box"),
-        ))
-        .id();
-    commands.entity(crumb_box).add_children(&[back, crumbs]);
 
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
 
@@ -1028,15 +1069,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     ));
 
-    commands.entity(toolbar).add_children(&[
-        add,
-        import,
-        new_folder,
-        crumb_box,
-        spacer,
-        search,
-        zoom_box,
-    ]);
+    commands
+        .entity(toolbar)
+        .add_children(&[add, import, new_folder, spacer, search, zoom_box]);
 
     // Grid.
     let grid = commands
@@ -1055,15 +1090,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, grid, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
 
-    // ── Footer: live item count (Unreal's "N items"). ──
+    // ── Footer: back + breadcrumb on the left, live item count on the right. ──
     let footer = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(22.0),
+                height: Val::Px(26.0),
                 flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                padding: UiRect::horizontal(Val::Px(10.0)),
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 border: UiRect::top(Val::Px(1.0)),
                 ..default()
             },
@@ -1071,6 +1108,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BorderColor::all(rgb((48, 48, 56))),
         ))
         .id();
+    let footer_spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let count = commands
         .spawn((
             Text::new("0 items"),
@@ -1095,127 +1133,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    commands.entity(footer).add_child(count);
+    commands
+        .entity(footer)
+        .add_children(&[back, crumbs, footer_spacer, count]);
 
     commands
         .entity(content)
         .add_children(&[toolbar, grid_scroll, footer]);
 
-    // Context menu (shared, repositioned on right-click).
-    let menu = context_menu(commands, fonts);
-
-    commands.entity(root).add_children(&[tree_pane, splitter, content, menu]);
+    commands.entity(root).add_children(&[tree_pane, splitter, content]);
     root
-}
-
-/// The shared right-click context menu (hidden until opened).
-fn context_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let menu = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column,
-                min_width: Val::Px(140.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
-            GlobalZIndex(700),
-            AssetContextMenu,
-            Name::new("asset-context-menu"),
-        ))
-        .id();
-    let items = [
-        ("star", "Favorite", Action::Favorite),
-        ("copy", "Duplicate", Action::Duplicate),
-        ("folder-open", "Reveal in Explorer", Action::Reveal),
-        ("trash", "Delete", Action::Delete),
-    ];
-    let rows: Vec<Entity> = items
-        .iter()
-        .map(|(icon, label, action)| {
-            let row = commands
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(6.0),
-                        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                        border_radius: BorderRadius::all(Val::Px(3.0)),
-                        ..default()
-                    },
-                    Interaction::default(),
-                    ContextAction(*action),
-                    Name::new("ctx-action"),
-                ))
-                .id();
-            let danger = matches!(action, Action::Delete);
-            let color = if danger { (220, 90, 80) } else { TEXT_MUTED };
-            let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
-            let t = commands
-                .spawn((
-                    Text::new(*label),
-                    ui_font(&fonts.ui, 11.0),
-                    TextColor(rgb(if danger { (220, 90, 80) } else { TEXT_PRIMARY })),
-                ))
-                .id();
-            commands.entity(row).add_children(&[ic, t]);
-            row
-        })
-        .collect();
-    commands.entity(menu).add_children(&rows);
-    menu
-}
-
-/// The "Add" asset-creation popover (material/blueprint/lua/rhai/particle).
-fn add_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let content = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            width: Val::Px(150.0),
-            row_gap: Val::Px(2.0),
-            ..default()
-        })
-        .id();
-    let items = [
-        ("palette", "Material", NewAsset::Material),
-        ("blueprint", "Blueprint", NewAsset::Blueprint),
-        ("code", "Lua Script", NewAsset::Lua),
-        ("code", "Rhai Script", NewAsset::Rhai),
-        ("sparkle", "Particle", NewAsset::Particle),
-    ];
-    let rows: Vec<Entity> = items
-        .iter()
-        .map(|(icon, label, kind)| {
-            let row = commands
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(6.0),
-                        padding: UiRect::axes(Val::Px(4.0), Val::Px(3.0)),
-                        border_radius: BorderRadius::all(Val::Px(3.0)),
-                        ..default()
-                    },
-                    Interaction::default(),
-                    NewAssetBtn(*kind),
-                    Name::new("add-asset"),
-                ))
-                .id();
-            let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
-            let t = commands
-                .spawn((Text::new(*label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
-                .id();
-            commands.entity(row).add_children(&[ic, t]);
-            row
-        })
-        .collect();
-    commands.entity(content).add_children(&rows);
-    labeled_icon_popover(commands, fonts, "plus", "Add", content)
 }
 
 /// Clickable breadcrumb segments (project root + each path component).
