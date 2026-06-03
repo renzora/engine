@@ -1591,6 +1591,142 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
     theme_color_row(commands, fonts, body, 1, "Drop Line", |t| t.panels.drop_line, |t, c| t.panels.drop_line = c);
     theme_color_row(commands, fonts, body, 2, "Tab Active", |t| t.panels.tab_active, |t, c| t.panels.tab_active = c);
     theme_color_row(commands, fonts, body, 3, "Tab Inactive", |t| t.panels.tab_inactive, |t, c| t.panels.tab_inactive = c);
+
+    // ── Per-widget style editor ──────────────────────────────────────────────
+    // Walk the ember `Theme` via reflection: every widget type → a section, every
+    // element → a color picker (Rgba) or number field (f32), bound by reflect
+    // path. Editing repaints the live `Styled` widgets immediately. Adding a
+    // widget/element to the Theme makes it appear here automatically.
+    let hdr = commands
+        .spawn((
+            Text::new("Widget Styles"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            Node {
+                margin: UiRect::new(Val::Px(4.0), Val::Px(0.0), Val::Px(10.0), Val::Px(4.0)),
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(col).add_child(hdr);
+
+    for (widget, elems) in theme_schema() {
+        let (sec, body) = section(commands, fonts, "stack", &prettify(&widget), A_VIOLET);
+        commands.entity(col).add_child(sec);
+        for (i, (elem, is_color)) in elems.into_iter().enumerate() {
+            let path = format!("{widget}.{elem}");
+            let label = prettify(&elem);
+            if is_color {
+                widget_color_row(commands, fonts, body, i, &label, path);
+            } else {
+                widget_num_row(commands, fonts, body, i, &label, path);
+            }
+        }
+    }
+}
+
+/// `button_accent` → `Button Accent`.
+fn prettify(s: &str) -> String {
+    s.split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Reflect-walk the ember `Theme` structure: `[(widget, [(element, is_color)])]`.
+/// Read from `Theme::default()` (the structure is static), so no world needed.
+fn theme_schema() -> Vec<(String, Vec<(String, bool)>)> {
+    use bevy::reflect::{PartialReflect, ReflectRef};
+    let theme = renzora_ember::style::Theme::default();
+    let mut out = Vec::new();
+    let ReflectRef::Struct(s) = theme.reflect_ref() else {
+        return out;
+    };
+    for i in 0..s.field_len() {
+        let wname = s.name_at(i).unwrap_or_default().to_string();
+        let Some(wfield) = s.field_at(i) else { continue };
+        let ReflectRef::Struct(ws) = wfield.reflect_ref() else {
+            continue;
+        };
+        let mut elems = Vec::new();
+        for j in 0..ws.field_len() {
+            let ename = ws.name_at(j).unwrap_or_default().to_string();
+            let Some(ef) = ws.field_at(j) else { continue };
+            if ef.try_downcast_ref::<renzora_ember::style::Rgba>().is_some() {
+                elems.push((ename, true));
+            } else if ef.try_downcast_ref::<f32>().is_some() {
+                elems.push((ename, false));
+            }
+        }
+        if !elems.is_empty() {
+            out.push((wname, elems));
+        }
+    }
+    out
+}
+
+/// A color row bound to one ember-`Theme` element by reflect `path`
+/// (e.g. `button.bg`, `node_graph.cable`). Editing repaints live.
+fn widget_color_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, idx: usize, label: &str, path: String) {
+    use bevy::reflect::GetPath;
+    use renzora_ember::style::{Rgba, Theme as EmberTheme};
+    let p = path.clone();
+    let cf = color_field(
+        commands,
+        move |w| {
+            let r = w
+                .resource::<EmberTheme>()
+                .path::<Rgba>(p.as_str())
+                .ok()
+                .copied()
+                .unwrap_or(Rgba::NONE);
+            [r.r as f32 / 255.0, r.g as f32 / 255.0, r.b as f32 / 255.0]
+        },
+        move |w, rgb| {
+            let mut t = w.resource_mut::<EmberTheme>();
+            if let Ok(r) = t.path_mut::<Rgba>(path.as_str()) {
+                r.r = (rgb[0] * 255.0).round() as u8;
+                r.g = (rgb[1] * 255.0).round() as u8;
+                r.b = (rgb[2] * 255.0).round() as u8;
+            }
+        },
+    );
+    settings_row(commands, fonts, body, idx, label, cf);
+}
+
+/// A number row bound to one ember-`Theme` f32 element (radius/padding/border).
+fn widget_num_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, idx: usize, label: &str, path: String) {
+    use bevy::reflect::GetPath;
+    use renzora_ember::style::Theme as EmberTheme;
+    let p = path.clone();
+    let dv = ctl_drag(
+        commands,
+        fonts,
+        0.0,
+        0.0,
+        64.0,
+        0.5,
+        move |w| {
+            w.resource::<EmberTheme>()
+                .path::<f32>(p.as_str())
+                .ok()
+                .copied()
+                .unwrap_or(0.0)
+        },
+        move |w, &v| {
+            let mut t = w.resource_mut::<EmberTheme>();
+            if let Ok(f) = t.path_mut::<f32>(path.as_str()) {
+                *f = v;
+            }
+        },
+    );
+    settings_row(commands, fonts, body, idx, label, dv);
 }
 
 /// A theme color row: a swatch/picker two-way bound to one `Theme` color,
