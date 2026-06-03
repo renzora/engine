@@ -145,3 +145,50 @@ impl InspectorRegistry {
         self.entries.iter()
     }
 }
+
+/// Declare a native-renderable `f32` [`FieldDef`] for a component field without
+/// hand-writing the get/set fn-pointers. The common case for effect/settings
+/// inspectors migrating off `custom_ui_fn` to declarative `fields` (which both
+/// the egui and bevy_ui inspectors render).
+///
+/// ```ignore
+/// fields: vec![
+///     renzora_editor::float_field!("Speed", MySettings, speed, 0.1, 0.0, 10.0),
+/// ],
+/// ```
+#[macro_export]
+macro_rules! float_field {
+    ($name:expr, $comp:ty, $field:ident, $speed:expr, $min:expr, $max:expr $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Float {
+                speed: $speed,
+                min: $min,
+                max: $max,
+            },
+            get_fn: |w, e| w.get::<$comp>(e).map(|comp| $crate::FieldValue::Float(comp.$field)),
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Float(f), Some(mut comp)) = (v, w.get_mut::<$comp>(e)) {
+                    comp.$field = f;
+                }
+            },
+        }
+    };
+}
+
+/// Like [`float_field!`] for a `bool` component field.
+#[macro_export]
+macro_rules! bool_field {
+    ($name:expr, $comp:ty, $field:ident $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::Bool,
+            get_fn: |w, e| w.get::<$comp>(e).map(|comp| $crate::FieldValue::Bool(comp.$field)),
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::Bool(b), Some(mut comp)) = (v, w.get_mut::<$comp>(e)) {
+                    comp.$field = b;
+                }
+            },
+        }
+    };
+}

@@ -297,7 +297,10 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             _ => None,
         };
         let enabled_now = enable.map(|(g, _)| g(world, entity)).unwrap_or(true);
-        if entry.custom_ui_fn.is_some() {
+        // Declarative `fields` render natively in both backends. `custom_ui_fn`
+        // is the egui-only escape hatch — a component with one but no fields
+        // can't render natively yet (placeholder until it gains `fields`).
+        if entry.fields.is_empty() && entry.custom_ui_fn.is_some() {
             out.push(SectionSpec {
                 title: entry.display_name,
                 icon: entry.icon,
