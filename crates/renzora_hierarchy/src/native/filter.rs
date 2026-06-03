@@ -12,13 +12,52 @@ use renzora_editor::ComponentIconRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, ACCENT_BLUE};
-use renzora_ember::widgets::Popup;
+use renzora_ember::widgets::{text_input, EmberTextInput, Popup};
 
 /// The set of component-type names (plus the `__other__` sentinel) the tree is
 /// filtered to. Empty = show everything.
 #[derive(Resource, Default)]
 pub(crate) struct HierFilter {
     pub types: HashSet<&'static str>,
+}
+
+/// The hierarchy's by-name text filter (the search box).
+#[derive(Resource, Default)]
+pub(crate) struct HierSearch {
+    pub query: String,
+}
+
+#[derive(Component)]
+pub(crate) struct HierSearchInput;
+
+/// Build the header search box (filters the tree by entity name).
+pub(crate) fn build_search_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let input = text_input(commands, &fonts.ui, "Search…", "");
+    commands.entity(input).insert((
+        HierSearchInput,
+        Node {
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+    ));
+    input
+}
+
+/// Mirror the search box's text into [`HierSearch`].
+pub(crate) fn hier_search_sync(
+    inputs: Query<&EmberTextInput, With<HierSearchInput>>,
+    mut search: ResMut<HierSearch>,
+) {
+    for inp in &inputs {
+        if search.query != inp.value {
+            search.query = inp.value.clone();
+        }
+    }
 }
 
 #[derive(Component)]
@@ -55,6 +94,8 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
             BackgroundColor(rgb((30, 30, 38))),
             BorderColor::all(rgb((60, 60, 74))),
             GlobalZIndex(700),
+            // Absorb pointer events so hover/click never leaks to the rows behind.
+            bevy::ui::FocusPolicy::Block,
             RelativeCursorPosition::default(),
             Name::new("hier-filter-panel"),
         ))

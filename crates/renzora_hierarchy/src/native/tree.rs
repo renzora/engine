@@ -51,6 +51,15 @@ fn flatten(
     }
 }
 
+/// Collect every entity in `nodes` (recursively) — used to force-expand the
+/// filtered tree while searching.
+fn collect_entities(nodes: &[crate::state::EntityNode], out: &mut HashSet<Entity>) {
+    for n in nodes {
+        out.insert(n.entity);
+        collect_entities(&n.children, out);
+    }
+}
+
 /// The keyed-list snapshot: `(entity-key, content-hash)` per visible row + a
 /// builder that owns the flattened rows.
 pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
@@ -58,24 +67,49 @@ pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
         .get_resource::<HierExpanded>()
         .map(|e| e.0.clone())
         .unwrap_or_default();
-    // Active component-type filter (the funnel popup) prunes the tree.
+    // Active filters: the funnel's component-type set + the search box's name
+    // text. Either prunes the tree (and search force-expands so matches show).
     let filter = world
         .get_resource::<super::filter::HierFilter>()
         .map(|f| f.types.clone())
         .unwrap_or_default();
-    let filtered = (!filter.is_empty())
+    let search = world
+        .get_resource::<super::filter::HierSearch>()
+        .map(|s| s.query.trim().to_string())
+        .unwrap_or_default();
+    let type_active = !filter.is_empty();
+    let search_active = !search.is_empty();
+    let filtered = (type_active || search_active)
         .then(|| world.get_resource::<HierarchyTreeCache>())
         .flatten()
-        .map(|c| crate::state::filter_tree_by_type(c.nodes.clone(), &filter));
+        .map(|c| {
+            let mut nodes = c.nodes.clone();
+            if type_active {
+                nodes = crate::state::filter_tree_by_type(nodes, &filter);
+            }
+            if search_active {
+                nodes = crate::state::filter_tree(nodes, &search);
+            }
+            nodes
+        });
     let mut rows = Vec::new();
     let cache = world.get_resource::<HierarchyTreeCache>();
     let nodes: &[crate::state::EntityNode] = match &filtered {
         Some(v) => v.as_slice(),
         None => cache.map_or(&[][..], |c| c.nodes.as_slice()),
     };
+    // While searching, force every (matching) node open so deep hits are visible.
+    let mut all_exp;
+    let exp_ref: &bevy::platform::collections::HashSet<Entity> = if search_active {
+        all_exp = bevy::platform::collections::HashSet::new();
+        collect_entities(nodes, &mut all_exp);
+        &all_exp
+    } else {
+        &exp
+    };
     {
         let mut parent_lines = Vec::new();
-        flatten(nodes, &exp, &mut parent_lines, &mut rows);
+        flatten(nodes, exp_ref, &mut parent_lines, &mut rows);
     }
     // Fold the row's parity into its content hash so a row that changes odd/even
     // (e.g. when a sibling above is added/removed) repaints with the right stripe.

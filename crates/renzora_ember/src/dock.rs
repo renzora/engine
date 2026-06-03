@@ -268,6 +268,7 @@ impl Plugin for DockPlugin {
                     apply_tab_switch,
                     tab_hover,
                     tab_close_hover,
+                    tab_close_click,
                     // Rebuild last, in the same frame the model mutates, so the
                     // dock doesn't show a stale layout for a frame (flicker).
                     rebuild_dock,
@@ -1021,6 +1022,30 @@ fn tab_close_hover(
     }
 }
 
+/// Click a tab's × → remove that panel from the dock tree.
+fn tab_close_click(
+    mouse: Res<ButtonInput<MouseButton>>,
+    closes: Query<(&bevy::ui::RelativeCursorPosition, &ChildOf), With<TabClose>>,
+    tabs: Query<&DockTab>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    for (rcp, parent) in &closes {
+        if !rcp.cursor_over {
+            continue;
+        }
+        if let Ok(tab) = tabs.get(parent.parent()) {
+            if dock.tree.remove_panel(&tab.id) {
+                dirty.0 = true;
+            }
+        }
+        break;
+    }
+}
+
 // ── Reconciler ───────────────────────────────────────────────────────────────
 
 fn build_tree(
@@ -1379,7 +1404,8 @@ fn populate_leaf(
         commands.entity(close).insert((
             TabClose,
             bevy::ui::RelativeCursorPosition::default(),
-            bevy::ui::FocusPolicy::Pass,
+            // Block so clicking the × closes the tab instead of selecting it.
+            bevy::ui::FocusPolicy::Block,
         ));
         let marker = commands
             .spawn((
