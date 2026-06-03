@@ -184,10 +184,15 @@ fn manage_shell_root(
         let Some(fonts) = fonts else {
             return;
         };
-        let (themes, active) = tm
-            .as_ref()
-            .map(|t| (t.available_themes.clone(), t.active_theme_name.clone()))
-            .unwrap_or_default();
+        // Set the palette from the active theme *before* spawning so the chrome
+        // never builds with a stale palette (the theme_bridge's per-frame
+        // set_palette can otherwise race the rebuild's spawn across a frame).
+        let (themes, active) = if let Some(tm) = tm.as_ref() {
+            renzora_ember::theme::set_palette(palette_from_theme(&tm.active_theme));
+            (tm.available_themes.clone(), tm.active_theme_name.clone())
+        } else {
+            (Vec::new(), String::new())
+        };
         spawn_shell(&mut commands, &fonts, &themes, &active);
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
