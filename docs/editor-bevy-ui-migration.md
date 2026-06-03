@@ -216,15 +216,22 @@ can contribute panels/drawers without egui. Designing this once unblocks:
 Open decision: a build-closure contract (`fn(&mut Commands,&EmberFonts)->Entity`
 rebuilt on state change) vs. a retained system-driven contract.
 
-**Inspector resolution (done):** rather than a bevy_ui *drawer* contract, the
-inspector uses the **declarative `fields`** the registry already supports — a
-component lists `FieldDef`s (FieldType + get/set fn-pointers) and BOTH backends
-render them; `custom_ui_fn` is the egui-only legacy escape hatch. Migrating a
-`custom_ui_fn` effect = add `fields` (one line each via `float_field!` /
-`bool_field!` / `enum_u32_field!` in renzora_editor). This sidesteps the drawer
-contract for anything expressible as fields (which is most effects). The viewport
-A6b mode/tool drawers are genuinely imperative (brush settings etc.) and still
-want the build-closure contract.
+**Inspector resolution (done) — TWO paths:**
+1. **Declarative `fields`** (the easy path): a component lists `FieldDef`s
+   (FieldType + get/set fn-pointers) and BOTH backends render them. One line each
+   via `float_field!` / `bool_field!` / `enum_u32_field!` (renzora_editor). Use for
+   anything expressible as a field list (most effects). `custom_ui_fn` stays as the
+   egui-only legacy renderer.
+2. **Native drawer** (the custom path, for conditional rows / buttons / composed
+   widgets): `register_native_inspector_ui(type_id, fn(&mut World, Entity) -> Entity)`
+   → `NativeInspectorRegistry`. The drawer builds an arbitrary bevy_ui subtree
+   (ember widgets + `bind_2way`, wrapped by `renzora_ember::inspector::inspector_body`)
+   and returns its root; the inspector parents it under the section. Priority:
+   **native drawer > declarative fields > placeholder.** Demoed on `distance_fog`
+   (3-channel composed color swatch + bound rows).
+
+The viewport A6b mode/tool drawers can reuse the *same* `fn(&mut World,Entity)->Entity`
++ `inspector_body` pattern.
 
 ---
 
