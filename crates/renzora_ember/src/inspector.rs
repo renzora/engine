@@ -35,10 +35,10 @@ pub const INSPECTOR_LABEL_W: f32 = 112.0;
 /// `BackgroundColor` so panels stripe consistently.
 pub fn inspector_stripe(row_index: usize) -> Color {
     // Even rows are fully transparent — they show the real panel background
-    // unchanged. Only odd rows get a faint lift, so the alternation is subtle and
-    // the panel base is untouched.
+    // unchanged. Odd rows get a faint darkening overlay, so the alternation is
+    // subtle and the panel base is untouched.
     if row_index % 2 == 1 {
-        Color::srgba(1.0, 1.0, 1.0, 0.016)
+        Color::srgba(0.0, 0.0, 0.0, 0.18)
     } else {
         Color::NONE
     }
