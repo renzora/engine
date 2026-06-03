@@ -12,13 +12,13 @@ use bevy::window::SystemCursorIcon;
 use bevy_egui::egui::Color32;
 
 use renzora::core::viewport_types::{
-    CollisionGizmoVisibility, SnapSettings, ViewportMode, ViewportSettings, ViewportView,
-    VisualizationMode,
+    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
+    ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
 };
 use renzora_editor::EditorCommands;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
-use renzora_ember::widgets::{checkbox, drag_value_flat, DragRange};
+use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
@@ -125,14 +125,16 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-hdr-spacer")))
         .id();
     let display_dd = build_display_dropdown(commands, fonts);
+    let snap_dd = build_snap_dropdown(commands, fonts);
+    let camera_dd = build_camera_dropdown(commands, fonts);
     let gap4 = gap(commands, 3.0);
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
 
     // Left: session actions (+ tools, later). Right: view/mode, inline snapping,
-    // camera speed, then the Display dropdown + maximize.
+    // camera speed, then the Display / Snap / Camera dropdowns + maximize.
     commands.entity(row).add_children(&[
         undo, redo, gap1, save, gap2, play, scripts, spacer, view_dd, mode_dd, gap5, translate,
-        rotate, scale, gap6, cam_speed, gap3, display_dd, gap4, maximize,
+        rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd, gap4, maximize,
     ]);
     row
 }
@@ -189,6 +191,10 @@ pub(crate) fn register(app: &mut App) {
             update_snap_toggles,
             update_three_d_only,
             update_header_chrome,
+            header_click,
+            update_click_rows,
+            update_panel_buttons,
+            update_camera_snap_triggers,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -1215,6 +1221,535 @@ fn update_three_d_only(
         let want = if show { Display::Flex } else { Display::None };
         if n.display != want {
             n.display = want;
+        }
+    }
+}
+
+// ── Camera + Snap dropdowns (A4) ─────────────────────────────────────────────
+
+/// A discrete one-shot click action inside a header dropdown.
+#[derive(Component, Clone, Copy)]
+enum HeaderClick {
+    Projection(ProjectionMode),
+    ViewAngle { yaw: f32, pitch: f32 },
+    CamReset,
+    ToggleObjectSnap,
+    ToggleFloorSnap,
+}
+
+/// Tags a projection row so it highlights when that projection is current.
+#[derive(Component, Clone, Copy)]
+struct ProjOption(ProjectionMode);
+
+/// Object/Floor snap toggle buttons (accent fill when enabled).
+#[derive(Component, Clone, Copy)]
+enum SnapBtnKind {
+    Object,
+    Floor,
+}
+
+/// The Camera dropdown's icon trigger.
+#[derive(Component)]
+struct CameraTrigger;
+
+/// The Snap dropdown's icon trigger (magnet — accent when any snap is active).
+#[derive(Component)]
+struct SnapTrigger;
+
+/// View-angle presets: (label, shortcut, yaw, pitch). Mirrors egui `ViewAngle`.
+const VIEW_ANGLES: &[(&str, &str, f32, f32)] = {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    &[
+        ("Front", "Num1", 0.0, 0.0),
+        ("Back", "Ctrl+Num1", PI, 0.0),
+        ("Left", "Ctrl+Num3", -FRAC_PI_2, 0.0),
+        ("Right", "Num3", FRAC_PI_2, 0.0),
+        ("Top", "Num7", 0.0, FRAC_PI_2),
+        ("Bottom", "Ctrl+Num7", 0.0, -FRAC_PI_2),
+    ]
+};
+
+/// Builds a label + boxed [`drag_value`] row bound to `ViewportSettings.<path>`.
+macro_rules! drag_row {
+    ($c:expr, $f:expr, $label:expr, $min:expr, $max:expr, $step:expr, $($field:tt)+) => {
+        drag_row_build(
+            $c, $f, $label, $min, $max, $step,
+            |w: &World| {
+                w.get_resource::<ViewportSettings>()
+                    .map(|s| s.$($field)+)
+                    .unwrap_or($min)
+            },
+            |w: &mut World, v: f32| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.$($field)+ = v;
+                }
+            },
+        )
+    };
+}
+
+/// The shared right-anchored popup panel for an icon dropdown.
+fn dropdown_panel(commands: &mut Commands, kids: &[Entity]) -> Entity {
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                right: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                min_width: Val::Px(220.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(30, 30, 38)),
+            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            GlobalZIndex(600),
+            Name::new("vp-drop-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_children(kids);
+    panel
+}
+
+/// A 40px icon + caret dropdown trigger (the caller adds its own marker bundle).
+fn icon_trigger_node(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, icon, (190, 190, 200), 15.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (160, 160, 170), 8.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                width: Val::Px(40.0),
+                height: Val::Px(BTN_H),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("vp-icon-dropdown"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[glyph, caret]);
+    trigger
+}
+
+fn dropdown_wrap(commands: &mut Commands, trigger: Entity, panel: Entity) -> Entity {
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("vp-dropdown-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[trigger, panel]);
+    wrap
+}
+
+/// A label + click-to-fire row (view angles, reset).
+fn click_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, click: HeaderClick) -> Entity {
+    let txt = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(Color::srgb_u8(230, 230, 240)),
+        ))
+        .id();
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(BTN_H),
+                align_items: AlignItems::Center,
+                padding: UiRect::left(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            click,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("vp-click-row"),
+        ))
+        .id();
+    commands.entity(row).add_child(txt);
+    row
+}
+
+/// A projection-mode row (highlights when current).
+fn proj_row(commands: &mut Commands, fonts: &EmberFonts, mode: ProjectionMode, label: &str) -> Entity {
+    let row = click_row(commands, fonts, label, HeaderClick::Projection(mode));
+    commands.entity(row).insert(ProjOption(mode));
+    row
+}
+
+/// A toggle button (Objects / Floor) that fills accent when its snap is on.
+fn snap_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    kind: SnapBtnKind,
+    click: HeaderClick,
+) -> Entity {
+    let txt = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(Color::srgb_u8(230, 230, 240)),
+        ))
+        .id();
+    let btn = commands
+        .spawn((
+            Node {
+                min_width: Val::Px(70.0),
+                height: Val::Px(20.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            Interaction::default(),
+            kind,
+            click,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("vp-snap-button"),
+        ))
+        .id();
+    commands.entity(btn).add_child(txt);
+    btn
+}
+
+/// A label + (flex spacer) + boxed drag_value row, bound two-way.
+fn drag_row_build(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    min: f32,
+    max: f32,
+    step: f32,
+    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    set: impl Fn(&mut World, f32) + Send + Sync + 'static,
+) -> Entity {
+    let lbl = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(Color::srgb_u8(220, 220, 230)),
+        ))
+        .id();
+    let spacer = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            ..default()
+        })
+        .id();
+    let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    commands.entity(dv).insert(DragRange { min, max });
+    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("vp-drag-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[lbl, spacer, dv]);
+    row
+}
+
+#[allow(clippy::vec_init_then_push)]
+fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let mut kids: Vec<Entity> = Vec::new();
+    kids.push(section_label(commands, fonts, "Projection"));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, "Perspective"));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Orthographic, "Orthographic"));
+
+    kids.push(separator_row(commands));
+    kids.push(section_label(commands, fonts, "View Angles"));
+    for (label, sc, yaw, pitch) in VIEW_ANGLES {
+        kids.push(click_row(
+            commands,
+            fonts,
+            &format!("{label}  ({sc})"),
+            HeaderClick::ViewAngle {
+                yaw: *yaw,
+                pitch: *pitch,
+            },
+        ));
+    }
+
+    kids.push(separator_row(commands));
+    kids.push(section_label(commands, fonts, "Sensitivities"));
+    kids.push(drag_row!(commands, fonts, "Look", 0.05, 2.0, 0.05, camera.look_sensitivity));
+    kids.push(drag_row!(commands, fonts, "Orbit", 0.05, 2.0, 0.05, camera.orbit_sensitivity));
+    kids.push(drag_row!(commands, fonts, "Pan", 0.1, 5.0, 0.1, camera.pan_sensitivity));
+    kids.push(drag_row!(commands, fonts, "Zoom", 0.1, 5.0, 0.1, camera.zoom_sensitivity));
+
+    kids.push(separator_row(commands));
+    kids.push(toggle_row!(commands, fonts, "Invert Y Axis", camera.invert_y));
+    kids.push(toggle_row!(
+        commands,
+        fonts,
+        "Distance Relative Speed",
+        camera.distance_relative_speed
+    ));
+    kids.push(click_row(commands, fonts, "Reset to Defaults", HeaderClick::CamReset));
+
+    let panel = dropdown_panel(commands, &kids);
+    let trigger = icon_trigger_node(commands, fonts, "cube");
+    commands.entity(trigger).insert((
+        PanelToggle { panel, open: false },
+        CameraTrigger,
+    ));
+    dropdown_wrap(commands, trigger, panel)
+}
+
+#[allow(clippy::vec_init_then_push)]
+fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let mut kids: Vec<Entity> = Vec::new();
+    kids.push(section_label(commands, fonts, "Object Snapping"));
+    kids.push(snap_dist_row(
+        commands,
+        fonts,
+        "Objects",
+        SnapBtnKind::Object,
+        HeaderClick::ToggleObjectSnap,
+        0.1,
+        10.0,
+        0.1,
+        |w| snap_val(w, |s| s.object_snap_distance),
+        |w, v| set_snap(w, |s| &mut s.object_snap_distance, v),
+    ));
+    kids.push(snap_dist_row(
+        commands,
+        fonts,
+        "Floor",
+        SnapBtnKind::Floor,
+        HeaderClick::ToggleFloorSnap,
+        -1000.0,
+        1000.0,
+        0.1,
+        |w| snap_val(w, |s| s.floor_y),
+        |w, v| set_snap(w, |s| &mut s.floor_y, v),
+    ));
+
+    kids.push(separator_row(commands));
+    kids.push(section_label(commands, fonts, "Transform Aids"));
+    kids.push(toggle_row!(commands, fonts, "Edge Snap", snap.translate_edge_snap));
+    kids.push(toggle_row!(
+        commands,
+        fonts,
+        "Scale from Bottom",
+        snap.scale_bottom_anchor
+    ));
+
+    let panel = dropdown_panel(commands, &kids);
+    let trigger = icon_trigger_node(commands, fonts, "magnet");
+    commands
+        .entity(trigger)
+        .insert((PanelToggle { panel, open: false }, SnapTrigger));
+    dropdown_wrap(commands, trigger, panel)
+}
+
+/// A snap toggle button + its bound distance/offset drag value, in one row.
+#[allow(clippy::too_many_arguments)]
+fn snap_dist_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    kind: SnapBtnKind,
+    click: HeaderClick,
+    min: f32,
+    max: f32,
+    step: f32,
+    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    set: impl Fn(&mut World, f32) + Send + Sync + 'static,
+) -> Entity {
+    let btn = snap_button(commands, fonts, label, kind, click);
+    let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    commands.entity(dv).insert(DragRange { min, max });
+    bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("vp-snap-dist-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[btn, dv]);
+    row
+}
+
+fn header_click(
+    q: Query<(&Interaction, &HeaderClick), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, click) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match *click {
+            HeaderClick::Projection(mode) => cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.projection_mode = mode;
+                }
+            }),
+            HeaderClick::ViewAngle { yaw, pitch } => cmds.push(move |w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
+                }
+            }),
+            HeaderClick::CamReset => cmds.push(|w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.camera = CameraSettingsState::default();
+                }
+            }),
+            HeaderClick::ToggleObjectSnap => cmds.push(|w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.snap.object_snap_enabled = !s.snap.object_snap_enabled;
+                }
+            }),
+            HeaderClick::ToggleFloorSnap => cmds.push(|w: &mut World| {
+                if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                    s.snap.floor_snap_enabled = !s.snap.floor_snap_enabled;
+                }
+            }),
+        }
+    }
+}
+
+/// Hover highlight for plain click rows (view angles, reset) — projection rows
+/// and snap buttons are handled by [`update_panel_buttons`].
+fn update_click_rows(
+    theme: Option<Res<ThemeManager>>,
+    mut q: Query<
+        (&Interaction, &mut BackgroundColor),
+        (With<HeaderClick>, Without<ProjOption>, Without<SnapBtnKind>),
+    >,
+) {
+    let Some(theme) = theme else { return };
+    let hovered = col(theme.active_theme.widgets.hovered_bg.to_color32());
+    for (interaction, mut bg) in &mut q {
+        let want = if *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            Color::NONE
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+}
+
+fn update_panel_buttons(
+    settings: Option<Res<ViewportSettings>>,
+    theme: Option<Res<ThemeManager>>,
+    mut proj: Query<(&ProjOption, &Interaction, &mut BackgroundColor), Without<SnapBtnKind>>,
+    mut snapbtns: Query<(&SnapBtnKind, &Interaction, &mut BackgroundColor), Without<ProjOption>>,
+) {
+    let (Some(settings), Some(theme)) = (settings, theme) else {
+        return;
+    };
+    let t = &theme.active_theme;
+    let accent = col(t.semantic.accent.to_color32());
+    let inactive = col(t.widgets.inactive_bg.to_color32());
+    let hovered = col(t.widgets.hovered_bg.to_color32());
+
+    for (opt, interaction, mut bg) in &mut proj {
+        let want = if settings.projection_mode == opt.0 {
+            accent
+        } else if *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            Color::NONE
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+    for (kind, interaction, mut bg) in &mut snapbtns {
+        let on = match kind {
+            SnapBtnKind::Object => settings.snap.object_snap_enabled,
+            SnapBtnKind::Floor => settings.snap.floor_snap_enabled,
+        };
+        let want = if on {
+            accent
+        } else if *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            inactive
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+}
+
+fn update_camera_snap_triggers(
+    settings: Option<Res<ViewportSettings>>,
+    theme: Option<Res<ThemeManager>>,
+    mut cam: Query<
+        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (With<CameraTrigger>, Without<SnapTrigger>),
+    >,
+    mut snap: Query<
+        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (With<SnapTrigger>, Without<CameraTrigger>),
+    >,
+) {
+    let (Some(settings), Some(theme)) = (settings, theme) else {
+        return;
+    };
+    let t = &theme.active_theme;
+    let accent = col(t.semantic.accent.to_color32());
+    let inactive = col(t.widgets.inactive_bg.to_color32());
+    let hovered = col(t.widgets.hovered_bg.to_color32());
+
+    for (interaction, toggle, mut bg) in &mut cam {
+        let want = if toggle.open || *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            inactive
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+    let s = &settings.snap;
+    let any_snap = s.object_snap_enabled
+        || s.floor_snap_enabled
+        || s.translate_edge_snap
+        || s.scale_bottom_anchor;
+    for (interaction, toggle, mut bg) in &mut snap {
+        let want = if any_snap {
+            accent
+        } else if toggle.open || *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            inactive
+        };
+        if bg.0 != want {
+            bg.0 = want;
         }
     }
 }
