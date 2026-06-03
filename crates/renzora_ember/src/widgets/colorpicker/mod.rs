@@ -242,3 +242,88 @@ fn hsv_drag(
         }
     }
 }
+
+// ── Two-way binding to RGB state ─────────────────────────────────────────────
+
+use bevy::color::{Hsva, Srgba};
+
+/// Two-way bind an [`hsv_picker`] (its root entity) to an RGB `[f32; 3]` (0..1)
+/// piece of state. Dragging the picker writes the state; external changes update
+/// the picker. Greyscale colors keep the picker's current hue so the hue strip
+/// doesn't jump.
+pub fn bind_hsv_picker(
+    commands: &mut Commands,
+    picker: Entity,
+    get: impl Fn(&World) -> [f32; 3] + Send + Sync + 'static,
+    set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
+) {
+    let mut last: Option<[f32; 3]> = None;
+    crate::reactive::react(commands, move |world: &mut World| {
+        if world.get_entity(picker).is_err() {
+            return false;
+        }
+        let Some((h, s, v)) = world.get::<HsvPicker>(picker).map(|p| (p.hue, p.s, p.v)) else {
+            return true;
+        };
+        let rgb_picker = hsv01_to_rgb(h, s, v);
+        let rgb_state = get(world);
+        match last {
+            None => {
+                apply_rgb_to_picker(world, picker, rgb_state);
+                last = Some(rgb_state);
+            }
+            Some(l) => {
+                if !approx_rgb(rgb_picker, l) {
+                    set(world, rgb_picker);
+                    last = Some(rgb_picker);
+                } else if !approx_rgb(rgb_state, l) {
+                    apply_rgb_to_picker(world, picker, rgb_state);
+                    last = Some(rgb_state);
+                }
+            }
+        }
+        true
+    });
+}
+
+fn approx_rgb(a: [f32; 3], b: [f32; 3]) -> bool {
+    (a[0] - b[0]).abs() < 1e-3 && (a[1] - b[1]).abs() < 1e-3 && (a[2] - b[2]).abs() < 1e-3
+}
+
+fn hsv01_to_rgb(h: f32, s: f32, v: f32) -> [f32; 3] {
+    let c = Srgba::from(Hsva::new(h * 360.0, s, v, 1.0));
+    [c.red, c.green, c.blue]
+}
+
+fn apply_rgb_to_picker(world: &mut World, root: Entity, rgb: [f32; 3]) {
+    let hsva = Hsva::from(Srgba::new(rgb[0], rgb[1], rgb[2], 1.0));
+    let (h, s, v) = (hsva.hue / 360.0, hsva.saturation, hsva.value);
+    let Some((sv, sv_handle, hue_handle, preview)) = world
+        .get::<HsvPicker>(root)
+        .map(|p| (p.sv, p.sv_handle, p.hue_handle, p.preview))
+    else {
+        return;
+    };
+    // Keep the existing hue for greyscale (s≈0), where hue is undefined.
+    if let Some(mut p) = world.get_mut::<HsvPicker>(root) {
+        p.s = s;
+        p.v = v;
+        if s > 1e-4 {
+            p.hue = h;
+        }
+    }
+    let hue = world.get::<HsvPicker>(root).map(|p| p.hue).unwrap_or(h);
+    if let Some(mut d) = world.get_mut::<PickerData>(sv) {
+        d.hue = hue;
+    }
+    if let Some(mut n) = world.get_mut::<Node>(sv_handle) {
+        n.left = Val::Percent(s * 100.0);
+        n.top = Val::Percent((1.0 - v) * 100.0);
+    }
+    if let Some(mut n) = world.get_mut::<Node>(hue_handle) {
+        n.top = Val::Percent(hue * 100.0);
+    }
+    if let Some(mut bg) = world.get_mut::<BackgroundColor>(preview) {
+        bg.0 = Color::hsv(hue * 360.0, s, v);
+    }
+}

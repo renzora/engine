@@ -28,7 +28,8 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, text_input, toggle_switch, DragRange, Popup,
+    bind_hsv_picker, bind_text_input, drag_value, hsv_picker, text_input, toggle_switch, DragRange,
+    Popup,
 };
 use renzora_theme::ThemeManager;
 
@@ -740,8 +741,9 @@ fn build_field_value(
 
 // ── Color editor (swatch + R/G/B popup) ──────────────────────────────────────
 
-/// A clickable swatch (live-bound to the color) that toggles a popup of R/G/B
-/// drag values, each two-way bound to one channel.
+/// A clickable swatch (live-bound to the color) that toggles a popup holding a
+/// proper HSV color picker (sat/val square + hue strip), two-way bound to the
+/// field's RGB.
 fn build_color_editor(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -750,31 +752,19 @@ fn build_color_editor(
     set_fn: SetFn,
     init: [f32; 3],
 ) -> Entity {
-    const CH: [(&str, (u8, u8, u8)); 3] = [
-        ("R", (230, 90, 90)),
-        ("G", (130, 200, 90)),
-        ("B", (90, 150, 230)),
-    ];
-    let mut rows = Vec::with_capacity(3);
-    for (i, (label, color)) in CH.iter().enumerate() {
-        let dv = drag_value(commands, &fonts.ui, label, *color, init[i], 0.01);
-        commands.entity(dv).insert(DragRange { min: 0.0, max: 1.0 });
-        bind_2way(
-            commands,
-            dv,
-            move |w| match get_fn(w, entity) {
-                Some(FieldValue::Color(c)) => c[i],
-                _ => 0.0,
-            },
-            move |w, v: &f32| {
-                if let Some(FieldValue::Color(mut c)) = get_fn(w, entity) {
-                    c[i] = v.clamp(0.0, 1.0);
-                    set_fn(w, entity, FieldValue::Color(c));
-                }
-            },
-        );
-        rows.push(dv);
-    }
+    let _ = fonts;
+    // Seed the picker's HSV from the field's RGB (bind_hsv_picker re-syncs anyway).
+    let hsva = bevy::color::Hsva::from(bevy::color::Srgba::new(init[0], init[1], init[2], 1.0));
+    let picker = hsv_picker(commands, hsva.hue / 360.0, hsva.saturation, hsva.value);
+    bind_hsv_picker(
+        commands,
+        picker,
+        move |w| match get_fn(w, entity) {
+            Some(FieldValue::Color(c)) => c,
+            _ => [0.0; 3],
+        },
+        move |w, rgb: [f32; 3]| set_fn(w, entity, FieldValue::Color(rgb)),
+    );
     let panel = commands
         .spawn((
             Node {
@@ -782,9 +772,7 @@ fn build_color_editor(
                 top: Val::Percent(100.0),
                 left: Val::Px(0.0),
                 margin: UiRect::top(Val::Px(2.0)),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::all(Val::Px(4.0)),
+                padding: UiRect::all(Val::Px(6.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 display: Display::None,
@@ -797,7 +785,7 @@ fn build_color_editor(
             Name::new("color-panel"),
         ))
         .id();
-    commands.entity(panel).add_children(&rows);
+    commands.entity(panel).add_child(picker);
 
     let swatch = commands
         .spawn((
