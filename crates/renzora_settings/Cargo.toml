@@ -10,6 +10,9 @@ bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# bevy_ui-native settings overlay (the egui → bevy_ui migration target).
+renzora_ember = { path = "../renzora_ember" }
+renzora_hui = { path = "../renzora_hui" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_viewport = { path = "../renzora_viewport" }
 renzora_splash = { path = "../renzora_splash" }

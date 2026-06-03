@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::reactive::Bound;
 use crate::theme::{rgb, TAB_ACTIVE_BG, TAB_HOVER_BG, TEXT_MUTED, TEXT_PRIMARY};
 
 #[derive(Component)]
@@ -110,13 +111,18 @@ pub fn dropdown(
         rows.push(row);
     }
     commands.entity(menu).add_children(&rows);
-    commands.entity(box_e).insert(EmberDropdown {
-        selected: sel,
-        open: false,
-        menu,
-        label,
-        options: options.iter().map(|s| s.to_string()).collect(),
-    });
+    commands.entity(box_e).insert((
+        EmberDropdown {
+            selected: sel,
+            open: false,
+            menu,
+            label,
+            options: options.iter().map(|s| s.to_string()).collect(),
+        },
+        // Carry the selection as `Bound<usize>` so `bind_2way` can drive it both
+        // ways (read the model on select, push external changes to the label).
+        Bound::<usize>(sel),
+    ));
     commands.entity(box_e).add_children(&[label, caret, menu]);
     box_e
 }
@@ -142,7 +148,7 @@ pub(crate) fn dropdown_toggle(
 
 pub(crate) fn dropdown_select(
     options: Query<(&Interaction, &EmberDropdownOption), Changed<Interaction>>,
-    mut dropdowns: Query<&mut EmberDropdown>,
+    mut dropdowns: Query<(&mut EmberDropdown, &mut Bound<usize>)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
@@ -150,9 +156,12 @@ pub(crate) fn dropdown_select(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        if let Ok(mut dd) = dropdowns.get_mut(opt.dropdown) {
+        if let Ok((mut dd, mut bound)) = dropdowns.get_mut(opt.dropdown) {
             dd.selected = opt.value;
             dd.open = false;
+            if bound.0 != opt.value {
+                bound.0 = opt.value;
+            }
             let (menu, label) = (dd.menu, dd.label);
             let text = dd.options.get(opt.value).cloned().unwrap_or_default();
             if let Ok(mut n) = nodes.get_mut(menu) {
@@ -161,6 +170,25 @@ pub(crate) fn dropdown_select(
             if let Ok(mut t) = texts.get_mut(label) {
                 *t = Text::new(text);
             }
+        }
+    }
+}
+
+/// Model (`Bound<usize>`) → selection + label, when the value changes externally
+/// (e.g. `bind_2way` syncing from a resource). Keeps the dropdown in sync when
+/// state is edited elsewhere.
+pub(crate) fn dropdown_apply(
+    mut dropdowns: Query<(&mut EmberDropdown, &Bound<usize>), Changed<Bound<usize>>>,
+    mut texts: Query<&mut Text>,
+) {
+    for (mut dd, bound) in &mut dropdowns {
+        if dd.selected == bound.0 {
+            continue;
+        }
+        dd.selected = bound.0;
+        let (label, text) = (dd.label, dd.options.get(bound.0).cloned().unwrap_or_default());
+        if let Ok(mut t) = texts.get_mut(label) {
+            *t = Text::new(text);
         }
     }
 }

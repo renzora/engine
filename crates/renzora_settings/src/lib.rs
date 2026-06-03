@@ -25,6 +25,8 @@ use renzora_keybindings::{bindable_keys, EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
 
+mod native;
+
 const LABEL_WIDTH: f32 = 100.0;
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
@@ -37,9 +39,14 @@ impl Plugin for SettingsPlugin {
         info!("[editor] SettingsPlugin");
         app.add_systems(
             EguiPrimaryContextPass,
-            settings_overlay_system.run_if(in_state(renzora_editor::SplashState::Editor)),
+            settings_overlay_system
+                .run_if(in_state(renzora_editor::SplashState::Editor))
+                // Only the legacy egui editor draws the egui overlay; under the
+                // bevy_ui backend the native overlay (see `native`) takes over.
+                .run_if(renzora::editor_backend_is_egui),
         );
         app.register_status_item(RendererStatusItem);
+        native::build(app);
     }
 }
 

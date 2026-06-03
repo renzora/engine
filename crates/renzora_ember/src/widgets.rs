@@ -214,6 +214,7 @@ impl Plugin for WidgetsPlugin {
                     stepper::stepper_interact,
                     dropdown::dropdown_toggle,
                     dropdown::dropdown_select,
+                    dropdown::dropdown_apply,
                     dropdown::dropdown_option_hover,
                     text_input::text_input_focus,
                     text_input::text_input_type,

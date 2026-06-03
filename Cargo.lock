@@ -10700,6 +10700,8 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
+ "renzora_hui",
  "renzora_input",
  "renzora_keybindings",
  "renzora_splash",
