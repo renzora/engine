@@ -509,7 +509,11 @@ fn cas_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        fields: vec![
+            renzora_editor::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
+            renzora_editor::bool_field!("Denoise", CasSettings, denoise),
+        ],
         custom_ui_fn: Some(cas_custom_ui),
     }
 }

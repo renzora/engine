@@ -55,7 +55,7 @@ feature-alignment approaches were dead ends).
 |---|---|---|---|
 | **Core** | Hierarchy | ✅ | |
 | | History | ✅ | |
-| | Inspector | ⬜ | **big**; per-component reflectors → registry rework (§5) |
+| | Inspector | 🟡 | native panel: declarative `fields` render+edit (Float/Vec3/Bool→pill/Color/Enum), category-colored headers, enable/remove/lock/add. `custom_ui_fn` effects migrate by adding `fields` (float_field!/bool_field!/enum_u32_field! macros) — done: auto-exposure, atmosphere, dof, CAS; remaining ~5 effects are the same |
 | | Scenes | ⬜ | |
 | | Level Presets | ⬜ | |
 | **Assets** | Asset Browser | ✅ | grid, thumbnails, tree, ops, context menu, drag |
@@ -214,8 +214,17 @@ can contribute panels/drawers without egui. Designing this once unblocks:
 - any future plugin-contributed editor UI.
 
 Open decision: a build-closure contract (`fn(&mut Commands,&EmberFonts)->Entity`
-rebuilt on state change) vs. a retained system-driven contract. Until this lands,
-A6b and the Inspector stay blocked.
+rebuilt on state change) vs. a retained system-driven contract.
+
+**Inspector resolution (done):** rather than a bevy_ui *drawer* contract, the
+inspector uses the **declarative `fields`** the registry already supports — a
+component lists `FieldDef`s (FieldType + get/set fn-pointers) and BOTH backends
+render them; `custom_ui_fn` is the egui-only legacy escape hatch. Migrating a
+`custom_ui_fn` effect = add `fields` (one line each via `float_field!` /
+`bool_field!` / `enum_u32_field!` in renzora_editor). This sidesteps the drawer
+contract for anything expressible as fields (which is most effects). The viewport
+A6b mode/tool drawers are genuinely imperative (brush settings etc.) and still
+want the build-closure contract.
 
 ---
 
