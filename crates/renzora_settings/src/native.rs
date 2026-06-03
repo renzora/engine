@@ -23,7 +23,10 @@ use renzora_ember::reactive::bind_2way;
 use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{drag_value, dropdown, scroll_view_bar, toggle_switch, DragRange};
 use renzora_hui::cursor_icon::HoverCursor;
+use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
+
+use bevy_egui::egui::Color32;
 
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
@@ -66,6 +69,9 @@ struct SettingsSection {
     open: bool,
 }
 
+#[derive(Component)]
+struct ThemeSaveBtn;
+
 // ── Plugin wiring ────────────────────────────────────────────────────────────
 
 pub(crate) fn build(app: &mut App) {
@@ -77,6 +83,7 @@ pub(crate) fn build(app: &mut App) {
             settings_tab_click,
             settings_close_click,
             settings_section_toggle,
+            theme_save_click,
         )
             .run_if(in_state(renzora_editor::SplashState::Editor)),
     );
@@ -138,11 +145,15 @@ fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
         .get_resource::<CustomFonts>()
         .map(|c| c.names.clone())
         .unwrap_or_default();
+    let themes = world
+        .get_resource::<ThemeManager>()
+        .map(|tm| tm.available_themes.clone())
+        .unwrap_or_default();
 
     let mut queue = bevy::ecs::world::CommandQueue::default();
     let root = {
         let mut commands = Commands::new(&mut queue, world);
-        spawn_overlay(&mut commands, &fonts, tab, &settings, &viewport, &custom)
+        spawn_overlay(&mut commands, &fonts, tab, &settings, &viewport, &custom, &themes)
     };
     queue.apply(world);
     Some(root)
@@ -158,6 +169,7 @@ fn spawn_overlay(
     settings: &EditorSettings,
     viewport: &ViewportSettings,
     custom: &[String],
+    themes: &[String],
 ) -> Entity {
     // Full-screen scrim: blocks clicks behind the modal + dims slightly.
     let root = commands
@@ -205,7 +217,7 @@ fn spawn_overlay(
     commands.entity(root).add_child(panel);
 
     let title = build_title_bar(commands, fonts);
-    let body = build_body(commands, fonts, tab, settings, viewport, custom);
+    let body = build_body(commands, fonts, tab, settings, viewport, custom, themes);
     commands.entity(panel).add_children(&[title, body]);
     root
 }
@@ -263,6 +275,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bar
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_body(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -270,10 +283,11 @@ fn build_body(
     settings: &EditorSettings,
     viewport: &ViewportSettings,
     custom: &[String],
+    themes: &[String],
 ) -> Entity {
     let sidebar = build_sidebar(commands, fonts, tab);
 
-    let content_col = build_tab_content(commands, fonts, tab, settings, viewport, custom);
+    let content_col = build_tab_content(commands, fonts, tab, settings, viewport, custom, themes);
     let scroller = scroll_view_bar(commands, content_col);
 
     let content_pane = commands
@@ -589,6 +603,7 @@ where
 
 // ── Tab content dispatch ─────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn build_tab_content(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -596,6 +611,7 @@ fn build_tab_content(
     settings: &EditorSettings,
     viewport: &ViewportSettings,
     custom: &[String],
+    themes: &[String],
 ) -> Entity {
     let col = commands
         .spawn((
@@ -614,9 +630,11 @@ fn build_tab_content(
         SettingsTab::Viewport => tab_viewport(commands, fonts, col, viewport),
         SettingsTab::Scripting => tab_scripting(commands, fonts, col),
         SettingsTab::Assets => tab_assets(commands, fonts, col),
+        SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
         // Not yet migrated to bevy_ui — placeholder so the overlay still works.
-        SettingsTab::Project | SettingsTab::Input | SettingsTab::Shortcuts | SettingsTab::Theme
-        | SettingsTab::Plugins => placeholder(commands, fonts, col),
+        SettingsTab::Project | SettingsTab::Input | SettingsTab::Shortcuts | SettingsTab::Plugins => {
+            placeholder(commands, fonts, col)
+        }
     }
     col
 }
@@ -1023,6 +1041,152 @@ fn tab_assets(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
         |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
     );
     settings_row(commands, fonts, body, 0, "Drop Import", t);
+}
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+
+const A_VIOLET: (u8, u8, u8) = (180, 130, 230);
+
+fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &[String]) {
+    let (sec, body) = section(commands, fonts, "palette", "Active Theme", A_VIOLET);
+    commands.entity(col).add_child(sec);
+
+    let opts: Vec<&str> = themes.iter().map(|s| s.as_str()).collect();
+    let th1 = themes.to_vec();
+    let th2 = themes.to_vec();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &opts,
+        0,
+        move |w| {
+            let name = &w.resource::<ThemeManager>().active_theme_name;
+            th1.iter().position(|n| n == name).unwrap_or(0)
+        },
+        move |w, &i| {
+            if let Some(name) = th2.get(i).cloned() {
+                w.resource_mut::<ThemeManager>().load_theme(&name);
+            }
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Theme", dd);
+
+    // Save button row.
+    let save_lbl = commands
+        .spawn((
+            Text::new("Save"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+        ))
+        .id();
+    let save = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(5.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((50, 50, 62))),
+            Interaction::default(),
+            ThemeSaveBtn,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("theme-save"),
+        ))
+        .id();
+    commands.entity(save).add_child(save_lbl);
+    settings_row(commands, fonts, body, 1, "", save);
+
+    // Color-editing sections.
+    let (sec, body) = section(commands, fonts, "palette", "Semantic Colors", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Accent", |t| t.semantic.accent, |t, c| t.semantic.accent = c);
+    theme_color_row(commands, fonts, body, 1, "Success", |t| t.semantic.success, |t, c| t.semantic.success = c);
+    theme_color_row(commands, fonts, body, 2, "Warning", |t| t.semantic.warning, |t, c| t.semantic.warning = c);
+    theme_color_row(commands, fonts, body, 3, "Error", |t| t.semantic.error, |t, c| t.semantic.error = c);
+    theme_color_row(commands, fonts, body, 4, "Selection", |t| t.semantic.selection, |t, c| t.semantic.selection = c);
+    theme_color_row(commands, fonts, body, 5, "Sel. Stroke", |t| t.semantic.selection_stroke, |t, c| t.semantic.selection_stroke = c);
+
+    let (sec, body) = section(commands, fonts, "palette", "Surfaces", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Window", |t| t.surfaces.window, |t, c| t.surfaces.window = c);
+    theme_color_row(commands, fonts, body, 1, "Window Stroke", |t| t.surfaces.window_stroke, |t, c| t.surfaces.window_stroke = c);
+    theme_color_row(commands, fonts, body, 2, "Panel", |t| t.surfaces.panel, |t, c| t.surfaces.panel = c);
+    theme_color_row(commands, fonts, body, 3, "Popup", |t| t.surfaces.popup, |t, c| t.surfaces.popup = c);
+    theme_color_row(commands, fonts, body, 4, "Faint", |t| t.surfaces.faint, |t, c| t.surfaces.faint = c);
+    theme_color_row(commands, fonts, body, 5, "Extreme", |t| t.surfaces.extreme, |t, c| t.surfaces.extreme = c);
+
+    let (sec, body) = section(commands, fonts, "palette", "Text", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Primary", |t| t.text.primary, |t, c| t.text.primary = c);
+    theme_color_row(commands, fonts, body, 1, "Secondary", |t| t.text.secondary, |t, c| t.text.secondary = c);
+    theme_color_row(commands, fonts, body, 2, "Muted", |t| t.text.muted, |t, c| t.text.muted = c);
+    theme_color_row(commands, fonts, body, 3, "Heading", |t| t.text.heading, |t, c| t.text.heading = c);
+    theme_color_row(commands, fonts, body, 4, "Disabled", |t| t.text.disabled, |t, c| t.text.disabled = c);
+    theme_color_row(commands, fonts, body, 5, "Hyperlink", |t| t.text.hyperlink, |t, c| t.text.hyperlink = c);
+
+    let (sec, body) = section(commands, fonts, "palette", "Widgets", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Inactive BG", |t| t.widgets.inactive_bg, |t, c| t.widgets.inactive_bg = c);
+    theme_color_row(commands, fonts, body, 1, "Inactive FG", |t| t.widgets.inactive_fg, |t, c| t.widgets.inactive_fg = c);
+    theme_color_row(commands, fonts, body, 2, "Hovered BG", |t| t.widgets.hovered_bg, |t, c| t.widgets.hovered_bg = c);
+    theme_color_row(commands, fonts, body, 3, "Hovered FG", |t| t.widgets.hovered_fg, |t, c| t.widgets.hovered_fg = c);
+    theme_color_row(commands, fonts, body, 4, "Active BG", |t| t.widgets.active_bg, |t, c| t.widgets.active_bg = c);
+    theme_color_row(commands, fonts, body, 5, "Active FG", |t| t.widgets.active_fg, |t, c| t.widgets.active_fg = c);
+    theme_color_row(commands, fonts, body, 6, "Border", |t| t.widgets.border, |t, c| t.widgets.border = c);
+
+    let (sec, body) = section(commands, fonts, "palette", "Panels", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Tree Line", |t| t.panels.tree_line, |t, c| t.panels.tree_line = c);
+    theme_color_row(commands, fonts, body, 1, "Drop Line", |t| t.panels.drop_line, |t, c| t.panels.drop_line = c);
+    theme_color_row(commands, fonts, body, 2, "Tab Active", |t| t.panels.tab_active, |t, c| t.panels.tab_active = c);
+    theme_color_row(commands, fonts, body, 3, "Tab Inactive", |t| t.panels.tab_inactive, |t, c| t.panels.tab_inactive = c);
+}
+
+/// A theme color row: a swatch/picker two-way bound to one `Theme` color,
+/// updating the live `ThemeManager.active_theme` (+ `mark_modified`) on edit.
+fn theme_color_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    body: Entity,
+    idx: usize,
+    label: &str,
+    get: fn(&Theme) -> ThemeColor,
+    set: fn(&mut Theme, ThemeColor),
+) {
+    let cf = color_field(
+        commands,
+        move |w| {
+            let [r, g, b, _] = get(&w.resource::<ThemeManager>().active_theme).0.to_array();
+            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+        },
+        move |w, rgb| {
+            let mut tm = w.resource_mut::<ThemeManager>();
+            let a = get(&tm.active_theme).0.to_array()[3];
+            let col = Color32::from_rgba_unmultiplied(
+                (rgb[0] * 255.0).round() as u8,
+                (rgb[1] * 255.0).round() as u8,
+                (rgb[2] * 255.0).round() as u8,
+                a,
+            );
+            set(&mut tm.active_theme, ThemeColor(col));
+            tm.mark_modified();
+        },
+    );
+    settings_row(commands, fonts, body, idx, label, cf);
+}
+
+fn theme_save_click(
+    btns: Query<&Interaction, (Changed<Interaction>, With<ThemeSaveBtn>)>,
+    mut tm: ResMut<ThemeManager>,
+) {
+    for interaction in &btns {
+        if *interaction == Interaction::Pressed {
+            let name = tm.active_theme_name.clone();
+            tm.save_theme(&name);
+        }
+    }
 }
 
 // ── Interaction systems ──────────────────────────────────────────────────────
