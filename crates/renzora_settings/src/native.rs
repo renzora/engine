@@ -23,7 +23,7 @@ use renzora_editor::{
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, scroll_view_bar, text_input, toggle_switch, DragRange,
 };
@@ -56,6 +56,10 @@ struct NativeSettingsState {
     /// Set by dynamic tabs (Input) to force a rebuild after a structural change
     /// (add/remove action, expand a row, enter listen mode).
     dirty: bool,
+    /// Active theme name at last build — the overlay rebuilds on a theme switch
+    /// so it re-spawns with the new palette (it's a separate root from the chrome
+    /// and wouldn't otherwise pick up the change while open).
+    built_theme: Option<String>,
 }
 
 /// Transient UI state for the Input tab (which action is expanded, whether a
@@ -177,9 +181,15 @@ fn manage_native_settings(world: &mut World) {
         .map(|s| (s.show_settings, s.settings_tab))
         .unwrap_or((false, SettingsTab::default()));
     let open = backend_bevy && show;
+    let theme_name = world
+        .get_resource::<ThemeManager>()
+        .map(|t| t.active_theme_name.clone());
 
     let st = world.resource::<NativeSettingsState>();
-    let (root, built, dirty) = (st.root, st.built_tab, st.dirty);
+    // Rebuild when the active theme switches so the overlay re-spawns with the
+    // new palette (it's a separate root from the chrome).
+    let theme_changed = st.built_theme != theme_name;
+    let (root, built, dirty) = (st.root, st.built_tab, st.dirty || theme_changed);
 
     if !open {
         if let Some(r) = root {
@@ -213,6 +223,7 @@ fn manage_native_settings(world: &mut World) {
     st.root = Some(new_root);
     st.built_tab = Some(tab);
     st.dirty = false;
+    st.built_theme = theme_name;
 }
 
 fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
@@ -356,7 +367,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("Settings"),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 flex_grow: 1.0,
                 ..default()
@@ -373,7 +384,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((38, 38, 46))),
+            BackgroundColor(rgb(section_bg())),
             Interaction::default(),
             FocusPolicy::Block,
             NativeSettingsClose,
@@ -381,7 +392,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("settings-close"),
         ))
         .id();
-    let x = icon_text(commands, &fonts.phosphor, "x", TEXT_MUTED, 13.0);
+    let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
     commands.entity(close).add_child(x);
 
     let bar = commands
@@ -396,7 +407,7 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
+            BackgroundColor(rgb(header_bg())),
             Name::new("settings-titlebar"),
         ))
         .id();
@@ -433,7 +444,7 @@ fn build_body(
                 padding: UiRect::axes(Val::Px(10.0), Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(rgb(PANEL_BG)),
+            BackgroundColor(rgb(panel_bg())),
             Name::new("settings-content"),
         ))
         .id();
@@ -499,8 +510,8 @@ fn sidebar_tab(
     tab: SettingsTab,
     active: bool,
 ) -> Entity {
-    let icon_color = if active { ACCENT_BLUE } else { TEXT_MUTED };
-    let txt_color = if active { TEXT_PRIMARY } else { TEXT_MUTED };
+    let icon_color = if active { accent() } else { text_muted() };
+    let txt_color = if active { text_primary() } else { text_muted() };
     let ico = icon_text(commands, &fonts.phosphor, icon, icon_color, 14.0);
     let lbl = commands
         .spawn((
@@ -522,7 +533,7 @@ fn sidebar_tab(
                 ..default()
             },
             BackgroundColor(if active {
-                rgb((50, 50, 62))
+                rgb(tab_active())
             } else {
                 Color::NONE
             }),
@@ -562,13 +573,13 @@ fn section(
             Name::new("section-body"),
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", TEXT_MUTED, 12.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 12.0);
     let ico = icon_text(commands, &fonts.phosphor, icon, accent, 14.0);
     let heading = commands
         .spawn((
             Text::new(title),
             ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let header = commands
@@ -624,7 +635,7 @@ fn settings_row(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             TextLayout::new_with_no_wrap(),
         ))
         .id();
@@ -781,7 +792,7 @@ fn placeholder(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
         .spawn((
             Text::new("This tab is being migrated to bevy_ui."),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::all(Val::Px(12.0)),
                 ..default()
@@ -811,7 +822,7 @@ fn tab_project(
             .spawn((
                 Text::new("No project is currently loaded."),
                 ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(TEXT_MUTED)),
+                TextColor(rgb(text_muted())),
                 Node {
                     margin: UiRect::all(Val::Px(12.0)),
                     ..default()
@@ -1514,7 +1525,7 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
         .spawn((
             Text::new("Save"),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let save = commands
@@ -1526,7 +1537,7 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((50, 50, 62))),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             ThemeSaveBtn,
             HoverCursor(SystemCursorIcon::Pointer),
@@ -1664,7 +1675,7 @@ fn text_button<M: Component>(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let btn = commands
@@ -1752,7 +1763,7 @@ fn build_action_row(
         commands,
         &fonts.phosphor,
         if expanded { "caret-down" } else { "caret-right" },
-        TEXT_MUTED,
+        text_muted(),
         12.0,
     );
     commands
@@ -1762,7 +1773,7 @@ fn build_action_row(
         .spawn((
             Text::new(action.name.clone()),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 flex_grow: 1.0,
                 ..default()
@@ -1775,10 +1786,10 @@ fn build_action_row(
         .spawn((
             Text::new(kind_label(action.kind)),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
-    let del = icon_text(commands, &fonts.phosphor, "trash", TEXT_MUTED, 13.0);
+    let del = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 13.0);
     commands.entity(del).insert((
         Interaction::default(),
         FocusPolicy::Block,
@@ -1863,7 +1874,7 @@ fn build_action_row(
                 },
             ))
             .id();
-        let rm = icon_text(commands, &fonts.phosphor, "trash", TEXT_MUTED, 12.0);
+        let rm = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 12.0);
         commands.entity(rm).insert((
             Interaction::default(),
             FocusPolicy::Block,
@@ -2133,7 +2144,7 @@ fn tab_shortcuts(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
         .spawn((
             Text::new("Reset All to Defaults"),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let reset = commands
@@ -2164,7 +2175,7 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     bind_text(commands, lbl, move |w| {
@@ -2182,9 +2193,9 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
         if kb.rebinding == Some(action) {
             rgb((230, 180, 60))
         } else if kb.get(action).is_some() {
-            rgb(ACCENT_BLUE)
+            rgb(accent())
         } else {
-            rgb(TEXT_MUTED)
+            rgb(text_muted())
         }
     });
     let btn = commands
@@ -2195,7 +2206,7 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((40, 40, 50))),
+            BackgroundColor(rgb(section_bg())),
             Interaction::default(),
             RebindBtn(action),
             HoverCursor(SystemCursorIcon::Pointer),
