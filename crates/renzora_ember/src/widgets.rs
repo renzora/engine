@@ -19,6 +19,7 @@ mod slider;
 mod stepper;
 mod text_input;
 mod toggle;
+mod toggle_switch;
 
 // Inspector value editors.
 mod asset_slot;
@@ -115,6 +116,7 @@ pub use slider::*;
 pub use stepper::*;
 pub use text_input::*;
 pub use toggle::*;
+pub use toggle_switch::*;
 
 pub use asset_slot::*;
 pub use color_picker::*;
@@ -213,6 +215,8 @@ impl Plugin for WidgetsPlugin {
                 (
                     drag_value::drag_value_drag,
                     drag_value::drag_value_apply,
+                    toggle_switch::switch_interact,
+                    toggle_switch::switch_apply,
                     color_picker::color_picker_sync,
                     knob::knob_drag,
                     fader::fader_drag,
