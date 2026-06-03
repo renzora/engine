@@ -187,7 +187,33 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        fields: vec![
+            renzora_editor::FieldDef {
+                name: "Rendering",
+                field_type: renzora_editor::FieldType::Enum {
+                    options: &["Lookup Texture", "Raymarched"],
+                },
+                get_fn: |w, e| {
+                    w.get::<AtmosphereComponentSettings>(e).map(|s| {
+                        renzora_editor::FieldValue::Enum(
+                            if s.mode == 1 { "Raymarched" } else { "Lookup Texture" }.to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) =
+                        (v, w.get_mut::<AtmosphereComponentSettings>(e))
+                    {
+                        s.mode = if label == "Raymarched" { 1 } else { 0 };
+                    }
+                },
+            },
+            renzora_editor::float_field!("Bottom Radius", AtmosphereComponentSettings, bottom_radius, 1000.0, 0.0, 100_000_000.0),
+            renzora_editor::float_field!("Top Radius", AtmosphereComponentSettings, top_radius, 1000.0, 0.0, 100_000_000.0),
+            renzora_editor::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
+            renzora_editor::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
+        ],
         custom_ui_fn: Some(atmosphere_custom_ui),
     }
 }
