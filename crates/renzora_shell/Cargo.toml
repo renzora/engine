@@ -15,6 +15,8 @@ renzora_editor = { path = "../renzora_editor" }
 # Phosphor icon system (`Icon` component + `apply_icons`) — same icons the egui
 # editor uses, rendered into bevy_ui. HuiPlugin runs the resolver globally.
 renzora_hui = { path = "../renzora_hui" }
+# Theme source: maps the active ThemeManager theme into ember's runtime palette.
+renzora_theme = { path = "../renzora_theme" }
 
 [lints]
 workspace = true

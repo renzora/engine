@@ -18,8 +18,8 @@ use bevy::prelude::*;
 
 use crate::font::{glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::{
-    rgb, ACCENT_BLUE, CLOSE_RED, DIVIDER, HEADER_BG, PANEL_BG, TAB_ACTIVE_BG, TAB_HOVER_BG,
-    TEXT_MUTED, TEXT_PRIMARY,
+    accent, close_red, divider, header_bg, panel_bg, rgb, tab_active, tab_hover as tab_hover_color,
+    text_muted, text_primary,
 };
 
 // ── Model ────────────────────────────────────────────────────────────────────
@@ -832,7 +832,7 @@ fn spawn_ghost(commands: &mut Commands, font: &Handle<Font>, id: &str, cursor: V
                 padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             bevy::ui::GlobalZIndex(1000),
             bevy::ui::FocusPolicy::Pass,
             TabGhost,
@@ -840,12 +840,12 @@ fn spawn_ghost(commands: &mut Commands, font: &Handle<Font>, id: &str, cursor: V
             Name::new("tab-ghost"),
         ))
         .id();
-    let gi = glyph(commands, icon, TEXT_PRIMARY, 13.0);
+    let gi = glyph(commands, icon, text_primary(), 13.0);
     let gl = commands
         .spawn((
             Text::new(title),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(ghost).add_children(&[gi, gl]);
@@ -980,7 +980,7 @@ fn apply_tab_switch(
         if tab.leaf != leaf {
             continue;
         }
-        let fg = rgb(if tab.id == id { TEXT_PRIMARY } else { TEXT_MUTED });
+        let fg = rgb(if tab.id == id { text_primary() } else { text_muted() });
         if let Ok(mut c) = colors.get_mut(tab.label) {
             c.0 = fg;
         }
@@ -998,9 +998,9 @@ fn apply_tab_switch(
 fn tab_hover(dock: Res<Dock>, mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>) {
     for (interaction, tab, mut bg) in &mut tabs {
         let target = if dock.tree.is_active_tab(&tab.id) {
-            rgb(TAB_ACTIVE_BG)
+            rgb(tab_active())
         } else if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
-            rgb(TAB_HOVER_BG)
+            rgb(tab_hover_color())
         } else {
             Color::NONE
         };
@@ -1015,7 +1015,7 @@ fn tab_close_hover(
     mut closes: Query<(&bevy::ui::RelativeCursorPosition, &mut TextColor), With<TabClose>>,
 ) {
     for (rcp, mut color) in &mut closes {
-        let target = rgb(if rcp.cursor_over { CLOSE_RED } else { TEXT_MUTED });
+        let target = rgb(if rcp.cursor_over { close_red() } else { text_muted() });
         if color.0 != target {
             color.0 = target;
         }
@@ -1124,7 +1124,7 @@ fn build_tree(
                 dv.width = Val::Percent(100.0);
             }
             let divider = commands
-                .spawn((dv, BackgroundColor(rgb(DIVIDER)), Name::new("divider")))
+                .spawn((dv, BackgroundColor(rgb(divider())), Name::new("divider")))
                 .id();
 
             let mut wb = Node {
@@ -1228,7 +1228,7 @@ fn build_tree(
                         border_radius: BorderRadius::all(Val::Px(6.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb(TAB_ACTIVE_BG)),
+                    BackgroundColor(rgb(tab_active())),
                     BorderColor::all(rgb((60, 60, 74))),
                     Interaction::default(),
                     renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -1239,12 +1239,12 @@ fn build_tree(
                     Name::new("empty-add-panel"),
                 ))
                 .id();
-            let ic = icon_text(commands, phosphor, "plus", TEXT_MUTED, 14.0);
+            let ic = icon_text(commands, phosphor, "plus", text_muted(), 14.0);
             let t = commands
                 .spawn((
                     Text::new("Add Panel"),
                     ui_font(font, 13.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ))
                 .id();
             commands.entity(btn).add_children(&[ic, t]);
@@ -1277,7 +1277,7 @@ fn build_leaf(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb(PANEL_BG)),
+            BackgroundColor(rgb(panel_bg())),
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("leaf"),
         ))
@@ -1382,8 +1382,8 @@ fn populate_leaf(
                 border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
-            BorderColor::all(rgb(DIVIDER)),
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(divider())),
             // Subtle drop shadow so the header reads as lifted above the content.
             BoxShadow::new(
                 Color::srgba(0.0, 0.0, 0.0, 0.30),
@@ -1401,7 +1401,7 @@ fn populate_leaf(
     let mut bar_kids: Vec<Entity> = Vec::new();
     for (i, id) in tabs.iter().enumerate() {
         let is_active = i == active;
-        let fg = if is_active { TEXT_PRIMARY } else { TEXT_MUTED };
+        let fg = if is_active { text_primary() } else { text_muted() };
         let (title, icon) = tab_meta(id);
         let tab = commands
             .spawn((
@@ -1418,7 +1418,7 @@ fn populate_leaf(
                     ..default()
                 },
                 BackgroundColor(if is_active {
-                    rgb(TAB_ACTIVE_BG)
+                    rgb(tab_active())
                 } else {
                     Color::NONE
                 }),
@@ -1437,7 +1437,7 @@ fn populate_leaf(
                 bevy::text::TextLayout::new_with_no_wrap(),
             ))
             .id();
-        let close = icon_text(commands, phosphor, "x", TEXT_MUTED, 11.0);
+        let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);
         commands.entity(close).insert((
             TabClose,
             bevy::ui::RelativeCursorPosition::default(),
@@ -1455,7 +1455,7 @@ fn populate_leaf(
                     display: Display::None,
                     ..default()
                 },
-                BackgroundColor(rgb(ACCENT_BLUE)),
+                BackgroundColor(rgb(accent())),
                 bevy::ui::FocusPolicy::Pass,
                 InsertMarker,
                 Name::new("insert-marker"),
@@ -1473,7 +1473,7 @@ fn populate_leaf(
             .add_children(&[tab_icon, tab_label, close, marker]);
         bar_kids.push(tab);
     }
-    let add_btn = icon_text(commands, phosphor, "plus", TEXT_MUTED, 13.0);
+    let add_btn = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
     commands.entity(add_btn).insert((
         Interaction::default(),
         renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -1548,7 +1548,7 @@ fn populate_leaf(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            BorderColor::all(rgb(ACCENT_BLUE)),
+            BorderColor::all(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             DropOverlay,
             Name::new("drop-overlay"),

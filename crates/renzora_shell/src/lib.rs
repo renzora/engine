@@ -16,8 +16,8 @@ use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, ui_font, EmberFonts};
 use renzora_ember::theme::{
-    rgb, ACCENT_BLUE, DIVIDER, HEADER_BG, PLACEHOLDER, PLAY_GREEN, TAB_ACTIVE_BG, TEXT_MUTED,
-    TEXT_PRIMARY, WINDOW_BG,
+    accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
+    window_bg,
 };
 use renzora_ember::EmberPlugin;
 
@@ -51,8 +51,63 @@ impl Plugin for ShellPlugin {
                 content_dispatch,
                 top_menu_open,
                 settings_btn_click,
+                theme_bridge,
             ),
         );
+    }
+}
+
+/// Map the active `ThemeManager` theme into ember's runtime palette, and rebuild
+/// the chrome when the active theme *changes* (a switch) so widgets re-spawn with
+/// the new colors. Individual color edits update the palette but don't rebuild
+/// (that would close the Theme tab's color picker every frame).
+fn theme_bridge(
+    tm: Option<Res<renzora_theme::ThemeManager>>,
+    backend: Res<EditorUiBackend>,
+    mut last_name: Local<String>,
+    mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
+    roots: Query<Entity, With<ShellRoot>>,
+    mut dirty: ResMut<DockDirty>,
+    mut commands: Commands,
+) {
+    let Some(tm) = tm else { return };
+    let pal = palette_from_theme(&tm.active_theme);
+    if last_pal.as_ref() != Some(&pal) {
+        renzora_ember::theme::set_palette(pal);
+        *last_pal = Some(pal);
+    }
+    if last_name.is_empty() {
+        *last_name = tm.active_theme_name.clone();
+    } else if *last_name != tm.active_theme_name {
+        *last_name = tm.active_theme_name.clone();
+        if backend.is_bevy_ui() {
+            for e in &roots {
+                commands.entity(e).despawn();
+            }
+            dirty.0 = true;
+        }
+    }
+}
+
+fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette {
+    fn tc(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
+        let [r, g, b, _] = c.0.to_array();
+        (r, g, b)
+    }
+    renzora_ember::theme::Palette {
+        window_bg: tc(&t.surfaces.window),
+        panel_bg: tc(&t.surfaces.panel),
+        header_bg: tc(&t.surfaces.extreme),
+        tab_active: tc(&t.panels.tab_active),
+        tab_hover: tc(&t.panels.tab_hover),
+        close_red: tc(&t.semantic.error),
+        divider: tc(&t.widgets.border),
+        text_primary: tc(&t.text.primary),
+        text_muted: tc(&t.text.muted),
+        placeholder: tc(&t.text.disabled),
+        play_green: tc(&t.semantic.success),
+        warn_amber: tc(&t.semantic.warning),
+        accent: tc(&t.semantic.accent),
     }
 }
 
@@ -255,7 +310,7 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
                 .spawn((
                     Text::new(renzora_ember::dock::humanize(id)),
                     ui_font(&fonts.ui, 13.0),
-                    TextColor(rgb(PLACEHOLDER)),
+                    TextColor(rgb(placeholder())),
                 ))
                 .id();
             commands.entity(container).add_child(text);
@@ -301,11 +356,11 @@ fn ribbon_switch(
     for item in &items {
         let is_active = item.index == index;
         if let Ok(mut c) = colors.get_mut(item.text) {
-            c.0 = rgb(if is_active { TEXT_PRIMARY } else { TEXT_MUTED });
+            c.0 = rgb(if is_active { text_primary() } else { text_muted() });
         }
         if let Ok(mut b) = backgrounds.get_mut(item.underline) {
             b.0 = if is_active {
-                rgb(ACCENT_BLUE)
+                rgb(accent())
             } else {
                 Color::NONE
             };
@@ -324,7 +379,7 @@ fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(rgb(WINDOW_BG)),
+            BackgroundColor(rgb(window_bg())),
             ShellRoot,
             renzora::HideInHierarchy,
             Name::new("Renzora Shell"),
@@ -378,7 +433,7 @@ fn build_status_bar(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(WINDOW_BG)),
+            BackgroundColor(rgb(window_bg())),
             Name::new("status-bar"),
         ))
         .id();
@@ -398,7 +453,7 @@ fn status_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
     use renzora::ShellStatusAlign;
     use std::hash::{Hash, Hasher};
 
-    let mut rows: Vec<StatusRow> = vec![StatusRow::Label("Ready".to_string(), TEXT_MUTED)];
+    let mut rows: Vec<StatusRow> = vec![StatusRow::Label("Ready".to_string(), text_muted())];
     if let Some(reg) = world.get_resource::<renzora::ShellStatusRegistry>() {
         let mut left: Vec<&renzora::ShellStatusItem> = reg
             .items
@@ -515,7 +570,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(WINDOW_BG)),
+            BackgroundColor(rgb(window_bg())),
             Name::new("top-bar"),
         ))
         .id();
@@ -530,7 +585,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     commands.entity(left).add_children(&left_kids);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
-    let mut center_kids = vec![glyph(commands, "magnifying-glass", TEXT_MUTED, 14.0)];
+    let mut center_kids = vec![glyph(commands, "magnifying-glass", text_muted(), 14.0)];
     for (i, label) in [
         "Scene",
         "Blueprints",
@@ -546,13 +601,13 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     {
         center_kids.push(ribbon_item(commands, font, label, i, i == 0));
     }
-    center_kids.push(text_item(commands, font, "+", TEXT_MUTED, 12.0));
+    center_kids.push(text_item(commands, font, "+", text_muted(), 12.0));
     commands.entity(center).add_children(&center_kids);
 
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
-    let play = icon_item(commands, "play", PLAY_GREEN, 16.0);
-    let code = icon_item(commands, "code", TEXT_MUTED, 16.0);
-    let settings = icon_item(commands, "gear", TEXT_MUTED, 16.0);
+    let play = icon_item(commands, "play", play_green(), 16.0);
+    let code = icon_item(commands, "code", text_muted(), 16.0);
+    let settings = icon_item(commands, "gear", text_muted(), 16.0);
     commands.entity(settings).insert((
         Interaction::default(),
         TopBarSettingsBtn,
@@ -570,12 +625,12 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             Name::new("account"),
         ))
         .id();
-    let user = glyph(commands, "user", TEXT_MUTED, 14.0);
+    let user = glyph(commands, "user", text_muted(), 14.0);
     let sign_in = commands
         .spawn((
             Text::new("Sign In"),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(account).add_children(&[user, sign_in]);
@@ -592,9 +647,9 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             Name::new("window-buttons"),
         ))
         .id();
-    let min = icon_item(commands, "minus", TEXT_MUTED, 14.0);
-    let max = icon_item(commands, "square", TEXT_MUTED, 13.0);
-    let close = icon_item(commands, "x", TEXT_MUTED, 14.0);
+    let min = icon_item(commands, "minus", text_muted(), 14.0);
+    let max = icon_item(commands, "square", text_muted(), 13.0);
+    let close = icon_item(commands, "x", text_muted(), 14.0);
     commands.entity(window).add_children(&[min, max, close]);
 
     commands
@@ -632,7 +687,7 @@ fn ribbon_item(
         .spawn((
             Text::new(label),
             ui_font(font, 12.0),
-            TextColor(rgb(if active { TEXT_PRIMARY } else { TEXT_MUTED })),
+            TextColor(rgb(if active { text_primary() } else { text_muted() })),
         ))
         .id();
     let text_wrap = commands
@@ -655,7 +710,7 @@ fn ribbon_item(
                 height: Val::Px(2.0),
                 ..default()
             },
-            BackgroundColor(if active { rgb(ACCENT_BLUE) } else { Color::NONE }),
+            BackgroundColor(if active { rgb(accent()) } else { Color::NONE }),
             Name::new("ribbon-underline"),
         ))
         .id();
@@ -684,8 +739,8 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
-            BorderColor::all(rgb(DIVIDER)),
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(divider())),
             Name::new("doc-tabs"),
         ))
         .id();
@@ -700,20 +755,20 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 border: UiRect::top(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
-            BorderColor::all(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(tab_active())),
+            BorderColor::all(rgb(accent())),
             Name::new("doc:sponza"),
         ))
         .id();
-    let ic = glyph(commands, "file", TEXT_PRIMARY, 13.0);
+    let ic = glyph(commands, "file", text_primary(), 13.0);
     let lbl = commands
         .spawn((
             Text::new("sponza"),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
-    let cl = glyph(commands, "x", TEXT_MUTED, 11.0);
+    let cl = glyph(commands, "x", text_muted(), 11.0);
     commands.entity(tab).add_children(&[ic, lbl, cl]);
 
     let plus = commands
@@ -725,11 +780,11 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Name::new("doc-add"),
         ))
         .id();
-    let plus_icon = glyph(commands, "plus", TEXT_MUTED, 13.0);
+    let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
     commands.entity(plus).add_child(plus_icon);
     commands.entity(bar).add_children(&[tab, plus]);
     bar
@@ -827,7 +882,7 @@ fn top_menu_item(
         p.spawn((
             Text::new(label),
             ui_font(font, 14.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ));
     });
     item
