@@ -466,8 +466,8 @@ fn build_section(
     let title = commands
         .spawn((
             Text::new(sec.title),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(c(TEXT_VALUE)),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(c((238, 238, 246))),
             FocusPolicy::Pass,
         ))
         .id();
