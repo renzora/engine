@@ -1241,11 +1241,22 @@ fn populate_leaf(
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(2.0),
-                padding: UiRect::horizontal(Val::Px(4.0)),
+                // Snug: tabs sit flush to the leaf edges (no outer padding).
                 flex_shrink: 0.0,
+                // Hairline separator under the header.
+                border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
             BackgroundColor(rgb(HEADER_BG)),
+            BorderColor::all(rgb(DIVIDER)),
+            // Subtle drop shadow so the header reads as lifted above the content.
+            BoxShadow::new(
+                Color::srgba(0.0, 0.0, 0.0, 0.30),
+                Val::Px(0.0),
+                Val::Px(2.0),
+                Val::Px(0.0),
+                Val::Px(4.0),
+            ),
             bevy::ui::RelativeCursorPosition::default(),
             TabBarOf(leaf),
             Name::new("tabbar"),
@@ -1260,10 +1271,13 @@ fn populate_leaf(
         let tab = commands
             .spawn((
                 Node {
+                    // Fill the full bar height so the active tab is snug to the
+                    // top (content stays vertically centered via align_items).
+                    height: Val::Percent(100.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     column_gap: Val::Px(5.0),
-                    padding: UiRect::axes(Val::Px(9.0), Val::Px(4.0)),
+                    padding: UiRect::horizontal(Val::Px(9.0)),
                     position_type: PositionType::Relative,
                     flex_shrink: 0.0,
                     ..default()
