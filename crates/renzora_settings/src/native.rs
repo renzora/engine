@@ -22,12 +22,13 @@ use renzora_editor::{
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
-use renzora_ember::reactive::bind_2way;
+use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, scroll_view_bar, text_input, toggle_switch, DragRange,
 };
 use renzora_hui::cursor_icon::HoverCursor;
+use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
 
@@ -77,6 +78,12 @@ struct SettingsSection {
 #[derive(Component)]
 struct ThemeSaveBtn;
 
+#[derive(Component)]
+struct RebindBtn(EditorAction);
+
+#[derive(Component)]
+struct ResetBindingsBtn;
+
 // ── Plugin wiring ────────────────────────────────────────────────────────────
 
 pub(crate) fn build(app: &mut App) {
@@ -91,6 +98,14 @@ pub(crate) fn build(app: &mut App) {
             theme_save_click,
         )
             .run_if(in_state(renzora_editor::SplashState::Editor)),
+    );
+    // Key-rebind handling — gated to the bevy_ui backend so it never steals the
+    // egui Settings overlay's own capture flow under the legacy backend.
+    app.add_systems(
+        Update,
+        (rebind_btn_click, rebind_capture, reset_bindings_click)
+            .run_if(in_state(renzora_editor::SplashState::Editor))
+            .run_if(renzora::editor_backend_is_bevy_ui),
     );
 }
 
@@ -679,10 +694,9 @@ fn build_tab_content(
         SettingsTab::Scripting => tab_scripting(commands, fonts, col),
         SettingsTab::Assets => tab_assets(commands, fonts, col),
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
-        // Input / Shortcuts (key-capture) not yet migrated — placeholder.
-        SettingsTab::Input | SettingsTab::Shortcuts | SettingsTab::Plugins => {
-            placeholder(commands, fonts, col)
-        }
+        SettingsTab::Shortcuts => tab_shortcuts(commands, fonts, col),
+        // Input (dynamic actions + listen-mode capture) not yet migrated.
+        SettingsTab::Input | SettingsTab::Plugins => placeholder(commands, fonts, col),
     }
     col
 }
@@ -1535,6 +1549,188 @@ fn theme_save_click(
             let name = tm.active_theme_name.clone();
             tm.save_theme(&name);
         }
+    }
+}
+
+// ── Shortcuts ────────────────────────────────────────────────────────────────
+
+const A_YELLOW: (u8, u8, u8) = (225, 200, 70);
+
+fn tab_shortcuts(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
+    // Group built-in actions by category, preserving first-seen order.
+    let mut groups: Vec<(&'static str, Vec<EditorAction>)> = Vec::new();
+    for a in EditorAction::all() {
+        let cat = a.category();
+        if let Some(g) = groups.iter_mut().find(|(c, _)| *c == cat) {
+            g.1.push(a);
+        } else {
+            groups.push((cat, vec![a]));
+        }
+    }
+
+    for (cat, actions) in groups {
+        let (sec, body) = section(commands, fonts, "keyboard", cat, A_YELLOW);
+        commands.entity(col).add_child(sec);
+        for (i, action) in actions.into_iter().enumerate() {
+            let btn = rebind_button(commands, fonts, action);
+            settings_row(commands, fonts, body, i, action.display_name(), btn);
+        }
+    }
+
+    // Reset-all row.
+    let reset_lbl = commands
+        .spawn((
+            Text::new("Reset All to Defaults"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+        ))
+        .id();
+    let reset = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(5.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                margin: UiRect::top(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((60, 40, 40))),
+            Interaction::default(),
+            ResetBindingsBtn,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("reset-bindings"),
+        ))
+        .id();
+    commands.entity(reset).add_child(reset_lbl);
+    commands.entity(col).add_child(reset);
+}
+
+/// A rebind button whose label/colour live-track the binding + rebinding state
+/// (so it shows "Press key..." while listening, without rebuilding the overlay).
+fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorAction) -> Entity {
+    let lbl = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(TEXT_MUTED)),
+        ))
+        .id();
+    bind_text(commands, lbl, move |w| {
+        let kb = w.resource::<KeyBindings>();
+        if kb.rebinding == Some(action) {
+            "Press key...".to_string()
+        } else {
+            kb.get(action)
+                .map(|b| b.display())
+                .unwrap_or_else(|| "Unbound".to_string())
+        }
+    });
+    bind_text_color(commands, lbl, move |w| {
+        let kb = w.resource::<KeyBindings>();
+        if kb.rebinding == Some(action) {
+            rgb((230, 180, 60))
+        } else if kb.get(action).is_some() {
+            rgb(ACCENT_BLUE)
+        } else {
+            rgb(TEXT_MUTED)
+        }
+    });
+    let btn = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((40, 40, 50))),
+            Interaction::default(),
+            RebindBtn(action),
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("rebind-btn"),
+        ))
+        .id();
+    commands.entity(btn).add_child(lbl);
+    btn
+}
+
+fn rebind_btn_click(
+    btns: Query<(&Interaction, &RebindBtn), Changed<Interaction>>,
+    mut kb: ResMut<KeyBindings>,
+) {
+    for (interaction, btn) in &btns {
+        if *interaction == Interaction::Pressed {
+            kb.rebinding = Some(btn.0);
+            kb.plugin_rebinding = None;
+        }
+    }
+}
+
+fn reset_bindings_click(
+    btns: Query<&Interaction, (Changed<Interaction>, With<ResetBindingsBtn>)>,
+    mut kb: ResMut<KeyBindings>,
+) {
+    for interaction in &btns {
+        if *interaction == Interaction::Pressed {
+            *kb = KeyBindings::default();
+        }
+    }
+}
+
+fn is_modifier_key(k: KeyCode) -> bool {
+    matches!(
+        k,
+        KeyCode::ControlLeft
+            | KeyCode::ControlRight
+            | KeyCode::ShiftLeft
+            | KeyCode::ShiftRight
+            | KeyCode::AltLeft
+            | KeyCode::AltRight
+            | KeyCode::SuperLeft
+            | KeyCode::SuperRight
+    )
+}
+
+/// While a (plugin) rebind is pending, capture the next non-modifier key + its
+/// held modifiers and commit it. Escape cancels.
+fn rebind_capture(keys: Res<ButtonInput<KeyCode>>, mut kb: ResMut<KeyBindings>) {
+    let action = kb.rebinding;
+    let plugin = kb.plugin_rebinding;
+    if action.is_none() && plugin.is_none() {
+        return;
+    }
+    if keys.just_pressed(KeyCode::Escape) {
+        kb.rebinding = None;
+        kb.plugin_rebinding = None;
+        return;
+    }
+    let key = keys
+        .get_just_pressed()
+        .copied()
+        .find(|k| !is_modifier_key(*k));
+    let Some(key) = key else {
+        return;
+    };
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let alt = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    let mut b = KeyBinding::new(key);
+    if ctrl {
+        b = b.ctrl();
+    }
+    if shift {
+        b = b.shift();
+    }
+    if alt {
+        b = b.alt();
+    }
+    if let Some(a) = action {
+        kb.set(a, b);
+        kb.rebinding = None;
+    } else if let Some(id) = plugin {
+        kb.set_plugin(id, b);
+        kb.plugin_rebinding = None;
     }
 }
 
