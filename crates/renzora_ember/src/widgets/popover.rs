@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, TEXT_MUTED};
+use crate::theme::*;
 
 use super::button::{button, icon_label_button};
 
@@ -110,7 +110,7 @@ pub fn icon_popover(commands: &mut Commands, fonts: &EmberFonts, icon: &str, siz
             Name::new("popover"),
         ))
         .id();
-    let trigger = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, size);
+    let trigger = icon_text(commands, &fonts.phosphor, icon, text_muted(), size);
     commands.entity(trigger).insert((
         Interaction::default(),
         renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),

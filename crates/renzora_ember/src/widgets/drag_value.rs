@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Bound;
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::{format_num, text_node};
 
@@ -94,7 +94,7 @@ fn drag_value_impl(
             .entity(box_e)
             .insert((BorderColor::all(rgb((70, 70, 82))), Styled::new(Role::Input)));
     }
-    let text = text_node(commands, font, &format_num(value), 12.0, TEXT_PRIMARY);
+    let text = text_node(commands, font, &format_num(value), 12.0, text_primary());
     let mut kids = Vec::new();
     if !axis.is_empty() {
         kids.push(text_node(commands, font, axis, 11.0, axis_color));

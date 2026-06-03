@@ -5,7 +5,7 @@ use bevy::ui::RelativeCursorPosition;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberSortable;
@@ -43,19 +43,19 @@ pub fn sortable_list(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]
                         border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb(TAB_ACTIVE_BG)),
+                    BackgroundColor(rgb(tab_active())),
                     Interaction::default(),
                     EmberSortItem { list },
                     renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                     Name::new("sort-item"),
                 ))
                 .id();
-            let handle = icon_text(commands, &fonts.phosphor, "dots-six-vertical", TEXT_MUTED, 14.0);
+            let handle = icon_text(commands, &fonts.phosphor, "dots-six-vertical", text_muted(), 14.0);
             let text = commands
                 .spawn((
                     Text::new(*item),
                     crate::font::ui_font(&fonts.ui, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ))
                 .id();
             commands.entity(row).add_children(&[handle, text]);

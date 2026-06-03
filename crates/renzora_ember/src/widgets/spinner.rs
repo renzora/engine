@@ -4,7 +4,7 @@ use std::f32::consts::TAU;
 
 use bevy::prelude::*;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberSpinnerDot {
@@ -34,7 +34,7 @@ pub fn spinner(commands: &mut Commands) -> Entity {
                         border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb(ACCENT_BLUE)),
+                    BackgroundColor(rgb(accent())),
                     EmberSpinnerDot {
                         phase: i as f32 / 3.0,
                     },
@@ -52,6 +52,6 @@ pub(crate) fn spinner_anim(time: Res<Time>, mut dots: Query<(&EmberSpinnerDot, &
     for (dot, mut bg) in &mut dots {
         let wave = 0.5 + 0.5 * (t * 5.0 - dot.phase * TAU).sin();
         let alpha = (0.3 + 0.7 * wave).clamp(0.0, 1.0);
-        bg.0 = rgb(ACCENT_BLUE).with_alpha(alpha);
+        bg.0 = rgb(accent()).with_alpha(alpha);
     }
 }

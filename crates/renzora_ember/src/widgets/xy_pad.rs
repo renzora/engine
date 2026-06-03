@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberXyPad {
@@ -44,7 +44,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("xy-handle"),
         ))

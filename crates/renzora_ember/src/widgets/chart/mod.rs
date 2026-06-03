@@ -17,7 +17,7 @@ use bevy::ui_render::UiMaterialPlugin;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::bind_with;
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED};
+use crate::theme::*;
 
 const MAX_SAMPLES: usize = 32;
 
@@ -67,7 +67,7 @@ impl ChartData {
             values,
             min: None,
             max: None,
-            color: rgb(ACCENT_BLUE),
+            color: rgb(accent()),
             target: None,
         }
     }
@@ -164,7 +164,7 @@ fn axis_label(commands: &mut Commands, font: &Handle<Font>, text: &str, top: boo
         .spawn((
             Text::new(text),
             ui_font(font, 9.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(3.0),
@@ -209,7 +209,7 @@ pub struct ChartStyle {
 impl Default for ChartStyle {
     fn default() -> Self {
         Self {
-            color: rgb(ACCENT_BLUE),
+            color: rgb(accent()),
             min: None,
             max: None,
             target: None,
@@ -280,7 +280,7 @@ pub fn bar_chart(commands: &mut Commands, values: &[f32]) -> Entity {
                         border_radius: BorderRadius::top(Val::Px(2.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb(ACCENT_BLUE)),
+                    BackgroundColor(rgb(accent())),
                     Name::new("bar"),
                 ))
                 .id()

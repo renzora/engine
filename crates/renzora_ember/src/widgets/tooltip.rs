@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberTooltip {
@@ -42,7 +42,7 @@ pub fn tooltip(commands: &mut Commands, font: &Handle<Font>, label: &str, target
             p.spawn((
                 Text::new(label),
                 ui_font(font, 11.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
                 TextLayout::new_with_no_wrap(),
             ));
         })

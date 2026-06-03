@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, HEADER_BG, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberTab {
@@ -58,9 +58,9 @@ pub fn tabs(
                     ..default()
                 },
                 BackgroundColor(if i == 0 {
-                    rgb(TAB_ACTIVE_BG)
+                    rgb(tab_active())
                 } else {
-                    rgb(HEADER_BG)
+                    rgb(header_bg())
                 }),
                 Interaction::default(),
                 EmberTab { bar, index: i },
@@ -79,7 +79,7 @@ pub fn tabs(
                 p.spawn((
                     Text::new(*label),
                     ui_font(font, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ));
             })
             .id();

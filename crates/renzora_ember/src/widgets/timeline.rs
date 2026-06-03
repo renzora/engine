@@ -14,7 +14,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
-use crate::theme::{rgb, ACCENT_BLUE, HEADER_BG, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 const HEADER_W: f32 = 110.0;
 const RULER_H: f32 = 22.0;
@@ -174,7 +174,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb((48, 48, 58))),
             Name::new("tl-corner"),
         ))
@@ -182,7 +182,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             p.spawn((
                 Text::new("Tracks"),
                 ui_font(&fonts.ui, 10.0),
-                TextColor(rgb(TEXT_MUTED)),
+                TextColor(rgb(text_muted())),
             ));
         })
         .id();
@@ -199,7 +199,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                     border: UiRect::bottom(Val::Px(1.0)),
                     ..default()
                 },
-                BackgroundColor(rgb(PANEL_BG)),
+                BackgroundColor(rgb(panel_bg())),
                 BorderColor::all(rgb((40, 40, 50))),
                 Name::new("tl-header"),
             ))
@@ -220,7 +220,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             .spawn((
                 Text::new(track.name),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ))
             .id();
         commands.entity(header).add_children(&[dot, label]);
@@ -289,7 +289,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb((48, 48, 58))),
             Interaction::default(),
             RelativeCursorPosition::default(),
@@ -318,7 +318,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 p.spawn((
                     Text::new(fmt_time(s as f32)),
                     ui_font(&fonts.ui, 9.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ));
                 p.spawn((
                     Node {
@@ -405,7 +405,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 height: Val::Percent(100.0),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             GlobalZIndex(10),
             bevy::ui::FocusPolicy::Pass,
             TlPlayhead { root },

@@ -11,7 +11,7 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 pub(crate) struct CurveEditorPlugin;
 
@@ -70,7 +70,7 @@ fn handle(commands: &mut Commands, root: Entity, idx: u8, p: Vec2) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb((24, 24, 30))),
-            BorderColor::all(rgb(ACCENT_BLUE)),
+            BorderColor::all(rgb(accent())),
             Interaction::default(),
             CurveHandle { root, idx },
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
@@ -109,7 +109,7 @@ fn curve_attach(
     curves: Query<(Entity, &CurveData), Without<MaterialNode<CurveMaterial>>>,
 ) {
     for (e, d) in &curves {
-        let c = rgb(ACCENT_BLUE).to_linear();
+        let c = rgb(accent()).to_linear();
         let handle = materials.add(CurveMaterial {
             ab: Vec4::new(0.0, 0.0, d.p1.x, d.p1.y),
             cd: Vec4::new(d.p2.x, d.p2.y, 1.0, 1.0),

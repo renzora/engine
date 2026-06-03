@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberRange {
@@ -77,7 +77,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             Name::new("range-fill"),
         ))
         .id();

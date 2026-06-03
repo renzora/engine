@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberListItem {
@@ -42,7 +42,7 @@ pub fn list_group(
                     ..default()
                 },
                 BackgroundColor(if on {
-                    rgb(TAB_ACTIVE_BG)
+                    rgb(tab_active())
                 } else {
                     Color::NONE
                 }),
@@ -63,7 +63,7 @@ pub fn list_group(
                 p.spawn((
                     Text::new(*item),
                     ui_font(font, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ));
             })
             .id();

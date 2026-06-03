@@ -6,7 +6,7 @@ use bevy::window::SystemCursorIcon;
 use renzora_hui::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -63,7 +63,7 @@ pub fn tree_node(
             commands,
             &fonts.phosphor,
             if open { "caret-down" } else { "caret-right" },
-            TEXT_MUTED,
+            text_muted(),
             10.0,
         )
     } else {
@@ -78,10 +78,10 @@ pub fn tree_node(
         commands,
         &fonts.phosphor,
         if has_children { "folder" } else { "file" },
-        TEXT_MUTED,
+        text_muted(),
         13.0,
     );
-    let lbl = text_node(commands, &fonts.ui, label, 12.0, TEXT_PRIMARY);
+    let lbl = text_node(commands, &fonts.ui, label, 12.0, text_primary());
     commands.entity(row).add_children(&[caret, icon, lbl]);
     let kids = commands
         .spawn((

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 use super::tone::Tone;
@@ -35,7 +35,7 @@ pub fn validation(commands: &mut Commands, fonts: &EmberFonts, tone: Tone, value
             Name::new("validation-input"),
         ))
         .id();
-    let val = text_node(commands, &fonts.ui, value, 12.0, TEXT_PRIMARY);
+    let val = text_node(commands, &fonts.ui, value, 12.0, text_primary());
     commands.entity(box_e).add_child(val);
     let msg_row = commands
         .spawn((Node {

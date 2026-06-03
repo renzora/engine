@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::button::EmberButton;
 use super::menu::build_menu;
@@ -37,7 +37,7 @@ pub fn hamburger(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]) ->
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
@@ -45,7 +45,7 @@ pub fn hamburger(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]) ->
             Name::new("hamburger-btn"),
         ))
         .id();
-    let glyph = icon_text(commands, &fonts.phosphor, "list", TEXT_PRIMARY, 16.0);
+    let glyph = icon_text(commands, &fonts.phosphor, "list", text_primary(), 16.0);
     commands.entity(btn).add_child(glyph);
     let entries: Vec<(&str, &[&str])> = items.iter().map(|s| (*s, &[] as &[&str])).collect();
     let menu = build_menu(commands, fonts, &entries, true);

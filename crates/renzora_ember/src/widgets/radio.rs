@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberRadio {
@@ -73,7 +73,7 @@ pub fn radio_group(
                     display: if on { Display::Flex } else { Display::None },
                     ..default()
                 },
-                BackgroundColor(rgb(ACCENT_BLUE)),
+                BackgroundColor(rgb(accent())),
                 bevy::ui::FocusPolicy::Pass,
                 Name::new("radio-dot"),
             ))
@@ -82,7 +82,7 @@ pub fn radio_group(
             .spawn((
                 Text::new(*label),
                 ui_font(font, 12.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ))
             .id();
         commands.entity(ring).add_child(dot);

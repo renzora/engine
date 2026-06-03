@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberPage {
@@ -37,9 +37,9 @@ pub fn pagination(commands: &mut Commands, font: &Handle<Font>, pages: usize, ac
                     ..default()
                 },
                 BackgroundColor(if on {
-                    rgb(ACCENT_BLUE)
+                    rgb(accent())
                 } else {
-                    rgb(TAB_ACTIVE_BG)
+                    rgb(tab_active())
                 }),
                 Interaction::default(),
                 EmberPage { group },
@@ -58,7 +58,7 @@ pub fn pagination(commands: &mut Commands, font: &Handle<Font>, pages: usize, ac
                 p.spawn((
                     Text::new(format!("{}", i + 1)),
                     ui_font(font, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ));
             })
             .id();

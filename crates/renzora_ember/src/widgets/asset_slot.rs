@@ -6,7 +6,7 @@ use bevy::ui::RelativeCursorPosition;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 const DRAG_THRESHOLD: f32 = 5.0;
 
@@ -60,12 +60,12 @@ pub fn draggable_file(commands: &mut Commands, fonts: &EmberFonts, name: &str) -
             Name::new("draggable-file"),
         ))
         .id();
-    let icon = icon_text(commands, &fonts.phosphor, "file", TEXT_MUTED, 13.0);
+    let icon = icon_text(commands, &fonts.phosphor, "file", text_muted(), 13.0);
     let label = commands
         .spawn((
             Text::new(name),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(chip).add_children(&[icon, label]);
@@ -93,12 +93,12 @@ pub fn asset_slot(commands: &mut Commands, fonts: &EmberFonts, value: &str) -> E
             Name::new("asset-slot"),
         ))
         .id();
-    let icon = icon_text(commands, &fonts.phosphor, "image", TEXT_MUTED, 14.0);
+    let icon = icon_text(commands, &fonts.phosphor, "image", text_muted(), 14.0);
     let label = commands
         .spawn((
             Text::new(if empty { "(drop a file)" } else { value }),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
+            TextColor(rgb(if empty { text_muted() } else { text_primary() })),
         ))
         .id();
     commands.entity(slot).insert(AssetSlot { label });
@@ -145,7 +145,7 @@ pub(crate) fn dnd_system(
                     if rcp.cursor_over {
                         if let Ok((mut t, mut c)) = texts.get_mut(slot.label) {
                             *t = Text::new(payload.clone());
-                            c.0 = rgb(TEXT_PRIMARY);
+                            c.0 = rgb(text_primary());
                         }
                         break;
                     }
@@ -180,7 +180,7 @@ pub(crate) fn dnd_system(
                         border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb(ACCENT_BLUE).with_alpha(0.9)),
+                    BackgroundColor(rgb(accent()).with_alpha(0.9)),
                     GlobalZIndex(2000),
                     bevy::ui::FocusPolicy::Pass,
                     Name::new("dnd-ghost"),

@@ -4,37 +4,37 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
 /// Display heading, level 1 (largest).
 pub fn h1(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 26.0, TEXT_PRIMARY)
+    text_node(commands, font, text, 26.0, text_primary())
 }
 /// Heading, level 2.
 pub fn h2(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 21.0, TEXT_PRIMARY)
+    text_node(commands, font, text, 21.0, text_primary())
 }
 /// Heading, level 3.
 pub fn h3(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 17.0, TEXT_PRIMARY)
+    text_node(commands, font, text, 17.0, text_primary())
 }
 /// Heading, level 4 (smallest).
 pub fn h4(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 14.0, TEXT_PRIMARY)
+    text_node(commands, font, text, 14.0, text_primary())
 }
 /// Body paragraph text.
 pub fn paragraph(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 13.0, TEXT_PRIMARY)
+    text_node(commands, font, text, 13.0, text_primary())
 }
 /// Small, muted caption.
 pub fn caption(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 11.0, TEXT_MUTED)
+    text_node(commands, font, text, 11.0, text_muted())
 }
 /// A muted form/field label.
 pub fn label(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
-    text_node(commands, font, text, 12.0, TEXT_MUTED)
+    text_node(commands, font, text, 12.0, text_muted())
 }
 
 /// An accent-colored hyperlink (pointer cursor; click handling is the caller's).
@@ -43,7 +43,7 @@ pub fn link(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity 
         .spawn((
             Text::new(text),
             ui_font(font, 12.0),
-            TextColor(rgb(ACCENT_BLUE)),
+            TextColor(rgb(accent())),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("link"),

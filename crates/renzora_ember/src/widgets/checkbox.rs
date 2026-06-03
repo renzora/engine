@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Bound;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 /// Mark ref; the checked state lives in `Bound<bool>` (so `bind_2way` can drive it).
 #[derive(Component)]
@@ -27,7 +27,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
                 ..default()
             },
             BackgroundColor(if checked {
-                rgb(ACCENT_BLUE)
+                rgb(accent())
             } else {
                 Color::NONE
             }),
@@ -86,7 +86,7 @@ pub(crate) fn checkbox_apply(
     mut nodes: Query<&mut Node>,
 ) {
     for (cb, b, mut bg, mut styled) in &mut boxes {
-        bg.0 = if b.0 { rgb(ACCENT_BLUE) } else { Color::NONE };
+        bg.0 = if b.0 { rgb(accent()) } else { Color::NONE };
         styled.state = if b.0 {
             WidgetState::Active
         } else {

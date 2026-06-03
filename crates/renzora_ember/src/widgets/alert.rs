@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 use super::tone::Tone;
@@ -40,8 +40,8 @@ pub fn alert(
             ..default()
         },))
         .id();
-    let t = text_node(commands, &fonts.ui, title, 13.0, TEXT_PRIMARY);
-    let b = text_node(commands, &fonts.ui, body, 12.0, TEXT_MUTED);
+    let t = text_node(commands, &fonts.ui, title, 13.0, text_primary());
+    let b = text_node(commands, &fonts.ui, body, 12.0, text_muted());
     commands.entity(col).add_children(&[t, b]);
     commands.entity(box_e).add_children(&[icon, col]);
     box_e

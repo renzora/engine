@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -23,10 +23,10 @@ pub fn breadcrumb(commands: &mut Commands, fonts: &EmberFonts, segments: &[&str]
     let mut kids = Vec::new();
     let last = segments.len().saturating_sub(1);
     for (i, seg) in segments.iter().enumerate() {
-        let color = if i == last { TEXT_PRIMARY } else { TEXT_MUTED };
+        let color = if i == last { text_primary() } else { text_muted() };
         kids.push(text_node(commands, &fonts.ui, seg, 12.0, color));
         if i != last {
-            kids.push(icon_text(commands, &fonts.phosphor, "caret-right", TEXT_MUTED, 10.0));
+            kids.push(icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 10.0));
         }
     }
     commands.entity(row).add_children(&kids);

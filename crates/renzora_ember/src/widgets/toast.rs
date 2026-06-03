@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::tone::Tone;
 
@@ -30,14 +30,14 @@ pub fn toast(commands: &mut Commands, fonts: &EmberFonts, tone: Tone, message: &
         .spawn((
             Text::new(message),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 flex_grow: 1.0,
                 ..default()
             },
         ))
         .id();
-    let close = icon_text(commands, &fonts.phosphor, "x", TEXT_MUTED, 12.0);
+    let close = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);
     commands.entity(box_e).add_children(&[icon, msg, close]);
     box_e
 }

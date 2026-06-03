@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::ACCENT_BLUE;
+use crate::theme::*;
 
 use super::common::text_node;
 use super::text_input::text_input;
@@ -19,7 +19,7 @@ pub fn floating_label(commands: &mut Commands, font: &Handle<Font>, label: &str,
             Name::new("floating-label"),
         ))
         .id();
-    let lbl = text_node(commands, font, label, 10.0, ACCENT_BLUE);
+    let lbl = text_node(commands, font, label, 10.0, accent());
     let input = text_input(commands, font, "", value);
     commands.entity(col).add_children(&[lbl, input]);
     col

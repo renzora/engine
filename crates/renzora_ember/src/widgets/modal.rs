@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use crate::font::EmberFonts;
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::button::button;
 use super::common::text_node;
@@ -66,14 +66,14 @@ pub fn modal(commands: &mut Commands, fonts: &EmberFonts, title: &str, body: &st
                 min_width: Val::Px(200.0),
                 ..default()
             },
-            BackgroundColor(rgb(PANEL_BG)),
+            BackgroundColor(rgb(panel_bg())),
             BorderColor::all(rgb((60, 60, 74))),
             Styled::new(Role::Card),
             Name::new("modal-dialog"),
         ))
         .id();
-    let t = text_node(commands, &fonts.ui, title, 14.0, TEXT_PRIMARY);
-    let b = text_node(commands, &fonts.ui, body, 12.0, TEXT_MUTED);
+    let t = text_node(commands, &fonts.ui, title, 14.0, text_primary());
+    let b = text_node(commands, &fonts.ui, body, 12.0, text_muted());
     let close = button(commands, &fonts.ui, "Close");
     commands.entity(close).insert(EmberModalClose { overlay });
     commands.entity(dialog).add_children(&[t, b, close]);

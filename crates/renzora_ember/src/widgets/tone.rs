@@ -1,6 +1,6 @@
 //! Semantic tone shared by badges / alerts / toasts / validation.
 
-use crate::theme::{ACCENT_BLUE, CLOSE_RED, PLAY_GREEN, WARN_AMBER};
+use crate::theme::*;
 
 /// Semantic tone for feedback components.
 #[derive(Clone, Copy)]
@@ -16,10 +16,10 @@ impl Tone {
     pub(crate) fn color(self) -> (u8, u8, u8) {
         match self {
             Tone::Neutral => (120, 120, 134),
-            Tone::Info => ACCENT_BLUE,
-            Tone::Success => PLAY_GREEN,
-            Tone::Warn => WARN_AMBER,
-            Tone::Error => CLOSE_RED,
+            Tone::Info => accent(),
+            Tone::Success => play_green(),
+            Tone::Warn => warn_amber(),
+            Tone::Error => close_red(),
         }
     }
     pub(crate) fn icon(self) -> &'static str {

@@ -6,7 +6,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::format_num;
 
@@ -57,7 +57,7 @@ pub fn spin_slider(commands: &mut Commands, font: &Handle<Font>, label: &str, va
                 width: Val::Percent(frac(value, min, max) * 100.0),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE).with_alpha(0.30)),
+            BackgroundColor(rgb(accent()).with_alpha(0.30)),
             bevy::ui::FocusPolicy::Pass,
             Name::new("spin-fill"),
         ))
@@ -81,14 +81,14 @@ pub fn spin_slider(commands: &mut Commands, font: &Handle<Font>, label: &str, va
         .spawn((
             Text::new(label),
             ui_font(font, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     let text = commands
         .spawn((
             Text::new(format_num(value)),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(content).add_children(&[lbl, text]);

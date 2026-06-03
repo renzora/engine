@@ -7,7 +7,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 /// Shared state for text-input-like widgets (single line + textarea). Public so
 /// panels in other crates can read the typed `value` (and clear it on submit).
@@ -31,7 +31,7 @@ pub(crate) fn caret(commands: &mut Commands) -> Entity {
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("caret"),
         ))
@@ -69,7 +69,7 @@ pub fn text_input(
         .spawn((
             Text::new(if empty { placeholder } else { value }),
             ui_font(font, 12.0),
-            TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
+            TextColor(rgb(if empty { text_muted() } else { text_primary() })),
         ))
         .id();
     let car = caret(commands);
@@ -123,9 +123,9 @@ pub fn bind_text_input(
             }
             if let Some(mut col) = world.get_mut::<TextColor>(text_e) {
                 col.0 = rgb(if state_val.is_empty() {
-                    TEXT_MUTED
+                    text_muted()
                 } else {
-                    TEXT_PRIMARY
+                    text_primary()
                 });
             }
         }
@@ -186,10 +186,10 @@ pub(crate) fn text_input_type(
             if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
                 if val.is_empty() {
                     *t = Text::new(ph);
-                    c.0 = rgb(TEXT_MUTED);
+                    c.0 = rgb(text_muted());
                 } else {
                     *t = Text::new(val);
-                    c.0 = rgb(TEXT_PRIMARY);
+                    c.0 = rgb(text_primary());
                 }
             }
             break;

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::{rgb, HEADER_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -13,7 +13,7 @@ fn table_row(commands: &mut Commands, font: &Handle<Font>, cells: &[&str], heade
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            BackgroundColor(if header { rgb(HEADER_BG) } else { Color::NONE }),
+            BackgroundColor(if header { rgb(header_bg()) } else { Color::NONE }),
             Name::new("table-row"),
         ))
         .id();
@@ -33,7 +33,7 @@ fn table_row(commands: &mut Commands, font: &Handle<Font>, cells: &[&str], heade
                 font,
                 c,
                 12.0,
-                if header { TEXT_PRIMARY } else { TEXT_MUTED },
+                if header { text_primary() } else { text_muted() },
             );
             commands.entity(cell).add_child(t);
             cell

@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::text_input::{caret, EmberTextInput};
 
@@ -36,7 +36,7 @@ pub fn textarea(commands: &mut Commands, font: &Handle<Font>, placeholder: &str,
         .spawn((
             Text::new(if empty { placeholder } else { value }),
             ui_font(font, 12.0),
-            TextColor(rgb(if empty { TEXT_MUTED } else { TEXT_PRIMARY })),
+            TextColor(rgb(if empty { text_muted() } else { text_primary() })),
         ))
         .id();
     let car = caret(commands);

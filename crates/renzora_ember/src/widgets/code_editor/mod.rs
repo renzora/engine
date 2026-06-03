@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 mod edit;
 mod highlight;
@@ -135,7 +135,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("code-caret"),
         ))

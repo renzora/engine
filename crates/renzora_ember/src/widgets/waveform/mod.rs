@@ -10,7 +10,7 @@ use bevy::shader::ShaderRef;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 const MAX_SAMPLES: usize = 32;
 
@@ -102,7 +102,7 @@ fn waveform_attach(
         for (g, slot) in data.iter_mut().enumerate() {
             *slot = Vec4::new(flat[g * 4], flat[g * 4 + 1], flat[g * 4 + 2], flat[g * 4 + 3]);
         }
-        let accent = rgb(ACCENT_BLUE).to_linear();
+        let accent = rgb(accent()).to_linear();
         let material = WaveMaterial {
             data,
             color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),

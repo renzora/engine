@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -29,8 +29,8 @@ pub fn chip(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
             Name::new("chip"),
         ))
         .id();
-    let label = text_node(commands, &fonts.ui, text, 11.0, TEXT_PRIMARY);
-    let x = icon_text(commands, &fonts.phosphor, "x", TEXT_MUTED, 10.0);
+    let label = text_node(commands, &fonts.ui, text, 11.0, text_primary());
+    let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 10.0);
     let close = commands
         .spawn((
             Node {

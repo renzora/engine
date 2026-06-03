@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::button::EmberButton;
 use super::common::format_num;
@@ -40,7 +40,7 @@ pub fn number_stepper(commands: &mut Commands, font: &Handle<Font>, value: f32, 
         .spawn((
             Text::new(format_num(value)),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 min_width: Val::Px(32.0),
                 justify_content: JustifyContent::Center,
@@ -76,7 +76,7 @@ fn step_button(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             EmberButton,
             Styled::new(Role::IconButton),
@@ -88,7 +88,7 @@ fn step_button(
             p.spawn((
                 Text::new(label),
                 ui_font(font, 14.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ));
         })
         .id()

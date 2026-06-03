@@ -26,7 +26,7 @@ use bevy::ui::RelativeCursorPosition;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::bind_with;
-use crate::theme::{rgb, TEXT_MUTED};
+use crate::theme::*;
 use crate::widgets::{bind_hsv_picker, hsv_picker, Popup};
 
 /// Width of the inspector label column. Labels are left-aligned and fixed-width
@@ -60,7 +60,7 @@ pub fn inspector_row(
         .spawn((
             Text::new(label),
             ui_font(font, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             bevy::text::TextLayout::new_with_no_wrap(),
         ))
         .id();

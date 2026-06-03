@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use crate::font::{icon_glyph, icon_text, ui_font, EmberFonts};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 pub(crate) struct CollapsiblePlugin;
 
@@ -59,18 +59,18 @@ pub fn collapsible(
         commands,
         &fonts.phosphor,
         if default_open { "caret-down" } else { "caret-right" },
-        TEXT_MUTED,
+        text_muted(),
         12.0,
     );
     let mut header_kids = vec![caret];
     if let Some(name) = icon {
-        header_kids.push(icon_text(commands, &fonts.phosphor, name, TEXT_PRIMARY, 12.0));
+        header_kids.push(icon_text(commands, &fonts.phosphor, name, text_primary(), 12.0));
     }
     let title_e = commands
         .spawn((
             Text::new(title),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     header_kids.push(title_e);

@@ -22,7 +22,7 @@ use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 const NODE_W: f32 = 150.0;
 const HEAD_H: f32 = 26.0;
@@ -69,7 +69,7 @@ pub(crate) struct CableMaterial {
 
 impl Default for CableMaterial {
     fn default() -> Self {
-        let c = rgb(ACCENT_BLUE).to_linear();
+        let c = rgb(accent()).to_linear();
         Self {
             ab: Vec4::ZERO,
             cd: Vec4::ZERO,
@@ -253,7 +253,7 @@ fn graph_node(
             p.spawn((
                 Text::new(title),
                 ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ));
         })
         .id();
@@ -307,7 +307,7 @@ fn graph_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, output: bo
             p.spawn((
                 Text::new(name),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(rgb(TEXT_MUTED)),
+                TextColor(rgb(text_muted())),
             ));
         })
         .id()
@@ -327,7 +327,7 @@ fn port_dot(commands: &mut Commands, viewport: Entity, offset: Vec2, is_output: 
                 ..default()
             },
             BackgroundColor(rgb((26, 26, 32))),
-            BorderColor::all(rgb(ACCENT_BLUE)),
+            BorderColor::all(rgb(accent())),
             Interaction::default(),
             GraphPort {
                 viewport,
@@ -534,7 +534,7 @@ pub(crate) fn update_endpoints(
     transforms: Query<&UiGlobalTransform>,
     computeds: Query<&ComputedNode>,
 ) {
-    let accent = rgb(ACCENT_BLUE).to_linear();
+    let accent = rgb(accent()).to_linear();
     for (w, mat) in &wires {
         let (Ok(fgt), Ok(tgt), Ok(vgt), Ok(vcn)) = (
             transforms.get(w.from),

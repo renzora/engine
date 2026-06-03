@@ -5,7 +5,7 @@ use bevy::prelude::*;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::Bound;
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::fader::fader;
 use super::vu_meter::vu_meter;
@@ -41,7 +41,7 @@ pub fn mixer_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, on
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(btn).add_child(text);
@@ -70,7 +70,7 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
         .spawn((
             Text::new(name),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let meters = commands
@@ -92,7 +92,7 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
         },))
         .id();
     let mute = mixer_button(commands, fonts, "M", rgb((225, 90, 80)));
-    let solo = mixer_button(commands, fonts, "S", rgb(ACCENT_BLUE));
+    let solo = mixer_button(commands, fonts, "S", rgb(accent()));
     commands.entity(buttons).add_children(&[mute, solo]);
     commands.entity(root).add_children(&[label, meters, buttons]);
     root

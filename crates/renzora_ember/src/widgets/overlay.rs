@@ -7,11 +7,10 @@ use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::theme::rgb;
+use crate::theme::*;
 
 const CARD_BG: (u8, u8, u8) = (28, 28, 34);
 const CARD_BORDER: (u8, u8, u8) = (60, 60, 74);
-const HEADER_BG: (u8, u8, u8) = (24, 24, 30);
 const TEXT: (u8, u8, u8) = (224, 224, 234);
 const MUTED: (u8, u8, u8) = (150, 150, 164);
 
@@ -100,7 +99,7 @@ pub fn overlay_sized(
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
         ))
         .id();
     let title_text = commands

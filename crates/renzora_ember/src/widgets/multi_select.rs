@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberMultiItem {
@@ -78,7 +78,7 @@ pub fn multi_select(commands: &mut Commands, font: &Handle<Font>, items: &[&str]
                     display: if on { Display::Flex } else { Display::None },
                     ..default()
                 },
-                BackgroundColor(rgb(ACCENT_BLUE)),
+                BackgroundColor(rgb(accent())),
                 Name::new("multi-mark"),
             ))
             .id();
@@ -86,7 +86,7 @@ pub fn multi_select(commands: &mut Commands, font: &Handle<Font>, items: &[&str]
             .spawn((
                 Text::new(*item),
                 ui_font(font, 12.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ))
             .id();
         commands.entity(box_e).add_child(mark);

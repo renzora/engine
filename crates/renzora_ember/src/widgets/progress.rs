@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 /// A determinate progress bar (`value` 0..1).
 pub fn progress(commands: &mut Commands, value: f32) -> Entity {
@@ -28,7 +28,7 @@ pub fn progress(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             Name::new("progress-fill"),
         ))
         .id();

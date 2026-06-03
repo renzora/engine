@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::{rgb, HEADER_BG, TEXT_MUTED};
+use crate::theme::*;
 
 use super::common::text_node;
 use super::text_input::text_input;
@@ -33,12 +33,12 @@ pub fn input_group(commands: &mut Commands, font: &Handle<Font>, addon: &str, pl
                 ),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb((70, 70, 82))),
             Name::new("input-addon"),
         ))
         .id();
-    let addon_text = text_node(commands, font, addon, 12.0, TEXT_MUTED);
+    let addon_text = text_node(commands, font, addon, 12.0, text_muted());
     commands.entity(addon_box).add_child(addon_text);
     let input = text_input(commands, font, placeholder, "");
     commands.entity(group).add_children(&[addon_box, input]);

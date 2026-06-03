@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::TEXT_MUTED;
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -27,7 +27,7 @@ pub fn property_row(
             Name::new("property-row"),
         ))
         .id();
-    let lbl = text_node(commands, font, label, 12.0, TEXT_MUTED);
+    let lbl = text_node(commands, font, label, 12.0, text_muted());
     commands.entity(row).add_children(&[lbl, control]);
     row
 }

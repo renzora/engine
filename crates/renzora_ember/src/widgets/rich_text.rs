@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, TEXT_PRIMARY};
+use crate::theme::*;
 
 /// A line of text made of colored `(text, color)` runs.
 pub fn rich_text(commands: &mut Commands, font: &Handle<Font>, runs: &[(&str, (u8, u8, u8))]) -> Entity {
@@ -11,7 +11,7 @@ pub fn rich_text(commands: &mut Commands, font: &Handle<Font>, runs: &[(&str, (u
         .spawn((
             Text::new(""),
             ui_font(font, 13.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Name::new("rich-text"),
         ))
         .id();

@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::Bound;
-use crate::theme::{rgb, TAB_ACTIVE_BG, TAB_HOVER_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberDropdown {
@@ -43,7 +43,7 @@ pub fn dropdown(
                 position_type: PositionType::Relative,
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("dropdown"),
@@ -53,14 +53,14 @@ pub fn dropdown(
         .spawn((
             Text::new(options.get(sel).copied().unwrap_or("")),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 flex_grow: 1.0,
                 ..default()
             },
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", TEXT_MUTED, 12.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 12.0);
     let menu = commands
         .spawn((
             Node {
@@ -104,7 +104,7 @@ pub fn dropdown(
                 p.spawn((
                     Text::new(*opt),
                     ui_font(&fonts.ui, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ));
             })
             .id();
@@ -228,7 +228,7 @@ pub(crate) fn dropdown_option_hover(
 ) {
     for (interaction, mut bg) in &mut options {
         bg.0 = match *interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb(TAB_HOVER_BG),
+            Interaction::Hovered | Interaction::Pressed => rgb(tab_hover()),
             Interaction::None => Color::NONE,
         };
     }

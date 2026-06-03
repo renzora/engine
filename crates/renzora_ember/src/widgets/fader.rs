@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Bound;
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 /// References to the fader's fill/thumb so the model→visuals system can move
 /// them. The value itself lives in `Bound<f32>` (so [`bind_2way`] can drive it).
@@ -57,7 +57,7 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("fader-fill"),
         ))

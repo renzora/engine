@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Bound;
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 /// Fill/thumb refs; the value lives in `Bound<f32>` (so `bind_2way` can drive it).
 #[derive(Component)]
@@ -55,7 +55,7 @@ pub fn slider(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             Name::new("slider-fill"),
         ))
         .id();

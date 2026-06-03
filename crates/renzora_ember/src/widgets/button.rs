@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 /// Marks a button so [`button_interact`] drives its `Styled.state`. Shared with
 /// other button-like widgets (e.g. the number stepper's `±` keys).
@@ -23,7 +23,7 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
@@ -35,7 +35,7 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
         .spawn((
             Text::new(label),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(b).add_child(t);
@@ -60,7 +60,7 @@ pub fn icon_label_button(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
@@ -68,12 +68,12 @@ pub fn icon_label_button(
             Name::new("icon-button"),
         ))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
     let t = commands
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(b).add_children(&[ic, t]);

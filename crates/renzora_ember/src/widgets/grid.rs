@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, TEXT_MUTED};
+use crate::theme::*;
 
 /// A uniform grid of `count` cells across `columns` flexible columns.
 pub fn grid(commands: &mut Commands, font: &Handle<Font>, count: usize, columns: usize) -> Entity {
@@ -37,7 +37,7 @@ pub fn grid(commands: &mut Commands, font: &Handle<Font>, count: usize, columns:
                     p.spawn((
                         Text::new(format!("{}", i + 1)),
                         ui_font(font, 12.0),
-                        TextColor(rgb(TEXT_MUTED)),
+                        TextColor(rgb(text_muted())),
                     ));
                 })
                 .id()

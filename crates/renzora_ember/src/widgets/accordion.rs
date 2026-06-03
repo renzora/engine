@@ -6,7 +6,7 @@ use bevy::window::SystemCursorIcon;
 use renzora_hui::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
-use crate::theme::{rgb, HEADER_BG, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 use super::common::text_node;
 
@@ -44,7 +44,7 @@ pub fn accordion_section(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("accordion-header"),
@@ -54,10 +54,10 @@ pub fn accordion_section(
         commands,
         &fonts.phosphor,
         if open { "caret-down" } else { "caret-right" },
-        TEXT_MUTED,
+        text_muted(),
         12.0,
     );
-    let label = text_node(commands, &fonts.ui, title, 12.0, TEXT_PRIMARY);
+    let label = text_node(commands, &fonts.ui, title, 12.0, text_primary());
     commands.entity(header).add_children(&[caret, label]);
     let body = commands
         .spawn((

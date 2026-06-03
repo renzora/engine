@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::font::ui_font;
-use crate::theme::{rgb, PANEL_BG, TEXT_MUTED};
+use crate::theme::*;
 
 /// A `Text` entity in the UI font at `size` and `color`.
 pub(crate) fn text_node(
@@ -44,7 +44,7 @@ pub fn field(commands: &mut Commands, font: &Handle<Font>, label: &str, control:
         .spawn((
             Text::new(label),
             ui_font(font, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 min_width: Val::Px(90.0),
                 ..default()
@@ -94,7 +94,7 @@ pub fn heading(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Enti
         .spawn((
             Text::new(text),
             ui_font(font, 13.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id()
 }
@@ -144,7 +144,7 @@ pub fn frame(commands: &mut Commands, padding: f32, radius: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(radius)),
                 ..default()
             },
-            BackgroundColor(rgb(PANEL_BG)),
+            BackgroundColor(rgb(panel_bg())),
             BorderColor::all(rgb((48, 48, 58))),
             Name::new("frame"),
         ))

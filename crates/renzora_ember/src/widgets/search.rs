@@ -11,7 +11,7 @@ use bevy::prelude::*;
 
 use crate::font::{icon_glyph, ui_font, EmberFonts};
 use crate::reactive::bind_bg;
-use crate::theme::rgb;
+use crate::theme::*;
 
 use super::overlay::Overlay;
 use super::scroll_area::scroll_view_bar;

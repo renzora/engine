@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use crate::theme::*;
 
 /// Clicking this row hides the root menu it belongs to.
 #[derive(Component)]
@@ -82,14 +82,14 @@ pub(crate) fn build_menu(
             .spawn((
                 Text::new(*label),
                 ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(TEXT_PRIMARY)),
+                TextColor(rgb(text_primary())),
             ))
             .id();
         let mut row_kids = vec![lbl];
         if submenu.is_empty() {
             commands.entity(row).insert(EmberMenuClose { root: menu });
         } else {
-            let arrow = icon_text(commands, &fonts.phosphor, "caret-right", TEXT_MUTED, 10.0);
+            let arrow = icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 10.0);
             row_kids.push(arrow);
             let sub = commands
                 .spawn((
@@ -133,7 +133,7 @@ pub(crate) fn build_menu(
                             p.spawn((
                                 Text::new(*s),
                                 ui_font(&fonts.ui, 12.0),
-                                TextColor(rgb(TEXT_PRIMARY)),
+                                TextColor(rgb(text_primary())),
                             ));
                         })
                         .id()

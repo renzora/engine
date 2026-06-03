@@ -5,7 +5,7 @@ use bevy::window::SystemCursorIcon;
 
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberSegment {
@@ -44,7 +44,7 @@ pub fn segmented(
                     ..default()
                 },
                 BackgroundColor(if on {
-                    rgb(ACCENT_BLUE)
+                    rgb(accent())
                 } else {
                     Color::NONE
                 }),
@@ -65,7 +65,7 @@ pub fn segmented(
                 p.spawn((
                     Text::new(*label),
                     ui_font(font, 12.0),
-                    TextColor(rgb(TEXT_PRIMARY)),
+                    TextColor(rgb(text_primary())),
                 ));
             })
             .id();

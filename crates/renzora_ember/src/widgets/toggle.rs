@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, ACCENT_BLUE};
+use crate::theme::*;
 
 #[derive(Component)]
 pub(crate) struct EmberToggle {
@@ -28,7 +28,7 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(if on { rgb(ACCENT_BLUE) } else { rgb((60, 60, 70)) }),
+            BackgroundColor(if on { rgb(accent()) } else { rgb((60, 60, 70)) }),
             Interaction::default(),
             EmberToggle { on },
             Styled::with_state(

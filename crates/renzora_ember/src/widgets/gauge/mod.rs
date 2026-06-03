@@ -11,7 +11,7 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
 use crate::font::{ui_font, EmberFonts};
-use crate::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use crate::theme::*;
 
 /// 135° start, 270° sweep — a dial open at the bottom.
 const A0: f32 = 2.356_194_5;
@@ -54,7 +54,7 @@ pub(crate) struct ArcData {
 
 fn make_arc(value: f32) -> ArcMaterial {
     let track = rgb((58, 58, 70)).to_linear();
-    let fill = rgb(ACCENT_BLUE).to_linear();
+    let fill = rgb(accent()).to_linear();
     ArcMaterial {
         track: Vec4::new(track.red, track.green, track.blue, 1.0),
         fill: Vec4::new(fill.red, fill.green, fill.blue, 1.0),
@@ -107,7 +107,7 @@ pub fn gauge(commands: &mut Commands, fonts: &EmberFonts, value: f32) -> Entity 
         .spawn((
             Text::new(format!("{}%", (value.clamp(0.0, 1.0) * 100.0) as i32)),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     commands.entity(g).add_child(label);

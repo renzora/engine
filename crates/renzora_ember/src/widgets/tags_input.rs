@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 
 use crate::font::EmberFonts;
-use crate::theme::{rgb, TEXT_MUTED};
+use crate::theme::*;
 
 use super::chip::chip;
 use super::text_input::{text_input, EmberTextInput};
@@ -67,7 +67,7 @@ pub(crate) fn tags_commit(
         inp.value.clear();
         if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
             *t = Text::new(ph);
-            c.0 = rgb(TEXT_MUTED);
+            c.0 = rgb(text_muted());
         }
         if tag.is_empty() {
             continue;
