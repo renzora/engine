@@ -2,6 +2,7 @@
 
 mod field_widget;
 mod native;
+mod scripts;
 mod state;
 
 use std::sync::RwLock;
@@ -384,6 +385,7 @@ impl Plugin for InspectorPanelPlugin {
         // Register the panel (egui) + its bevy_ui-native content.
         app.register_panel(InspectorPanel::default());
         native::register_native_inspector(app);
+        scripts::register(app);
     }
 }
 

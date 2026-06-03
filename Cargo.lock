@@ -9915,6 +9915,7 @@ dependencies = [
  "renzora",
  "renzora_editor",
  "renzora_ember",
+ "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
