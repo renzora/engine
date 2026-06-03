@@ -245,7 +245,6 @@ impl Plugin for WidgetsPlugin {
                     scroll_area::scroll_wheel,
                     scroll_area::scroll_update,
                     scroll_area::scroll_thumb_drag,
-                    scroll_area::scroll_grab,
                     multi_select::multi_select_toggle,
                     menu::menu_hover,
                     menu::submenu_hover,
@@ -265,7 +264,6 @@ impl Plugin for WidgetsPlugin {
                 ),
             ),
         );
-        app.init_resource::<scroll_area::ScrollGrab>();
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(chart::ChartPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);

@@ -240,6 +240,19 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             if world.get::<HideInHierarchy>(entity).is_some() {
                 continue;
             }
+            // Skip the editor's own bevy_ui chrome (dock, panels, widgets). The
+            // hierarchy lists the 3D scene plus authored game UI, so keep any
+            // `UiCanvas` / `UiWidget` node but drop every other UI node.
+            if world.get::<bevy::ui::Node>(entity).is_some()
+                && world
+                    .get::<renzora_game_ui::UiCanvas>(entity)
+                    .is_none()
+                && world
+                    .get::<renzora_game_ui::UiWidget>(entity)
+                    .is_none()
+            {
+                continue;
+            }
             if world.get::<bevy::input::gamepad::Gamepad>(entity).is_some() {
                 continue;
             }

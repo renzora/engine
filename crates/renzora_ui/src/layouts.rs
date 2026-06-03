@@ -58,8 +58,6 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Animation", layout_animation()),
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
-            WorkspaceLayout::scene("Video", layout_video()),
-            WorkspaceLayout::scene("Audio", layout_audio()),
             WorkspaceLayout::scene("Debug", layout_debug()),
             // ── Asset-mode layouts (hidden, auto-activated when an asset
             // doc tab is focused). Add new variants here as panels for
@@ -564,50 +562,3 @@ fn layout_particles_asset() -> DockTree {
     )
 }
 
-/// Video: Premiere-style cinematics workspace.
-///
-/// Top row: Hierarchy | Viewport (preview) | Inspector
-/// Bottom row: Sequencer with Mixer + Assets tabbed alongside it.
-fn layout_video() -> DockTree {
-    DockTree::vertical(
-        // Top: hierarchy on the left, viewport (preview) center, inspector right.
-        DockTree::horizontal(
-            DockTree::leaf("hierarchy"),
-            DockTree::horizontal(
-                DockTree::leaf("viewport"),
-                DockTree::leaf("inspector"),
-                0.78,
-            ),
-            0.15,
-        ),
-        // Bottom: sequencer is the main work surface; mixer + assets tab in
-        // beside it so audio levels and clip sources are one click away.
-        DockTree::Leaf {
-            tabs: vec!["sequencer".into(), "mixer".into(), "assets".into()],
-            active_tab: 0,
-        },
-        0.55,
-    )
-}
-
-/// Audio: DAW timeline + Mixer + Assets
-fn layout_audio() -> DockTree {
-    DockTree::vertical(
-        // Top: hierarchy | DAW timeline | inspector
-        DockTree::horizontal(
-            DockTree::leaf("hierarchy"),
-            DockTree::horizontal(DockTree::leaf("daw"), DockTree::leaf("inspector"), 0.78),
-            0.15,
-        ),
-        // Bottom: mixer | assets + console
-        DockTree::horizontal(
-            DockTree::leaf("mixer"),
-            DockTree::Leaf {
-                tabs: vec!["assets".into(), "console".into()],
-                active_tab: 0,
-            },
-            0.6,
-        ),
-        0.6,
-    )
-}

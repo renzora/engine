@@ -19,8 +19,6 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
-        ("Video".into(), layout_video()),
-        ("Audio".into(), layout_audio()),
         ("Debug".into(), layout_debug()),
         ("Gallery".into(), layout_gallery()),
     ]
@@ -165,36 +163,6 @@ fn layout_particles() -> DockTree {
         DockTree::leaf("particle_preview"),
         DockTree::leaf("particle_editor"),
         0.8,
-    )
-}
-
-/// Video: Hierarchy | Viewport | Inspector  /  Sequencer+Mixer+Assets
-fn layout_video() -> DockTree {
-    DockTree::vertical(
-        DockTree::horizontal(
-            DockTree::leaf("hierarchy"),
-            DockTree::horizontal(DockTree::leaf("viewport"), DockTree::leaf("inspector"), 0.78),
-            0.15,
-        ),
-        DockTree::tabs(&["sequencer", "mixer", "assets"]),
-        0.55,
-    )
-}
-
-/// Audio: Hierarchy | DAW | Inspector  /  Mixer | Assets+Console
-fn layout_audio() -> DockTree {
-    DockTree::vertical(
-        DockTree::horizontal(
-            DockTree::leaf("hierarchy"),
-            DockTree::horizontal(DockTree::leaf("daw"), DockTree::leaf("inspector"), 0.78),
-            0.15,
-        ),
-        DockTree::horizontal(
-            DockTree::leaf("mixer"),
-            DockTree::tabs(&["assets", "console"]),
-            0.6,
-        ),
-        0.6,
     )
 }
 

@@ -69,9 +69,6 @@ fn build_scroll(
             },
             RelativeCursorPosition::default(),
             ScrollPosition::default(),
-            // Pressing empty/label areas lands on the viewport (interactive
-            // widgets capture their own press), enabling grab-to-scroll.
-            Interaction::default(),
             Name::new("scroll-viewport"),
         ))
         .id();
@@ -258,64 +255,6 @@ pub(crate) fn scroll_update(
                 }
             }
         }
-    }
-}
-
-/// The viewport currently being grab-scrolled (press-drag on its content).
-#[derive(Resource, Default)]
-pub(crate) struct ScrollGrab {
-    viewport: Option<Entity>,
-    last_y: f32,
-}
-
-/// Grab-to-scroll: press and drag on a panel's non-interactive content (gaps,
-/// labels — *not* text inputs/buttons/sliders, which capture their own press)
-/// to scroll it, content tracking the cursor 1:1.
-pub(crate) fn scroll_grab(
-    mut grab: ResMut<ScrollGrab>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    pressed: Query<(Entity, &Interaction), With<EmberScroll>>,
-    mut areas: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode, &Children)>,
-    computed: Query<&ComputedNode>,
-) {
-    let cursor_y = windows
-        .single()
-        .ok()
-        .and_then(|w| w.cursor_position())
-        .map(|p| p.y);
-
-    if mouse.just_released(MouseButton::Left) {
-        grab.viewport = None;
-    }
-    if grab.viewport.is_none() && mouse.just_pressed(MouseButton::Left) {
-        if let Some(cy) = cursor_y {
-            for (e, interaction) in &pressed {
-                if *interaction == Interaction::Pressed {
-                    grab.viewport = Some(e);
-                    grab.last_y = cy;
-                    break;
-                }
-            }
-        }
-    }
-
-    let (Some(vp), Some(cy)) = (grab.viewport, cursor_y) else {
-        return;
-    };
-    let dy = grab.last_y - cy; // content follows the cursor (natural drag)
-    grab.last_y = cy;
-    if dy == 0.0 {
-        return;
-    }
-    if let Ok((mut s, mut sp, vcn, kids)) = areas.get_mut(vp) {
-        let inv = vcn.inverse_scale_factor();
-        let vh = vcn.size().y * inv;
-        let ch = content_h(kids, &computed, inv);
-        let max = (ch - vh).max(0.0);
-        s.target = (s.target + dy).clamp(0.0, max);
-        s.stick = false;
-        sp.y = s.target;
     }
 }
 

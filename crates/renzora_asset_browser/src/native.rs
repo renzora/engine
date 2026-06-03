@@ -103,6 +103,8 @@ pub(crate) struct NativeAssets {
     /// (both collapsed by default).
     fav_open: bool,
     recent_open: bool,
+    /// True while a tile is being dragged out (drives the cursor ghost).
+    dragging: bool,
 }
 
 impl Default for NativeAssets {
@@ -124,6 +126,7 @@ impl Default for NativeAssets {
             drag_press: None,
             fav_open: false,
             recent_open: false,
+            dragging: false,
         }
     }
 }
@@ -167,6 +170,8 @@ enum Action {
 struct AssetRoot;
 #[derive(Component)]
 struct AssetContextMenu;
+#[derive(Component)]
+struct DragGhost;
 #[derive(Component)]
 struct ContextAction(Action);
 #[derive(Component)]
@@ -285,6 +290,7 @@ pub fn register_native_asset_browser(app: &mut App) {
             load_persisted,
             shortcut_click,
             asset_drag,
+            drag_ghost,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -420,6 +426,7 @@ fn asset_drag(
 ) {
     if mouse.just_released(MouseButton::Left) {
         state.drag_press = None;
+        state.dragging = false;
         if payload.is_some() {
             commands.remove_resource::<renzora_editor::AssetDragPayload>();
         }
@@ -446,9 +453,78 @@ fn asset_drag(
                     drag_count: 1,
                     path,
                 });
+                state.dragging = true;
             }
         }
     }
+}
+
+/// A floating ghost (icon + name) that follows the cursor while a tile is being
+/// dragged out of the browser. Spawned as a top-level overlay so it isn't
+/// clipped by the panel, and despawned the moment the drag ends.
+fn drag_ghost(
+    mut commands: Commands,
+    state: Res<NativeAssets>,
+    payload: Option<Res<renzora_editor::AssetDragPayload>>,
+    fonts: Option<Res<EmberFonts>>,
+    windows: Query<&Window>,
+    mut ghosts: Query<(Entity, &mut Node), With<DragGhost>>,
+) {
+    let Some(payload) = payload.filter(|_| state.dragging) else {
+        for (e, _) in &ghosts {
+            commands.entity(e).despawn();
+        }
+        return;
+    };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    // Reposition an existing ghost.
+    if let Some((_, mut node)) = ghosts.iter_mut().next() {
+        node.left = Val::Px(cursor.x + 12.0);
+        node.top = Val::Px(cursor.y + 14.0);
+        return;
+    }
+    // Otherwise spawn one (fonts may not be ready on the very first drag frame).
+    let Some(fonts) = fonts else {
+        return;
+    };
+    let color = asset_type_info(&payload.path).0;
+    let ghost = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(cursor.x + 12.0),
+                top: Val::Px(cursor.y + 14.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                max_width: Val::Px(240.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.11, 0.11, 0.14, 0.92)),
+            BorderColor::all(rgb(ACCENT_BLUE)),
+            GlobalZIndex(10_000),
+            Pickable::IGNORE,
+            DragGhost,
+            Name::new("asset-drag-ghost"),
+        ))
+        .id();
+    let ic = icon_text(&mut commands, &fonts.phosphor, icon_for(&payload.path, false), color, 14.0);
+    let lbl = commands
+        .spawn((
+            Text::new(payload.name.clone()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Pickable::IGNORE,
+        ))
+        .id();
+    commands.entity(ghost).add_children(&[ic, lbl]);
 }
 
 /// A favorites/recent shortcut row: navigate (folder) or open (file).
@@ -937,41 +1013,30 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(zoom_box).add_children(&[zoom_icon, zoom]);
 
-    commands.entity(toolbar).add_children(&[
-        add,
-        import,
-        new_folder,
-        crumb_box,
-        spacer,
-        zoom_box,
-    ]);
-
-    // ── Search row (full-width, Unreal-style) ──
-    let search = text_input(commands, &fonts.ui, "Search assets...", "");
+    // Compact search field, placed just left of the zoom control.
+    let search = text_input(commands, &fonts.ui, "Search...", "");
     commands.entity(search).insert((
         AssetSearch,
         Node {
-            width: Val::Percent(100.0),
+            width: Val::Px(160.0),
             min_width: Val::Px(0.0),
-            padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
             border_radius: BorderRadius::all(Val::Px(4.0)),
             ..default()
         },
     ));
-    let search_row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_shrink: 0.0,
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
-                ..default()
-            },
-            BackgroundColor(rgb((26, 26, 32))),
-        ))
-        .id();
-    commands.entity(search_row).add_child(search);
+
+    commands.entity(toolbar).add_children(&[
+        add,
+        import,
+        new_folder,
+        crumb_box,
+        spacer,
+        search,
+        zoom_box,
+    ]);
 
     // Grid.
     let grid = commands
@@ -1034,7 +1099,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands
         .entity(content)
-        .add_children(&[toolbar, search_row, grid_scroll, footer]);
+        .add_children(&[toolbar, grid_scroll, footer]);
 
     // Context menu (shared, repositioned on right-click).
     let menu = context_menu(commands, fonts);
