@@ -85,6 +85,9 @@ pub fn register_native_inspector(app: &mut App) {
             add_option_click,
             lock_click,
             enum_option_click,
+            asset_drop,
+            asset_clear_click,
+            asset_drop_highlight,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -100,6 +103,7 @@ enum FieldKind {
     Bool,
     Color,
     Text,
+    Asset,
     Enum { options: &'static [&'static str] },
     ReadOnly,
 }
@@ -117,6 +121,9 @@ struct FieldSpec {
     get_fn: GetFn,
     set_fn: SetFn,
     init: FieldInit,
+    /// Accepted extensions for `Asset` fields (empty = accept any). Unused for
+    /// other kinds.
+    extensions: Vec<String>,
 }
 
 struct SectionSpec {
@@ -380,7 +387,14 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 (FieldType::Enum { options }, Some(FieldValue::Enum(s))) => {
                     (FieldKind::Enum { options }, FieldInit::Text(s.clone()))
                 }
+                (FieldType::Asset { .. }, Some(FieldValue::Asset(_))) => {
+                    (FieldKind::Asset, FieldInit::Text(String::new()))
+                }
                 _ => (FieldKind::ReadOnly, FieldInit::Text(format_value(val.as_ref()))),
+            };
+            let extensions = match &f.field_type {
+                FieldType::Asset { extensions } => extensions.clone(),
+                _ => Vec::new(),
             };
             fields.push(FieldSpec {
                 name: f.name,
@@ -388,6 +402,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 get_fn: f.get_fn,
                 set_fn: f.set_fn,
                 init,
+                extensions,
             });
         }
         out.push(SectionSpec {
@@ -722,6 +737,17 @@ fn build_field_value(
             let dd = build_enum_dropdown(commands, fonts, entity, field.get_fn, field.set_fn, options, &cur);
             commands.entity(value_parent).add_child(dd);
         }
+        FieldKind::Asset => {
+            let f = build_asset_field(
+                commands,
+                fonts,
+                entity,
+                field.get_fn,
+                field.set_fn,
+                field.extensions.clone(),
+            );
+            commands.entity(value_parent).add_child(f);
+        }
         FieldKind::ReadOnly => {
             let text = if let FieldInit::Text(ref s) = field.init {
                 s.clone()
@@ -880,6 +906,199 @@ fn build_enum_dropdown(
         .id();
     commands.entity(wrap).add_children(&[trigger, panel]);
     wrap
+}
+
+// ── Asset field (drop target from the asset browser) ─────────────────────────
+
+#[derive(Component)]
+struct AssetDropZone {
+    extensions: Vec<String>,
+    set_fn: SetFn,
+    entity: Entity,
+}
+
+#[derive(Component)]
+struct AssetClearBtn {
+    set_fn: SetFn,
+    entity: Entity,
+}
+
+/// `(display text, has-value)` for an asset field value (filename or prompt).
+fn asset_display(v: Option<FieldValue>) -> (String, bool) {
+    match v {
+        Some(FieldValue::Asset(Some(p))) if !p.is_empty() => {
+            let name = std::path::Path::new(&p)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or(p);
+            (name, true)
+        }
+        _ => ("Drag asset here".to_string(), false),
+    }
+}
+
+fn build_asset_field(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    get_fn: GetFn,
+    set_fn: SetFn,
+    extensions: Vec<String>,
+) -> Entity {
+    let path_text = commands
+        .spawn((
+            Text::new("Drag asset here"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(c(TEXT_MUTED)),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    bind_with(
+        commands,
+        path_text,
+        move |w| asset_display(get_fn(w, entity)),
+        |w, e, (text, has): &(String, bool)| {
+            if let Some(mut t) = w.get_mut::<Text>(e) {
+                if t.0 != *text {
+                    t.0 = text.clone();
+                }
+            }
+            if let Some(mut col) = w.get_mut::<TextColor>(e) {
+                col.0 = c(if *has { (210, 210, 220) } else { (140, 140, 152) });
+            }
+        },
+    );
+    let drop_box = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(c((28, 28, 34))),
+            BorderColor::all(c((70, 70, 82))),
+            bevy::ui::RelativeCursorPosition::default(),
+            AssetDropZone {
+                extensions,
+                set_fn,
+                entity,
+            },
+            Name::new("asset-drop"),
+        ))
+        .id();
+    commands.entity(drop_box).add_child(path_text);
+
+    let clear = commands
+        .spawn((
+            Text::new("\u{2715}"), // ✕
+            ui_font(&fonts.ui, 11.0),
+            TextColor(c(TEXT_MUTED)),
+            Node {
+                padding: UiRect::horizontal(Val::Px(2.0)),
+                ..default()
+            },
+            Interaction::default(),
+            AssetClearBtn { set_fn, entity },
+            Name::new("asset-clear"),
+        ))
+        .id();
+
+    let row = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                ..default()
+            },
+            Name::new("asset-field"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[drop_box, clear]);
+    row
+}
+
+/// Drop an asset (dragged from the asset browser) onto the hovered, extension-
+/// matching field → set its project-relative path.
+fn asset_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    zones: Query<(&bevy::ui::RelativeCursorPosition, &AssetDropZone)>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let (Some(payload), Some(cmds)) = (payload, cmds) else {
+        return;
+    };
+    if !payload.is_detached {
+        return;
+    }
+    for (rcp, zone) in &zones {
+        if !rcp.cursor_over {
+            continue;
+        }
+        let ext_refs: Vec<&str> = zone.extensions.iter().map(|s| s.as_str()).collect();
+        if !ext_refs.is_empty() && !payload.matches_extensions(&ext_refs) {
+            continue;
+        }
+        let path_str = project
+            .as_ref()
+            .map(|p| p.make_asset_relative(&payload.path))
+            .unwrap_or_else(|| payload.path.to_string_lossy().to_string());
+        let (set_fn, entity) = (zone.set_fn, zone.entity);
+        cmds.push(move |w: &mut World| {
+            set_fn(w, entity, FieldValue::Asset(Some(path_str.clone())))
+        });
+        break;
+    }
+}
+
+fn asset_clear_click(
+    q: Query<(&Interaction, &AssetClearBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (set_fn, entity) = (btn.set_fn, btn.entity);
+        cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Asset(None)));
+    }
+}
+
+/// Highlight a drop zone's border while a compatible asset is dragged over it.
+fn asset_drop_highlight(
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    theme: Option<Res<ThemeManager>>,
+    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &AssetDropZone, &mut BorderColor)>,
+) {
+    let accent = theme
+        .map(|t| c(c32(t.active_theme.semantic.accent.to_color32())))
+        .unwrap_or(c((120, 140, 200)));
+    for (rcp, zone, mut bc) in &mut zones {
+        let active = payload.as_ref().is_some_and(|p| {
+            let ext_refs: Vec<&str> = zone.extensions.iter().map(|s| s.as_str()).collect();
+            p.is_detached
+                && rcp.cursor_over
+                && (ext_refs.is_empty() || p.matches_extensions(&ext_refs))
+        });
+        let want = BorderColor::all(if active { accent } else { c((70, 70, 82)) });
+        if *bc != want {
+            *bc = want;
+        }
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
