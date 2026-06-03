@@ -212,6 +212,7 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     drag_value::drag_value_drag,
+                    drag_value::drag_value_apply,
                     color_picker::color_picker_sync,
                     knob::knob_drag,
                     fader::fader_drag,
