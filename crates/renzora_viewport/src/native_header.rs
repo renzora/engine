@@ -15,7 +15,10 @@ use renzora::core::viewport_types::{
     CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
     ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
 };
-use renzora_editor::EditorCommands;
+use bevy::ecs::world::CommandQueue;
+use std::sync::Arc;
+
+use renzora_editor::{EditorCommands, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
@@ -75,6 +78,24 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let gap2 = gap(commands, 6.0);
     let play = action_btn(commands, fonts, HeaderAction::Play, "play");
     let scripts = action_btn(commands, fonts, HeaderAction::Scripts, "code");
+
+    // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
+    // Populated from ToolbarRegistry by a deferred system (predicates need World).
+    let tools_gap = gap(commands, 8.0);
+    let tools = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(1.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            ToolContainer,
+            Name::new("vp-tools"),
+        ))
+        .id();
+
     let gap3 = gap(commands, 8.0);
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
     let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
@@ -133,8 +154,9 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     // Left: session actions (+ tools, later). Right: view/mode, inline snapping,
     // camera speed, then the Display / Snap / Camera dropdowns + maximize.
     commands.entity(row).add_children(&[
-        undo, redo, gap1, save, gap2, play, scripts, spacer, view_dd, mode_dd, gap5, translate,
-        rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd, gap4, maximize,
+        undo, redo, gap1, save, gap2, play, scripts, tools_gap, tools, spacer, view_dd, mode_dd,
+        gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd,
+        gap4, maximize,
     ]);
     row
 }
@@ -195,8 +217,14 @@ pub(crate) fn register(app: &mut App) {
             update_click_rows,
             update_panel_buttons,
             update_camera_snap_triggers,
+            tool_button_click,
         )
             .run_if(in_state(SplashState::Editor)),
+    );
+    // Exclusive (need `&World` for the registry predicates).
+    app.add_systems(
+        Update,
+        (populate_tools, update_tool_buttons).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -1751,5 +1779,210 @@ fn update_camera_snap_triggers(
         if bg.0 != want {
             bg.0 = want;
         }
+    }
+}
+
+// ── Registry-driven tool buttons (A6) ────────────────────────────────────────
+
+/// The header's tool-button strip; filled from `ToolbarRegistry` once it exists.
+#[derive(Component)]
+struct ToolContainer;
+
+/// Marks a container that's already been populated (so we don't refill it, but a
+/// freshly re-created panel still gets filled).
+#[derive(Component)]
+struct ToolsPopulated;
+
+/// A registry-backed tool button: carries the predicates/activator so the
+/// per-frame systems can highlight, show/hide, and fire it.
+#[derive(Component, Clone)]
+struct ToolButton {
+    visible: Arc<dyn Fn(&World) -> bool + Send + Sync>,
+    is_active: Arc<dyn Fn(&World) -> bool + Send + Sync>,
+    activate: Arc<dyn Fn(&mut World) + Send + Sync>,
+}
+
+/// Fill an empty `ToolContainer` from the registry (Transform / Terrain / custom
+/// sections with separators). Exclusive because the visibility/active predicates
+/// take `&World`; runs until the registry is populated and the container exists.
+fn populate_tools(world: &mut World) {
+    let Some(registry) = world.get_resource::<ToolbarRegistry>().cloned() else {
+        return;
+    };
+    if registry.entries().is_empty() {
+        return; // tools not registered yet
+    }
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    let mut cq = world.query_filtered::<Entity, (With<ToolContainer>, Without<ToolsPopulated>)>();
+    let Some(container) = cq.iter(world).next() else {
+        return;
+    };
+
+    // Build the ordered section list: Transform, Terrain, then custom sections.
+    let mut sections: Vec<Vec<renzora_editor::ToolEntry>> = Vec::new();
+    let by_section = |sec| {
+        let mut v: Vec<_> = registry
+            .entries()
+            .iter()
+            .filter(|e| e.section == sec)
+            .cloned()
+            .collect();
+        v.sort_by_key(|e| e.order);
+        v
+    };
+    let transform = by_section(ToolSection::Transform);
+    if !transform.is_empty() {
+        sections.push(transform);
+    }
+    let terrain = by_section(ToolSection::Terrain);
+    if !terrain.is_empty() {
+        sections.push(terrain);
+    }
+    for id in registry.custom_sections() {
+        let v = by_section(ToolSection::Custom(id));
+        if !v.is_empty() {
+            sections.push(v);
+        }
+    }
+
+    let mut queue = CommandQueue::default();
+    {
+        let mut commands = Commands::new(&mut queue, world);
+        let mut children: Vec<Entity> = Vec::new();
+        for (si, section) in sections.iter().enumerate() {
+            if si > 0 {
+                children.push(tool_separator(&mut commands));
+            }
+            for entry in section {
+                children.push(tool_button(&mut commands, &fonts, entry));
+            }
+        }
+        commands.entity(container).add_children(&children);
+        commands.entity(container).insert(ToolsPopulated);
+    }
+    queue.apply(world);
+}
+
+fn tool_separator(commands: &mut Commands) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Px(1.0),
+                height: Val::Px(16.0),
+                margin: UiRect::horizontal(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(70, 70, 82)),
+            Name::new("vp-tool-sep"),
+        ))
+        .id()
+}
+
+fn tool_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entry: &renzora_editor::ToolEntry,
+) -> Entity {
+    // `entry.icon` is the Phosphor glyph itself (egui_phosphor constant), so it
+    // renders directly with the same Phosphor font ember uses.
+    let glyph = commands
+        .spawn((
+            Text::new(entry.icon),
+            TextFont {
+                font: fonts.phosphor.clone(),
+                font_size: 15.0,
+                ..default()
+            },
+            TextColor(Color::srgb_u8(230, 230, 240)),
+        ))
+        .id();
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(26.0),
+                height: Val::Px(BTN_H),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            ToolButton {
+                visible: entry.visible.clone(),
+                is_active: entry.is_active.clone(),
+                activate: entry.activate.clone(),
+            },
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new(format!("vp-tool:{}", entry.id)),
+        ))
+        .id();
+    commands.entity(btn).add_child(glyph);
+    btn
+}
+
+/// Per-frame: evaluate each tool's `visible` (show/hide) and `is_active`
+/// (accent highlight). Exclusive because the predicates take `&World`.
+fn update_tool_buttons(world: &mut World) {
+    let mut q = world.query::<(Entity, &ToolButton, &Interaction)>();
+    let collected: Vec<(Entity, ToolButton, Interaction)> = q
+        .iter(world)
+        .map(|(e, b, i)| (e, b.clone(), *i))
+        .collect();
+    if collected.is_empty() {
+        return;
+    }
+    let (accent, hovered) = {
+        let Some(tm) = world.get_resource::<ThemeManager>() else {
+            return;
+        };
+        (
+            col(tm.active_theme.semantic.accent.to_color32()),
+            col(tm.active_theme.widgets.hovered_bg.to_color32()),
+        )
+    };
+    let results: Vec<(Entity, bool, Color)> = collected
+        .iter()
+        .map(|(e, b, inter)| {
+            let visible = (b.visible)(world);
+            let active = (b.is_active)(world);
+            let bg = if active {
+                accent
+            } else if *inter == Interaction::Hovered {
+                hovered
+            } else {
+                Color::NONE
+            };
+            (*e, visible, bg)
+        })
+        .collect();
+    for (e, visible, bg) in results {
+        if let Some(mut node) = world.get_mut::<Node>(e) {
+            let want = if visible { Display::Flex } else { Display::None };
+            if node.display != want {
+                node.display = want;
+            }
+        }
+        if let Some(mut bgc) = world.get_mut::<BackgroundColor>(e) {
+            if bgc.0 != bg {
+                bgc.0 = bg;
+            }
+        }
+    }
+}
+
+fn tool_button_click(
+    q: Query<(&Interaction, &ToolButton), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let activate = btn.activate.clone();
+        cmds.push(move |w: &mut World| (activate)(w));
     }
 }
