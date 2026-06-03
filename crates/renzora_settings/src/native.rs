@@ -13,7 +13,10 @@ use bevy::text::TextLayout;
 use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
-use renzora::EditorUiBackend;
+use renzora::{
+    AspectMode, CurrentProject, EditorUiBackend, RenderingMode, StretchMode, TextureFilter,
+    WindowMode,
+};
 use renzora_editor::{
     CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont,
 };
@@ -21,7 +24,9 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{drag_value, dropdown, scroll_view_bar, toggle_switch, DragRange};
+use renzora_ember::widgets::{
+    bind_text_input, drag_value, dropdown, scroll_view_bar, text_input, toggle_switch, DragRange,
+};
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
@@ -149,14 +154,46 @@ fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
         .get_resource::<ThemeManager>()
         .map(|tm| tm.available_themes.clone())
         .unwrap_or_default();
+    let has_project = world.get_resource::<CurrentProject>().is_some();
+    let scenes = scan_scenes(world);
 
     let mut queue = bevy::ecs::world::CommandQueue::default();
     let root = {
         let mut commands = Commands::new(&mut queue, world);
-        spawn_overlay(&mut commands, &fonts, tab, &settings, &viewport, &custom, &themes)
+        spawn_overlay(
+            &mut commands,
+            &fonts,
+            tab,
+            &settings,
+            &viewport,
+            &custom,
+            &themes,
+            &scenes,
+            has_project,
+        )
     };
     queue.apply(world);
     Some(root)
+}
+
+/// Scan `<project>/scenes/*.ron` for the boot-scene / autoload pickers.
+fn scan_scenes(world: &World) -> Vec<String> {
+    let Some(cp) = world.get_resource::<CurrentProject>() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(cp.path.join("scenes")) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("ron") {
+                if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                    out.push(format!("scenes/{name}"));
+                }
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 // ── Overlay shell ────────────────────────────────────────────────────────────
@@ -170,6 +207,8 @@ fn spawn_overlay(
     viewport: &ViewportSettings,
     custom: &[String],
     themes: &[String],
+    scenes: &[String],
+    has_project: bool,
 ) -> Entity {
     // Full-screen scrim: blocks clicks behind the modal + dims slightly.
     let root = commands
@@ -217,7 +256,9 @@ fn spawn_overlay(
     commands.entity(root).add_child(panel);
 
     let title = build_title_bar(commands, fonts);
-    let body = build_body(commands, fonts, tab, settings, viewport, custom, themes);
+    let body = build_body(
+        commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project,
+    );
     commands.entity(panel).add_children(&[title, body]);
     root
 }
@@ -284,10 +325,14 @@ fn build_body(
     viewport: &ViewportSettings,
     custom: &[String],
     themes: &[String],
+    scenes: &[String],
+    has_project: bool,
 ) -> Entity {
     let sidebar = build_sidebar(commands, fonts, tab);
 
-    let content_col = build_tab_content(commands, fonts, tab, settings, viewport, custom, themes);
+    let content_col = build_tab_content(
+        commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project,
+    );
     let scroller = scroll_view_bar(commands, content_col);
 
     let content_pane = commands
@@ -612,6 +657,8 @@ fn build_tab_content(
     viewport: &ViewportSettings,
     custom: &[String],
     themes: &[String],
+    scenes: &[String],
+    has_project: bool,
 ) -> Entity {
     let col = commands
         .spawn((
@@ -625,14 +672,15 @@ fn build_tab_content(
         .id();
 
     match tab {
+        SettingsTab::Project => tab_project(commands, fonts, col, scenes, has_project),
         SettingsTab::Interface => tab_interface(commands, fonts, col, settings, custom),
         SettingsTab::Editor => tab_editor(commands, fonts, col),
         SettingsTab::Viewport => tab_viewport(commands, fonts, col, viewport),
         SettingsTab::Scripting => tab_scripting(commands, fonts, col),
         SettingsTab::Assets => tab_assets(commands, fonts, col),
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
-        // Not yet migrated to bevy_ui — placeholder so the overlay still works.
-        SettingsTab::Project | SettingsTab::Input | SettingsTab::Shortcuts | SettingsTab::Plugins => {
+        // Input / Shortcuts (key-capture) not yet migrated — placeholder.
+        SettingsTab::Input | SettingsTab::Shortcuts | SettingsTab::Plugins => {
             placeholder(commands, fonts, col)
         }
     }
@@ -652,6 +700,307 @@ fn placeholder(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
         ))
         .id();
     commands.entity(col).add_child(lbl);
+}
+
+// ── Project ──────────────────────────────────────────────────────────────────
+
+fn save_project(w: &mut World) {
+    if let Some(cp) = w.get_resource::<CurrentProject>() {
+        let _ = cp.save_config();
+    }
+}
+
+fn tab_project(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    col: Entity,
+    scenes: &[String],
+    has_project: bool,
+) {
+    if !has_project {
+        let lbl = commands
+            .spawn((
+                Text::new("No project is currently loaded."),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(TEXT_MUTED)),
+                Node {
+                    margin: UiRect::all(Val::Px(12.0)),
+                    ..default()
+                },
+            ))
+            .id();
+        commands.entity(col).add_child(lbl);
+        return;
+    }
+
+    let (sec, body) = section(commands, fonts, "folder-open", "Project", A_BLUE);
+    commands.entity(col).add_child(sec);
+    let ti = text_input(commands, &fonts.ui, "Project name", "");
+    bind_text_input(
+        commands,
+        ti,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| c.config.name.clone())
+                .unwrap_or_default()
+        },
+        |w, s| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.name = s;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Name", ti);
+
+    let scene_opts: Vec<&str> = scenes.iter().map(|s| s.as_str()).collect();
+    let sc1 = scenes.to_vec();
+    let sc2 = scenes.to_vec();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &scene_opts,
+        0,
+        move |w| {
+            let cur = w
+                .get_resource::<CurrentProject>()
+                .map(|c| c.config.main_scene.clone())
+                .unwrap_or_default();
+            sc1.iter().position(|n| *n == cur).unwrap_or(0)
+        },
+        move |w, &i| {
+            if let Some(name) = sc2.get(i).cloned() {
+                if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                    cp.config.main_scene = name;
+                }
+                save_project(w);
+            }
+        },
+    );
+    settings_row(commands, fonts, body, 1, "Boot Scene", dd);
+
+    // Rendering (3D pipeline).
+    let (sec, body) = section(commands, fonts, "monitor", "Rendering", A_BLUE);
+    commands.entity(col).add_child(sec);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &["Auto (per platform)", "Forward", "Deferred"],
+        0,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.rendering.mode)
+            .unwrap_or_default()
+        {
+            RenderingMode::Auto => 0,
+            RenderingMode::Forward => 1,
+            RenderingMode::Deferred => 2,
+        },
+        |w, &i| {
+            let m = match i {
+                1 => RenderingMode::Forward,
+                2 => RenderingMode::Deferred,
+                _ => RenderingMode::Auto,
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering.mode = m;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Mode", dd);
+    note_row(commands, fonts, body, "Restart required for the rendering mode to take effect.");
+
+    // Window.
+    let (sec, body) = section(commands, fonts, "desktop", "Window", A_BLUE);
+    commands.entity(col).add_child(sec);
+    let dv = proj_u32_drag(
+        commands, fonts, 320.0, 7680.0,
+        |c| c.window.width,
+        |c, v| c.window.width = v,
+    );
+    settings_row(commands, fonts, body, 0, "Width", dv);
+    let dv = proj_u32_drag(
+        commands, fonts, 240.0, 4320.0,
+        |c| c.window.height,
+        |c, v| c.window.height = v,
+    );
+    settings_row(commands, fonts, body, 1, "Height", dv);
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| c.config.window.resizable)
+                .unwrap_or(true)
+        },
+        |w, &v| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.window.resizable = v;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 2, "Resizable", t);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &["Windowed", "Fullscreen", "Borderless"],
+        0,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.window.mode)
+            .unwrap_or_default()
+        {
+            WindowMode::Windowed => 0,
+            WindowMode::Fullscreen => 1,
+            WindowMode::Borderless => 2,
+        },
+        |w, &i| {
+            let m = match i {
+                1 => WindowMode::Fullscreen,
+                2 => WindowMode::Borderless,
+                _ => WindowMode::Windowed,
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.window.mode = m;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 3, "Mode", dd);
+
+    // Viewport (render resolution).
+    let (sec, body) = section(commands, fonts, "video-camera", "Viewport", A_PURPLE);
+    commands.entity(col).add_child(sec);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &["Disabled", "Viewport"],
+        0,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.viewport.stretch_mode)
+            .unwrap_or_default()
+        {
+            StretchMode::Disabled => 0,
+            StretchMode::Viewport => 1,
+        },
+        |w, &i| {
+            let m = if i == 1 {
+                StretchMode::Viewport
+            } else {
+                StretchMode::Disabled
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.viewport.stretch_mode = m;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Stretch Mode", dd);
+    let dv = proj_u32_drag(
+        commands, fonts, 16.0, 7680.0,
+        |c| c.viewport.width,
+        |c, v| c.viewport.width = v,
+    );
+    settings_row(commands, fonts, body, 1, "Width", dv);
+    let dv = proj_u32_drag(
+        commands, fonts, 16.0, 4320.0,
+        |c| c.viewport.height,
+        |c, v| c.viewport.height = v,
+    );
+    settings_row(commands, fonts, body, 2, "Height", dv);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &["Keep", "Expand", "Keep Width", "Keep Height"],
+        0,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.viewport.aspect_mode)
+            .unwrap_or_default()
+        {
+            AspectMode::Keep => 0,
+            AspectMode::Expand => 1,
+            AspectMode::KeepWidth => 2,
+            AspectMode::KeepHeight => 3,
+        },
+        |w, &i| {
+            let m = match i {
+                1 => AspectMode::Expand,
+                2 => AspectMode::KeepWidth,
+                3 => AspectMode::KeepHeight,
+                _ => AspectMode::Keep,
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.viewport.aspect_mode = m;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 3, "Aspect Mode", dd);
+
+    // Rendering 2D.
+    let (sec, body) = section(commands, fonts, "image-square", "Rendering 2D", A_BLUE);
+    commands.entity(col).add_child(sec);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &["Nearest", "Linear"],
+        0,
+        |w| match w
+            .get_resource::<CurrentProject>()
+            .map(|c| c.config.rendering_2d.image_filter)
+            .unwrap_or_default()
+        {
+            TextureFilter::Nearest => 0,
+            TextureFilter::Linear => 1,
+        },
+        |w, &i| {
+            let f = if i == 1 {
+                TextureFilter::Linear
+            } else {
+                TextureFilter::Nearest
+            };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering_2d.image_filter = f;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Image Filter", dd);
+}
+
+/// A drag-value bound to a `u32` field of the current project's config,
+/// saving project.toml on edit.
+fn proj_u32_drag(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    min: f32,
+    max: f32,
+    get: fn(&renzora::ProjectConfig) -> u32,
+    set: fn(&mut renzora::ProjectConfig, u32),
+) -> Entity {
+    ctl_drag(
+        commands,
+        fonts,
+        min,
+        min,
+        max,
+        1.0,
+        move |w| {
+            w.get_resource::<CurrentProject>()
+                .map(|c| get(&c.config) as f32)
+                .unwrap_or(0.0)
+        },
+        move |w, &v| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                set(&mut cp.config, v.round().max(0.0) as u32);
+            }
+            save_project(w);
+        },
+    )
 }
 
 // ── Interface ────────────────────────────────────────────────────────────────
