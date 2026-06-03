@@ -96,8 +96,10 @@ mod hamburger;
 mod menu;
 mod multi_select;
 mod node_graph;
+mod overlay;
 mod rich_text;
 mod scroll_area;
+mod search;
 mod sortable;
 mod spinner;
 mod timeline;
@@ -183,7 +185,9 @@ pub use hamburger::*;
 pub use multi_select::*;
 pub use node_graph::*;
 pub use rich_text::*;
+pub use overlay::*;
 pub use scroll_area::*;
+pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
 pub use timeline::*;
@@ -243,6 +247,10 @@ impl Plugin for WidgetsPlugin {
                     popup::screen_menu_clamp,
                     popup::menu_action_run,
                     popup::screen_menu_dismiss,
+                    overlay::overlay_dismiss,
+                    search::search_list_focus,
+                    search::search_list_filter,
+                    search::search_list_select,
                 ),
                 (
                     spinner::spinner_anim,
