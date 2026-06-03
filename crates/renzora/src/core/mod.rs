@@ -1273,6 +1273,99 @@ pub struct ShellPanelInfo {
     pub category: String,
 }
 
+/// One drawn piece of a bevy_ui status-bar item: an optional phosphor icon
+/// (name *or* raw glyph) + text + color.
+#[derive(Clone)]
+pub struct ShellStatusSegment {
+    pub icon: String,
+    pub text: String,
+    pub color: [u8; 3],
+}
+
+impl ShellStatusSegment {
+    pub fn new(icon: impl Into<String>, text: impl Into<String>, color: [u8; 3]) -> Self {
+        Self {
+            icon: icon.into(),
+            text: text.into(),
+            color,
+        }
+    }
+}
+
+/// Which side of the status bar an item sits on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ShellStatusAlign {
+    Left,
+    Right,
+}
+
+/// A bevy_ui status-bar item contributed by a plugin (the native counterpart of
+/// the egui `StatusBarItem`). `render` runs each frame with `&World` and returns
+/// the current segments, so live metrics update without re-registering.
+pub struct ShellStatusItem {
+    pub id: &'static str,
+    pub align: ShellStatusAlign,
+    pub order: i32,
+    pub render: fn(&bevy::prelude::World) -> Vec<ShellStatusSegment>,
+}
+
+/// Registry of bevy_ui status-bar items. Any renzora plugin can push to it; the
+/// shell renders them (no egui dependency).
+#[derive(Resource, Default)]
+pub struct ShellStatusRegistry {
+    pub items: Vec<ShellStatusItem>,
+}
+
+/// The bevy-native editor-extension API. A renzora plugin (full ECS access) uses
+/// this to add panels + status-bar items to the bevy_ui shell directly — no
+/// egui, no bridge — mirroring how `#[derive]` component macros let plugins add
+/// their own data.
+pub trait RenzoraShellExt {
+    /// Register a panel's metadata (title/icon/category) for the dock + Add-Panel
+    /// picker. The panel's *content* is registered separately via
+    /// `renzora_ember`'s `register_panel_content`.
+    fn register_shell_panel(
+        &mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        icon: impl Into<String>,
+        category: impl Into<String>,
+    ) -> &mut Self;
+
+    /// Register a status-bar item.
+    fn register_shell_status_item(&mut self, item: ShellStatusItem) -> &mut Self;
+}
+
+impl RenzoraShellExt for bevy::app::App {
+    fn register_shell_panel(
+        &mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        icon: impl Into<String>,
+        category: impl Into<String>,
+    ) -> &mut Self {
+        self.init_resource::<ShellPanelRegistry>();
+        self.world_mut().resource_mut::<ShellPanelRegistry>().panels.insert(
+            id.into(),
+            ShellPanelInfo {
+                title: title.into(),
+                icon: icon.into(),
+                category: category.into(),
+            },
+        );
+        self
+    }
+
+    fn register_shell_status_item(&mut self, item: ShellStatusItem) -> &mut Self {
+        self.init_resource::<ShellStatusRegistry>();
+        self.world_mut()
+            .resource_mut::<ShellStatusRegistry>()
+            .items
+            .push(item);
+        self
+    }
+}
+
 /// Panel ids that have a **bevy-native** (ember) content renderer — i.e. their
 /// own crate builds the panel into the dock leaf and keeps it in sync, instead
 /// of the shell's placeholder/`content_dispatch`. The shell skips these ids so
@@ -1799,13 +1892,8 @@ impl PinValue {
         match self {
             Self::Float(v) => *v,
             Self::Int(v) => *v as f32,
-            Self::Bool(v) => {
-                if *v {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
+            Self::Bool(true) => 1.0,
+            Self::Bool(false) => 0.0,
             _ => 0.0,
         }
     }
@@ -1814,13 +1902,8 @@ impl PinValue {
         match self {
             Self::Int(v) => *v,
             Self::Float(v) => *v as i32,
-            Self::Bool(v) => {
-                if *v {
-                    1
-                } else {
-                    0
-                }
-            }
+            Self::Bool(true) => 1,
+            Self::Bool(false) => 0,
             _ => 0,
         }
     }

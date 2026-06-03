@@ -8,7 +8,10 @@ use bevy_egui::egui;
 use egui_phosphor::regular;
 use nvml_wrapper::Nvml;
 
-use renzora::{RenderingMode, ResolvedRenderingMode};
+use renzora::{
+    RenderingMode, RenzoraShellExt, ResolvedRenderingMode, ShellStatusAlign, ShellStatusItem,
+    ShellStatusSegment,
+};
 use renzora_editor::{AppEditorExt, SplashState, StatusBarAlignment, StatusBarItem};
 use renzora_theme::ThemeManager;
 
@@ -277,7 +280,64 @@ impl Plugin for SystemMonitorPlugin {
         );
 
         app.register_status_item(SystemMonitorStatusItem::default());
+        // bevy_ui shell status item (the egui-free path).
+        app.register_shell_status_item(ShellStatusItem {
+            id: "system_monitor",
+            align: ShellStatusAlign::Right,
+            order: 0,
+            render: monitor_status_segments,
+        });
     }
+}
+
+/// The bevy_ui status segments — same values + order as the egui status item.
+fn monitor_status_segments(world: &World) -> Vec<ShellStatusSegment> {
+    let Some(s) = world.get_resource::<SystemMonitorState>() else {
+        return Vec::new();
+    };
+    const SECONDARY: [u8; 3] = [200, 200, 210];
+    const MUTED: [u8; 3] = [150, 150, 164];
+    const AMBER: [u8; 3] = [220, 180, 50];
+
+    let mut out = Vec::new();
+    let fps_color = if s.fps >= 55.0 {
+        [100, 200, 100]
+    } else if s.fps >= 30.0 {
+        AMBER
+    } else {
+        [220, 80, 80]
+    };
+    out.push(ShellStatusSegment::new(
+        "speedometer",
+        format!("{:.0} FPS ({:.2}ms)", s.fps, s.frame_time_ms),
+        fps_color,
+    ));
+    out.push(ShellStatusSegment::new(
+        "memory",
+        format!("{:.1} / {:.0} GB", s.used_ram_gb, s.total_ram_gb),
+        SECONDARY,
+    ));
+    if s.gpu_vram_total_gb > 0.0 {
+        out.push(ShellStatusSegment::new(
+            "graphics-card",
+            format!(
+                "{:.0}% {:.1}/{:.0} GB",
+                s.gpu_usage_pct, s.gpu_vram_used_gb, s.gpu_vram_total_gb
+            ),
+            SECONDARY,
+        ));
+    }
+    if let Some(mode) = world.get_resource::<ResolvedRenderingMode>() {
+        let (label, color) = match mode.0 {
+            RenderingMode::Deferred => ("Deferred", AMBER),
+            _ => ("Forward", SECONDARY),
+        };
+        out.push(ShellStatusSegment::new("stack", label, color));
+    }
+    if !s.gpu_name.is_empty() {
+        out.push(ShellStatusSegment::new("graphics-card", s.gpu_name.clone(), MUTED));
+    }
+    out
 }
 
 renzora::add!(SystemMonitorPlugin, Editor);

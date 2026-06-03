@@ -40,6 +40,7 @@ impl Plugin for ShellPlugin {
         });
         app.insert_resource(ShellLayouts { layouts, active: 0 });
         app.init_resource::<renzora::ShellPanelRegistry>();
+        app.init_resource::<renzora::ShellStatusRegistry>();
         app.add_systems(
             Update,
             (
@@ -337,25 +338,150 @@ fn spawn_shell(commands: &mut Commands, font: &Handle<Font>) {
         ))
         .id();
 
-    let statusbar = chrome_row(
-        commands,
-        font,
-        "status-bar",
-        22.0,
-        rgb(WINDOW_BG),
-        16.0,
-        10.0,
-        &[
-            ("Ready", false),
-            ("Dark", false),
-            ("Vulkan", false),
-            ("60 FPS", false),
-        ],
-    );
+    let statusbar = build_status_bar(commands, font);
 
     commands
         .entity(root)
         .add_children(&[top_bar, doctabs, dock_area, statusbar]);
+}
+
+/// The bottom status bar: a "Ready" label + plugin-contributed items from the
+/// bevy-native `ShellStatusRegistry`, rendered via a reactive keyed list (so live
+/// metrics update without rebuilding the bar).
+fn build_status_bar(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
+    let bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(22.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(14.0),
+                padding: UiRect::horizontal(Val::Px(10.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(WINDOW_BG)),
+            Name::new("status-bar"),
+        ))
+        .id();
+    renzora_ember::reactive::keyed_list(commands, bar, status_snapshot);
+    bar
+}
+
+enum StatusRow {
+    Label(String, (u8, u8, u8)),
+    Seg(renzora::ShellStatusSegment),
+    Spacer,
+}
+
+/// Flatten the status registry into keyed rows: a Ready label + left items + a
+/// flex spacer + right items (each item's `render` is recomputed every frame).
+fn status_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+    use renzora::ShellStatusAlign;
+    use std::hash::{Hash, Hasher};
+
+    let mut rows: Vec<StatusRow> = vec![StatusRow::Label("Ready".to_string(), TEXT_MUTED)];
+    if let Some(reg) = world.get_resource::<renzora::ShellStatusRegistry>() {
+        let mut left: Vec<&renzora::ShellStatusItem> = reg
+            .items
+            .iter()
+            .filter(|i| i.align == ShellStatusAlign::Left)
+            .collect();
+        left.sort_by_key(|i| i.order);
+        for it in left {
+            rows.extend((it.render)(world).into_iter().map(StatusRow::Seg));
+        }
+        rows.push(StatusRow::Spacer);
+        let mut right: Vec<&renzora::ShellStatusItem> = reg
+            .items
+            .iter()
+            .filter(|i| i.align == ShellStatusAlign::Right)
+            .collect();
+        right.sort_by_key(|i| i.order);
+        for it in right {
+            rows.extend((it.render)(world).into_iter().map(StatusRow::Seg));
+        }
+    } else {
+        rows.push(StatusRow::Spacer);
+    }
+
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            i.hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            match r {
+                StatusRow::Label(t, c) => {
+                    (0u8, t, c).hash(&mut h);
+                }
+                StatusRow::Seg(s) => {
+                    (1u8, &s.icon, &s.text, s.color).hash(&mut h);
+                }
+                StatusRow::Spacer => 2u8.hash(&mut h),
+            }
+            (k.finish(), h.finish())
+        })
+        .collect();
+    renzora_ember::reactive::KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| status_row(c, f, &rows[i])),
+    }
+}
+
+fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> Entity {
+    match row {
+        StatusRow::Spacer => commands.spawn(Node { flex_grow: 1.0, ..default() }).id(),
+        StatusRow::Label(text, color) => commands
+            .spawn((
+                Text::new(text.clone()),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(*color)),
+            ))
+            .id(),
+        StatusRow::Seg(s) => {
+            let r = commands
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(4.0),
+                    ..default()
+                })
+                .id();
+            let mut kids = Vec::new();
+            let color = (s.color[0], s.color[1], s.color[2]);
+            if !s.icon.is_empty() {
+                let glyph = renzora_ember::font::icon_glyph(&s.icon)
+                    .unwrap_or_else(|| s.icon.chars().next().unwrap_or(' '));
+                kids.push(
+                    commands
+                        .spawn((
+                            Text::new(glyph.to_string()),
+                            TextFont {
+                                font: fonts.phosphor.clone(),
+                                font_size: 12.0,
+                                ..default()
+                            },
+                            TextColor(rgb(color)),
+                        ))
+                        .id(),
+                );
+            }
+            kids.push(
+                commands
+                    .spawn((
+                        Text::new(s.text.clone()),
+                        ui_font(&fonts.ui, 11.0),
+                        TextColor(rgb(color)),
+                    ))
+                    .id(),
+            );
+            commands.entity(r).add_children(&kids);
+            r
+        }
+    }
 }
 
 /// The top bar: File/Edit/View/Help on the left, the layout ribbon centered,
@@ -634,44 +760,6 @@ fn text_item(
         .id()
 }
 
-/// A horizontal strip of text items (menu bar, status bar).
-fn chrome_row(
-    commands: &mut Commands,
-    font: &Handle<Font>,
-    name: &str,
-    height: f32,
-    bg: Color,
-    gap: f32,
-    pad: f32,
-    items: &[(&str, bool)],
-) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(height),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(gap),
-                padding: UiRect::horizontal(Val::Px(pad)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(bg),
-            Name::new(name.to_string()),
-        ))
-        .id();
-
-    let kids: Vec<Entity> = items
-        .iter()
-        .map(|(label, active)| {
-            let color = if *active { TEXT_PRIMARY } else { TEXT_MUTED };
-            text_item(commands, font, label, color, 12.0)
-        })
-        .collect();
-    commands.entity(row).add_children(&kids);
-    row
-}
 
 // ── Top-bar menus (File / Edit / View / Help) ────────────────────────────────
 

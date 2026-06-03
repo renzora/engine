@@ -1204,16 +1204,53 @@ fn build_tree(
         DockTree::Leaf { tabs, active_tab } => {
             build_leaf(commands, font, phosphor, parent, tabs, *active_tab, preserved)
         }
-        DockTree::Empty => commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                Name::new("empty"),
-            ))
-            .id(),
+        DockTree::Empty => {
+            let container = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    Name::new("empty"),
+                ))
+                .id();
+            let btn = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        ..default()
+                    },
+                    BackgroundColor(rgb(TAB_ACTIVE_BG)),
+                    BorderColor::all(rgb((60, 60, 74))),
+                    Interaction::default(),
+                    renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                    // No leaf yet — picking sets the tree's root leaf.
+                    AddPanelButton {
+                        leaf: Entity::PLACEHOLDER,
+                    },
+                    Name::new("empty-add-panel"),
+                ))
+                .id();
+            let ic = icon_text(commands, phosphor, "plus", TEXT_MUTED, 14.0);
+            let t = commands
+                .spawn((
+                    Text::new("Add Panel"),
+                    ui_font(font, 13.0),
+                    TextColor(rgb(TEXT_MUTED)),
+                ))
+                .id();
+            commands.entity(btn).add_children(&[ic, t]);
+            commands.entity(container).add_child(btn);
+            container
+        }
     }
 }
 
