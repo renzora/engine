@@ -173,8 +173,8 @@ fn inspector_entry() -> InspectorEntry {
 /// swatch built from three separate float channels, plus bound numeric rows.
 #[cfg(feature = "editor")]
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
-    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
-    use renzora_ember::reactive::{bind_2way, bind_with};
+    use renzora_ember::inspector::{color_field, inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::reactive::bind_2way;
     use renzora_ember::widgets::{drag_value, DragRange};
 
     // Read initial values up front (inspector_body borrows World).
@@ -183,11 +183,6 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
     };
     let (start, end, density, exponent) =
         (s.start, s.end, s.density, s.directional_light_exponent);
-    let light = [
-        s.directional_light_color_r,
-        s.directional_light_color_g,
-        s.directional_light_color_b,
-    ];
 
     inspector_body(world, move |commands, fonts| {
         let col = commands
@@ -201,23 +196,10 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
             .id();
         let mut kids: Vec<Entity> = Vec::new();
 
-        // Composed 3-channel "Light Color" swatch — kept live via bind_with.
-        let swatch = commands
-            .spawn((
-                Node {
-                    width: Val::Px(44.0),
-                    height: Val::Px(16.0),
-                    border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(light[0], light[1], light[2])),
-                BorderColor::all(Color::srgb_u8(70, 70, 82)),
-            ))
-            .id();
-        bind_with(
+        // "Light Color" → a proper HSV picker, two-way bound to the three
+        // directional-light channels.
+        let color = color_field(
             commands,
-            swatch,
             move |w| {
                 w.get::<DistanceFogSettings>(entity)
                     .map(|s| {
@@ -229,13 +211,15 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
                     })
                     .unwrap_or([0.0; 3])
             },
-            |w, e, col: &[f32; 3]| {
-                if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
-                    bg.0 = Color::srgb(col[0], col[1], col[2]);
+            move |w, rgb: [f32; 3]| {
+                if let Some(mut s) = w.get_mut::<DistanceFogSettings>(entity) {
+                    s.directional_light_color_r = rgb[0];
+                    s.directional_light_color_g = rgb[1];
+                    s.directional_light_color_b = rgb[2];
                 }
             },
         );
-        kids.push(inspector_row(commands, &fonts.ui, "Light Color", swatch));
+        kids.push(inspector_row(commands, &fonts.ui, "Light Color", color));
 
         // Bound numeric rows (label + scrubbable value, two-way bound).
         macro_rules! frow {

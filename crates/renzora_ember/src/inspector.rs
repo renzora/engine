@@ -22,9 +22,12 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
 use crate::font::{ui_font, EmberFonts};
+use crate::reactive::bind_with;
 use crate::theme::{rgb, TEXT_MUTED};
+use crate::widgets::{bind_hsv_picker, hsv_picker, Popup};
 
 /// Width of the inspector label column. Labels are left-aligned and fixed-width
 /// so the value controls line up in a column directly to their right.
@@ -109,4 +112,75 @@ pub fn inspector_body(
     };
     queue.apply(world);
     root
+}
+
+/// A compact color field: a live swatch that opens a proper HSV picker popup
+/// (sat/val square + hue strip), two-way bound to an RGB `[f32; 3]` (0..1) via
+/// `get`/`set`. Returns a relative wrapper (swatch + popup) to drop into a row.
+/// The popup uses the generic [`Popup`] (click-outside dismiss + auto flip-up).
+pub fn color_field(
+    commands: &mut Commands,
+    get: impl Fn(&World) -> [f32; 3] + Clone + Send + Sync + 'static,
+    set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
+) -> Entity {
+    // Seed HSV; bind_hsv_picker re-syncs from the real value next frame.
+    let picker = hsv_picker(commands, 0.0, 0.0, 0.5);
+    bind_hsv_picker(commands, picker, get.clone(), set);
+
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                padding: UiRect::all(Val::Px(6.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 74))),
+            GlobalZIndex(700),
+            RelativeCursorPosition::default(),
+            Name::new("color-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_child(picker);
+
+    let swatch = commands
+        .spawn((
+            Node {
+                width: Val::Px(44.0),
+                height: Val::Px(16.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((128, 128, 128))),
+            BorderColor::all(rgb((70, 70, 82))),
+            Interaction::default(),
+            Popup::new(panel),
+            Name::new("color-swatch"),
+        ))
+        .id();
+    bind_with(commands, swatch, get, |w, e, col: &[f32; 3]| {
+        if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
+            bg.0 = Color::srgb(col[0], col[1], col[2]);
+        }
+    });
+
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Name::new("color-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[swatch, panel]);
+    wrap
 }

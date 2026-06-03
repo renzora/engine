@@ -221,6 +221,7 @@ impl Plugin for WidgetsPlugin {
                     toggle_switch::switch_apply,
                     popup::popup_toggle,
                     popup::popup_dismiss,
+                    popup::popup_position,
                     color_picker::color_picker_sync,
                     knob::knob_drag,
                     fader::fader_drag,

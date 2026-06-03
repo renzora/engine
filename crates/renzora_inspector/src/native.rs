@@ -28,8 +28,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_with};
 use renzora_ember::widgets::{
-    bind_hsv_picker, bind_text_input, drag_value, hsv_picker, text_input, toggle_switch, DragRange,
-    Popup,
+    bind_text_input, drag_value, text_input, toggle_switch, DragRange, Popup,
 };
 use renzora_theme::ThemeManager;
 
@@ -109,7 +108,6 @@ enum FieldInit {
     Float(f32),
     Vec3([f32; 3]),
     Bool(bool),
-    Color([f32; 3]),
     Text(String),
 }
 
@@ -372,8 +370,9 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 (FieldType::Bool, Some(FieldValue::Bool(b))) => {
                     (FieldKind::Bool, FieldInit::Bool(*b))
                 }
-                (FieldType::Color, Some(FieldValue::Color(col))) => {
-                    (FieldKind::Color, FieldInit::Color(*col))
+                (FieldType::Color, Some(FieldValue::Color(_))) => {
+                    // color_field seeds itself from the live value; no init needed.
+                    (FieldKind::Color, FieldInit::Text(String::new()))
                 }
                 (FieldType::String, Some(FieldValue::String(s))) => {
                     (FieldKind::Text, FieldInit::Text(s.clone()))
@@ -684,13 +683,15 @@ fn build_field_value(
             commands.entity(value_parent).add_child(sw);
         }
         FieldKind::Color => {
-            let init = if let FieldInit::Color(col) = field.init {
-                col
-            } else {
-                [1.0; 3]
-            };
-            let editor =
-                build_color_editor(commands, fonts, entity, field.get_fn, field.set_fn, init);
+            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let editor = renzora_ember::inspector::color_field(
+                commands,
+                move |w| match get_fn(w, entity) {
+                    Some(FieldValue::Color(c)) => c,
+                    _ => [0.0; 3],
+                },
+                move |w, rgb: [f32; 3]| set_fn(w, entity, FieldValue::Color(rgb)),
+            );
             commands.entity(value_parent).add_child(editor);
         }
         FieldKind::Text => {
@@ -740,96 +741,6 @@ fn build_field_value(
 }
 
 // ── Color editor (swatch + R/G/B popup) ──────────────────────────────────────
-
-/// A clickable swatch (live-bound to the color) that toggles a popup holding a
-/// proper HSV color picker (sat/val square + hue strip), two-way bound to the
-/// field's RGB.
-fn build_color_editor(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    entity: Entity,
-    get_fn: GetFn,
-    set_fn: SetFn,
-    init: [f32; 3],
-) -> Entity {
-    let _ = fonts;
-    // Seed the picker's HSV from the field's RGB (bind_hsv_picker re-syncs anyway).
-    let hsva = bevy::color::Hsva::from(bevy::color::Srgba::new(init[0], init[1], init[2], 1.0));
-    let picker = hsv_picker(commands, hsva.hue / 360.0, hsva.saturation, hsva.value);
-    bind_hsv_picker(
-        commands,
-        picker,
-        move |w| match get_fn(w, entity) {
-            Some(FieldValue::Color(c)) => c,
-            _ => [0.0; 3],
-        },
-        move |w, rgb: [f32; 3]| set_fn(w, entity, FieldValue::Color(rgb)),
-    );
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(2.0)),
-                padding: UiRect::all(Val::Px(6.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(c(PANEL_DARK)),
-            BorderColor::all(c(BORDER)),
-            GlobalZIndex(700),
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("color-panel"),
-        ))
-        .id();
-    commands.entity(panel).add_child(picker);
-
-    let swatch = commands
-        .spawn((
-            Node {
-                width: Val::Px(44.0),
-                height: Val::Px(16.0),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgb(init[0], init[1], init[2])),
-            BorderColor::all(c((70, 70, 82))),
-            Interaction::default(),
-            Popup::new(panel),
-            Name::new("color-swatch"),
-        ))
-        .id();
-    bind_with(
-        commands,
-        swatch,
-        move |w| match get_fn(w, entity) {
-            Some(FieldValue::Color(c)) => c,
-            _ => [0.0; 3],
-        },
-        |w, e, col: &[f32; 3]| {
-            if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
-                bg.0 = Color::srgb(col[0], col[1], col[2]);
-            }
-        },
-    );
-
-    let wrap = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Relative,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Name::new("color-wrap"),
-        ))
-        .id();
-    commands.entity(wrap).add_children(&[swatch, panel]);
-    wrap
-}
 
 // ── Enum dropdown ────────────────────────────────────────────────────────────
 
