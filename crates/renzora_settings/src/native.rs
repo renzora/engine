@@ -90,6 +90,9 @@ struct SettingsSection {
 #[derive(Component)]
 struct ThemeSaveBtn;
 
+#[derive(Component)]
+struct EmberThemeSaveBtn;
+
 /// Snapshot of the Input tab's data, read once per (re)build.
 struct InputTabData {
     actions: Vec<InputAction>,
@@ -143,6 +146,7 @@ pub(crate) fn build(app: &mut App) {
             settings_close_click,
             settings_section_toggle,
             theme_save_click,
+            ember_theme_save_click,
         )
             .run_if(in_state(renzora_editor::SplashState::Editor)),
     );
@@ -1599,15 +1603,51 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
     // widget/element to the Theme makes it appear here automatically.
     let hdr = commands
         .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                margin: UiRect::new(Val::Px(4.0), Val::Px(0.0), Val::Px(10.0), Val::Px(4.0)),
+                ..default()
+            },
+            Name::new("widget-styles-header"),
+        ))
+        .id();
+    let hdr_lbl = commands
+        .spawn((
             Text::new("Widget Styles"),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
             Node {
-                margin: UiRect::new(Val::Px(4.0), Val::Px(0.0), Val::Px(10.0), Val::Px(4.0)),
+                flex_grow: 1.0,
                 ..default()
             },
         ))
         .id();
+    let save_lbl = commands
+        .spawn((
+            Text::new("Save to theme.toml"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    let save = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            EmberThemeSaveBtn,
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("ember-theme-save"),
+        ))
+        .id();
+    commands.entity(save).add_child(save_lbl);
+    commands.entity(hdr).add_children(&[hdr_lbl, save]);
     commands.entity(col).add_child(hdr);
 
     for (widget, elems) in theme_schema() {
@@ -1771,6 +1811,45 @@ fn theme_save_click(
             let name = tm.active_theme_name.clone();
             tm.save_theme(&name);
         }
+    }
+}
+
+/// Write the live ember `Theme`'s per-widget style sections into the active
+/// theme's `themes/<name>.toml`, preserving any existing (e.g. egui color)
+/// sections. The bridge / runtime reloads these via `Theme::from_toml`.
+fn ember_theme_save_click(world: &mut World) {
+    let pressed = {
+        let mut q = world
+            .query_filtered::<&Interaction, (Changed<Interaction>, With<EmberThemeSaveBtn>)>();
+        q.iter(world).any(|i| *i == Interaction::Pressed)
+    };
+    if !pressed {
+        return;
+    }
+    let Some(project) = world.get_resource::<CurrentProject>().cloned() else {
+        return;
+    };
+    let name = world
+        .get_resource::<ThemeManager>()
+        .map(|t| t.active_theme_name.clone())
+        .unwrap_or_default();
+    let theme = world.resource::<renzora_ember::style::Theme>().clone();
+
+    let dir = project.path.join("themes");
+    let path = dir.join(format!("{name}.toml"));
+    // Preserve existing sections; overwrite the per-widget style tables.
+    let mut doc: toml::value::Table = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| toml::from_str(&c).ok())
+        .unwrap_or_default();
+    if let Ok(toml::Value::Table(t)) = toml::Value::try_from(&theme) {
+        for (k, v) in t {
+            doc.insert(k, v);
+        }
+    }
+    if let Ok(out) = toml::to_string_pretty(&toml::Value::Table(doc)) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&path, out);
     }
 }
 

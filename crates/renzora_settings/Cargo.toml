@@ -18,6 +18,8 @@ renzora_viewport = { path = "../renzora_viewport" }
 renzora_splash = { path = "../renzora_splash" }
 renzora_input = { path = "../renzora_input" }
 rfd = "0.15"
+# Save the ember Theme's per-widget style sections to themes/*.toml.
+toml = "0.8"
 
 [lints]
 workspace = true

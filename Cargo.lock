@@ -10710,6 +10710,7 @@ dependencies = [
  "renzora_theme",
  "renzora_viewport",
  "rfd",
+ "toml 0.8.23",
 ]
 
 [[package]]

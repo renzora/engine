@@ -65,7 +65,8 @@ impl Plugin for ShellPlugin {
 fn theme_bridge(
     tm: Option<Res<renzora_theme::ThemeManager>>,
     backend: Res<EditorUiBackend>,
-    mut last_name: Local<String>,
+    project: Option<Res<renzora::CurrentProject>>,
+    mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
     roots: Query<Entity, With<ShellRoot>>,
     mut dirty: ResMut<DockDirty>,
@@ -77,17 +78,40 @@ fn theme_bridge(
         renzora_ember::theme::set_palette(pal);
         *last_pal = Some(pal);
     }
-    if last_name.is_empty() {
-        *last_name = tm.active_theme_name.clone();
-    } else if *last_name != tm.active_theme_name {
-        *last_name = tm.active_theme_name.clone();
-        if backend.is_bevy_ui() {
+
+    let first = last_name.is_none();
+    let switched = last_name.as_deref().is_some_and(|n| n != tm.active_theme_name);
+    if first || switched {
+        *last_name = Some(tm.active_theme_name.clone());
+        // Palette is current → build the ember Theme: palette-derived defaults
+        // cascaded with the active theme file's per-widget style sections.
+        let theme = build_ember_theme(project.as_deref(), &tm.active_theme_name);
+        commands.insert_resource(theme);
+        if switched && backend.is_bevy_ui() {
             for e in &roots {
                 commands.entity(e).despawn();
             }
             dirty.0 = true;
         }
     }
+}
+
+/// Build the ember [`Theme`] from the active theme's `themes/<name>.toml` (its
+/// per-widget style sections cascade over the palette-derived defaults). Built-in
+/// themes with no file fall back to the defaults.
+fn build_ember_theme(
+    project: Option<&renzora::CurrentProject>,
+    name: &str,
+) -> renzora_ember::style::Theme {
+    if let Some(p) = project {
+        let path = p.path.join("themes").join(format!("{name}.toml"));
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(theme) = renzora_ember::style::Theme::from_toml(&content) {
+                return theme;
+            }
+        }
+    }
+    renzora_ember::style::Theme::default()
 }
 
 fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette {

@@ -19,11 +19,14 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::theme::{
-    accent, border, header_bg, hover_bg, palette, panel_bg, popup_bg, section_bg, tab_active,
-    tab_hover, text_muted, text_primary, Palette,
+    accent, border, header_bg, hover_bg, panel_bg, popup_bg, section_bg, tab_active, tab_hover,
+    text_muted, text_primary,
 };
 
-/// Registers the theme resource + the painter.
+/// Registers the theme resource + the painter. The [`Theme`] is the source of
+/// truth (loaded from `themes/*.toml` by the editor bridge / runtime loader, via
+/// [`Theme::from_toml`]); [`apply_theme`] repaints every `Styled` widget whenever
+/// it changes — so swapping or editing the Theme repaints with no rebuild.
 pub struct ThemePlugin;
 
 impl Plugin for ThemePlugin {
@@ -33,19 +36,7 @@ impl Plugin for ThemePlugin {
             .register_type::<StyleToken>()
             .register_type::<NodeGraphStyle>()
             .register_type::<Rgba>()
-            .add_systems(Update, (refresh_style_theme, apply_theme).chain());
-    }
-}
-
-/// Rebuild the [`Theme`] tokens from the runtime [`Palette`] when it changes (a
-/// theme switch), so `apply_theme` repaints every `Styled` widget live — no
-/// rebuild. Buttons, inputs, checkboxes, toggles, cards, tabs, menus all follow
-/// the active theme through this seam.
-fn refresh_style_theme(mut theme: ResMut<Theme>, mut last: Local<Option<Palette>>) {
-    let p = palette();
-    if last.as_ref() != Some(&p) {
-        *theme = Theme::default();
-        *last = Some(p);
+            .add_systems(Update, apply_theme);
     }
 }
 
