@@ -17,11 +17,13 @@ use std::hash::{Hash, Hasher};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
+use std::path::PathBuf;
+
 use renzora_editor::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
 use renzora_ember::reactive::bind_2way;
-use renzora_ember::widgets::{bind_text_input, drag_value, text_input, toggle_switch};
+use renzora_ember::widgets::{bind_text_input, drag_value, text_input, toggle_switch, Popup};
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
 pub fn register(app: &mut App) {
@@ -29,7 +31,14 @@ pub fn register(app: &mut App) {
     app.register_native_inspector_ui("script_component", script_component_native);
     app.add_systems(
         Update,
-        (rebuild_scripts, script_remove_click).run_if(in_state(SplashState::Editor)),
+        (
+            rebuild_scripts,
+            script_remove_click,
+            add_script_drop,
+            add_script_option_click,
+            add_script_drop_highlight,
+        )
+            .run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -43,6 +52,17 @@ struct ScriptsRoot {
 struct ScriptRemoveBtn {
     entity: Entity,
     script_id: u32,
+}
+
+#[derive(Component)]
+struct AddScriptDropZone {
+    entity: Entity,
+}
+
+#[derive(Component)]
+struct AddScriptOption {
+    entity: Entity,
+    path: PathBuf,
 }
 
 fn script_component_native(world: &mut World, entity: Entity) -> Entity {
@@ -163,6 +183,7 @@ fn rebuild_scripts(world: &mut World) {
         if old_sig == Some(sig) {
             continue;
         }
+        let available = scan_scripts(world);
         let existing: Vec<Entity> = world
             .get::<Children>(root)
             .map(|c| c.iter().collect())
@@ -174,14 +195,13 @@ fn rebuild_scripts(world: &mut World) {
             for ch in existing {
                 commands.entity(ch).despawn();
             }
-            if specs.is_empty() {
-                let l = muted_label(&mut commands, &fonts, "No scripts attached.");
-                commands.entity(root).add_child(l);
-            }
             for spec in &specs {
                 let section = build_script_section(&mut commands, &fonts, entity, spec);
                 commands.entity(root).add_child(section);
             }
+            // Always show the add/drop footer — it's also the empty state.
+            let footer = build_add_footer(&mut commands, &fonts, entity, &available);
+            commands.entity(root).add_child(footer);
         }
         queue.apply(world);
         if let Some(mut sr) = world.get_mut::<ScriptsRoot>(root) {
@@ -443,6 +463,295 @@ fn script_remove_click(
                 }
             }
         });
+    }
+}
+
+// ── Add-script footer (button + drop target) ─────────────────────────────────
+
+/// Always-shown footer mirroring the egui inspector: an "Add Script" button that
+/// opens a popup list of project scripts, plus a "Drop to add script" target.
+/// It doubles as the empty state when no scripts are attached.
+fn build_add_footer(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    available: &[(String, PathBuf)],
+) -> Entity {
+    let col = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                margin: UiRect::top(Val::Px(6.0)),
+                ..default()
+            },
+            Name::new("script-add-footer"),
+        ))
+        .id();
+
+    // Popup list of project scripts.
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(2.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(30, 30, 38)),
+            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            GlobalZIndex(700),
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("script-add-panel"),
+        ))
+        .id();
+    let mut rows = Vec::new();
+    if available.is_empty() {
+        rows.push(muted_label(commands, fonts, "No scripts found in project."));
+    }
+    for (display, path) in available {
+        let txt = commands
+            .spawn((
+                Text::new(display.clone()),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(Color::srgb_u8(210, 210, 220)),
+                bevy::ui::FocusPolicy::Pass,
+            ))
+            .id();
+        let row = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                AddScriptOption {
+                    entity,
+                    path: path.clone(),
+                },
+                Name::new("script-add-option"),
+            ))
+            .id();
+        commands.entity(row).add_child(txt);
+        rows.push(row);
+    }
+    commands.entity(panel).add_children(&rows);
+
+    // "Add Script" trigger button.
+    let plus = icon_text(commands, &fonts.phosphor, "plus", (220, 220, 230), 12.0);
+    commands.entity(plus).insert(bevy::ui::FocusPolicy::Pass);
+    let plus_label = commands
+        .spawn((
+            Text::new("Add Script"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(Color::srgb_u8(220, 220, 230)),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    let button = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(44, 44, 54)),
+            Interaction::default(),
+            Popup::new(panel),
+            Name::new("script-add-btn"),
+        ))
+        .id();
+    commands.entity(button).add_children(&[plus, plus_label]);
+    let wrap = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("script-add-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[button, panel]);
+
+    // Drop-to-add target.
+    let drop_txt = commands
+        .spawn((
+            Text::new("Drop to add script"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(Color::srgb_u8(150, 150, 162)),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    let drop = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.02)),
+            BorderColor::all(Color::srgb_u8(70, 70, 82)),
+            bevy::ui::RelativeCursorPosition::default(),
+            AddScriptDropZone { entity },
+            Name::new("script-drop-zone"),
+        ))
+        .id();
+    commands.entity(drop).add_child(drop_txt);
+
+    commands.entity(col).add_children(&[wrap, drop]);
+    col
+}
+
+/// Recursively scan the project for `.lua`/`.rhai` files, returning
+/// `(display-relative-path, absolute-path)` pairs sorted by display path.
+fn scan_scripts(world: &World) -> Vec<(String, PathBuf)> {
+    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    scan_scripts_inner(&project.path, &project.path, &mut out);
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, PathBuf)>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with('.'))
+        {
+            continue;
+        }
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(name, "target" | "node_modules" | ".git") {
+                continue;
+            }
+            scan_scripts_inner(&path, root, out);
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if matches!(ext, "lua" | "rhai") {
+                let display = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                out.push((display, path));
+            }
+        }
+    }
+}
+
+/// Strip the project prefix and force forward slashes so the stored path is
+/// OS-independent (matches the egui `make_relative`).
+fn make_rel(abs: &std::path::Path, project: &renzora::core::CurrentProject) -> PathBuf {
+    let rel = abs.strip_prefix(&project.path).unwrap_or(abs);
+    PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
+}
+
+fn add_script_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    zones: Query<(&bevy::ui::RelativeCursorPosition, &AddScriptDropZone)>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let (Some(payload), Some(cmds)) = (payload, cmds) else {
+        return;
+    };
+    if !payload.is_detached || !payload.matches_extensions(&["lua", "rhai"]) {
+        return;
+    }
+    for (rcp, zone) in &zones {
+        if !rcp.cursor_over {
+            continue;
+        }
+        let rel = project
+            .as_ref()
+            .map(|p| make_rel(&payload.path, p))
+            .unwrap_or_else(|| payload.path.clone());
+        let entity = zone.entity;
+        cmds.push(move |w: &mut World| {
+            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                sc.add_file_script(rel.clone());
+            }
+        });
+        break;
+    }
+}
+
+// Open/close handled by ember's `Popup`; this only applies the selection.
+// Adding a script changes the structural signature, so `rebuild_scripts`
+// despawns and rebuilds the drawer (closing the popup) on the next frame.
+fn add_script_option_click(
+    q: Query<(&Interaction, &AddScriptOption), Changed<Interaction>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, opt) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let rel = project
+            .as_ref()
+            .map(|p| make_rel(&opt.path, p))
+            .unwrap_or_else(|| opt.path.clone());
+        let entity = opt.entity;
+        cmds.push(move |w: &mut World| {
+            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                sc.add_file_script(rel.clone());
+            }
+        });
+    }
+}
+
+/// Highlight the drop target's border while a compatible script is dragged over.
+fn add_script_drop_highlight(
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<AddScriptDropZone>>,
+) {
+    for (rcp, mut bc) in &mut zones {
+        let active = payload.as_ref().is_some_and(|p| {
+            p.is_detached && rcp.cursor_over && p.matches_extensions(&["lua", "rhai"])
+        });
+        let want = BorderColor::all(if active {
+            Color::srgb_u8(120, 140, 200)
+        } else {
+            Color::srgb_u8(70, 70, 82)
+        });
+        if *bc != want {
+            *bc = want;
+        }
     }
 }
 
