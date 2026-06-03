@@ -1,6 +1,7 @@
 //! Inspector panel — shows and edits component properties for the selected entity.
 
 mod field_widget;
+mod native;
 mod state;
 
 use std::sync::RwLock;
@@ -380,8 +381,9 @@ impl Plugin for InspectorPanelPlugin {
         // - Material: renzora_material_editor::material_inspector
         app.init_resource::<InspectorRegistry>();
 
-        // Register the panel
+        // Register the panel (egui) + its bevy_ui-native content.
         app.register_panel(InspectorPanel::default());
+        native::register_native_inspector(app);
     }
 }
 

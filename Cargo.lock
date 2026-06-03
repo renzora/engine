@@ -9913,6 +9913,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
