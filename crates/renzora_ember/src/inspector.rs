@@ -34,11 +34,12 @@ pub const INSPECTOR_LABEL_W: f32 = 112.0;
 /// (odd rows tinted, even rows transparent). Insert as the row's
 /// `BackgroundColor` so panels stripe consistently.
 pub fn inspector_stripe(row_index: usize) -> Color {
+    // Both shades are a faint white overlay (so the "dark" even rows are lifted
+    // off pure panel-dark); the small gap keeps the alternation gentle.
     if row_index % 2 == 1 {
-        // A faint white overlay — subtle on any background.
-        Color::srgba(1.0, 1.0, 1.0, 0.022)
+        Color::srgba(1.0, 1.0, 1.0, 0.028)
     } else {
-        Color::NONE
+        Color::srgba(1.0, 1.0, 1.0, 0.014)
     }
 }
 

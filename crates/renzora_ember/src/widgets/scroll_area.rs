@@ -26,9 +26,14 @@ const EASE: f32 = 16.0;
 #[derive(Component)]
 pub struct EmberScroll {
     target: f32,
-    /// Auto-follow the bottom (for logs). Disabled when the user scrolls up;
-    /// re-enabled when they return to the bottom.
+    /// Currently auto-following the bottom (for logs). Disabled when the user
+    /// scrolls up; re-enabled when they return to the bottom — but only for
+    /// `pinned` views.
     stick: bool,
+    /// Whether this view is the auto-follow (pinned-to-bottom) kind. Normal
+    /// scroll views are `false` and must never auto-stick, or they'd jump to the
+    /// bottom (e.g. on the first frame before content height is measured).
+    pinned: bool,
     thumb: Entity,
     track: Entity,
 }
@@ -112,6 +117,7 @@ fn build_scroll(
     commands.entity(viewport).insert(EmberScroll {
         target: 0.0,
         stick,
+        pinned: stick,
         thumb,
         track,
     });
@@ -208,10 +214,12 @@ pub(crate) fn scroll_update(
         let max = (ch - vh).max(0.0);
 
         s.target = s.target.clamp(0.0, max);
-        // Auto-follow the bottom (logs); re-engage once scrolled back near it.
+        // Auto-follow the bottom (logs only); re-engage once scrolled back near
+        // it. Normal scroll views never auto-stick, or they'd jump to the bottom
+        // (e.g. on the first frame before content height is measured → max 0).
         if s.stick {
             s.target = max;
-        } else if max - s.target < 6.0 {
+        } else if s.pinned && max - s.target < 6.0 {
             s.stick = true;
         }
         let next = if (s.target - sp.y).abs() < 0.5 {
