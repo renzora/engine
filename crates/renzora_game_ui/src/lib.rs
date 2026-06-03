@@ -253,7 +253,7 @@ impl Plugin for GameUiPlugin {
                 remove_fn: None,
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::layout_fields(),
                 custom_ui_fn: Some(inspector::render_layout_inspector),
             });
             // Per-style components — each is individually addable via the

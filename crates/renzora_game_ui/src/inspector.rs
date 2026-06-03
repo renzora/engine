@@ -112,6 +112,160 @@ fn arr_to_color(c: [f32; 4]) -> Color {
     Color::srgba(c[0], c[1], c[2], c[3])
 }
 
+/// Resolve the canvas reference resolution for `entity` (from a `UiCanvas` on it
+/// or its parent), used to convert layout `Val`s ↔ design-space pixels.
+fn canvas_ref(world: &World, entity: Entity) -> (f32, f32) {
+    if let Some(c) = world.get::<UiCanvas>(entity) {
+        return (c.reference_width, c.reference_height);
+    }
+    if let Some(child_of) = world.get::<bevy::prelude::ChildOf>(entity) {
+        if let Some(c) = world.get::<UiCanvas>(child_of.parent()) {
+            return (c.reference_width, c.reference_height);
+        }
+    }
+    (1280.0, 720.0)
+}
+
+const POS_LABELS: &[&str] = &["Relative", "Absolute"];
+const DIR_LABELS: &[&str] = &["Row", "Column", "Row Rev", "Col Rev"];
+const JUSTIFY_LABELS: &[&str] = &["Start", "Center", "End", "Between", "Around", "Evenly"];
+const ALIGN_LABELS: &[&str] = &["Start", "Center", "End", "Stretch"];
+
+fn label_index(labels: &[&str], s: &str) -> u8 {
+    labels.iter().position(|l| *l == s).unwrap_or(0) as u8
+}
+
+/// Declarative `FieldDef`s for a `Node` layout — the bevy_ui-native equivalent of
+/// `render_layout_inspector`. Enums map via the `*_to_u8`/`u8_to_*` helpers; X/Y/
+/// Width/Height convert `Val` ↔ design-space pixels using the canvas reference.
+pub fn layout_fields() -> Vec<renzora_editor::FieldDef> {
+    use bevy::ui::{Node, Val};
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+
+    vec![
+        FieldDef {
+            name: "Position",
+            field_type: FieldType::Enum { options: POS_LABELS },
+            get_fn: |w, e| {
+                w.get::<Node>(e).map(|n| {
+                    FieldValue::Enum(POS_LABELS[position_type_to_u8(n.position_type) as usize].into())
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
+                    n.position_type = u8_to_position_type(label_index(POS_LABELS, &s));
+                }
+            },
+        },
+        FieldDef {
+            name: "X",
+            field_type: FieldType::Float { speed: 1.0, min: f32::MIN, max: f32::MAX },
+            get_fn: |w, e| {
+                let (crw, _) = canvas_ref(w, e);
+                w.get::<Node>(e).map(|n| FieldValue::Float(val_to_design_px(n.left, crw)))
+            },
+            set_fn: |w, e, v| {
+                if let FieldValue::Float(f) = v {
+                    let (crw, _) = canvas_ref(w, e);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.left = Val::Percent(f / crw * 100.0);
+                    }
+                }
+            },
+        },
+        FieldDef {
+            name: "Y",
+            field_type: FieldType::Float { speed: 1.0, min: f32::MIN, max: f32::MAX },
+            get_fn: |w, e| {
+                let (_, crh) = canvas_ref(w, e);
+                w.get::<Node>(e).map(|n| FieldValue::Float(val_to_design_px(n.top, crh)))
+            },
+            set_fn: |w, e, v| {
+                if let FieldValue::Float(f) = v {
+                    let (_, crh) = canvas_ref(w, e);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.top = Val::Percent(f / crh * 100.0);
+                    }
+                }
+            },
+        },
+        FieldDef {
+            name: "Width",
+            field_type: FieldType::Float { speed: 1.0, min: 0.0, max: f32::MAX },
+            get_fn: |w, e| {
+                let (crw, _) = canvas_ref(w, e);
+                w.get::<Node>(e).map(|n| FieldValue::Float(val_to_design_px(n.width, crw)))
+            },
+            set_fn: |w, e, v| {
+                if let FieldValue::Float(f) = v {
+                    let (crw, _) = canvas_ref(w, e);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.width = Val::Percent(f / crw * 100.0);
+                    }
+                }
+            },
+        },
+        FieldDef {
+            name: "Height",
+            field_type: FieldType::Float { speed: 1.0, min: 0.0, max: f32::MAX },
+            get_fn: |w, e| {
+                let (_, crh) = canvas_ref(w, e);
+                w.get::<Node>(e).map(|n| FieldValue::Float(val_to_design_px(n.height, crh)))
+            },
+            set_fn: |w, e, v| {
+                if let FieldValue::Float(f) = v {
+                    let (_, crh) = canvas_ref(w, e);
+                    if let Some(mut n) = w.get_mut::<Node>(e) {
+                        n.height = Val::Percent(f / crh * 100.0);
+                    }
+                }
+            },
+        },
+        FieldDef {
+            name: "Direction",
+            field_type: FieldType::Enum { options: DIR_LABELS },
+            get_fn: |w, e| {
+                w.get::<Node>(e).map(|n| {
+                    FieldValue::Enum(DIR_LABELS[flex_direction_to_u8(n.flex_direction) as usize].into())
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
+                    n.flex_direction = u8_to_flex_direction(label_index(DIR_LABELS, &s));
+                }
+            },
+        },
+        FieldDef {
+            name: "Justify",
+            field_type: FieldType::Enum { options: JUSTIFY_LABELS },
+            get_fn: |w, e| {
+                w.get::<Node>(e).map(|n| {
+                    FieldValue::Enum(JUSTIFY_LABELS[justify_content_to_u8(n.justify_content) as usize].into())
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
+                    n.justify_content = u8_to_justify_content(label_index(JUSTIFY_LABELS, &s));
+                }
+            },
+        },
+        FieldDef {
+            name: "Align",
+            field_type: FieldType::Enum { options: ALIGN_LABELS },
+            get_fn: |w, e| {
+                w.get::<Node>(e).map(|n| {
+                    FieldValue::Enum(ALIGN_LABELS[align_items_to_u8(n.align_items) as usize].into())
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (FieldValue::Enum(s), Some(mut n)) = (v, w.get_mut::<Node>(e)) {
+                    n.align_items = u8_to_align_items(label_index(ALIGN_LABELS, &s));
+                }
+            },
+        },
+    ]
+}
+
 /// Inspector for `UiCanvas` — sort order, visibility mode, reference resolution,
 /// and a global theme picker. Registered as its own InspectorEntry; the main
 /// inspector wraps the body in a collapsible automatically.
