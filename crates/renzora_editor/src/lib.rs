@@ -31,7 +31,10 @@ pub use egui_phosphor;
 
 pub use commands::EditorCommands;
 pub use ext::{AppEditorExt, InspectableComponent};
-pub use inspector_registry::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
+pub use inspector_registry::{
+    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry, NativeInspectorDrawer,
+    NativeInspectorRegistry,
+};
 pub use material_thumbnail_registry::{
     material_thumb_path, migrate_legacy_thumbnail_cache, thumbnail_cache_dir,
     MaterialThumbnailRegistry,

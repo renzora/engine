@@ -22,6 +22,7 @@ use bevy::ui::FocusPolicy;
 
 use renzora_editor::{
     EditorCommands, EditorSelection, FieldType, FieldValue, InspectorRegistry,
+    NativeInspectorDrawer, NativeInspectorRegistry,
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -125,6 +126,9 @@ struct SectionSpec {
     icon: &'static str, // egui_phosphor glyph
     type_id: &'static str,
     custom: bool,
+    /// Native (bevy_ui) drawer, if the component registered one. Takes priority
+    /// over declarative fields.
+    native_drawer: Option<NativeInspectorDrawer>,
     remove_fn: Option<Mutate>,
     enable: Option<(Pred, SetEnabled)>,
     enabled_now: bool,
@@ -209,6 +213,10 @@ fn rebuild_inspector(world: &mut World) {
         .map(|ch| ch.iter().collect())
         .unwrap_or_default();
 
+    // Native-drawer sections: (body, drawer, entity) — filled after the queue
+    // applies, since drawers need exclusive &mut World.
+    let mut native_pending: Vec<(Entity, NativeInspectorDrawer, Entity)> = Vec::new();
+
     let mut queue = CommandQueue::default();
     {
         let mut commands = Commands::new(&mut queue, world);
@@ -238,13 +246,26 @@ fn rebuild_inspector(world: &mut World) {
                 }
                 let locked_here = locked == Some(entity);
                 for sec in &sections {
-                    let s = build_section(&mut commands, &fonts, sec, entity, locked_here);
-                    commands.entity(container).add_child(s);
+                    let (root, body) = build_section(&mut commands, &fonts, sec, entity, locked_here);
+                    commands.entity(container).add_child(root);
+                    if let Some(drawer) = sec.native_drawer {
+                        native_pending.push((body, drawer, entity));
+                    }
                 }
             }
         }
     }
     queue.apply(world);
+
+    // Run each native drawer (exclusive World) and parent its content under the
+    // section body.
+    for (body, drawer, ent) in native_pending {
+        let content = drawer(world, ent);
+        if let Ok(mut em) = world.get_entity_mut(body) {
+            em.add_child(content);
+        }
+    }
+
     world.resource_mut::<NativeInspectorState>().sig = Some(sig);
 }
 
@@ -284,6 +305,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         return Vec::new();
     };
     let theme = world.get_resource::<ThemeManager>();
+    let native_reg = world.get_resource::<NativeInspectorRegistry>();
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world, entity) {
@@ -297,15 +319,32 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             _ => None,
         };
         let enabled_now = enable.map(|(g, _)| g(world, entity)).unwrap_or(true);
-        // Declarative `fields` render natively in both backends. `custom_ui_fn`
-        // is the egui-only escape hatch — a component with one but no fields
-        // can't render natively yet (placeholder until it gains `fields`).
+        // Priority: a registered native bevy_ui drawer > declarative `fields` >
+        // placeholder (component has only an egui `custom_ui_fn`).
+        let native_drawer = native_reg.and_then(|r| r.get(entry.type_id));
+        if native_drawer.is_some() {
+            out.push(SectionSpec {
+                title: entry.display_name,
+                icon: entry.icon,
+                type_id: entry.type_id,
+                custom: false,
+                native_drawer,
+                remove_fn: entry.remove_fn,
+                enable,
+                enabled_now,
+                header_bg,
+                accent,
+                fields: Vec::new(),
+            });
+            continue;
+        }
         if entry.fields.is_empty() && entry.custom_ui_fn.is_some() {
             out.push(SectionSpec {
                 title: entry.display_name,
                 icon: entry.icon,
                 type_id: entry.type_id,
                 custom: true,
+                native_drawer: None,
                 remove_fn: entry.remove_fn,
                 enable,
                 enabled_now,
@@ -354,6 +393,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             icon: entry.icon,
             type_id: entry.type_id,
             custom: false,
+            native_drawer: None,
             remove_fn: entry.remove_fn,
             enable,
             enabled_now,
@@ -429,7 +469,7 @@ fn build_section(
     sec: &SectionSpec,
     entity: Entity,
     locked_here: bool,
-) -> Entity {
+) -> (Entity, Entity) {
     let root = commands
         .spawn((
             Node {
@@ -453,7 +493,10 @@ fn build_section(
             Name::new("section-body"),
         ))
         .id();
-    if sec.custom {
+    if sec.native_drawer.is_some() {
+        // Body is filled by the registered native drawer once the build queue
+        // has applied (it needs exclusive &mut World). See `rebuild_inspector`.
+    } else if sec.custom {
         let note = empty_label(commands, fonts, "Custom inspector — pending native UI");
         commands.entity(body).add_child(note);
     } else {
@@ -536,7 +579,7 @@ fn build_section(
     commands.entity(header).add_children(&header_kids);
 
     commands.entity(root).add_children(&[header, body]);
-    root
+    (root, body)
 }
 
 fn build_field_row(

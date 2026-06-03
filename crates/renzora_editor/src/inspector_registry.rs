@@ -224,3 +224,39 @@ macro_rules! enum_u32_field {
         }
     };
 }
+
+/// A native (bevy_ui) inspector body builder for a component — the bevy_ui analog
+/// of `custom_ui_fn`. Reads state from `&mut World` (the component, `EmberFonts`,
+/// theme) and builds + binds an arbitrary bevy_ui subtree, returning its root
+/// entity; the inspector parents it under the component's section header.
+///
+/// Build with a local `CommandQueue` (so you can use ember widgets + `bind_2way`):
+/// ```ignore
+/// fn my_inspector(world: &mut World, entity: Entity) -> Entity {
+///     let fonts = world.resource::<EmberFonts>().clone();
+///     let mut q = bevy::ecs::world::CommandQueue::default();
+///     let root;
+///     { let mut c = bevy::prelude::Commands::new(&mut q, world); root = /* build */; }
+///     q.apply(world);
+///     root
+/// }
+/// ```
+pub type NativeInspectorDrawer = fn(&mut World, Entity) -> Entity;
+
+/// Maps a component `type_id` to its native (bevy_ui) inspector drawer. Lets a
+/// plugin provide custom bevy_ui inspector UI without a `custom_ui_fn` (egui).
+/// Registered via `App::register_native_inspector_ui`.
+#[derive(Resource, Default)]
+pub struct NativeInspectorRegistry {
+    drawers: std::collections::HashMap<&'static str, NativeInspectorDrawer>,
+}
+
+impl NativeInspectorRegistry {
+    pub fn register(&mut self, type_id: &'static str, drawer: NativeInspectorDrawer) {
+        self.drawers.insert(type_id, drawer);
+    }
+
+    pub fn get(&self, type_id: &str) -> Option<NativeInspectorDrawer> {
+        self.drawers.get(type_id).copied()
+    }
+}

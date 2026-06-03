@@ -46,6 +46,16 @@ pub trait AppEditorExt {
     /// Register a button on the viewport toolbar. See [`ToolEntry`].
     fn register_tool(&mut self, entry: ToolEntry) -> &mut Self;
 
+    /// Register a native (bevy_ui) inspector drawer for a component `type_id` —
+    /// the bevy_ui analog of `custom_ui_fn`, for inspectors that need more than
+    /// declarative `fields` (conditional rows, buttons, custom widgets). See
+    /// [`NativeInspectorDrawer`].
+    fn register_native_inspector_ui(
+        &mut self,
+        type_id: &'static str,
+        drawer: crate::NativeInspectorDrawer,
+    ) -> &mut Self;
+
     /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
     fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self;
 
@@ -137,6 +147,18 @@ impl AppEditorExt for App {
         self.world_mut()
             .resource_mut::<ToolbarRegistry>()
             .register(entry);
+        self
+    }
+
+    fn register_native_inspector_ui(
+        &mut self,
+        type_id: &'static str,
+        drawer: crate::NativeInspectorDrawer,
+    ) -> &mut Self {
+        self.init_resource::<crate::NativeInspectorRegistry>();
+        self.world_mut()
+            .resource_mut::<crate::NativeInspectorRegistry>()
+            .register(type_id, drawer);
         self
     }
 
