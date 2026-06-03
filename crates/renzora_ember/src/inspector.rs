@@ -23,7 +23,59 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use crate::font::EmberFonts;
+use crate::font::{ui_font, EmberFonts};
+use crate::theme::{rgb, TEXT_MUTED};
+
+/// Width of the inspector label column. Labels are left-aligned and fixed-width
+/// so the value controls line up in a column directly to their right.
+pub const INSPECTOR_LABEL_W: f32 = 112.0;
+
+/// A consistent inspector property row: a **left-aligned** fixed-width label
+/// column + the `control` immediately to its right (also left-aligned). Both the
+/// declarative field renderer and native drawers use this so every row matches.
+pub fn inspector_row(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    label: &str,
+    control: Entity,
+) -> Entity {
+    let lbl = commands
+        .spawn((
+            Text::new(label),
+            ui_font(font, 11.0),
+            TextColor(rgb(TEXT_MUTED)),
+            bevy::text::TextLayout::new_with_no_wrap(),
+        ))
+        .id();
+    let label_col = commands
+        .spawn((
+            Node {
+                width: Val::Px(INSPECTOR_LABEL_W),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            Name::new("inspector-label"),
+        ))
+        .id();
+    commands.entity(label_col).add_child(lbl);
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                ..default()
+            },
+            Name::new("inspector-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[label_col, control]);
+    row
+}
 
 /// Run a drawer body builder with a fresh `Commands` (backed by a local
 /// `CommandQueue` that's applied before returning) + the live [`EmberFonts`].

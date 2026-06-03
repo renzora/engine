@@ -173,9 +173,9 @@ fn inspector_entry() -> InspectorEntry {
 /// swatch built from three separate float channels, plus bound numeric rows.
 #[cfg(feature = "editor")]
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
-    use renzora_ember::inspector::inspector_body;
+    use renzora_ember::inspector::{inspector_body, inspector_row};
     use renzora_ember::reactive::{bind_2way, bind_with};
-    use renzora_ember::widgets::{drag_value, property_row, DragRange};
+    use renzora_ember::widgets::{drag_value, DragRange};
 
     // Read initial values up front (inspector_body borrows World).
     let Some(s) = world.get::<DistanceFogSettings>(entity) else {
@@ -235,7 +235,7 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
                 }
             },
         );
-        kids.push(property_row(commands, &fonts.ui, "Light Color", swatch));
+        kids.push(inspector_row(commands, &fonts.ui, "Light Color", swatch));
 
         // Bound numeric rows (label + scrubbable value, two-way bound).
         macro_rules! frow {
@@ -252,7 +252,7 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
                         }
                     },
                 );
-                property_row(commands, &fonts.ui, $label, dv)
+                inspector_row(commands, &fonts.ui, $label, dv)
             }};
         }
         kids.push(frow!("Light Exponent", directional_light_exponent, exponent, 0.1, 1.0, 64.0));

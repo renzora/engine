@@ -36,11 +36,8 @@ type Pred = fn(&World, Entity) -> bool;
 type Mutate = fn(&mut World, Entity);
 type SetEnabled = fn(&mut World, Entity, bool);
 
-const LABEL_W: f32 = 104.0;
-const TEXT_LABEL: (u8, u8, u8) = (188, 188, 200);
 const TEXT_VALUE: (u8, u8, u8) = (210, 210, 220);
 const TEXT_MUTED: (u8, u8, u8) = (150, 150, 162);
-const ROW_ODD: (u8, u8, u8) = (40, 40, 48);
 const HEADER_BG: (u8, u8, u8) = (44, 44, 54);
 const PANEL_DARK: (u8, u8, u8) = (30, 30, 38);
 const BORDER: (u8, u8, u8) = (60, 60, 74);
@@ -500,8 +497,8 @@ fn build_section(
         let note = empty_label(commands, fonts, "Custom inspector — pending native UI");
         commands.entity(body).add_child(note);
     } else {
-        for (i, field) in sec.fields.iter().enumerate() {
-            let r = build_field_row(commands, fonts, field, entity, i);
+        for field in &sec.fields {
+            let r = build_field_row(commands, fonts, field, entity);
             commands.entity(body).add_child(r);
         }
     }
@@ -587,32 +584,10 @@ fn build_field_row(
     fonts: &EmberFonts,
     field: &FieldSpec,
     entity: Entity,
-    row_index: usize,
 ) -> Entity {
-    // Right-aligned label column.
-    let label_text = commands
-        .spawn((
-            Text::new(field.name),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(c(TEXT_LABEL)),
-            bevy::text::TextLayout::new_with_no_wrap(),
-        ))
-        .id();
-    let label = commands
-        .spawn((
-            Node {
-                width: Val::Px(LABEL_W),
-                flex_shrink: 0.0,
-                justify_content: JustifyContent::FlexEnd,
-                align_items: AlignItems::Center,
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            Name::new("field-label"),
-        ))
-        .id();
-    commands.entity(label).add_child(label_text);
-
+    // The field's control(s) sit in a value container, then the shared
+    // `inspector_row` adds a left-aligned label column — so declarative fields
+    // and native drawers (which also use `inspector_row`) line up identically.
     let value = commands
         .spawn((
             Node {
@@ -627,26 +602,7 @@ fn build_field_row(
         ))
         .id();
     build_field_value(commands, fonts, field, entity, value);
-
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
-                ..default()
-            },
-            BackgroundColor(if row_index % 2 == 1 {
-                c(ROW_ODD)
-            } else {
-                Color::NONE
-            }),
-            Name::new("inspector-field"),
-        ))
-        .id();
-    commands.entity(row).add_children(&[label, value]);
-    row
+    renzora_ember::inspector::inspector_row(commands, &fonts.ui, field.name, value)
 }
 
 fn build_field_value(
