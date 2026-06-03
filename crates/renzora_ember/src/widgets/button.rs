@@ -3,9 +3,9 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use crate::font::ui_font;
+use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::style::{Role, Styled, WidgetState};
-use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_PRIMARY};
+use crate::theme::{rgb, TAB_ACTIVE_BG, TEXT_MUTED, TEXT_PRIMARY};
 
 /// Marks a button so [`button_interact`] drives its `Styled.state`. Shared with
 /// other button-like widgets (e.g. the number stepper's `±` keys).
@@ -39,6 +39,44 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
         ))
         .id();
     commands.entity(b).add_child(t);
+    b
+}
+
+/// A clickable button with a leading Phosphor icon and a label, themed with the
+/// same hover/press states as [`button`].
+pub fn icon_label_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+) -> Entity {
+    let b = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(TAB_ACTIVE_BG)),
+            Interaction::default(),
+            EmberButton,
+            Styled::new(Role::Button),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("icon-button"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+    let t = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(TEXT_PRIMARY)),
+        ))
+        .id();
+    commands.entity(b).add_children(&[ic, t]);
     b
 }
 

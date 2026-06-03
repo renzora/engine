@@ -10,14 +10,18 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use bevy::picking::Pickable;
 use bevy::prelude::*;
 
 use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
+use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
-use renzora_ember::widgets::{scroll_view, slider, text_input, EmberTextInput};
+use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::widgets::{
+    icon_label_button, labeled_icon_popover, scroll_view, slider, text_input, EmberTextInput,
+};
 
 use crate::thumbnails::{
     supports_material_thumbnail, supports_model_thumbnail, supports_thumbnail, ThumbnailCache,
@@ -52,8 +56,17 @@ fn handle_for(w: &World, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image
     }
 }
 
-const TILE_W: f32 = 84.0;
+const TILE_W: f32 = 96.0;
 const HOVER_BG: (u8, u8, u8) = (40, 40, 50);
+
+// Content-area surfaces (Unreal-style: flat, dark).
+const CONTENT_BG: (u8, u8, u8) = (30, 30, 35);
+const BAR_BG: (u8, u8, u8) = (24, 24, 30);
+const THUMB_BG: (u8, u8, u8) = (24, 24, 28);
+const CARD_BG: (u8, u8, u8) = (41, 41, 48);
+const CARD_BG_HOVER: (u8, u8, u8) = (49, 49, 58);
+const CARD_BG_SEL: (u8, u8, u8) = (50, 54, 66);
+const CARD_BORDER: (u8, u8, u8) = (56, 56, 64);
 
 /// Lean native state for the browser (independent of the egui panel's state).
 #[derive(Resource)]
@@ -86,6 +99,10 @@ pub(crate) struct NativeAssets {
     /// A pending tile press `(path, is_dir, origin)` — promoted to a drag once
     /// the cursor moves >5px (for drag-to-viewport).
     drag_press: Option<(PathBuf, bool, Vec2)>,
+    /// Whether the collapsible FAVORITES / RECENT tree sections are expanded
+    /// (both collapsed by default).
+    fav_open: bool,
+    recent_open: bool,
 }
 
 impl Default for NativeAssets {
@@ -105,6 +122,8 @@ impl Default for NativeAssets {
             recent: Vec::new(),
             loaded: false,
             drag_press: None,
+            fav_open: false,
+            recent_open: false,
         }
     }
 }
@@ -162,6 +181,16 @@ struct AssetTile {
 struct AssetBack;
 #[derive(Component)]
 struct AssetSearch;
+/// A collapsible tree section header (FAVORITES / RECENT).
+#[derive(Clone, Copy, PartialEq)]
+enum Section {
+    Favorites,
+    Recent,
+}
+
+#[derive(Component)]
+struct SectionToggle(Section);
+
 #[derive(Component)]
 struct TreeToggle(PathBuf);
 #[derive(Component)]
@@ -249,6 +278,7 @@ pub fn register_native_asset_browser(app: &mut App) {
             request_thumbnails,
             tree_toggle_click,
             tree_nav_click,
+            section_toggle_click,
             create_asset_click,
             import_click,
             crumb_click,
@@ -631,6 +661,51 @@ fn folder_color(name: &str) -> (u8, u8, u8) {
     }
 }
 
+/// Accent color + human-readable type label for a file, by extension. Drives the
+/// tile's type subtitle and bottom accent strip (mirrors Unreal's "Blueprint
+/// Class" subtitle + colored underline). Folders are handled separately.
+fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "material" => ((0, 200, 130), "Material"),
+        "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
+        "lua" => ((120, 170, 255), "Lua Script"),
+        "rhai" => ((130, 230, 180), "Rhai Script"),
+        "wgsl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
+        "rs" => ((230, 140, 90), "Rust Source"),
+        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => {
+            ((150, 210, 120), "Texture")
+        }
+        "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
+        "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
+        "particle" => ((230, 160, 90), "Particle"),
+        "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
+        "html" => ((230, 120, 90), "Template"),
+        "" => ((150, 155, 170), "File"),
+        other => ((150, 155, 170), uppercase_ext(other)),
+    }
+}
+
+/// Leak a small set of uppercased extension labels for unknown types so the
+/// subtitle can read e.g. "TXT" / "JSON". Bounded: only the handful of distinct
+/// unknown extensions actually present in a project are ever leaked.
+fn uppercase_ext(ext: &str) -> &'static str {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+    let mut map = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    if let Some(s) = map.get(ext) {
+        return s;
+    }
+    let leaked: &'static str = Box::leak(ext.to_uppercase().into_boxed_str());
+    map.insert(ext.to_string(), leaked);
+    leaked
+}
+
 fn icon_for(path: &Path, is_dir: bool) -> &'static str {
     if is_dir {
         return "folder";
@@ -640,9 +715,14 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => "image",
         "glb" | "gltf" | "obj" | "fbx" => "cube",
         "material" => "palette",
-        "lua" | "rhai" | "rs" | "wgsl" | "py" => "code",
+        "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
+        "lua" | "rhai" | "rs" | "py" | "js" | "ts" => "code",
         "scene" | "ron" | "scn" => "stack",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
+        "particle" => "sparkle",
+        "blueprint" | "bp" => "blueprint",
+        "html" => "browser",
+        "toml" => "brackets-curly",
         _ => "file",
     }
 }
@@ -687,7 +767,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 min_height: Val::Px(0.0),
                 ..default()
             },
-            BackgroundColor(rgb((22, 22, 28))),
+            // Match the hierarchy panel base so the shared odd/even stripe
+            // (inspector_stripe) renders the exact same colors.
+            BackgroundColor(rgb(PANEL_BG)),
         ))
         .id();
     commands.entity(tree_pane).add_child(tree_scroll);
@@ -730,15 +812,18 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
 
-    // ── Content (toolbar + grid, own scroll) ──
+    // ── Content (toolbar + search + grid + footer) ──
     let content = commands
-        .spawn(Node {
-            flex_grow: 1.0,
-            flex_direction: FlexDirection::Column,
-            min_width: Val::Px(0.0),
-            min_height: Val::Px(0.0),
-            ..default()
-        })
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(0.0),
+                min_height: Val::Px(0.0),
+                ..default()
+            },
+            BackgroundColor(rgb(CONTENT_BG)),
+        ))
         .id();
 
     // Toolbar.
@@ -777,10 +862,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Hidden at the project root (nowhere to go up to).
     bind_display(commands, back, |w| current_folder(w) != project_root(w));
 
-    let new_folder = toolbar_btn(commands, fonts, "folder-plus", "New Folder");
+    let new_folder = icon_label_button(commands, fonts, "folder-plus", "New Folder");
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
     let add = add_menu(commands, fonts);
+    let import = icon_label_button(commands, fonts, "download-simple", "Import");
+    commands.entity(import).insert(ImportBtn);
 
+    // Breadcrumb in a dark inset box, with the back button to its left.
     let crumbs = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -790,9 +878,28 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     keyed_list(commands, crumbs, crumb_snapshot);
+    let crumb_box = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((19, 19, 24))),
+            BorderColor::all(rgb((48, 48, 58))),
+            Name::new("crumb-box"),
+        ))
+        .id();
+    commands.entity(crumb_box).add_children(&[back, crumbs]);
 
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    // Zoom slider (maps 0..1 → 0.5..1.5 tile scale).
+
+    // Zoom control (maps 0..1 → 0.5..1.5 tile scale) in a small framed box with
+    // a magnifier glyph.
     let zoom = slider(commands, 0.5);
     bind_2way(
         commands,
@@ -806,18 +913,65 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands.entity(zoom).insert(Node {
         width: Val::Px(70.0),
-        height: Val::Px(18.0),
+        height: Val::Px(14.0),
         position_type: PositionType::Relative,
         align_items: AlignItems::Center,
         ..default()
     });
-    let import = toolbar_btn(commands, fonts, "download-simple", "Import");
-    commands.entity(import).insert(ImportBtn);
-    let search = text_input(commands, &fonts.ui, "Search...", "");
-    commands.entity(search).insert(AssetSearch);
-    commands
-        .entity(toolbar)
-        .add_children(&[back, new_folder, add, crumbs, spacer, zoom, import, search]);
+    let zoom_icon = icon_text(commands, &fonts.phosphor, "magnifying-glass", TEXT_MUTED, 11.0);
+    let zoom_box = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((34, 34, 40))),
+            BorderColor::all(rgb((52, 52, 62))),
+            Name::new("zoom-box"),
+        ))
+        .id();
+    commands.entity(zoom_box).add_children(&[zoom_icon, zoom]);
+
+    commands.entity(toolbar).add_children(&[
+        add,
+        import,
+        new_folder,
+        crumb_box,
+        spacer,
+        zoom_box,
+    ]);
+
+    // ── Search row (full-width, Unreal-style) ──
+    let search = text_input(commands, &fonts.ui, "Search assets...", "");
+    commands.entity(search).insert((
+        AssetSearch,
+        Node {
+            width: Val::Percent(100.0),
+            min_width: Val::Px(0.0),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+    ));
+    let search_row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(rgb((26, 26, 32))),
+        ))
+        .id();
+    commands.entity(search_row).add_child(search);
 
     // Grid.
     let grid = commands
@@ -827,16 +981,60 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             width: Val::Percent(100.0),
             align_items: AlignItems::FlexStart,
             align_content: AlignContent::FlexStart,
-            column_gap: Val::Px(4.0),
-            row_gap: Val::Px(4.0),
-            padding: UiRect::all(Val::Px(6.0)),
+            column_gap: Val::Px(10.0),
+            row_gap: Val::Px(12.0),
+            padding: UiRect::all(Val::Px(10.0)),
             ..default()
         })
         .id();
     keyed_list(commands, grid, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
 
-    commands.entity(content).add_children(&[toolbar, grid_scroll]);
+    // ── Footer: live item count (Unreal's "N items"). ──
+    let footer = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(22.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                padding: UiRect::horizontal(Val::Px(10.0)),
+                border: UiRect::top(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(BAR_BG)),
+            BorderColor::all(rgb((48, 48, 56))),
+        ))
+        .id();
+    let count = commands
+        .spawn((
+            Text::new("0 items"),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(TEXT_MUTED)),
+        ))
+        .id();
+    bind_with(
+        commands,
+        count,
+        |w| list_entries(w).len(),
+        |w, e, n: &usize| {
+            if let Some(mut t) = w.get_mut::<Text>(e) {
+                let s = if *n == 1 {
+                    "1 item".to_string()
+                } else {
+                    format!("{n} items")
+                };
+                if t.0 != s {
+                    t.0 = s;
+                }
+            }
+        },
+    );
+    commands.entity(footer).add_child(count);
+
+    commands
+        .entity(content)
+        .add_children(&[toolbar, search_row, grid_scroll, footer]);
 
     // Context menu (shared, repositioned on right-click).
     let menu = context_menu(commands, fonts);
@@ -908,31 +1106,6 @@ fn context_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     menu
 }
 
-/// A framed icon+label toolbar button (caller inserts the marker component).
-fn toolbar_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let b = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb((42, 42, 52))),
-            Interaction::default(),
-            Name::new("toolbar-btn"),
-        ))
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
-    let t = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_MUTED))))
-        .id();
-    commands.entity(b).add_children(&[ic, t]);
-    b
-}
-
 /// The "Add" asset-creation popover (material/blueprint/lua/rhai/particle).
 fn add_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let content = commands
@@ -977,7 +1150,7 @@ fn add_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .collect();
     commands.entity(content).add_children(&rows);
-    renzora_ember::widgets::popover(commands, fonts, "Add", content)
+    labeled_icon_popover(commands, fonts, "plus", "Add", content)
 }
 
 /// Clickable breadcrumb segments (project root + each path component).
@@ -1122,73 +1295,116 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
 }
 
 fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, fav: bool) -> Entity {
-    let tile_w = TILE_W * zoom;
-    let preview_sz = 64.0 * zoom;
-    let icon_sz = 30.0 * zoom;
-    let path = entry.path.clone();
+    let card_w = (TILE_W * zoom).round();
+    let thumb_h = card_w; // square preview, Unreal-style
+    let icon_sz = (card_w * 0.42).round();
+    let is_dir = entry.is_dir;
+    let (type_color, type_label) = if is_dir {
+        (folder_color(&entry.name), "Folder")
+    } else {
+        asset_type_info(&entry.path)
+    };
+
+    // ── Card shell (folders and files share the same card) ──
     let col = commands
         .spawn((
             Node {
-                width: Val::Px(tile_w),
+                width: Val::Px(card_w),
                 flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::axes(Val::Px(2.0), Val::Px(6.0)),
+                border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(Color::NONE),
+            BorderColor::all(rgb(CARD_BORDER)),
             Interaction::default(),
             AssetTile {
                 path: entry.path.clone(),
-                is_dir: entry.is_dir,
+                is_dir,
             },
             Name::new("asset-tile"),
         ))
         .id();
+    let path_bg = entry.path.clone();
     bind_bg(commands, col, move |w| {
         let selected = w
             .get_resource::<NativeAssets>()
-            .map(|s| s.selected.as_deref() == Some(path.as_path()))
+            .map(|s| s.selected.as_deref() == Some(path_bg.as_path()))
             .unwrap_or(false);
+        let hovered = matches!(
+            w.get::<Interaction>(col),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        );
         if selected {
-            return rgb(ACCENT_BLUE).with_alpha(0.30);
-        }
-        match w.get::<Interaction>(col) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(HOVER_BG),
-            _ => Color::NONE,
+            rgb(CARD_BG_SEL)
+        } else if hovered {
+            rgb(CARD_BG_HOVER)
+        } else {
+            rgb(CARD_BG)
         }
     });
-    // Preview box: an icon, with a thumbnail ImageNode layered on top that
-    // reveals once the cached Handle<Image> is ready (image files only for now).
-    let preview = commands
-        .spawn(Node {
-            width: Val::Px(preview_sz),
-            height: Val::Px(preview_sz),
-            position_type: PositionType::Relative,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            overflow: Overflow::clip(),
-            ..default()
-        })
+    // Accent border on hover/select.
+    let path_bd = entry.path.clone();
+    bind_with(
+        commands,
+        col,
+        move |w| {
+            let selected = w
+                .get_resource::<NativeAssets>()
+                .map(|s| s.selected.as_deref() == Some(path_bd.as_path()))
+                .unwrap_or(false);
+            if selected {
+                2u8
+            } else {
+                match w.get::<Interaction>(col) {
+                    Some(Interaction::Hovered) | Some(Interaction::Pressed) => 1u8,
+                    _ => 0u8,
+                }
+            }
+        },
+        move |w, e, st: &u8| {
+            if let Some(mut bc) = w.get_mut::<BorderColor>(e) {
+                *bc = BorderColor::all(match st {
+                    2 => rgb(ACCENT_BLUE),
+                    1 => rgb((92, 92, 108)),
+                    _ => rgb(CARD_BORDER),
+                });
+            }
+        },
+    );
+
+    // ── Thumbnail area (icon + optional rendered thumbnail overlay) ──
+    let thumb = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(thumb_h),
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(THUMB_BG)),
+        ))
         .id();
-    let color = if entry.is_dir { folder_color(&entry.name) } else { TEXT_MUTED };
-    let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, entry.is_dir), color, icon_sz);
-    commands.entity(preview).add_child(icon);
+    let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, icon_sz);
+    commands.entity(thumb).add_child(icon);
 
     // Star badge on favorited assets.
     if fav {
         let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 70), 12.0);
         commands.entity(star).insert(Node {
             position_type: PositionType::Absolute,
-            top: Val::Px(2.0),
-            right: Val::Px(2.0),
+            top: Val::Px(3.0),
+            right: Val::Px(3.0),
             ..default()
         });
-        commands.entity(preview).add_child(star);
+        commands.entity(thumb).add_child(star);
     }
 
-    if let Some(kind) = (!entry.is_dir).then(|| thumb_kind(&entry.name)).flatten() {
+    if let Some(kind) = (!is_dir).then(|| thumb_kind(&entry.name)).flatten() {
         let img = commands
             .spawn((
                 ImageNode::default(),
@@ -1202,7 +1418,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
                 Name::new("asset-thumb"),
             ))
             .id();
-        commands.entity(preview).add_child(img);
+        commands.entity(thumb).add_child(img);
         let p = entry.path.clone();
         bind_with(
             commands,
@@ -1223,20 +1439,70 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         );
     }
 
+    // ── Label area: name + type subtitle ──
+    let info = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Stretch,
+            row_gap: Val::Px(1.0),
+            padding: UiRect::axes(Val::Px(5.0), Val::Px(4.0)),
+            ..default()
+        })
+        .id();
     let name = commands
         .spawn((
             Text::new(entry.name.clone()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(TEXT_PRIMARY)),
-            bevy::text::TextLayout::new_with_no_wrap(),
-            Node { max_width: Val::Px(tile_w - 4.0), overflow: Overflow::clip(), ..default() },
+            Node {
+                width: Val::Percent(100.0),
+                max_height: Val::Px(26.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
         ))
         .id();
-    commands.entity(col).add_children(&[preview, name]);
+    let ty = commands
+        .spawn((
+            Text::new(type_label),
+            ui_font(&fonts.ui, 9.0),
+            TextColor(rgb((142, 144, 158))),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node {
+                overflow: Overflow::clip(),
+                ..default()
+            },
+        ))
+        .id();
+    commands.entity(info).add_children(&[name, ty]);
+
+    // Colored bottom accent strip (the Unreal "type underline").
+    let accent = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(2.0),
+                ..default()
+            },
+            BackgroundColor(rgb(type_color)),
+        ))
+        .id();
+    commands.entity(col).add_children(&[thumb, info, accent]);
     col
 }
 
 // ── Folder tree ──────────────────────────────────────────────────────────────
+//
+// Tree indent guides match the hierarchy panel: 1.5px absolute line nodes, the
+// same INDENT / LINE_OFFSET geometry, and `inspector_stripe` odd/even row bands.
+
+const TREE_INDENT: f32 = 12.0;
+const TREE_ROW_H: f32 = 20.0;
+const TREE_BASE_X: f32 = 4.0;
+const TREE_LINE_OFFSET: f32 = TREE_INDENT / 2.0 - 1.0; // 5.0
+const TREE_CENTER_Y: f32 = TREE_ROW_H / 2.0;
+const TREE_LINE: (u8, u8, u8) = (64, 64, 76);
 
 struct TreeRow {
     path: PathBuf,
@@ -1244,6 +1510,11 @@ struct TreeRow {
     depth: usize,
     expanded: bool,
     has_children: bool,
+    /// Whether this is the last child of its parent (the elbow vs. tee join).
+    is_last: bool,
+    /// For each ancestor level, whether that ancestor has more siblings below
+    /// (i.e. draw a pass-through vertical line at that level).
+    parent_lines: Vec<bool>,
 }
 
 fn has_subdirs(dir: &Path) -> bool {
@@ -1257,7 +1528,51 @@ fn has_subdirs(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn flatten_dirs(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut Vec<TreeRow>) {
+/// A 1.5px vertical guide line. `full` runs the whole row height; otherwise it
+/// stops at `height` (used for the elbow on a last child).
+fn tree_vline(commands: &mut Commands, x: f32, full: bool, height: f32) -> Entity {
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(x - 0.75),
+        top: Val::Px(0.0),
+        width: Val::Px(1.5),
+        ..default()
+    };
+    if full {
+        node.bottom = Val::Px(0.0);
+    } else {
+        node.height = Val::Px(height);
+    }
+    commands
+        .spawn((node, BackgroundColor(rgb(TREE_LINE)), Pickable::IGNORE))
+        .id()
+}
+
+/// The short horizontal join from a vertical guide to the row content.
+fn tree_hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x),
+                top: Val::Px(TREE_CENTER_Y - 0.75),
+                width: Val::Px(width),
+                height: Val::Px(1.5),
+                ..default()
+            },
+            BackgroundColor(rgb(TREE_LINE)),
+            Pickable::IGNORE,
+        ))
+        .id()
+}
+
+fn flatten_dirs(
+    dir: &Path,
+    depth: usize,
+    expanded: &HashSet<PathBuf>,
+    ancestors: &mut Vec<bool>,
+    out: &mut Vec<TreeRow>,
+) {
     let mut subs: Vec<(PathBuf, String)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
@@ -1271,7 +1586,9 @@ fn flatten_dirs(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut
         }
     }
     subs.sort_by_key(|a| a.1.to_lowercase());
-    for (path, name) in subs {
+    let last = subs.len().saturating_sub(1);
+    for (idx, (path, name)) in subs.into_iter().enumerate() {
+        let is_last = idx == last;
         let is_exp = expanded.contains(&path);
         let has = has_subdirs(&path);
         out.push(TreeRow {
@@ -1280,16 +1597,28 @@ fn flatten_dirs(dir: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut
             depth,
             expanded: is_exp,
             has_children: has,
+            is_last,
+            parent_lines: ancestors.clone(),
         });
         if is_exp && has {
-            flatten_dirs(&path, depth + 1, expanded, out);
+            // Descendants draw a pass-through line at this level iff this node
+            // has a sibling after it.
+            ancestors.push(!is_last);
+            flatten_dirs(&path, depth + 1, expanded, ancestors, out);
+            ancestors.pop();
         }
     }
 }
 
 /// A row in the tree: a section header, a favorites/recent shortcut, or a folder.
 enum TreeItem {
-    Header(&'static str),
+    /// A section header. `section` is `Some` for collapsible groups
+    /// (FAVORITES / RECENT); `None` for the always-open FOLDERS header.
+    Header {
+        label: &'static str,
+        section: Option<Section>,
+        open: bool,
+    },
     Shortcut { name: String, path: PathBuf, is_dir: bool },
     Folder(TreeRow),
 }
@@ -1309,31 +1638,49 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     let expanded = st.map(|s| s.expanded.clone()).unwrap_or_default();
     let favorites = st.map(|s| s.favorites.clone()).unwrap_or_default();
     let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
+    let fav_open = st.map(|s| s.fav_open).unwrap_or(false);
+    let recent_open = st.map(|s| s.recent_open).unwrap_or(false);
 
     let mut items: Vec<TreeItem> = Vec::new();
     if !favorites.is_empty() {
-        items.push(TreeItem::Header("FAVORITES"));
-        for p in &favorites {
-            items.push(TreeItem::Shortcut {
-                name: file_name_of(p),
-                path: p.clone(),
-                is_dir: p.is_dir(),
-            });
+        items.push(TreeItem::Header {
+            label: "FAVORITES",
+            section: Some(Section::Favorites),
+            open: fav_open,
+        });
+        if fav_open {
+            for p in &favorites {
+                items.push(TreeItem::Shortcut {
+                    name: file_name_of(p),
+                    path: p.clone(),
+                    is_dir: p.is_dir(),
+                });
+            }
         }
     }
     if !recent.is_empty() {
-        items.push(TreeItem::Header("RECENT"));
-        for p in recent.iter().take(20) {
-            items.push(TreeItem::Shortcut {
-                name: file_name_of(p),
-                path: p.clone(),
-                is_dir: false,
-            });
+        items.push(TreeItem::Header {
+            label: "RECENT",
+            section: Some(Section::Recent),
+            open: recent_open,
+        });
+        if recent_open {
+            for p in recent.iter().take(20) {
+                items.push(TreeItem::Shortcut {
+                    name: file_name_of(p),
+                    path: p.clone(),
+                    is_dir: false,
+                });
+            }
         }
     }
-    items.push(TreeItem::Header("FOLDERS"));
+    items.push(TreeItem::Header {
+        label: "FOLDERS",
+        section: None,
+        open: true,
+    });
     let mut rows = Vec::new();
-    flatten_dirs(&root, 0, &expanded, &mut rows);
+    flatten_dirs(&root, 0, &expanded, &mut Vec::new(), &mut rows);
     items.extend(rows.into_iter().map(TreeItem::Folder));
 
     let keyed: Vec<(u64, u64)> = items
@@ -1342,9 +1689,9 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match it {
-                TreeItem::Header(s) => {
-                    (0u8, s).hash(&mut k);
-                    s.hash(&mut h);
+                TreeItem::Header { label, open, .. } => {
+                    (0u8, label).hash(&mut k);
+                    (label, open).hash(&mut h);
                 }
                 TreeItem::Shortcut { name, path, is_dir } => {
                     (1u8, path).hash(&mut k);
@@ -1353,6 +1700,7 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
                 TreeItem::Folder(r) => {
                     (2u8, &r.path).hash(&mut k);
                     (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
+                    (r.is_last, &r.parent_lines).hash(&mut h);
                 }
             }
             (k.finish(), h.finish())
@@ -1361,25 +1709,75 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     KeyedSnapshot {
         items: keyed,
         build: Box::new(move |c, f, i| match &items[i] {
-            TreeItem::Header(s) => tree_header(c, f, s),
+            TreeItem::Header { label, section, open } => tree_header(c, f, label, *section, *open),
             TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir),
-            TreeItem::Folder(r) => tree_row(c, f, r),
+            TreeItem::Folder(r) => tree_row(c, f, r, i),
         }),
     }
 }
 
-fn tree_header(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
-    commands
+/// A section header. Collapsible groups (FAVORITES / RECENT) get a caret and a
+/// click target; the FOLDERS header is a plain label.
+fn tree_header(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    text: &str,
+    section: Option<Section>,
+    open: bool,
+) -> Entity {
+    // Collapsible sections (FAVORITES / RECENT) sit in a subtle inset box; the
+    // plain FOLDERS header is borderless.
+    let boxed = section.is_some();
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                width: Val::Percent(100.0),
+                column_gap: Val::Px(3.0),
+                margin: if boxed {
+                    UiRect::new(Val::Px(4.0), Val::Px(4.0), Val::Px(4.0), Val::Px(0.0))
+                } else {
+                    UiRect::ZERO
+                },
+                padding: if boxed {
+                    UiRect::axes(Val::Px(6.0), Val::Px(4.0))
+                } else {
+                    UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(6.0), Val::Px(2.0))
+                },
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(if boxed { rgb((33, 33, 40)) } else { Color::NONE }),
+            Name::new("tree-header"),
+        ))
+        .id();
+    let mut kids = Vec::new();
+    if section.is_some() {
+        let caret = icon_text(
+            commands,
+            &fonts.phosphor,
+            if open { "caret-down" } else { "caret-right" },
+            TEXT_MUTED,
+            9.0,
+        );
+        kids.push(caret);
+    }
+    let label = commands
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(TEXT_MUTED)),
-            Node {
-                padding: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(6.0), Val::Px(2.0)),
-                ..default()
-            },
         ))
-        .id()
+        .id();
+    kids.push(label);
+    commands.entity(row).add_children(&kids);
+    if let Some(sec) = section {
+        commands
+            .entity(row)
+            .insert((Interaction::default(), SectionToggle(sec)));
+    }
+    row
 }
 
 fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &Path, is_dir: bool) -> Entity {
@@ -1431,44 +1829,45 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
     row
 }
 
-fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity {
+fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index: usize) -> Entity {
+    let content_x = TREE_BASE_X + r.depth as f32 * TREE_INDENT;
+    let stripe = inspector_stripe(row_index);
+
     let row = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
-                height: Val::Px(20.0),
-                padding: UiRect::left(Val::Px(r.depth as f32 * 12.0 + 2.0)),
+                height: Val::Px(TREE_ROW_H),
+                position_type: PositionType::Relative,
+                overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::NONE),
             Name::new("tree-row"),
         ))
         .id();
-    let sel_path = r.path.clone();
-    bind_bg(commands, row, move |w| {
-        if current_folder(w).as_deref() == Some(sel_path.as_path()) {
-            rgb(ACCENT_BLUE).with_alpha(0.25)
-        } else {
-            Color::NONE
-        }
-    });
 
     // Caret (only when there are subfolders).
     let caret = commands
         .spawn(Node {
-            width: Val::Px(14.0),
+            width: Val::Px(16.0),
             height: Val::Percent(100.0),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
+            flex_shrink: 0.0,
             ..default()
         })
         .id();
     if r.has_children {
         let glyph = icon_glyph(if r.expanded { "caret-down" } else { "caret-right" }).unwrap_or(' ');
         let g = commands
-            .spawn((Text::new(glyph.to_string()), ui_font(&fonts.phosphor, 10.0), TextColor(rgb(TEXT_MUTED))))
+            .spawn((
+                Text::new(glyph.to_string()),
+                ui_font(&fonts.phosphor, 10.0),
+                TextColor(rgb(TEXT_MUTED)),
+                Pickable::IGNORE,
+            ))
             .id();
         commands.entity(caret).insert((Interaction::default(), TreeToggle(r.path.clone())));
         commands.entity(caret).add_child(g);
@@ -1505,6 +1904,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity 
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(TEXT_PRIMARY)),
             bevy::text::TextLayout::new_with_no_wrap(),
+            Pickable::IGNORE,
             Node {
                 min_width: Val::Px(0.0),
                 overflow: Overflow::clip(),
@@ -1513,7 +1913,67 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow) -> Entity 
         ))
         .id();
     commands.entity(nav).add_children(&[folder_icon, name]);
-    commands.entity(row).add_children(&[caret, nav]);
+
+    // Full-row background (odd/even stripe + selection + hover), lowest z.
+    let bg_visual = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                ..default()
+            },
+            BackgroundColor(stripe),
+            Pickable::IGNORE,
+            Name::new("tree-row-bg"),
+        ))
+        .id();
+    let sel_path = r.path.clone();
+    bind_bg(commands, bg_visual, move |w| {
+        if current_folder(w).as_deref() == Some(sel_path.as_path()) {
+            return rgb(ACCENT_BLUE).with_alpha(0.30);
+        }
+        if matches!(
+            w.get::<Interaction>(nav),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        ) {
+            return rgb((48, 48, 58));
+        }
+        stripe
+    });
+
+    // bg first (behind), then guide lines, then the indent spacer + content.
+    let mut kids = vec![bg_visual];
+    for (level, &has_more) in r.parent_lines.iter().enumerate() {
+        if has_more {
+            let x = TREE_BASE_X + level as f32 * TREE_INDENT + TREE_LINE_OFFSET;
+            kids.push(tree_vline(commands, x, true, 0.0));
+        }
+    }
+    if r.depth > 0 {
+        let x = TREE_BASE_X + (r.depth - 1) as f32 * TREE_INDENT + TREE_LINE_OFFSET;
+        kids.push(tree_vline(commands, x, !r.is_last, TREE_CENTER_Y));
+        kids.push(tree_hline(commands, x, 5.0));
+    }
+    // Indent spacer up to the caret column.
+    kids.push(
+        commands
+            .spawn((
+                Node {
+                    width: Val::Px(content_x),
+                    height: Val::Percent(100.0),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ))
+            .id(),
+    );
+    kids.push(caret);
+    kids.push(nav);
+    commands.entity(row).add_children(&kids);
     row
 }
 
@@ -1548,6 +2008,21 @@ fn tree_nav_click(
             } else {
                 state.expanded.insert(nav.0.clone());
             }
+        }
+    }
+}
+
+fn section_toggle_click(
+    q: Query<(&Interaction, &SectionToggle), Changed<Interaction>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    for (interaction, toggle) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match toggle.0 {
+            Section::Favorites => state.fav_open = !state.fav_open,
+            Section::Recent => state.recent_open = !state.recent_open,
         }
     }
 }

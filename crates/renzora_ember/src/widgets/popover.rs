@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::{rgb, TEXT_MUTED};
 
-use super::button::button;
+use super::button::{button, icon_label_button};
 
 #[derive(Component)]
 pub(crate) struct EmberPopover {
@@ -25,6 +25,52 @@ pub fn popover(commands: &mut Commands, fonts: &EmberFonts, label: &str, content
         ))
         .id();
     let trigger = button(commands, &fonts.ui, label);
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                padding: UiRect::all(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb((30, 30, 38))),
+            BorderColor::all(rgb((60, 60, 74))),
+            GlobalZIndex(600),
+            Name::new("popover-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_child(content);
+    commands
+        .entity(trigger)
+        .insert(EmberPopover { panel, open: false });
+    commands.entity(wrap).add_children(&[trigger, panel]);
+    wrap
+}
+
+/// Like [`popover`] but the trigger is a framed icon+label button (e.g. a "+"
+/// glyph beside "Add"). Returns the wrapper entity.
+pub fn labeled_icon_popover(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    content: Entity,
+) -> Entity {
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("popover"),
+        ))
+        .id();
+    let trigger = icon_label_button(commands, fonts, icon, label);
     let panel = commands
         .spawn((
             Node {
