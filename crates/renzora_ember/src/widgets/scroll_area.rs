@@ -12,12 +12,9 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::rgb;
+use crate::theme::{border, rgb, text_muted, text_primary};
 
 const BAR_W: f32 = 9.0;
-const THUMB: (u8, u8, u8) = (96, 96, 112);
-const THUMB_HOVER: (u8, u8, u8) = (128, 128, 148);
-const TRACK: (u8, u8, u8) = (26, 26, 32);
 const MIN_THUMB: f32 = 28.0;
 const WHEEL_STEP: f32 = 52.0;
 const EASE: f32 = 16.0;
@@ -89,9 +86,13 @@ fn build_scroll(
                 border_radius: BorderRadius::all(Val::Px(BAR_W / 2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TRACK).with_alpha(0.5)),
+            BackgroundColor(rgb(border()).with_alpha(0.5)),
             RelativeCursorPosition::default(),
-            GlobalZIndex(50),
+            // Local ZIndex (not Global) so the bar sits above the content but
+            // stays within its modal/panel stacking context — a GlobalZIndex
+            // would render it *behind* a higher-z modal (e.g. the settings
+            // overlay), which is why it looked missing there.
+            ZIndex(50),
             Name::new("scroll-track"),
         ))
         .id();
@@ -106,7 +107,7 @@ fn build_scroll(
                 border_radius: BorderRadius::all(Val::Px(BAR_W / 2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(THUMB)),
+            BackgroundColor(rgb(text_muted())),
             Interaction::default(),
             ScrollThumb { viewport, track },
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -327,8 +328,8 @@ pub(crate) fn scroll_thumb_drag(
     }
     for (interaction, mut bg) in &mut tints {
         let target = match interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb(THUMB_HOVER),
-            Interaction::None => rgb(THUMB),
+            Interaction::Hovered | Interaction::Pressed => rgb(text_primary()),
+            Interaction::None => rgb(text_muted()),
         };
         if bg.0 != target {
             bg.0 = target;

@@ -372,11 +372,17 @@ fn resolve_viewport_slots(
     resize_req: Res<ViewportResizeRequest>,
     docking: Option<Res<DockingState>>,
     ember_dock: Option<Res<renzora_ember::dock::Dock>>,
+    modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // A bevy_ui modal (settings overlay, search/add-component overlay, …) covers
+    // the viewport and must swallow the wheel/pointer — otherwise scrolling over
+    // the modal also zooms the 3D camera behind it.
+    let modal_open = !modals.is_empty();
 
     let mut newly_hovered: Option<usize> = None;
     #[allow(clippy::needless_range_loop)] // `i` indexes several parallel arrays
@@ -394,7 +400,7 @@ fn resolve_viewport_slots(
             .as_ref()
             .is_some_and(|d| d.tree.is_active_tab(VIEWPORT_PANEL_IDS[i]));
         let docked = egui_docked || ember_docked;
-        let hovered = req.hovered.load(Ordering::Relaxed) && docked;
+        let hovered = req.hovered.load(Ordering::Relaxed) && docked && !modal_open;
         let screen_position = Vec2::new(
             f32::from_bits(req.screen_x.load(Ordering::Relaxed)),
             f32::from_bits(req.screen_y.load(Ordering::Relaxed)),
