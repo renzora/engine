@@ -10,7 +10,7 @@ use renzora_code_editor::CodeEditorState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_scripting::{ScriptEngine, ScriptValue, ScriptVariableDefinition};
 
 const DISABLED: (u8, u8, u8) = (110, 110, 122);
@@ -105,7 +105,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let e_icon = icon_text(commands, &fonts.phosphor, "code", DISABLED, 32.0);
     let e_text = commands
-        .spawn((Text::new("Open a script to see its variables"), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new("Open a script to see its variables"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(empty).add_children(&[e_icon, e_text]);
     bind_display(commands, empty, |w| script_name(w).is_empty());
@@ -131,9 +131,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let h_icon = icon_text(commands, &fonts.phosphor, "code", ACCENT_BLUE, 14.0);
+    let h_icon = icon_text(commands, &fonts.phosphor, "code", accent(), 14.0);
     let h_name = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 13.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, h_name, script_name);
     commands.entity(header).add_children(&[h_icon, h_name]);
@@ -212,11 +212,11 @@ fn prop_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, p: &ScriptV
         .spawn((Text::new(ty), ui_font(&fonts.mono, 10.0), TextColor(rgb(type_color(ty)))))
         .id();
     let name = commands
-        .spawn((Text::new(p.display_name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(p.display_name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let val = commands
-        .spawn((Text::new(format_default(&p.default_value)), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(format_default(&p.default_value)), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(line).add_children(&[badge, name, gap, val]);
     let mut kids = vec![line];
@@ -243,7 +243,7 @@ fn empty_vars(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let t1 = commands
-        .spawn((Text::new("No variables defined"), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new("No variables defined"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted()))))
         .id();
     let t2 = commands
         .spawn((Text::new("Add a props() function to define variables:"), ui_font(&fonts.ui, 11.0), TextColor(rgb(DISABLED))))
@@ -256,7 +256,7 @@ fn empty_vars(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let code = commands
-        .spawn((Text::new(example), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(example), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(frame).add_child(code);
     commands.entity(col).add_children(&[t1, t2, frame]);

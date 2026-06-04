@@ -11,7 +11,7 @@ use egui_phosphor::regular::{
 use renzora_editor::{EditorSelection, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_text_color};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_hui::cursor_icon::HoverCursor;
 
 use super::components::{
@@ -107,7 +107,7 @@ pub(crate) fn build_row(
     let label_color = s
         .label_color
         .map(|[r, g, b]| Color::srgb_u8(r, g, b))
-        .unwrap_or_else(|| rgb(TEXT_PRIMARY));
+        .unwrap_or_else(|| rgb(text_primary()));
 
     let row = commands
         .spawn((
@@ -359,7 +359,7 @@ pub(crate) fn build_row(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             Pickable::IGNORE,
             HierDropEdge {
                 entity: s.entity,
@@ -378,7 +378,7 @@ pub(crate) fn build_row(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb(ACCENT_BLUE)),
+            BackgroundColor(rgb(accent())),
             Pickable::IGNORE,
             HierDropEdge {
                 entity: s.entity,
@@ -418,14 +418,14 @@ pub(crate) fn build_row(
             if drag.active
                 && matches!(drag.target, Some((t, TreeDropZone::AsChild)) if t == ent)
             {
-                return over(base, rgb(ACCENT_BLUE).with_alpha(0.35));
+                return over(base, rgb(accent()).with_alpha(0.35));
             }
         }
         if world
             .get_resource::<EditorSelection>()
             .is_some_and(|sel| sel.is_selected(ent))
         {
-            return rgb(ACCENT_BLUE).with_alpha(0.63);
+            return rgb(accent()).with_alpha(0.63);
         }
         let hovered = world
             .get::<Interaction>(click)

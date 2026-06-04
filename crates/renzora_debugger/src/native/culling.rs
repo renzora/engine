@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_with};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{checkbox, slider};
 
 use crate::state::CullingDebugState;
@@ -65,17 +65,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let big = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, big, |w| cull(w, visible).to_string());
     let total = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_MUTED)),
+        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())),
             Node { margin: UiRect::bottom(Val::Px(4.0)), ..default() }))
         .id();
     bind_text(commands, total, |w| format!("/ {} visible", cull(w, |s| s.total_entities)));
     commands.entity(head).add_children(&[big, total]);
     let pct = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
         .id();
     // Only shown when total > 0 (bind_display below), so a max(1) divisor is safe.
     bind_text(commands, pct, |w| {
@@ -187,7 +187,7 @@ where
         .spawn(Node { flex_grow: 1.0, ..default() })
         .id();
     let c = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, c, move |w| count(w).to_string());
     commands.entity(header).add_children(&[l, gap, c]);
@@ -242,7 +242,7 @@ fn checkbox_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Ent
         |w, v| set_field(w, move |s| s.enabled = *v),
     );
     let l = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(row).add_children(&[cb, l]);
     row
@@ -274,7 +274,7 @@ where
         move |w, v| set(w, min + *v * range),
     );
     let val = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, val, move |w| fmt(get(w)));
     commands.entity(row).add_children(&[l, sl, val]);

@@ -18,7 +18,7 @@ use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{popup_bg, rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
     text_input, EmberTextInput,
@@ -489,7 +489,7 @@ fn drag_ghost(
                 ..default()
             },
             BackgroundColor(rgb(popup_bg()).with_alpha(0.92)),
-            BorderColor::all(rgb(ACCENT_BLUE)),
+            BorderColor::all(rgb(accent())),
             GlobalZIndex(10_000),
             Pickable::IGNORE,
             DragGhost,
@@ -501,7 +501,7 @@ fn drag_ghost(
         .spawn((
             Text::new(payload.name.clone()),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             bevy::text::TextLayout::new_with_no_wrap(),
             Pickable::IGNORE,
         ))
@@ -904,7 +904,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             // Match the hierarchy panel base so the shared odd/even stripe
             // (inspector_stripe) renders the exact same colors.
-            BackgroundColor(rgb(PANEL_BG)),
+            BackgroundColor(rgb(panel_bg())),
         ))
         .id();
     commands.entity(tree_pane).add_child(tree_scroll);
@@ -941,7 +941,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Some(Interaction::Hovered) | Some(Interaction::Pressed)
         );
         if dragging || hovered {
-            rgb(ACCENT_BLUE)
+            rgb(accent())
         } else {
             rgb(renzora_ember::theme::border())
         }
@@ -992,7 +992,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("assets-back"),
         ))
         .id();
-    let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", TEXT_PRIMARY, 13.0);
+    let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", text_primary(), 13.0);
     commands.entity(back).add_child(back_icon);
     // Hidden at the project root (nowhere to go up to).
     bind_display(commands, back, |w| current_folder(w) != project_root(w));
@@ -1039,7 +1039,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         align_items: AlignItems::Center,
         ..default()
     });
-    let zoom_icon = icon_text(commands, &fonts.phosphor, "magnifying-glass", TEXT_MUTED, 11.0);
+    let zoom_icon = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 11.0);
     let zoom_box = commands
         .spawn((
             Node {
@@ -1117,7 +1117,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("0 items"),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     bind_with(
@@ -1199,13 +1199,13 @@ fn crumb_seg(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str
         .id();
     let mut kids = Vec::new();
     if idx > 0 {
-        kids.push(icon_text(commands, &fonts.phosphor, "caret-right", TEXT_MUTED, 9.0));
+        kids.push(icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 9.0));
     }
     let label = commands
         .spawn((
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Interaction::default(),
             CrumbNav(path.to_path_buf()),
             Name::new("crumb"),
@@ -1261,7 +1261,7 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
                 c.spawn((
                     Text::new("Empty folder"),
                     ui_font(&f.ui, 11.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                     Node { padding: UiRect::all(Val::Px(8.0)), ..default() },
                 ))
                 .id()
@@ -1448,7 +1448,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         .spawn((
             Text::new(entry.name.clone()),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             Node {
                 width: Val::Percent(100.0),
                 max_height: Val::Px(26.0),
@@ -1715,7 +1715,7 @@ fn tree_header(
             commands,
             &fonts.phosphor,
             if open { "caret-down" } else { "caret-right" },
-            TEXT_MUTED,
+            text_muted(),
             9.0,
         );
         kids.push(caret);
@@ -1724,7 +1724,7 @@ fn tree_header(
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 9.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     kids.push(label);
@@ -1766,14 +1766,14 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
     let (icon_name, icon_color) = if is_dir {
         ("folder", folder_color(name))
     } else {
-        (icon_for(path, false), TEXT_MUTED)
+        (icon_for(path, false), text_muted())
     };
     let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 12.0);
     let label = commands
         .spawn((
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             bevy::text::TextLayout::new_with_no_wrap(),
             Node {
                 min_width: Val::Px(0.0),
@@ -1822,7 +1822,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
             .spawn((
                 Text::new(glyph.to_string()),
                 ui_font(&fonts.phosphor, 10.0),
-                TextColor(rgb(TEXT_MUTED)),
+                TextColor(rgb(text_muted())),
                 Pickable::IGNORE,
             ))
             .id();
@@ -1859,7 +1859,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
         .spawn((
             Text::new(r.name.clone()),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
             bevy::text::TextLayout::new_with_no_wrap(),
             Pickable::IGNORE,
             Node {
@@ -1890,7 +1890,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
     let sel_path = r.path.clone();
     bind_bg(commands, bg_visual, move |w| {
         if current_folder(w).as_deref() == Some(sel_path.as_path()) {
-            return rgb(ACCENT_BLUE).with_alpha(0.30);
+            return rgb(accent()).with_alpha(0.30);
         }
         if matches!(
             w.get::<Interaction>(nav),

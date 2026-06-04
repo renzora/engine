@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 
 use crate::panels::lumen::{LumenCameraEntry, LumenDiagState};
 
@@ -46,7 +46,7 @@ fn duration_color(d: Duration) -> Color {
     } else if ms >= 1.0 {
         rgb(AMBER)
     } else {
-        rgb(TEXT_PRIMARY)
+        rgb(text_primary())
     }
 }
 
@@ -96,7 +96,7 @@ where
         })
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     commands.entity(row).add_children(&[l, gap, v]);
@@ -117,7 +117,7 @@ fn build_lumen(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let dur = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 22.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 22.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, dur, |w| format_duration(lumen(w, |s| s.bake.last_bake_dur)));
     bind_text_color(commands, dur, |w| duration_color(lumen(w, |s| s.bake.last_bake_dur)));
@@ -215,7 +215,7 @@ fn cameras_snapshot(world: &World) -> KeyedSnapshot {
                 c.spawn((
                     Text::new("(no cameras with VoxelCacheView)"),
                     ui_font(&f.ui, 11.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ))
                 .id()
             }),
@@ -248,7 +248,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, cam: &LumenCameraEntr
         .spawn((
             Text::new(cam.camera_name.clone()),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let sub = commands

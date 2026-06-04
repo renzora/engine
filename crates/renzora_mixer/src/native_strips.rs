@@ -15,7 +15,7 @@ use renzora_editor::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, keyed_list, react, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     fader, icon_popover, knob, mixer_button, text_input, vu_meter_bound, EmberTextInput,
 };
@@ -68,7 +68,7 @@ fn bus_create(
         inp.value.clear();
         if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
             *t = Text::new(ph);
-            c.0 = rgb(TEXT_MUTED);
+            c.0 = rgb(text_muted());
         }
     }
 }
@@ -143,7 +143,7 @@ fn add_bus_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let label = commands
-        .spawn((Text::new("New bus"), ui_font(&fonts.ui, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new("New bus"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
         .id();
     let input = text_input(commands, &fonts.ui, "Bus name", "");
     commands.entity(input).insert(BusNameInput);
@@ -163,7 +163,7 @@ fn add_bus_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let create_label = commands
-        .spawn((Text::new("Create"), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new("Create"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(create).add_child(create_label);
     commands.entity(col).add_children(&[label, input, create]);
@@ -205,7 +205,7 @@ where
         })
         .id();
     let label = commands
-        .spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     let cog = device_cog(commands, fonts, sel, sel_mut);
     let mut header_kids = vec![label, cog];
@@ -267,7 +267,7 @@ where
         },
     );
     let pan_label = commands
-        .spawn((Text::new("Pan"), ui_font(&fonts.ui, 9.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new("Pan"), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted()))))
         .id();
 
     let buttons = commands
@@ -287,7 +287,7 @@ where
             write(w, sel_mut, move |s| s.muted = nv);
         },
     );
-    let solo = mixer_button(commands, fonts, "S", rgb(ACCENT_BLUE));
+    let solo = mixer_button(commands, fonts, "S", rgb(accent()));
     bind_2way(
         commands,
         solo,
@@ -351,7 +351,7 @@ where
 
 fn section_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
     commands
-        .spawn((Text::new(text), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(text), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id()
 }
 
@@ -384,7 +384,7 @@ where
         ))
         .id();
     let t = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(row).add_child(t);
 
@@ -392,7 +392,7 @@ where
     let dev_hi = device.clone();
     bind_bg(commands, row, move |w| {
         if read_device(w, sel, input).as_deref() == dev_hi.as_deref() {
-            rgb(ACCENT_BLUE).with_alpha(0.30)
+            rgb(accent()).with_alpha(0.30)
         } else {
             Color::NONE
         }

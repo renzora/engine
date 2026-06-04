@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
 use crate::state::{DiagnosticsState, RenderStats};
@@ -68,7 +68,7 @@ pub(super) fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::top(Val::Px(8.0)),
                 ..default()
@@ -95,7 +95,7 @@ where
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 28.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, num, value);
@@ -104,7 +104,7 @@ where
         .spawn((
             Text::new(unit),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::bottom(Val::Px(5.0)),
                 ..default()
@@ -131,7 +131,7 @@ where
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 width: Val::Px(90.0),
                 ..default()
@@ -142,7 +142,7 @@ where
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, v, value);
@@ -159,7 +159,7 @@ where
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     bind_text(commands, t, value);
@@ -241,7 +241,7 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("Collecting render data..."),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::all(Val::Px(40.0)),
                 ..default()
@@ -356,7 +356,7 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         fonts,
         "entities",
         |w| format!("{}", diag(w, |d| d.entity_count)),
-        |_| rgb(TEXT_PRIMARY),
+        |_| rgb(text_primary()),
     );
     let ent_chart = line_chart_live(
         commands,

@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
 
 use crate::runtime_warnings::{recent_warnings, CapturedWarning, WarningLevel};
@@ -75,7 +75,7 @@ where
         })
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 12.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 12.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     bind_text_color(commands, v, color);
@@ -257,13 +257,13 @@ fn tab_row(commands: &mut Commands, fonts: &EmberFonts, t: &TabPinSnapshot) -> E
         })
         .id();
     let id = commands
-        .spawn((Text::new(format!("Tab {}", t.tab_id)), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(format!("Tab {}", t.tab_id)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
         .id();
     let counts = commands
         .spawn((
             Text::new(format!("{} GLB(s)  \u{b7}  {} live handles", t.gltf_count, t.live_total)),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(head).add_children(&[id, counts]);
@@ -275,7 +275,7 @@ fn tab_row(commands: &mut Commands, fonts: &EmberFonts, t: &TabPinSnapshot) -> E
                 b.meshes, b.std_mats, b.graph_mats, b.scenes, b.images
             )),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::left(Val::Px(14.0)),
                 ..default()
@@ -343,18 +343,18 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, c: &CameraEntry) -> E
         .id();
     let dot = icon_text(commands, &fonts.phosphor, "circle", SECONDARY, 10.0);
     let name = commands
-        .spawn((Text::new(c.name.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(c.name.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
         .id();
     let meta = commands
         .spawn((
             Text::new(format!("({}, {:?})", kind, c.entity)),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(head).add_children(&[dot, name, meta]);
 
-    let active_color = if c.is_active { rgb(OK) } else { rgb(TEXT_MUTED) };
+    let active_color = if c.is_active { rgb(OK) } else { rgb(text_muted()) };
     let line1 = commands
         .spawn((
             Text::new(format!(
@@ -383,7 +383,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, c: &CameraEntry) -> E
                 yesno(c.env_map_light),
             )),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::left(Val::Px(14.0)),
                 ..default()
@@ -450,7 +450,7 @@ fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
     let target = commands
-        .spawn((Text::new(wn.target.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(wn.target.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     let gap = commands
         .spawn(Node {
@@ -459,7 +459,7 @@ fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning
         })
         .id();
     let age_e = commands
-        .spawn((Text::new(age_label), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(age_label), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(head).add_children(&[ic, target, gap, age_e]);
     let msg = commands
@@ -480,6 +480,6 @@ fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning
 fn note_snapshot(text: &'static str) -> KeyedSnapshot {
     KeyedSnapshot {
         items: vec![(u64::MAX, 0)],
-        build: Box::new(move |c, f, _| note(c, f, text, TEXT_MUTED)),
+        build: Box::new(move |c, f, _| note(c, f, text, text_muted())),
     }
 }

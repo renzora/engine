@@ -11,7 +11,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_editor::ComponentIconRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput, Popup};
 
 /// The set of component-type names (plus the `__other__` sentinel) the tree is
@@ -134,7 +134,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
             .get_resource::<HierFilter>()
             .is_some_and(|f| !f.types.is_empty());
         if active {
-            return rgb(ACCENT_BLUE).with_alpha(0.30);
+            return rgb(accent()).with_alpha(0.30);
         }
         match w.get::<Interaction>(funnel) {
             Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
@@ -257,7 +257,7 @@ fn check_row(
         .id();
     bind_bg(commands, check, move |w| {
         if w.get_resource::<HierFilter>().is_some_and(|f| f.types.contains(type_name)) {
-            rgb(ACCENT_BLUE)
+            rgb(accent())
         } else {
             Color::NONE
         }

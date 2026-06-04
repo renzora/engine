@@ -15,13 +15,12 @@ use renzora_editor::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, HEADER_BG, PLACEHOLDER, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_undo::UndoStacks;
 
 const PANEL_ID: &str = "history";
 const ROW_H: f32 = 22.0;
 /// Selection-stroke tint behind the current state (egui used alpha 40/255).
-const CURRENT_BG: (u8, u8, u8) = ACCENT_BLUE;
 const CURRENT_BG_A: f32 = 40.0 / 255.0;
 /// Hover wash on past/future rows (egui used white @ 12/255).
 const HOVER_A: f32 = 12.0 / 255.0;
@@ -139,7 +138,7 @@ fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> E
                 padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(HEADER_BG)),
+            BackgroundColor(rgb(header_bg())),
             Name::new("history-section"),
         ))
         .id();
@@ -147,7 +146,7 @@ fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> E
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(row).add_child(text);
@@ -165,7 +164,7 @@ fn section_hint(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Enti
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(row).add_child(t);
@@ -181,13 +180,13 @@ fn history_row(
     action: Option<HistoryAction>,
 ) -> Entity {
     let (icon_color, label_color) = match kind {
-        RowKind::Current => (ACCENT_BLUE, TEXT_PRIMARY),
-        RowKind::Past => (TEXT_MUTED, TEXT_PRIMARY),
-        RowKind::Future => (TEXT_MUTED, TEXT_MUTED),
+        RowKind::Current => (accent(), text_primary()),
+        RowKind::Past => (text_muted(), text_primary()),
+        RowKind::Future => (text_muted(), text_muted()),
     };
     let current = kind == RowKind::Current;
     let base = if current {
-        rgb(CURRENT_BG).with_alpha(CURRENT_BG_A)
+        rgb(accent()).with_alpha(CURRENT_BG_A)
     } else {
         Color::NONE
     };
@@ -249,19 +248,19 @@ fn empty_state(commands: &mut Commands, fonts: &EmberFonts, icon: &str, title: &
             ..default()
         },))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, PLACEHOLDER, 32.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, placeholder(), 32.0);
     let t = commands
         .spawn((
             Text::new(title),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let s = commands
         .spawn((
             Text::new(subtitle),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(root).add_children(&[ic, t, s]);

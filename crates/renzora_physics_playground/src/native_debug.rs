@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, bind_with, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{checkbox, collapsible, line_chart_live, ChartStyle};
 
 use crate::state::{ColliderShapeType, PhysicsDebugState};
@@ -81,7 +81,7 @@ fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node { margin: UiRect::top(Val::Px(8.0)), ..default() },
         ))
         .id()
@@ -115,7 +115,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("No physics bodies detected"),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node { margin: UiRect::all(Val::Px(40.0)), ..default() },
         ))
         .id();
@@ -137,7 +137,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let status = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() })
         .id();
-    let st_label = text(commands, fonts, "Physics", 12.0, TEXT_MUTED);
+    let st_label = text(commands, fonts, "Physics", 12.0, text_muted());
     let dot = text(commands, fonts, "\u{25cf}", 11.0, (150, 200, 120));
     bind_text_color(commands, dot, |w| if phys(w, |s| s.simulation_running) { rgb((120, 210, 120)) } else { rgb((220, 180, 80)) });
     let st_text = text(commands, fonts, "", 11.0, SECONDARY);
@@ -174,11 +174,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexEnd, column_gap: Val::Px(6.0), ..default() })
         .id();
     let st_big = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 20.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 20.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, st_big, |w| format!("{:.2}", phys(w, |s| s.step_time_ms)));
     bind_text_color(commands, st_big, |w| step_color(phys(w, |s| s.step_time_ms)));
-    let st_ms = text(commands, fonts, "ms", 11.0, TEXT_MUTED);
+    let st_ms = text(commands, fonts, "ms", 11.0, text_muted());
     let st_avg = commands
         .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(SECONDARY)), Node { margin: UiRect::bottom(Val::Px(2.0)), ..default() }))
         .id();
@@ -223,11 +223,11 @@ where
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexEnd, column_gap: Val::Px(6.0), ..default() })
         .id();
     let num = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, num, value);
     let u = commands
-        .spawn((Text::new(unit), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_MUTED)), Node { margin: UiRect::bottom(Val::Px(3.0)), ..default() }))
+        .spawn((Text::new(unit), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { margin: UiRect::bottom(Val::Px(3.0)), ..default() }))
         .id();
     commands.entity(row).add_children(&[num, u]);
     row
@@ -300,7 +300,7 @@ where
         .id();
     let cb = checkbox(commands, false);
     bind_2way(commands, cb, get, move |w, v| set_fn(w, *v));
-    let l = text(commands, fonts, label, 11.0, TEXT_PRIMARY);
+    let l = text(commands, fonts, label, 11.0, text_primary());
     commands.entity(row).add_children(&[cb, l]);
     row
 }
@@ -346,7 +346,7 @@ fn collision_snapshot(world: &World) -> KeyedSnapshot {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
-                c.spawn((Text::new("No active collisions"), ui_font(&f.ui, 10.0), TextColor(rgb(TEXT_MUTED)))).id()
+                c.spawn((Text::new("No active collisions"), ui_font(&f.ui, 10.0), TextColor(rgb(text_muted())))).id()
             }),
         };
     }
@@ -371,13 +371,13 @@ fn collision_snapshot(world: &World) -> KeyedSnapshot {
                     .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() })
                     .id();
                 let ea = c.spawn((Text::new(format!("{:?}", a)), ui_font(&f.mono, 9.0), TextColor(rgb(SECONDARY)))).id();
-                let arrow = c.spawn((Text::new("\u{2194}"), ui_font(&f.ui, 9.0), TextColor(rgb(TEXT_MUTED)))).id();
+                let arrow = c.spawn((Text::new("\u{2194}"), ui_font(&f.ui, 9.0), TextColor(rgb(text_muted())))).id();
                 let eb = c.spawn((Text::new(format!("{:?}", b)), ui_font(&f.mono, 9.0), TextColor(rgb(SECONDARY)))).id();
-                let nc = c.spawn((Text::new(format!("({} contacts)", n)), ui_font(&f.ui, 9.0), TextColor(rgb(TEXT_MUTED)))).id();
+                let nc = c.spawn((Text::new(format!("({} contacts)", n)), ui_font(&f.ui, 9.0), TextColor(rgb(text_muted())))).id();
                 c.entity(row).add_children(&[ea, arrow, eb, nc]);
                 row
             } else {
-                c.spawn((Text::new(format!("... and {} more", total.saturating_sub(10))), ui_font(&f.ui, 9.0), TextColor(rgb(TEXT_MUTED)))).id()
+                c.spawn((Text::new(format!("... and {} more", total.saturating_sub(10))), ui_font(&f.ui, 9.0), TextColor(rgb(text_muted())))).id()
             }
         }),
     }

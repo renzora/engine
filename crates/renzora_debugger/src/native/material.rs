@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_shader::material::perf::{MaterialPerf, MaterialPerfStats, MAX_RECENT_FAILURES};
 use renzora_shader::material::resolver::MaterialCache;
 
@@ -123,7 +123,7 @@ where
         })
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     commands.entity(row).add_children(&[l, gap, v]);
@@ -137,7 +137,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .spawn((
             Text::new("(MaterialCache / MaterialPerfStats resource not present)"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     bind_display(commands, absent, |w| !present(w));
@@ -162,7 +162,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         })
         .id();
     let tot = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, tot, |w| {
         cache(w, |c| (c.standard_count() + c.graph_count() + c.code_count()).to_string())
@@ -171,7 +171,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .spawn((
             Text::new("materials cached"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::bottom(Val::Px(4.0)),
                 ..default()
@@ -234,7 +234,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
 
     // Failures.
     let fail_label = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_MUTED)),
+        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())),
             Node { margin: UiRect::top(Val::Px(8.0)), ..default() }))
         .id();
     bind_text(commands, fail_label, |w| {
@@ -286,7 +286,7 @@ fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let cells: Vec<Entity> = COLS
         .iter()
-        .map(|(label, width)| cell(commands, fonts, label, *width, rgb(TEXT_MUTED)))
+        .map(|(label, width)| cell(commands, fonts, label, *width, rgb(text_muted())))
         .collect();
     commands.entity(row).add_children(&cells);
     let sep = commands
@@ -322,7 +322,7 @@ fn make_row(path: &str, p: &MaterialPerf) -> MatRow {
     let name_color = if p.fail_count > 0 {
         rgb((230, 130, 110))
     } else {
-        rgb(TEXT_PRIMARY)
+        rgb(text_primary())
     };
     MatRow {
         name: short_path(path),
@@ -346,7 +346,7 @@ fn table_snapshot(world: &World) -> KeyedSnapshot {
                 c.spawn((
                     Text::new("(no materials resolved yet)"),
                     ui_font(&f.ui, 11.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ))
                 .id()
             }),

@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_scripting::perf::ScriptPerf;
 
 use crate::panels::scripting::ScriptingDiagState;
@@ -96,7 +96,7 @@ where
         })
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     commands.entity(row).add_children(&[l, gap, v]);
@@ -116,14 +116,14 @@ fn build_scripting(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let tot = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, tot, |w| format_duration(scr(w, |s| s.totals.total_last_update)));
     let tot_u = commands
         .spawn((
             Text::new("last frame"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::bottom(Val::Px(4.0)),
                 ..default()
@@ -221,7 +221,7 @@ fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let cells: Vec<Entity> = COLS
         .iter()
-        .map(|(label, width)| cell(commands, fonts, label, *width, rgb(TEXT_MUTED), 10.0, false))
+        .map(|(label, width)| cell(commands, fonts, label, *width, rgb(text_muted()), 10.0, false))
         .collect();
     commands.entity(row).add_children(&cells);
     let sep = commands
@@ -275,8 +275,8 @@ struct ScriptRow {
 
 fn make_row(path: &Path, perf: &ScriptPerf, current_frame: u64) -> ScriptRow {
     let stale = current_frame.saturating_sub(perf.last_seen_frame) > 2;
-    let name_color = if stale { rgb(TEXT_MUTED) } else { rgb(TEXT_PRIMARY) };
-    let value_color = if stale { rgb(TEXT_MUTED) } else { rgb(SECONDARY) };
+    let name_color = if stale { rgb(text_muted()) } else { rgb(text_primary()) };
+    let value_color = if stale { rgb(text_muted()) } else { rgb(SECONDARY) };
     let name_color = if perf.error_count > 0 {
         rgb((230, 130, 110))
     } else {
@@ -331,7 +331,7 @@ fn table_snapshot(world: &World) -> KeyedSnapshot {
                 c.spawn((
                     Text::new("(no scripts have ticked yet)"),
                     ui_font(&f.ui, 11.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ))
                 .id()
             }),
@@ -395,7 +395,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &ScriptRow) -> Ent
                 .spawn((
                     Text::new(hooks.clone()),
                     ui_font(&fonts.ui, 10.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                     Node {
                         margin: UiRect::left(Val::Px(18.0)),
                         ..default()

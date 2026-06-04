@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::*;
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 use renzora_editor::SplashState;
 
@@ -90,7 +90,7 @@ fn build_ecs_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         fonts,
         "entities",
         |w| format!("{}", ecs(w, |s| s.entity_count)),
-        |_| rgb(TEXT_PRIMARY),
+        |_| rgb(text_primary()),
     );
 
     // "Archetypes: N    Component Types: M"
@@ -102,9 +102,9 @@ fn build_ecs_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let arch_k = small(commands, fonts, "Archetypes:", SECONDARY);
-    let arch_v = bound(commands, fonts, TEXT_PRIMARY, |w| format!("{}", ecs(w, |s| s.archetype_count)));
+    let arch_v = bound(commands, fonts, text_primary(), |w| format!("{}", ecs(w, |s| s.archetype_count)));
     let comp_k = small(commands, fonts, "Component Types:", SECONDARY);
-    let comp_v = bound(commands, fonts, TEXT_PRIMARY, |w| {
+    let comp_v = bound(commands, fonts, text_primary(), |w| {
         format!("{}", ecs(w, |s| s.component_stats.len()))
     });
     commands.entity(sub).add_children(&[arch_k, arch_v, comp_k, comp_v]);
@@ -198,7 +198,7 @@ where
             Name::new("ecs-section-header"),
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-right", TEXT_MUTED, 12.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 12.0);
     bind_text(commands, caret, move |w| {
         let name = if expanded(w, sec) { "caret-down" } else { "caret-right" };
         icon_glyph(name).unwrap_or(' ').to_string()
@@ -207,7 +207,7 @@ where
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, title_e, title);
@@ -256,7 +256,7 @@ fn note_row(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id()
 }
@@ -274,7 +274,7 @@ fn count_row(commands: &mut Commands, fonts: &EmberFonts, count: &str, detail: &
         .spawn((
             Text::new(count),
             ui_font(&fonts.mono, 10.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let d = commands
