@@ -407,7 +407,8 @@ fn timeline_view_scrub(
         let Some(norm) = rcp.normalized else { continue };
         let Ok(mut v) = views.get_mut(s.root) else { continue };
         let width = cn.size().x * cn.inverse_scale_factor();
-        let t = norm.x * width / v.zoom.max(1.0) + v.scroll;
+        // bevy's `normalized` is centered: (-0.5,-0.5) top-left .. (0.5,0.5) bottom-right.
+        let t = (norm.x + 0.5) * width / v.zoom.max(1.0) + v.scroll;
         v.scrub_out = Some(t.clamp(0.0, v.duration.max(0.0)));
     }
 }

@@ -5,6 +5,7 @@
 //! - `timeline` — transport bar, time ruler, scrubber, track lanes, keyframe editing
 
 mod animation_panel;
+mod native_timeline;
 mod params_panel;
 mod preview;
 mod state_machine_panel;
@@ -313,6 +314,7 @@ impl Plugin for AnimationEditorPlugin {
 
         app.register_panel(animation_panel::AnimationPanel::new(arc.clone()));
         app.register_panel(timeline_panel::TimelinePanel::new(arc.clone()));
+        app.add_plugins(native_timeline::NativeAnimTimeline);
         app.register_panel(params_panel::AnimatorParamsPanel::new(arc));
         app.register_panel(state_machine_panel::StateMachinePanel::new());
         app.register_panel(studio_preview_panel::StudioPreviewPanel);

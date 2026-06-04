@@ -11,6 +11,7 @@ renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_ui = { path = "../renzora_ui" }
+renzora_ember = { path = "../renzora_ember" }
 renzora_animation = { path = "../renzora_animation" }
 ron = "0.8"
 
