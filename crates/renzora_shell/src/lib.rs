@@ -57,6 +57,7 @@ impl Plugin for ShellPlugin {
                 doc_add_click,
                 doc_tab_click,
                 doc_tab_close,
+                workspace_add_click,
             ),
         );
     }
@@ -178,14 +179,16 @@ struct ShellLayouts {
     active: usize,
 }
 
-/// A ribbon workspace button (Scene, Blueprints, …). Carries its layout index
-/// and the entities to restyle when the active layout changes.
+/// A ribbon workspace button (Scene, Blueprints, …). Carries its layout index;
+/// the active highlight comes from the reactive rebuild (see `ribbon_snapshot`).
 #[derive(Component)]
 struct RibbonItem {
     index: usize,
-    text: Entity,
-    underline: Entity,
 }
+
+/// The ribbon's "+" — adds a new empty workspace.
+#[derive(Component)]
+struct WorkspaceAddBtn;
 
 /// Marks the shell's root UI entity so it can be despawned when the backend
 /// switches back to egui.
@@ -374,12 +377,9 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
 /// flag a rebuild, and restyle the ribbon.
 fn ribbon_switch(
     triggers: Query<(&RibbonItem, &Interaction), Changed<Interaction>>,
-    items: Query<&RibbonItem>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
-    mut backgrounds: Query<&mut BackgroundColor>,
-    mut colors: Query<&mut TextColor>,
 ) {
     let mut switch_to = None;
     for (item, interaction) in &triggers {
@@ -391,15 +391,30 @@ fn ribbon_switch(
     let Some(index) = switch_to else {
         return;
     };
-    apply_workspace(
-        index,
-        &mut layouts,
-        &mut dock,
-        &mut dirty,
-        &items,
-        &mut backgrounds,
-        &mut colors,
-    );
+    apply_workspace(index, &mut layouts, &mut dock, &mut dirty);
+}
+
+/// `+` → add a new empty workspace and switch to it.
+fn workspace_add_click(
+    q: Query<&Interaction, (With<WorkspaceAddBtn>, Changed<Interaction>)>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    // Save the current layout, then append + focus a fresh empty workspace.
+    let active = layouts.active;
+    if let Some(slot) = layouts.layouts.get_mut(active) {
+        slot.1 = dock.tree.clone();
+    }
+    let name = format!("Workspace {}", layouts.layouts.len() + 1);
+    layouts.layouts.push((name, DockTree::leaf("empty")));
+    let idx = layouts.layouts.len() - 1;
+    dock.tree = layouts.layouts[idx].1.clone();
+    layouts.active = idx;
+    dirty.0 = true;
 }
 
 // ── Chrome ──────────────────────────────────────────────────────────────────
@@ -774,24 +789,40 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     commands.entity(left).add_children(&left_kids);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
-    let mut center_kids = vec![glyph(commands, "magnifying-glass", text_muted(), 14.0)];
-    for (i, label) in [
-        "Scene",
-        "Blueprints",
-        "Scripting",
-        "Animation",
-        "Materials",
-        "Particles",
-        "Debug",
-        "Gallery",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        center_kids.push(ribbon_item(commands, font, label, i, i == 0));
-    }
-    center_kids.push(text_item(commands, font, "+", text_muted(), 12.0));
-    commands.entity(center).add_children(&center_kids);
+    let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
+    // Reactive ribbon — one button per workspace in `ShellLayouts`.
+    let ribbon = commands
+        .spawn((
+            Node {
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                ..default()
+            },
+            Name::new("ribbon"),
+        ))
+        .id();
+    renzora_ember::reactive::keyed_list(commands, ribbon, ribbon_snapshot);
+    let add = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                ..default()
+            },
+            Interaction::default(),
+            WorkspaceAddBtn,
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("workspace-add"),
+        ))
+        .id();
+    let add_label = commands
+        .spawn((Text::new("+"), ui_font(font, 12.0), TextColor(rgb(text_muted()))))
+        .id();
+    commands.entity(add).add_child(add_label);
+    commands.entity(center).add_children(&[magnifier, ribbon, add]);
 
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
     let play = icon_item(commands, "play", play_green(), 16.0);
@@ -903,13 +934,47 @@ fn ribbon_item(
             Name::new("ribbon-underline"),
         ))
         .id();
-    commands.entity(item).insert(RibbonItem {
-        index,
-        text,
-        underline,
-    });
+    commands.entity(item).insert(RibbonItem { index });
     commands.entity(item).add_children(&[text_wrap, underline]);
     item
+}
+
+/// Keyed snapshot of the workspace ribbon (one button per `ShellLayouts` entry;
+/// the content hash carries the active flag so switching repaints just the two
+/// affected buttons).
+fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+    use std::hash::{Hash, Hasher};
+    let empty = || renzora_ember::reactive::KeyedSnapshot {
+        items: Vec::new(),
+        build: Box::new(|c, _, _| c.spawn(Node::default()).id()),
+    };
+    let Some(layouts) = world.get_resource::<ShellLayouts>() else {
+        return empty();
+    };
+    let active = layouts.active;
+    let names: Vec<(usize, String)> = layouts
+        .layouts
+        .iter()
+        .enumerate()
+        .map(|(i, (n, _))| (i, n.clone()))
+        .collect();
+    let items: Vec<(u64, u64)> = names
+        .iter()
+        .map(|(i, name)| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            i.hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (name, *i == active).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    renzora_ember::reactive::KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, idx| {
+            let (i, name) = &names[idx];
+            ribbon_item(c, &f.ui, name, *i, *i == active)
+        }),
+    }
 }
 
 /// The document tab strip: the open documents (`DocumentTabState`, shared with
@@ -1090,18 +1155,10 @@ fn doc_tab_row(
     tab
 }
 
-/// Swap the dock to workspace `index` (saving the current layout into the
-/// active slot) and re-style the ribbon. Shared by the ribbon + doc-tab clicks.
-#[allow(clippy::too_many_arguments)]
-fn apply_workspace(
-    index: usize,
-    layouts: &mut ShellLayouts,
-    dock: &mut Dock,
-    dirty: &mut DockDirty,
-    items: &Query<&RibbonItem>,
-    backgrounds: &mut Query<&mut BackgroundColor>,
-    colors: &mut Query<&mut TextColor>,
-) {
+/// Swap the dock to workspace `index`, saving the current layout into the active
+/// slot first. The ribbon highlight follows via the reactive rebuild (the
+/// snapshot keys on `layouts.active`). Shared by the ribbon + doc-tab clicks.
+fn apply_workspace(index: usize, layouts: &mut ShellLayouts, dock: &mut Dock, dirty: &mut DockDirty) {
     if index == layouts.active || index >= layouts.layouts.len() {
         return;
     }
@@ -1112,15 +1169,6 @@ fn apply_workspace(
     dock.tree = layouts.layouts[index].1.clone();
     layouts.active = index;
     dirty.0 = true;
-    for item in items {
-        let is_active = item.index == index;
-        if let Ok(mut c) = colors.get_mut(item.text) {
-            c.0 = rgb(if is_active { text_primary() } else { text_muted() });
-        }
-        if let Ok(mut b) = backgrounds.get_mut(item.underline) {
-            b.0 = if is_active { rgb(accent()) } else { Color::NONE };
-        }
-    }
 }
 
 /// `+` → add an "Untitled Scene" document and focus it.
@@ -1136,16 +1184,12 @@ fn doc_add_click(
 }
 
 /// Click a document tab → activate it + switch to the workspace its kind maps to.
-#[allow(clippy::too_many_arguments)]
 fn doc_tab_click(
     q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
-    items: Query<&RibbonItem>,
-    mut backgrounds: Query<&mut BackgroundColor>,
-    mut colors: Query<&mut TextColor>,
 ) {
     let Some(mut state) = state else { return };
     for (interaction, click) in &q {
@@ -1158,15 +1202,7 @@ fn doc_tab_click(
         state.activate_tab(idx);
         if let Some(name) = state.tabs[idx].kind.layout_name() {
             if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
-                apply_workspace(
-                    wi,
-                    &mut layouts,
-                    &mut dock,
-                    &mut dirty,
-                    &items,
-                    &mut backgrounds,
-                    &mut colors,
-                );
+                apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);
             }
         }
     }
@@ -1213,28 +1249,6 @@ fn zone(
         .id()
 }
 
-/// A padded text item (menu entry, ribbon "+"). `active` → primary, else muted.
-fn text_item(
-    commands: &mut Commands,
-    font: &Handle<Font>,
-    label: &str,
-    color: (u8, u8, u8),
-    size: f32,
-) -> Entity {
-    commands
-        .spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            Name::new(format!("item:{label}")),
-        ))
-        .with_children(|p| {
-            p.spawn((Text::new(label), ui_font(font, size), TextColor(rgb(color))));
-        })
-        .id()
-}
 
 
 // ── Top-bar menus (File / Edit / View / Help) ────────────────────────────────
