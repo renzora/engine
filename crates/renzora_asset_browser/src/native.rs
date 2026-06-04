@@ -1332,40 +1332,32 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             w.get::<Interaction>(col),
             Some(Interaction::Hovered) | Some(Interaction::Pressed)
         );
+        let st = &w.resource::<renzora_ember::style::Theme>().asset_tile;
         if selected {
-            rgb(renzora_ember::theme::selection())
+            st.card_selected.color()
         } else if hovered {
-            rgb(renzora_ember::theme::hover_bg())
+            st.card_hover.color()
         } else {
-            rgb(renzora_ember::theme::card_bg())
+            st.card_bg.color()
         }
     });
-    // Accent border on hover/select.
+    // Themed border — accent (border_selected) on select, else border.
     let path_bd = entry.path.clone();
     bind_with(
         commands,
         col,
         move |w| {
-            let selected = w
-                .get_resource::<NativeAssets>()
+            w.get_resource::<NativeAssets>()
                 .map(|s| s.selected.as_deref() == Some(path_bd.as_path()))
-                .unwrap_or(false);
-            if selected {
-                2u8
-            } else {
-                match w.get::<Interaction>(col) {
-                    Some(Interaction::Hovered) | Some(Interaction::Pressed) => 1u8,
-                    _ => 0u8,
-                }
-            }
+                .unwrap_or(false)
         },
-        move |w, e, st: &u8| {
+        move |w, e, selected: &bool| {
+            let (sel, norm) = {
+                let st = &w.resource::<renzora_ember::style::Theme>().asset_tile;
+                (st.border_selected.color(), st.border.color())
+            };
             if let Some(mut bc) = w.get_mut::<BorderColor>(e) {
-                *bc = BorderColor::all(match st {
-                    2 => rgb(ACCENT_BLUE),
-                    1 => rgb(renzora_ember::theme::border()),
-                    _ => rgb(renzora_ember::theme::border()),
-                });
+                *bc = BorderColor::all(if *selected { sel } else { norm });
             }
         },
     );
@@ -1385,12 +1377,18 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
         ))
         .id();
+    bind_bg(commands, thumb, |w| {
+        w.resource::<renzora_ember::style::Theme>().asset_tile.thumb_bg.color()
+    });
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, icon_sz);
     commands.entity(thumb).add_child(icon);
 
     // Star badge on favorited assets.
     if fav {
         let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 70), 12.0);
+        renzora_ember::reactive::bind_text_color(commands, star, |w| {
+            w.resource::<renzora_ember::style::Theme>().asset_tile.star.color()
+        });
         commands.entity(star).insert(Node {
             position_type: PositionType::Absolute,
             top: Val::Px(3.0),

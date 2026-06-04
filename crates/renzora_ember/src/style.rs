@@ -19,8 +19,8 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::theme::{
-    accent, border, header_bg, hover_bg, panel_bg, popup_bg, section_bg, tab_active, tab_hover,
-    text_muted, text_primary,
+    accent, border, card_bg, header_bg, hover_bg, panel_bg, popup_bg, section_bg, selection,
+    tab_active, tab_hover, text_muted, text_primary,
 };
 
 /// Registers the theme resource + the painter. The [`Theme`] is the source of
@@ -35,6 +35,7 @@ impl Plugin for ThemePlugin {
             .register_type::<Theme>()
             .register_type::<StyleToken>()
             .register_type::<NodeGraphStyle>()
+            .register_type::<AssetTileStyle>()
             .register_type::<Rgba>()
             .add_systems(Update, apply_theme);
     }
@@ -273,6 +274,33 @@ impl Default for NodeGraphStyle {
     }
 }
 
+/// Style for an asset-browser tile — card states, border, thumbnail, star.
+#[derive(Reflect, Clone, Serialize, Deserialize)]
+pub struct AssetTileStyle {
+    pub card_bg: Rgba,
+    pub card_hover: Rgba,
+    pub card_selected: Rgba,
+    pub border: Rgba,
+    pub border_selected: Rgba,
+    pub thumb_bg: Rgba,
+    pub star: Rgba,
+}
+
+impl Default for AssetTileStyle {
+    fn default() -> Self {
+        let c = Rgba::rgb;
+        Self {
+            card_bg: c(card_bg()),
+            card_hover: c(hover_bg()),
+            card_selected: c(selection()),
+            border: c(border()),
+            border_selected: c(accent()),
+            thumb_bg: c(popup_bg()),
+            star: Rgba { r: 255, g: 200, b: 70, a: 255 },
+        }
+    }
+}
+
 // ── Theme: all per-role tokens ───────────────────────────────────────────────
 
 /// The active theme — one [`StyleToken`] per [`Role`]. Swap or mutate this and
@@ -298,6 +326,7 @@ pub struct Theme {
     pub menu: StyleToken,
     // Bespoke multi-element widget styles.
     pub node_graph: NodeGraphStyle,
+    pub asset_tile: AssetTileStyle,
 }
 
 impl Theme {
@@ -381,6 +410,7 @@ impl Default for Theme {
             panel: StyleToken::new(c(panel_bg())).radius(0.0),
             menu: StyleToken::new(c(popup_bg())).radius(4.0).pad(2.0, 2.0),
             node_graph: NodeGraphStyle::default(),
+            asset_tile: AssetTileStyle::default(),
         }
     }
 }
