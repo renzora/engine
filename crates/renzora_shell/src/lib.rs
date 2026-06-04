@@ -534,11 +534,9 @@ fn build_status_bar(
         ))
         .id();
 
-    // Left: the theme dropup (a fixed element — kept out of the reactive list).
-    let dropup = theme_dropup(commands, fonts, themes, active);
-
-    // The rest is reconciled by the keyed list into a flex-filling container.
-    let content = commands
+    // Left items (Ready + left-aligned status) fill the bar, pushing the theme
+    // picker + right-aligned metrics to the right.
+    let left_content = commands
         .spawn((
             Node {
                 flex_grow: 1.0,
@@ -548,12 +546,29 @@ fn build_status_bar(
                 min_width: Val::Px(0.0),
                 ..default()
             },
-            Name::new("status-content"),
+            Name::new("status-left"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, content, status_snapshot);
+    renzora_ember::reactive::keyed_list(commands, left_content, status_snapshot_left);
 
-    commands.entity(bar).add_children(&[dropup, content]);
+    // The theme dropup — a fixed element on the right, just before the metrics.
+    let dropup = theme_dropup(commands, fonts, themes, active);
+
+    let right_content = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(14.0),
+                ..default()
+            },
+            Name::new("status-right"),
+        ))
+        .id();
+    renzora_ember::reactive::keyed_list(commands, right_content, status_snapshot_right);
+
+    commands.entity(bar).add_children(&[left_content, dropup, right_content]);
     bar
 }
 
@@ -570,8 +585,11 @@ fn theme_dropup(
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
+                // Flip *up* (the bar is at the window bottom) and anchor to the
+                // trigger's right edge so the menu opens up-and-left, on-screen.
+                bottom: Val::Percent(100.0),
+                right: Val::Px(0.0),
+                margin: UiRect::bottom(Val::Px(4.0)),
                 flex_direction: FlexDirection::Column,
                 min_width: Val::Px(160.0),
                 padding: UiRect::all(Val::Px(4.0)),
@@ -634,40 +652,26 @@ fn theme_dropup(
 enum StatusRow {
     Label(String, (u8, u8, u8)),
     Seg(renzora::ShellStatusSegment),
-    Spacer,
 }
 
-/// Flatten the status registry into keyed rows: a Ready label + left items + a
-/// flex spacer + right items (each item's `render` is recomputed every frame).
-fn status_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
-    use renzora::ShellStatusAlign;
-    use std::hash::{Hash, Hasher};
-
-    let mut rows: Vec<StatusRow> = vec![StatusRow::Label("Ready".to_string(), text_muted())];
+/// Status segments for one alignment, as keyed rows (each item's `render` is
+/// recomputed every frame).
+fn status_rows(world: &World, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
+    let mut rows: Vec<StatusRow> = Vec::new();
     if let Some(reg) = world.get_resource::<renzora::ShellStatusRegistry>() {
-        let mut left: Vec<&renzora::ShellStatusItem> = reg
-            .items
-            .iter()
-            .filter(|i| i.align == ShellStatusAlign::Left)
-            .collect();
-        left.sort_by_key(|i| i.order);
-        for it in left {
+        let mut items: Vec<&renzora::ShellStatusItem> =
+            reg.items.iter().filter(|i| i.align == align).collect();
+        items.sort_by_key(|i| i.order);
+        for it in items {
             rows.extend((it.render)(world).into_iter().map(StatusRow::Seg));
         }
-        rows.push(StatusRow::Spacer);
-        let mut right: Vec<&renzora::ShellStatusItem> = reg
-            .items
-            .iter()
-            .filter(|i| i.align == ShellStatusAlign::Right)
-            .collect();
-        right.sort_by_key(|i| i.order);
-        for it in right {
-            rows.extend((it.render)(world).into_iter().map(StatusRow::Seg));
-        }
-    } else {
-        rows.push(StatusRow::Spacer);
     }
+    rows
+}
 
+/// Build a keyed snapshot from a row list.
+fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot {
+    use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = rows
         .iter()
         .enumerate()
@@ -676,13 +680,8 @@ fn status_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
             i.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match r {
-                StatusRow::Label(t, c) => {
-                    (0u8, t, c).hash(&mut h);
-                }
-                StatusRow::Seg(s) => {
-                    (1u8, &s.icon, &s.text, s.color).hash(&mut h);
-                }
-                StatusRow::Spacer => 2u8.hash(&mut h),
+                StatusRow::Label(t, c) => (0u8, t, c).hash(&mut h),
+                StatusRow::Seg(s) => (1u8, &s.icon, &s.text, s.color).hash(&mut h),
             }
             (k.finish(), h.finish())
         })
@@ -693,9 +692,20 @@ fn status_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
     }
 }
 
+/// Left side: a Ready label + left-aligned status items.
+fn status_snapshot_left(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+    let mut rows = vec![StatusRow::Label("Ready".to_string(), text_muted())];
+    rows.extend(status_rows(world, renzora::ShellStatusAlign::Left));
+    rows_snapshot(rows)
+}
+
+/// Right side: the right-aligned metrics.
+fn status_snapshot_right(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right))
+}
+
 fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> Entity {
     match row {
-        StatusRow::Spacer => commands.spawn(Node { flex_grow: 1.0, ..default() }).id(),
         StatusRow::Label(text, color) => commands
             .spawn((
                 Text::new(text.clone()),
