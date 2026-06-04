@@ -199,7 +199,10 @@ pub fn gallery_containers(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     let p2 = paragraph(commands, font, "Tab two panel.");
     let p3 = paragraph(commands, font, "Tab three panel.");
     let tb = tabs(commands, font, &["One", "Two", "Three"], vec![p1, p2, p3]);
-    panel_column(commands, font, "Containers", vec![c, d, acc1, acc2, tb])
+    let sec_p = paragraph(commands, font, "Collapsible section content.");
+    let (sec, sec_body) = section(commands, fonts, "folder", "Section", (130, 200, 160));
+    commands.entity(sec_body).add_child(sec_p);
+    panel_column(commands, font, "Containers", vec![c, d, acc1, acc2, tb, sec])
 }
 
 /// Gallery panel: navigation.
@@ -233,7 +236,14 @@ pub fn gallery_data(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let chip_row = hstack(commands, 6.0, &chips);
     let av = avatar(commands, font, "RZ", ACCENT_BLUE);
     let f_av = field(commands, font, "Avatar", av);
-    panel_column(commands, font, "Data", vec![tbl, gr, tree, chip_row, f_av])
+    let tiles = [
+        asset_tile(commands, fonts, "image", (130, 200, 255), "texture.png"),
+        asset_tile(commands, fonts, "cube", (200, 160, 120), "mesh.glb"),
+        asset_tile(commands, fonts, "file-audio", (160, 200, 140), "sfx.wav"),
+    ];
+    let tile_row = hstack(commands, 8.0, &tiles);
+    let f_tiles = field(commands, font, "Asset tiles", tile_row);
+    panel_column(commands, font, "Data", vec![tbl, gr, tree, chip_row, f_av, f_tiles])
 }
 
 /// Gallery panel: extended form controls.

@@ -24,6 +24,7 @@ mod toggle_switch;
 
 // Inspector value editors.
 mod asset_slot;
+mod asset_tile;
 mod color_picker;
 mod colorpicker;
 mod drag_value;
@@ -124,6 +125,7 @@ pub use toggle::*;
 pub use toggle_switch::*;
 
 pub use asset_slot::*;
+pub use asset_tile::asset_tile;
 pub use color_picker::*;
 pub use colorpicker::*;
 pub use drag_value::*;
