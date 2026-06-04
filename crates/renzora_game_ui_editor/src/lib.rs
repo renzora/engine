@@ -31,8 +31,10 @@ use bevy::prelude::*;
 
 use renzora_editor::SplashState;
 use renzora_ember::font::EmberFonts;
+use renzora_ember::panel::RegisterPanelContent;
 use renzora_game_ui::UiCanvas;
 
+mod align;
 mod geometry;
 mod interaction;
 mod overlay;
@@ -92,10 +94,11 @@ impl Plugin for GameUiEditorPlugin {
         overlay::register(app);
         interaction::register(app);
 
-        // Not registered yet — flip on once resize/rotate/marquee/align land
-        // (select + drag-move + the rendered canvas are in):
-        // app.register_panel_content("ui_canvas", false, build_panel);
-        let _ = build_panel as fn(&mut Commands, &EmberFonts) -> Entity;
+        // Live: the native canvas now covers select / move / resize / rotate /
+        // align / distribute on the rendered UI. Marquee box-select, draw-mode
+        // (placing new widgets on the canvas), copy/paste and keyboard nudge are
+        // follow-ups; meanwhile those remain reachable via the hierarchy/palette.
+        app.register_panel_content("ui_canvas", false, build_panel);
     }
 }
 
