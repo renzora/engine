@@ -335,9 +335,9 @@ impl EditorPanel for ScenesPanel {
     }
 }
 
-const EMPTY_SCENE_RON: &str = "(\n    resources: {},\n    entities: {},\n)\n";
+pub(crate) const EMPTY_SCENE_RON: &str = "(\n    resources: {},\n    entities: {},\n)\n";
 
-fn list_scenes(dir: &std::path::Path) -> Vec<PathBuf> {
+pub(crate) fn list_scenes(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(read) = std::fs::read_dir(dir) else {
         return out;
@@ -363,7 +363,7 @@ fn list_scenes(dir: &std::path::Path) -> Vec<PathBuf> {
     out
 }
 
-fn unique_scene_path(dir: &std::path::Path, base: &str) -> PathBuf {
+pub(crate) fn unique_scene_path(dir: &std::path::Path, base: &str) -> PathBuf {
     let mut i = 0u32;
     loop {
         let name = if i == 0 {
@@ -379,7 +379,7 @@ fn unique_scene_path(dir: &std::path::Path, base: &str) -> PathBuf {
     }
 }
 
-fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
+pub(crate) fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
     std::fs::canonicalize(a)
         .ok()
         .zip(std::fs::canonicalize(b).ok())
@@ -387,7 +387,7 @@ fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
         .unwrap_or_else(|| a == b)
 }
 
-fn open_scene(world: &mut World, path: &std::path::Path) {
+pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
     let relative = world
         .get_resource::<CurrentProject>()
         .and_then(|p| p.make_relative(path));
