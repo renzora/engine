@@ -12,6 +12,7 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_audio = { path = "../renzora_audio" }
 renzora_ui = { path = "../renzora_ui" }
+renzora_ember = { path = "../renzora_ember" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }

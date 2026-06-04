@@ -7,6 +7,7 @@
 mod animation_panel;
 mod native_animation;
 mod native_params;
+mod native_state_machine;
 mod native_studio_preview;
 mod native_timeline;
 mod params_panel;
@@ -322,6 +323,7 @@ impl Plugin for AnimationEditorPlugin {
         app.register_panel(params_panel::AnimatorParamsPanel::new(arc));
         app.add_plugins(native_params::NativeAnimParams);
         app.register_panel(state_machine_panel::StateMachinePanel::new());
+        app.add_plugins(native_state_machine::NativeStateMachine);
         app.register_panel(studio_preview_panel::StudioPreviewPanel);
         app.add_plugins(native_studio_preview::NativeStudioPreview);
     }

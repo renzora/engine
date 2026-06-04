@@ -10,6 +10,8 @@ use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 mod drop;
 #[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(not(target_arch = "wasm32"))]
 mod panel;
 #[cfg(not(target_arch = "wasm32"))]
 mod waveform_cache;
@@ -35,6 +37,8 @@ impl Plugin for DawPlugin {
         app.init_resource::<DawIntentBuffer>();
         app.init_resource::<WaveformCache>();
         app.register_panel(DawPanel::default());
+        // Bevy-native (ember) DAW content overrides the egui panel body.
+        app.add_plugins(crate::native::NativeDaw);
         // Apply panel intents before the audio scheduler sees them.
         app.add_systems(Update, apply_intents);
         app.add_systems(Update, request_clip_waveforms);
