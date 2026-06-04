@@ -5,8 +5,9 @@ use bevy::prelude::*;
 
 use renzora_editor::{EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_text, bind_text_color};
+use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::theme::*;
+use renzora_ember::widgets::{drag_value, DragRange};
 
 use renzora_game_ui::canvas::UiCanvasPreviewEnabled;
 
@@ -68,9 +69,26 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     kids.push(grid);
     kids.push(snap);
+    // Snap-amount (grid size) scrub field.
+    let snap_amt = drag_value(commands, &fonts.ui, "", value_text(), 10.0, 1.0);
+    commands.entity(snap_amt).insert(DragRange { min: 1.0, max: 256.0 });
+    bind_2way(commands, snap_amt, |w| w.get_resource::<NativeCanvasState>().map(|s| s.grid_size).unwrap_or(10.0), |w, v: &f32| {
+        if let Some(mut s) = w.get_resource_mut::<NativeCanvasState>() {
+            s.grid_size = v.max(1.0);
+        }
+    });
+    kids.push(snap_amt);
     kids.push(backdrop);
 
     kids.push(commands.spawn(Node { flex_grow: 1.0, ..default() }).id());
+
+    // Resolution readout (left of the zoom cluster).
+    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    bind_text(commands, res, |w| {
+        w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
+    });
+    kids.push(res);
+    kids.push(vsep(commands));
 
     // Zoom cluster.
     kids.push(icon_btn(commands, fonts, "magnifying-glass-minus", CanvasTbBtn::ZoomOut).0);

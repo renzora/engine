@@ -49,16 +49,29 @@ fn canvas_pan(
     }
 }
 
-/// Mouse-wheel over the canvas zooms.
+/// Mouse-wheel over the canvas zooms, keeping the point under the cursor fixed.
 fn canvas_zoom(mut wheel: MessageReader<MouseWheel>, hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>, mut state: ResMut<NativeCanvasState>) {
-    let mut dy = 0.0;
+    let mut scroll = 0.0;
     for ev in wheel.read() {
-        dy += ev.y;
+        scroll += ev.y;
     }
-    if dy == 0.0 || !hit.iter().any(|r| r.cursor_over) {
+    if scroll == 0.0 {
         return;
     }
-    state.zoom = (state.zoom * (1.0 + dy * 0.1)).clamp(0.1, 8.0);
+    let Some(norm) = hit.iter().find_map(|r| r.cursor_over.then_some(r.normalized).flatten()) else {
+        return;
+    };
+    let old = state.zoom;
+    let new = (old * (1.0 + scroll * 0.1)).clamp(0.1, 8.0);
+    // Design-space point under the cursor; offset pan so it stays on screen.
+    // The frame is centered, so its center is the pan origin: a point d shifts by
+    // (old - new) * (d - reference/2) when the zoom changes.
+    let (cw, ch) = (state.canvas_width, state.canvas_height);
+    let dx = (norm.x + 0.5) * cw;
+    let dy = (norm.y + 0.5) * ch;
+    state.pan.x += (old - new) * (dx - cw * 0.5);
+    state.pan.y += (old - new) * (dy - ch * 0.5);
+    state.zoom = new;
 }
 
 fn apply_pan(state: Res<NativeCanvasState>, mut q: Query<&mut UiTransform, With<CanvasFrame>>) {

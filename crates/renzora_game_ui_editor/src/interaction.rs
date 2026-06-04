@@ -34,6 +34,7 @@ enum Mode {
 
 fn canvas_interact(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut active: Local<Option<Mode>>,
     hit: Query<(&Interaction, &RelativeCursorPosition), With<CanvasHitLayer>>,
     handles: Query<(&Interaction, &CanvasHandle)>,
@@ -66,8 +67,17 @@ fn canvas_interact(
             }
         } else if *interaction == Interaction::Pressed {
             let hit_e = topmost_at(&state.widgets, cursor.x, cursor.y);
-            selection.set(hit_e);
-            *active = hit_e.and_then(|e| state.widgets.iter().find(|g| g.entity == e).map(|g| Mode::Move { entity: e, start_cursor: cursor, start_pos: Vec2::new(g.x, g.y) }));
+            let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+            if ctrl {
+                // Ctrl-click toggles the widget in the multi-selection (no drag).
+                if let Some(e) = hit_e {
+                    selection.toggle(e);
+                }
+                *active = None;
+            } else {
+                selection.set(hit_e);
+                *active = hit_e.and_then(|e| state.widgets.iter().find(|g| g.entity == e).map(|g| Mode::Move { entity: e, start_cursor: cursor, start_pos: Vec2::new(g.x, g.y) }));
+            }
         } else {
             *active = None;
         }
