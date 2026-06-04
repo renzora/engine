@@ -2,6 +2,8 @@
 //!
 //! Panels: Network Monitor, Network Entities, Network Settings.
 
+mod native;
+
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -519,6 +521,7 @@ impl Plugin for NetworkEditorPlugin {
         app.register_panel(NetworkMonitorPanel);
         app.register_panel(NetworkEntitiesPanel);
         app.register_panel(NetworkSettingsPanel);
+        app.add_plugins(native::NativeNetworkPanels);
         app.register_inspector(networked_inspector());
         app.register_inspector(network_transform_inspector());
     }

@@ -10197,6 +10197,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_network",
  "renzora_theme",
 ]
