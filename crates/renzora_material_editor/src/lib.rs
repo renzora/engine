@@ -8,6 +8,11 @@ mod graph_editor;
 mod graph_panel;
 mod inspector;
 mod material_inspector;
+// WIP: native material graph canvas on ember's node_graph_view. Not registered
+// yet — wiring it in needs the egui panel's load-on-selection + autosave
+// orchestration moved out of ui() into systems. `allow(dead_code)` until then.
+#[allow(dead_code)]
+mod native_graph;
 mod native_inspector;
 mod native_preview;
 pub mod preview;
