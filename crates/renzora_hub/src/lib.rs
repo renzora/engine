@@ -8,6 +8,7 @@ pub mod images;
 pub mod install;
 pub mod library;
 mod native_library;
+mod native_store;
 pub mod overlay;
 pub mod preview;
 pub mod store;
@@ -29,6 +30,7 @@ impl Plugin for HubPlugin {
         app.init_resource::<thumbs::HubThumbs>();
         app.add_systems(Update, thumbs::poll_thumbs);
         app.add_plugins(native_library::NativeHubLibrary);
+        app.add_plugins(native_store::NativeHubStore);
     }
 }
 
