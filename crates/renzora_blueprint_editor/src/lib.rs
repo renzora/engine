@@ -2,6 +2,7 @@
 
 mod graph_editor;
 mod graph_panel;
+mod native_properties;
 mod properties_panel;
 
 use bevy::prelude::*;
@@ -41,6 +42,7 @@ impl Plugin for BlueprintEditorPlugin {
         app.init_resource::<BlueprintEditorState>();
         app.register_panel(graph_panel::BlueprintGraphPanel);
         app.register_panel(properties_panel::BlueprintPropertiesPanel);
+        app.add_plugins(native_properties::NativeBlueprintProperties);
     }
 }
 
