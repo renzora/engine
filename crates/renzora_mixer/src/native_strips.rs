@@ -156,7 +156,7 @@ fn add_bus_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((42, 42, 52))),
+            BackgroundColor(rgb(tab_hover())),
             Interaction::default(),
             BusCreate,
             Name::new("mixer-add-bus"),
@@ -189,8 +189,8 @@ where
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("mixer-strip"),
         ))
         .id();
@@ -220,14 +220,14 @@ where
                     border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..default()
                 },
-                BackgroundColor(rgb((50, 40, 40))),
+                BackgroundColor(rgb(section_bg())),
                 Interaction::default(),
                 BusDelete(i),
                 Name::new("mixer-bus-delete"),
             ))
             .id();
         let x = commands
-            .spawn((Text::new("\u{00d7}"), ui_font(&fonts.ui, 12.0), TextColor(rgb((220, 120, 110)))))
+            .spawn((Text::new("\u{00d7}"), ui_font(&fonts.ui, 12.0), TextColor(rgb(close_red()))))
             .id();
         commands.entity(del).add_child(x);
         header_kids.push(del);
