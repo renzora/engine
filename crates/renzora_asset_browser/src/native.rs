@@ -59,6 +59,27 @@ fn handle_for(w: &World, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image
 
 const TILE_W: f32 = 96.0;
 
+/// How the current folder's entries are ordered (folders always sort first).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum SortMode {
+    Name,
+    Type,
+    Size,
+    Modified,
+}
+
+impl SortMode {
+    const ALL: [SortMode; 4] = [SortMode::Name, SortMode::Type, SortMode::Size, SortMode::Modified];
+    fn label(self) -> &'static str {
+        match self {
+            SortMode::Name => "Name",
+            SortMode::Type => "Type",
+            SortMode::Size => "Size",
+            SortMode::Modified => "Date Modified",
+        }
+    }
+}
+
 // Content-area surfaces (Unreal-style: flat, dark).
 
 /// Lean native state for the browser (independent of the egui panel's state).
@@ -96,6 +117,11 @@ pub(crate) struct NativeAssets {
     recent_open: bool,
     /// True while a tile is being dragged out (drives the cursor ghost).
     dragging: bool,
+    /// Entry sort order + direction.
+    sort: SortMode,
+    sort_desc: bool,
+    /// List view (rows) instead of the tile grid.
+    list_view: bool,
 }
 
 impl Default for NativeAssets {
@@ -117,6 +143,9 @@ impl Default for NativeAssets {
             fav_open: false,
             recent_open: false,
             dragging: false,
+            sort: SortMode::Name,
+            sort_desc: false,
+            list_view: false,
         }
     }
 }
@@ -273,6 +302,9 @@ pub fn register_native_asset_browser(app: &mut App) {
             asset_drag,
             drag_ghost,
             add_menu_open,
+            sort_menu_open,
+            view_toggle_click,
+            update_grid_layout,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -661,6 +693,112 @@ fn add_menu_open(
     commands.entity(menu).add_children(&kids);
 }
 
+#[derive(Component)]
+struct SortMenuBtn;
+#[derive(Component)]
+struct ViewToggleBtn;
+#[derive(Component)]
+struct AssetGrid;
+
+/// Open the sort menu (modes + ascending/descending) anchored under the button.
+fn sort_menu_open(
+    q: Query<
+        (
+            &Interaction,
+            &bevy::ui::RelativeCursorPosition,
+            &bevy::ui::ComputedNode,
+        ),
+        (With<SortMenuBtn>, Changed<Interaction>),
+    >,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    state: Option<Res<NativeAssets>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+        return;
+    };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    let (cur_sort, cur_desc) = state.map(|s| (s.sort, s.sort_desc)).unwrap_or((SortMode::Name, false));
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let mut kids: Vec<Entity> = SortMode::ALL
+        .iter()
+        .map(|&mode| {
+            let icon = if mode == cur_sort { "check" } else { "dot" };
+            menu_item(&mut commands, &fonts, icon, mode.label(), move |w| {
+                if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
+                    s.sort = mode;
+                }
+            })
+        })
+        .collect();
+    kids.push(menu_sep(&mut commands));
+    kids.push(menu_item(
+        &mut commands,
+        &fonts,
+        if cur_desc { "arrow-up" } else { "check" },
+        "Ascending",
+        |w| {
+            if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
+                s.sort_desc = false;
+            }
+        },
+    ));
+    kids.push(menu_item(
+        &mut commands,
+        &fonts,
+        if cur_desc { "check" } else { "arrow-down" },
+        "Descending",
+        |w| {
+            if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
+                s.sort_desc = true;
+            }
+        },
+    ));
+    commands.entity(menu).add_children(&kids);
+}
+
+/// Toggle grid/list view.
+fn view_toggle_click(
+    q: Query<&Interaction, (With<ViewToggleBtn>, Changed<Interaction>)>,
+    mut state: ResMut<NativeAssets>,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        state.list_view = !state.list_view;
+    }
+}
+
+/// Retune the grid container's gaps/padding when the view mode changes (tight
+/// rows for the list, roomy cells for the grid).
+fn update_grid_layout(
+    state: Res<NativeAssets>,
+    mut last: Local<Option<bool>>,
+    mut q: Query<&mut Node, With<AssetGrid>>,
+) {
+    if *last == Some(state.list_view) {
+        return;
+    }
+    *last = Some(state.list_view);
+    for mut n in &mut q {
+        if state.list_view {
+            n.row_gap = Val::Px(1.0);
+            n.column_gap = Val::Px(0.0);
+            n.padding = UiRect::axes(Val::Px(4.0), Val::Px(4.0));
+        } else {
+            n.row_gap = Val::Px(12.0);
+            n.column_gap = Val::Px(10.0);
+            n.padding = UiRect::all(Val::Px(10.0));
+        }
+    }
+}
+
 /// Create a new asset (folder or file) in the current folder + select it.
 fn create_asset(world: &mut World, kind: NewAsset) {
     let folder = world
@@ -1006,6 +1144,43 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let import = icon_label_button(commands, fonts, "download-simple", "Import");
     commands.entity(import).insert(ImportBtn);
 
+    // Sort dropdown (opens a screen_menu of sort modes + direction).
+    let sort_btn = icon_label_button(commands, fonts, "sort-ascending", "Sort");
+    commands
+        .entity(sort_btn)
+        .insert((SortMenuBtn, bevy::ui::RelativeCursorPosition::default()));
+
+    // View toggle (grid <-> list); icon reflects the view a click switches *to*.
+    let view_icon = icon_text(commands, &fonts.phosphor, "list", text_primary(), 15.0);
+    bind_with(
+        commands,
+        view_icon,
+        |w| w.get_resource::<NativeAssets>().map(|s| s.list_view).unwrap_or(false),
+        |w, e, list_view: &bool| {
+            let name = if *list_view { "squares-four" } else { "list" };
+            if let (Some(ch), Some(mut t)) = (renzora_ember::font::icon_glyph(name), w.get_mut::<Text>(e)) {
+                t.0 = ch.to_string();
+            }
+        },
+    );
+    let view_btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(24.0),
+                height: Val::Px(22.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
+            Interaction::default(),
+            ViewToggleBtn,
+            Name::new("assets-view-toggle"),
+        ))
+        .id();
+    commands.entity(view_btn).add_child(view_icon);
+
     // Breadcrumb in a dark inset box, with the back button to its left.
     let crumbs = commands
         .spawn(Node {
@@ -1075,21 +1250,26 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands
         .entity(toolbar)
-        .add_children(&[add, import, new_folder, spacer, search, zoom_box]);
+        .add_children(&[add, import, new_folder, spacer, sort_btn, view_btn, search, zoom_box]);
 
-    // Grid.
+    // Grid (also hosts list-view rows: a 100%-wide row wraps to its own line, so
+    // the same wrapping container stacks them vertically). `update_grid_layout`
+    // retunes the gaps/padding per view.
     let grid = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            width: Val::Percent(100.0),
-            align_items: AlignItems::FlexStart,
-            align_content: AlignContent::FlexStart,
-            column_gap: Val::Px(10.0),
-            row_gap: Val::Px(12.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        })
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
+                width: Val::Percent(100.0),
+                align_items: AlignItems::FlexStart,
+                align_content: AlignContent::FlexStart,
+                column_gap: Val::Px(10.0),
+                row_gap: Val::Px(12.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            AssetGrid,
+        ))
         .id();
     keyed_list(commands, grid, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
@@ -1222,16 +1402,39 @@ struct Entry {
     path: PathBuf,
     name: String,
     is_dir: bool,
+    size: u64,
+    modified: u64,
+}
+
+/// Lowercase file extension (`""` for none / folders).
+fn ext_of(name: &str) -> String {
+    name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default()
+}
+
+/// Human-readable byte size (e.g. `1.5 MB`).
+fn human_size(bytes: u64) -> String {
+    const U: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut s = bytes as f64;
+    let mut i = 0;
+    while s >= 1024.0 && i < U.len() - 1 {
+        s /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{s:.1} {}", U[i])
+    }
 }
 
 fn list_entries(w: &World) -> Vec<Entry> {
     let Some(folder) = current_folder(w) else {
         return Vec::new();
     };
-    let search = w
+    let (search, sort, desc) = w
         .get_resource::<NativeAssets>()
-        .map(|s| s.search.to_lowercase())
-        .unwrap_or_default();
+        .map(|s| (s.search.to_lowercase(), s.sort, s.sort_desc))
+        .unwrap_or_else(|| (String::new(), SortMode::Name, false));
     let mut entries: Vec<Entry> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&folder) {
         for e in rd.flatten() {
@@ -1243,12 +1446,37 @@ fn list_entries(w: &World) -> Vec<Entry> {
             if !search.is_empty() && !name.to_lowercase().contains(&search) {
                 continue;
             }
-            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            entries.push(Entry { path, name, is_dir });
+            let meta = e.metadata().ok();
+            let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let size = if is_dir { 0 } else { meta.as_ref().map(|m| m.len()).unwrap_or(0) };
+            let modified = meta
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            entries.push(Entry { path, name, is_dir, size, modified });
         }
     }
-    // Folders first, then alphabetical.
-    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    // Folders always first; then the chosen key (reversed when descending).
+    entries.sort_by(|a, b| {
+        let dir = b.is_dir.cmp(&a.is_dir);
+        if dir != std::cmp::Ordering::Equal {
+            return dir;
+        }
+        let by_name = || a.name.to_lowercase().cmp(&b.name.to_lowercase());
+        let ord = match sort {
+            SortMode::Name => by_name(),
+            SortMode::Type => ext_of(&a.name).cmp(&ext_of(&b.name)).then_with(by_name),
+            SortMode::Size => a.size.cmp(&b.size).then_with(by_name),
+            SortMode::Modified => a.modified.cmp(&b.modified).then_with(by_name),
+        };
+        if desc {
+            ord.reverse()
+        } else {
+            ord
+        }
+    });
     entries
 }
 
@@ -1268,7 +1496,10 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
             }),
         };
     }
-    let zoom = world.get_resource::<NativeAssets>().map(|s| s.zoom).unwrap_or(1.0);
+    let (zoom, list_view) = world
+        .get_resource::<NativeAssets>()
+        .map(|s| (s.zoom, s.list_view))
+        .unwrap_or((1.0, false));
     let zoom_q = (zoom * 20.0).round() as u64;
     let favs: HashSet<PathBuf> = world
         .get_resource::<NativeAssets>()
@@ -1278,7 +1509,7 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
         .iter()
         .map(|e| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&e.name, e.is_dir, zoom_q, favs.contains(&e.path)).hash(&mut h);
+            (&e.name, e.is_dir, zoom_q, favs.contains(&e.path), list_view, e.size).hash(&mut h);
             let mut k = std::collections::hash_map::DefaultHasher::new();
             e.path.hash(&mut k);
             (k.finish(), h.finish())
@@ -1286,8 +1517,103 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| tile(c, f, &entries[i], zoom, favs.contains(&entries[i].path))),
+        build: Box::new(move |c, f, i| {
+            let e = &entries[i];
+            let fav = favs.contains(&e.path);
+            if list_view {
+                list_row(c, f, e, fav)
+            } else {
+                tile(c, f, e, zoom, fav)
+            }
+        }),
     }
+}
+
+/// One compact list-view row: type icon + name + type + size, sharing the same
+/// `AssetTile` selection/click/drag wiring as the grid tile.
+fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: bool) -> Entity {
+    let is_dir = entry.is_dir;
+    let (type_color, type_label) = if is_dir {
+        (folder_color(&entry.name), "Folder")
+    } else {
+        asset_type_info(&entry.path)
+    };
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(22.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            AssetTile {
+                path: entry.path.clone(),
+                is_dir,
+            },
+            Name::new("asset-row"),
+        ))
+        .id();
+    let path_bg = entry.path.clone();
+    bind_bg(commands, row, move |w| {
+        let selected = w
+            .get_resource::<NativeAssets>()
+            .map(|s| s.selected.as_deref() == Some(path_bg.as_path()))
+            .unwrap_or(false);
+        let hovered = matches!(
+            w.get::<Interaction>(row),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        );
+        let st = &w.resource::<renzora_ember::style::Theme>().asset_tile;
+        if selected {
+            st.card_selected.color()
+        } else if hovered {
+            st.card_hover.color()
+        } else {
+            Color::NONE
+        }
+    });
+    let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, 15.0);
+    let name = commands
+        .spawn((
+            Text::new(entry.name.clone()),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+        ))
+        .id();
+    let ty = commands
+        .spawn((
+            Text::new(type_label),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node { width: Val::Px(96.0), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
+        ))
+        .id();
+    let size = commands
+        .spawn((
+            Text::new(if is_dir { String::new() } else { human_size(entry.size) }),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::new_with_no_wrap(),
+            Node { width: Val::Px(64.0), flex_shrink: 0.0, ..default() },
+        ))
+        .id();
+    let mut kids = vec![icon, name, ty, size];
+    if fav {
+        let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 70), 11.0);
+        kids.insert(1, star);
+    }
+    commands.entity(row).add_children(&kids);
+    row
 }
 
 fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, fav: bool) -> Entity {
