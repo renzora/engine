@@ -4,6 +4,7 @@ pub mod diff;
 pub mod format;
 pub mod highlight;
 mod native_outline;
+mod native_problems;
 mod native_scripts;
 pub mod outline;
 pub mod problems;
@@ -280,6 +281,7 @@ impl Plugin for CodeEditorPlugin {
         app.register_panel(outline::OutlinePanel);
         native_outline::register_native_outline(app);
         app.register_panel(problems::ProblemsPanel);
+        native_problems::register_native_problems(app);
         app.register_panel(scripts_on_entity::ScriptsOnEntityPanel);
         native_scripts::register_native_scripts_on_entity(app);
     }
