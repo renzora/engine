@@ -8,6 +8,7 @@ mod graph_editor;
 mod graph_panel;
 mod inspector;
 mod material_inspector;
+mod native_inspector;
 pub mod preview;
 mod thumbnails;
 
@@ -83,6 +84,7 @@ impl Plugin for MaterialEditorPlugin {
         app.register_panel(graph_panel::MaterialGraphPanel);
         app.register_panel(inspector::MaterialInspectorPanel);
         app.register_panel(preview::MaterialPreviewPanel);
+        app.add_plugins(native_inspector::NativeMaterialInspector);
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());
