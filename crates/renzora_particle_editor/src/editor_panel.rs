@@ -543,7 +543,7 @@ impl ParticleEditorPanel {
 
 // ── File I/O ────────────────────────────────────────────────────────────────
 
-fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool {
+pub(crate) fn save_effect_to_file(path: &PathBuf, effect: &HanabiEffectDefinition) -> bool {
     let pretty = ron::ser::PrettyConfig::new()
         .depth_limit(4)
         .separate_tuple_members(true);

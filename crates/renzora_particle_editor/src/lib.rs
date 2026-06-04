@@ -5,6 +5,11 @@
 mod editor_panel;
 mod graph_editor;
 mod graph_panel;
+// WIP: native particle editor panel, grown section by section. Not registered
+// yet (egui panel stays active) so no section is lost mid-port; wired in the
+// final commit. `allow(dead_code)` until then.
+#[allow(dead_code)]
+mod native_editor_panel;
 mod native_preview_panel;
 mod preview;
 mod preview_panel;
