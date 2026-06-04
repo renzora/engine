@@ -14,6 +14,7 @@ pub mod material_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
+mod native_camera_preview;
 mod native_header;
 mod native_viewport;
 pub mod persistence;
@@ -208,6 +209,7 @@ impl Plugin for ViewportPlugin {
             app.register_panel(ViewportPanel { index: i });
         }
         native_viewport::register_native_viewport(app);
+        native_camera_preview::register(app);
         app.register_panel(CameraPreviewPanel);
     }
 }

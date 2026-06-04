@@ -131,9 +131,13 @@ pub fn resize_camera_preview(
 /// Manages the camera preview — spawns/updates/despawns the preview camera.
 ///
 /// Shows: selected Camera3d → DefaultCamera → first scene Camera3d.
-/// Run condition: true when the Camera Preview panel is in the active dock tree.
-pub fn camera_preview_panel_mounted(docking: Option<Res<DockingState>>) -> bool {
-    docking.is_some_and(|d| d.tree.contains_panel("camera_preview"))
+/// Run condition: true when the Camera Preview panel is in the active egui dock
+/// tree, or the bevy_ui native preview panel is mounted (its image exists).
+pub fn camera_preview_panel_mounted(
+    docking: Option<Res<DockingState>>,
+    native: Query<(), With<crate::native_camera_preview::NativeCamPreview>>,
+) -> bool {
+    docking.is_some_and(|d| d.tree.contains_panel("camera_preview")) || !native.is_empty()
 }
 
 /// Toggles the Camera Preview camera on/off with panel visibility and despawns
