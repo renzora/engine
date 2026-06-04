@@ -56,11 +56,19 @@ pub fn gallery_buttons(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let buttons = hstack(commands, 8.0, &btns);
     let f_buttons = field(commands, font, "Buttons", buttons);
 
+    let icon_btns = [
+        icon_label_button(commands, fonts, "plus", "Add"),
+        icon_button(commands, fonts, "gear"),
+        icon_button(commands, fonts, "x"),
+    ];
+    let icon_row = hstack(commands, 8.0, &icon_btns);
+    let f_icons = field(commands, font, "Icon buttons", icon_row);
+
     let togs = [toggle(commands, true), toggle(commands, false)];
     let toggles = hstack(commands, 10.0, &togs);
     let f_toggle = field(commands, font, "Toggles", toggles);
 
-    panel_column(commands, font, "Buttons & Toggles", vec![f_buttons, f_toggle])
+    panel_column(commands, font, "Buttons & Toggles", vec![f_buttons, f_icons, f_toggle])
 }
 
 /// Gallery panel: text / numeric / list inputs.

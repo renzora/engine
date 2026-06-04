@@ -370,26 +370,11 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
         ))
         .id();
-    let close = commands
-        .spawn((
-            Node {
-                width: Val::Px(22.0),
-                height: Val::Px(22.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
-            FocusPolicy::Block,
-            NativeSettingsClose,
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("settings-close"),
-        ))
-        .id();
-    let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
-    commands.entity(close).add_child(x);
+    // Themed ember icon button (Styled IconButton) — editable under "Icon Button".
+    let close = renzora_ember::widgets::icon_button(commands, fonts, "x");
+    commands
+        .entity(close)
+        .insert((FocusPolicy::Block, NativeSettingsClose));
 
     let bar = commands
         .spawn((
@@ -528,17 +513,26 @@ fn sidebar_tab(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(if active {
-                rgb(tab_active())
-            } else {
-                Color::NONE
-            }),
+            BackgroundColor(Color::NONE),
             Interaction::default(),
             NativeSettingsTabBtn(tab),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("settings-tab"),
         ))
         .id();
+    // Active → highlighted; otherwise a themed hover wash.
+    renzora_ember::reactive::bind_bg(commands, row, move |w| {
+        if active {
+            rgb(tab_active())
+        } else if matches!(
+            w.get::<Interaction>(row),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        ) {
+            rgb(tab_hover())
+        } else {
+            Color::NONE
+        }
+    });
     commands.entity(row).add_children(&[ico, lbl]);
     row
 }

@@ -80,6 +80,32 @@ pub fn icon_label_button(
     b
 }
 
+/// An icon-only square button (Styled `IconButton`), themed with the same
+/// hover/press states as [`button`]. For chrome actions (close, gear, …).
+pub fn icon_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> Entity {
+    let b = commands
+        .spawn((
+            Node {
+                width: Val::Px(22.0),
+                height: Val::Px(22.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            EmberButton,
+            Styled::new(Role::IconButton),
+            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("icon-button"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 13.0);
+    commands.entity(b).add_child(ic);
+    b
+}
+
 pub(crate) fn button_interact(
     mut q: Query<(&Interaction, &mut Styled), (With<EmberButton>, Changed<Interaction>)>,
 ) {
