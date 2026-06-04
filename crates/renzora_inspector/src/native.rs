@@ -28,7 +28,8 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, text_input, toggle_switch, DragRange, EmberTextInput, Popup,
+    bind_text_input, drag_value, icon_label_button, scroll_view, text_input, toggle_switch,
+    DragRange, EmberTextInput, Popup,
 };
 use renzora_theme::ThemeManager;
 
@@ -61,21 +62,26 @@ struct NativeInspectorState {
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor::SplashState;
     app.init_resource::<NativeInspectorState>();
-    app.register_panel_content("inspector", true, |commands, fonts| {
-        // Panel = a stable filter bar (kept across rebuilds so it never loses
-        // focus/text) over the `InspectorRoot` content area that
-        // `rebuild_inspector` despawns + repopulates.
+    // `scroll: false` — we manage scrolling ourselves so the top bar (Add
+    // Component + filter) and the bottom Add Component button stay *fixed* while
+    // only the component list scrolls.
+    app.register_panel_content("inspector", false, |commands, fonts| {
         let root = commands
             .spawn((
                 Node {
                     width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    min_height: Val::Px(0.0),
                     flex_direction: FlexDirection::Column,
                     ..default()
                 },
                 Name::new("inspector-panel"),
             ))
             .id();
-        let filter = build_filter_bar(commands, fonts);
+        // Fixed top bar: Add Component button + filter input to its right.
+        let top = build_top_bar(commands, fonts);
+        // Scrolling component list (`InspectorRoot` is despawned/repopulated by
+        // `rebuild_inspector`; the bars around it are stable).
         let content = commands
             .spawn((
                 Node {
@@ -89,7 +95,10 @@ pub fn register_native_inspector(app: &mut App) {
                 Name::new("inspector-root"),
             ))
             .id();
-        commands.entity(root).add_children(&[filter, content]);
+        let scroll = scroll_view(commands, content);
+        // Fixed bottom Add Component button.
+        let bottom = build_bottom_add(commands, fonts);
+        commands.entity(root).add_children(&[top, scroll, bottom]);
         root
     });
     app.add_systems(
@@ -190,10 +199,22 @@ fn inspected_entity(w: &World) -> Option<Entity> {
     locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
 }
 
-/// The stable filter bar: a funnel glyph + a text input that narrows which
-/// component sections show. Hidden when nothing is selected.
-fn build_filter_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let input = text_input(commands, &fonts.ui, "Filter components…", "");
+/// The fixed top bar: an Add Component button + the component-filter input to
+/// its right (funnel glyph + text). Hidden when nothing is selected.
+fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let add = icon_label_button(commands, fonts, "puzzle-piece", "Add Component");
+    commands.entity(add).insert((
+        AddButton,
+        Node {
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(5.0),
+            ..default()
+        },
+        Name::new("add-component-top"),
+    ));
+    let input = text_input(commands, &fonts.ui, "Filter…", "");
     commands.entity(input).insert((
         InspectorFilter,
         Node {
@@ -218,10 +239,30 @@ fn build_filter_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            Name::new("inspector-filter-bar"),
+            Name::new("inspector-top-bar"),
         ))
         .id();
-    commands.entity(bar).add_children(&[icon, input]);
+    commands.entity(bar).add_children(&[add, icon, input]);
+    bind_display(commands, bar, |w| inspected_entity(w).is_some());
+    bar
+}
+
+/// The fixed bottom bar: a full-width Add Component button. Hidden when nothing
+/// is selected.
+fn build_bottom_add(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let btn = add_bar(commands, fonts);
+    let bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("inspector-bottom-bar"),
+        ))
+        .id();
+    commands.entity(bar).add_child(btn);
     bind_display(commands, bar, |w| inspected_entity(w).is_some());
     bar
 }
@@ -288,12 +329,6 @@ fn rebuild_inspector(world: &mut World) {
         let mut commands = Commands::new(&mut queue, world);
         for child in existing {
             commands.entity(child).despawn();
-        }
-
-        // Top toolbar: Add Component button.
-        if entity.is_some() {
-            let bar = add_bar(&mut commands, &fonts);
-            commands.entity(container).add_child(bar);
         }
 
         match entity {
