@@ -24,11 +24,11 @@ use renzora_editor::{
     EditorCommands, EditorSelection, FieldType, FieldValue, InspectorRegistry,
     NativeInspectorDrawer, NativeInspectorRegistry,
 };
-use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_with};
+use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, text_input, toggle_switch, DragRange, Popup,
+    bind_text_input, drag_value, text_input, toggle_switch, DragRange, EmberTextInput, Popup,
 };
 use renzora_theme::ThemeManager;
 
@@ -46,17 +46,37 @@ fn c(rgb: (u8, u8, u8)) -> Color {
 #[derive(Component)]
 struct InspectorRoot;
 
+/// Marks the (stable, never-rebuilt) component-filter text input.
+#[derive(Component)]
+struct InspectorFilter;
+
 #[derive(Resource, Default)]
 struct NativeInspectorState {
     sig: Option<u64>,
     locked: Option<Entity>,
+    /// Lowercased component-name filter (empty = show all).
+    filter: String,
 }
 
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor::SplashState;
     app.init_resource::<NativeInspectorState>();
-    app.register_panel_content("inspector", true, |commands, _fonts| {
-        commands
+    app.register_panel_content("inspector", true, |commands, fonts| {
+        // Panel = a stable filter bar (kept across rebuilds so it never loses
+        // focus/text) over the `InspectorRoot` content area that
+        // `rebuild_inspector` despawns + repopulates.
+        let root = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+                Name::new("inspector-panel"),
+            ))
+            .id();
+        let filter = build_filter_bar(commands, fonts);
+        let content = commands
             .spawn((
                 Node {
                     width: Val::Percent(100.0),
@@ -68,7 +88,9 @@ pub fn register_native_inspector(app: &mut App) {
                 InspectorRoot,
                 Name::new("inspector-root"),
             ))
-            .id()
+            .id();
+        commands.entity(root).add_children(&[filter, content]);
+        root
     });
     app.add_systems(
         Update,
@@ -80,6 +102,7 @@ pub fn register_native_inspector(app: &mut App) {
             asset_drop,
             asset_clear_click,
             asset_drop_highlight,
+            inspector_filter_sync,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -159,6 +182,64 @@ fn category_rgb(theme: &renzora_theme::Theme, category: &str) -> ((u8, u8, u8), 
     (c32(s.accent.to_color32()), c32(s.header_bg.to_color32()))
 }
 
+// ── Component filter ─────────────────────────────────────────────────────────
+
+/// The entity the inspector is showing (the lock wins over the live selection).
+fn inspected_entity(w: &World) -> Option<Entity> {
+    let locked = w.get_resource::<NativeInspectorState>().and_then(|s| s.locked);
+    locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
+}
+
+/// The stable filter bar: a funnel glyph + a text input that narrows which
+/// component sections show. Hidden when nothing is selected.
+fn build_filter_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let input = text_input(commands, &fonts.ui, "Filter components…", "");
+    commands.entity(input).insert((
+        InspectorFilter,
+        Node {
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+    ));
+    let icon = icon_text(commands, &fonts.phosphor, "funnel", renzora_ember::theme::text_muted(), 13.0);
+    let bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("inspector-filter-bar"),
+        ))
+        .id();
+    commands.entity(bar).add_children(&[icon, input]);
+    bind_display(commands, bar, |w| inspected_entity(w).is_some());
+    bar
+}
+
+/// Sync the filter input's text into state (lowercased) so `collect_sections`
+/// and the rebuild signature pick it up.
+fn inspector_filter_sync(
+    input: Query<&EmberTextInput, With<InspectorFilter>>,
+    mut state: ResMut<NativeInspectorState>,
+) {
+    for inp in &input {
+        let v = inp.value.to_lowercase();
+        if state.filter != v {
+            state.filter = v;
+        }
+    }
+}
+
 // ── Rebuild ──────────────────────────────────────────────────────────────────
 
 fn rebuild_inspector(world: &mut World) {
@@ -192,6 +273,7 @@ fn rebuild_inspector(world: &mut World) {
     }
 
     let sections = collect_sections(world, entity);
+    let filter_active = !world.resource::<NativeInspectorState>().filter.is_empty();
     let existing: Vec<Entity> = world
         .get::<Children>(container)
         .map(|ch| ch.iter().collect())
@@ -221,7 +303,12 @@ fn rebuild_inspector(world: &mut World) {
             }
             Some(entity) => {
                 if sections.is_empty() {
-                    let l = empty_label(&mut commands, &fonts, "No inspectable components.");
+                    let msg = if filter_active {
+                        "No components match the filter."
+                    } else {
+                        "No inspectable components."
+                    };
+                    let l = empty_label(&mut commands, &fonts, msg);
                     commands.entity(container).add_child(l);
                 }
                 let locked_here = locked == Some(entity);
@@ -258,6 +345,9 @@ fn inspector_signature(
     let mut h = std::collections::hash_map::DefaultHasher::new();
     container.to_bits().hash(&mut h);
     locked.hash(&mut h);
+    if let Some(s) = world.get_resource::<NativeInspectorState>() {
+        s.filter.hash(&mut h);
+    }
     match entity {
         Some(e) => {
             1u8.hash(&mut h);
@@ -284,9 +374,17 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
     };
     let theme = world.get_resource::<ThemeManager>();
     let native_reg = world.get_resource::<NativeInspectorRegistry>();
+    let filter = world
+        .get_resource::<NativeInspectorState>()
+        .map(|s| s.filter.clone())
+        .unwrap_or_default();
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world, entity) {
+            continue;
+        }
+        // Component-name filter (case-insensitive substring on the display name).
+        if !filter.is_empty() && !entry.display_name.to_lowercase().contains(&filter) {
             continue;
         }
         let (accent, header_bg) = theme
