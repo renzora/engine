@@ -1,0 +1,308 @@
+//! Bevy-native (ember) port of the egui particle `GraphPanel` canvas, built on
+//! `renzora_ember`'s data-driven `node_graph_view`.
+//!
+//! Simpler than the material/blueprint graphs: the model is a single resource
+//! field (`ParticleEditorState.node_graph`), generated from the current effect.
+//! Nodes + wires are mounted from it (keyed on structure); a sync system drains
+//! the view's `GraphEdit`s back into it. Toolbar: Add Node (auto-wires Spawn/
+//! Init/Update/Render modules into the Emitter) + Presets.
+
+use std::hash::{Hash, Hasher};
+
+use bevy::prelude::*;
+use bevy::ui::{ComputedNode, RelativeCursorPosition};
+
+use renzora_editor::SplashState;
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::panel::RegisterPanelContent;
+use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora_ember::theme::*;
+use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
+use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
+use renzora_hanabi::{load_effect_from_file, ParticleEditorState};
+
+use crate::graph_editor::category_icon;
+
+pub struct NativeParticleGraph;
+
+impl Plugin for NativeParticleGraph {
+    fn build(&self, app: &mut App) {
+        app.register_panel_content("particle_graph", false, build);
+        app.add_systems(Update, (add_node_open, presets_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (ensure_node_graph, part_graph_sync)
+                .chain()
+                .run_if(in_state(SplashState::Editor))
+                .run_if(any_with_component::<PartGraph>),
+        );
+    }
+}
+
+#[derive(Component)]
+struct PartGraph;
+#[derive(Component)]
+struct AddNodeBtn;
+#[derive(Component)]
+struct PresetsBtn;
+
+fn cat_color(category: &str) -> (u8, u8, u8) {
+    match category {
+        "Emitter" => (60, 60, 60),
+        "Spawn" => (50, 100, 200),
+        "Init" => (50, 150, 50),
+        "Update" => (200, 100, 50),
+        "Render" => (150, 50, 200),
+        "Constants" => (80, 80, 80),
+        _ => (100, 100, 100),
+    }
+}
+
+// ── Build ────────────────────────────────────────────────────────────────────
+
+fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let root = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
+            Name::new("native-particle-graph"),
+        ))
+        .id();
+
+    let bar = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), flex_shrink: 0.0, ..default() },
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(border())),
+        ))
+        .id();
+    let presets = tool_button(commands, fonts, "sparkle", "Presets", text_muted(), PresetsBtn);
+    let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
+    commands.entity(bar).add_children(&[presets, add]);
+
+    let handle = node_graph_view(commands, fonts);
+    commands.entity(handle.viewport).insert(PartGraph);
+    let (canvas, viewport) = (handle.canvas, handle.viewport);
+
+    let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
+    commands.entity(viewport).add_child(wires_layer);
+    keyed_list(commands, wires_layer, move |w| wire_snapshot(w, viewport));
+
+    let nodes_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
+    commands.entity(canvas).add_child(nodes_layer);
+    keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
+
+    commands.entity(root).add_children(&[bar, handle.viewport]);
+    root
+}
+
+fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str, color: (u8, u8, u8), marker: M) -> Entity {
+    let btn = commands
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), RelativeCursorPosition::default(), marker))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(color)))).id();
+    commands.entity(btn).add_children(&[ic, t]);
+    btn
+}
+
+// ── Snapshots ──────────────────────────────────────────────────────────────────
+
+#[allow(clippy::type_complexity)]
+fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+    let Some(s) = world.get_resource::<ParticleEditorState>() else { return empty() };
+    let Some(graph) = s.node_graph.as_ref() else { return empty() };
+    let sel = s.selected_node;
+    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<(String, String)>, Vec<(String, String)>, bool)> = graph
+        .nodes
+        .iter()
+        .map(|n| {
+            let title = n.node_type.display_name().to_string();
+            let color = cat_color(n.node_type.category());
+            let pins = n.node_type.pins();
+            let inputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone())).collect();
+            let outputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone())).collect();
+            (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
+        })
+        .collect();
+    let items: Vec<(u64, u64)> = nodes
+        .iter()
+        .map(|(id, title, color, _pos, ins, outs, selected)| {
+            let mut k = hasher();
+            id.hash(&mut k);
+            let mut h = hasher();
+            (title, color, ins, outs, selected).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, title, color, pos, ins, outs, selected) = &nodes[i];
+            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected)
+        }),
+    }
+}
+
+fn wire_snapshot(world: &World, viewport: Entity) -> KeyedSnapshot {
+    let Some(s) = world.get_resource::<ParticleEditorState>() else { return empty() };
+    let Some(graph) = s.node_graph.as_ref() else { return empty() };
+    let wires: Vec<(u64, String, u64, String)> = graph.connections.iter().map(|c| (c.from_node, c.from_pin.clone(), c.to_node, c.to_pin.clone())).collect();
+    let items: Vec<(u64, u64)> = wires
+        .iter()
+        .map(|(fnode, fpin, tnode, tpin)| {
+            let mut k = hasher();
+            (fnode, fpin, tnode, tpin).hash(&mut k);
+            (k.finish(), k.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, _f, i| {
+            let (fnode, fpin, tnode, tpin) = &wires[i];
+            graph_wire_view(c, viewport, *fnode, fpin, *tnode, tpin)
+        }),
+    }
+}
+
+// ── Systems ────────────────────────────────────────────────────────────────────
+
+/// Generate `node_graph` from the current effect if it isn't built yet.
+fn ensure_node_graph(state: Option<ResMut<ParticleEditorState>>) {
+    let Some(mut s) = state else { return };
+    if s.node_graph.is_none() {
+        if let Some(g) = s.current_effect.as_ref().map(ParticleNodeGraph::from_effect) {
+            s.node_graph = Some(g);
+        }
+    }
+}
+
+fn part_graph_sync(mut views: Query<&mut NodeGraphView, With<PartGraph>>, state: Option<ResMut<ParticleEditorState>>) {
+    let Some(mut s) = state else { return };
+    let mut changed = false;
+    for mut view in &mut views {
+        for edit in view.pending.drain(..) {
+            match edit {
+                GraphEdit::NodeMoved { id, x, y } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        if let Some(n) = g.get_node_mut(id) {
+                            n.position = [x, y];
+                            changed = true;
+                        }
+                    }
+                }
+                GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        g.connect(from_node, &from_pin, to_node, &to_pin);
+                        changed = true;
+                    }
+                }
+                GraphEdit::Disconnect { to_node, to_pin, .. } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        g.disconnect(to_node, &to_pin);
+                        changed = true;
+                    }
+                }
+                GraphEdit::Select { id } => s.selected_node = id,
+            }
+        }
+    }
+    if changed {
+        s.is_modified = true;
+    }
+}
+
+fn add_particle_node(world: &mut World, node_type: ParticleNodeType, pos: [f32; 2]) {
+    let Some(mut s) = world.get_resource_mut::<ParticleEditorState>() else { return };
+    if s.node_graph.is_none() {
+        let g = s.current_effect.as_ref().map(ParticleNodeGraph::from_effect);
+        s.node_graph = g;
+    }
+    let module_pin = match node_type.category() {
+        "Spawn" => Some("spawn"),
+        "Init" => Some("init"),
+        "Update" => Some("update"),
+        "Render" => Some("render"),
+        _ => None,
+    };
+    if let Some(g) = s.node_graph.as_mut() {
+        let new_id = g.add_node(node_type, pos);
+        if let Some(pin) = module_pin {
+            if let Some(emitter) = g.nodes.iter().find(|n| n.node_type == ParticleNodeType::Emitter) {
+                let eid = emitter.id;
+                g.connect(new_id, "module", eid, pin);
+            }
+        }
+        s.is_modified = true;
+    }
+}
+
+fn add_node_open(
+    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<Interaction>)>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let mut kids: Vec<Entity> = Vec::new();
+    let mut offset = 0.0f32;
+    for &category in ParticleNodeType::categories() {
+        let icon = category_icon(category);
+        for node_type in ParticleNodeType::nodes_in_category(category) {
+            let pos = [60.0 + offset, 60.0 + offset];
+            offset += 6.0;
+            let label = node_type.display_name();
+            kids.push(menu_item(&mut commands, &fonts, icon, label, move |w| add_particle_node(w, node_type, pos)));
+        }
+    }
+    commands.entity(menu).add_children(&kids);
+}
+
+fn presets_open(
+    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<PresetsBtn>, Changed<Interaction>)>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir("assets/particles")
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "particle"))
+        .collect();
+    files.sort();
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let kids: Vec<Entity> = files
+        .into_iter()
+        .map(|path| {
+            let label = path.file_stem().and_then(|s| s.to_str()).unwrap_or("preset").to_string();
+            menu_item(&mut commands, &fonts, "sparkle", &label, move |w| {
+                if let Some(effect) = load_effect_from_file(&path) {
+                    if let Some(mut s) = w.get_resource_mut::<ParticleEditorState>() {
+                        s.node_graph = Some(ParticleNodeGraph::from_effect(&effect));
+                        s.current_file_path = Some(path.to_string_lossy().to_string());
+                        s.current_effect = Some(effect);
+                        s.is_modified = false;
+                    }
+                }
+            })
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+fn empty() -> KeyedSnapshot {
+    KeyedSnapshot { items: Vec::new(), build: Box::new(|c, _, _| c.spawn(Node::default()).id()) }
+}
+fn hasher() -> std::collections::hash_map::DefaultHasher {
+    std::collections::hash_map::DefaultHasher::new()
+}

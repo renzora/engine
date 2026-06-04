@@ -6,6 +6,7 @@ mod editor_panel;
 mod graph_editor;
 mod graph_panel;
 mod native_editor_panel;
+mod native_graph;
 mod native_preview_panel;
 mod preview;
 mod preview_panel;
@@ -26,6 +27,7 @@ impl Plugin for ParticleEditorPlugin {
         app.register_panel(preview_panel::ParticlePreviewPanel);
         app.add_plugins(native_preview_panel::NativeParticlePreview);
         app.add_plugins(native_editor_panel::NativeParticleEditor);
+        app.add_plugins(native_graph::NativeParticleGraph);
     }
 }
 
