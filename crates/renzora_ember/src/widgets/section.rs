@@ -36,11 +36,12 @@ pub fn section(
     title: &str,
     accent: (u8, u8, u8),
 ) -> (Entity, Entity) {
-    let (root, _header, body) = section_with_header(commands, fonts, icon, title, accent);
+    let (root, _header, body) = section_with_header(commands, fonts, icon, title, accent, section_bg());
     (root, body)
 }
 
-/// Like [`section`] but also returns the `header` entity, so callers can add
+/// Like [`section`] but with an explicit `header_bg` (e.g. an inspector's
+/// per-category color) and also returns the `header` entity, so callers can add
 /// trailing controls (enable toggle, remove, lock) to it.
 pub fn section_with_header(
     commands: &mut Commands,
@@ -48,6 +49,7 @@ pub fn section_with_header(
     icon: &str,
     title: &str,
     accent: (u8, u8, u8),
+    header_bg: (u8, u8, u8),
 ) -> (Entity, Entity, Entity) {
     let body = commands
         .spawn((
@@ -86,7 +88,7 @@ pub fn section_with_header(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(section_bg())),
+            BackgroundColor(rgb(header_bg)),
             Interaction::default(),
             Section {
                 open: true,

@@ -73,7 +73,6 @@ pub fn register_native_inspector(app: &mut App) {
     app.add_systems(
         Update,
         (
-            section_collapse,
             remove_click,
             add_button_click,
             lock_click,
@@ -418,13 +417,6 @@ fn format_value(v: Option<&FieldValue>) -> String {
 // ── Section ──────────────────────────────────────────────────────────────────
 
 #[derive(Component)]
-struct SectionHeader {
-    body: Entity,
-    caret: Entity,
-    open: bool,
-}
-
-#[derive(Component)]
 struct RemoveBtn {
     remove_fn: Mutate,
     entity: Entity,
@@ -442,29 +434,23 @@ fn build_section(
     entity: Entity,
     locked_here: bool,
 ) -> (Entity, Entity) {
-    let root = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-            Name::new("inspector-section"),
-        ))
-        .id();
-
-    // Body first (header references it).
-    let body = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(4.0)),
-                ..default()
-            },
-            Name::new("section-body"),
-        ))
-        .id();
+    // Compose the shared ember section (caret · accent icon · title + colored
+    // header + ember-owned collapse); override the body padding to the inspector's
+    // tighter spacing and add the lock/enable/trash affordances to the header.
+    let (root, header, body) = renzora_ember::widgets::section_with_header(
+        commands,
+        fonts,
+        sec.icon,
+        sec.title,
+        sec.accent,
+        sec.header_bg,
+    );
+    commands.entity(body).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(4.0)),
+        ..default()
+    });
     if sec.native_drawer.is_some() {
         // Body is filled by the registered native drawer once the build queue
         // has applied (it needs exclusive &mut World). See `rebuild_inspector`.
@@ -481,23 +467,12 @@ fn build_section(
         }
     }
 
-    // Header: caret · icon · title · spacer · [lock] · [enable] · [trash]
-    let caret = phosphor_glyph(commands, fonts, "caret-down", renzora_ember::theme::text_muted(), 11.0);
-    let icon = glyph_str(commands, fonts, sec.icon, sec.accent, 14.0);
-    let title = commands
-        .spawn((
-            Text::new(sec.title),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(c((238, 238, 246))),
-            FocusPolicy::Pass,
-        ))
-        .id();
+    // Header affordances: a spacer pushes the optional lock / enable / trash to
+    // the right of the title.
     let spacer = commands
         .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
         .id();
-
-    let mut header_kids = vec![caret, icon, title, spacer];
-
+    let mut extra = vec![spacer];
     if sec.type_id == "name" {
         let lock = phosphor_glyph(
             commands,
@@ -509,7 +484,7 @@ fn build_section(
         commands
             .entity(lock)
             .insert((Interaction::default(), FocusPolicy::Block, LockBtn { entity }));
-        header_kids.push(lock);
+        extra.push(lock);
     }
     if let Some((_, set_enabled)) = sec.enable {
         let sw = toggle_switch(commands, sec.enabled_now);
@@ -520,40 +495,17 @@ fn build_section(
             move |w| g(w, entity),
             move |w, v: &bool| set_enabled(w, entity, *v),
         );
-        header_kids.push(sw);
+        extra.push(sw);
     }
     if let Some(remove_fn) = sec.remove_fn {
         let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
         commands
             .entity(trash)
             .insert((Interaction::default(), FocusPolicy::Block, RemoveBtn { remove_fn, entity }));
-        header_kids.push(trash);
+        extra.push(trash);
     }
+    commands.entity(header).add_children(&extra);
 
-    let header = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(c(sec.header_bg)),
-            Interaction::default(),
-            SectionHeader {
-                body,
-                caret,
-                open: true,
-            },
-            Name::new("section-header"),
-        ))
-        .id();
-    commands.entity(header).add_children(&header_kids);
-
-    commands.entity(root).add_children(&[header, body]);
     (root, body)
 }
 
@@ -1071,28 +1023,6 @@ fn phosphor_glyph(
     e
 }
 
-/// A Phosphor icon given the *glyph string* directly (registry `entry.icon`).
-fn glyph_str(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    glyph: &str,
-    color: (u8, u8, u8),
-    size: f32,
-) -> Entity {
-    commands
-        .spawn((
-            Text::new(glyph),
-            TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: size,
-                ..default()
-            },
-            TextColor(c(color)),
-            FocusPolicy::Pass,
-        ))
-        .id()
-}
-
 fn empty_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
     commands
         .spawn((
@@ -1133,28 +1063,6 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 // ── Systems ──────────────────────────────────────────────────────────────────
-
-fn section_collapse(
-    mut headers: Query<(&Interaction, &mut SectionHeader), Changed<Interaction>>,
-    mut nodes: Query<&mut Node>,
-    mut texts: Query<&mut Text>,
-) {
-    for (interaction, mut h) in &mut headers {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        h.open = !h.open;
-        if let Ok(mut n) = nodes.get_mut(h.body) {
-            n.display = if h.open { Display::Flex } else { Display::None };
-        }
-        if let Ok(mut t) = texts.get_mut(h.caret) {
-            let g = renzora_ember::font::icon_glyph(if h.open { "caret-down" } else { "caret-right" });
-            if let Some(g) = g {
-                t.0 = g.to_string();
-            }
-        }
-    }
-}
 
 fn remove_click(
     q: Query<(&Interaction, &RemoveBtn), Changed<Interaction>>,
