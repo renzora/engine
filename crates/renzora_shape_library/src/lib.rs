@@ -328,6 +328,7 @@ fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     });
 }
 
+mod native;
 mod panel;
 
 /// Shape library plugin — registers built-in shapes and adds the shape browser panel.
@@ -343,6 +344,7 @@ impl Plugin for ShapeLibraryPlugin {
 
         use renzora_editor::AppEditorExt;
         app.register_panel(panel::ShapeLibraryPanel::default());
+        app.add_plugins(native::NativeShapeLibrary);
     }
 }
 

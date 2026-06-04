@@ -15,6 +15,8 @@ bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# bevy_ui-native panel content (the egui → bevy_ui migration).
+renzora_ember = { path = "../renzora_ember" }
 
 [lints]
 workspace = true
