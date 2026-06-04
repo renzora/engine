@@ -60,11 +60,21 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             Name::new("native-viewport"),
         ))
         .id();
-    // Drive the displayed image from this slot's camera render target.
+    // Drive the displayed image from this slot's camera render target — except
+    // the primary slot in "UI" view, which shows the game-UI offscreen render
+    // (matching the egui viewport, which drew the UI canvas in UI mode).
     bind_with(
         commands,
         img,
         move |w| {
+            use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+            if index == 0
+                && w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
+            {
+                return w
+                    .get_resource::<renzora_game_ui::canvas_render::UiCanvasRender>()
+                    .map(|r| r.image_handle.clone());
+            }
             w.get_resource::<Viewports>()
                 .and_then(|v| v.slots.get(index))
                 .and_then(|s| s.image.clone())
