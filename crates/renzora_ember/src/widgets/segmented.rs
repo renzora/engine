@@ -28,7 +28,7 @@ pub fn segmented(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((40, 40, 48))),
+            BackgroundColor(rgb(card_bg())),
             Name::new("segmented"),
         ))
         .id();

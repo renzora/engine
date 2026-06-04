@@ -139,8 +139,8 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((24, 24, 30))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             TimelineRoot {
                 pps: INITIAL_PPS,
                 scroll: 0.0,
@@ -161,7 +161,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 border: UiRect::right(Val::Px(1.0)),
                 ..default()
             },
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Name::new("tl-headers"),
         ))
         .id();
@@ -175,7 +175,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 ..default()
             },
             BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Name::new("tl-corner"),
         ))
         .with_children(|p| {
@@ -200,7 +200,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                     ..default()
                 },
                 BackgroundColor(rgb(panel_bg())),
-                BorderColor::all(rgb((40, 40, 50))),
+                BorderColor::all(rgb(hover_bg())),
                 Name::new("tl-header"),
             ))
             .id();
@@ -290,7 +290,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 ..default()
             },
             BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
             RelativeCursorPosition::default(),
             TlRuler { root },
@@ -326,7 +326,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                         height: Val::Px(5.0),
                         ..default()
                     },
-                    BackgroundColor(rgb((90, 90, 104))),
+                    BackgroundColor(rgb(tree_line())),
                 ));
             })
             .id();

@@ -145,7 +145,7 @@ pub fn frame(commands: &mut Commands, padding: f32, radius: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Name::new("frame"),
         ))
         .id()

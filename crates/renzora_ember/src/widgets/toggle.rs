@@ -28,7 +28,7 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(if on { rgb(accent()) } else { rgb((60, 60, 70)) }),
+            BackgroundColor(if on { rgb(accent()) } else { rgb(card_bg()) }),
             Interaction::default(),
             EmberToggle { on },
             Styled::with_state(
@@ -51,7 +51,7 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(rgb((240, 240, 245))),
+            BackgroundColor(rgb(text_primary())),
             Name::new("toggle-knob"),
         ))
         .id();

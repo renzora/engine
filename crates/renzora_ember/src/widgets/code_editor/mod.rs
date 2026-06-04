@@ -94,8 +94,8 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((22, 22, 28))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("code-editor"),
         ))
         .id();

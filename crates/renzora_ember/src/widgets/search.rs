@@ -21,7 +21,7 @@ const TEXT: (u8, u8, u8) = (224, 224, 234);
 const MUTED: (u8, u8, u8) = (150, 150, 164);
 const ZEBRA_ODD: (u8, u8, u8) = (36, 36, 43);
 const GUIDE: (u8, u8, u8) = (62, 62, 74);
-const SIDEBAR_BG: (u8, u8, u8) = (24, 24, 30);
+const SIDEBAR_BG: (u8, u8, u8) = crate::theme::WINDOW_BG;
 
 /// A stable accent color per category (ember port of `category_colors`).
 fn category_color(name: &str) -> (u8, u8, u8) {
@@ -461,7 +461,7 @@ fn sidebar_button(
         ))
         .id();
     bind_bg(commands, b, move |w| match w.get::<Interaction>(b) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb((44, 44, 54)),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(section_bg()),
         _ => Color::NONE,
     });
     let t = commands
@@ -523,7 +523,7 @@ fn category_header_styled(
                     font_size: 11.0,
                     ..default()
                 },
-                TextColor(rgb((140, 140, 152))),
+                TextColor(rgb(placeholder())),
                 bevy::ui::FocusPolicy::Pass,
             ))
             .id();

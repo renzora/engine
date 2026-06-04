@@ -56,7 +56,7 @@ pub fn table(commands: &mut Commands, font: &Handle<Font>, headers: &[&str], row
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Name::new("table"),
         ))
         .id();

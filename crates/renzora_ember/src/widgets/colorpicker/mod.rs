@@ -11,7 +11,7 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::rgb;
+use crate::theme::*;
 
 pub(crate) struct ColorPickerPlugin;
 
@@ -105,7 +105,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
-            BorderColor::all(rgb((250, 250, 250))),
+            BorderColor::all(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("sv-handle"),
         ))
@@ -139,7 +139,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
                 height: Val::Px(3.0),
                 ..default()
             },
-            BackgroundColor(rgb((250, 250, 250))),
+            BackgroundColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("hue-handle"),
         ))
@@ -155,7 +155,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(Color::hsv(hue * 360.0, s, v)),
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             Name::new("color-preview"),
         ))
         .id();

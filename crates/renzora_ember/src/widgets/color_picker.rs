@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use crate::reactive::Bound;
-use crate::theme::rgb;
+use crate::theme::*;
 
 use super::slider::slider;
 
@@ -39,7 +39,7 @@ pub fn color_picker(commands: &mut Commands, color: (u8, u8, u8)) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(color)),
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             Name::new("color-preview"),
         ))
         .id();

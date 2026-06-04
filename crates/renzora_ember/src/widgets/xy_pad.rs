@@ -25,7 +25,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb((60, 60, 72))),
+            BorderColor::all(rgb(border())),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Move),

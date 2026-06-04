@@ -35,8 +35,8 @@ pub fn modal(commands: &mut Commands, fonts: &EmberFonts, title: &str, body: &st
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("modal-stage"),
         ))
         .id();

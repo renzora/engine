@@ -25,7 +25,7 @@ pub fn chip(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(rgb((50, 50, 62))),
+            BackgroundColor(rgb(section_bg())),
             Name::new("chip"),
         ))
         .id();

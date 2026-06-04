@@ -68,7 +68,7 @@ pub fn code(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity 
             p.spawn((
                 Text::new(text),
                 ui_font(font, 12.0),
-                TextColor(rgb((200, 210, 235))),
+                TextColor(rgb(text_primary())),
             ));
         })
         .id()

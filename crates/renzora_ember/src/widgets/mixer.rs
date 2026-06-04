@@ -19,7 +19,7 @@ pub(crate) struct MixerButton {
 /// A small square latch button (e.g. mute "M" / solo "S") that lights up when
 /// on. Carries `Bound<bool>` so it can be two-way bound with `bind_2way`.
 pub fn mixer_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, on: Color) -> Entity {
-    let off = rgb((42, 42, 52));
+    let off = rgb(tab_hover());
     let btn = commands
         .spawn((
             Node {
@@ -61,8 +61,8 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("mixer-strip"),
         ))
         .id();
@@ -91,7 +91,7 @@ pub fn mixer_strip(commands: &mut Commands, fonts: &EmberFonts, name: &str, gain
             ..default()
         },))
         .id();
-    let mute = mixer_button(commands, fonts, "M", rgb((225, 90, 80)));
+    let mute = mixer_button(commands, fonts, "M", rgb(close_red()));
     let solo = mixer_button(commands, fonts, "S", rgb(accent()));
     commands.entity(buttons).add_children(&[mute, solo]);
     commands.entity(root).add_children(&[label, meters, buttons]);

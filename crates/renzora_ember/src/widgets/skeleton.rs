@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::rgb;
+use crate::theme::*;
 
 /// A skeleton placeholder block (loading state; shimmer animation comes later).
 pub fn skeleton(commands: &mut Commands, width: f32, height: f32) -> Entity {
@@ -14,7 +14,7 @@ pub fn skeleton(commands: &mut Commands, width: f32, height: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((48, 48, 58))),
+            BackgroundColor(rgb(border())),
             Name::new("skeleton"),
         ))
         .id()

@@ -18,7 +18,7 @@ pub fn card(commands: &mut Commands, font: &Handle<Font>, title: &str, body: &st
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
-            BorderColor::all(rgb((48, 48, 58))),
+            BorderColor::all(rgb(border())),
             Styled::new(Role::Card),
             Name::new("card"),
         ))

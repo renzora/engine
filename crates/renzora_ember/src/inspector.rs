@@ -158,7 +158,7 @@ pub fn color_field(
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((128, 128, 128))),
+            BackgroundColor(rgb(placeholder())),
             BorderColor::all(rgb(border())),
             Interaction::default(),
             Popup::new(panel),

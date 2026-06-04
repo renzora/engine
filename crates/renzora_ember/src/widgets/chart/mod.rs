@@ -125,8 +125,8 @@ fn chart_shell(commands: &mut Commands, width: Val, height: Val, data: ChartData
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((24, 24, 30))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("chart"),
         ))
         .id();
@@ -261,8 +261,8 @@ pub fn bar_chart(commands: &mut Commands, values: &[f32]) -> Entity {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((24, 24, 30))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("bar-chart"),
         ))
         .id();

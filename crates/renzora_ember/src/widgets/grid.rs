@@ -30,7 +30,7 @@ pub fn grid(commands: &mut Commands, font: &Handle<Font>, count: usize, columns:
                         border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
-                    BackgroundColor(rgb((40, 40, 48))),
+                    BackgroundColor(rgb(card_bg())),
                     Name::new("grid-cell"),
                 ))
                 .with_children(|p| {

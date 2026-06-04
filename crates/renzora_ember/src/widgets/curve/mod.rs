@@ -69,7 +69,7 @@ fn handle(commands: &mut Commands, root: Entity, idx: u8, p: Vec2) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((24, 24, 30))),
+            BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
             Interaction::default(),
             CurveHandle { root, idx },

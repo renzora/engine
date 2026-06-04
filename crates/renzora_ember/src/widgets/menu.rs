@@ -155,7 +155,7 @@ pub(crate) fn menu_hover(
 ) {
     for (interaction, mut bg) in &mut rows {
         bg.0 = match *interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb((50, 50, 62)),
+            Interaction::Hovered | Interaction::Pressed => rgb(section_bg()),
             Interaction::None => Color::NONE,
         };
     }

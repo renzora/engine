@@ -11,7 +11,7 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
-use crate::theme::rgb;
+use crate::theme::*;
 
 const MAX_STOPS: usize = 6;
 
@@ -96,7 +96,7 @@ pub fn gradient_editor(commands: &mut Commands, stops: &[(f32, (u8, u8, u8))]) -
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BorderColor::all(rgb((70, 70, 82))),
+            BorderColor::all(rgb(border())),
             GradientData {
                 stops: stops.clone(),
             },
@@ -132,7 +132,7 @@ pub fn gradient_editor(commands: &mut Commands, stops: &[(f32, (u8, u8, u8))]) -
                     ..default()
                 },
                 BackgroundColor(s.color),
-                BorderColor::all(rgb((230, 230, 240))),
+                BorderColor::all(rgb(text_primary())),
                 Interaction::default(),
                 GradientStop {
                     data: bar,

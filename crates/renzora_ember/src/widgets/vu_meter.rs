@@ -5,11 +5,11 @@
 use bevy::prelude::*;
 
 use crate::reactive::bind_with;
-use crate::theme::rgb;
+use crate::theme::*;
 
 const GREEN: (u8, u8, u8) = (90, 200, 110);
 const AMBER: (u8, u8, u8) = (225, 180, 70);
-const RED: (u8, u8, u8) = (225, 90, 80);
+const RED: (u8, u8, u8) = (220, 90, 80);
 const AMBER_AT: f32 = 0.6;
 const RED_AT: f32 = 0.85;
 
@@ -71,8 +71,8 @@ fn build_vu(commands: &mut Commands, auto: bool) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((20, 20, 26))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("vu-meter"),
         ))
         .id();
@@ -100,7 +100,7 @@ fn build_vu(commands: &mut Commands, auto: bool) -> Entity {
                 height: Val::Px(2.0),
                 ..default()
             },
-            BackgroundColor(rgb((235, 235, 245))),
+            BackgroundColor(rgb(text_primary())),
             Name::new("vu-peak"),
         ))
         .id();

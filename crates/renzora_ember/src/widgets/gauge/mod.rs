@@ -53,7 +53,7 @@ pub(crate) struct ArcData {
 }
 
 fn make_arc(value: f32) -> ArcMaterial {
-    let track = rgb((58, 58, 70)).to_linear();
+    let track = rgb(card_bg()).to_linear();
     let fill = rgb(accent()).to_linear();
     ArcMaterial {
         track: Vec4::new(track.red, track.green, track.blue, 1.0),

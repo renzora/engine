@@ -51,7 +51,7 @@ pub fn draggable_file(commands: &mut Commands, fonts: &EmberFonts, name: &str) -
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((46, 46, 58))),
+            BackgroundColor(rgb(section_bg())),
             Interaction::default(),
             Draggable {
                 payload: name.to_string(),

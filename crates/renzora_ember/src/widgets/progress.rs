@@ -16,7 +16,7 @@ pub fn progress(commands: &mut Commands, value: f32) -> Entity {
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb((40, 40, 48))),
+            BackgroundColor(rgb(card_bg())),
             Name::new("progress"),
         ))
         .id();

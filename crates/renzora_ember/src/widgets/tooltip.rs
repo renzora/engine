@@ -34,7 +34,7 @@ pub fn tooltip(commands: &mut Commands, font: &Handle<Font>, label: &str, target
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((20, 20, 26))),
+            BackgroundColor(rgb(window_bg())),
             GlobalZIndex(600),
             Name::new("tooltip-tip"),
         ))

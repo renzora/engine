@@ -18,7 +18,8 @@ use bevy::prelude::*;
 
 use crate::font::{glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::{
-    accent, close_red, divider, header_bg, panel_bg, rgb, tab_active, text_muted, text_primary,
+    accent, border, close_red, divider, header_bg, panel_bg, rgb, tab_active, text_muted,
+    text_primary,
 };
 
 // ── Model ────────────────────────────────────────────────────────────────────
@@ -1248,7 +1249,7 @@ fn build_tree(
                         ..default()
                     },
                     BackgroundColor(rgb(tab_active())),
-                    BorderColor::all(rgb((60, 60, 74))),
+                    BorderColor::all(rgb(border())),
                     Interaction::default(),
                     renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     // No leaf yet — picking sets the tree's root leaf.

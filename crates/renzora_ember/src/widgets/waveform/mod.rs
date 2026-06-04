@@ -58,8 +58,8 @@ pub fn waveform(commands: &mut Commands, amps: &[f32]) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((22, 22, 28))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("waveform"),
         ))
         .id();

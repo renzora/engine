@@ -106,7 +106,7 @@ pub fn tree_node(
                     width: Val::Px(1.0),
                     ..default()
                 },
-                BackgroundColor(rgb((55, 55, 66))),
+                BackgroundColor(rgb(tree_line())),
                 bevy::ui::FocusPolicy::Pass,
                 Name::new("tree-line"),
             ))

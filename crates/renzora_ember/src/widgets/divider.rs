@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::theme::rgb;
+use crate::theme::*;
 
 /// A 1px horizontal divider.
 pub fn divider(commands: &mut Commands) -> Entity {
@@ -13,7 +13,7 @@ pub fn divider(commands: &mut Commands) -> Entity {
                 height: Val::Px(1.0),
                 ..default()
             },
-            BackgroundColor(rgb((48, 48, 58))),
+            BackgroundColor(rgb(border())),
             Name::new("divider"),
         ))
         .id()

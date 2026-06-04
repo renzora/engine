@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use crate::font::EmberFonts;
-use crate::theme::rgb;
+use crate::theme::*;
 
 use super::edit::{edit, has_selection, sel_range};
 use super::highlight::{tokenize, C_TEXT};
@@ -243,7 +243,7 @@ fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, text: &
             p.spawn((
                 Text::new(format!("{num}")),
                 mono(font, GUTTER_SIZE),
-                TextColor(rgb((86, 86, 100))),
+                TextColor(rgb(placeholder())),
             ));
         })
         .id();

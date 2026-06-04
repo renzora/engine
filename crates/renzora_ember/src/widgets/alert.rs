@@ -26,7 +26,7 @@ pub fn alert(
                 min_width: Val::Px(240.0),
                 ..default()
             },
-            BackgroundColor(rgb((38, 38, 48))),
+            BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             Styled::new(Role::Alert),
             Name::new("alert"),

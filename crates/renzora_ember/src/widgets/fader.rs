@@ -41,7 +41,7 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((55, 55, 66))),
+            BackgroundColor(rgb(card_bg())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("fader-track"),
         ))
@@ -74,7 +74,7 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb((240, 240, 245))),
+            BackgroundColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("fader-thumb"),
         ))

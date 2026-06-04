@@ -193,8 +193,8 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((22, 22, 28))),
-            BorderColor::all(rgb((48, 48, 58))),
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(border())),
             NgPart::Canvas,
             Name::new("node-graph"),
         ))
@@ -263,8 +263,8 @@ fn graph_node(
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((40, 40, 50))),
-            BorderColor::all(rgb((64, 64, 78))),
+            BackgroundColor(rgb(hover_bg())),
+            BorderColor::all(rgb(tree_line())),
             NgPart::Node,
             Interaction::default(),
             GraphNode { canvas },
@@ -283,7 +283,7 @@ fn graph_node(
                 border_radius: BorderRadius::top(Val::Px(5.0)),
                 ..default()
             },
-            BackgroundColor(rgb((52, 52, 66))),
+            BackgroundColor(rgb(section_bg())),
             NgPart::Header,
             bevy::ui::FocusPolicy::Pass,
             Name::new("node-title"),
@@ -365,7 +365,7 @@ fn port_dot(commands: &mut Commands, viewport: Entity, offset: Vec2, is_output: 
                 border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
-            BackgroundColor(rgb((26, 26, 32))),
+            BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
             NgPart::Port,
             Interaction::default(),

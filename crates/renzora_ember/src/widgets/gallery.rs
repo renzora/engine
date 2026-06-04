@@ -4,7 +4,8 @@ use bevy::prelude::*;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::{
-    rgb, ACCENT_BLUE, CLOSE_RED, HEADER_BG, PLAY_GREEN, TAB_HOVER_BG, TEXT_MUTED, TEXT_PRIMARY,
+    border, popup_bg, rgb, ACCENT_BLUE, CLOSE_RED, HEADER_BG, PLAY_GREEN, TAB_HOVER_BG, TEXT_MUTED,
+    TEXT_PRIMARY,
 };
 
 // Bring every widget builder + `Tone` into scope.
@@ -295,8 +296,8 @@ pub fn gallery_menus(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             Name::new("ctx-target"),
         ))
         .id();

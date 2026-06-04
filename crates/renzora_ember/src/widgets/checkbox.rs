@@ -59,7 +59,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
                 },
                 ..default()
             },
-            BackgroundColor(rgb((245, 245, 250))),
+            BackgroundColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("check"),
         ))

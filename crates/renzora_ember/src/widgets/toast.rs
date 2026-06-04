@@ -19,8 +19,8 @@ pub fn toast(commands: &mut Commands, fonts: &EmberFonts, tone: Tone, message: &
                 min_width: Val::Px(220.0),
                 ..default()
             },
-            BackgroundColor(rgb((44, 44, 55))),
-            BorderColor::all(rgb((64, 64, 78))),
+            BackgroundColor(rgb(section_bg())),
+            BorderColor::all(rgb(tree_line())),
             Styled::new(Role::Toast),
             Name::new("toast"),
         ))
