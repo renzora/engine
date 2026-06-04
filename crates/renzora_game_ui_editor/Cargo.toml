@@ -1,0 +1,19 @@
+[package]
+name = "renzora_game_ui_editor"
+version = "0.1.0"
+edition = "2021"
+
+# Editor-side (bevy_ui / ember) panels for renzora_game_ui. Lives here rather
+# than inside renzora_game_ui because the native panels depend on renzora_ember,
+# and ember -> renzora_hui -> renzora_game_ui, so game_ui itself cannot depend on
+# ember (cycle). This crate sits above ember and depends on both.
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_game_ui = { path = "../renzora_game_ui", features = ["editor"] }
+renzora_ember = { path = "../renzora_ember" }
+renzora_editor = { path = "../renzora_editor" }
+
+[lints]
+workspace = true

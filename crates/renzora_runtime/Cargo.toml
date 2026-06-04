@@ -94,6 +94,7 @@ editor = [
     "renzora_water/editor",
     "renzora_terrain/editor",
     "renzora_game_ui/editor",
+    "dep:renzora_game_ui_editor",
     "renzora_hui/editor",
     "renzora_gauges/editor",
     "renzora_navmesh/editor",
@@ -122,6 +123,7 @@ renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water" }
 renzora_animation = { path = "../renzora_animation" }
 renzora_game_ui = { path = "../renzora_game_ui" }
+renzora_game_ui_editor = { path = "../renzora_game_ui_editor", optional = true }
 renzora_hui = { path = "../renzora_hui" }
 renzora_gauges = { path = "../renzora_gauges" }
 renzora_hanabi = { path = "../renzora_hanabi" }

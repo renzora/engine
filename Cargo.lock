@@ -9632,6 +9632,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_game_ui_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_editor",
+ "renzora_ember",
+ "renzora_game_ui",
+]
+
+[[package]]
 name = "renzora_gamepad"
 version = "0.1.0"
 dependencies = [
@@ -10538,6 +10549,7 @@ dependencies = [
  "renzora_export",
  "renzora_foliage_editor",
  "renzora_game_ui",
+ "renzora_game_ui_editor",
  "renzora_gamepad",
  "renzora_gauges",
  "renzora_gizmo",
