@@ -2,7 +2,9 @@
 
 pub mod code_panel;
 pub mod compiler_log;
+mod native_compiler_log;
 mod native_preview;
+mod native_properties;
 pub mod preview;
 pub mod properties;
 
@@ -65,6 +67,8 @@ impl Plugin for ShaderEditorPlugin {
         app.register_panel(properties::ShaderPropertiesPanel);
         app.register_panel(preview::ShaderPreviewPanel);
         app.add_plugins(native_preview::NativeShaderPreview);
+        app.add_plugins(native_compiler_log::NativeShaderCompilerLog);
+        app.add_plugins(native_properties::NativeShaderProperties);
     }
 }
 
