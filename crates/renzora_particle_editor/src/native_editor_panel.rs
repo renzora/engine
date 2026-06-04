@@ -11,6 +11,7 @@
 //! self-contained ember collapsibles; rows that only apply to a given mode use
 //! `bind_display` to show/hide.
 
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use bevy::prelude::*;
@@ -18,15 +19,16 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_editor::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::inspector::color_field;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text};
+use renzora_ember::reactive::{bind_2way, bind_display, bind_text, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, collapsible, drag_value, menu_item, screen_menu, text_input, DragRange};
 
 use renzora_hanabi::{
-    ConformToSphere, EditorMode, HanabiEffectDefinition, HanabiEmitShape, OrbitSettings, ParticleAlphaMode,
-    ParticleEditorState, ParticleOrientMode, ShapeDimension, SimulationCondition, SimulationSpace, SpawnMode,
-    VelocityMode,
+    ConformToSphere, EditorMode, EffectVariable, GradientStop, HanabiEffectDefinition, HanabiEmitShape, KillZone,
+    OrbitSettings, ParticleAlphaMode, ParticleColorBlendMode, ParticleEditorState, ParticleOrientMode,
+    ShapeDimension, SimulationCondition, SimulationSpace, SpawnMode, VelocityMode,
 };
 
 const LABEL_W: f32 = 96.0;
@@ -127,8 +129,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         section_orbit,
         section_velocity_limit,
         section_size,
+        section_color,
         section_simulation,
         section_rendering,
+        section_kill_zones,
+        section_variables,
     ] {
         let s = section(commands, fonts);
         commands.entity(sections).add_child(s);
@@ -345,6 +350,238 @@ fn orb_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, 
     row_num(commands, fonts, label, step, min, max,
         move |w| getf(w, |e| e.orbit.as_ref().map(get).unwrap_or(0.0), 0.0),
         move |w, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { set(o, *v); }))
+}
+
+// ── Part-3 sections: Color (gradient), Kill Zones, Variables ──────────────────
+
+fn section_color(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("palette"), "Color Over Lifetime", true);
+    let flat_check = row_bool(commands, fonts, "Flat Color", |w| getf(w, |e| e.use_flat_color, false), |w, v| setf(w, |e| e.use_flat_color = *v));
+    commands.entity(body).add_child(flat_check);
+
+    let (flat_row, flat_cell) = base_row(commands, fonts, "Color");
+    let cf = color_field(commands, |w| getf(w, |e| [e.flat_color[0], e.flat_color[1], e.flat_color[2]], [1.0; 3]), |w, c| setf(w, |e| e.flat_color = [c[0], c[1], c[2], e.flat_color[3]]));
+    commands.entity(flat_cell).add_child(cf);
+    bind_display(commands, flat_row, |w| getf(w, |e| e.use_flat_color, false));
+    commands.entity(body).add_child(flat_row);
+
+    let grad = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    let stops = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    keyed_list(commands, stops, gradient_snapshot);
+    let actions = row_actions(commands, fonts, "Gradient", vec![
+        ("+ Add", Arc::new(|w: &mut World| setf(w, |e| if e.color_gradient.len() < 8 {
+            e.color_gradient.push(GradientStop { position: 0.5, color: [1.0, 1.0, 1.0, 1.0] });
+            e.color_gradient.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap_or(std::cmp::Ordering::Equal));
+        }))),
+        ("Fire", act(|e| e.color_gradient = vec![
+            GradientStop { position: 0.0, color: [1.0, 1.0, 0.3, 1.0] },
+            GradientStop { position: 0.3, color: [1.0, 0.5, 0.0, 1.0] },
+            GradientStop { position: 1.0, color: [0.3, 0.1, 0.1, 0.0] },
+        ])),
+        ("Smoke", act(|e| e.color_gradient = vec![
+            GradientStop { position: 0.0, color: [0.3, 0.3, 0.3, 0.8] },
+            GradientStop { position: 1.0, color: [0.5, 0.5, 0.5, 0.0] },
+        ])),
+    ]);
+    commands.entity(grad).add_children(&[stops, actions]);
+    bind_display(commands, grad, |w| getf(w, |e| !e.use_flat_color, false));
+    commands.entity(body).add_child(grad);
+
+    let hdr_check = row_bool(commands, fonts, "HDR Color", |w| getf(w, |e| e.use_hdr_color, false), |w, v| setf(w, |e| e.use_hdr_color = *v));
+    let hdr_int = row_num(commands, fonts, "HDR Intensity", 0.1, 1.0, 100.0, |w| getf(w, |e| e.hdr_intensity, 1.0), |w, v| setf(w, |e| e.hdr_intensity = *v));
+    bind_display(commands, hdr_int, |w| getf(w, |e| e.use_hdr_color, false));
+    let blend = row_combo(commands, fonts, "Blend Mode", |w| match getf(w, |e| e.color_blend_mode, ParticleColorBlendMode::Modulate) {
+        ParticleColorBlendMode::Modulate => "Modulate".into(),
+        ParticleColorBlendMode::Overwrite => "Overwrite".into(),
+        ParticleColorBlendMode::Add => "Add".into(),
+    }, vec![
+        ("Modulate".into(), act(|e| e.color_blend_mode = ParticleColorBlendMode::Modulate)),
+        ("Overwrite".into(), act(|e| e.color_blend_mode = ParticleColorBlendMode::Overwrite)),
+        ("Add".into(), act(|e| e.color_blend_mode = ParticleColorBlendMode::Add)),
+    ]);
+    commands.entity(body).add_children(&[hdr_check, hdr_int, blend]);
+    root
+}
+
+fn gradient_snapshot(world: &World) -> KeyedSnapshot {
+    let len = getf(world, |e| e.color_gradient.len(), 0);
+    let items: Vec<(u64, u64)> = (0..len)
+        .map(|i| {
+            let mut k = hasher();
+            i.hash(&mut k);
+            let mut h = hasher();
+            len.hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot { items, build: Box::new(move |c, f, i| stop_row(c, f, i, len > 2)) }
+}
+
+fn stop_row(commands: &mut Commands, fonts: &EmberFonts, i: usize, can_remove: bool) -> Entity {
+    let (row, cell) = base_row(commands, fonts, &format!("Stop {}", i + 1));
+    let pos = num_field(commands, fonts, "", value_text(), 0.0, 0.01, 0.0, 1.0,
+        move |w| getf(w, |e| e.color_gradient.get(i).map(|s| s.position).unwrap_or(0.0), 0.0),
+        move |w, v| setf(w, |e| if let Some(s) = e.color_gradient.get_mut(i) { s.position = v.clamp(0.0, 1.0); }));
+    let cf = color_field(commands,
+        move |w| getf(w, |e| e.color_gradient.get(i).map(|s| [s.color[0], s.color[1], s.color[2]]).unwrap_or([1.0; 3]), [1.0; 3]),
+        move |w, c| setf(w, |e| if let Some(s) = e.color_gradient.get_mut(i) { s.color = [c[0], c[1], c[2], s.color[3]]; }));
+    commands.entity(cell).add_children(&[pos, cf]);
+    if can_remove {
+        let rm = small_button(commands, fonts, "\u{2715}", Arc::new(move |w: &mut World| setf(w, |e| if e.color_gradient.len() > 2 && i < e.color_gradient.len() { e.color_gradient.remove(i); })));
+        commands.entity(cell).add_child(rm);
+    }
+    row
+}
+
+fn section_kill_zones(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("prohibit"), "Kill Zones", false);
+    let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
+    keyed_list(commands, list, kill_snapshot);
+    let add = row_actions(commands, fonts, "Add", vec![
+        ("+ Sphere", act(|e| e.kill_zones.push(KillZone::Sphere { center: [0.0, 0.0, 0.0], radius: 5.0, kill_inside: false }))),
+        ("+ AABB", act(|e| e.kill_zones.push(KillZone::Aabb { center: [0.0, 0.0, 0.0], half_size: [5.0, 5.0, 5.0], kill_inside: false }))),
+    ]);
+    commands.entity(body).add_children(&[list, add]);
+    root
+}
+
+fn kill_snapshot(world: &World) -> KeyedSnapshot {
+    let kinds: Vec<u8> = getf(world, |e| e.kill_zones.iter().map(|z| matches!(z, KillZone::Aabb { .. }) as u8).collect(), Vec::new());
+    let len = kinds.len();
+    let items: Vec<(u64, u64)> = kinds
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            let mut kk = hasher();
+            i.hash(&mut kk);
+            let mut h = hasher();
+            (k, len).hash(&mut h);
+            (kk.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot { items, build: Box::new(move |c, f, i| kill_zone_group(c, f, i, kinds[i])) }
+}
+
+fn kill_zone_group(commands: &mut Commands, fonts: &EmberFonts, i: usize, is_aabb: u8) -> Entity {
+    let col = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    let title = commands.spawn((Text::new(format!("{} {}", if is_aabb == 1 { "AABB" } else { "Sphere" }, i + 1)), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() })).id();
+    let center = row_vec3(commands, fonts, "Center",
+        Arc::new(move |w, k| getf(w, |e| match e.kill_zones.get(i) {
+            Some(KillZone::Sphere { center, .. }) | Some(KillZone::Aabb { center, .. }) => center.get(k).copied().unwrap_or(0.0),
+            _ => 0.0,
+        }, 0.0)),
+        Arc::new(move |w, k, v| setf(w, |e| match e.kill_zones.get_mut(i) {
+            Some(KillZone::Sphere { center, .. }) | Some(KillZone::Aabb { center, .. }) => { if let Some(c) = center.get_mut(k) { *c = v; } }
+            _ => {}
+        })));
+    commands.entity(col).add_children(&[title, center]);
+    if is_aabb == 1 {
+        let hs = row_vec3(commands, fonts, "Half Size",
+            Arc::new(move |w, k| getf(w, |e| if let Some(KillZone::Aabb { half_size, .. }) = e.kill_zones.get(i) { half_size.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)),
+            Arc::new(move |w, k, v| setf(w, |e| if let Some(KillZone::Aabb { half_size, .. }) = e.kill_zones.get_mut(i) { if let Some(c) = half_size.get_mut(k) { *c = v; } })));
+        commands.entity(col).add_child(hs);
+    } else {
+        let radius = row_num(commands, fonts, "Radius", 0.1, 0.1, 100.0,
+            move |w| getf(w, |e| if let Some(KillZone::Sphere { radius, .. }) = e.kill_zones.get(i) { *radius } else { 0.0 }, 0.0),
+            move |w, v| setf(w, |e| if let Some(KillZone::Sphere { radius, .. }) = e.kill_zones.get_mut(i) { *radius = *v; }));
+        commands.entity(col).add_child(radius);
+    }
+    let inside = row_bool(commands, fonts, "Kill Inside",
+        move |w| getf(w, |e| match e.kill_zones.get(i) {
+            Some(KillZone::Sphere { kill_inside, .. }) | Some(KillZone::Aabb { kill_inside, .. }) => *kill_inside,
+            _ => false,
+        }, false),
+        move |w, v| setf(w, |e| match e.kill_zones.get_mut(i) {
+            Some(KillZone::Sphere { kill_inside, .. }) | Some(KillZone::Aabb { kill_inside, .. }) => *kill_inside = *v,
+            _ => {}
+        }));
+    let remove = row_actions(commands, fonts, "", vec![("\u{2715} Remove", Arc::new(move |w: &mut World| setf(w, |e| if i < e.kill_zones.len() { e.kill_zones.remove(i); })) as Action)]);
+    commands.entity(col).add_children(&[inside, remove]);
+    col
+}
+
+fn section_variables(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("code"), "Variables", false);
+    let hint = commands.spawn((Text::new("Exposed to scripts"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() })).id();
+    let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
+    keyed_list(commands, list, variables_snapshot);
+    let add = row_actions(commands, fonts, "Add", vec![
+        ("+ Float", Arc::new(|w: &mut World| setf(w, |e| { let n = format!("var_{}", e.variables.len()); e.variables.insert(n, EffectVariable::Float { value: 1.0, min: 0.0, max: 10.0 }); }))),
+        ("+ Color", Arc::new(|w: &mut World| setf(w, |e| { let n = format!("color_{}", e.variables.len()); e.variables.insert(n, EffectVariable::Color { value: [1.0, 1.0, 1.0, 1.0] }); }))),
+    ]);
+    commands.entity(body).add_children(&[hint, list, add]);
+    root
+}
+
+fn variables_snapshot(world: &World) -> KeyedSnapshot {
+    let mut vars: Vec<(String, u8)> = getf(world, |e| e.variables.iter().map(|(k, v)| (k.clone(), var_disc(v))).collect(), Vec::new());
+    vars.sort_by(|a, b| a.0.cmp(&b.0));
+    let items: Vec<(u64, u64)> = vars
+        .iter()
+        .map(|(name, disc)| {
+            let mut k = hasher();
+            name.hash(&mut k);
+            let mut h = hasher();
+            (name, disc).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot { items, build: Box::new(move |c, f, i| var_row(c, f, &vars[i].0, vars[i].1)) }
+}
+
+fn var_disc(v: &EffectVariable) -> u8 {
+    match v {
+        EffectVariable::Float { .. } => 0,
+        EffectVariable::Color { .. } => 1,
+        EffectVariable::Vec3 { .. } => 2,
+    }
+}
+
+fn var_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, disc: u8) -> Entity {
+    let (row, cell) = base_row(commands, fonts, name);
+    let n = name.to_string();
+    match disc {
+        1 => {
+            let na = n.clone();
+            let nb = n.clone();
+            let cf = color_field(commands,
+                move |w| getf(w, |e| if let Some(EffectVariable::Color { value }) = e.variables.get(&na) { [value[0], value[1], value[2]] } else { [1.0; 3] }, [1.0; 3]),
+                move |w, c| setf(w, |e| if let Some(EffectVariable::Color { value }) = e.variables.get_mut(&nb) { *value = [c[0], c[1], c[2], value[3]]; }));
+            commands.entity(cell).add_child(cf);
+        }
+        2 => {
+            let get = Arc::new({
+                let n = n.clone();
+                move |w: &World, k: usize| getf(w, |e| if let Some(EffectVariable::Vec3 { value }) = e.variables.get(&n) { value.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)
+            });
+            let set = Arc::new({
+                let n = n.clone();
+                move |w: &mut World, k: usize, v: f32| setf(w, |e| if let Some(EffectVariable::Vec3 { value }) = e.variables.get_mut(&n) { if let Some(c) = value.get_mut(k) { *c = v; } })
+            });
+            // Reuse the vec3 field trio inline (no label, into the cell).
+            for (k, &(axis, col)) in AXES3.iter().enumerate() {
+                let g = get.clone();
+                let s = set.clone();
+                let field = num_field(commands, fonts, axis, col, 0.0, 0.1, 0.0, 0.0, move |w| g(w, k), move |w, v| s(w, k, *v));
+                commands.entity(cell).add_child(field);
+            }
+        }
+        _ => {
+            let na = n.clone();
+            let nb = n.clone();
+            let field = num_field(commands, fonts, "", value_text(), 0.0, 0.05, 0.0, 0.0,
+                move |w| getf(w, |e| if let Some(EffectVariable::Float { value, .. }) = e.variables.get(&na) { *value } else { 0.0 }, 0.0),
+                move |w, v| setf(w, |e| if let Some(EffectVariable::Float { value, .. }) = e.variables.get_mut(&nb) { *value = *v; }));
+            commands.entity(cell).add_child(field);
+        }
+    }
+    let rm = small_button(commands, fonts, "\u{2715}", Arc::new(move |w: &mut World| setf(w, |e| { e.variables.remove(&n); })));
+    commands.entity(cell).add_child(rm);
+    row
+}
+
+fn hasher() -> std::collections::hash_map::DefaultHasher {
+    std::collections::hash_map::DefaultHasher::new()
 }
 
 fn save_current(w: &mut World, save_as: bool) {

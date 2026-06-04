@@ -5,10 +5,6 @@
 mod editor_panel;
 mod graph_editor;
 mod graph_panel;
-// WIP: native particle editor panel, grown section by section. Not registered
-// yet (egui panel stays active) so no section is lost mid-port; wired in the
-// final commit. `allow(dead_code)` until then.
-#[allow(dead_code)]
 mod native_editor_panel;
 mod native_preview_panel;
 mod preview;
@@ -29,6 +25,7 @@ impl Plugin for ParticleEditorPlugin {
         app.register_panel(graph_panel::ParticleGraphPanel);
         app.register_panel(preview_panel::ParticlePreviewPanel);
         app.add_plugins(native_preview_panel::NativeParticlePreview);
+        app.add_plugins(native_editor_panel::NativeParticleEditor);
     }
 }
 
