@@ -14,6 +14,7 @@
 //!   encoder pipeline.
 
 mod model;
+mod native;
 mod panel;
 mod runtime;
 
@@ -50,6 +51,7 @@ impl Plugin for SequencerPlugin {
         );
 
         app.register_panel(panel::SequencerPanel::new(bridge));
+        app.add_plugins(native::NativeSequencer);
     }
 }
 

@@ -7,6 +7,8 @@ edition = "2021"
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_editor = { path = "../renzora_editor" }
 renzora_ui = { path = "../renzora_ui" }
+# bevy_ui-native panel content (the egui → bevy_ui migration).
+renzora_ember = { path = "../renzora_ember" }
 renzora_theme = { path = "../renzora_theme" }
 bevy = { workspace = true }
 bevy_egui = { workspace = true }
