@@ -63,6 +63,53 @@ impl NavMeshPanelState {
             .map(|s| s.show_agent_paths)
             .unwrap_or(true)
     }
+
+    /// Current "Auto Rebuild" toggle state. Used by the native panel binding.
+    pub(crate) fn auto_rebuild(&self) -> bool {
+        self.shared.lock().map(|s| s.auto_rebuild).unwrap_or(true)
+    }
+
+    /// Queue a "Show Agent Paths" change (drained by `drain_panel_actions`).
+    pub(crate) fn queue_show_agent_paths(&self, v: bool) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::SetShowAgentPaths(v));
+        }
+    }
+
+    /// Queue an "Auto Rebuild" change (drained by `drain_panel_actions`).
+    pub(crate) fn queue_auto_rebuild(&self, v: bool) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::SetAutoRebuild(v));
+        }
+    }
+
+    /// Queue a per-volume debug-draw toggle.
+    pub(crate) fn queue_toggle_volume_debug(&self, e: Entity) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::ToggleVolumeDebug(e));
+        }
+    }
+
+    /// Queue a rebuild of a single volume.
+    pub(crate) fn queue_rebuild_volume(&self, e: Entity) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::RebuildVolume(e));
+        }
+    }
+
+    /// Queue a "Reset Agents" action.
+    pub(crate) fn queue_reset_agents(&self) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::ResetAgents);
+        }
+    }
+
+    /// Queue a "Bake to Disk" action.
+    pub(crate) fn queue_bake_to_disk(&self) {
+        if let Ok(mut s) = self.shared.lock() {
+            s.pending.push(PanelAction::BakeToDisk);
+        }
+    }
 }
 
 /// Mirror of volume rows, rebuilt each frame by [`refresh_panel_mirror`]

@@ -30,6 +30,8 @@ use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 
 #[cfg(feature = "editor")]
 pub mod editor_panel;
+#[cfg(feature = "editor")]
+mod native;
 
 /// Defines a navigable region of the world. The volume is an axis-aligned box
 /// in local space (its center is the entity's `Transform` translation) that
@@ -1001,6 +1003,8 @@ impl Plugin for NavMeshPlugin {
             app.init_resource::<editor_panel::NavMeshPanelMirror>();
             app.init_resource::<editor_panel::NavMeshBakeRequest>();
             app.register_panel(editor_panel::NavMeshPanel);
+            // Native (ember) content overrides the egui panel body at runtime.
+            app.add_plugins(native::NativeNavmesh);
             app.add_systems(
                 Update,
                 (
