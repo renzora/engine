@@ -10779,6 +10779,7 @@ dependencies = [
  "renzora_ember",
  "renzora_hui",
  "renzora_theme",
+ "renzora_ui",
 ]
 
 [[package]]

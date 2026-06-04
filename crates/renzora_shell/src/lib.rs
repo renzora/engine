@@ -54,6 +54,9 @@ impl Plugin for ShellPlugin {
                 settings_btn_click,
                 theme_bridge,
                 apply_chrome_style,
+                doc_add_click,
+                doc_tab_click,
+                doc_tab_close,
             ),
         );
     }
@@ -388,31 +391,15 @@ fn ribbon_switch(
     let Some(index) = switch_to else {
         return;
     };
-    if index == layouts.active || index >= layouts.layouts.len() {
-        return;
-    }
-
-    let active = layouts.active;
-    if let Some(slot) = layouts.layouts.get_mut(active) {
-        slot.1 = dock.tree.clone();
-    }
-    dock.tree = layouts.layouts[index].1.clone();
-    layouts.active = index;
-    dirty.0 = true;
-
-    for item in &items {
-        let is_active = item.index == index;
-        if let Ok(mut c) = colors.get_mut(item.text) {
-            c.0 = rgb(if is_active { text_primary() } else { text_muted() });
-        }
-        if let Ok(mut b) = backgrounds.get_mut(item.underline) {
-            b.0 = if is_active {
-                rgb(accent())
-            } else {
-                Color::NONE
-            };
-        }
-    }
+    apply_workspace(
+        index,
+        &mut layouts,
+        &mut dock,
+        &mut dirty,
+        &items,
+        &mut backgrounds,
+        &mut colors,
+    );
 }
 
 // ── Chrome ──────────────────────────────────────────────────────────────────
@@ -925,9 +912,9 @@ fn ribbon_item(
     item
 }
 
-/// The document tab strip: a button-styled active document tab + an add-tab
-/// button, with a bottom border separating it from the dock below.
-fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+/// The document tab strip: the open documents (`DocumentTabState`, shared with
+/// the egui editor) rendered reactively, plus an add-document button.
+fn build_doc_tabs(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -947,6 +934,105 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             Name::new("doc-tabs"),
         ))
         .id();
+
+    // Reactive tab strip from the shared DocumentTabState.
+    let tabs = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                height: Val::Percent(100.0),
+                column_gap: Val::Px(2.0),
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            Name::new("doc-tab-list"),
+        ))
+        .id();
+    renzora_ember::reactive::keyed_list(commands, tabs, doc_tab_snapshot);
+
+    // "+" — add a new document (scene) tab.
+    let plus = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(7.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            DocAddBtn,
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("doc-add"),
+        ))
+        .id();
+    let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
+    commands.entity(plus).add_child(plus_icon);
+    commands.entity(bar).add_children(&[tabs, plus]);
+    bar
+}
+
+#[derive(Component)]
+struct DocAddBtn;
+#[derive(Component)]
+struct DocTabClick(u64);
+#[derive(Component)]
+struct DocTabClose(u64);
+
+/// Keyed snapshot of the open document tabs (id-keyed; the content hash carries
+/// active/modified state so a tab repaints only when it actually changes).
+fn doc_tab_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+    use std::hash::{Hash, Hasher};
+    let empty = || renzora_ember::reactive::KeyedSnapshot {
+        items: Vec::new(),
+        build: Box::new(|c, _, _| c.spawn(Node::default()).id()),
+    };
+    let Some(state) = world.get_resource::<renzora_ui::DocumentTabState>() else {
+        return empty();
+    };
+    let can_close = state.tabs.len() > 1;
+    // (id, name, icon glyph, active, modified)
+    let tabs: Vec<(u64, String, &'static str, bool, bool)> = state
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.id, t.name.clone(), t.kind.icon(), i == state.active_tab, t.is_modified))
+        .collect();
+    let items: Vec<(u64, u64)> = tabs
+        .iter()
+        .map(|(id, name, icon, active, modified)| {
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            id.hash(&mut k);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (name, icon, active, modified, can_close).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    renzora_ember::reactive::KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, name, icon, active, modified) = &tabs[i];
+            doc_tab_row(c, f, *id, name, icon, *active, *modified, can_close)
+        }),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn doc_tab_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    id: u64,
+    name: &str,
+    icon: &str,
+    active: bool,
+    modified: bool,
+    can_close: bool,
+) -> Entity {
+    let fg = if active { text_primary() } else { text_muted() };
     let tab = commands
         .spawn((
             Node {
@@ -956,41 +1042,151 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(9.0), Val::Px(4.0)),
                 border: UiRect::top(Val::Px(2.0)),
+                flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(tab_active())),
-            BorderColor::all(rgb(accent())),
-            Name::new("doc:sponza"),
+            BackgroundColor(if active { rgb(tab_active()) } else { Color::NONE }),
+            BorderColor::all(if active { rgb(accent()) } else { Color::NONE }),
+            Interaction::default(),
+            DocTabClick(id),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new(format!("doc:{name}")),
         ))
         .id();
-    let ic = glyph(commands, "file", text_primary(), 13.0);
+    // Kind icon — the phosphor glyph is already resolved on the DocTabKind.
+    let ic = commands
+        .spawn((
+            Text::new(icon.to_string()),
+            TextFont { font: fonts.phosphor.clone(), font_size: 13.0, ..default() },
+            TextColor(rgb(fg)),
+        ))
+        .id();
     let lbl = commands
         .spawn((
-            Text::new("sponza"),
-            ui_font(font, 12.0),
-            TextColor(rgb(text_primary())),
+            Text::new(if modified { format!("{name}*") } else { name.to_string() }),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(fg)),
         ))
         .id();
-    let cl = glyph(commands, "x", text_muted(), 11.0);
-    commands.entity(tab).add_children(&[ic, lbl, cl]);
+    let mut kids = vec![ic, lbl];
+    if can_close {
+        let close = commands
+            .spawn((
+                Node {
+                    align_items: AlignItems::Center,
+                    padding: UiRect::left(Val::Px(2.0)),
+                    ..default()
+                },
+                Interaction::default(),
+                DocTabClose(id),
+                renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ))
+            .id();
+        let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 11.0);
+        commands.entity(close).add_child(x);
+        kids.push(close);
+    }
+    commands.entity(tab).add_children(&kids);
+    tab
+}
 
-    let plus = commands
-        .spawn((
-            Node {
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(7.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(tab_active())),
-            Name::new("doc-add"),
-        ))
-        .id();
-    let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
-    commands.entity(plus).add_child(plus_icon);
-    commands.entity(bar).add_children(&[tab, plus]);
-    bar
+/// Swap the dock to workspace `index` (saving the current layout into the
+/// active slot) and re-style the ribbon. Shared by the ribbon + doc-tab clicks.
+#[allow(clippy::too_many_arguments)]
+fn apply_workspace(
+    index: usize,
+    layouts: &mut ShellLayouts,
+    dock: &mut Dock,
+    dirty: &mut DockDirty,
+    items: &Query<&RibbonItem>,
+    backgrounds: &mut Query<&mut BackgroundColor>,
+    colors: &mut Query<&mut TextColor>,
+) {
+    if index == layouts.active || index >= layouts.layouts.len() {
+        return;
+    }
+    let active = layouts.active;
+    if let Some(slot) = layouts.layouts.get_mut(active) {
+        slot.1 = dock.tree.clone();
+    }
+    dock.tree = layouts.layouts[index].1.clone();
+    layouts.active = index;
+    dirty.0 = true;
+    for item in items {
+        let is_active = item.index == index;
+        if let Ok(mut c) = colors.get_mut(item.text) {
+            c.0 = rgb(if is_active { text_primary() } else { text_muted() });
+        }
+        if let Ok(mut b) = backgrounds.get_mut(item.underline) {
+            b.0 = if is_active { rgb(accent()) } else { Color::NONE };
+        }
+    }
+}
+
+/// `+` → add an "Untitled Scene" document and focus it.
+fn doc_add_click(
+    q: Query<&Interaction, (With<DocAddBtn>, Changed<Interaction>)>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+) {
+    let Some(mut state) = state else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        let idx = state.add_tab("Untitled Scene".into(), None);
+        state.activate_tab(idx);
+    }
+}
+
+/// Click a document tab → activate it + switch to the workspace its kind maps to.
+#[allow(clippy::too_many_arguments)]
+fn doc_tab_click(
+    q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    items: Query<&RibbonItem>,
+    mut backgrounds: Query<&mut BackgroundColor>,
+    mut colors: Query<&mut TextColor>,
+) {
+    let Some(mut state) = state else { return };
+    for (interaction, click) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(idx) = state.tabs.iter().position(|t| t.id == click.0) else {
+            continue;
+        };
+        state.activate_tab(idx);
+        if let Some(name) = state.tabs[idx].kind.layout_name() {
+            if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
+                apply_workspace(
+                    wi,
+                    &mut layouts,
+                    &mut dock,
+                    &mut dirty,
+                    &items,
+                    &mut backgrounds,
+                    &mut colors,
+                );
+            }
+        }
+    }
+}
+
+/// Click a document tab's × → close it (the model refuses to close the last
+/// scene / last tab).
+fn doc_tab_close(
+    q: Query<(&Interaction, &DocTabClose), Changed<Interaction>>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+) {
+    let Some(mut state) = state else { return };
+    for (interaction, close) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let Some(idx) = state.tabs.iter().position(|t| t.id == close.0) {
+            state.close_tab(idx);
+        }
+    }
 }
 
 /// A full-height flex row used as a top-bar zone (left / center / right).
