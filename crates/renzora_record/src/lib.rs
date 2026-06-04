@@ -10,6 +10,7 @@
 //! timestamped name unless a custom path is set in the panel.
 
 mod encoder;
+mod native;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -750,6 +751,7 @@ impl Plugin for RecordPlugin {
         app.add_systems(Update, (drive_stop_transition, drive_finalise).chain());
 
         app.register_panel(RecordPanel);
+        app.add_plugins(native::NativeRecordPanel);
     }
 }
 

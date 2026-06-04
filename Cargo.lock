@@ -10453,6 +10453,7 @@ dependencies = [
  "ffmpeg-sidecar",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_theme",
  "renzora_ui",
 ]
