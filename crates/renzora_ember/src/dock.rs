@@ -1329,6 +1329,8 @@ pub(crate) fn apply_dock_style(
             DockPart::TabBar => {
                 bg.0 = d.tabbar_bg.color();
                 node.border = UiRect::bottom(Val::Px(d.header_border_width));
+                node.border_radius = BorderRadius::all(Val::Px(d.header_radius));
+                node.padding = UiRect::axes(Val::Px(d.header_pad_x), Val::Px(d.header_pad_y));
                 if let Some(mut bc) = border {
                     *bc = BorderColor::all(d.header_border.color());
                 }

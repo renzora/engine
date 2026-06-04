@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::theme::{
     accent, border, card_bg, divider, header_bg, hover_bg, panel_bg, popup_bg, section_bg,
-    selection, tab_active, tab_hover, text_muted, text_primary,
+    selection, tab_active, tab_hover, text_muted, text_primary, window_bg,
 };
 
 /// Registers the theme resource + the painter. The [`Theme`] is the source of
@@ -37,6 +37,7 @@ impl Plugin for ThemePlugin {
             .register_type::<NodeGraphStyle>()
             .register_type::<AssetTileStyle>()
             .register_type::<DockStyle>()
+            .register_type::<BarStyle>()
             .register_type::<Rgba>()
             .add_systems(Update, apply_theme);
     }
@@ -317,6 +318,9 @@ pub struct DockStyle {
     pub tabbar_bg: Rgba,
     pub header_border: Rgba,
     pub header_border_width: f32,
+    pub header_radius: f32,
+    pub header_pad_x: f32,
+    pub header_pad_y: f32,
     // Tabs.
     pub tab_active: Rgba,
     pub tab_inactive: Rgba,
@@ -349,6 +353,9 @@ impl Default for DockStyle {
             tabbar_bg: c(header_bg()),
             header_border: c(divider()),
             header_border_width: 1.0,
+            header_radius: 0.0,
+            header_pad_x: 0.0,
+            header_pad_y: 0.0,
             tab_active: c(tab_active()),
             tab_inactive: Rgba::NONE,
             tab_hover: c(tab_hover()),
@@ -366,6 +373,45 @@ impl Default for DockStyle {
             shadow_blur: 8.0,
             shadow_spread: 0.0,
         }
+    }
+}
+
+/// Style for one editor-chrome bar (the top bar, the document-tab strip, or the
+/// status bar). A full-width strip with its own fill, height, a single separator
+/// edge (bottom for the top bars, top for the status bar), optional rounding and
+/// inner padding — so custom chrome (taller bars, thicker rules, padded strips)
+/// is theme-driven like the dock.
+#[derive(Reflect, Clone, Serialize, Deserialize)]
+pub struct BarStyle {
+    pub bg: Rgba,
+    pub height: f32,
+    pub border: Rgba,
+    pub border_width: f32,
+    pub radius: f32,
+    pub pad_x: f32,
+    pub pad_y: f32,
+}
+
+impl BarStyle {
+    fn new(bg: (u8, u8, u8), height: f32, border: Rgba, border_width: f32, pad_x: f32) -> Self {
+        Self {
+            bg: Rgba::rgb(bg),
+            height,
+            border,
+            border_width,
+            radius: 0.0,
+            pad_x,
+            pad_y: 0.0,
+        }
+    }
+    fn top_bar() -> Self {
+        Self::new(window_bg(), 34.0, Rgba::NONE, 0.0, 8.0)
+    }
+    fn doc_tabs() -> Self {
+        Self::new(header_bg(), 30.0, Rgba::rgb(divider()), 1.0, 8.0)
+    }
+    fn status_bar() -> Self {
+        Self::new(window_bg(), 22.0, Rgba::NONE, 0.0, 10.0)
     }
 }
 
@@ -396,6 +442,9 @@ pub struct Theme {
     pub node_graph: NodeGraphStyle,
     pub asset_tile: AssetTileStyle,
     pub dock: DockStyle,
+    pub top_bar: BarStyle,
+    pub doc_tabs: BarStyle,
+    pub status_bar: BarStyle,
 }
 
 impl Theme {
@@ -481,6 +530,9 @@ impl Default for Theme {
             node_graph: NodeGraphStyle::default(),
             asset_tile: AssetTileStyle::default(),
             dock: DockStyle::default(),
+            top_bar: BarStyle::top_bar(),
+            doc_tabs: BarStyle::doc_tabs(),
+            status_bar: BarStyle::status_bar(),
         }
     }
 }

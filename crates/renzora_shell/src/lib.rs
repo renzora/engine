@@ -53,6 +53,7 @@ impl Plugin for ShellPlugin {
                 top_menu_open,
                 settings_btn_click,
                 theme_bridge,
+                apply_chrome_style,
             ),
         );
     }
@@ -463,6 +464,47 @@ fn spawn_shell(commands: &mut Commands, fonts: &EmberFonts, themes: &[String], a
         .add_children(&[top_bar, doctabs, dock_area, statusbar]);
 }
 
+/// Which chrome bar an entity is, so [`apply_chrome_style`] can repaint each from
+/// `Theme.chrome` (fill / height / separator edge / rounding / padding).
+#[derive(Component, Clone, Copy)]
+enum ChromeBar {
+    Top,
+    DocTabs,
+    Status,
+}
+
+/// Repaint the three chrome bars (top bar, document tabs, status bar) from the
+/// ember `Theme.chrome` whenever the theme changes — mirrors the dock's
+/// `apply_dock_style` so the bars are theme-driven (and live-editable in the
+/// Theme tab) rather than baking in palette colors. The status bar's separator
+/// sits on its top edge; the top bars' on the bottom.
+fn apply_chrome_style(
+    theme: Res<renzora_ember::style::Theme>,
+    mut q: Query<(Ref<ChromeBar>, &mut BackgroundColor, &mut BorderColor, &mut Node)>,
+) {
+    let repaint = theme.is_changed();
+    for (kind, mut bg, mut bc, mut node) in &mut q {
+        if !repaint && !kind.is_added() {
+            continue;
+        }
+        let (s, edge_top) = match *kind {
+            ChromeBar::Top => (&theme.top_bar, false),
+            ChromeBar::DocTabs => (&theme.doc_tabs, false),
+            ChromeBar::Status => (&theme.status_bar, true),
+        };
+        bg.0 = s.bg.color();
+        node.height = Val::Px(s.height);
+        node.border = if edge_top {
+            UiRect::top(Val::Px(s.border_width))
+        } else {
+            UiRect::bottom(Val::Px(s.border_width))
+        };
+        node.border_radius = BorderRadius::all(Val::Px(s.radius));
+        node.padding = UiRect::axes(Val::Px(s.pad_x), Val::Px(s.pad_y));
+        *bc = BorderColor::all(s.border.color());
+    }
+}
+
 /// The bottom status bar: a "Ready" label + plugin-contributed items from the
 /// bevy-native `ShellStatusRegistry`, rendered via a reactive keyed list (so live
 /// metrics update without rebuilding the bar).
@@ -485,6 +527,8 @@ fn build_status_bar(
                 ..default()
             },
             BackgroundColor(rgb(window_bg())),
+            BorderColor::all(Color::NONE),
+            ChromeBar::Status,
             Name::new("status-bar"),
         ))
         .id();
@@ -716,6 +760,8 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(window_bg())),
+            BorderColor::all(Color::NONE),
+            ChromeBar::Top,
             Name::new("top-bar"),
         ))
         .id();
@@ -886,6 +932,7 @@ fn build_doc_tabs(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             },
             BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb(divider())),
+            ChromeBar::DocTabs,
             Name::new("doc-tabs"),
         ))
         .id();
