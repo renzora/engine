@@ -156,7 +156,7 @@ fn swatch_grid(commands: &mut Commands, target: Entity) -> Entity {
                         ..default()
                     },
                     BackgroundColor(Color::srgb_u8(color[0], color[1], color[2])),
-                    BorderColor::all(rgb((60, 60, 70))),
+                    BorderColor::all(rgb(renzora_ember::theme::border())),
                     Interaction::default(),
                     MenuAction(Box::new(move |w: &mut World| {
                         w.entity_mut(target).insert(EntityLabelColor(color));

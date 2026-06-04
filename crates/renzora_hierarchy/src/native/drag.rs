@@ -210,7 +210,7 @@ pub(crate) fn hier_drag_tooltip(
                 ..default()
             },
             BackgroundColor(Color::srgba(0.11, 0.11, 0.14, 0.94)),
-            BorderColor::all(rgb((80, 140, 255))),
+            BorderColor::all(rgb(renzora_ember::theme::accent())),
             GlobalZIndex(10_000),
             Pickable::IGNORE,
             HierDragTooltip,
@@ -221,7 +221,7 @@ pub(crate) fn hier_drag_tooltip(
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb((222, 222, 232))),
+            TextColor(rgb(renzora_ember::theme::text_primary())),
             bevy::text::TextLayout::new_with_no_wrap(),
             Pickable::IGNORE,
             HierDragTooltipText,

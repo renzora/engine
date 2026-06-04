@@ -562,7 +562,7 @@ fn note_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, text: &st
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb((120, 120, 132))),
+            TextColor(rgb(renzora_ember::theme::text_muted())),
         ))
         .id();
     let row = commands
@@ -1967,7 +1967,7 @@ fn build_action_row(
             .spawn((
                 Text::new("Press any key or mouse button..."),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(rgb((230, 180, 60))),
+                TextColor(rgb(renzora_ember::theme::warn_amber())),
                 Node {
                     flex_grow: 1.0,
                     ..default()
@@ -2267,7 +2267,7 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
     bind_text_color(commands, lbl, move |w| {
         let kb = w.resource::<KeyBindings>();
         if kb.rebinding == Some(action) {
-            rgb((230, 180, 60))
+            rgb(renzora_ember::theme::warn_amber())
         } else if kb.get(action).is_some() {
             rgb(accent())
         } else {

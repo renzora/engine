@@ -535,7 +535,7 @@ fn theme_dropup(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
             BorderColor::all(rgb(divider())),
             GlobalZIndex(600),
             bevy::ui::RelativeCursorPosition::default(),
@@ -1020,7 +1020,7 @@ fn top_menu_item(
         ))
         .id();
     renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb((46, 46, 54)),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
     commands.entity(item).with_children(|p| {

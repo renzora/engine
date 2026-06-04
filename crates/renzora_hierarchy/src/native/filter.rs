@@ -91,8 +91,8 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(rgb((30, 30, 38))),
-            BorderColor::all(rgb((60, 60, 74))),
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
             GlobalZIndex(700),
             // Absorb pointer events so hover/click never leaks to the rows behind.
             bevy::ui::FocusPolicy::Block,
@@ -137,7 +137,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
             return rgb(ACCENT_BLUE).with_alpha(0.30);
         }
         match w.get::<Interaction>(funnel) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb((46, 46, 54)),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
             _ => Color::NONE,
         }
     });
@@ -204,7 +204,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
                 .spawn((
                     Text::new("Clear filter"),
                     ui_font(&fonts.ui, 11.0),
-                    TextColor(rgb((224, 96, 88))),
+                    TextColor(rgb(renzora_ember::theme::close_red())),
                 ))
                 .id();
             commands.entity(r).add_child(t);
@@ -251,7 +251,7 @@ fn check_row(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            BorderColor::all(rgb((90, 90, 104))),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
