@@ -45,12 +45,48 @@ impl Plugin for NodeGraphPlugin {
                 graph_connect,
                 graph_remove,
                 cable_attach,
+                apply_node_graph_style,
             ),
         );
         app.add_systems(
             PostUpdate,
             update_endpoints.after(bevy::ui::UiSystems::Layout),
         );
+    }
+}
+
+/// Which node-graph element a node paints from [`crate::style::NodeGraphStyle`].
+#[derive(Component, Clone, Copy)]
+pub(crate) enum NgPart {
+    Canvas,
+    Node,
+    Header,
+    Port,
+}
+
+/// Paint every [`NgPart`] from the live `Theme.node_graph` when the theme changes
+/// or a part is added — the node graph's own targetable elements (canvas, node,
+/// header, port) follow the theme, independently of every other widget.
+pub(crate) fn apply_node_graph_style(
+    theme: Res<crate::style::Theme>,
+    mut q: Query<(Ref<NgPart>, &mut BackgroundColor, Option<&mut BorderColor>)>,
+) {
+    let repaint_all = theme.is_changed();
+    let ng = &theme.node_graph;
+    for (part, mut bg, border) in &mut q {
+        if !repaint_all && !part.is_added() {
+            continue;
+        }
+        let (fill, stroke) = match *part {
+            NgPart::Canvas => (ng.canvas_bg, Some(ng.canvas_border)),
+            NgPart::Node => (ng.node_bg, Some(ng.node_border)),
+            NgPart::Header => (ng.node_header, None),
+            NgPart::Port => (ng.node_selected_bg, Some(ng.cable)),
+        };
+        bg.0 = fill.color();
+        if let (Some(mut bc), Some(s)) = (border, stroke) {
+            *bc = BorderColor::all(s.color());
+        }
     }
 }
 
@@ -159,6 +195,7 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb((22, 22, 28))),
             BorderColor::all(rgb((48, 48, 58))),
+            NgPart::Canvas,
             Name::new("node-graph"),
         ))
         .id();
@@ -228,6 +265,7 @@ fn graph_node(
             },
             BackgroundColor(rgb((40, 40, 50))),
             BorderColor::all(rgb((64, 64, 78))),
+            NgPart::Node,
             Interaction::default(),
             GraphNode { canvas },
             GlobalZIndex(5),
@@ -246,6 +284,7 @@ fn graph_node(
                 ..default()
             },
             BackgroundColor(rgb((52, 52, 66))),
+            NgPart::Header,
             bevy::ui::FocusPolicy::Pass,
             Name::new("node-title"),
         ))
@@ -328,6 +367,7 @@ fn port_dot(commands: &mut Commands, viewport: Entity, offset: Vec2, is_output: 
             },
             BackgroundColor(rgb((26, 26, 32))),
             BorderColor::all(rgb(accent())),
+            NgPart::Port,
             Interaction::default(),
             GraphPort {
                 viewport,
