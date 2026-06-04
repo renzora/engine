@@ -274,7 +274,7 @@ impl EditorPanel for MaterialGraphPanel {
 /// Deferred: load a material graph from a file path (asset mode). No entity
 /// context — this runs when the editor is showing a standalone .material
 /// document tab. Saves write back to the same path via `apply_material`.
-fn sync_to_file(world: &mut World, path: String) {
+pub(crate) fn sync_to_file(world: &mut World, path: String) {
     let fs_path = if let Some(project) = world.get_resource::<CurrentProject>() {
         project.resolve_path(&path).to_string_lossy().to_string()
     } else {
@@ -320,7 +320,7 @@ fn sync_to_file(world: &mut World, path: String) {
 }
 
 /// Deferred: load or create a material graph for the newly selected entity.
-fn sync_to_entity(
+pub(crate) fn sync_to_entity(
     world: &mut World,
     new_entity: Option<Entity>,
     has_mesh: bool,

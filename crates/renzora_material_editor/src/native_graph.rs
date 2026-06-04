@@ -13,24 +13,36 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
-use renzora_editor::SplashState;
+use renzora::core::CurrentProject;
+use renzora_editor::{DocTabKind, EditorContext, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
 use renzora_shader::material::graph::PinDir;
+use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
 use crate::graph_editor::category_icon;
-use crate::MaterialEditorState;
+use crate::graph_panel::{sync_to_entity, sync_to_file};
+use crate::{MaterialEditMode, MaterialEditorState};
 
 pub struct NativeMaterialGraph;
 
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
-        app.add_systems(Update, (mat_graph_sync, apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, (apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
+        // Orchestration: only while the graph panel is actually mounted (mirrors
+        // the egui panel only running its sync inside `ui()`).
+        app.add_systems(
+            Update,
+            (mat_graph_load, mat_graph_sync)
+                .chain()
+                .run_if(in_state(SplashState::Editor))
+                .run_if(any_with_component::<MatGraph>),
+        );
     }
 }
 
@@ -152,44 +164,124 @@ fn wire_snapshot(world: &World, viewport: Entity) -> KeyedSnapshot {
 
 // ── Systems ────────────────────────────────────────────────────────────────────
 
-fn mat_graph_sync(mut views: Query<&mut NodeGraphView, With<MatGraph>>, state: Option<ResMut<MaterialEditorState>>) {
-    let Some(mut state) = state else { return };
+/// Load the right material into `MaterialEditorState` when the active document
+/// (asset mode) or the selected entity (scene mode) changes — the orchestration
+/// the egui panel did inside `ui()`.
+fn mat_graph_load(world: &mut World) {
+    // Asset mode: a standalone .material document tab.
+    let asset_path: Option<String> = world.get_resource::<EditorContext>().and_then(|ctx| match ctx {
+        EditorContext::Asset { path, kind: DocTabKind::Material } => Some(path.clone()),
+        _ => None,
+    });
+    if let Some(path) = asset_path {
+        let needs = !matches!(&world.resource::<MaterialEditorState>().edit_mode, MaterialEditMode::EditingFile { path: p } if *p == path);
+        if needs {
+            sync_to_file(world, path);
+        }
+        return;
+    }
+
+    // Scene mode: follow the selected entity's MaterialRef.
+    let selected_entity = world.get_resource::<EditorSelection>().and_then(|s| s.get());
+    let mat_ref_path = selected_entity.and_then(|e| world.get::<MaterialRef>(e).map(|m| m.0.clone()));
+    let (entity_changed, path_changed, leaving) = {
+        let st = world.resource::<MaterialEditorState>();
+        let cur = match &st.edit_mode {
+            MaterialEditMode::Existing { path, .. } => Some(path.clone()),
+            _ => None,
+        };
+        let ec = selected_entity != st.editing_entity;
+        let pc = !ec && mat_ref_path != cur;
+        let lv = matches!(st.edit_mode, MaterialEditMode::EditingFile { .. });
+        (ec, pc, lv)
+    };
+    if entity_changed || path_changed || leaving {
+        let has_mesh = selected_entity.is_some_and(|e| world.get::<Mesh3d>(e).is_some());
+        let entity_name = selected_entity.and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()));
+        sync_to_entity(world, selected_entity, has_mesh, mat_ref_path, entity_name);
+    }
+}
+
+/// Apply the view's recorded edits to the graph, recompile, and (for a brand-new
+/// material-less entity) create + link the `.material` file on first edit.
+fn mat_graph_sync(world: &mut World) {
+    let mut edits: Vec<GraphEdit> = Vec::new();
+    let mut q = world.query_filtered::<&mut NodeGraphView, With<MatGraph>>();
+    for mut view in q.iter_mut(world) {
+        if !view.pending.is_empty() {
+            edits.append(&mut view.pending);
+        }
+    }
+    if edits.is_empty() {
+        return;
+    }
+
     let mut structural = false;
     let mut dirty = false;
-    for mut view in &mut views {
-        for edit in view.pending.drain(..) {
+    {
+        let mut st = world.resource_mut::<MaterialEditorState>();
+        for edit in edits {
             match edit {
                 GraphEdit::NodeMoved { id, x, y } => {
-                    if let Some(n) = state.graph.nodes.iter_mut().find(|n| n.id == id) {
+                    if let Some(n) = st.graph.nodes.iter_mut().find(|n| n.id == id) {
                         n.position = [x, y];
                         dirty = true;
                     }
                 }
                 GraphEdit::Connect { from_node, from_pin, to_node, to_pin } => {
-                    state.graph.connect(from_node, &from_pin, to_node, &to_pin);
+                    st.graph.connect(from_node, &from_pin, to_node, &to_pin);
                     structural = true;
                 }
                 GraphEdit::Disconnect { to_node, to_pin, .. } => {
-                    state.graph.disconnect(to_node, &to_pin);
+                    st.graph.disconnect(to_node, &to_pin);
                     structural = true;
                 }
                 GraphEdit::Select { id } => {
-                    if state.selected_node != id {
-                        state.selected_node = id;
+                    if st.selected_node != id {
+                        st.selected_node = id;
                     }
                 }
             }
         }
     }
+
     if structural {
-        let graph = state.graph.clone();
+        let graph = world.resource::<MaterialEditorState>().graph.clone();
         let result = renzora_shader::material::codegen::compile(&graph);
-        state.compiled_wgsl = Some(result.fragment_shader);
-        state.compile_errors = result.errors;
+        let mut st = world.resource_mut::<MaterialEditorState>();
+        st.compiled_wgsl = Some(result.fragment_shader);
+        st.compile_errors = result.errors;
     }
     if structural || dirty {
-        state.is_dirty = true;
+        world.resource_mut::<MaterialEditorState>().is_dirty = true;
+        let pending_entity = match world.resource::<MaterialEditorState>().edit_mode {
+            MaterialEditMode::Pending { entity } => Some(entity),
+            _ => None,
+        };
+        if let Some(entity) = pending_entity {
+            pending_first_save(world, entity);
+        }
     }
+}
+
+/// First edit of a material-less entity: write `materials/<name>.material`, link
+/// it via `MaterialRef`, and transition to `Existing`.
+fn pending_first_save(world: &mut World, entity: Entity) {
+    let graph_name = world.resource::<MaterialEditorState>().graph.name.clone();
+    let asset_path = format!("materials/{}.material", graph_name);
+    if let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone()) {
+        let dir = project_root.join("materials");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join(format!("{}.material", graph_name));
+        let mut graph_to_save = world.resource::<MaterialEditorState>().graph.clone();
+        if let Ok((json, _errors)) = renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph_to_save, &project_root, &file) {
+            let _ = std::fs::write(&file, &json);
+            world.resource_mut::<MaterialEditorState>().graph = graph_to_save;
+        }
+    }
+    world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
+    world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
+    world.resource_mut::<MaterialEditorState>().edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
 }
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {
