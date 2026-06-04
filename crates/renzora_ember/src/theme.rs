@@ -31,6 +31,7 @@ pub const PLACEHOLDER: (u8, u8, u8) = (110, 110, 122); // dim placeholder
 pub const PLAY_GREEN: (u8, u8, u8) = (89, 191, 115); // semantic.success
 pub const WARN_AMBER: (u8, u8, u8) = (224, 170, 72); // semantic.warning
 pub const ACCENT_BLUE: (u8, u8, u8) = (80, 140, 255); // accent / active underline
+pub const ON_ACCENT: (u8, u8, u8) = (245, 247, 250); // marks/knobs on an accent fill
 
 // ── Runtime palette ──────────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ pub struct Palette {
     pub play_green: (u8, u8, u8),
     pub warn_amber: (u8, u8, u8),
     pub accent: (u8, u8, u8),
+    /// Foreground for marks/knobs sitting on an accent fill (checkbox tick,
+    /// toggle knob). Stays light on both light and dark themes.
+    pub on_accent: (u8, u8, u8),
     // Richer surface/row/border colors used by panels.
     pub border: (u8, u8, u8),
     pub popup_bg: (u8, u8, u8),
@@ -80,6 +84,7 @@ impl Default for Palette {
             play_green: PLAY_GREEN,
             warn_amber: WARN_AMBER,
             accent: ACCENT_BLUE,
+            on_accent: ON_ACCENT,
             border: (60, 60, 74),
             popup_bg: (30, 30, 38),
             row_even: (34, 34, 42),
@@ -148,6 +153,9 @@ pub fn warn_amber() -> (u8, u8, u8) {
 }
 pub fn accent() -> (u8, u8, u8) {
     palette().accent
+}
+pub fn on_accent() -> (u8, u8, u8) {
+    palette().on_accent
 }
 pub fn border() -> (u8, u8, u8) {
     palette().border

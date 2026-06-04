@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
 use crate::state::{MemoryProfilerState, MemoryTrend};
@@ -15,7 +15,6 @@ use crate::state::{MemoryProfilerState, MemoryTrend};
 use super::{column, label_row, root, section};
 
 const SECONDARY: (u8, u8, u8) = (170, 170, 180);
-const TRACK_BG: (u8, u8, u8) = (18, 18, 24);
 
 pub(super) fn register_memory(app: &mut App) {
     app.register_panel_content("memory_profiler", true, build_memory);
@@ -100,7 +99,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("Memory profiling unavailable"),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::all(Val::Px(40.0)),
                 ..default()
@@ -118,7 +117,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 28.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, proc_big, |w| format_memory(mem(w, |s| s.process_memory)));
@@ -157,7 +156,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, trend_v, |w| trend_parts(mem(w, |s| s.memory_trend)).0.to_string());
@@ -178,7 +177,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 20.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, total_v, |w| {
@@ -190,7 +189,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new("total"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::bottom(Val::Px(3.0)),
                 ..default()
@@ -230,7 +229,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 14.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, rate_v, |w| alloc_parts(mem(w, |s| s.allocation_rate)).0);
@@ -305,7 +304,7 @@ where
                 border_radius: BorderRadius::all(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TRACK_BG)),
+            BackgroundColor(rgb(window_bg())),
         ))
         .id();
     let fill = commands
@@ -329,7 +328,7 @@ where
         .spawn((
             Text::new(""),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_PRIMARY)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     bind_text(commands, size, bytes);

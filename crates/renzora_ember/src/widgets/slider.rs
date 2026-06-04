@@ -70,7 +70,7 @@ pub fn slider(commands: &mut Commands, value: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(7.0)),
                 ..default()
             },
-            BackgroundColor(rgb(text_primary())),
+            BackgroundColor(rgb(on_accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("slider-thumb"),
         ))

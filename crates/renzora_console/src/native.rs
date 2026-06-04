@@ -17,7 +17,8 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{
-    rgb, ACCENT_BLUE, CLOSE_RED, PLACEHOLDER, PLAY_GREEN, TEXT_MUTED, TEXT_PRIMARY, WARN_AMBER,
+    accent, close_red, divider, placeholder, play_green, rgb, section_bg, tab_hover, text_muted,
+    text_primary, warn_amber,
 };
 use renzora_ember::widgets::{scroll_view_pinned, text_input, EmberTextInput};
 
@@ -26,18 +27,13 @@ use crate::state::{ConsoleState, LogEntry, LogLevel};
 const PANEL_ID: &str = "console";
 /// Max log rows kept in the DOM at once (older ones are trimmed from the front).
 const MAX_ROWS: usize = 400;
-const SEP: (u8, u8, u8) = (60, 60, 72);
-const BTN_BG: (u8, u8, u8) = (42, 42, 52);
-const CHIP_BG: (u8, u8, u8) = (60, 60, 60);
-const HYPERLINK: (u8, u8, u8) = ACCENT_BLUE;
-const DIM: (u8, u8, u8) = (120, 120, 120);
 
 fn level_color(level: LogLevel) -> (u8, u8, u8) {
     match level {
-        LogLevel::Info => ACCENT_BLUE,
-        LogLevel::Success => PLAY_GREEN,
-        LogLevel::Warning => WARN_AMBER,
-        LogLevel::Error => CLOSE_RED,
+        LogLevel::Info => accent(),
+        LogLevel::Success => play_green(),
+        LogLevel::Warning => warn_amber(),
+        LogLevel::Error => close_red(),
     }
 }
 
@@ -123,7 +119,7 @@ fn vsep(commands: &mut Commands) -> Entity {
                 margin: UiRect::horizontal(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb(SEP)),
+            BackgroundColor(rgb(divider())),
         ))
         .id()
 }
@@ -137,7 +133,7 @@ fn hsep(commands: &mut Commands) -> Entity {
                 margin: UiRect::vertical(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(SEP)),
+            BackgroundColor(rgb(divider())),
         ))
         .id()
 }
@@ -155,18 +151,18 @@ fn text_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(BTN_BG)),
+            BackgroundColor(rgb(tab_hover())),
             Interaction::default(),
             btn,
             Name::new(format!("console-btn:{label}")),
         ))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
     let tx = commands
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     commands.entity(b).add_children(&[ic, tx]);
@@ -176,24 +172,24 @@ fn text_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &
 /// Current color of a toggle's glyph from the matching `ConsoleState` flag.
 fn toggle_color(world: &World, btn: ConsoleBtn) -> Color {
     let Some(s) = world.get_resource::<ConsoleState>() else {
-        return rgb(PLACEHOLDER);
+        return rgb(placeholder());
     };
     let (active, on) = match btn {
-        ConsoleBtn::Info => (s.show_info, ACCENT_BLUE),
-        ConsoleBtn::Success => (s.show_success, PLAY_GREEN),
-        ConsoleBtn::Warn => (s.show_warnings, WARN_AMBER),
-        ConsoleBtn::Error => (s.show_errors, CLOSE_RED),
-        ConsoleBtn::Timestamps => (s.show_timestamps, ACCENT_BLUE),
-        ConsoleBtn::Frame => (s.show_frame, ACCENT_BLUE),
-        ConsoleBtn::AutoScroll => (s.auto_scroll, ACCENT_BLUE),
-        _ => return rgb(PLACEHOLDER),
+        ConsoleBtn::Info => (s.show_info, accent()),
+        ConsoleBtn::Success => (s.show_success, play_green()),
+        ConsoleBtn::Warn => (s.show_warnings, warn_amber()),
+        ConsoleBtn::Error => (s.show_errors, close_red()),
+        ConsoleBtn::Timestamps => (s.show_timestamps, accent()),
+        ConsoleBtn::Frame => (s.show_frame, accent()),
+        ConsoleBtn::AutoScroll => (s.auto_scroll, accent()),
+        _ => return rgb(placeholder()),
     };
-    rgb(if active { on } else { PLACEHOLDER })
+    rgb(if active { on } else { placeholder() })
 }
 
 /// An icon-only toggle button whose glyph recolors with its `ConsoleState` flag.
 fn toggle_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, btn: ConsoleBtn, size: f32) -> Entity {
-    let ic = icon_text(commands, &fonts.phosphor, icon, PLACEHOLDER, size);
+    let ic = icon_text(commands, &fonts.phosphor, icon, placeholder(), size);
     bind_text_color(commands, ic, move |w| toggle_color(w, btn));
     let b = commands
         .spawn((
@@ -273,11 +269,11 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let t_warn = toggle_button(commands, fonts, "warning", ConsoleBtn::Warn, 14.0);
     let t_err = toggle_button(commands, fonts, "x-circle", ConsoleBtn::Error, 14.0);
     let sep2 = vsep(commands);
-    let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", TEXT_MUTED, 12.0);
+    let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 12.0);
     // Fields start empty; `console_text_sync` mirrors them into `ConsoleState`.
     let search = text_input(commands, &fonts.ui, "Search...", "");
     commands.entity(search).insert(ConsoleField::Search);
-    let funnel = icon_text(commands, &fonts.phosphor, "funnel", TEXT_MUTED, 12.0);
+    let funnel = icon_text(commands, &fonts.phosphor, "funnel", text_muted(), 12.0);
     let category = text_input(commands, &fonts.ui, "Category...", "");
     commands.entity(category).insert(ConsoleField::Category);
 
@@ -287,7 +283,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },))
         .id();
-    let count_label = label_text(commands, fonts, "0/0", TEXT_MUTED, 11.0);
+    let count_label = label_text(commands, fonts, "0/0", text_muted(), 11.0);
     bind_text(commands, count_label, |w| {
         let Some(s) = w.get_resource::<ConsoleState>() else {
             return "0/0".to_string();
@@ -296,7 +292,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     let t_frame = toggle_button(commands, fonts, "hash", ConsoleBtn::Frame, 13.0);
     let t_ts = toggle_button(commands, fonts, "clock", ConsoleBtn::Timestamps, 13.0);
-    let auto_icon = icon_text(commands, &fonts.phosphor, "check-circle", PLACEHOLDER, 13.0);
+    let auto_icon = icon_text(commands, &fonts.phosphor, "check-circle", placeholder(), 13.0);
     bind_text_color(commands, auto_icon, |w| toggle_color(w, ConsoleBtn::AutoScroll));
     let auto = commands
         .spawn((
@@ -313,7 +309,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("console-autoscroll"),
         ))
         .id();
-    let auto_label = label_text(commands, fonts, "Auto-scroll", TEXT_MUTED, 11.0);
+    let auto_label = label_text(commands, fonts, "Auto-scroll", text_muted(), 11.0);
     commands.entity(auto).add_children(&[auto_icon, auto_label]);
 
     commands.entity(toolbar).add_children(&[
@@ -364,7 +360,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },))
         .id();
-    let chevron = icon_text(commands, &fonts.phosphor, "caret-right", ACCENT_BLUE, 14.0);
+    let chevron = icon_text(commands, &fonts.phosphor, "caret-right", accent(), 14.0);
     let input = text_input(commands, &fonts.mono, "Type /help for commands...", "");
     commands.entity(input).insert(ConsoleField::Command);
     commands.entity(input).insert(Node {
@@ -373,7 +369,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         align_items: AlignItems::Center,
         ..default()
     });
-    let enter = icon_text(commands, &fonts.phosphor, "arrow-elbow-down-left", TEXT_MUTED, 12.0);
+    let enter = icon_text(commands, &fonts.phosphor, "arrow-elbow-down-left", text_muted(), 12.0);
     commands.entity(input_row).add_children(&[chevron, input, enter]);
 
     commands
@@ -427,20 +423,20 @@ fn build_log_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> En
         let secs = r.timestamp;
         let mins = (secs / 60.0) as u64;
         let s = secs % 60.0;
-        kids.push(mono_text(commands, fonts, &format!("{:02}:{:05.2}", mins, s), DIM, 10.0));
+        kids.push(mono_text(commands, fonts, &format!("{:02}:{:05.2}", mins, s), text_muted(), 10.0));
     }
     if r.show_frame && r.frame > 0 {
-        kids.push(mono_text(commands, fonts, &format!("f{}", r.frame), DIM, 10.0));
+        kids.push(mono_text(commands, fonts, &format!("f{}", r.frame), text_muted(), 10.0));
     }
     kids.push(icon_text(commands, &fonts.phosphor, level_icon(r.level), color, 12.0));
     if !r.category.is_empty() {
-        kids.push(label_text(commands, fonts, &format!("[{}]", r.category), HYPERLINK, 11.0));
+        kids.push(label_text(commands, fonts, &format!("[{}]", r.category), accent(), 11.0));
     }
     let is_repl = r.category == "Input" || r.category == "Output";
     if is_repl {
-        kids.push(mono_text(commands, fonts, &r.message, TEXT_PRIMARY, 12.0));
+        kids.push(mono_text(commands, fonts, &r.message, text_primary(), 12.0));
     } else {
-        kids.push(label_text(commands, fonts, &r.message, TEXT_PRIMARY, 12.0));
+        kids.push(label_text(commands, fonts, &r.message, text_primary(), 12.0));
     }
 
     commands.entity(row).add_children(&kids);
@@ -487,7 +483,7 @@ fn log_snapshot(world: &World) -> KeyedSnapshot {
     if visible.is_empty() {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
-            build: Box::new(|c, f, _| label_text(c, f, "No log entries", TEXT_MUTED, 13.0)),
+            build: Box::new(|c, f, _| label_text(c, f, "No log entries", text_muted(), 13.0)),
         };
     }
 
@@ -507,9 +503,9 @@ enum ChipItem {
 
 fn build_chip(commands: &mut Commands, fonts: &EmberFonts, cat: &str, hidden: bool) -> Entity {
     let (fg, bg) = if hidden {
-        (PLACEHOLDER, Color::NONE)
+        (placeholder(), Color::NONE)
     } else {
-        (TEXT_MUTED, rgb(CHIP_BG))
+        (text_muted(), rgb(section_bg()))
     };
     let chip = commands
         .spawn((
@@ -561,7 +557,7 @@ fn chips_snapshot(world: &World) -> KeyedSnapshot {
     KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| match &data[i] {
-            ChipItem::Tag => icon_text(c, &f.phosphor, "tag", TEXT_MUTED, 11.0),
+            ChipItem::Tag => icon_text(c, &f.phosphor, "tag", text_muted(), 11.0),
             ChipItem::Chip { cat, hidden } => build_chip(c, f, cat, *hidden),
         }),
     }
@@ -648,7 +644,7 @@ pub(crate) fn console_text_sync(
                     inp.value.clear();
                     if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
                         *t = Text::new(ph);
-                        c.0 = rgb(TEXT_MUTED);
+                        c.0 = rgb(text_muted());
                     }
                     if !command.is_empty() {
                         submit_command(&mut state, &command);

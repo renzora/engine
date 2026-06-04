@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{rgb, section_bg, text_muted, text_primary, window_bg};
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
 use crate::state::{DiagnosticsState, RenderStats, SystemTimingState};
@@ -18,7 +18,6 @@ use super::{root, section};
 
 const SECONDARY: (u8, u8, u8) = (170, 170, 180);
 const FAINT_BG: (u8, u8, u8) = (30, 30, 36);
-const TRACK_BG: (u8, u8, u8) = (18, 18, 24);
 
 pub(super) fn register_system_profiler(app: &mut App) {
     app.register_panel_content("system_profiler", true, build_system_profiler);
@@ -106,7 +105,7 @@ where
         })
         .id();
     let num = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 24.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, num, value);
     bind_text_color(commands, num, color);
@@ -114,7 +113,7 @@ where
         .spawn((
             Text::new(unit),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::bottom(Val::Px(4.0)),
                 ..default()
@@ -157,7 +156,7 @@ where
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 width: Val::Px(80.0),
                 ..default()
@@ -165,7 +164,7 @@ where
         ))
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     commands.entity(row).add_children(&[l, v]);
@@ -187,7 +186,7 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         |w| frame_time_color(diag(w, |d| d.frame_time_ms) as f32),
     );
     let ft_status = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
         .id();
     bind_text(commands, ft_status, |w| frame_status(diag(w, |d| d.frame_time_ms) as f32).0);
     bind_text_color(commands, ft_status, |w| frame_status(diag(w, |d| d.frame_time_ms) as f32).1);
@@ -246,7 +245,7 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         .spawn((
             Text::new("Note: These are rough estimates, not actual measurements"),
             ui_font(&fonts.ui, 9.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
         ))
         .id();
     bind_display(commands, sched_note, |w| !timing(w, |t| t.schedule_timings.is_empty()));
@@ -277,7 +276,7 @@ fn limitations_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((50, 45, 35))),
+            BackgroundColor(rgb(section_bg())),
         ))
         .id();
     let head = commands
@@ -311,14 +310,14 @@ fn external_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let tracy_head = labelled_icon(commands, fonts, "magnifying-glass", "Tracy Profiler");
     kids.push(tracy_head);
-    kids.push(muted(commands, fonts, "Best for per-system timing and GPU profiling", 9.0, TEXT_MUTED));
+    kids.push(muted(commands, fonts, "Best for per-system timing and GPU profiling", 9.0, text_muted()));
     kids.push(muted(commands, fonts, "Launch Tracy GUI 0.11.x and connect to localhost", 9.0, (180, 180, 180)));
 
     kids.push(spacer(commands, 8.0));
 
     let chrome_head = labelled_icon(commands, fonts, "chart-bar", "Chrome Tracing");
     kids.push(chrome_head);
-    kids.push(muted(commands, fonts, "Export traces to chrome://tracing", 9.0, TEXT_MUTED));
+    kids.push(muted(commands, fonts, "Export traces to chrome://tracing", 9.0, text_muted()));
     let cmd = commands
         .spawn((
             Text::new("cargo run --features bevy/trace_chrome"),
@@ -341,9 +340,9 @@ fn labelled_icon(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
             ..default()
         })
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, TEXT_MUTED, 12.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
     let tx = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(row).add_children(&[ic, tx]);
     row
@@ -379,7 +378,7 @@ fn schedule_snapshot(world: &World) -> KeyedSnapshot {
     if timings.is_empty() {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
-            build: Box::new(|c, f, _| muted(c, f, "No timing data available", 11.0, TEXT_MUTED)),
+            build: Box::new(|c, f, _| muted(c, f, "No timing data available", 11.0, text_muted())),
         };
     }
     let total: f32 = timings.iter().map(|s| s.time_ms).sum();
@@ -428,7 +427,7 @@ fn sched_row(commands: &mut Commands, fonts: &EmberFonts, r: &SchedRow) -> Entit
         })
         .id();
     let name = commands
-        .spawn((Text::new(r.name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(r.name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     let gap = commands
         .spawn(Node {
@@ -437,7 +436,7 @@ fn sched_row(commands: &mut Commands, fonts: &EmberFonts, r: &SchedRow) -> Entit
         })
         .id();
     let pct = commands
-        .spawn((Text::new(r.pct.clone()), ui_font(&fonts.ui, 10.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(r.pct.clone()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
         .id();
     let ms = commands
         .spawn((Text::new(r.ms.clone()), ui_font(&fonts.mono, 10.0), TextColor(rgb(SECONDARY))))
@@ -453,7 +452,7 @@ fn sched_row(commands: &mut Commands, fonts: &EmberFonts, r: &SchedRow) -> Entit
                 border_radius: BorderRadius::all(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(rgb(TRACK_BG)),
+            BackgroundColor(rgb(window_bg())),
         ))
         .id();
     let fill = commands

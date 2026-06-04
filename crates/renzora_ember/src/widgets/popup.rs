@@ -14,14 +14,8 @@ use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::bind_bg;
-use crate::theme::rgb;
+use crate::theme::*;
 
-const MENU_BG: (u8, u8, u8) = (30, 30, 38);
-const MENU_BORDER: (u8, u8, u8) = (60, 60, 74);
-const MENU_ITEM_HOVER: (u8, u8, u8) = (46, 46, 54);
-const MENU_TEXT: (u8, u8, u8) = (222, 222, 232);
-const MENU_ICON: (u8, u8, u8) = (188, 188, 200);
-const MENU_SEP: (u8, u8, u8) = (48, 48, 56);
 
 /// A menu item's one-shot action, run with `&mut World` when the item is
 /// clicked. The menu closes immediately after.
@@ -46,8 +40,8 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb(MENU_BG)),
-            BorderColor::all(rgb(MENU_BORDER)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(9000),
             ScreenMenu,
             RelativeCursorPosition::default(),
@@ -68,7 +62,7 @@ pub fn menu_item<F>(
 where
     F: Fn(&mut World) + Send + Sync + 'static,
 {
-    menu_item_styled(commands, fonts, icon, label, MENU_ICON, MENU_TEXT, on_click)
+    menu_item_styled(commands, fonts, icon, label, text_muted(), text_primary(), on_click)
 }
 
 /// [`menu_item`] with explicit icon/text colors (e.g. a red Delete).
@@ -103,7 +97,7 @@ where
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(MENU_ITEM_HOVER),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, 12.0);
@@ -128,7 +122,7 @@ pub fn menu_sep(commands: &mut Commands) -> Entity {
                 margin: UiRect::vertical(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(rgb(MENU_SEP)),
+            BackgroundColor(rgb(divider())),
         ))
         .id()
 }

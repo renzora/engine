@@ -134,6 +134,7 @@ fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette
         play_green: tc(&t.semantic.success),
         warn_amber: tc(&t.semantic.warning),
         accent: tc(&t.semantic.accent),
+        on_accent: tc(&t.widgets.active_fg),
         border: tc(&t.widgets.border_light),
         popup_bg: tc(&t.surfaces.popup),
         row_even: tc(&t.panels.inspector_row_even),

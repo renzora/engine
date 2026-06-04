@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{rgb, selection, text_muted, text_primary};
 use renzora_ember::widgets::checkbox;
 use renzora_editor::SplashState;
 
@@ -90,11 +90,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     let big = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 28.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, big, |w| cam(w, |s| s.scene_camera_count()).to_string());
     let u = commands
-        .spawn((Text::new("cameras"), ui_font(&fonts.ui, 12.0), TextColor(rgb(TEXT_MUTED)),
+        .spawn((Text::new("cameras"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())),
             Node { margin: UiRect::bottom(Val::Px(4.0)), ..default() }))
         .id();
     commands.entity(head).add_children(&[big, u]);
@@ -110,7 +110,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let sel_box = faint_box(commands);
     bind_display(commands, sel_box, |w| cam(w, |s| s.selected_camera.is_some()));
     let sel_name = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 14.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 14.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, sel_name, |w| sel(w, |c| c.name.clone()));
     let mut sel_kids = vec![sel_name];
@@ -159,11 +159,11 @@ where
         })
         .id();
     let l = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_MUTED)),
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())),
             Node { width: Val::Px(90.0), ..default() }))
         .id();
     let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, v, value);
     commands.entity(row).add_children(&[l, v]);
@@ -186,7 +186,7 @@ where
     let cb = checkbox(commands, false);
     bind_2way(commands, cb, get, move |w, v| set_fn(w, *v));
     let l = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(row).add_children(&[cb, l]);
     row
@@ -203,7 +203,7 @@ fn camera_snapshot(world: &World) -> KeyedSnapshot {
                 c.spawn((
                     Text::new("No cameras in scene"),
                     ui_font(&f.ui, 11.0),
-                    TextColor(rgb(TEXT_MUTED)),
+                    TextColor(rgb(text_muted())),
                 ))
                 .id()
             }),
@@ -243,7 +243,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, info: &CameraInfo) ->
         .id();
     bind_bg(commands, row, move |w| {
         if cam(w, |s| s.selected_camera) == Some(e) {
-            rgb((60, 80, 120))
+            rgb(selection())
         } else {
             Color::NONE
         }
@@ -275,7 +275,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, info: &CameraInfo) ->
         }
     });
     let name = commands
-        .spawn((Text::new(info.name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(info.name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(select_zone).add_children(&[dot, name]);
 
@@ -327,7 +327,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, info: &CameraInfo) ->
         .spawn((Text::new(proj_letter(info.projection_type)), ui_font(&fonts.mono, 9.0), TextColor(rgb(SECONDARY))))
         .id();
     let order = commands
-        .spawn((Text::new(format!("#{}", info.order)), ui_font(&fonts.ui, 9.0), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(format!("#{}", info.order)), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(controls).add_children(&[toggle, proj, order]);
 

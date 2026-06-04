@@ -48,10 +48,12 @@ pub fn toggle(commands: &mut Commands, on: bool) -> Entity {
             Node {
                 width: Val::Px(16.0),
                 height: Val::Px(16.0),
+                border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(rgb(text_primary())),
+            BackgroundColor(rgb(on_accent())),
+            BorderColor::all(rgb(border())),
             Name::new("toggle-knob"),
         ))
         .id();
