@@ -31,7 +31,6 @@ use bevy::prelude::*;
 
 use renzora_editor::SplashState;
 use renzora_ember::font::EmberFonts;
-use renzora_ember::panel::RegisterPanelContent;
 use renzora_game_ui::UiCanvas;
 
 mod align;
@@ -93,21 +92,21 @@ impl Plugin for GameUiEditorPlugin {
         toolbar::register(app);
         overlay::register(app);
         interaction::register(app);
-
-        // Live: the native canvas now covers select / move / resize / rotate /
-        // align / distribute on the rendered UI. Marquee box-select, draw-mode
-        // (placing new widgets on the canvas), copy/paste and keyboard nudge are
-        // follow-ups; meanwhile those remain reachable via the hierarchy/palette.
-        app.register_panel_content("ui_canvas", false, build_panel);
+        // The editor lives in the viewport's "UI" mode (there's no separate
+        // ui_canvas dock tab) — `renzora_viewport` mounts `build_ui_canvas`
+        // there. The interaction/overlay systems above run wherever the hit
+        // layer is mounted, so the in-viewport editor is fully live.
     }
 }
 
 renzora::add!(GameUiEditorPlugin, Editor);
 
-fn build_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// Build the full UI canvas editor content (toolbar + scene-backdrop + rendered
+/// UI image + selection overlay). Mounted by the viewport in UI mode.
+pub fn build_ui_canvas(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
+            Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, ..default() },
             Name::new("native-ui-canvas"),
         ))
         .id();

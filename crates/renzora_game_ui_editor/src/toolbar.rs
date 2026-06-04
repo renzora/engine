@@ -8,6 +8,8 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_text, bind_text_color};
 use renzora_ember::theme::*;
 
+use renzora_game_ui::canvas::UiCanvasPreviewEnabled;
+
 use crate::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
 use crate::geometry::WidgetGeom;
 use crate::NativeCanvasState;
@@ -19,6 +21,7 @@ pub(crate) enum CanvasTbBtn {
     ZoomReset,
     ToggleGrid,
     ToggleSnap,
+    ToggleBackdrop,
     Align(AlignAction),
     DistH,
     DistV,
@@ -58,8 +61,14 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text_color(commands, grid_ic, |w| toggle_color(w, |s| s.show_grid));
     let (snap, snap_ic) = icon_btn(commands, fonts, "magnet-straight", CanvasTbBtn::ToggleSnap);
     bind_text_color(commands, snap_ic, |w| toggle_color(w, |s| s.snap_enabled));
+    let (backdrop, backdrop_ic) = icon_btn(commands, fonts, "image", CanvasTbBtn::ToggleBackdrop);
+    bind_text_color(commands, backdrop_ic, |w| {
+        let on = w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0);
+        rgb(if on { accent() } else { text_muted() })
+    });
     kids.push(grid);
     kids.push(snap);
+    kids.push(backdrop);
 
     kids.push(commands.spawn(Node { flex_grow: 1.0, ..default() }).id());
 
@@ -97,9 +106,11 @@ fn toggle_color(w: &World, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
 fn toolbar_click(
     q: Query<(&Interaction, &CanvasTbBtn), Changed<Interaction>>,
     mut state: ResMut<NativeCanvasState>,
+    backdrop: Option<ResMut<UiCanvasPreviewEnabled>>,
     selection: Option<Res<EditorSelection>>,
     mut commands: Commands,
 ) {
+    let mut backdrop = backdrop;
     for (interaction, btn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -110,6 +121,11 @@ fn toolbar_click(
             CanvasTbBtn::ZoomReset => state.zoom = 1.0,
             CanvasTbBtn::ToggleGrid => state.show_grid = !state.show_grid,
             CanvasTbBtn::ToggleSnap => state.snap_enabled = !state.snap_enabled,
+            CanvasTbBtn::ToggleBackdrop => {
+                if let Some(b) = backdrop.as_mut() {
+                    b.0 = !b.0;
+                }
+            }
             CanvasTbBtn::Align(action) => {
                 let geoms = selected_geoms(&state, &selection);
                 let (rw, rh) = (state.canvas_width.max(1.0), state.canvas_height.max(1.0));

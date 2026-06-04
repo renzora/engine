@@ -11158,6 +11158,7 @@ dependencies = [
  "renzora_ember",
  "renzora_engine",
  "renzora_game_ui",
+ "renzora_game_ui_editor",
  "renzora_hui",
  "renzora_import",
  "renzora_keybindings",

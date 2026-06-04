@@ -42,16 +42,19 @@ pub fn register_native_viewport(app: &mut App) {
 }
 
 fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> Entity {
-    let img = commands
+    // Persistent content area — carries the `NativeViewport` marker (so the
+    // reported viewport rect for gizmos/drops stays valid in every view mode)
+    // and hosts the 3D image plus, on the primary slot in UI view, the embedded
+    // UI editor.
+    let content = commands
         .spawn((
-            ImageNode::default(),
             Node {
                 width: Val::Percent(100.0),
-                // Grow to fill whatever the header leaves; `min_height: 0` lets
-                // the flex child shrink below its intrinsic size so the image
-                // tracks the panel instead of inflating it.
                 flex_grow: 1.0,
                 min_height: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                position_type: PositionType::Relative,
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(Color::srgb(0.08, 0.08, 0.10)),
@@ -60,21 +63,18 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             Name::new("native-viewport"),
         ))
         .id();
-    // Drive the displayed image from this slot's camera render target — except
-    // the primary slot in "UI" view, which shows the game-UI offscreen render
-    // (matching the egui viewport, which drew the UI canvas in UI mode).
+
+    let img = commands
+        .spawn((
+            ImageNode::default(),
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            Name::new("native-viewport-image"),
+        ))
+        .id();
     bind_with(
         commands,
         img,
         move |w| {
-            use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-            if index == 0
-                && w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
-            {
-                return w
-                    .get_resource::<renzora_game_ui::canvas_render::UiCanvasRender>()
-                    .map(|r| r.image_handle.clone());
-            }
             w.get_resource::<Viewports>()
                 .and_then(|v| v.slots.get(index))
                 .and_then(|s| s.image.clone())
@@ -85,9 +85,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             }
         },
     );
+    commands.entity(content).add_child(img);
 
-    // The primary viewport (slot 0) owns the shared header bar; the extra
-    // slots are bare camera-angle views. Wrap both in a column.
+    // The primary viewport (slot 0) owns the shared header + the UI editor; the
+    // extra slots are bare camera-angle views.
     let root = commands
         .spawn((
             Node {
@@ -100,10 +101,21 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         ))
         .id();
     if index == 0 {
+        use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+        // In UI view the 3D image hides and the embedded UI editor (toolbar +
+        // scene backdrop + UI render + selection handles) takes over.
+        renzora_ember::reactive::bind_display(commands, img, |w| {
+            w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) != Some(ViewportView::Ui)
+        });
+        let editor = renzora_game_ui_editor::build_ui_canvas(commands, fonts);
+        renzora_ember::reactive::bind_display(commands, editor, |w| {
+            w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
+        });
+        commands.entity(content).add_child(editor);
         let header = crate::native_header::build_header(commands, fonts);
-        commands.entity(root).add_children(&[header, img]);
+        commands.entity(root).add_children(&[header, content]);
     } else {
-        commands.entity(root).add_child(img);
+        commands.entity(root).add_child(content);
     }
     root
 }

@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_display, bind_with};
 use renzora_ember::theme::*;
+use renzora_game_ui::canvas::UiCanvasPreviewEnabled;
 use renzora_game_ui::canvas_render::UiCanvasRender;
 
 use crate::NativeCanvasState;
@@ -68,11 +69,34 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
-    // The rendered UI image, filling the frame.
+    // Scene backdrop: the 3D editor-camera render (same image the 3D viewport
+    // shows) behind the UI, toggled by UiCanvasPreviewEnabled (default on).
+    let backdrop = commands
+        .spawn((
+            ImageNode::default(),
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            Name::new("ui-canvas-backdrop"),
+        ))
+        .id();
+    bind_display(commands, backdrop, |w| w.get_resource::<UiCanvasPreviewEnabled>().is_none_or(|r| r.0));
+    bind_with(
+        commands,
+        backdrop,
+        |w| w.get_resource::<renzora::ViewportRenderTarget>().and_then(|rt| rt.image.clone()),
+        |w, e, h: &Option<Handle<Image>>| {
+            if let (Some(h), Some(mut n)) = (h, w.get_mut::<ImageNode>(e)) {
+                if n.image != *h {
+                    n.image = h.clone();
+                }
+            }
+        },
+    );
+
+    // The rendered UI image (transparent bg), filling the frame over the backdrop.
     let img = commands
         .spawn((
             ImageNode::default(),
-            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             Name::new("ui-canvas-image"),
         ))
         .id();
@@ -90,7 +114,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     // Editing overlay (selection box + handles + hit layer) over the image.
     let overlay = crate::overlay::build(commands);
-    commands.entity(frame).add_children(&[img, overlay]);
+    commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
     commands.entity(area).add_children(&[note, frame]);
     area
