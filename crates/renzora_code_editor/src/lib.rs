@@ -3,6 +3,7 @@ pub mod autocomplete;
 pub mod diff;
 pub mod format;
 pub mod highlight;
+mod native_code_editor;
 mod native_outline;
 mod native_problems;
 mod native_scripts;
@@ -278,6 +279,7 @@ impl Plugin for CodeEditorPlugin {
         );
 
         app.register_panel(CodeEditorPanel::new(arc));
+        native_code_editor::register_native_code_editor(app);
         app.register_panel(outline::OutlinePanel);
         native_outline::register_native_outline(app);
         app.register_panel(problems::ProblemsPanel);

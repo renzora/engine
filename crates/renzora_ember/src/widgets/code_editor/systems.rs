@@ -100,6 +100,17 @@ pub(crate) fn code_input(
     if keys.is_empty() {
         return;
     }
+    // Don't type into the buffer while a Ctrl/Super chord is held (Ctrl+S save,
+    // Ctrl+C/V, …) — those are shortcuts owned by the host, not text input.
+    // AltGr (Ctrl+Alt) still produces characters, so allow it through.
+    let alt = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
+    let cmd = keyboard.pressed(KeyCode::ControlLeft)
+        || keyboard.pressed(KeyCode::ControlRight)
+        || keyboard.pressed(KeyCode::SuperLeft)
+        || keyboard.pressed(KeyCode::SuperRight);
+    if cmd && !alt {
+        return;
+    }
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     for mut editor in &mut editors {
         if !editor.focused {
@@ -194,8 +205,45 @@ pub(crate) fn code_render(
         }
         commands.entity(body).add_children(&sel_rects);
 
-        let rows: Vec<Entity> = (start..end)
-            .map(|i| render_line(&mut commands, &fonts.mono, i + 1, &ed.text[i]))
+        // Color the visible lines. With a host highlighter we thread the
+        // cross-line state from the top of the file (cheap; only on `dirty`),
+        // so block comments etc. resolve correctly when scrolled. Otherwise we
+        // fall back to the built-in single-line Rust-ish tokenizer.
+        let line_spans: Vec<Vec<(String, Color)>> = if let Some(hl) = ed.highlighter.as_ref() {
+            let mut st = 0u32;
+            for i in 0..start {
+                st = hl(&ed.text[i], st).1;
+            }
+            (start..end)
+                .map(|i| {
+                    let (toks, ns) = hl(&ed.text[i], st);
+                    st = ns;
+                    let line = &ed.text[i];
+                    let mut out: Vec<(String, Color)> = Vec::with_capacity(toks.len());
+                    let mut off = 0usize;
+                    for t in toks {
+                        let end_b = (off + t.len).min(line.len());
+                        if end_b > off && line.is_char_boundary(off) && line.is_char_boundary(end_b) {
+                            out.push((line[off..end_b].to_string(), t.color));
+                        }
+                        off = end_b;
+                    }
+                    if off < line.len() && line.is_char_boundary(off) {
+                        out.push((line[off..].to_string(), rgb(C_TEXT)));
+                    }
+                    out
+                })
+                .collect()
+        } else {
+            (start..end)
+                .map(|i| tokenize(&ed.text[i]).into_iter().map(|(s, c)| (s, rgb(c))).collect())
+                .collect()
+        };
+
+        let rows: Vec<Entity> = line_spans
+            .iter()
+            .enumerate()
+            .map(|(k, spans)| render_line(&mut commands, &fonts.mono, start + k + 1, spans))
             .collect();
         commands.entity(body).add_children(&rows);
     }
@@ -218,7 +266,7 @@ pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes
     }
 }
 
-fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, text: &str) -> Entity {
+fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, spans: &[(String, Color)]) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -259,15 +307,15 @@ fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, text: &
             },
         ))
         .id();
-    let spans: Vec<Entity> = tokenize(text)
-        .into_iter()
+    let span_ents: Vec<Entity> = spans
+        .iter()
         .map(|(s, color)| {
             commands
-                .spawn((TextSpan::new(s), mono(font, FONT_SIZE), TextColor(rgb(color))))
+                .spawn((TextSpan::new(s.clone()), mono(font, FONT_SIZE), TextColor(*color)))
                 .id()
         })
         .collect();
-    commands.entity(line_text).add_children(&spans);
+    commands.entity(line_text).add_children(&span_ents);
     commands.entity(row).add_children(&[gutter, line_text]);
     row
 }

@@ -101,6 +101,10 @@ pub(crate) fn edit(ed: &mut CodeEditor, key: &Key, shift: bool) {
         ed.anchor_line = ed.cursor_line;
         ed.anchor_col = ed.cursor_col;
     }
+    // Anything that isn't a pure caret move mutated the document.
+    if !is_move {
+        ed.content_dirty = true;
+    }
     ed.dirty = true;
     ensure_visible(ed);
 }
