@@ -13,6 +13,9 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_auth = { path = "../renzora_auth" }
 renzora_splash = { path = "../renzora_splash" }
 renzora_shader = { path = "../renzora_shader" }
+# bevy_ui-native panel content + Send+Sync channels for the async result polling.
+renzora_ember = { path = "../renzora_ember" }
+crossbeam-channel = "0.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }

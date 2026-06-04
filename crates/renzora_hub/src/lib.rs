@@ -7,9 +7,11 @@
 pub mod images;
 pub mod install;
 pub mod library;
+mod native_library;
 pub mod overlay;
 pub mod preview;
 pub mod store;
+mod thumbs;
 
 use bevy::prelude::*;
 use renzora_editor::AppEditorExt;
@@ -23,6 +25,10 @@ impl Plugin for HubPlugin {
         app.add_plugins(preview::HubPreviewPlugin);
         app.register_panel(store::HubStorePanel::default());
         app.register_panel(library::HubLibraryPanel::default());
+        // bevy_ui-native: shared thumbnail cache + the My Library panel.
+        app.init_resource::<thumbs::HubThumbs>();
+        app.add_systems(Update, thumbs::poll_thumbs);
+        app.add_plugins(native_library::NativeHubLibrary);
     }
 }
 
