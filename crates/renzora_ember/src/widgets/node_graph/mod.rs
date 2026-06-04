@@ -29,6 +29,9 @@ const HEAD_H: f32 = 26.0;
 const ROW_H: f32 = 24.0;
 const WIRE_W: f32 = 2.5;
 
+mod view;
+pub use view::{graph_node_view, graph_wire_view, node_graph_view, GraphEdit, NodeGraphHandle, NodeGraphView};
+
 /// Registers the cable material + shader and the node-graph systems.
 pub(crate) struct NodeGraphPlugin;
 
@@ -36,6 +39,7 @@ impl Plugin for NodeGraphPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "cable.wgsl");
         app.add_plugins(UiMaterialPlugin::<CableMaterial>::default());
+        app.add_plugins(view::NodeGraphViewPlugin);
         app.add_systems(
             Update,
             (
