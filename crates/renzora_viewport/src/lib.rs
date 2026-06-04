@@ -150,7 +150,7 @@ impl Plugin for ViewportPlugin {
                 shape_drop::shape_drag_raycast_system
                     .before(shape_drop::update_shape_drag_preview),
                 shape_drop::update_shape_drag_preview,
-                shape_drop::native_shape_drop,
+                (shape_drop::native_shape_drop, html_drop::native_html_drop),
                 shape_drop::handle_shape_spawn,
                 handle_view_shortcuts,
                 handle_play_shortcuts,
