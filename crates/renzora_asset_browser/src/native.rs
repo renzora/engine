@@ -1317,13 +1317,31 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    commands
-        .entity(footer)
-        .add_children(&[back, crumbs, footer_spacer, count]);
+    commands.entity(footer).add_children(&[footer_spacer, count]);
+
+    // Breadcrumb bar (back + path), directly under the top toolbar.
+    let crumb_bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            Name::new("assets-crumb-bar"),
+        ))
+        .id();
+    commands.entity(crumb_bar).add_children(&[back, crumbs]);
 
     commands
         .entity(content)
-        .add_children(&[toolbar, grid_scroll, footer]);
+        .add_children(&[toolbar, crumb_bar, grid_scroll, footer]);
 
     commands.entity(root).add_children(&[tree_pane, splitter, content]);
     root
