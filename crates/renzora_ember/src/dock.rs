@@ -18,8 +18,7 @@ use bevy::prelude::*;
 
 use crate::font::{glyph, icon_text, ui_font, EmberFonts};
 use crate::theme::{
-    accent, close_red, divider, header_bg, panel_bg, rgb, tab_active, tab_hover as tab_hover_color,
-    text_muted, text_primary,
+    accent, close_red, divider, header_bg, panel_bg, rgb, tab_active, text_muted, text_primary,
 };
 
 // ── Model ────────────────────────────────────────────────────────────────────
@@ -995,17 +994,37 @@ fn apply_tab_switch(
 }
 
 /// Tab background follows hover + active state (active wins).
-fn tab_hover(dock: Res<Dock>, mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>) {
+fn tab_hover(
+    dock: Res<Dock>,
+    theme: Res<crate::style::Theme>,
+    mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>,
+    mut texts: Query<&mut TextColor>,
+) {
+    let d = &theme.dock;
     for (interaction, tab, mut bg) in &mut tabs {
-        let target = if dock.tree.is_active_tab(&tab.id) {
-            rgb(tab_active())
-        } else if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
-            rgb(tab_hover_color())
+        let active = dock.tree.is_active_tab(&tab.id);
+        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let target = if active {
+            d.tab_active.color()
+        } else if hovered {
+            d.tab_hover.color()
         } else {
-            Color::NONE
+            d.tab_inactive.color()
         };
         if bg.0 != target {
             bg.0 = target;
+        }
+        let tc = if active {
+            d.tab_text_active.color()
+        } else {
+            d.tab_text.color()
+        };
+        for ent in [tab.label, tab.icon] {
+            if let Ok(mut t) = texts.get_mut(ent) {
+                if t.0 != tc {
+                    t.0 = tc;
+                }
+            }
         }
     }
 }
@@ -1260,6 +1279,9 @@ pub(crate) enum DockPart {
     Leaf,
     TabBar,
     Divider,
+    /// A tab button — geometry (radius/padding) from the style; its bg + text
+    /// colors are state-driven by `tab_hover`.
+    Tab,
 }
 
 /// Paint every [`DockPart`] from the live `Theme.dock` on theme change / spawn —
@@ -1304,7 +1326,17 @@ pub(crate) fn apply_dock_style(
                     commands.entity(e).remove::<BoxShadow>();
                 }
             }
-            DockPart::TabBar => bg.0 = d.tabbar_bg.color(),
+            DockPart::TabBar => {
+                bg.0 = d.tabbar_bg.color();
+                node.border = UiRect::bottom(Val::Px(d.header_border_width));
+                if let Some(mut bc) = border {
+                    *bc = BorderColor::all(d.header_border.color());
+                }
+            }
+            DockPart::Tab => {
+                node.border_radius = BorderRadius::all(Val::Px(d.tab_radius));
+                node.padding = UiRect::axes(Val::Px(d.tab_pad_x), Val::Px(d.tab_pad_y));
+            }
             DockPart::Divider => bg.0 = d.divider.color(),
         }
     }
@@ -1487,6 +1519,7 @@ fn populate_leaf(
                 }),
                 Interaction::default(),
                 bevy::ui::RelativeCursorPosition::default(),
+                DockPart::Tab,
                 renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new(format!("tab:{id}")),
             ))
