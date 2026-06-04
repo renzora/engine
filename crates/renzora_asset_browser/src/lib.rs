@@ -535,6 +535,12 @@ impl EditorPanel for AssetBrowserPanel {
             }
         }
 
+        // --- Process pending "Open in <visual> Editor" ---
+        // Routes by the file's own kind to its dedicated editor + layout.
+        if let Some(path) = state.pending_open_asset_tab.take() {
+            open_double_clicked(world, path);
+        }
+
         // --- Process pending rename ---
         if let Some((old_path, new_name)) = state.pending_rename.take() {
             if let Some(parent) = old_path.parent() {
@@ -1131,14 +1137,28 @@ fn render_context_menu(
                         }
 
                         if state.selected_assets.len() == 1 {
-                            // Open a text/code file directly in the code editor.
                             let single = state.selected_assets.iter().next().cloned();
                             if let Some(p) = single {
+                                // Open a text/code file directly in the code editor.
                                 if is_code_openable(&p)
                                     && menu_item(ui, regular::CODE, "Open in Code Editor", "", lua_color)
                                 {
-                                    state.pending_open_in_code = Some(p);
+                                    state.pending_open_in_code = Some(p.clone());
                                     state.context_menu_pos = None;
+                                }
+                                // Open material / blueprint / particle in its editor.
+                                let ext = p.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).unwrap_or_default();
+                                let visual = match ext.as_str() {
+                                    "material" | "material_bp" => Some(("Open in Material Editor", regular::PALETTE, material_color)),
+                                    "blueprint" | "bp" => Some(("Open in Blueprint Editor", regular::BLUEPRINT, blueprint_color)),
+                                    "particle" => Some(("Open in Particle Editor", regular::SPARKLE, Color32::from_rgb(255, 170, 80))),
+                                    _ => None,
+                                };
+                                if let Some((label, icon, color)) = visual {
+                                    if menu_item(ui, icon, label, "", color) {
+                                        state.pending_open_asset_tab = Some(p.clone());
+                                        state.context_menu_pos = None;
+                                    }
                                 }
                             }
 

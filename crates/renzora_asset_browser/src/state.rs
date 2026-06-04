@@ -129,6 +129,9 @@ pub struct AssetBrowserState {
     /// Context-menu "Open in Code Editor" target. Processed in the main panel
     /// update (needs `World` for `EditorCommands`). Cleared once processed.
     pub pending_open_in_code: Option<PathBuf>,
+    /// Context-menu "Open in <Material/Blueprint/Particle> Editor" target.
+    /// Routed via `open_double_clicked`. Cleared once processed.
+    pub pending_open_asset_tab: Option<PathBuf>,
     /// Last error message.
     pub last_error: Option<String>,
     /// Error auto-clear timer.
@@ -211,6 +214,7 @@ impl Default for AssetBrowserState {
             pending_delete: Vec::new(),
             pending_create_instance: None,
             pending_open_in_code: None,
+            pending_open_asset_tab: None,
             last_error: None,
             error_timeout: 0.0,
             batch_rename_active: false,

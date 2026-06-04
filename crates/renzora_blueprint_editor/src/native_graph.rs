@@ -101,6 +101,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
 
     commands.entity(root).add_children(&[bar, handle.viewport]);
+    renzora_editor::mark_drop_zone(commands, root);
     root
 }
 

@@ -101,6 +101,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(body).add_children(&[toolbar, img_box]);
     commands.entity(root).add_children(&[note, body]);
+    renzora_editor::mark_drop_zone(commands, root);
     root
 }
 

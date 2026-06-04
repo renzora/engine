@@ -472,6 +472,10 @@ impl Plugin for RenzoraEditorPlugin {
             .add_systems(
                 Update,
                 apply_isolation_mode.run_if(in_state(SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                editor_panel_drop.run_if(in_state(SplashState::Editor)),
             );
     }
 }
@@ -1787,6 +1791,76 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
             path: path.to_path_buf(),
         });
     }
+}
+
+// ── Editor drop zones ───────────────────────────────────────────────────────
+
+/// Marks a panel content root as an asset-drop target — dropping a matching
+/// asset over it opens that asset in its editor. Attach via [`mark_drop_zone`];
+/// handled by [`editor_panel_drop`].
+#[derive(Component)]
+pub struct EditorDropZone;
+
+/// Make `entity` (a native panel's content root) an asset-drop target: inserts
+/// the [`EditorDropZone`] marker plus a `RelativeCursorPosition` so the drop
+/// system can hit-test the cursor against it.
+pub fn mark_drop_zone(commands: &mut Commands, entity: Entity) {
+    commands
+        .entity(entity)
+        .insert((EditorDropZone, bevy::ui::RelativeCursorPosition::default()));
+}
+
+/// Map a file path to the document-tab kind it opens as, or `None` for files
+/// that don't correspond to an editor-opening asset type.
+pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
+    let name = path.file_name().and_then(|n| n.to_str()).map(|s| s.to_lowercase())?;
+    if name.ends_with(".material_bp") || name.ends_with(".material") {
+        return Some(DocTabKind::Material);
+    }
+    if name.ends_with(".particle") {
+        return Some(DocTabKind::Particle);
+    }
+    if name.ends_with(".blueprint") || name.ends_with(".bp") {
+        return Some(DocTabKind::Blueprint);
+    }
+    let ext = name.rsplit('.').next().unwrap_or("");
+    Some(match ext {
+        "ron" => DocTabKind::Scene,
+        "rhai" | "lua" | "js" | "ts" | "py" | "html" => DocTabKind::Script,
+        "wgsl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
+        _ => return None,
+    })
+}
+
+/// On release of a *detached* asset drag whose cursor is over an
+/// [`EditorDropZone`], open the dropped asset in its visual editor
+/// (material / particle / blueprint). Script/shader drops are handled by the
+/// code editor's own drop target, so they're ignored here.
+fn editor_panel_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<AssetDragPayload>>,
+    zones: Query<&bevy::ui::RelativeCursorPosition, With<EditorDropZone>>,
+    cmds: Option<Res<EditorCommands>>,
+    mut commands: Commands,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let Some(payload) = payload else { return };
+    if !payload.is_detached {
+        return;
+    }
+    let Some(kind) = doc_kind_for_path(&payload.path) else { return };
+    if !matches!(kind, DocTabKind::Material | DocTabKind::Particle | DocTabKind::Blueprint) {
+        return;
+    }
+    if !zones.iter().any(|r| r.cursor_over) {
+        return;
+    }
+    let Some(cmds) = cmds else { return };
+    let path = payload.path.clone();
+    cmds.push(move |world: &mut World| open_asset_tab(world, &path, kind));
+    commands.remove_resource::<AssetDragPayload>();
 }
 
 /// Re-dock a floating panel back into the dock tree at a reasonable location.
