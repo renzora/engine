@@ -68,6 +68,54 @@ pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect
     }
 }
 
+// ── Native (bevy_ui) drop handler ──────────────────────────────────────────
+
+/// Bevy_ui equivalent of [`check_viewport_shape_drop`]: on left-mouse release of
+/// a drag started from the native shape library (`native_drag`), drop the shape
+/// onto the viewport (or cancel). The egui path uses `check_viewport_shape_drop`
+/// instead, so this only acts on native drags to avoid double-handling.
+pub fn native_shape_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut drag_state: ResMut<ShapeDragState>,
+    viewport: Res<ViewportState>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+) {
+    if !drag_state.native_drag || drag_state.dragging_shape.is_none() {
+        return;
+    }
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+
+    // Cursor over the viewport?
+    let over_viewport = window_query
+        .single()
+        .ok()
+        .and_then(|w| w.cursor_position())
+        .map(|c| {
+            let min = viewport.screen_position;
+            let max = min + viewport.screen_size;
+            c.x >= min.x && c.y >= min.y && c.x <= max.x && c.y <= max.y
+        })
+        .unwrap_or(false);
+
+    if over_viewport {
+        let shape_id = drag_state.dragging_shape.unwrap();
+        let position = drag_state
+            .drag_surface_position
+            .or(drag_state.drag_ground_position)
+            .unwrap_or(Vec3::ZERO);
+        let normal = drag_state.drag_surface_normal;
+        drag_state.pending_drop = Some(PendingShapeDrop { shape_id, position, normal });
+    }
+    // Clear the drag in both cases (drop or cancel).
+    drag_state.dragging_shape = None;
+    drag_state.native_drag = false;
+    drag_state.drag_ground_position = None;
+    drag_state.drag_surface_position = None;
+    drag_state.drag_surface_normal = Vec3::ZERO;
+}
+
 // ── Ground position tracking system ────────────────────────────────────────
 
 /// System that updates `drag_ground_position` every frame while a shape is

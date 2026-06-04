@@ -20,6 +20,9 @@ pub struct ShapeDragState {
     pub drag_surface_position: Option<Vec3>,
     /// Surface normal at raycast hit.
     pub drag_surface_normal: Vec3,
+    /// True when the drag was started from the bevy_ui shape library (so the
+    /// native release handler owns the drop, not the egui viewport's `ui()`).
+    pub native_drag: bool,
 }
 
 /// A shape drop waiting to be spawned.

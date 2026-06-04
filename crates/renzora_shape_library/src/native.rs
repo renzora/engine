@@ -3,9 +3,10 @@
 //! at the origin (undoable `SpawnShapeCmd`). Reads `ShapeRegistry`.
 
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 use renzora::core::ShapeRegistry;
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor::{EditorCommands, ShapeDragState, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
@@ -20,10 +21,11 @@ pub struct NativeShapeLibrary;
 impl Plugin for NativeShapeLibrary {
     fn build(&self, app: &mut App) {
         app.init_resource::<ShapesState>();
+        app.init_resource::<ShapePress>();
         app.register_panel_content("shape_library", true, build);
         app.add_systems(
             Update,
-            (shape_search_sync, shape_click).run_if(in_state(SplashState::Editor)),
+            (shape_search_sync, shape_press, shape_drag_or_click).run_if(in_state(SplashState::Editor)),
         );
     }
 }
@@ -31,6 +33,18 @@ impl Plugin for NativeShapeLibrary {
 #[derive(Resource, Default)]
 struct ShapesState {
     search: String,
+}
+
+/// A pressed-but-not-yet-resolved tile: becomes a drag once the cursor moves,
+/// or a click (spawn at origin) on release in place.
+#[derive(Resource, Default)]
+struct ShapePress(Option<PressInfo>);
+
+struct PressInfo {
+    id: &'static str,
+    name: &'static str,
+    color: Color,
+    start: Vec2,
 }
 
 #[derive(Component)]
@@ -192,25 +206,55 @@ fn shape_search_sync(input: Query<&EmberTextInput, With<ShapesSearch>>, mut stat
     }
 }
 
-fn shape_click(q: Query<(&Interaction, &ShapeTile), Changed<Interaction>>, cmds: Option<Res<EditorCommands>>) {
-    let Some(cmds) = cmds else { return };
+/// Record a press on a tile (with the cursor position) as a pending drag/click.
+fn shape_press(
+    q: Query<(&Interaction, &ShapeTile), Changed<Interaction>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut press: ResMut<ShapePress>,
+) {
     for (interaction, tile) in &q {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (shape_id, name, color) = (tile.id.to_string(), tile.name.to_string(), tile.color);
-        cmds.push(move |world: &mut World| {
-            renzora_undo::execute(
-                world,
-                UndoContext::Scene,
-                Box::new(SpawnShapeCmd {
-                    entity: Entity::PLACEHOLDER,
-                    shape_id,
-                    name,
-                    position: Vec3::ZERO,
-                    color,
-                }),
-            );
-        });
+        let start = windows.single().ok().and_then(|w| w.cursor_position()).unwrap_or(Vec2::ZERO);
+        press.0 = Some(PressInfo { id: tile.id, name: tile.name, color: tile.color, start });
+    }
+}
+
+/// Resolve a pending press: drag once the cursor moves past a threshold (hand
+/// off to the viewport via `ShapeDragState`), else spawn at the origin on
+/// release (the egui panel's click fallback).
+fn shape_drag_or_click(
+    mut press: ResMut<ShapePress>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut drag: Option<ResMut<ShapeDragState>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(info) = press.0.as_ref() else { return };
+
+    if mouse.just_released(MouseButton::Left) {
+        // No drag happened (else `press` would be cleared) → spawn at origin.
+        if let Some(cmds) = cmds {
+            let (shape_id, name, color) = (info.id.to_string(), info.name.to_string(), info.color);
+            cmds.push(move |world: &mut World| {
+                renzora_undo::execute(
+                    world,
+                    UndoContext::Scene,
+                    Box::new(SpawnShapeCmd { entity: Entity::PLACEHOLDER, shape_id, name, position: Vec3::ZERO, color }),
+                );
+            });
+        }
+        press.0 = None;
+        return;
+    }
+
+    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    if let (Some(cursor), Some(drag)) = (cursor, drag.as_mut()) {
+        if (cursor - info.start).length() > 6.0 {
+            drag.dragging_shape = Some(info.id);
+            drag.native_drag = true;
+            press.0 = None;
+        }
     }
 }
