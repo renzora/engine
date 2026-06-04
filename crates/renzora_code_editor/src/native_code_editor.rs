@@ -8,16 +8,18 @@
 //! the crate's own [`highlight_line`] tokenizer — so coloring matches the egui
 //! editor exactly without ember depending back on this crate.
 //!
-//! Save is Ctrl+S (active file) while the panel is mounted. Opening files still
-//! happens through the existing paths (`open_file` from selection / asset
-//! double-click / `OpenCodeEditorFile`); drop-to-open is a follow-up.
+//! Save is Ctrl+S (active file) while the panel is mounted. Files open via the
+//! existing paths (`open_file` from selection / asset double-click /
+//! `OpenCodeEditorFile`), by dropping a script/text asset onto the panel
+//! ([`code_drop`]), or the asset browser's "Open in Code Editor" context item.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor::SplashState;
+use renzora_editor::{AssetDragPayload, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
@@ -27,9 +29,16 @@ use renzora_ember::widgets::{bind_code, code_editor, CodeBindingSpec, CodeToken,
 use crate::highlight::{highlight_line, Language, LineState, TokenKind};
 use crate::state::CodeEditorState;
 
-/// Marks the mounted panel root, so Ctrl+S only saves while the editor is open.
+/// Marks the mounted panel root, so Ctrl+S only saves while the editor is open
+/// and so a dropped asset over it opens in the editor.
 #[derive(Component)]
 struct CodeContentRoot;
+
+/// Text/code extensions accepted by drop-to-open. Mirrors the asset browser's
+/// code-editor-backed kinds.
+const CODE_EXTENSIONS: &[&str] = &[
+    "lua", "rhai", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "css",
+];
 
 /// A tab chip → selects open_files[idx] on click.
 #[derive(Component)]
@@ -43,7 +52,7 @@ pub fn register_native_code_editor(app: &mut App) {
     app.register_panel_content("code_editor", false, build);
     app.add_systems(
         Update,
-        (tab_click, tab_close_click, save_shortcut).run_if(in_state(SplashState::Editor)),
+        (tab_click, tab_close_click, save_shortcut, code_drop).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -57,6 +66,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { width: Val::Percent(100.0), height: Val::Percent(100.0), flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() },
             BackgroundColor(rgb(window_bg())),
             CodeContentRoot,
+            // Detects an asset-drag release over the panel (drop-to-open).
+            RelativeCursorPosition::default(),
             Name::new("native-code-editor"),
         ))
         .id();
@@ -293,6 +304,32 @@ fn save_shortcut(keys: Res<ButtonInput<KeyCode>>, mounted: Query<(), With<CodeCo
             state.save_active();
         }
     }
+}
+
+/// Drop a script/shader/template/text asset onto the panel to open it. Mirrors
+/// the viewport's native drop: on left-release of a *detached* asset drag whose
+/// extension is code-editor-backed and whose cursor is over the panel, open it.
+fn code_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<AssetDragPayload>>,
+    panel: Query<&RelativeCursorPosition, With<CodeContentRoot>>,
+    mut commands: Commands,
+    state: Option<ResMut<CodeEditorState>>,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let Some(payload) = payload else { return };
+    if !payload.is_detached || !payload.matches_extensions(CODE_EXTENSIONS) {
+        return;
+    }
+    if !panel.iter().any(|r| r.cursor_over) {
+        return;
+    }
+    let Some(mut state) = state else { return };
+    state.open_file(payload.path.clone());
+    // Consume the payload so no other handler also acts on the same drop.
+    commands.remove_resource::<AssetDragPayload>();
 }
 
 // ---------------------------------------------------------------------------

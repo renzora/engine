@@ -524,6 +524,17 @@ impl EditorPanel for AssetBrowserPanel {
             state.create_inline_sibling(&master_path, &default_name, &content);
         }
 
+        // --- Process pending "Open in Code Editor" ---
+        // Context menu sets this; force the file open as a Script doc so it
+        // routes to the code editor (+ OpenCodeEditorFile) regardless of kind.
+        if let Some(path) = state.pending_open_in_code.take() {
+            if let Some(cmds) = world.get_resource::<EditorCommands>() {
+                cmds.push(move |world: &mut bevy::prelude::World| {
+                    renzora_editor::open_asset_tab(world, &path, renzora_editor::DocTabKind::Script);
+                });
+            }
+        }
+
         // --- Process pending rename ---
         if let Some((old_path, new_name)) = state.pending_rename.take() {
             if let Some(parent) = old_path.parent() {
@@ -898,6 +909,22 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> 
     })
 }
 
+/// Whether a file should offer "Open in Code Editor" (text/code extensions).
+fn is_code_openable(path: &std::path::Path) -> bool {
+    if path.is_dir() {
+        return false;
+    }
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            matches!(
+                e.to_lowercase().as_str(),
+                "lua" | "rhai" | "rs" | "py" | "js" | "ts" | "wgsl" | "glsl" | "vert" | "frag" | "json" | "toml" | "yaml" | "yml" | "ron" | "txt" | "md" | "html" | "css"
+            )
+        })
+        .unwrap_or(false)
+}
+
 // ── Context menu ────────────────────────────────────────────────────────────
 
 fn render_context_menu(
@@ -1104,6 +1131,17 @@ fn render_context_menu(
                         }
 
                         if state.selected_assets.len() == 1 {
+                            // Open a text/code file directly in the code editor.
+                            let single = state.selected_assets.iter().next().cloned();
+                            if let Some(p) = single {
+                                if is_code_openable(&p)
+                                    && menu_item(ui, regular::CODE, "Open in Code Editor", "", lua_color)
+                                {
+                                    state.pending_open_in_code = Some(p);
+                                    state.context_menu_pos = None;
+                                }
+                            }
+
                             if menu_item(ui, regular::PENCIL, "Rename", "F2", text_primary) {
                                 if let Some(path) = state.selected_assets.iter().next() {
                                     state.renaming_asset = Some(path.clone());

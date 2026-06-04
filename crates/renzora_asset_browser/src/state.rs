@@ -126,6 +126,9 @@ pub struct AssetBrowserState {
     /// path that goes into the new derived `.material`'s `master`
     /// field. Cleared once processed.
     pub pending_create_instance: Option<PathBuf>,
+    /// Context-menu "Open in Code Editor" target. Processed in the main panel
+    /// update (needs `World` for `EditorCommands`). Cleared once processed.
+    pub pending_open_in_code: Option<PathBuf>,
     /// Last error message.
     pub last_error: Option<String>,
     /// Error auto-clear timer.
@@ -207,6 +210,7 @@ impl Default for AssetBrowserState {
             pending_batch_rename: None,
             pending_delete: Vec::new(),
             pending_create_instance: None,
+            pending_open_in_code: None,
             last_error: None,
             error_timeout: 0.0,
             batch_rename_active: false,
