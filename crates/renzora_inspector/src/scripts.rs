@@ -24,6 +24,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{bind_text_input, drag_value, text_input, toggle_switch, Popup};
+use renzora_ember::theme::{border, popup_bg, rgb, section_bg, text_muted, text_primary, value_text};
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
 pub fn register(app: &mut App) {
@@ -232,7 +233,7 @@ fn build_script_section(
         .spawn((
             Text::new(spec.name.clone()),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(220, 220, 230)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let spacer = commands
@@ -268,7 +269,7 @@ fn build_script_section(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(44, 44, 54)),
+            BackgroundColor(rgb(section_bg())),
             Name::new("script-header"),
         ))
         .id();
@@ -506,8 +507,8 @@ fn build_add_footer(
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(30, 30, 38)),
-            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(700),
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("script-add-panel"),
@@ -522,7 +523,7 @@ fn build_add_footer(
             .spawn((
                 Text::new(display.clone()),
                 ui_font(&fonts.ui, 11.0),
-                TextColor(Color::srgb_u8(210, 210, 220)),
+                TextColor(rgb(value_text())),
                 bevy::ui::FocusPolicy::Pass,
             ))
             .id();
@@ -555,7 +556,7 @@ fn build_add_footer(
         .spawn((
             Text::new("Add Script"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(Color::srgb_u8(220, 220, 230)),
+            TextColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
@@ -571,7 +572,7 @@ fn build_add_footer(
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(44, 44, 54)),
+            BackgroundColor(rgb(section_bg())),
             Interaction::default(),
             Popup::new(panel),
             Name::new("script-add-btn"),
@@ -595,7 +596,7 @@ fn build_add_footer(
         .spawn((
             Text::new("Drop to add script"),
             ui_font(&fonts.ui, 11.0),
-            TextColor(Color::srgb_u8(150, 150, 162)),
+            TextColor(rgb(text_muted())),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
@@ -611,7 +612,7 @@ fn build_add_footer(
                 ..default()
             },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.02)),
-            BorderColor::all(Color::srgb_u8(70, 70, 82)),
+            BorderColor::all(rgb(border())),
             bevy::ui::RelativeCursorPosition::default(),
             AddScriptDropZone { entity },
             Name::new("script-drop-zone"),
@@ -747,7 +748,7 @@ fn add_script_drop_highlight(
         let want = BorderColor::all(if active {
             Color::srgb_u8(120, 140, 200)
         } else {
-            Color::srgb_u8(70, 70, 82)
+            rgb(border())
         });
         if *bc != want {
             *bc = want;
@@ -825,7 +826,7 @@ fn muted_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(150, 150, 162)),
+            TextColor(rgb(text_muted())),
             Node {
                 margin: UiRect::all(Val::Px(6.0)),
                 ..default()

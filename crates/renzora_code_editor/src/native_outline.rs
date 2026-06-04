@@ -10,13 +10,12 @@ use renzora_editor::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{accent, rgb, section_bg, text_muted, text_primary};
 
 use crate::highlight::Language;
 use crate::outline::{extract_symbols, OutlineSymbol, SymbolKind};
 use crate::state::CodeEditorState;
 
-const HOVER_BG: (u8, u8, u8) = (44, 44, 54);
 
 #[derive(Component)]
 struct GotoLine(usize);
@@ -98,7 +97,7 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 width: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
@@ -111,8 +110,8 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
 
 fn symbol_row(commands: &mut Commands, fonts: &EmberFonts, sym: &OutlineSymbol) -> Entity {
     let (icon, icon_color) = match sym.kind {
-        SymbolKind::Function => ("\u{0192}", ACCENT_BLUE),
-        SymbolKind::Class => ("C", TEXT_MUTED),
+        SymbolKind::Function => ("\u{0192}", accent()),
+        SymbolKind::Class => ("C", text_muted()),
     };
     let row = commands
         .spawn((
@@ -133,7 +132,7 @@ fn symbol_row(commands: &mut Commands, fonts: &EmberFonts, sym: &OutlineSymbol) 
         .id();
     bind_bg(commands, row, move |w| {
         match w.get::<Interaction>(row) {
-            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(HOVER_BG),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(section_bg()),
             _ => Color::NONE,
         }
     });
@@ -141,11 +140,11 @@ fn symbol_row(commands: &mut Commands, fonts: &EmberFonts, sym: &OutlineSymbol) 
         .spawn((Text::new(icon), ui_font(&fonts.mono, 13.0), TextColor(rgb(icon_color))))
         .id();
     let name = commands
-        .spawn((Text::new(sym.name.clone()), ui_font(&fonts.ui, 11.5), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new(sym.name.clone()), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary()))))
         .id();
     let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let line = commands
-        .spawn((Text::new(format!("{}", sym.line + 1)), ui_font(&fonts.mono, 10.5), TextColor(rgb(TEXT_MUTED))))
+        .spawn((Text::new(format!("{}", sym.line + 1)), ui_font(&fonts.mono, 10.5), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(row).add_children(&[ic, name, gap, line]);
     row

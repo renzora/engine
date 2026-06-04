@@ -12,15 +12,12 @@ use renzora_editor::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_display, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{accent, close_red, placeholder, rgb, section_bg, tab_hover, text_muted, text_primary};
 use renzora_scripting::ScriptComponent;
 
 use crate::scripts_on_entity::create_and_attach_new_script;
 use crate::state::CodeEditorState;
 
-const HOVER_BG: (u8, u8, u8) = (44, 44, 54);
-const DISABLED: (u8, u8, u8) = (110, 110, 122);
-const ERROR: (u8, u8, u8) = (220, 90, 80);
 
 #[derive(Component)]
 struct NewScriptBtn;
@@ -76,15 +73,15 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(rgb((42, 42, 52))),
+            BackgroundColor(rgb(tab_hover())),
             Interaction::default(),
             NewScriptBtn,
             Name::new("new-script"),
         ))
         .id();
-    let np_icon = icon_text(commands, &fonts.phosphor, "file-plus", TEXT_MUTED, 12.0);
+    let np_icon = icon_text(commands, &fonts.phosphor, "file-plus", text_muted(), 12.0);
     let np_text = commands
-        .spawn((Text::new("New Script"), ui_font(&fonts.ui, 11.0), TextColor(rgb(TEXT_PRIMARY))))
+        .spawn((Text::new("New Script"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(new_btn).add_children(&[np_icon, np_text]);
     commands.entity(toolbar).add_child(new_btn);
@@ -198,7 +195,7 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
         .spawn((
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(TEXT_MUTED)),
+            TextColor(rgb(text_muted())),
             Node {
                 width: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
@@ -210,13 +207,13 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
 }
 
 fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entity {
-    let bar_color = if r.enabled { ACCENT_BLUE } else { DISABLED };
+    let bar_color = if r.enabled { accent() } else { placeholder() };
     let name_color = if !r.exists {
-        ERROR
+        close_red()
     } else if r.enabled {
-        TEXT_PRIMARY
+        text_primary()
     } else {
-        TEXT_MUTED
+        text_muted()
     };
     let row = commands
         .spawn(Node {
@@ -252,7 +249,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entit
         ))
         .id();
     bind_bg(commands, open, move |w| match w.get::<Interaction>(open) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(HOVER_BG),
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(section_bg()),
         _ => Color::NONE,
     });
     let name = commands
@@ -262,7 +259,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entit
     if !r.exists {
         open_kids.push(
             commands
-                .spawn((Text::new("missing"), ui_font(&fonts.ui, 9.5), TextColor(rgb(ERROR))))
+                .spawn((Text::new("missing"), ui_font(&fonts.ui, 9.5), TextColor(rgb(close_red()))))
                 .id(),
         );
     }
@@ -277,7 +274,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entit
             Name::new("script-toggle"),
         ))
         .id();
-    let (eye, eye_color) = if r.enabled { ("eye", ACCENT_BLUE) } else { ("eye-slash", TEXT_MUTED) };
+    let (eye, eye_color) = if r.enabled { ("eye", accent()) } else { ("eye-slash", text_muted()) };
     let eye_icon = icon_text(commands, &fonts.phosphor, eye, eye_color, 13.0);
     commands.entity(toggle).add_child(eye_icon);
 
@@ -290,7 +287,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entit
             Name::new("script-detach"),
         ))
         .id();
-    let trash = icon_text(commands, &fonts.phosphor, "trash", ERROR, 13.0);
+    let trash = icon_text(commands, &fonts.phosphor, "trash", close_red(), 13.0);
     commands.entity(detach).add_child(trash);
 
     commands.entity(row).add_children(&[bar, open, toggle, detach]);
