@@ -65,7 +65,7 @@ impl EditorPanel for TimelinePanel {
             accent_color,
             surface_color,
             border_color,
-            _bg_color,
+            bg_color,
             row_even,
             row_odd,
         ) = if let Some(tm) = theme {
@@ -121,6 +121,10 @@ impl EditorPanel for TimelinePanel {
         } else {
             (0.0, false, 1.0, true, None, None, 100.0, 0.0, true, 22.0)
         };
+
+        // Fill the whole panel with the themed surface so empty areas (below the
+        // last track, gaps) follow the theme instead of egui's default frame.
+        ui.painter().rect_filled(ui.max_rect(), 0.0, bg_color);
 
         // ── Toolbar ──
         self.render_toolbar(

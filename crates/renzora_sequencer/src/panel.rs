@@ -87,6 +87,16 @@ impl EditorPanel for SequencerPanel {
                 )
             };
 
+        // Fill the whole panel with the themed surface so empty areas follow the
+        // theme instead of egui's default (dark) frame.
+        ui.painter().rect_filled(
+            ui.max_rect(),
+            0.0,
+            theme
+                .map(|tm| tm.active_theme.surfaces.panel.to_color32())
+                .unwrap_or(egui::Color32::from_rgb(24, 25, 28)),
+        );
+
         let Some(state) = world.get_resource::<SequencerState>() else {
             ui.label("Sequencer state not initialised yet.");
             return;
