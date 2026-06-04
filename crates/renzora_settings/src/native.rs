@@ -1534,13 +1534,13 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
     for (widget, elems) in theme_schema() {
         let (sec, body) = section(commands, fonts, "stack", &prettify(&widget), A_VIOLET);
         commands.entity(col).add_child(sec);
-        for (i, (elem, is_color)) in elems.into_iter().enumerate() {
+        for (i, (elem, kind)) in elems.into_iter().enumerate() {
             let path = format!("{widget}.{elem}");
             let label = prettify(&elem);
-            if is_color {
-                widget_color_row(commands, fonts, body, i, &label, path);
-            } else {
-                widget_num_row(commands, fonts, body, i, &label, path);
+            match kind {
+                0 => widget_color_row(commands, fonts, body, i, &label, path),
+                1 => widget_num_row(commands, fonts, body, i, &label, path),
+                _ => widget_bool_row(commands, fonts, body, i, &label, path),
             }
         }
     }
@@ -1560,9 +1560,10 @@ fn prettify(s: &str) -> String {
         .join(" ")
 }
 
-/// Reflect-walk the ember `Theme` structure: `[(widget, [(element, is_color)])]`.
-/// Read from `Theme::default()` (the structure is static), so no world needed.
-fn theme_schema() -> Vec<(String, Vec<(String, bool)>)> {
+/// Reflect-walk the ember `Theme`: `[(widget, [(element, kind)])]` where kind is
+/// 0 = color (Rgba), 1 = number (f32), 2 = bool. Read from `Theme::default()`
+/// (the structure is static), so no world needed.
+fn theme_schema() -> Vec<(String, Vec<(String, u8)>)> {
     use bevy::reflect::{PartialReflect, ReflectRef};
     let theme = renzora_ember::style::Theme::default();
     let mut out = Vec::new();
@@ -1579,17 +1580,41 @@ fn theme_schema() -> Vec<(String, Vec<(String, bool)>)> {
         for j in 0..ws.field_len() {
             let ename = ws.name_at(j).unwrap_or_default().to_string();
             let Some(ef) = ws.field_at(j) else { continue };
-            if ef.try_downcast_ref::<renzora_ember::style::Rgba>().is_some() {
-                elems.push((ename, true));
+            let kind = if ef.try_downcast_ref::<renzora_ember::style::Rgba>().is_some() {
+                0u8
             } else if ef.try_downcast_ref::<f32>().is_some() {
-                elems.push((ename, false));
-            }
+                1u8
+            } else if ef.try_downcast_ref::<bool>().is_some() {
+                2u8
+            } else {
+                continue;
+            };
+            elems.push((ename, kind));
         }
         if !elems.is_empty() {
             out.push((wname, elems));
         }
     }
     out
+}
+
+/// A toggle row bound to one ember-`Theme` bool element (e.g. dock.shadow).
+fn widget_bool_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, idx: usize, label: &str, path: String) {
+    use bevy::reflect::GetPath;
+    use renzora_ember::style::Theme as EmberTheme;
+    let p = path.clone();
+    let sw = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        sw,
+        move |w| w.resource::<EmberTheme>().path::<bool>(p.as_str()).ok().copied().unwrap_or(false),
+        move |w, v: &bool| {
+            if let Ok(b) = w.resource_mut::<EmberTheme>().path_mut::<bool>(path.as_str()) {
+                *b = *v;
+            }
+        },
+    );
+    settings_row(commands, fonts, body, idx, label, sw);
 }
 
 /// A color row bound to one ember-`Theme` element by reflect `path`

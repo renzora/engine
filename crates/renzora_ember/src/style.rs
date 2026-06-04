@@ -19,8 +19,8 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::theme::{
-    accent, border, card_bg, header_bg, hover_bg, panel_bg, popup_bg, section_bg, selection,
-    tab_active, tab_hover, text_muted, text_primary,
+    accent, border, card_bg, divider, header_bg, hover_bg, panel_bg, popup_bg, section_bg,
+    selection, tab_active, tab_hover, text_muted, text_primary,
 };
 
 /// Registers the theme resource + the painter. The [`Theme`] is the source of
@@ -36,6 +36,7 @@ impl Plugin for ThemePlugin {
             .register_type::<StyleToken>()
             .register_type::<NodeGraphStyle>()
             .register_type::<AssetTileStyle>()
+            .register_type::<DockStyle>()
             .register_type::<Rgba>()
             .add_systems(Update, apply_theme);
     }
@@ -301,6 +302,49 @@ impl Default for AssetTileStyle {
     }
 }
 
+/// Style for the dock — the panel leaves (bg/border/radius/padding + drop
+/// shadow), the tab bar, and the split dividers. Tweak these for custom panel
+/// chrome (rounded floating panels, shadows, thick borders, …).
+#[derive(Reflect, Clone, Serialize, Deserialize)]
+pub struct DockStyle {
+    pub leaf_bg: Rgba,
+    pub leaf_border: Rgba,
+    pub leaf_border_width: f32,
+    pub leaf_radius: f32,
+    pub leaf_padding: f32,
+    pub tabbar_bg: Rgba,
+    pub divider: Rgba,
+    pub shadow: bool,
+    pub shadow_color: Rgba,
+    pub shadow_alpha: f32,
+    pub shadow_x: f32,
+    pub shadow_y: f32,
+    pub shadow_blur: f32,
+    pub shadow_spread: f32,
+}
+
+impl Default for DockStyle {
+    fn default() -> Self {
+        let c = Rgba::rgb;
+        Self {
+            leaf_bg: c(panel_bg()),
+            leaf_border: c(divider()),
+            leaf_border_width: 0.0,
+            leaf_radius: 0.0,
+            leaf_padding: 0.0,
+            tabbar_bg: c(header_bg()),
+            divider: c(divider()),
+            shadow: false,
+            shadow_color: Rgba { r: 0, g: 0, b: 0, a: 255 },
+            shadow_alpha: 0.4,
+            shadow_x: 0.0,
+            shadow_y: 2.0,
+            shadow_blur: 8.0,
+            shadow_spread: 0.0,
+        }
+    }
+}
+
 // ── Theme: all per-role tokens ───────────────────────────────────────────────
 
 /// The active theme — one [`StyleToken`] per [`Role`]. Swap or mutate this and
@@ -327,6 +371,7 @@ pub struct Theme {
     // Bespoke multi-element widget styles.
     pub node_graph: NodeGraphStyle,
     pub asset_tile: AssetTileStyle,
+    pub dock: DockStyle,
 }
 
 impl Theme {
@@ -411,6 +456,7 @@ impl Default for Theme {
             menu: StyleToken::new(c(popup_bg())).radius(4.0).pad(2.0, 2.0),
             node_graph: NodeGraphStyle::default(),
             asset_tile: AssetTileStyle::default(),
+            dock: DockStyle::default(),
         }
     }
 }

@@ -277,7 +277,7 @@ impl Plugin for DockPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Update, add_panel_click);
+            .add_systems(Update, (add_panel_click, apply_dock_style));
     }
 }
 
@@ -1124,7 +1124,7 @@ fn build_tree(
                 dv.width = Val::Percent(100.0);
             }
             let divider = commands
-                .spawn((dv, BackgroundColor(rgb(divider())), Name::new("divider")))
+                .spawn((dv, BackgroundColor(rgb(divider())), DockPart::Divider, Name::new("divider")))
                 .id();
 
             let mut wb = Node {
@@ -1254,6 +1254,61 @@ fn build_tree(
     }
 }
 
+/// Which dock element a node styles from [`crate::style::DockStyle`].
+#[derive(Component, Clone, Copy)]
+pub(crate) enum DockPart {
+    Leaf,
+    TabBar,
+    Divider,
+}
+
+/// Paint every [`DockPart`] from the live `Theme.dock` on theme change / spawn —
+/// the dock's panel chrome (leaf bg/border/radius/padding + drop shadow, tab bar,
+/// dividers) follows the theme and is editable in the Theme tab.
+pub(crate) fn apply_dock_style(
+    theme: Res<crate::style::Theme>,
+    mut commands: Commands,
+    mut q: Query<(
+        Entity,
+        Ref<DockPart>,
+        &mut BackgroundColor,
+        Option<&mut BorderColor>,
+        &mut Node,
+    )>,
+) {
+    let repaint = theme.is_changed();
+    let d = &theme.dock;
+    for (e, part, mut bg, border, mut node) in &mut q {
+        if !repaint && !part.is_added() {
+            continue;
+        }
+        match *part {
+            DockPart::Leaf => {
+                bg.0 = d.leaf_bg.color();
+                node.border = UiRect::all(Val::Px(d.leaf_border_width));
+                node.border_radius = BorderRadius::all(Val::Px(d.leaf_radius));
+                node.padding = UiRect::all(Val::Px(d.leaf_padding));
+                if let Some(mut bc) = border {
+                    *bc = BorderColor::all(d.leaf_border.color());
+                }
+                if d.shadow {
+                    commands.entity(e).insert(BoxShadow::new(
+                        d.shadow_color.color().with_alpha(d.shadow_alpha),
+                        Val::Px(d.shadow_x),
+                        Val::Px(d.shadow_y),
+                        Val::Px(d.shadow_spread),
+                        Val::Px(d.shadow_blur),
+                    ));
+                } else {
+                    commands.entity(e).remove::<BoxShadow>();
+                }
+            }
+            DockPart::TabBar => bg.0 = d.tabbar_bg.color(),
+            DockPart::Divider => bg.0 = d.divider.color(),
+        }
+    }
+}
+
 fn build_leaf(
     commands: &mut Commands,
     font: &Handle<Font>,
@@ -1278,6 +1333,8 @@ fn build_leaf(
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
+            BorderColor::all(Color::NONE),
+            DockPart::Leaf,
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("leaf"),
         ))
@@ -1394,6 +1451,7 @@ fn populate_leaf(
             ),
             bevy::ui::RelativeCursorPosition::default(),
             TabBarOf(leaf),
+            DockPart::TabBar,
             Name::new("tabbar"),
         ))
         .id();
