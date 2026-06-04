@@ -24,8 +24,9 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, collapsible, drag_value, menu_item, screen_menu, text_input, DragRange};
 
 use renzora_hanabi::{
-    HanabiEffectDefinition, ParticleAlphaMode, ParticleEditorState, ParticleOrientMode, SimulationCondition,
-    SimulationSpace, SpawnMode, VelocityMode,
+    ConformToSphere, EditorMode, HanabiEffectDefinition, HanabiEmitShape, OrbitSettings, ParticleAlphaMode,
+    ParticleEditorState, ParticleOrientMode, ShapeDimension, SimulationCondition, SimulationSpace, SpawnMode,
+    VelocityMode,
 };
 
 const LABEL_W: f32 = 96.0;
@@ -111,27 +112,56 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, body, has_effect);
 
     let header = build_header(commands, fonts);
-    commands.entity(body).add_child(header);
 
-    // Sections.
+    // Simple-mode section stack.
+    let sections = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
     for section in [
         section_general as fn(&mut Commands, &EmberFonts) -> Entity,
         section_spawning,
         section_lifetime,
+        section_shape,
         section_velocity,
         section_forces,
-        section_size,
+        section_conform,
         section_noise,
+        section_orbit,
         section_velocity_limit,
+        section_size,
         section_simulation,
         section_rendering,
     ] {
         let s = section(commands, fonts);
-        commands.entity(body).add_child(s);
+        commands.entity(sections).add_child(s);
     }
+    bind_display(commands, sections, |w| !is_advanced(w));
 
+    // Advanced (graph) mode shows the graph + its node inspector elsewhere.
+    let adv_note = commands
+        .spawn(Node { width: Val::Percent(100.0), align_items: AlignItems::Center, padding: UiRect::vertical(Val::Px(20.0)), ..default() })
+        .id();
+    let adv_lbl = commands.spawn((Text::new("Advanced mode — edit nodes in the Particle Graph panel"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    commands.entity(adv_note).add_child(adv_lbl);
+    bind_display(commands, adv_note, is_advanced);
+
+    commands.entity(body).add_children(&[header, sections, adv_note]);
     commands.entity(root).add_children(&[welcome, body]);
     root
+}
+
+fn is_advanced(w: &World) -> bool {
+    w.get_resource::<ParticleEditorState>().is_some_and(|s| s.editor_mode == EditorMode::Graph)
+}
+
+fn toggle_advanced(w: &mut World) {
+    if let Some(mut s) = w.get_resource_mut::<ParticleEditorState>() {
+        if s.editor_mode == EditorMode::Graph {
+            s.editor_mode = EditorMode::Simple;
+        } else {
+            s.editor_mode = EditorMode::Graph;
+            let g = s.current_effect.as_ref().map(renzora_hanabi::node_graph::ParticleNodeGraph::from_effect);
+            s.node_graph = g;
+        }
+    }
 }
 
 fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -139,10 +169,182 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
         .id();
     commands.entity(bar).insert((BorderColor::all(rgb(border())),));
+    // Advanced/Simple toggle (reactive label).
+    let adv = commands
+        .spawn((Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), ActionBtn(Arc::new(toggle_advanced))))
+        .id();
+    let adv_t = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
+    bind_text(commands, adv_t, |w| if is_advanced(w) { "Switch to Simple".into() } else { "Switch to Advanced".into() });
+    commands.entity(adv).add_child(adv_t);
+    let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let save = action_button(commands, fonts, "Save", text_primary(), Arc::new(|w: &mut World| save_current(w, false)));
     let save_as = action_button(commands, fonts, "Save As", text_muted(), Arc::new(|w: &mut World| save_current(w, true)));
-    commands.entity(bar).add_children(&[save, save_as]);
+    commands.entity(bar).add_children(&[adv, spacer, save, save_as]);
     bar
+}
+
+// ── Part-2 sections: Shape (enum payload), Conform, Orbit ─────────────────────
+
+fn section_shape(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("shapes"), "Emission Shape", true);
+    let shape = row_combo(commands, fonts, "Shape", |w| getf(w, |e| shape_name(&e.emit_shape), "Point").to_string(), vec![
+        ("Point".into(), act(|e| e.emit_shape = HanabiEmitShape::Point)),
+        ("Circle".into(), act(|e| e.emit_shape = HanabiEmitShape::Circle { radius: 1.0, dimension: ShapeDimension::Volume })),
+        ("Sphere".into(), act(|e| e.emit_shape = HanabiEmitShape::Sphere { radius: 1.0, dimension: ShapeDimension::Volume })),
+        ("Cone".into(), act(|e| e.emit_shape = HanabiEmitShape::Cone { base_radius: 0.5, top_radius: 0.0, height: 1.0, dimension: ShapeDimension::Volume })),
+        ("Rectangle".into(), act(|e| e.emit_shape = HanabiEmitShape::Rect { half_extents: [1.0, 1.0], dimension: ShapeDimension::Volume })),
+        ("Box".into(), act(|e| e.emit_shape = HanabiEmitShape::Box { half_extents: [1.0, 1.0, 1.0] })),
+    ]);
+    commands.entity(body).add_child(shape);
+
+    // Radius (Circle | Sphere).
+    let radius = row_num(commands, fonts, "Radius", 0.1, 0.001, 100.0,
+        |w| getf(w, |e| match &e.emit_shape { HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } => *radius, _ => 0.0 }, 0.0),
+        |w, v| setf(w, |e| if let HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } = &mut e.emit_shape { *radius = *v; }));
+    bind_display(commands, radius, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. }), false));
+    commands.entity(body).add_child(radius);
+
+    // Cone fields.
+    let base_r = row_num(commands, fonts, "Base Radius", 0.1, 0.0, 100.0,
+        |w| getf(w, |e| if let HanabiEmitShape::Cone { base_radius, .. } = &e.emit_shape { *base_radius } else { 0.0 }, 0.0),
+        |w, v| setf(w, |e| if let HanabiEmitShape::Cone { base_radius, .. } = &mut e.emit_shape { *base_radius = *v; }));
+    let top_r = row_num(commands, fonts, "Top Radius", 0.1, 0.0, 100.0,
+        |w| getf(w, |e| if let HanabiEmitShape::Cone { top_radius, .. } = &e.emit_shape { *top_radius } else { 0.0 }, 0.0),
+        |w, v| setf(w, |e| if let HanabiEmitShape::Cone { top_radius, .. } = &mut e.emit_shape { *top_radius = *v; }));
+    let height = row_num(commands, fonts, "Height", 0.1, 0.001, 100.0,
+        |w| getf(w, |e| if let HanabiEmitShape::Cone { height, .. } = &e.emit_shape { *height } else { 0.0 }, 0.0),
+        |w, v| setf(w, |e| if let HanabiEmitShape::Cone { height, .. } = &mut e.emit_shape { *height = *v; }));
+    for r in [base_r, top_r, height] {
+        bind_display(commands, r, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Cone { .. }), false));
+        commands.entity(body).add_child(r);
+    }
+
+    // Rect / Box extents.
+    let rx = row_num(commands, fonts, "Extents X", 0.1, 0.001, 100.0, |w| shape_ext(w, 0), |w, v| set_shape_ext(w, 0, *v));
+    let ry = row_num(commands, fonts, "Extents Y", 0.1, 0.001, 100.0, |w| shape_ext(w, 1), |w, v| set_shape_ext(w, 1, *v));
+    for r in [rx, ry] {
+        bind_display(commands, r, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Rect { .. } | HanabiEmitShape::Box { .. }), false));
+        commands.entity(body).add_child(r);
+    }
+    let rz = row_num(commands, fonts, "Extents Z", 0.1, 0.001, 100.0, |w| shape_ext(w, 2), |w, v| set_shape_ext(w, 2, *v));
+    bind_display(commands, rz, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Box { .. }), false));
+    commands.entity(body).add_child(rz);
+
+    // Emit-from dimension (Circle | Sphere | Cone | Rect).
+    let dim = row_combo(commands, fonts, "Emit from", |w| match getf(w, |e| shape_dimension(&e.emit_shape), Some(true)) {
+        Some(true) => "Volume".into(),
+        Some(false) => "Surface".into(),
+        None => "—".into(),
+    }, vec![
+        ("Volume".into(), act(|e| set_dimension(e, ShapeDimension::Volume))),
+        ("Surface".into(), act(|e| set_dimension(e, ShapeDimension::Surface))),
+    ]);
+    bind_display(commands, dim, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. } | HanabiEmitShape::Cone { .. } | HanabiEmitShape::Rect { .. }), false));
+    commands.entity(body).add_child(dim);
+    root
+}
+
+fn shape_name(s: &HanabiEmitShape) -> &'static str {
+    match s {
+        HanabiEmitShape::Point => "Point",
+        HanabiEmitShape::Circle { .. } => "Circle",
+        HanabiEmitShape::Sphere { .. } => "Sphere",
+        HanabiEmitShape::Cone { .. } => "Cone",
+        HanabiEmitShape::Rect { .. } => "Rectangle",
+        HanabiEmitShape::Box { .. } => "Box",
+    }
+}
+
+fn shape_dimension(s: &HanabiEmitShape) -> Option<bool> {
+    match s {
+        HanabiEmitShape::Circle { dimension, .. }
+        | HanabiEmitShape::Sphere { dimension, .. }
+        | HanabiEmitShape::Cone { dimension, .. }
+        | HanabiEmitShape::Rect { dimension, .. } => Some(*dimension == ShapeDimension::Volume),
+        _ => None,
+    }
+}
+
+fn set_dimension(e: &mut HanabiEffectDefinition, d: ShapeDimension) {
+    match &mut e.emit_shape {
+        HanabiEmitShape::Circle { dimension, .. }
+        | HanabiEmitShape::Sphere { dimension, .. }
+        | HanabiEmitShape::Cone { dimension, .. }
+        | HanabiEmitShape::Rect { dimension, .. } => *dimension = d,
+        _ => {}
+    }
+}
+
+fn shape_ext(w: &World, i: usize) -> f32 {
+    getf(w, |e| match &e.emit_shape {
+        HanabiEmitShape::Rect { half_extents, .. } => half_extents.get(i).copied().unwrap_or(0.0),
+        HanabiEmitShape::Box { half_extents } => half_extents.get(i).copied().unwrap_or(0.0),
+        _ => 0.0,
+    }, 0.0)
+}
+
+fn set_shape_ext(w: &mut World, i: usize, v: f32) {
+    setf(w, |e| match &mut e.emit_shape {
+        HanabiEmitShape::Rect { half_extents, .. } => {
+            if let Some(c) = half_extents.get_mut(i) { *c = v; }
+        }
+        HanabiEmitShape::Box { half_extents } => {
+            if let Some(c) = half_extents.get_mut(i) { *c = v; }
+        }
+        _ => {}
+    });
+}
+
+fn section_conform(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("atom"), "Conform to Sphere", false);
+    let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.conform_to_sphere.is_some(), false), |w, v| setf(w, |e| e.conform_to_sphere = if *v { Some(ConformToSphere::default()) } else { None }));
+    commands.entity(body).add_child(en);
+    let origin = row_vec3(commands, fonts, "Origin",
+        Arc::new(|w, i| getf(w, |e| e.conform_to_sphere.as_ref().map(|c| c.origin[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i, v| setf(w, |e| if let Some(c) = e.conform_to_sphere.as_mut() { c.origin[i] = v; })));
+    let radius = cnf_num(commands, fonts, "Radius", 0.1, 0.1, 100.0, |c| c.radius, |c, v| c.radius = v);
+    let infl = cnf_num(commands, fonts, "Influence Dist", 0.1, 0.0, 100.0, |c| c.influence_dist, |c, v| c.influence_dist = v);
+    let accel = cnf_num(commands, fonts, "Accel", 0.1, 0.0, 100.0, |c| c.attraction_accel, |c, v| c.attraction_accel = v);
+    let maxs = cnf_num(commands, fonts, "Max Speed", 0.1, 0.0, 100.0, |c| c.max_attraction_speed, |c, v| c.max_attraction_speed = v);
+    let shell = cnf_num(commands, fonts, "Shell Thick.", 0.01, 0.0, 10.0, |c| c.shell_half_thickness, |c, v| c.shell_half_thickness = v);
+    let sticky = cnf_num(commands, fonts, "Sticky Factor", 0.01, 0.0, 10.0, |c| c.sticky_factor, |c, v| c.sticky_factor = v);
+    for r in [origin, radius, infl, accel, maxs, shell, sticky] {
+        bind_display(commands, r, |w| getf(w, |e| e.conform_to_sphere.is_some(), false));
+        commands.entity(body).add_child(r);
+    }
+    root
+}
+
+fn cnf_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, min: f32, max: f32, get: impl Fn(&ConformToSphere) -> f32 + Send + Sync + Copy + 'static, set: impl Fn(&mut ConformToSphere, f32) + Send + Sync + Copy + 'static) -> Entity {
+    row_num(commands, fonts, label, step, min, max,
+        move |w| getf(w, |e| e.conform_to_sphere.as_ref().map(get).unwrap_or(0.0), 0.0),
+        move |w, v| setf(w, |e| if let Some(c) = e.conform_to_sphere.as_mut() { set(c, *v); }))
+}
+
+fn section_orbit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let (root, body) = collapsible(commands, fonts, Some("planet"), "Orbit", false);
+    let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.orbit.is_some(), false), |w, v| setf(w, |e| e.orbit = if *v { Some(OrbitSettings::default()) } else { None }));
+    commands.entity(body).add_child(en);
+    let center = row_vec3(commands, fonts, "Center",
+        Arc::new(|w, i| getf(w, |e| e.orbit.as_ref().map(|o| o.center[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { o.center[i] = v; })));
+    let axis = row_vec3(commands, fonts, "Axis",
+        Arc::new(|w, i| getf(w, |e| e.orbit.as_ref().map(|o| o.axis[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { o.axis[i] = v; })));
+    let speed = orb_num(commands, fonts, "Speed", 0.01, -20.0, 20.0, |o| o.speed, |o, v| o.speed = v);
+    let pull = orb_num(commands, fonts, "Radial Pull", 0.01, 0.0, 20.0, |o| o.radial_pull, |o, v| o.radial_pull = v);
+    let orad = orb_num(commands, fonts, "Orbit Radius", 0.1, 0.1, 100.0, |o| o.orbit_radius, |o, v| o.orbit_radius = v);
+    for r in [center, axis, speed, pull, orad] {
+        bind_display(commands, r, |w| getf(w, |e| e.orbit.is_some(), false));
+        commands.entity(body).add_child(r);
+    }
+    root
+}
+
+fn orb_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, min: f32, max: f32, get: impl Fn(&OrbitSettings) -> f32 + Send + Sync + Copy + 'static, set: impl Fn(&mut OrbitSettings, f32) + Send + Sync + Copy + 'static) -> Entity {
+    row_num(commands, fonts, label, step, min, max,
+        move |w| getf(w, |e| e.orbit.as_ref().map(get).unwrap_or(0.0), 0.0),
+        move |w, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { set(o, *v); }))
 }
 
 fn save_current(w: &mut World, save_as: bool) {
