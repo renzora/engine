@@ -33,17 +33,15 @@ use crate::widgets::{bind_hsv_picker, hsv_picker, Popup};
 /// so the value controls line up in a column directly to their right.
 pub const INSPECTOR_LABEL_W: f32 = 112.0;
 
-/// Alternating row background for an inspector/list row at `row_index`
-/// (odd rows tinted, even rows transparent). Insert as the row's
-/// `BackgroundColor` so panels stripe consistently.
+/// Alternating row background for an inspector/list row at `row_index`. Insert
+/// as the row's `BackgroundColor` so panels stripe consistently.
 pub fn inspector_stripe(row_index: usize) -> Color {
-    // Even rows are fully transparent — they show the real panel background
-    // unchanged. Odd rows get a faint darkening overlay, so the alternation is
-    // subtle and the panel base is untouched.
+    // Solid, theme-derived stripe colors (a transparent/black-alpha overlay read
+    // as muddy on light themes — these track the palette on both light and dark).
     if row_index % 2 == 1 {
-        Color::srgba(0.0, 0.0, 0.0, 0.22)
+        rgb(row_odd())
     } else {
-        Color::NONE
+        rgb(row_even())
     }
 }
 

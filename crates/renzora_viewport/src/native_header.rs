@@ -22,6 +22,9 @@ use renzora_editor::{EditorCommands, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
+use renzora_ember::theme::{
+    border, hover_bg, panel_bg, popup_bg, rgb, tab_active, text_muted, text_primary, value_text,
+};
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
@@ -65,7 +68,7 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(26, 26, 31)),
+            BackgroundColor(rgb(panel_bg())),
             HeaderBg,
             Name::new("viewport-header"),
         ))
@@ -173,7 +176,7 @@ fn action_btn(
     action: HeaderAction,
     icon: &str,
 ) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, (230, 230, 240), 14.0);
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_primary(), 14.0);
     let btn = commands
         .spawn((
             Node {
@@ -205,6 +208,7 @@ pub(crate) fn register(app: &mut App) {
             header_action_click,
             dropdown_toggle,
             dropdown_option_click,
+            dropdown_dismiss,
             update_dropdown_visuals,
             panel_toggle,
             display_option_click,
@@ -272,7 +276,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
             .spawn((
                 Text::new(*label),
                 ui_font(&fonts.ui, 12.0),
-                TextColor(Color::srgb_u8(230, 230, 240)),
+                TextColor(rgb(text_primary())),
             ))
             .id();
         let row = commands
@@ -311,9 +315,10 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(30, 30, 38)),
-            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("vp-drop-panel"),
         ))
         .id();
@@ -324,10 +329,10 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
         .spawn((
             Text::new(labels.first().copied().unwrap_or("")),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(230, 230, 240)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (200, 200, 210), 10.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 10.0);
     let trigger = commands
         .spawn((
             Node {
@@ -340,7 +345,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(50, 50, 62)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             DropTrigger {
@@ -419,6 +424,31 @@ fn dropdown_option_click(
                 if let Ok(mut n) = nodes.get_mut(t.panel) {
                     n.display = Display::None;
                 }
+            }
+        }
+    }
+}
+
+/// Close any open dropdown when the pointer presses outside its trigger + panel.
+fn dropdown_dismiss(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut triggers: Query<(&mut DropTrigger, &Interaction)>,
+    panels: Query<&bevy::ui::RelativeCursorPosition>,
+    mut nodes: Query<&mut Node>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    for (mut t, trig_inter) in &mut triggers {
+        if !t.open {
+            continue;
+        }
+        let over_trigger = !matches!(trig_inter, Interaction::None);
+        let over_panel = panels.get(t.panel).is_ok_and(|r| r.cursor_over);
+        if !over_trigger && !over_panel {
+            t.open = false;
+            if let Ok(mut n) = nodes.get_mut(t.panel) {
+                n.display = Display::None;
             }
         }
     }
@@ -791,16 +821,16 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(30, 30, 38)),
-            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
             Name::new("vp-display-panel"),
         ))
         .id();
     commands.entity(panel).add_children(&kids);
 
-    let eye = icon_text(commands, &fonts.phosphor, "eye", (190, 190, 200), 15.0);
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (160, 160, 170), 8.0);
+    let eye = icon_text(commands, &fonts.phosphor, "eye", text_muted(), 15.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
     let trigger = commands
         .spawn((
             Node {
@@ -813,7 +843,7 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(50, 50, 62)),
+            BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             PanelToggle { panel, open: false },
@@ -841,7 +871,7 @@ fn section_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> En
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 10.0),
-            TextColor(Color::srgb_u8(140, 140, 152)),
+            TextColor(rgb(text_muted())),
             Name::new("vp-section-label"),
         ))
         .id()
@@ -856,7 +886,7 @@ fn separator_row(commands: &mut Commands) -> Entity {
                 margin: UiRect::vertical(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(60, 60, 74)),
+            BackgroundColor(rgb(border())),
             Name::new("vp-separator"),
         ))
         .id()
@@ -873,7 +903,7 @@ fn option_row(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(230, 230, 240)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let row = commands
@@ -911,7 +941,7 @@ fn check_row(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(220, 220, 230)),
+            TextColor(rgb(value_text())),
         ))
         .id();
     let spacer = commands
@@ -1090,7 +1120,7 @@ fn snap_pair(
     get: impl Fn(&World) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, (210, 210, 220), 13.0);
+    let glyph = icon_text(commands, &fonts.phosphor, icon, value_text(), 13.0);
     let toggle = commands
         .spawn((
             Node {
@@ -1110,7 +1140,7 @@ fn snap_pair(
         .id();
     commands.entity(toggle).add_child(glyph);
 
-    let dv = drag_value_flat(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), min, step);
     commands.entity(dv).insert(DragRange { min, max });
     bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
 
@@ -1124,7 +1154,7 @@ fn snap_pair(
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            BackgroundColor(rgb(hover_bg())),
             SnapPillOf(which),
             Name::new("vp-snap-pair"),
         ))
@@ -1135,7 +1165,7 @@ fn snap_pair(
 
 /// A camera icon + scrubbable move-speed (3D fly-cam).
 fn cam_speed_widget(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, "video-camera", (230, 230, 240), 13.0);
+    let glyph = icon_text(commands, &fonts.phosphor, "video-camera", text_primary(), 13.0);
     let iconbox = commands
         .spawn((
             Node {
@@ -1150,7 +1180,7 @@ fn cam_speed_widget(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(iconbox).add_child(glyph);
 
-    let dv = drag_value_flat(commands, &fonts.ui, "", (210, 210, 220), 1.0, 0.5);
+    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), 1.0, 0.5);
     commands.entity(dv).insert(DragRange {
         min: 0.1,
         max: 100.0,
@@ -1180,7 +1210,7 @@ fn cam_speed_widget(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            BackgroundColor(rgb(hover_bg())),
             WidgetBg,
             Name::new("vp-cam-speed"),
         ))
@@ -1334,9 +1364,10 @@ fn dropdown_panel(commands: &mut Commands, kids: &[Entity]) -> Entity {
                 display: Display::None,
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(30, 30, 38)),
-            BorderColor::all(Color::srgb_u8(60, 60, 74)),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             GlobalZIndex(600),
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("vp-drop-panel"),
         ))
         .id();
@@ -1346,8 +1377,8 @@ fn dropdown_panel(commands: &mut Commands, kids: &[Entity]) -> Entity {
 
 /// A 40px icon + caret dropdown trigger (the caller adds its own marker bundle).
 fn icon_trigger_node(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, (190, 190, 200), 15.0);
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (160, 160, 170), 8.0);
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_muted(), 15.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
     let trigger = commands
         .spawn((
             Node {
@@ -1360,7 +1391,7 @@ fn icon_trigger_node(commands: &mut Commands, fonts: &EmberFonts, icon: &str) ->
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            BackgroundColor(rgb(hover_bg())),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("vp-icon-dropdown"),
@@ -1390,7 +1421,7 @@ fn click_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, click: He
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(230, 230, 240)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let row = commands
@@ -1433,7 +1464,7 @@ fn snap_button(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(230, 230, 240)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let btn = commands
@@ -1446,7 +1477,7 @@ fn snap_button(
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(46, 46, 56)),
+            BackgroundColor(rgb(hover_bg())),
             Interaction::default(),
             kind,
             click,
@@ -1473,7 +1504,7 @@ fn drag_row_build(
         .spawn((
             Text::new(label),
             ui_font(&fonts.ui, 12.0),
-            TextColor(Color::srgb_u8(220, 220, 230)),
+            TextColor(rgb(value_text())),
         ))
         .id();
     let spacer = commands
@@ -1482,7 +1513,7 @@ fn drag_row_build(
             ..default()
         })
         .id();
-    let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    let dv = drag_value(commands, &fonts.ui, "", value_text(), min, step);
     commands.entity(dv).insert(DragRange { min, max });
     bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
     let row = commands
@@ -1609,7 +1640,7 @@ fn snap_dist_row(
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
     let btn = snap_button(commands, fonts, label, kind, click);
-    let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), min, step);
+    let dv = drag_value(commands, &fonts.ui, "", value_text(), min, step);
     commands.entity(dv).insert(DragRange { min, max });
     bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
     let row = commands
@@ -1797,6 +1828,7 @@ struct ToolsPopulated;
 /// per-frame systems can highlight, show/hide, and fire it.
 #[derive(Component, Clone)]
 struct ToolButton {
+    glyph: Entity,
     visible: Arc<dyn Fn(&World) -> bool + Send + Sync>,
     is_active: Arc<dyn Fn(&World) -> bool + Send + Sync>,
     activate: Arc<dyn Fn(&mut World) + Send + Sync>,
@@ -1874,7 +1906,7 @@ fn tool_separator(commands: &mut Commands) -> Entity {
                 margin: UiRect::horizontal(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb_u8(70, 70, 82)),
+            BackgroundColor(rgb(border())),
             Name::new("vp-tool-sep"),
         ))
         .id()
@@ -1895,7 +1927,7 @@ fn tool_button(
                 font_size: 15.0,
                 ..default()
             },
-            TextColor(Color::srgb_u8(230, 230, 240)),
+            TextColor(rgb(text_primary())),
         ))
         .id();
     let btn = commands
@@ -1911,6 +1943,7 @@ fn tool_button(
             BackgroundColor(Color::NONE),
             Interaction::default(),
             ToolButton {
+                glyph,
                 visible: entry.visible.clone(),
                 is_active: entry.is_active.clone(),
                 activate: entry.activate.clone(),
@@ -1934,16 +1967,20 @@ fn update_tool_buttons(world: &mut World) {
     if collected.is_empty() {
         return;
     }
-    let (accent, hovered) = {
+    let (accent, hovered, icon_active, icon_inactive) = {
         let Some(tm) = world.get_resource::<ThemeManager>() else {
             return;
         };
         (
             col(tm.active_theme.semantic.accent.to_color32()),
             col(tm.active_theme.widgets.hovered_bg.to_color32()),
+            // White-ish on the accent fill when active; a clear neutral otherwise
+            // (so tool icons stay legible on light themes).
+            col(tm.active_theme.widgets.active_fg.to_color32()),
+            col(tm.active_theme.text.secondary.to_color32()),
         )
     };
-    let results: Vec<(Entity, bool, Color)> = collected
+    let results: Vec<(Entity, bool, Color, Entity, Color)> = collected
         .iter()
         .map(|(e, b, inter)| {
             let visible = (b.visible)(world);
@@ -1955,10 +1992,11 @@ fn update_tool_buttons(world: &mut World) {
             } else {
                 Color::NONE
             };
-            (*e, visible, bg)
+            let icol = if active { icon_active } else { icon_inactive };
+            (*e, visible, bg, b.glyph, icol)
         })
         .collect();
-    for (e, visible, bg) in results {
+    for (e, visible, bg, glyph, icol) in results {
         if let Some(mut node) = world.get_mut::<Node>(e) {
             let want = if visible { Display::Flex } else { Display::None };
             if node.display != want {
@@ -1968,6 +2006,11 @@ fn update_tool_buttons(world: &mut World) {
         if let Some(mut bgc) = world.get_mut::<BackgroundColor>(e) {
             if bgc.0 != bg {
                 bgc.0 = bg;
+            }
+        }
+        if let Some(mut tc) = world.get_mut::<TextColor>(glyph) {
+            if tc.0 != icol {
+                tc.0 = icol;
             }
         }
     }

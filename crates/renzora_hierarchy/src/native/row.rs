@@ -279,9 +279,9 @@ pub(crate) fn build_row(
         fonts,
         if s.is_visible { EYE } else { EYE_SLASH },
         if s.is_visible {
-            Color::srgb_u8(140, 180, 220)
+            rgb(text_muted())
         } else {
-            Color::srgb_u8(90, 90, 100)
+            rgb(placeholder())
         },
         Some(HierVisToggle {
             entity: s.entity,
@@ -298,9 +298,9 @@ pub(crate) fn build_row(
             LOCK_SIMPLE_OPEN
         },
         if s.is_locked {
-            Color::srgb_u8(220, 80, 80)
+            rgb(close_red())
         } else {
-            Color::srgb_u8(90, 90, 100)
+            rgb(placeholder())
         },
         None,
         Some(HierLockToggle {
