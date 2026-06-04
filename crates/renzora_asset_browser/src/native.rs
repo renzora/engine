@@ -18,7 +18,7 @@ use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::{rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
+use renzora_ember::theme::{popup_bg, rgb, ACCENT_BLUE, PANEL_BG, TEXT_MUTED, TEXT_PRIMARY};
 use renzora_ember::widgets::{
     icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
     text_input, EmberTextInput,
@@ -488,7 +488,7 @@ fn drag_ghost(
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.11, 0.11, 0.14, 0.92)),
+            BackgroundColor(rgb(popup_bg()).with_alpha(0.92)),
             BorderColor::all(rgb(ACCENT_BLUE)),
             GlobalZIndex(10_000),
             Pickable::IGNORE,
