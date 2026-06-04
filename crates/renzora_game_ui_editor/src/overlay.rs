@@ -26,6 +26,48 @@ pub(crate) struct CanvasHitLayer;
 #[derive(Component)]
 struct SelBox(Entity);
 
+/// One of the 8 resize handles.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum ResizeHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+impl ResizeHandle {
+    /// Which sides move when dragged: (left, top, right, bottom).
+    pub(crate) fn sides(self) -> (bool, bool, bool, bool) {
+        match self {
+            Self::TopLeft => (true, true, false, false),
+            Self::Top => (false, true, false, false),
+            Self::TopRight => (false, true, true, false),
+            Self::Right => (false, false, true, false),
+            Self::BottomRight => (false, false, true, true),
+            Self::Bottom => (false, false, false, true),
+            Self::BottomLeft => (true, false, false, true),
+            Self::Left => (true, false, false, false),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum HandleKind {
+    Resize(ResizeHandle),
+    Rotate,
+}
+
+/// A grab handle on a selection box — carries the widget it transforms.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct CanvasHandle {
+    pub widget: Entity,
+    pub kind: HandleKind,
+}
+
 pub(crate) fn register(app: &mut App) {
     app.add_systems(Update, position_sel_boxes.run_if(in_state(SplashState::Editor)));
 }
@@ -80,18 +122,40 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
             Name::new("ui-canvas-selbox"),
         ))
         .id();
-    // 8 handles: 4 corners + 4 edge midpoints, positioned relative to the box.
-    for (lx, ly) in [(0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (1.0, 0.5), (1.0, 1.0), (0.5, 1.0), (0.0, 1.0), (0.0, 0.5)] {
+    // 8 resize handles: 4 corners + 4 edge midpoints, positioned relative to the box.
+    let handles = [
+        ((0.0, 0.0), ResizeHandle::TopLeft),
+        ((0.5, 0.0), ResizeHandle::Top),
+        ((1.0, 0.0), ResizeHandle::TopRight),
+        ((1.0, 0.5), ResizeHandle::Right),
+        ((1.0, 1.0), ResizeHandle::BottomRight),
+        ((0.5, 1.0), ResizeHandle::Bottom),
+        ((0.0, 1.0), ResizeHandle::BottomLeft),
+        ((0.0, 0.5), ResizeHandle::Left),
+    ];
+    for ((lx, ly), rh) in handles {
         let h = commands
             .spawn((
-                Node { position_type: PositionType::Absolute, left: Val::Percent(lx * 100.0), top: Val::Percent(ly * 100.0), width: Val::Px(7.0), height: Val::Px(7.0), margin: UiRect::all(Val::Px(-4.0)), border: UiRect::all(Val::Px(1.0)), ..default() },
+                Node { position_type: PositionType::Absolute, left: Val::Percent(lx * 100.0), top: Val::Percent(ly * 100.0), width: Val::Px(8.0), height: Val::Px(8.0), margin: UiRect::all(Val::Px(-5.0)), border: UiRect::all(Val::Px(1.0)), ..default() },
                 BackgroundColor(rgb(window_bg())),
                 BorderColor::all(rgb(accent())),
-                FocusPolicy::Pass,
+                Interaction::default(),
+                CanvasHandle { widget: entity, kind: HandleKind::Resize(rh) },
             ))
             .id();
         commands.entity(b).add_child(h);
     }
+    // Rotation handle above the top-center edge.
+    let rot = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(9.0), margin: UiRect { left: Val::Px(-5.0), top: Val::Px(-20.0), ..default() }, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+            BackgroundColor(rgb(window_bg())),
+            BorderColor::all(rgb(accent())),
+            Interaction::default(),
+            CanvasHandle { widget: entity, kind: HandleKind::Rotate },
+        ))
+        .id();
+    commands.entity(b).add_child(rot);
     b
 }
 
