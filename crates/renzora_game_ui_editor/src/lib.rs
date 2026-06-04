@@ -33,8 +33,13 @@ use renzora_editor::SplashState;
 use renzora_ember::font::EmberFonts;
 use renzora_game_ui::UiCanvas;
 
+mod geometry;
+mod interaction;
+mod overlay;
 mod toolbar;
 mod viewport;
+
+use overlay::CanvasHitLayer;
 
 /// Persistent native-canvas editor state (mirrors the egui `CanvasState`'s
 /// non-interaction fields). Interaction state (drag/resize/rotate/marquee) will
@@ -49,6 +54,8 @@ pub(crate) struct NativeCanvasState {
     pub active_canvas: Option<Entity>,
     pub canvas_width: f32,
     pub canvas_height: f32,
+    /// Per-frame design-space geometry of every widget under the active canvas.
+    pub widgets: Vec<geometry::WidgetGeom>,
 }
 
 impl Default for NativeCanvasState {
@@ -62,6 +69,7 @@ impl Default for NativeCanvasState {
             active_canvas: None,
             canvas_width: 1280.0,
             canvas_height: 720.0,
+            widgets: Vec::new(),
         }
     }
 }
@@ -74,9 +82,18 @@ impl Plugin for GameUiEditorPlugin {
         info!("[editor] GameUiEditorPlugin");
         app.init_resource::<NativeCanvasState>();
         app.add_systems(Update, sync_active_canvas.run_if(in_state(SplashState::Editor)));
+        // The canvas geometry snapshot only runs while the panel is actually
+        // mounted (the hit layer exists), so it costs nothing when closed/unwired.
+        app.add_systems(
+            Update,
+            geometry::snapshot_widgets.run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),
+        );
         toolbar::register(app);
+        overlay::register(app);
+        interaction::register(app);
 
-        // Not registered yet — flip on once selection/interaction lands:
+        // Not registered yet — flip on once resize/rotate/marquee/align land
+        // (select + drag-move + the rendered canvas are in):
         // app.register_panel_content("ui_canvas", false, build_panel);
         let _ = build_panel as fn(&mut Commands, &EmberFonts) -> Entity;
     }
