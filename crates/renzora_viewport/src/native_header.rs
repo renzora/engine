@@ -209,6 +209,7 @@ pub(crate) fn register(app: &mut App) {
             dropdown_toggle,
             dropdown_option_click,
             dropdown_dismiss,
+            viewport_maximize_dock,
             update_dropdown_visuals,
             panel_toggle,
             display_option_click,
@@ -427,6 +428,33 @@ fn dropdown_option_click(
             }
         }
     }
+}
+
+/// Honor the viewport "maximize" toggle on the bevy_ui shell's ember dock: swap
+/// the dock to a viewport-only leaf while maximized and restore the saved tree
+/// when un-maximized (the egui dock handles this itself in renzora_editor).
+fn viewport_maximize_dock(
+    max: Option<Res<renzora_ui::ViewportMaximized>>,
+    dock: Option<ResMut<renzora_ember::dock::Dock>>,
+    dirty: Option<ResMut<renzora_ember::dock::DockDirty>>,
+    mut saved: Local<Option<renzora_ember::dock::DockTree>>,
+    mut last: Local<bool>,
+) {
+    let (Some(mut dock), Some(mut dirty)) = (dock, dirty) else {
+        return;
+    };
+    let maximized = max.is_some_and(|m| m.0);
+    if maximized == *last {
+        return;
+    }
+    *last = maximized;
+    if maximized {
+        *saved = Some(dock.tree.clone());
+        dock.tree = renzora_ember::dock::DockTree::leaf("viewport");
+    } else if let Some(tree) = saved.take() {
+        dock.tree = tree;
+    }
+    dirty.0 = true;
 }
 
 /// Close any open dropdown when the pointer presses outside its trigger + panel.
