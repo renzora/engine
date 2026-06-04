@@ -10740,6 +10740,7 @@ dependencies = [
  "egui_code_editor",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_shader",
  "renzora_theme",
  "renzora_ui",
