@@ -25,7 +25,8 @@ use renzora_ember::inspector::color_field;
 use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown, scroll_view_bar, text_input, toggle_switch, DragRange,
+    bind_text_input, drag_value, dropdown, scroll_view_bar, section, text_input, toggle_switch,
+    DragRange,
 };
 use renzora_hui::cursor_icon::HoverCursor;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
@@ -80,12 +81,6 @@ struct NativeSettingsTabBtn(SettingsTab);
 #[derive(Component)]
 struct NativeSettingsClose;
 
-#[derive(Component)]
-struct SettingsSection {
-    body: Entity,
-    caret: Entity,
-    open: bool,
-}
 
 #[derive(Component)]
 struct ThemeSaveBtn;
@@ -144,7 +139,6 @@ pub(crate) fn build(app: &mut App) {
             manage_native_settings,
             settings_tab_click,
             settings_close_click,
-            settings_section_toggle,
             theme_save_click,
             ember_theme_save_click,
         )
@@ -551,80 +545,7 @@ fn sidebar_tab(
     row
 }
 
-// ── Section + row helpers ────────────────────────────────────────────────────
-
-fn section(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    icon: &str,
-    title: &str,
-    accent: (u8, u8, u8),
-) -> (Entity, Entity) {
-    let body = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                padding: UiRect {
-                    left: Val::Px(8.0),
-                    top: Val::Px(4.0),
-                    bottom: Val::Px(4.0),
-                    ..default()
-                },
-                ..default()
-            },
-            Name::new("section-body"),
-        ))
-        .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 12.0);
-    let ico = icon_text(commands, &fonts.phosphor, icon, accent, 14.0);
-    let heading = commands
-        .spawn((
-            Text::new(title),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    let header = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::section_bg())),
-            Interaction::default(),
-            SettingsSection {
-                body,
-                caret,
-                open: true,
-            },
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("section-header"),
-        ))
-        .id();
-    commands.entity(header).add_children(&[caret, ico, heading]);
-
-    let root = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                margin: UiRect::bottom(Val::Px(8.0)),
-                ..default()
-            },
-            Name::new("section"),
-        ))
-        .id();
-    commands.entity(root).add_children(&[header, body]);
-    (root, body)
-}
+// ── Row helpers (section is the shared ember widget) ─────────────────────────
 
 fn settings_row(
     commands: &mut Commands,
@@ -2515,22 +2436,3 @@ fn settings_close_click(
     }
 }
 
-fn settings_section_toggle(
-    mut headers: Query<(&Interaction, &mut SettingsSection), Changed<Interaction>>,
-    mut nodes: Query<&mut Node>,
-    mut texts: Query<&mut Text>,
-) {
-    for (interaction, mut sec) in &mut headers {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        sec.open = !sec.open;
-        if let Ok(mut n) = nodes.get_mut(sec.body) {
-            n.display = if sec.open { Display::Flex } else { Display::None };
-        }
-        if let Ok(mut t) = texts.get_mut(sec.caret) {
-            // Phosphor caret glyphs (resolved by the icon system).
-            *t = Text::new(if sec.open { "\u{E136}" } else { "\u{E13A}" });
-        }
-    }
-}
