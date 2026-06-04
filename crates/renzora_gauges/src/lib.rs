@@ -16,6 +16,8 @@ mod script_extension;
 #[cfg(feature = "editor")]
 mod inspector;
 #[cfg(feature = "editor")]
+mod native;
+#[cfg(feature = "editor")]
 mod panel;
 
 // ── Marker component ─────────────────────────────────────────────────────
@@ -53,6 +55,8 @@ impl Plugin for GaugesPlugin {
             use renzora_editor::AppEditorExt;
             app.register_inspector(inspector::gauges_inspector_entry());
             app.register_panel(panel::GaugesPanel::default());
+            // Native (ember) content overrides the egui panel body at runtime.
+            app.add_plugins(native::NativeGauges);
         }
     }
 }
