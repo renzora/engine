@@ -9,7 +9,6 @@
 //! snapshot/diff round-trip like the egui version needs.
 
 use bevy::prelude::*;
-use bevy::text::TextLayout;
 use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
@@ -39,7 +38,6 @@ use bevy_egui::egui::Color32;
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
 const SIDEBAR_W: f32 = 160.0;
-const LABEL_W: f32 = 110.0;
 
 // Accent colors per category — matches the egui `CategoryStyle` palette.
 const A_BLUE: (u8, u8, u8) = (80, 140, 255);
@@ -547,6 +545,8 @@ fn sidebar_tab(
 
 // ── Row helpers (section is the shared ember widget) ─────────────────────────
 
+/// A labeled, zebra-striped form row — the shared ember `inspector_row` + its
+/// stripe color, parented under `body`.
 fn settings_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -555,44 +555,10 @@ fn settings_row(
     label: &str,
     control: Entity,
 ) {
-    let bg = if idx.is_multiple_of(2) { renzora_ember::theme::row_even() } else { renzora_ember::theme::row_odd() };
-    let lbl = commands
-        .spawn((
-            Text::new(label),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_muted())),
-            TextLayout::new_with_no_wrap(),
-        ))
-        .id();
-    let label_col = commands
-        .spawn((
-            Node {
-                width: Val::Px(LABEL_W),
-                flex_shrink: 0.0,
-                align_items: AlignItems::Center,
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            Name::new("row-label"),
-        ))
-        .id();
-    commands.entity(label_col).add_child(lbl);
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(bg)),
-            Name::new("settings-row"),
-        ))
-        .id();
-    commands.entity(row).add_children(&[label_col, control]);
+    let row = renzora_ember::inspector::inspector_row(commands, &fonts.ui, label, control);
+    commands
+        .entity(row)
+        .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(idx)));
     commands.entity(body).add_child(row);
 }
 
