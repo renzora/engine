@@ -1879,36 +1879,16 @@ fn format_binding(b: &InputBinding) -> String {
 }
 
 /// A small text button carrying a marker component.
+/// A themed ember button (Styled(Role::Button)) carrying a marker — picks up
+/// Theme.button + hover/press states, editable under "Button" in the Theme tab.
 fn text_button<M: Component>(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &str,
-    bg: (u8, u8, u8),
     marker: M,
 ) -> Entity {
-    let lbl = commands
-        .spawn((
-            Text::new(label),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    let btn = commands
-        .spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(bg)),
-            Interaction::default(),
-            marker,
-            HoverCursor(SystemCursorIcon::Pointer),
-        ))
-        .id();
-    commands.entity(btn).add_child(lbl);
+    let btn = renzora_ember::widgets::button(commands, &fonts.ui, label);
+    commands.entity(btn).insert(marker);
     btn
 }
 
@@ -1950,8 +1930,8 @@ fn tab_input(commands: &mut Commands, fonts: &EmberFonts, col: Entity, input: &I
         |w| w.resource::<NativeInputUi>().new_name.clone(),
         |w, s| w.resource_mut::<NativeInputUi>().new_name = s,
     );
-    let btn_b = text_button(commands, fonts, "Button", (50, 50, 62), AddActionBtn { axis: false });
-    let btn_a = text_button(commands, fonts, "Axis2D", (50, 50, 62), AddActionBtn { axis: true });
+    let btn_b = text_button(commands, fonts, "Button", AddActionBtn { axis: false });
+    let btn_a = text_button(commands, fonts, "Axis2D", AddActionBtn { axis: true });
     let row = hrow(commands, &[ti, btn_b, btn_a]);
     commands.entity(body).add_child(row);
 
@@ -2113,15 +2093,15 @@ fn build_action_row(
                 },
             ))
             .id();
-        let cancel = text_button(commands, fonts, "Cancel", (60, 40, 40), CancelListenBtn);
+        let cancel = text_button(commands, fonts, "Cancel", CancelListenBtn);
         let row = hrow(commands, &[prompt, cancel]);
         commands.entity(panel).add_child(row);
     } else {
-        let add = text_button(commands, fonts, "+ Add Binding", (50, 50, 62), AddBindingBtn(i));
+        let add = text_button(commands, fonts, "+ Add Binding", AddBindingBtn(i));
         let mut kids = vec![add];
         if action.kind == ActionKind::Axis2D {
-            kids.push(text_button(commands, fonts, "WASD", (44, 44, 54), CompositeBtn { action: i, arrows: false }));
-            kids.push(text_button(commands, fonts, "Arrows", (44, 44, 54), CompositeBtn { action: i, arrows: true }));
+            kids.push(text_button(commands, fonts, "WASD", CompositeBtn { action: i, arrows: false }));
+            kids.push(text_button(commands, fonts, "Arrows", CompositeBtn { action: i, arrows: true }));
         }
         let row = hrow(commands, &kids);
         commands.entity(panel).add_child(row);

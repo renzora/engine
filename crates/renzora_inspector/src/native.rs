@@ -1113,34 +1113,22 @@ fn empty_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
 struct AddButton;
 
 fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let icon = phosphor_glyph(commands, fonts, "puzzle-piece", renzora_ember::theme::value_text(), 13.0);
-    let label = commands
-        .spawn((
-            Text::new("Add Component"),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(c(renzora_ember::theme::value_text())),
-            FocusPolicy::Pass,
-        ))
-        .id();
-    let btn = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(c(renzora_ember::theme::section_bg())),
-            Interaction::default(),
-            AddButton,
-            Name::new("add-component"),
-        ))
-        .id();
-    commands.entity(btn).add_children(&[icon, label]);
+    // A themed ember button (Styled(Role::Button)) — picks up Theme.button +
+    // hover/press states, and is editable under "Button" in the Theme editor.
+    let btn = renzora_ember::widgets::icon_label_button(commands, fonts, "puzzle-piece", "Add Component");
+    commands.entity(btn).insert((
+        AddButton,
+        // Full-width + centered; the theme fills padding/radius/colors.
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            column_gap: Val::Px(5.0),
+            ..default()
+        },
+        Name::new("add-component"),
+    ));
     btn
 }
 
