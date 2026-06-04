@@ -24,7 +24,7 @@ use renzora_editor::{
     EditorCommands, EditorSelection, FieldType, FieldValue, InspectorRegistry,
     NativeInspectorDrawer, NativeInspectorRegistry,
 };
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
@@ -202,7 +202,7 @@ fn inspected_entity(w: &World) -> Option<Entity> {
 /// The fixed top bar: an Add Component button + the component-filter input to
 /// its right (funnel glyph + text). Hidden when nothing is selected.
 fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let add = icon_label_button(commands, fonts, "puzzle-piece", "Add Component");
+    let add = icon_label_button(commands, fonts, "puzzle-piece", "Add");
     commands.entity(add).insert((
         AddButton,
         Node {
@@ -214,7 +214,7 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
         Name::new("add-component-top"),
     ));
-    let input = text_input(commands, &fonts.ui, "Filter…", "");
+    let input = text_input(commands, &fonts.ui, "Filter components...", "");
     commands.entity(input).insert((
         InspectorFilter,
         Node {
@@ -227,7 +227,6 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },
     ));
-    let icon = icon_text(commands, &fonts.phosphor, "funnel", renzora_ember::theme::text_muted(), 13.0);
     let bar = commands
         .spawn((
             Node {
@@ -242,7 +241,7 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("inspector-top-bar"),
         ))
         .id();
-    commands.entity(bar).add_children(&[add, icon, input]);
+    commands.entity(bar).add_children(&[add, input]);
     bind_display(commands, bar, |w| inspected_entity(w).is_some());
     bar
 }

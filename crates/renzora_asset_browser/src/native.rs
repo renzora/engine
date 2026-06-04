@@ -17,7 +17,7 @@ use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashSt
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_2way, bind_bg, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
@@ -1132,8 +1132,22 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", text_primary(), 13.0);
     commands.entity(back).add_child(back_icon);
-    // Hidden at the project root (nowhere to go up to).
-    bind_display(commands, back, |w| current_folder(w) != project_root(w));
+    // Invisible at the project root (nowhere to go up to) but still occupies its
+    // slot via `Visibility::Hidden`, so the breadcrumb keeps a constant left
+    // position whether or not the back button shows.
+    bind_with(
+        commands,
+        back,
+        |w| current_folder(w) != project_root(w),
+        |w, e, show: &bool| {
+            if let Some(mut v) = w.get_mut::<Visibility>(e) {
+                let want = if *show { Visibility::Inherited } else { Visibility::Hidden };
+                if *v != want {
+                    *v = want;
+                }
+            }
+        },
+    );
 
     let new_folder = icon_label_button(commands, fonts, "folder-plus", "New Folder");
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
@@ -1274,25 +1288,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, grid, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
 
-    // ── Footer: back + breadcrumb on the left, live item count on the right. ──
-    let footer = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(26.0),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                border: UiRect::top(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
-            BorderColor::all(rgb(renzora_ember::theme::border())),
-        ))
-        .id();
-    let footer_spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    // Live item count — sits at the right of the breadcrumb bar.
     let count = commands
         .spawn((
             Text::new("0 items"),
@@ -1317,9 +1313,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    commands.entity(footer).add_children(&[footer_spacer, count]);
 
-    // Breadcrumb bar (back + path), directly under the top toolbar.
+    // Breadcrumb bar (back + path on the left, item count on the right),
+    // directly under the top toolbar.
+    let crumb_spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let crumb_bar = commands
         .spawn((
             Node {
@@ -1337,11 +1334,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("assets-crumb-bar"),
         ))
         .id();
-    commands.entity(crumb_bar).add_children(&[back, crumbs]);
+    commands.entity(crumb_bar).add_children(&[back, crumbs, crumb_spacer, count]);
 
     commands
         .entity(content)
-        .add_children(&[toolbar, crumb_bar, grid_scroll, footer]);
+        .add_children(&[toolbar, crumb_bar, grid_scroll]);
 
     commands.entity(root).add_children(&[tree_pane, splitter, content]);
     root
