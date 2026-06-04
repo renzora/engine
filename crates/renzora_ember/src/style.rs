@@ -19,8 +19,9 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::theme::{
-    accent, border, card_bg, divider, header_bg, hover_bg, panel_bg, popup_bg, section_bg,
-    selection, tab_active, tab_hover, text_muted, text_primary, window_bg,
+    accent, border, card_bg, divider, header_bg, hover_bg, panel_bg, placeholder, popup_bg,
+    row_even, row_odd, section_bg, selection, tab_active, tab_hover, text_muted, text_primary,
+    window_bg,
 };
 
 /// Registers the theme resource + the painter. The [`Theme`] is the source of
@@ -38,6 +39,7 @@ impl Plugin for ThemePlugin {
             .register_type::<AssetTileStyle>()
             .register_type::<DockStyle>()
             .register_type::<BarStyle>()
+            .register_type::<TimelineStyle>()
             .register_type::<Rgba>()
             .add_systems(Update, apply_theme);
     }
@@ -415,6 +417,42 @@ impl BarStyle {
     }
 }
 
+/// Style for the reusable `timeline_view` widget (sequencer, animation editor,
+/// any ruler/lanes/playhead panel). Every distinctive element is individually
+/// targetable — the playhead red, lane stripes, ruler tick marks and the fixed
+/// header-column geometry — so timelines re-skin with the theme like the dock.
+#[derive(Reflect, Clone, Serialize, Deserialize)]
+pub struct TimelineStyle {
+    pub ruler_bg: Rgba,
+    pub lane_even: Rgba,
+    pub lane_odd: Rgba,
+    pub playhead: Rgba,
+    pub tick_major: Rgba,
+    pub tick_minor: Rgba,
+    pub clip_text: Rgba,
+    /// Width of the fixed left track-header column, px.
+    pub header_width: f32,
+    /// Height of the time ruler, px.
+    pub ruler_height: f32,
+}
+
+impl Default for TimelineStyle {
+    fn default() -> Self {
+        let c = Rgba::rgb;
+        Self {
+            ruler_bg: c(section_bg()),
+            lane_even: c(row_even()),
+            lane_odd: c(row_odd()),
+            playhead: Rgba { r: 255, g: 80, b: 80, a: 255 },
+            tick_major: c(text_muted()),
+            tick_minor: c(placeholder()),
+            clip_text: c(text_primary()),
+            header_width: 180.0,
+            ruler_height: 22.0,
+        }
+    }
+}
+
 // ── Theme: all per-role tokens ───────────────────────────────────────────────
 
 /// The active theme — one [`StyleToken`] per [`Role`]. Swap or mutate this and
@@ -445,6 +483,7 @@ pub struct Theme {
     pub top_bar: BarStyle,
     pub doc_tabs: BarStyle,
     pub status_bar: BarStyle,
+    pub timeline: TimelineStyle,
 }
 
 impl Theme {
@@ -533,6 +572,7 @@ impl Default for Theme {
             top_bar: BarStyle::top_bar(),
             doc_tabs: BarStyle::doc_tabs(),
             status_bar: BarStyle::status_bar(),
+            timeline: TimelineStyle::default(),
         }
     }
 }

@@ -105,6 +105,7 @@ mod search;
 mod sortable;
 mod spinner;
 mod timeline;
+mod timeline_view;
 
 // The gallery showcase panels.
 mod gallery;
@@ -195,6 +196,7 @@ pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
 pub use timeline::*;
+pub use timeline_view::{timeline_view, TimelineHandle, TimelineView};
 
 pub use gallery::*;
 
@@ -290,6 +292,7 @@ impl Plugin for WidgetsPlugin {
         app.add_plugins(collapsible::CollapsiblePlugin);
         app.add_plugins(section::SectionPlugin);
         app.add_plugins(timeline::TimelinePlugin);
+        app.add_plugins(timeline_view::TimelineViewPlugin);
         app.add_plugins(gauge::GaugePlugin);
         app.add_plugins(code_editor::CodeEditorPlugin);
         app.add_plugins(asset_slot::DndPlugin);

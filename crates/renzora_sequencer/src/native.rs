@@ -6,20 +6,17 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_editor::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_text, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
+use renzora_ember::widgets::{timeline_view, TimelineView};
 
 use crate::model::TrackKind;
 use crate::runtime::{push_action, track_clip_views, SequencerAction, SequencerBridge, SequencerState};
 
-const HEADER_W: f32 = 200.0;
-const RULER_H: f32 = 22.0;
-const PLAYHEAD: (u8, u8, u8) = (255, 80, 80);
 const CAMERA: (u8, u8, u8) = (100, 149, 237);
 const TRANSFORM: (u8, u8, u8) = (120, 200, 120);
 const MEDIA: (u8, u8, u8) = (220, 140, 60);
@@ -32,7 +29,7 @@ impl Plugin for NativeSequencer {
         app.register_panel_content("sequencer", false, build);
         app.add_systems(
             Update,
-            (seq_btn_click, track_btn_click, seq_scrub, update_playhead, update_play_icon).run_if(in_state(SplashState::Editor)),
+            (seq_btn_click, track_btn_click, seq_sync, update_play_icon).run_if(in_state(SplashState::Editor)),
         );
     }
 }
@@ -76,13 +73,10 @@ enum TrackOp {
     Delete,
 }
 #[derive(Component)]
-struct Playhead;
-#[derive(Component)]
 struct PlayIcon;
-/// Full-timeline click/drag layer → scrub; carries the live geometry for the
-/// scrub system.
+/// Marks the sequencer's `timeline_view` root so the sync system targets it.
 #[derive(Component)]
-struct ScrubLayer;
+struct SeqTimeline;
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -97,69 +91,20 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let toolbar = build_toolbar(commands, fonts);
 
-    let content = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Row, ..default() })
-        .id();
+    // Shared, themeable timeline shell — we just mount headers + clips and sync.
+    let tl = timeline_view(commands, fonts);
+    commands.entity(tl.root).insert(SeqTimeline);
 
-    // Header pane.
-    let headers = commands
-        .spawn((Node { width: Val::Px(HEADER_W), flex_shrink: 0.0, flex_direction: FlexDirection::Column, ..default() }, BackgroundColor(rgb(section_bg()))))
-        .id();
-    let htop = commands
-        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(RULER_H), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(6.0)), ..default() }, BackgroundColor(rgb(header_bg()))))
-        .id();
+    // Header corner: "Tracks" label + add-track button.
     let htitle = commands.spawn((Text::new("Tracks"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
     let hgap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let add = icon_btn(commands, fonts, "plus", text_muted(), SeqBtn::AddTrack);
-    commands.entity(htop).add_children(&[htitle, hgap, add]);
-    let header_list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
-    keyed_list(commands, header_list, header_snapshot);
-    commands.entity(headers).add_children(&[htop, header_list]);
+    commands.entity(tl.header_corner).add_children(&[htitle, hgap, add]);
 
-    let sep = commands.spawn((Node { width: Val::Px(1.0), height: Val::Percent(100.0), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(border())))).id();
+    keyed_list(commands, tl.header_list, header_snapshot);
+    keyed_list(commands, tl.clips, clips_snapshot);
 
-    // Timeline pane.
-    let timeline = commands
-        .spawn((Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, position_type: PositionType::Relative, overflow: Overflow::clip(), ..default() }, Name::new("seq-timeline")))
-        .id();
-    let ruler = commands
-        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(RULER_H), flex_shrink: 0.0, position_type: PositionType::Relative, overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb(section_bg()))))
-        .id();
-    keyed_list(commands, ruler, ruler_snapshot);
-    let lanes = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), position_type: PositionType::Relative, overflow: Overflow::clip(), ..default() })
-        .id();
-    let lanes_bg = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
-    keyed_list(commands, lanes_bg, lane_bg_snapshot);
-    let clips = commands.spawn(Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
-    keyed_list(commands, clips, clips_snapshot);
-    commands.entity(lanes).add_children(&[lanes_bg, clips]);
-
-    // Playhead (spans ruler + lanes).
-    let playhead = commands
-        .spawn((
-            Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), width: Val::Px(1.5), height: Val::Percent(100.0), ..default() },
-            BackgroundColor(rgb(PLAYHEAD)),
-            Playhead,
-            bevy::ui::FocusPolicy::Pass,
-            Name::new("seq-playhead"),
-        ))
-        .id();
-    // Scrub layer (transparent, full timeline).
-    let scrub = commands
-        .spawn((
-            Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            RelativeCursorPosition::default(),
-            ScrubLayer,
-            Name::new("seq-scrub"),
-        ))
-        .id();
-    commands.entity(timeline).add_children(&[ruler, lanes, playhead, scrub]);
-
-    commands.entity(content).add_children(&[headers, sep, timeline]);
-    commands.entity(root).add_children(&[toolbar, content]);
+    commands.entity(root).add_children(&[toolbar, tl.root]);
     root
 }
 
@@ -259,71 +204,6 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &st
     let del = icon_btn(commands, fonts, "trash", text_muted(), TrackBtn { track: idx, op: TrackOp::Delete });
     commands.entity(row).add_children(&[swatch, lbl, mute, lock, del]);
     row
-}
-
-fn lane_bg_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(s) = seq(world) else { return empty() };
-    let th = s.track_height;
-    let n = s.sequence.tracks.len();
-    let items: Vec<(u64, u64)> = (0..n)
-        .map(|i| {
-            let mut k = hasher();
-            i.hash(&mut k);
-            let mut h = hasher();
-            th.to_bits().hash(&mut h);
-            (k.finish(), h.finish())
-        })
-        .collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, _f, i| {
-            let bg = if i.is_multiple_of(2) { row_even() } else { row_odd() };
-            c.spawn((Node { width: Val::Percent(100.0), height: Val::Px(th), ..default() }, BackgroundColor(rgb(bg)))).id()
-        }),
-    }
-}
-
-fn ruler_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(s) = seq(world) else { return empty() };
-    let (zoom, scroll, dur) = (s.timeline_zoom, s.timeline_scroll, s.sequence.duration);
-    let interval = if zoom >= 200.0 { 0.5 } else if zoom >= 80.0 { 1.0 } else if zoom >= 30.0 { 2.0 } else { 5.0 };
-    // Bound the visible range generously (the container clips overflow).
-    let mut ticks: Vec<(f32, bool)> = Vec::new();
-    let mut t = (scroll / interval).floor() * interval;
-    let end = scroll + 4000.0 / zoom.max(1.0);
-    while t <= end && t <= dur + interval {
-        if t >= 0.0 {
-            let major = (t % (interval * 5.0)).abs() < 0.001;
-            ticks.push((t, major));
-        }
-        t += interval;
-    }
-    let items: Vec<(u64, u64)> = ticks
-        .iter()
-        .map(|(time, major)| {
-            let mut k = hasher();
-            time.to_bits().hash(&mut k);
-            let mut h = hasher();
-            (zoom.to_bits(), scroll.to_bits(), major).hash(&mut h);
-            (k.finish(), h.finish())
-        })
-        .collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| {
-            let (time, major) = ticks[i];
-            let x = (time - scroll) * zoom;
-            let tick = c
-                .spawn(Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(if major { RULER_H - 9.0 } else { RULER_H - 4.0 }), width: Val::Px(1.0), height: Val::Px(if major { 9.0 } else { 4.0 }), ..default() })
-                .insert(BackgroundColor(rgb(if major { text_muted() } else { placeholder() })))
-                .id();
-            if major {
-                let label = if time >= 60.0 { format!("{}:{:04.1}", (time / 60.0) as u32, time % 60.0) } else { format!("{:.0}s", time) };
-                c.spawn((Text::new(label), ui_font(&f.ui, 9.0), TextColor(rgb(text_muted())), Node { position_type: PositionType::Absolute, left: Val::Px(x + 2.0), top: Val::Px(1.0), ..default() }));
-            }
-            tick
-        }),
-    }
 }
 
 fn clips_snapshot(world: &World) -> KeyedSnapshot {
@@ -444,29 +324,27 @@ fn track_btn_click(
     }
 }
 
-fn seq_scrub(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<ScrubLayer>, Changed<Interaction>)>,
+/// Push the sequencer's geometry into the shared timeline + apply scrubbing.
+fn seq_sync(
+    mut q: Query<&mut TimelineView, With<SeqTimeline>>,
     state: Option<Res<SequencerState>>,
     bridge: Option<Res<SequencerBridge>>,
 ) {
-    let (Some(state), Some(bridge)) = (state, bridge) else { return };
-    for (interaction, rcp, cn) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let Some(norm) = rcp.normalized else { continue };
-        let width = cn.size().x * cn.inverse_scale_factor();
-        let t = norm.x * width / state.timeline_zoom.max(1.0) + state.timeline_scroll;
-        push_action(&bridge, SequencerAction::SetPlayhead(t.clamp(0.0, state.sequence.duration)));
-    }
-}
-
-fn update_playhead(state: Option<Res<SequencerState>>, mut q: Query<&mut Node, With<Playhead>>) {
     let Some(state) = state else { return };
-    let x = (state.playhead - state.timeline_scroll) * state.timeline_zoom;
-    for mut node in &mut q {
-        node.left = Val::Px(x.max(0.0));
-        node.display = if x >= 0.0 { Display::Flex } else { Display::None };
+    for mut v in &mut q {
+        v.set_geom(
+            state.timeline_zoom,
+            state.timeline_scroll,
+            state.playhead,
+            state.sequence.duration,
+            state.track_height,
+            state.sequence.tracks.len(),
+        );
+        if let Some(t) = v.take_scrub() {
+            if let Some(bridge) = &bridge {
+                push_action(bridge, SequencerAction::SetPlayhead(t.clamp(0.0, state.sequence.duration)));
+            }
+        }
     }
 }
 
