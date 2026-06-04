@@ -80,19 +80,22 @@ fn canvas_interact(
 
     // ── Apply ──
     let (rw, rh) = (state.canvas_width.max(1.0), state.canvas_height.max(1.0));
+    let grid = if state.snap_enabled { state.grid_size } else { 0.0 };
     match active.as_ref() {
         Some(Mode::Move { entity, start_cursor, start_pos }) => {
-            let (e, nx, ny) = (*entity, start_pos.x + cursor.x - start_cursor.x, start_pos.y + cursor.y - start_cursor.y);
+            let nx = snap(start_pos.x + cursor.x - start_cursor.x, grid);
+            let ny = snap(start_pos.y + cursor.y - start_cursor.y, grid);
+            let e = *entity;
             commands.queue(move |w: &mut World| set_node_pos(w, e, nx, ny, rw, rh));
         }
         Some(Mode::Resize { entity, handle, start_cursor, bbox }) => {
             let (l, t, r, b) = handle.sides();
             let dx = cursor.x - start_cursor.x;
             let dy = cursor.y - start_cursor.y;
-            let nx = bbox.0 + if l { dx } else { 0.0 };
-            let ny = bbox.1 + if t { dy } else { 0.0 };
-            let nw = (bbox.2 + if r { dx } else { 0.0 } - if l { dx } else { 0.0 }).max(10.0);
-            let nh = (bbox.3 + if b { dy } else { 0.0 } - if t { dy } else { 0.0 }).max(10.0);
+            let nx = snap(bbox.0 + if l { dx } else { 0.0 }, grid);
+            let ny = snap(bbox.1 + if t { dy } else { 0.0 }, grid);
+            let nw = snap((bbox.2 + if r { dx } else { 0.0 } - if l { dx } else { 0.0 }).max(10.0), grid).max(10.0);
+            let nh = snap((bbox.3 + if b { dy } else { 0.0 } - if t { dy } else { 0.0 }).max(10.0), grid).max(10.0);
             let e = *entity;
             commands.queue(move |w: &mut World| set_node_rect(w, e, nx, ny, nw, nh, rw, rh));
         }
@@ -102,6 +105,14 @@ fn canvas_interact(
             commands.queue(move |w: &mut World| set_rotation(w, e, rot));
         }
         None => {}
+    }
+}
+
+fn snap(v: f32, grid: f32) -> f32 {
+    if grid > 0.0 {
+        (v / grid).round() * grid
+    } else {
+        v
     }
 }
 

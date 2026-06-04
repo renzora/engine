@@ -43,6 +43,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { width: Val::Px(1280.0), height: Val::Px(720.0), flex_shrink: 0.0, border: UiRect::all(Val::Px(1.0)), overflow: Overflow::clip(), ..default() },
             BackgroundColor(Color::srgb(0.02, 0.02, 0.03)),
             BorderColor::all(rgb(border())),
+            bevy::ui::UiTransform::IDENTITY,
+            crate::nav::CanvasFrame,
             Name::new("ui-canvas-frame"),
         ))
         .id();

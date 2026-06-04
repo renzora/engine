@@ -10,8 +10,9 @@
 
 use std::hash::{Hash, Hasher};
 
+use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use bevy::ui::{FocusPolicy, UiTransform};
 
 use renzora_editor::{EditorSelection, SplashState};
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
@@ -80,6 +81,8 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
             BackgroundColor(Color::NONE),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
+            // Above the backdrop (0) + UI render (1) so handles are visible/clickable.
+            ZIndex(5),
             CanvasHitLayer,
             Name::new("ui-canvas-overlay"),
         ))
@@ -117,6 +120,7 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
         .spawn((
             Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
             BorderColor::all(rgb(accent())),
+            UiTransform::IDENTITY,
             FocusPolicy::Pass,
             SelBox(entity),
             Name::new("ui-canvas-selbox"),
@@ -159,15 +163,17 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
     b
 }
 
-/// Reposition each selection box from the live widget geometry × zoom.
-fn position_sel_boxes(state: Res<NativeCanvasState>, mut q: Query<(&SelBox, &mut Node)>) {
+/// Reposition + rotate each selection box from the live widget geometry × zoom
+/// (so the box + its handles track and rotate with the widget).
+fn position_sel_boxes(state: Res<NativeCanvasState>, mut q: Query<(&SelBox, &mut Node, &mut UiTransform)>) {
     let zoom = state.zoom;
-    for (sb, mut node) in &mut q {
+    for (sb, mut node, mut tf) in &mut q {
         if let Some(g) = state.widgets.iter().find(|g| g.entity == sb.0) {
             node.left = Val::Px(g.x * zoom);
             node.top = Val::Px(g.y * zoom);
             node.width = Val::Px(g.width * zoom);
             node.height = Val::Px(g.height * zoom);
+            tf.rotation = Rot2::radians(g.rotation);
         }
     }
 }

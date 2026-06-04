@@ -36,6 +36,7 @@ use renzora_game_ui::UiCanvas;
 mod align;
 mod geometry;
 mod interaction;
+mod nav;
 mod overlay;
 mod toolbar;
 mod viewport;
@@ -92,6 +93,7 @@ impl Plugin for GameUiEditorPlugin {
         toolbar::register(app);
         overlay::register(app);
         interaction::register(app);
+        nav::register(app);
         // The editor lives in the viewport's "UI" mode (there's no separate
         // ui_canvas dock tab) — `renzora_viewport` mounts `build_ui_canvas`
         // there. The interaction/overlay systems above run wherever the hit
@@ -112,8 +114,33 @@ pub fn build_ui_canvas(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let toolbar = toolbar::build(commands, fonts);
     let viewport = viewport::build(commands, fonts);
-    commands.entity(root).add_children(&[toolbar, viewport]);
+    let status = build_status_bar(commands, fonts);
+    commands.entity(root).add_children(&[toolbar, viewport, status]);
     root
+}
+
+/// Bottom status bar: the canvas reference resolution + current zoom.
+fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    use renzora_ember::font::ui_font;
+    use renzora_ember::reactive::bind_text;
+    use renzora_ember::theme::{border, header_bg, rgb, text_muted};
+
+    let bar = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Px(20.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(10.0), padding: UiRect::horizontal(Val::Px(8.0)), border: UiRect::top(Val::Px(1.0)), ..default() },
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(border())),
+            Name::new("ui-canvas-status"),
+        ))
+        .id();
+    let res = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    bind_text(commands, res, |w| {
+        w.get_resource::<NativeCanvasState>().map(|s| format!("{} \u{d7} {}", s.canvas_width as i32, s.canvas_height as i32)).unwrap_or_default()
+    });
+    let zoom = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    bind_text(commands, zoom, |w| format!("{:.0}%", w.get_resource::<NativeCanvasState>().map(|s| s.zoom).unwrap_or(1.0) * 100.0));
+    commands.entity(bar).add_children(&[res, zoom]);
+    bar
 }
 
 /// Track the active canvas + mirror its reference resolution, like the egui
