@@ -1288,6 +1288,7 @@ pub(crate) fn apply_dock_style(
                 node.border = UiRect::all(Val::Px(d.leaf_border_width));
                 node.border_radius = BorderRadius::all(Val::Px(d.leaf_radius));
                 node.padding = UiRect::all(Val::Px(d.leaf_padding));
+                node.margin = UiRect::all(Val::Px(d.leaf_margin));
                 if let Some(mut bc) = border {
                     *bc = BorderColor::all(d.leaf_border.color());
                 }
@@ -1321,8 +1322,12 @@ fn build_leaf(
     let leaf = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
+                // Flex-fill the cell (equivalent to 100%/100% when margin is 0)
+                // so a `leaf_margin` insets the panel cleanly instead of
+                // overflowing the way a fixed 100% size + margin would.
+                flex_grow: 1.0,
+                flex_basis: Val::Px(0.0),
+                align_self: AlignSelf::Stretch,
                 // Force a zero minimum so tall panel content can't push the
                 // leaf's content-based min-size up and disturb sibling splits.
                 min_width: Val::Px(0.0),

@@ -312,6 +312,8 @@ pub struct DockStyle {
     pub leaf_border_width: f32,
     pub leaf_radius: f32,
     pub leaf_padding: f32,
+    /// Gap around each panel (floating-panel look). 0 = panels are flush.
+    pub leaf_margin: f32,
     pub tabbar_bg: Rgba,
     pub divider: Rgba,
     pub shadow: bool,
@@ -332,6 +334,7 @@ impl Default for DockStyle {
             leaf_border_width: 0.0,
             leaf_radius: 0.0,
             leaf_padding: 0.0,
+            leaf_margin: 0.0,
             tabbar_bg: c(header_bg()),
             divider: c(divider()),
             shadow: false,
