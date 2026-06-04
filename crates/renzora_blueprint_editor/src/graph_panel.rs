@@ -331,7 +331,7 @@ impl BlueprintGraphPanel {
 /// project-relative path via `CurrentProject` if available. Returns `None`
 /// if the file is missing or unparseable — caller should fall back to an
 /// empty graph.
-fn load_blueprint_file(project: Option<&CurrentProject>, rel_path: &str) -> Option<BlueprintGraph> {
+pub(crate) fn load_blueprint_file(project: Option<&CurrentProject>, rel_path: &str) -> Option<BlueprintGraph> {
     let abs = project
         .map(|p| p.resolve_path(rel_path))
         .unwrap_or_else(|| std::path::PathBuf::from(rel_path));
@@ -551,7 +551,7 @@ fn render_toolbar(
 
 /// Compile a blueprint graph to Lua, save it to the project scripts folder,
 /// and attach a ScriptComponent pointing to the generated file.
-fn apply_blueprint_to_lua(
+pub(crate) fn apply_blueprint_to_lua(
     world: &mut World,
     entity: Entity,
     graph: &BlueprintGraph,
