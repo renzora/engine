@@ -1,6 +1,7 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
 mod brush_layer_paint;
+mod native;
 mod panel;
 mod spline_gizmos;
 mod systems;
@@ -26,8 +27,11 @@ pub struct TerrainEditorPlugin;
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
-        app.register_panel(panel::TerrainToolsPanel::new())
-            .register_inspector(terrain_data_entry())
+        app.register_panel(panel::TerrainToolsPanel::new());
+        // Native (bevy_ui/ember) port of the egui terrain panel; its registered
+        // content overrides the egui panel body for id "terrain_tools".
+        app.add_plugins(native::NativeTerrain);
+        app.register_inspector(terrain_data_entry())
             .register_inspector(terrain_layers_ui::terrain_layers_entry())
             .init_resource::<ToolOptionsRegistry>()
             .init_resource::<TerrainInspectorTab>()

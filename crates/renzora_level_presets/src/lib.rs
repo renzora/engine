@@ -3,6 +3,7 @@
 //! Provides a single panel that spawns barebones template levels
 //! (meshes + lights + camera) similar to Unreal Engine's level templates.
 
+mod native;
 pub mod panels;
 pub mod state;
 
@@ -186,6 +187,10 @@ impl Plugin for LevelPresetsPlugin {
         );
 
         app.register_panel(LevelPresetsPanel::new(arc));
+
+        // Native (ember/bevy_ui) panel content — overrides the egui body at
+        // runtime while the egui panel stays registered for its metadata.
+        app.add_plugins(native::NativeLevelPresets);
     }
 }
 

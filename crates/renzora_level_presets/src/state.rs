@@ -49,6 +49,23 @@ impl LevelPreset {
         }
     }
 
+    /// Phosphor icon name (kebab-case) for the bevy_ui/ember `icon_text` map.
+    /// Mirrors [`Self::icon`] which returns the egui glyph chars.
+    pub fn icon_name(&self) -> &'static str {
+        match self {
+            Self::FPS => "crosshair",
+            Self::ThirdPerson => "person",
+            Self::Platformer => "stairs",
+            Self::TopDown => "map-trifold",
+            Self::Racing => "flag-checkered",
+            Self::Sandbox => "cube",
+            Self::Corridor => "path",
+            Self::Arena => "shield",
+            Self::Showcase => "eye",
+            Self::Terrain => "mountains",
+        }
+    }
+
     pub fn description(&self) -> &'static str {
         match self {
             Self::FPS => "Enclosed room with cover boxes, ramps, and a second-floor balcony — classic FPS test map",
