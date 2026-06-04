@@ -144,3 +144,47 @@ pub(crate) fn tree_toggle(
         }
     }
 }
+
+// ── Shared tree guide lines ──────────────────────────────────────────────────
+// The 1.5px connector lines drawn down + across a tree's indent columns. The
+// hierarchy and asset-browser trees both compose these so the guides match and
+// theme from one place (`tree_line()`).
+
+/// A vertical tree guide at column `x`, starting at `top`. `full` draws to the
+/// bottom of the row; otherwise it's `height` px tall.
+pub fn tree_vline(commands: &mut Commands, x: f32, top: f32, full: bool, height: f32) -> Entity {
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(x - 0.75),
+        top: Val::Px(top),
+        width: Val::Px(1.5),
+        ..default()
+    };
+    if full {
+        node.bottom = Val::Px(0.0);
+    } else {
+        node.height = Val::Px(height);
+    }
+    commands
+        .spawn((node, BackgroundColor(rgb(tree_line())), bevy::picking::Pickable::IGNORE))
+        .id()
+}
+
+/// A short horizontal tree guide joining a vertical line to the row content,
+/// centered at `y`.
+pub fn tree_hline(commands: &mut Commands, x: f32, y: f32, width: f32) -> Entity {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x),
+                top: Val::Px(y - 0.75),
+                width: Val::Px(width),
+                height: Val::Px(1.5),
+                ..default()
+            },
+            BackgroundColor(rgb(tree_line())),
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id()
+}

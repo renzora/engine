@@ -72,41 +72,6 @@ impl RowSnapshot {
     }
 }
 
-fn vline(commands: &mut Commands, x: f32, top: f32, full: bool, height: f32) -> Entity {
-    let mut node = Node {
-        position_type: PositionType::Absolute,
-        left: Val::Px(x - 0.75),
-        top: Val::Px(top),
-        width: Val::Px(1.5),
-        ..default()
-    };
-    if full {
-        node.bottom = Val::Px(0.0);
-    } else {
-        node.height = Val::Px(height);
-    }
-    commands
-        .spawn((node, BackgroundColor(rgb(renzora_ember::theme::tree_line())), Pickable::IGNORE))
-        .id()
-}
-
-fn hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(x),
-                top: Val::Px(CENTER_Y - 0.75),
-                width: Val::Px(width),
-                height: Val::Px(1.5),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::tree_line())),
-            Pickable::IGNORE,
-        ))
-        .id()
-}
-
 /// Composite `top` over `base` (straight sRGBA) — for the hover wash.
 fn over(base: Color, top: Color) -> Color {
     let b = base.to_srgba();
@@ -163,13 +128,13 @@ pub(crate) fn build_row(
     for (level, &has_more) in s.parent_lines.iter().enumerate() {
         if has_more {
             let x = BASE_X + level as f32 * INDENT + LINE_OFFSET;
-            kids.push(vline(commands, x, 0.0, true, 0.0));
+            kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, true, 0.0));
         }
     }
     if s.depth > 0 {
         let x = BASE_X + (s.depth - 1) as f32 * INDENT + LINE_OFFSET;
-        kids.push(vline(commands, x, 0.0, !s.is_last, CENTER_Y));
-        kids.push(hline(commands, x, 5.0));
+        kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, !s.is_last, CENTER_Y));
+        kids.push(renzora_ember::widgets::tree_hline(commands, x, CENTER_Y, 5.0));
     }
 
     if let Some([r, g, b]) = s.label_color {

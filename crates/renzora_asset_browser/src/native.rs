@@ -1525,42 +1525,6 @@ fn has_subdirs(dir: &Path) -> bool {
 
 /// A 1.5px vertical guide line. `full` runs the whole row height; otherwise it
 /// stops at `height` (used for the elbow on a last child).
-fn tree_vline(commands: &mut Commands, x: f32, full: bool, height: f32) -> Entity {
-    let mut node = Node {
-        position_type: PositionType::Absolute,
-        left: Val::Px(x - 0.75),
-        top: Val::Px(0.0),
-        width: Val::Px(1.5),
-        ..default()
-    };
-    if full {
-        node.bottom = Val::Px(0.0);
-    } else {
-        node.height = Val::Px(height);
-    }
-    commands
-        .spawn((node, BackgroundColor(rgb(renzora_ember::theme::tree_line())), Pickable::IGNORE))
-        .id()
-}
-
-/// The short horizontal join from a vertical guide to the row content.
-fn tree_hline(commands: &mut Commands, x: f32, width: f32) -> Entity {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(x),
-                top: Val::Px(TREE_CENTER_Y - 0.75),
-                width: Val::Px(width),
-                height: Val::Px(1.5),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::tree_line())),
-            Pickable::IGNORE,
-        ))
-        .id()
-}
-
 fn flatten_dirs(
     dir: &Path,
     depth: usize,
@@ -1944,13 +1908,13 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
     for (level, &has_more) in r.parent_lines.iter().enumerate() {
         if has_more {
             let x = TREE_BASE_X + level as f32 * TREE_INDENT + TREE_LINE_OFFSET;
-            kids.push(tree_vline(commands, x, true, 0.0));
+            kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, true, 0.0));
         }
     }
     if r.depth > 0 {
         let x = TREE_BASE_X + (r.depth - 1) as f32 * TREE_INDENT + TREE_LINE_OFFSET;
-        kids.push(tree_vline(commands, x, !r.is_last, TREE_CENTER_Y));
-        kids.push(tree_hline(commands, x, 5.0));
+        kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, !r.is_last, TREE_CENTER_Y));
+        kids.push(renzora_ember::widgets::tree_hline(commands, x, TREE_CENTER_Y, 5.0));
     }
     // Indent spacer up to the caret column.
     kids.push(
