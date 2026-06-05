@@ -3,6 +3,8 @@ pub mod config;
 pub mod github;
 pub mod loading;
 mod native;
+mod native_bg;
+mod native_loading;
 pub mod project;
 mod ui;
 #[cfg(target_arch = "wasm32")]
@@ -79,17 +81,24 @@ impl Plugin for SplashPlugin {
                 splash_ui_system
                     .run_if(in_state(SplashState::Splash).and(native::native_splash_absent)),
             )
+            // egui loading screen is a fallback — only until the native one spawns.
             .add_systems(
                 EguiPrimaryContextPass,
-                loading::loading_ui_system.run_if(in_state(SplashState::Loading)),
+                loading::loading_ui_system.run_if(
+                    in_state(SplashState::Loading).and(native_loading::loading_native_absent),
+                ),
             )
             // Editor-state modal overlay — paints over the editor while
             // a tab's GLBs are decoding. Gated by
             // `EditorLoadingOverlayActive`, which `renzora_scene` toggles
             // based on outstanding `PendingMeshInstanceRehydrate` work.
+            // Native bevy_ui handles this under the BevyUi backend; egui only
+            // under the Egui backend (where the editor itself is egui).
             .add_systems(
                 EguiPrimaryContextPass,
-                loading::editor_loading_overlay_ui_system.run_if(in_state(SplashState::Editor)),
+                loading::editor_loading_overlay_ui_system.run_if(
+                    in_state(SplashState::Editor).and(renzora::core::editor_backend_is_egui),
+                ),
             )
             .add_systems(
                 Update,
@@ -99,6 +108,8 @@ impl Plugin for SplashPlugin {
             .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
 
         native::register(app);
+        native_loading::register(app);
+        native_bg::register(app);
     }
 }
 

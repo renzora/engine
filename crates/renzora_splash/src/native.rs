@@ -230,10 +230,29 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
         ))
         .id();
 
+    // Animated synthwave background — first child so it paints behind the rest.
+    let backdrop = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            crate::native_bg::BgBackground,
+            Name::new("splash-bg"),
+        ))
+        .id();
+
     let chrome = build_chrome(commands, fonts);
     let content = build_content(commands, fonts);
     let bottom = build_bottom_bar(commands, fonts);
-    commands.entity(root).add_children(&[chrome, content, bottom]);
+    commands
+        .entity(root)
+        .add_children(&[backdrop, chrome, content, bottom]);
 
     // Resize zones float above everything (drawn last, win hit-testing).
     build_resize_zones(commands, root);
