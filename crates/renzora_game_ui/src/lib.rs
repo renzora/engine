@@ -317,7 +317,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::border_radius_fields(),
                 custom_ui_fn: Some(inspector::render_border_radius_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -355,7 +355,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::padding_fields(),
                 custom_ui_fn: Some(inspector::render_padding_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -372,7 +372,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::opacity_fields(),
                 custom_ui_fn: Some(inspector::render_opacity_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -412,7 +412,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::clip_content_fields(),
                 custom_ui_fn: Some(inspector::render_clip_content_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -431,7 +431,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::cursor_fields(),
                 custom_ui_fn: Some(inspector::render_cursor_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {

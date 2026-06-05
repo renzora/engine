@@ -1769,6 +1769,101 @@ pub fn slider_fields() -> Vec<renzora_editor::FieldDef> {
     ]
 }
 
+/// Declarative fields for `UiPadding` (Top/Right/Bottom/Left).
+pub fn padding_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::float_field!("Top", components::UiPadding, top, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Right", components::UiPadding, right, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Bottom", components::UiPadding, bottom, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Left", components::UiPadding, left, 0.5, 0.0, 500.0),
+    ]
+}
+
+/// Declarative fields for `UiBorderRadius` (per-corner).
+pub fn border_radius_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::float_field!("Top Left", components::UiBorderRadius, top_left, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Top Right", components::UiBorderRadius, top_right, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Bottom Right", components::UiBorderRadius, bottom_right, 0.5, 0.0, 500.0),
+        renzora_editor::float_field!("Bottom Left", components::UiBorderRadius, bottom_left, 0.5, 0.0, 500.0),
+    ]
+}
+
+/// Declarative field for `UiOpacity` (a `f32` tuple component).
+pub fn opacity_fields() -> Vec<renzora_editor::FieldDef> {
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    vec![FieldDef {
+        name: "Opacity",
+        field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+        get_fn: |w, e| w.get::<components::UiOpacity>(e).map(|o| FieldValue::Float(o.0)),
+        set_fn: |w, e, v| {
+            if let (FieldValue::Float(f), Some(mut o)) = (v, w.get_mut::<components::UiOpacity>(e)) {
+                o.0 = f;
+            }
+        },
+    }]
+}
+
+/// Declarative field for `UiClipContent` (a `bool` tuple component).
+pub fn clip_content_fields() -> Vec<renzora_editor::FieldDef> {
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    vec![FieldDef {
+        name: "Clip Content",
+        field_type: FieldType::Bool,
+        get_fn: |w, e| w.get::<components::UiClipContent>(e).map(|c| FieldValue::Bool(c.0)),
+        set_fn: |w, e, v| {
+            if let (FieldValue::Bool(b), Some(mut c)) = (v, w.get_mut::<components::UiClipContent>(e)) {
+                c.0 = b;
+            }
+        },
+    }]
+}
+
+/// Declarative field for `UiCursor` (enum → dropdown).
+pub fn cursor_fields() -> Vec<renzora_editor::FieldDef> {
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    const CURSOR_LABELS: &[&str] = &[
+        "Default", "Pointer", "Text", "Grab", "Grabbing", "Not Allowed", "Crosshair", "EW Resize", "NS Resize", "Move",
+    ];
+    vec![FieldDef {
+        name: "Cursor",
+        field_type: FieldType::Enum { options: CURSOR_LABELS },
+        get_fn: |w, e| {
+            w.get::<components::UiCursor>(e).map(|c| {
+                let i = match c {
+                    components::UiCursor::Default => 0,
+                    components::UiCursor::Pointer => 1,
+                    components::UiCursor::Text => 2,
+                    components::UiCursor::Grab => 3,
+                    components::UiCursor::Grabbing => 4,
+                    components::UiCursor::NotAllowed => 5,
+                    components::UiCursor::Crosshair => 6,
+                    components::UiCursor::EwResize => 7,
+                    components::UiCursor::NsResize => 8,
+                    components::UiCursor::Move => 9,
+                };
+                FieldValue::Enum(CURSOR_LABELS[i].to_string())
+            })
+        },
+        set_fn: |w, e, v| {
+            if let (FieldValue::Enum(s), Some(mut c)) = (v, w.get_mut::<components::UiCursor>(e)) {
+                *c = match CURSOR_LABELS.iter().position(|l| *l == s).unwrap_or(0) {
+                    1 => components::UiCursor::Pointer,
+                    2 => components::UiCursor::Text,
+                    3 => components::UiCursor::Grab,
+                    4 => components::UiCursor::Grabbing,
+                    5 => components::UiCursor::NotAllowed,
+                    6 => components::UiCursor::Crosshair,
+                    7 => components::UiCursor::EwResize,
+                    8 => components::UiCursor::NsResize,
+                    9 => components::UiCursor::Move,
+                    _ => components::UiCursor::Default,
+                };
+            }
+        },
+    }]
+}
+
 /// Declarative fields for `CheckboxData`.
 pub fn checkbox_fields() -> Vec<renzora_editor::FieldDef> {
     vec![
