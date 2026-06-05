@@ -2,6 +2,7 @@ pub mod auth;
 pub mod config;
 pub mod github;
 pub mod loading;
+mod native;
 pub mod project;
 mod ui;
 #[cfg(target_arch = "wasm32")]
@@ -71,9 +72,12 @@ impl Plugin for SplashPlugin {
             .init_resource::<SplashWindowState>()
             .init_resource::<LoadingTasks>()
             .init_resource::<EditorLoadingOverlayActive>()
+            // egui splash is now a fallback — it only paints until the native
+            // bevy_ui splash root has spawned (which waits on EmberFonts).
             .add_systems(
                 EguiPrimaryContextPass,
-                splash_ui_system.run_if(in_state(SplashState::Splash)),
+                splash_ui_system
+                    .run_if(in_state(SplashState::Splash).and(native::native_splash_absent)),
             )
             .add_systems(
                 EguiPrimaryContextPass,
@@ -93,6 +97,8 @@ impl Plugin for SplashPlugin {
             )
             .add_systems(Update, handle_request_open_project)
             .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
+
+        native::register(app);
     }
 }
 
