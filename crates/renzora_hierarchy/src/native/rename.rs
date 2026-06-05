@@ -47,35 +47,49 @@ pub(crate) fn focus_rename_field(mut q: Query<&mut EmberTextInput, Added<HierRen
 }
 
 /// Commit (Enter / click-away blur) or cancel (Escape) the active rename.
+///
+/// `had_focus` tracks whether the field has held focus yet: the field is spawned
+/// by the keyed-list rebuild (deferred a frame or two after `HierRename` is set),
+/// so we must *wait* for it rather than treating "no field yet" as gone, and we
+/// only commit-on-blur once it has actually been focused (auto-focus runs the
+/// frame after it appears).
 pub(crate) fn rename_commit(
     mut rename: ResMut<HierRename>,
     keys: Res<ButtonInput<KeyCode>>,
     inputs: Query<(&EmberTextInput, &HierRenameInput)>,
     mut commands: Commands,
+    mut had_focus: Local<bool>,
 ) {
-    let Some(entity) = rename.0 else { return };
-
-    if keys.just_pressed(KeyCode::Escape) {
-        rename.0 = None;
-        return;
-    }
-
-    let Some((inp, _)) = inputs.iter().find(|(_, r)| r.0 == entity) else {
-        // The field is gone (row rebuilt without it) — drop the rename.
-        rename.0 = None;
+    let Some(entity) = rename.0 else {
+        *had_focus = false;
         return;
     };
 
+    if keys.just_pressed(KeyCode::Escape) {
+        rename.0 = None;
+        *had_focus = false;
+        return;
+    }
+
+    // Wait for the rename field to actually spawn (don't cancel in the meantime).
+    let Some((inp, _)) = inputs.iter().find(|(_, r)| r.0 == entity) else {
+        return;
+    };
+    if inp.focused {
+        *had_focus = true;
+    }
+
     let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
-    // A click on another widget blurs the field (text_input's off-click) — treat
-    // that as a commit, mirroring egui's lost-focus behaviour.
-    let blurred = !inp.focused;
+    // Click-away blur commits, but only after the field has held focus — so it
+    // doesn't fire the frame the field first appears (before auto-focus runs).
+    let blurred = *had_focus && !inp.focused;
     if !enter && !blurred {
         return;
     }
 
     let new: String = inp.value.replace('\n', "").trim().to_string();
     rename.0 = None;
+    *had_focus = false;
     if new.is_empty() {
         return;
     }
