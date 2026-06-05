@@ -140,6 +140,27 @@ impl DockTree {
         }
     }
 
+    /// Focus `panel` if it's already somewhere in the tree; otherwise append it
+    /// to the first leaf (making it visible). Returns `true` if it was added.
+    pub fn focus_or_add_panel(&mut self, panel: &str) -> bool {
+        if self.find_leaf_mut(panel).is_some() {
+            self.set_active_tab(panel);
+            return false;
+        }
+        fn add_to_first_leaf(tree: &mut DockTree, panel: String) -> bool {
+            match tree {
+                DockTree::Leaf { tabs, active_tab } => {
+                    tabs.push(panel);
+                    *active_tab = tabs.len() - 1;
+                    true
+                }
+                DockTree::Split { first, .. } => add_to_first_leaf(first, panel),
+                DockTree::Empty => false,
+            }
+        }
+        add_to_first_leaf(self, panel.to_string())
+    }
+
     /// Append `new_panel` as a tab in the leaf containing `sibling`.
     pub fn add_tab(&mut self, sibling: &str, new_panel: String) -> bool {
         if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(sibling) {

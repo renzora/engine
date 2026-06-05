@@ -2553,10 +2553,24 @@ fn open_in_code_editor(world: &mut World, path: PathBuf) {
         .get_resource::<renzora_editor::EditorSettings>()
         .map(|s| s.code_open_switch_layout)
         .unwrap_or(false);
+
+    // egui dock model (legacy backend): focus/add the panel, or switch layout.
     if switch {
         renzora_editor::switch_layout_by_name(world, "Scripting");
     } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor::DockingState>() {
         docking.tree.focus_or_add_panel("code_editor");
+    }
+
+    // bevy_ui shell dock model: add/focus the code-editor panel in the live dock
+    // and flag a rebuild. The shell renders from its own `renzora_ember::dock`
+    // model, not `DockingState`, so this is what makes the panel appear there.
+    // (Switching the ember workspace needs the shell's `ShellLayouts`, which
+    // isn't reachable here, so on the bevy_ui backend both modes reveal in place.)
+    if let Some(mut dock) = world.get_resource_mut::<renzora_ember::dock::Dock>() {
+        dock.tree.focus_or_add_panel("code_editor");
+    }
+    if let Some(mut dirty) = world.get_resource_mut::<renzora_ember::dock::DockDirty>() {
+        dirty.0 = true;
     }
 }
 
