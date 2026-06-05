@@ -8,18 +8,21 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
 use renzora_editor::{AppEditorExt, SplashState};
-use renzora_ember::font::{icon_text, EmberFonts};
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_bg};
-use renzora_ember::theme::{accent, rgb, text_muted};
-use renzora_ember::widgets::{bind_text_input, drag_value, dropdown, icon_label_button, text_input, DragRange};
+use renzora_ember::reactive::{bind_2way, bind_bg, bind_display};
+use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, icon_label_button, text_input, DragRange};
 
-use renzora_game_ui::components::{DropdownData, GradientStop, UiFill, UiStroke};
+use renzora_game_ui::components::{
+    DropdownData, GradientStop, UiCursor, UiFill, UiInteractionStyle, UiStateStyle, UiStroke, UiTransition,
+};
 
 pub(crate) fn register(app: &mut App) {
     app.register_native_inspector_ui("ui_stroke", stroke_native);
     app.register_native_inspector_ui("ui_dropdown_data", dropdown_native);
     app.register_native_inspector_ui("ui_fill", fill_native);
+    app.register_native_inspector_ui("ui_interaction", interaction_native);
     app.add_systems(
         Update,
         (
@@ -609,4 +612,336 @@ fn fill_remove_stop_click(q: Query<(&Interaction, &FillRemoveStop), Changed<Inte
             }
         });
     }
+}
+
+// ── Interaction (UiInteractionStyle + UiTransition) ──────────────────────────
+
+const CURSOR_LABELS: [&str; 10] =
+    ["Default", "Pointer", "Text", "Grab", "Grabbing", "Not Allowed", "Crosshair", "EW Resize", "NS Resize", "Move"];
+
+fn istate(is: &UiInteractionStyle, idx: usize) -> &UiStateStyle {
+    match idx {
+        0 => &is.normal,
+        1 => &is.hovered,
+        2 => &is.pressed,
+        _ => &is.disabled,
+    }
+}
+
+fn istate_mut(is: &mut UiInteractionStyle, idx: usize) -> &mut UiStateStyle {
+    match idx {
+        0 => &mut is.normal,
+        1 => &mut is.hovered,
+        2 => &mut is.pressed,
+        _ => &mut is.disabled,
+    }
+}
+
+/// Whether a state's override (by kind) is currently enabled.
+fn override_present(s: &UiStateStyle, kind: u8) -> bool {
+    match kind {
+        0 => s.fill.is_some(),
+        1 => s.stroke.is_some(),
+        2 => s.opacity.is_some(),
+        3 => s.text_color.is_some(),
+        4 => s.text_size.is_some(),
+        5 => s.cursor.is_some(),
+        _ => s.scale.is_some(),
+    }
+}
+
+/// Enable (with the egui default) or clear a state's override.
+fn toggle_override(s: &mut UiStateStyle, kind: u8, on: bool) {
+    match kind {
+        0 => s.fill = on.then(|| UiFill::Solid(Color::srgba(0.3, 0.3, 0.3, 1.0))),
+        1 => s.stroke = on.then(|| UiStroke::new(Color::WHITE, 1.0)),
+        2 => s.opacity = on.then_some(1.0),
+        3 => s.text_color = on.then_some(Color::WHITE),
+        4 => s.text_size = on.then_some(14.0),
+        5 => s.cursor = on.then_some(UiCursor::Pointer),
+        _ => s.scale = on.then_some(1.0),
+    }
+}
+
+fn cursor_to_idx(c: &UiCursor) -> usize {
+    match c {
+        UiCursor::Default => 0,
+        UiCursor::Pointer => 1,
+        UiCursor::Text => 2,
+        UiCursor::Grab => 3,
+        UiCursor::Grabbing => 4,
+        UiCursor::NotAllowed => 5,
+        UiCursor::Crosshair => 6,
+        UiCursor::EwResize => 7,
+        UiCursor::NsResize => 8,
+        UiCursor::Move => 9,
+    }
+}
+
+fn idx_to_cursor(i: usize) -> UiCursor {
+    match i {
+        1 => UiCursor::Pointer,
+        2 => UiCursor::Text,
+        3 => UiCursor::Grab,
+        4 => UiCursor::Grabbing,
+        5 => UiCursor::NotAllowed,
+        6 => UiCursor::Crosshair,
+        7 => UiCursor::EwResize,
+        8 => UiCursor::NsResize,
+        9 => UiCursor::Move,
+        _ => UiCursor::Default,
+    }
+}
+
+fn istate_f32(s: &UiStateStyle, kind: u8) -> Option<f32> {
+    match kind {
+        2 => s.opacity,
+        4 => s.text_size,
+        _ => s.scale,
+    }
+}
+
+fn set_istate_f32(s: &mut UiStateStyle, kind: u8, v: f32) {
+    match kind {
+        2 => s.opacity = Some(v),
+        4 => s.text_size = Some(v),
+        _ => s.scale = Some(v),
+    }
+}
+
+/// Native drawer for `UiInteractionStyle` — four state sections (Normal / Hovered
+/// / Pressed / Disabled), each with per-override checkbox + value editor, plus a
+/// Transition (duration) section. Mirrors `render_interaction_inspector`.
+fn interaction_native(world: &mut World, entity: Entity) -> Entity {
+    inspector_body(world, move |commands, fonts| {
+        let col = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                padding: UiRect::all(Val::Px(2.0)),
+                ..default()
+            })
+            .id();
+
+        let mut children: Vec<Entity> = Vec::new();
+        let mut stripe = 0usize;
+        for (state_idx, name) in ["Normal", "Hovered", "Pressed", "Disabled"].iter().enumerate() {
+            children.push(section_header(commands, fonts, name));
+            for kind in 0u8..7 {
+                let row = override_row(commands, fonts, entity, state_idx, kind);
+                commands.entity(row).insert(BackgroundColor(inspector_stripe(stripe)));
+                stripe += 1;
+                children.push(row);
+            }
+        }
+
+        children.push(section_header(commands, fonts, "Transition"));
+        let trow = transition_row(commands, fonts, entity);
+        commands.entity(trow).insert(BackgroundColor(inspector_stripe(stripe)));
+        children.push(trow);
+
+        commands.entity(col).add_children(&children);
+        col
+    })
+}
+
+fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    let h = commands
+        .spawn(Node { margin: UiRect { top: Val::Px(6.0), bottom: Val::Px(1.0), ..default() }, ..default() })
+        .id();
+    let t = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
+        .id();
+    commands.entity(h).add_child(t);
+    h
+}
+
+fn override_checkbox(commands: &mut Commands, entity: Entity, state_idx: usize, kind: u8) -> Entity {
+    let cb = checkbox(commands, false);
+    bind_2way(
+        commands,
+        cb,
+        move |w| w.get::<UiInteractionStyle>(entity).map(|is| override_present(istate(is, state_idx), kind)).unwrap_or(false),
+        move |w, on: &bool| {
+            if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                toggle_override(istate_mut(&mut is, state_idx), kind, *on);
+            }
+        },
+    );
+    cb
+}
+
+fn override_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, state_idx: usize, kind: u8) -> Entity {
+    let label = ["Fill", "Stroke", "Opacity", "Text Color", "Text Size", "Cursor", "Scale"][kind as usize];
+    let ctrl = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), flex_grow: 1.0, ..default() })
+        .id();
+    let mut items = vec![override_checkbox(commands, entity, state_idx, kind)];
+
+    match kind {
+        0 => {
+            // Fill: solid color editor (when Solid) + a muted "gradient" tag (when gradient).
+            let color = color_field_rgba(
+                commands,
+                move |w| match w.get::<UiInteractionStyle>(entity).map(|is| istate(is, state_idx).fill.clone()) {
+                    Some(Some(UiFill::Solid(c))) => c.to_srgba().to_f32_array(),
+                    _ => [0.3, 0.3, 0.3, 1.0],
+                },
+                move |w, a: [f32; 4]| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        if let Some(UiFill::Solid(c)) = &mut istate_mut(&mut is, state_idx).fill {
+                            *c = Color::srgba(a[0], a[1], a[2], a[3]);
+                        }
+                    }
+                },
+            );
+            bind_display(commands, color, move |w| {
+                w.get::<UiInteractionStyle>(entity).map(|is| matches!(istate(is, state_idx).fill, Some(UiFill::Solid(_)))).unwrap_or(false)
+            });
+            items.push(color);
+            let grad = commands
+                .spawn((Text::new("gradient"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
+                .id();
+            bind_display(commands, grad, move |w| {
+                w.get::<UiInteractionStyle>(entity)
+                    .map(|is| matches!(istate(is, state_idx).fill, Some(UiFill::LinearGradient { .. } | UiFill::RadialGradient { .. })))
+                    .unwrap_or(false)
+            });
+            items.push(grad);
+        }
+        1 => {
+            // Stroke: color + width.
+            let color = color_field_rgba(
+                commands,
+                move |w| w.get::<UiInteractionStyle>(entity).and_then(|is| istate(is, state_idx).stroke.as_ref().map(|s| s.color.to_srgba().to_f32_array())).unwrap_or([1.0; 4]),
+                move |w, a: [f32; 4]| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        if let Some(s) = &mut istate_mut(&mut is, state_idx).stroke {
+                            s.color = Color::srgba(a[0], a[1], a[2], a[3]);
+                        }
+                    }
+                },
+            );
+            bind_display(commands, color, move |w| w.get::<UiInteractionStyle>(entity).map(|is| istate(is, state_idx).stroke.is_some()).unwrap_or(false));
+            items.push(color);
+            let width = drag_value(commands, &fonts.ui, "", (210, 210, 220), 1.0, 0.5);
+            commands.entity(width).insert(DragRange { min: 0.0, max: 50.0 });
+            bind_2way(
+                commands,
+                width,
+                move |w| w.get::<UiInteractionStyle>(entity).and_then(|is| istate(is, state_idx).stroke.as_ref().map(|s| s.width)).unwrap_or(1.0),
+                move |w, v: &f32| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        if let Some(s) = &mut istate_mut(&mut is, state_idx).stroke {
+                            s.width = *v;
+                        }
+                    }
+                },
+            );
+            bind_display(commands, width, move |w| w.get::<UiInteractionStyle>(entity).map(|is| istate(is, state_idx).stroke.is_some()).unwrap_or(false));
+            items.push(width);
+        }
+        3 => {
+            // Text Color.
+            let color = color_field_rgba(
+                commands,
+                move |w| w.get::<UiInteractionStyle>(entity).and_then(|is| istate(is, state_idx).text_color.map(|c| c.to_srgba().to_f32_array())).unwrap_or([1.0; 4]),
+                move |w, a: [f32; 4]| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        let s = istate_mut(&mut is, state_idx);
+                        if s.text_color.is_some() {
+                            s.text_color = Some(Color::srgba(a[0], a[1], a[2], a[3]));
+                        }
+                    }
+                },
+            );
+            bind_display(commands, color, move |w| w.get::<UiInteractionStyle>(entity).map(|is| istate(is, state_idx).text_color.is_some()).unwrap_or(false));
+            items.push(color);
+        }
+        5 => {
+            // Cursor.
+            let dd = dropdown(commands, fonts, &CURSOR_LABELS, 0);
+            bind_2way(
+                commands,
+                dd,
+                move |w| w.get::<UiInteractionStyle>(entity).and_then(|is| istate(is, state_idx).cursor.as_ref().map(cursor_to_idx)).unwrap_or(0),
+                move |w, v: &usize| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        let s = istate_mut(&mut is, state_idx);
+                        if s.cursor.is_some() {
+                            s.cursor = Some(idx_to_cursor(*v));
+                        }
+                    }
+                },
+            );
+            bind_display(commands, dd, move |w| w.get::<UiInteractionStyle>(entity).map(|is| istate(is, state_idx).cursor.is_some()).unwrap_or(false));
+            items.push(dd);
+        }
+        // Opacity (2), Text Size (4), Scale (6) — plain f32 sliders.
+        _ => {
+            let (init, min, max, step) = match kind {
+                2 => (1.0, 0.0, 1.0, 0.01),
+                4 => (14.0, 1.0, 200.0, 0.5),
+                _ => (1.0, 0.1, 5.0, 0.01),
+            };
+            let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), init, step);
+            commands.entity(dv).insert(DragRange { min, max });
+            bind_2way(
+                commands,
+                dv,
+                move |w| w.get::<UiInteractionStyle>(entity).and_then(|is| istate_f32(istate(is, state_idx), kind)).unwrap_or(init),
+                move |w, v: &f32| {
+                    if let Some(mut is) = w.get_mut::<UiInteractionStyle>(entity) {
+                        let s = istate_mut(&mut is, state_idx);
+                        if istate_f32(s, kind).is_some() {
+                            set_istate_f32(s, kind, *v);
+                        }
+                    }
+                },
+            );
+            bind_display(commands, dv, move |w| w.get::<UiInteractionStyle>(entity).map(|is| istate_f32(istate(is, state_idx), kind).is_some()).unwrap_or(false));
+            items.push(dv);
+        }
+    }
+
+    commands.entity(ctrl).add_children(&items);
+    inspector_row(commands, &fonts.ui, label, ctrl)
+}
+
+/// Transition row: an enable checkbox (insert/remove `UiTransition`) + a duration slider.
+fn transition_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
+    let ctrl = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), flex_grow: 1.0, ..default() })
+        .id();
+    let cb = checkbox(commands, false);
+    bind_2way(
+        commands,
+        cb,
+        move |w| w.get::<UiTransition>(entity).is_some(),
+        move |w, on: &bool| {
+            if *on {
+                if w.get::<UiTransition>(entity).is_none() {
+                    w.entity_mut(entity).insert(UiTransition { duration: 0.15 });
+                }
+            } else {
+                w.entity_mut(entity).remove::<UiTransition>();
+            }
+        },
+    );
+    let dur = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.15, 0.01);
+    commands.entity(dur).insert(DragRange { min: 0.0, max: 5.0 });
+    bind_2way(
+        commands,
+        dur,
+        move |w| w.get::<UiTransition>(entity).map(|t| t.duration).unwrap_or(0.15),
+        move |w, v: &f32| {
+            if let Some(mut t) = w.get_mut::<UiTransition>(entity) {
+                t.duration = *v;
+            }
+        },
+    );
+    bind_display(commands, dur, move |w| w.get::<UiTransition>(entity).is_some());
+    commands.entity(ctrl).add_children(&[cb, dur]);
+    inspector_row(commands, &fonts.ui, "Duration", ctrl)
 }
