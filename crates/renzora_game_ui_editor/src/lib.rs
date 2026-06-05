@@ -35,6 +35,7 @@ use renzora_game_ui::UiCanvas;
 
 mod align;
 mod geometry;
+mod inspectors;
 mod interaction;
 mod nav;
 mod overlay;
@@ -94,6 +95,7 @@ impl Plugin for GameUiEditorPlugin {
         overlay::register(app);
         interaction::register(app);
         nav::register(app);
+        inspectors::register(app);
         // The editor lives in the viewport's "UI" mode (there's no separate
         // ui_canvas dock tab) — `renzora_viewport` mounts `build_ui_canvas`
         // there. The interaction/overlay systems above run wherever the hit
