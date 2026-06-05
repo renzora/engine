@@ -19,7 +19,6 @@ mod native_header;
 mod native_viewport;
 pub mod persistence;
 pub mod play_mode;
-pub mod window_play;
 pub mod render_systems;
 pub mod scene_drop;
 pub mod settings;
@@ -116,10 +115,7 @@ impl Plugin for ViewportPlugin {
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::foliage::material::GrassMaterial>,
                 ),
                 render_systems::update_shadow_settings,
-                (
-                    play_mode::handle_play_mode_transitions,
-                    window_play::on_game_window_close,
-                ),
+                play_mode::handle_play_mode_transitions,
                 external_runtime::poll_external_runtime,
                 external_runtime::advance_runtime_phase,
                 effect_routing::update_effect_routing,
