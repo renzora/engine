@@ -224,4 +224,5 @@ pub fn build(app: &mut App) {
             .world_mut()
             .resource_mut::<renzora_editor::InspectorRegistry>(),
     );
+    inspectors::register_audio_native(app);
 }

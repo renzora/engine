@@ -10152,6 +10152,7 @@ dependencies = [
  "renzora_audio",
  "renzora_editor",
  "renzora_ember",
+ "renzora_inspector",
  "renzora_theme",
 ]
 
