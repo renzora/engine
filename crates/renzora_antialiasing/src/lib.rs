@@ -297,7 +297,45 @@ fn fxaa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        fields: vec![
+            renzora_editor::FieldDef {
+                name: "Edge Threshold",
+                field_type: renzora_editor::FieldType::Enum { options: &SENSITIVITY_LABELS },
+                get_fn: |w, e| {
+                    w.get::<FxaaSettings>(e).map(|s| {
+                        renzora_editor::FieldValue::Enum(
+                            SENSITIVITY_LABELS.get(s.edge_threshold as usize).copied().unwrap_or("Low").to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
+                        if let Some(i) = SENSITIVITY_LABELS.iter().position(|l| *l == label) {
+                            s.edge_threshold = i as u32;
+                        }
+                    }
+                },
+            },
+            renzora_editor::FieldDef {
+                name: "Edge Thr. Min",
+                field_type: renzora_editor::FieldType::Enum { options: &SENSITIVITY_LABELS },
+                get_fn: |w, e| {
+                    w.get::<FxaaSettings>(e).map(|s| {
+                        renzora_editor::FieldValue::Enum(
+                            SENSITIVITY_LABELS.get(s.edge_threshold_min as usize).copied().unwrap_or("Low").to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
+                        if let Some(i) = SENSITIVITY_LABELS.iter().position(|l| *l == label) {
+                            s.edge_threshold_min = i as u32;
+                        }
+                    }
+                },
+            },
+        ],
         custom_ui_fn: Some(fxaa_custom_ui),
     }
 }
@@ -386,7 +424,25 @@ fn smaa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        fields: vec![renzora_editor::FieldDef {
+            name: "Preset",
+            field_type: renzora_editor::FieldType::Enum { options: &SMAA_LABELS },
+            get_fn: |w, e| {
+                w.get::<SmaaSettings>(e).map(|s| {
+                    renzora_editor::FieldValue::Enum(
+                        SMAA_LABELS.get(s.preset as usize).copied().unwrap_or("Low").to_string(),
+                    )
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<SmaaSettings>(e)) {
+                    if let Some(i) = SMAA_LABELS.iter().position(|l| *l == label) {
+                        s.preset = i as u32;
+                    }
+                }
+            },
+        }],
         custom_ui_fn: Some(smaa_custom_ui),
     }
 }
