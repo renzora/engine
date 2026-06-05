@@ -126,6 +126,17 @@ pub(crate) struct NativeAssets {
     /// a tree-only file browser (grid + splitter hidden, tree shows files). Set
     /// by `responsive_layout` from the panel's measured width.
     narrow: bool,
+    /// Multi-selection (marquee + ctrl/shift click). `selected` stays the
+    /// primary/anchor (rename + context-menu target).
+    selection: HashSet<PathBuf>,
+    selection_anchor: Option<PathBuf>,
+    /// Active marquee rubber-band, in window logical px: press origin + current.
+    marquee_start: Option<Vec2>,
+    marquee_current: Option<Vec2>,
+    /// Selection captured when the marquee began (swept tiles add to it).
+    pre_marquee: HashSet<PathBuf>,
+    /// The current folder's entries in display order — for shift-range select.
+    visible_order: Vec<PathBuf>,
 }
 
 impl Default for NativeAssets {
@@ -151,7 +162,60 @@ impl Default for NativeAssets {
             sort_desc: false,
             list_view: false,
             narrow: false,
+            selection: HashSet::new(),
+            selection_anchor: None,
+            marquee_start: None,
+            marquee_current: None,
+            pre_marquee: HashSet::new(),
+            visible_order: Vec::new(),
         }
+    }
+}
+
+impl NativeAssets {
+    /// Apply a single-tile click with modifiers: ctrl toggles, shift selects the
+    /// range from the anchor (using `visible_order`), plain replaces. `selected`
+    /// tracks the primary item for rename / context-menu targeting.
+    fn click_select(&mut self, path: &Path, ctrl: bool, shift: bool) {
+        let p = path.to_path_buf();
+        if ctrl {
+            if self.selection.contains(&p) {
+                self.selection.remove(&p);
+                self.selected = self.selection.iter().next().cloned();
+            } else {
+                self.selection.insert(p.clone());
+                self.selected = Some(p.clone());
+                self.selection_anchor = Some(p);
+            }
+        } else if shift && self.selection_anchor.is_some() {
+            let anchor = self.selection_anchor.clone().unwrap();
+            let ai = self.visible_order.iter().position(|q| *q == anchor);
+            let ci = self.visible_order.iter().position(|q| *q == p);
+            if let (Some(a), Some(c)) = (ai, ci) {
+                let (s, e) = if a <= c { (a, c) } else { (c, a) };
+                self.selection.clear();
+                for q in &self.visible_order[s..=e] {
+                    self.selection.insert(q.clone());
+                }
+                self.selected = Some(p);
+            } else {
+                // Anchor/target not in view — fall back to a plain select.
+                self.selection.clear();
+                self.selection.insert(p.clone());
+                self.selected = Some(p.clone());
+                self.selection_anchor = Some(p);
+            }
+        } else {
+            self.selection.clear();
+            self.selection.insert(p.clone());
+            self.selected = Some(p.clone());
+            self.selection_anchor = Some(p);
+        }
+    }
+
+    /// True if `path` is part of the current (multi-)selection.
+    fn is_selected(&self, path: &Path) -> bool {
+        self.selection.contains(path) || self.selected.as_deref() == Some(path)
     }
 }
 
@@ -321,6 +385,10 @@ pub fn register_native_asset_browser(app: &mut App) {
             .run_if(in_state(SplashState::Editor)),
     );
     app.add_systems(Update, splitter_drag.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        (track_visible_order, marquee_select, marquee_overlay).run_if(in_state(SplashState::Editor)),
+    );
     // Force the resize cursor while hovering/dragging the divider. In PostUpdate
     // so it wins over renzora_hui's Update cursor system (which would otherwise
     // reset to Default once the cursor leaves the thin splitter mid-drag).
@@ -715,6 +783,12 @@ struct SortMenuBtn;
 struct ViewToggleBtn;
 #[derive(Component)]
 struct AssetGrid;
+/// The grid viewport — a marquee starts on an empty press here.
+#[derive(Component)]
+struct GridArea;
+/// The rubber-band selection rectangle overlay (top-level, unclipped).
+#[derive(Component)]
+struct MarqueeRect;
 
 /// Open the sort menu (modes + ascending/descending) anchored under the button.
 fn sort_menu_open(
@@ -779,6 +853,129 @@ fn sort_menu_open(
         },
     ));
     commands.entity(menu).add_children(&kids);
+}
+
+/// Keep `visible_order` in sync with the grid's current folder + sort so
+/// shift-range selection knows the display order.
+fn track_visible_order(mut state: ResMut<NativeAssets>, project: Option<Res<renzora::core::CurrentProject>>) {
+    let folder = state.current.clone().or_else(|| project.as_ref().map(|p| p.path.clone()));
+    let Some(folder) = folder else {
+        if !state.visible_order.is_empty() {
+            state.visible_order.clear();
+        }
+        return;
+    };
+    let order: Vec<PathBuf> = read_sorted_entries(&folder, &state.search.to_lowercase(), state.sort, state.sort_desc)
+        .into_iter()
+        .map(|e| e.path)
+        .collect();
+    if state.visible_order != order {
+        state.visible_order = order;
+    }
+}
+
+/// Rubber-band selection: pressing in empty grid space and dragging selects
+/// every tile the rectangle touches. Ctrl/Shift keep the prior selection
+/// (sweeping adds to it). Mirrors the egui browser's marquee.
+fn marquee_select(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    windows: Query<&Window>,
+    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
+    tiles: Query<(&AssetTile, &Interaction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+    mut state: ResMut<NativeAssets>,
+) {
+    if mouse.just_released(MouseButton::Left) {
+        state.marquee_start = None;
+        state.marquee_current = None;
+        state.pre_marquee.clear();
+        return;
+    }
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+
+    // Begin on a press over the grid that didn't land on a tile.
+    if mouse.just_pressed(MouseButton::Left) && state.marquee_start.is_none() {
+        let over_grid = grid.iter().any(|r| r.cursor_over);
+        let on_tile = tiles.iter().any(|(_, i, _, _)| *i == Interaction::Pressed);
+        if over_grid && !on_tile {
+            let keep = keyboard.pressed(KeyCode::ControlLeft)
+                || keyboard.pressed(KeyCode::ControlRight)
+                || keyboard.pressed(KeyCode::ShiftLeft)
+                || keyboard.pressed(KeyCode::ShiftRight);
+            state.marquee_start = Some(cursor);
+            state.marquee_current = Some(cursor);
+            if keep {
+                state.pre_marquee = state.selection.clone();
+            } else {
+                state.selection.clear();
+                state.pre_marquee.clear();
+            }
+        }
+    }
+
+    // Update the sweep while held.
+    if mouse.pressed(MouseButton::Left) {
+        if let Some(start) = state.marquee_start {
+            state.marquee_current = Some(cursor);
+            let (min, max) = (start.min(cursor), start.max(cursor));
+            let mut sel = state.pre_marquee.clone();
+            for (tile, _, cn, ugt) in &tiles {
+                let scale = cn.inverse_scale_factor();
+                let half = cn.size() * scale * 0.5;
+                let center = ugt.translation * scale;
+                let (tmin, tmax) = (center - half, center + half);
+                // AABB overlap test against the marquee rect.
+                if tmin.x <= max.x && tmax.x >= min.x && tmin.y <= max.y && tmax.y >= min.y {
+                    sel.insert(tile.path.clone());
+                }
+            }
+            state.selection = sel;
+            state.selected = state.selection.iter().next().cloned();
+        }
+    }
+}
+
+/// Draws/updates the marquee rectangle as a top-level overlay (unclipped by the
+/// panel), and despawns it when the marquee ends.
+fn marquee_overlay(
+    mut commands: Commands,
+    state: Res<NativeAssets>,
+    mut rects: Query<(Entity, &mut Node), With<MarqueeRect>>,
+) {
+    if let (Some(a), Some(b)) = (state.marquee_start, state.marquee_current) {
+        let min = a.min(b);
+        let size = (a.max(b) - min).max(Vec2::ZERO);
+        if let Some((_, mut n)) = rects.iter_mut().next() {
+            n.left = Val::Px(min.x);
+            n.top = Val::Px(min.y);
+            n.width = Val::Px(size.x);
+            n.height = Val::Px(size.y);
+        } else {
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(min.x),
+                    top: Val::Px(min.y),
+                    width: Val::Px(size.x),
+                    height: Val::Px(size.y),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(accent()).with_alpha(0.15)),
+                BorderColor::all(rgb(accent())),
+                GlobalZIndex(9_000),
+                Pickable::IGNORE,
+                MarqueeRect,
+                Name::new("asset-marquee"),
+            ));
+        }
+    } else {
+        for (e, _) in &rects {
+            commands.entity(e).despawn();
+        }
+    }
 }
 
 /// Collapse to a tree-only file browser when the panel is too narrow for a
@@ -884,6 +1081,7 @@ fn delete_asset(world: &mut World, path: &Path) {
         std::fs::remove_file(path)
     };
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        s.selection.remove(path);
         if s.selected.as_deref() == Some(path) {
             s.selected = None;
         }
@@ -1327,6 +1525,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, grid, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
+    // Mark the grid viewport so the marquee knows when a press lands in empty
+    // grid space (vs. on a tile or the tree).
+    commands.entity(grid_scroll).insert((GridArea, bevy::ui::RelativeCursorPosition::default()));
 
     // Live item count — sits at the right of the breadcrumb bar.
     let count = commands
@@ -1495,15 +1696,21 @@ fn list_entries(w: &World) -> Vec<Entry> {
         .get_resource::<NativeAssets>()
         .map(|s| (s.search.to_lowercase(), s.sort, s.sort_desc))
         .unwrap_or_else(|| (String::new(), SortMode::Name, false));
+    read_sorted_entries(&folder, &search, sort, desc)
+}
+
+/// Read + sort a folder's non-hidden entries (folders first). Shared by the grid
+/// snapshot and the shift-range `visible_order` tracker.
+fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) -> Vec<Entry> {
     let mut entries: Vec<Entry> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&folder) {
+    if let Ok(rd) = std::fs::read_dir(folder) {
         for e in rd.flatten() {
             let path = e.path();
             let name = e.file_name().to_string_lossy().to_string();
             if name.starts_with('.') {
                 continue;
             }
-            if !search.is_empty() && !name.to_lowercase().contains(&search) {
+            if !search.is_empty() && !name.to_lowercase().contains(search) {
                 continue;
             }
             let meta = e.metadata().ok();
@@ -1624,7 +1831,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
     bind_bg(commands, row, move |w| {
         let selected = w
             .get_resource::<NativeAssets>()
-            .map(|s| s.selected.as_deref() == Some(path_bg.as_path()))
+            .map(|s| s.is_selected(&path_bg))
             .unwrap_or(false);
         let hovered = matches!(
             w.get::<Interaction>(row),
@@ -1712,7 +1919,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
     bind_bg(commands, col, move |w| {
         let selected = w
             .get_resource::<NativeAssets>()
-            .map(|s| s.selected.as_deref() == Some(path_bg.as_path()))
+            .map(|s| s.is_selected(&path_bg))
             .unwrap_or(false);
         let hovered = matches!(
             w.get::<Interaction>(col),
@@ -1734,7 +1941,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
         col,
         move |w| {
             w.get_resource::<NativeAssets>()
-                .map(|s| s.selected.as_deref() == Some(path_bd.as_path()))
+                .map(|s| s.is_selected(&path_bd))
                 .unwrap_or(false)
         },
         move |w, e, selected: &bool| {
@@ -2329,7 +2536,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
     bind_bg(commands, bg_visual, move |w| {
         let active = if is_file {
             w.get_resource::<NativeAssets>()
-                .map(|s| s.selected.as_deref() == Some(sel_path.as_path()))
+                .map(|s| s.is_selected(&sel_path))
                 .unwrap_or(false)
         } else {
             current_folder(w).as_deref() == Some(sel_path.as_path())
@@ -2433,10 +2640,13 @@ fn tile_click(
     q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     project: Option<Res<renzora::core::CurrentProject>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let now = time.elapsed_secs_f64();
+    let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+    let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let root = project.as_ref().map(|p| p.path.clone());
     for (interaction, tile) in &q {
         if *interaction != Interaction::Pressed {
@@ -2451,13 +2661,15 @@ fn tile_click(
             if tile.is_dir {
                 state.current = Some(tile.path.clone());
                 state.selected = None;
+                state.selection.clear();
             } else {
                 open_file(&cmds, &tile.path);
                 track_recent(&mut state, &tile.path, root.as_deref());
             }
         } else {
-            // Single click selects; the next click within 0.4s opens/navigates.
-            state.selected = Some(tile.path.clone());
+            // Single click selects (ctrl toggles, shift range-selects); a second
+            // click within 0.4s opens / navigates.
+            state.click_select(&tile.path, ctrl, shift);
             state.last_click = Some((tile.path.clone(), now));
         }
     }
