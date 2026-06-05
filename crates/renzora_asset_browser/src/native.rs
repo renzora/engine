@@ -2469,11 +2469,23 @@ fn tile_click(
 /// audio, …) falls back to the OS default app. Deferred through `EditorCommands`
 /// because the routing needs `&mut World`.
 fn open_file(cmds: &Option<Res<EditorCommands>>, path: &Path) {
-    if opens_in_editor(path) {
-        if let Some(cmds) = cmds {
-            let p = path.to_path_buf();
-            cmds.push(move |w: &mut World| crate::open_double_clicked(w, p));
+    let Some(cmds) = cmds else {
+        if !opens_in_editor(path) {
+            os_open(path);
         }
+        return;
+    };
+    if is_code_kind(path) {
+        // Scripts/shaders/templates/text: just add the file to the code editor's
+        // open files — no document-tab / layout switch (that switch lands on the
+        // hidden asset-mode workspace, which renders blank in the bevy_ui dock).
+        let p = path.to_path_buf();
+        cmds.push(move |w: &mut World| {
+            w.insert_resource(renzora::core::OpenCodeEditorFile { path: p });
+        });
+    } else if opens_in_editor(path) {
+        let p = path.to_path_buf();
+        cmds.push(move |w: &mut World| crate::open_double_clicked(w, p));
     } else {
         os_open(path);
     }
@@ -2483,6 +2495,16 @@ fn open_file(cmds: &Option<Res<EditorCommands>>, path: &Path) {
 /// default app). Mirrors the egui browser's `open_double_clicked` routing.
 fn opens_in_editor(path: &Path) -> bool {
     renzora_editor::doc_kind_for_path(path).is_some() || is_editable_text(path)
+}
+
+/// Code-editor-backed kinds: scripts, shaders, HTML templates, and plain text.
+/// These open straight into `CodeEditorState` (no layout switch).
+fn is_code_kind(path: &Path) -> bool {
+    use renzora_editor::DocTabKind;
+    matches!(
+        renzora_editor::doc_kind_for_path(path),
+        Some(DocTabKind::Script | DocTabKind::Shader)
+    ) || is_editable_text(path)
 }
 
 /// Text formats the code editor opens that aren't covered by `doc_kind_for_path`.
@@ -2518,6 +2540,9 @@ fn open_from_menu(world: &mut World, path: &Path) {
             s.current = Some(path.to_path_buf());
             s.selected = None;
         }
+    } else if is_code_kind(path) {
+        // Code editor: open into CodeEditorState directly (no layout switch).
+        world.insert_resource(renzora::core::OpenCodeEditorFile { path: path.to_path_buf() });
     } else {
         crate::open_double_clicked(world, path.to_path_buf());
     }
