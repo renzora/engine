@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use bevy::picking::Pickable;
 use bevy::prelude::*;
 
-use renzora_editor::{MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
+use renzora_editor::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
@@ -546,6 +546,7 @@ fn shortcut_click(
     q: Query<(&Interaction, &ShortcutClick), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    cmds: Option<Res<EditorCommands>>,
 ) {
     for (interaction, shortcut) in &q {
         if *interaction != Interaction::Pressed {
@@ -555,7 +556,7 @@ fn shortcut_click(
             state.current = Some(shortcut.path.clone());
             state.selected = None;
         } else {
-            os_open(&shortcut.path);
+            open_file(&cmds, &shortcut.path);
             let root = project.as_ref().map(|p| p.path.clone());
             track_recent(&mut state, &shortcut.path, root.as_deref());
         }
@@ -627,7 +628,16 @@ fn asset_context_menu(
         "Favorite"
     };
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-    let kids = vec![
+    let mut kids = Vec::new();
+    // "Open in <Editor>" routes editor-backed assets to their panel/layout.
+    if let Some((icon, label)) = open_action(&path) {
+        kids.push(menu_item(&mut commands, &fonts, icon, label, {
+            let path = path.clone();
+            move |w| open_from_menu(w, &path)
+        }));
+        kids.push(menu_sep(&mut commands));
+    }
+    kids.extend([
         menu_item(&mut commands, &fonts, "star", fav_label, {
             let path = path.clone();
             move |w| toggle_favorite(w, &path)
@@ -645,7 +655,7 @@ fn asset_context_menu(
             let path = path.clone();
             move |w| delete_asset(w, &path)
         }),
-    ];
+    ]);
     commands.entity(menu).add_children(&kids);
 }
 
@@ -2330,6 +2340,7 @@ fn tile_click(
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    cmds: Option<Res<EditorCommands>>,
 ) {
     let now = time.elapsed_secs_f64();
     let root = project.as_ref().map(|p| p.path.clone());
@@ -2347,7 +2358,7 @@ fn tile_click(
                 state.current = Some(tile.path.clone());
                 state.selected = None;
             } else {
-                os_open(&tile.path);
+                open_file(&cmds, &tile.path);
                 track_recent(&mut state, &tile.path, root.as_deref());
             }
         } else {
@@ -2355,6 +2366,66 @@ fn tile_click(
             state.selected = Some(tile.path.clone());
             state.last_click = Some((tile.path.clone(), now));
         }
+    }
+}
+
+/// Open a non-folder asset. Editor-backed kinds (scripts, templates, materials,
+/// blueprints, particles, scenes, shaders, plain text) route to their in-editor
+/// editor/layout via [`crate::open_double_clicked`]; everything else (textures,
+/// audio, …) falls back to the OS default app. Deferred through `EditorCommands`
+/// because the routing needs `&mut World`.
+fn open_file(cmds: &Option<Res<EditorCommands>>, path: &Path) {
+    if opens_in_editor(path) {
+        if let Some(cmds) = cmds {
+            let p = path.to_path_buf();
+            cmds.push(move |w: &mut World| crate::open_double_clicked(w, p));
+        }
+    } else {
+        os_open(path);
+    }
+}
+
+/// Whether double-clicking the file should open it inside the editor (vs the OS
+/// default app). Mirrors the egui browser's `open_double_clicked` routing.
+fn opens_in_editor(path: &Path) -> bool {
+    renzora_editor::doc_kind_for_path(path).is_some() || is_editable_text(path)
+}
+
+/// Text formats the code editor opens that aren't covered by `doc_kind_for_path`.
+fn is_editable_text(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str(),
+        "rs" | "json" | "toml" | "yaml" | "yml" | "txt" | "md" | "css"
+    )
+}
+
+/// Context-menu "Open …" label + icon for an asset, or `None` if it has no
+/// in-editor opener (a folder, texture, audio clip, …).
+fn open_action(path: &Path) -> Option<(&'static str, &'static str)> {
+    use renzora_editor::DocTabKind;
+    if path.is_dir() {
+        return Some(("folder-open", "Open"));
+    }
+    match renzora_editor::doc_kind_for_path(path) {
+        Some(DocTabKind::Material) => Some(("palette", "Open in Material Editor")),
+        Some(DocTabKind::Particle) => Some(("sparkle", "Open in Particle Editor")),
+        Some(DocTabKind::Blueprint) => Some(("blueprint", "Open in Blueprint Editor")),
+        Some(DocTabKind::Scene) => Some(("stack", "Open Scene")),
+        Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", "Open in Code Editor")),
+        _ if is_editable_text(path) => Some(("code", "Open in Code Editor")),
+        _ => None,
+    }
+}
+
+/// Context-menu open: navigate into folders, route files to their editor.
+fn open_from_menu(world: &mut World, path: &Path) {
+    if path.is_dir() {
+        if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+            s.current = Some(path.to_path_buf());
+            s.selected = None;
+        }
+    } else {
+        crate::open_double_clicked(world, path.to_path_buf());
     }
 }
 
