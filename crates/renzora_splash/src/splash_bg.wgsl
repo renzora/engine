@@ -25,6 +25,22 @@ fn hsv2rgb(h: f32, s: f32, v: f32) -> vec3<f32> {
     return v * mix(vec3<f32>(1.0, 1.0, 1.0), clamp(p - 1.0, vec3<f32>(0.0), vec3<f32>(1.0)), s);
 }
 
+// A constellation node: one drifting point per grid cell (grid-space coords).
+fn cell_point(cell: vec2<f32>, t: f32) -> vec2<f32> {
+    let h1 = hash21(cell);
+    let h2 = hash21(cell + 7.3);
+    return cell + vec2<f32>(0.5, 0.5)
+        + 0.4 * vec2<f32>(sin(t * 0.4 + h1 * 6.2832), cos(t * 0.4 + h2 * 6.2832));
+}
+
+// Distance from point `p` to segment `a`–`b`.
+fn seg_dist(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
 @fragment
 fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;                       // 0..1, y down
@@ -61,19 +77,26 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
         col = col + grid_col * g * 0.6;
     }
 
-    // ── Drifting starfield ──
-    let cells = vec2<f32>(28.0 * aspect, 28.0);
-    let gp = uv * cells + vec2<f32>(t * 0.4, 0.0);
-    let cell = floor(gp);
-    let f = fract(gp);
-    let rnd = hash21(cell);
-    if (rnd > 0.86) {
-        let center = vec2<f32>(hash21(cell + 1.7), hash21(cell + 4.3));
-        let d = length(f - center);
-        let twinkle = 0.6 + 0.4 * sin(t * 2.0 + rnd * 40.0);
-        let star = (1.0 - smoothstep(0.0, 0.08, d)) * twinkle;
-        col = col + vec3<f32>(0.82, 0.86, 0.96) * star * 0.85;
+    // ── Constellation: drifting nodes linked to their neighbours ──
+    let net = vec2<f32>(14.0 * aspect, 14.0);
+    let np = uv * net;
+    let nc = floor(np);
+    let center_pt = cell_point(nc, t);
+    var dmin = 1000.0;
+    for (var dy = -1; dy <= 1; dy = dy + 1) {
+        for (var dx = -1; dx <= 1; dx = dx + 1) {
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            let npt = cell_point(nc + vec2<f32>(f32(dx), f32(dy)), t);
+            dmin = min(dmin, seg_dist(np, center_pt, npt));
+        }
     }
+    let links = 1.0 - smoothstep(0.0, 0.035, dmin);
+    col = col + vec3<f32>(0.55, 0.62, 0.85) * links * 0.16;
+    let pglow = 1.0 - smoothstep(0.0, 0.07, length(np - center_pt));
+    let twinkle = 0.7 + 0.3 * sin(t * 2.0 + hash21(nc) * 40.0);
+    col = col + vec3<f32>(0.82, 0.86, 0.96) * pglow * twinkle * 0.7;
 
     // ── Bottom vignette for bottom-bar legibility ──
     let vig = smoothstep(0.82, 1.0, uv.y);
