@@ -689,13 +689,19 @@ struct DragClickState {
 /// Press an empty top-bar area → start an OS window-move; double-click → toggle
 /// maximize/restore (the OS then handles aero-snap when you drag to an edge).
 fn window_drag(
-    q: Query<&Interaction, (With<WindowDragHandle>, Changed<Interaction>)>,
+    bar: Query<&Interaction, (With<WindowDragHandle>, Changed<Interaction>)>,
+    others: Query<&Interaction, Without<WindowDragHandle>>,
     queue: Option<ResMut<WindowActionQueue>>,
     time: Res<Time>,
     mut state: Local<DragClickState>,
 ) {
     let Some(mut queue) = queue else { return };
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
+    if !bar.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    // If any other widget is hovered/pressed, the press landed on a menu/button —
+    // not the empty bar — so don't drag (belt-and-braces over focus blocking).
+    if others.iter().any(|i| *i != Interaction::None) {
         return;
     }
     let now = time.elapsed_secs();
@@ -733,8 +739,9 @@ fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
     const C: f32 = 12.0; // corner size
     let px = Val::Px;
     // (octant, cursor, node)
-    let zones: [(O, SystemCursorIcon, Node); 8] = [
-        (O::North, SystemCursorIcon::NResize, Node { position_type: PositionType::Absolute, top: px(0.0), left: px(C), right: px(C), height: px(T), ..default() }),
+    // The top edge is the title bar (drag area) — only the corners resize there,
+    // so dragging the bar doesn't clash with a top-edge resize.
+    let zones: [(O, SystemCursorIcon, Node); 7] = [
         (O::South, SystemCursorIcon::SResize, Node { position_type: PositionType::Absolute, bottom: px(0.0), left: px(C), right: px(C), height: px(T), ..default() }),
         (O::West, SystemCursorIcon::WResize, Node { position_type: PositionType::Absolute, left: px(0.0), top: px(C), bottom: px(C), width: px(T), ..default() }),
         (O::East, SystemCursorIcon::EResize, Node { position_type: PositionType::Absolute, right: px(0.0), top: px(C), bottom: px(C), width: px(T), ..default() }),
@@ -1252,16 +1259,36 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     let min = icon_item(commands, "minus", text_muted(), 14.0);
     let max = icon_item(commands, "square", text_muted(), 13.0);
     let close = icon_item(commands, "x", text_muted(), 14.0);
-    for (e, action) in [
-        (min, WindowAction::Minimize),
-        (max, WindowAction::ToggleMaximize),
-        (close, WindowAction::Close),
+    for (e, action, is_close) in [
+        (min, WindowAction::Minimize, false),
+        (max, WindowAction::ToggleMaximize, false),
+        (close, WindowAction::Close, true),
     ] {
         commands.entity(e).insert((
+            Node {
+                width: Val::Px(28.0),
+                height: Val::Px(22.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
             Interaction::default(),
             WindowBtn(action),
             renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ));
+        // Hover highlight — close goes red, like the original chrome.
+        renzora_ember::reactive::bind_bg(commands, e, move |w| match w.get::<Interaction>(e) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                if is_close {
+                    Color::srgb(0.86, 0.24, 0.24)
+                } else {
+                    rgb(renzora_ember::theme::hover_bg())
+                }
+            }
+            _ => Color::NONE,
+        });
     }
     // The maximize button's glyph reflects the state (square ↔ restore).
     commands.entity(max).insert(MaximizeIcon);
