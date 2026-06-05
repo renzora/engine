@@ -38,6 +38,9 @@ pub(crate) fn hierarchy_row_click(
     keys: Res<ButtonInput<KeyCode>>,
     cache: Res<HierarchyTreeCache>,
     expanded: Res<HierExpanded>,
+    time: Res<Time>,
+    mut rename: ResMut<super::rename::HierRename>,
+    mut last_click: Local<Option<(Entity, f64)>>,
 ) {
     let Some(selection) = selection else {
         return;
@@ -52,6 +55,16 @@ pub(crate) fn hierarchy_row_click(
     for (interaction, row) in &rows {
         if *interaction != Interaction::Pressed {
             continue;
+        }
+        // Double-click (no modifiers) → inline rename.
+        if !ctrl && !shift {
+            let now = time.elapsed_secs_f64();
+            if last_click.is_some_and(|(e, t)| e == row.entity && now - t < 0.4) {
+                *last_click = None;
+                rename.0 = Some(row.entity);
+                continue;
+            }
+            *last_click = Some((row.entity, now));
         }
         if ctrl {
             selection.toggle(row.entity);

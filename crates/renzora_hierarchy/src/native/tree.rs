@@ -17,9 +17,11 @@ fn c32(c: Color32) -> Color {
     Color::srgba_u8(c.r(), c.g(), c.b(), c.a())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flatten(
     nodes: &[EntityNode],
     expanded: &HashSet<Entity>,
+    renaming: Option<Entity>,
     parent_lines: &mut Vec<bool>,
     out: &mut Vec<RowSnapshot>,
 ) {
@@ -42,10 +44,11 @@ fn flatten(
             parent_lines: parent_lines.clone(),
             is_expanded,
             has_children,
+            is_renaming: renaming == Some(node.entity),
         });
         if has_children && is_expanded {
             parent_lines.push(!is_last);
-            flatten(&node.children, expanded, parent_lines, out);
+            flatten(&node.children, expanded, renaming, parent_lines, out);
             parent_lines.pop();
         }
     }
@@ -107,9 +110,10 @@ pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
     } else {
         &exp
     };
+    let renaming = world.get_resource::<super::rename::HierRename>().and_then(|r| r.0);
     {
         let mut parent_lines = Vec::new();
-        flatten(nodes, exp_ref, &mut parent_lines, &mut rows);
+        flatten(nodes, exp_ref, renaming, &mut parent_lines, &mut rows);
     }
     // Fold the row's parity into its content hash so a row that changes odd/even
     // (e.g. when a sibling above is added/removed) repaints with the right stripe.

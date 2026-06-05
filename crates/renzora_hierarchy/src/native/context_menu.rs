@@ -52,6 +52,11 @@ pub(crate) fn hier_context_menu(
     kids.push(menu_item(&mut commands, &fonts, "plus", "Add Child Entity", move |w| {
         add_child(w, target)
     }));
+    kids.push(menu_item(&mut commands, &fonts, "pencil-simple", "Rename", move |w| {
+        if let Some(mut r) = w.get_resource_mut::<super::rename::HierRename>() {
+            r.0 = Some(target);
+        }
+    }));
     kids.push(menu_item(&mut commands, &fonts, "copy", "Duplicate", move |w| {
         duplicate(w, target)
     }));

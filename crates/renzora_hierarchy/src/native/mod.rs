@@ -13,6 +13,7 @@ mod components;
 mod context_menu;
 mod drag;
 mod filter;
+mod rename;
 mod row;
 mod systems;
 mod tree;
@@ -35,6 +36,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<drag::HierDrag>();
     app.init_resource::<filter::HierFilter>();
     app.init_resource::<filter::HierSearch>();
+    app.init_resource::<rename::HierRename>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -101,6 +103,8 @@ pub fn register_native_hierarchy(app: &mut App) {
             filter::hier_filter_toggle,
             filter::hier_filter_clear,
             filter::hier_search_sync,
+            rename::focus_rename_field,
+            rename::rename_commit,
         )
             .run_if(in_state(SplashState::Editor)),
     );

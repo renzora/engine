@@ -43,6 +43,8 @@ pub(crate) struct RowSnapshot {
     pub parent_lines: Vec<bool>,
     pub is_expanded: bool,
     pub has_children: bool,
+    /// This row is being inline-renamed → render an edit field instead of label.
+    pub is_renaming: bool,
 }
 
 impl RowSnapshot {
@@ -68,6 +70,7 @@ impl RowSnapshot {
         self.is_default_camera.hash(&mut h);
         self.label_color.hash(&mut h);
         self.parent_lines.hash(&mut h);
+        self.is_renaming.hash(&mut h);
         h.finish()
     }
 }
@@ -247,31 +250,42 @@ pub(crate) fn build_row(
             Pickable::IGNORE,
         ))
         .id();
-    let label = commands
-        .spawn((
-            Text::new(&s.name),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(label_color),
-            bevy::text::TextLayout::new_with_no_wrap(),
-            Pickable::IGNORE,
-        ))
-        .id();
-    commands.entity(label_box).add_child(label);
-    if s.is_default_camera {
-        let star = commands
+    // The label entity (for the selection text-color bind), or `None` while the
+    // inline rename field is shown in its place.
+    let label_ent: Option<Entity> = if s.is_renaming {
+        // The rename field sits above the click layer, so it takes clicks for
+        // editing while the rest of the row still selects.
+        let field = super::rename::build_rename_field(commands, fonts, s.entity, &s.name);
+        commands.entity(label_box).add_child(field);
+        None
+    } else {
+        let label = commands
             .spawn((
-                Text::new(STAR),
-                TextFont {
-                    font: fonts.phosphor.clone(),
-                    font_size: 10.0,
-                    ..default()
-                },
-                TextColor(Color::srgb_u8(255, 200, 80)),
+                Text::new(&s.name),
+                ui_font(&fonts.ui, 13.0),
+                TextColor(label_color),
+                bevy::text::TextLayout::new_with_no_wrap(),
                 Pickable::IGNORE,
             ))
             .id();
-        commands.entity(label_box).add_child(star);
-    }
+        commands.entity(label_box).add_child(label);
+        if s.is_default_camera {
+            let star = commands
+                .spawn((
+                    Text::new(STAR),
+                    TextFont {
+                        font: fonts.phosphor.clone(),
+                        font_size: 10.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb_u8(255, 200, 80)),
+                    Pickable::IGNORE,
+                ))
+                .id();
+            commands.entity(label_box).add_child(star);
+        }
+        Some(label)
+    };
     kids.push(label_box);
 
     kids.push(suffix_toggle(
@@ -436,16 +450,18 @@ pub(crate) fn build_row(
             base
         }
     });
-    bind_text_color(commands, label, move |world: &World| {
-        if world
-            .get_resource::<EditorSelection>()
-            .is_some_and(|sel| sel.is_selected(ent))
-        {
-            Color::WHITE
-        } else {
-            label_color
-        }
-    });
+    if let Some(label) = label_ent {
+        bind_text_color(commands, label, move |world: &World| {
+            if world
+                .get_resource::<EditorSelection>()
+                .is_some_and(|sel| sel.is_selected(ent))
+            {
+                Color::WHITE
+            } else {
+                label_color
+            }
+        });
+    }
 
     row
 }
