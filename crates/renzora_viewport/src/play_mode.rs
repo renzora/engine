@@ -31,6 +31,13 @@ pub fn handle_play_mode_transitions(world: &mut World) {
     // If the binary isn't discoverable (e.g. `cargo run` from a workspace
     // with no `dist/{platform}/runtime/` sibling), this returns false and
     // we fall through to in-editor play, so Play always does *something*.
+    // Separate-window play: when `external_play_window` is on, run the game in a
+    // spawned second OS window (in-process) instead of taking over the editor.
+    // This replaces the external runtime-binary path (no runtime dist dir now).
+    if crate::window_play::try_handle_window_play(world) {
+        return;
+    }
+
     if try_handle_external_runtime(world) {
         return;
     }
