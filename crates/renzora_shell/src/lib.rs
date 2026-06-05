@@ -16,7 +16,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
-use renzora_ember::widgets::{menu_item, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
+use renzora_ember::widgets::{menu_item, menu_sep, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -630,14 +630,45 @@ fn palette_btn_click(
     }
 }
 
-/// The account chip → toggle the sign-in overlay (consumed by `renzora_auth`).
+/// The account chip. Signed out → open the sign-in overlay. Signed in → a
+/// dropdown (My Library / Settings / Sign Out), mirroring the egui title bar.
 fn sign_in_click(
     q: Query<&Interaction, (With<SignInBtn>, Changed<Interaction>)>,
+    bridge: Option<Res<renzora::core::AuthBridge>>,
+    fonts: Option<Res<EmberFonts>>,
+    windows: Query<&Window>,
     mut commands: Commands,
 ) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
     }
+    let signed_in = bridge.and_then(|b| b.signed_in_username.clone()).is_some();
+    if !signed_in {
+        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+        return;
+    }
+    let Some(fonts) = fonts else { return };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+
+    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    let lib = menu_item(&mut commands, &fonts, "books", "My Library", |w| {
+        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+            dock.tree.focus_or_add_panel("hub_library");
+        }
+        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+            d.0 = true;
+        }
+    });
+    let settings = menu_item(&mut commands, &fonts, "gear", "Settings", |w| {
+        if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
+            s.show_settings = !s.show_settings;
+        }
+    });
+    let sep = menu_sep(&mut commands);
+    let out = menu_item(&mut commands, &fonts, "sign-out", "Sign Out", |w| {
+        w.insert_resource(renzora::core::AuthSignOutRequest);
+    });
+    commands.entity(menu).add_children(&[lib, settings, sep, out]);
 }
 
 /// `+` → add a new empty workspace and switch to it.

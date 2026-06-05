@@ -802,11 +802,19 @@ impl EditorPanel for CameraPreviewPanel {
 fn update_input_focus(
     mut ctx: EguiContexts,
     mut input_focus: ResMut<renzora::core::InputFocusState>,
+    ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
 ) {
-    if let Ok(c) = ctx.ctx_mut() {
-        input_focus.egui_wants_keyboard = c.wants_keyboard_input();
-        input_focus.egui_has_pointer = c.wants_pointer_input() || c.is_pointer_over_area();
-    }
+    // A focused bevy_ui (ember) text field also "wants keyboard" — so editor
+    // keybindings (G/R/S, Delete, …) don't fire while typing in the bevy_ui
+    // shell, mirroring how egui's `wants_keyboard_input` already gates them.
+    let ember_focused = ember_inputs.iter().any(|i| i.focused);
+    let (egui_kb, egui_ptr) = ctx
+        .ctx_mut()
+        .ok()
+        .map(|c| (c.wants_keyboard_input(), c.wants_pointer_input() || c.is_pointer_over_area()))
+        .unwrap_or((false, false));
+    input_focus.egui_wants_keyboard = egui_kb || ember_focused;
+    input_focus.egui_has_pointer = egui_ptr;
 }
 
 // ── Modal transform HUD overlay ──────────────────────────────────────────────
