@@ -12,7 +12,7 @@ use renzora_shader::material::material_ref::MaterialRef;
 use renzora_theme::Theme;
 
 /// Image extensions accepted for auto-material creation.
-const IMAGE_EXTENSIONS: &[&str] = &[
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp",
 ];
 
@@ -980,7 +980,7 @@ fn render_param_widget(
 /// for `PinValue` variants that don't appear in `ParamValue` (string,
 /// texture path, none) — those are filtered upstream because their
 /// `ParamKind` isn't a known kind.
-fn pin_to_param(
+pub(crate) fn pin_to_param(
     pin: &renzora_shader::material::graph::PinValue,
 ) -> Option<renzora_shader::material::material_ref::ParamValue> {
     use renzora_shader::material::graph::PinValue;
@@ -1003,7 +1003,7 @@ fn pin_to_param(
 /// inspector renders zero-equivalents so the widget has something to
 /// show; the override map stays untouched until the user actually
 /// edits the value.
-fn default_param_value(
+pub(crate) fn default_param_value(
     kind: renzora_shader::material::codegen::ParamKind,
 ) -> renzora_shader::material::material_ref::ParamValue {
     use renzora_shader::material::codegen::ParamKind;
@@ -1025,7 +1025,7 @@ fn default_param_value(
 /// no-ops, not anything within an epsilon, since the user may
 /// deliberately set a value to a float just barely different from
 /// the master default.
-fn param_value_eq(
+pub(crate) fn param_value_eq(
     a: &renzora_shader::material::material_ref::ParamValue,
     b: &renzora_shader::material::material_ref::ParamValue,
 ) -> bool {
@@ -1049,7 +1049,7 @@ fn param_value_eq(
 /// browse popup rebuilds this list every frame it's open — for a project
 /// with hundreds of materials this is well under a millisecond on a SSD,
 /// and avoiding a cache means added/renamed files show up immediately.
-fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> {
+pub(crate) fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(project_root.to_path_buf(), 0)];
     while let Some((dir, depth)) = stack.pop() {
