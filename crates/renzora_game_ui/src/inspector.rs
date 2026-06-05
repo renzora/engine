@@ -1769,6 +1769,81 @@ pub fn slider_fields() -> Vec<renzora_editor::FieldDef> {
     ]
 }
 
+/// Declarative fields for `UiTextStyle` (+ Content on the bevy `Text`).
+pub fn text_fields() -> Vec<renzora_editor::FieldDef> {
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    const ALIGN: &[&str] = &["Left", "Center", "Right"];
+    vec![
+        FieldDef {
+            name: "Content",
+            field_type: FieldType::String,
+            get_fn: |w, e| w.get::<bevy::ui::widget::Text>(e).map(|t| FieldValue::String(t.0.clone())),
+            set_fn: |w, e, v| {
+                if let (FieldValue::String(s), Some(mut t)) = (v, w.get_mut::<bevy::ui::widget::Text>(e)) {
+                    t.0 = s;
+                }
+            },
+        },
+        renzora_editor::color_rgba_field!("Color", components::UiTextStyle, color),
+        renzora_editor::float_field!("Size", components::UiTextStyle, size, 0.5, 1.0, 200.0),
+        renzora_editor::bool_field!("Bold", components::UiTextStyle, bold),
+        renzora_editor::bool_field!("Italic", components::UiTextStyle, italic),
+        FieldDef {
+            name: "Align",
+            field_type: FieldType::Enum { options: ALIGN },
+            get_fn: |w, e| {
+                w.get::<components::UiTextStyle>(e).map(|s| {
+                    FieldValue::Enum(
+                        match s.align {
+                            components::UiTextAlign::Left => "Left",
+                            components::UiTextAlign::Center => "Center",
+                            components::UiTextAlign::Right => "Right",
+                        }
+                        .to_string(),
+                    )
+                })
+            },
+            set_fn: |w, e, v| {
+                if let (FieldValue::Enum(s), Some(mut st)) = (v, w.get_mut::<components::UiTextStyle>(e)) {
+                    st.align = match s.as_str() {
+                        "Left" => components::UiTextAlign::Left,
+                        "Right" => components::UiTextAlign::Right,
+                        _ => components::UiTextAlign::Center,
+                    };
+                }
+            },
+        },
+    ]
+}
+
+/// Declarative fields for `UiBoxShadow`.
+pub fn shadow_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::color_rgba_field!("Color", components::UiBoxShadow, color),
+        renzora_editor::float_field!("Offset X", components::UiBoxShadow, offset_x, 0.5, f32::MIN, f32::MAX),
+        renzora_editor::float_field!("Offset Y", components::UiBoxShadow, offset_y, 0.5, f32::MIN, f32::MAX),
+        renzora_editor::float_field!("Blur", components::UiBoxShadow, blur, 0.5, 0.0, 200.0),
+        renzora_editor::float_field!("Spread", components::UiBoxShadow, spread, 0.5, f32::MIN, f32::MAX),
+    ]
+}
+
+/// Declarative fields for `UiWidget` (read-only Type + Locked toggle).
+pub fn widget_fields() -> Vec<renzora_editor::FieldDef> {
+    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    vec![
+        FieldDef {
+            name: "Type",
+            field_type: FieldType::ReadOnly,
+            get_fn: |w, e| {
+                w.get::<components::UiWidget>(e)
+                    .map(|wd| FieldValue::ReadOnly(wd.widget_type.label().to_string()))
+            },
+            set_fn: |_, _, _| {},
+        },
+        renzora_editor::bool_field!("Locked", components::UiWidget, locked),
+    ]
+}
+
 /// Declarative fields for `UiPadding` (Top/Right/Bottom/Left).
 pub fn padding_fields() -> Vec<renzora_editor::FieldDef> {
     vec![
