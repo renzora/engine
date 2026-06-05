@@ -103,6 +103,11 @@ pub fn register_physics_inspectors(app: &mut App) {
     // Native (bevy_ui) inspector drawers — match the egui layout exactly; egui
     // keeps its custom_ui_fn.
     app.register_native_inspector_ui("physics_body", physics_body_native);
+    app.register_native_inspector_ui("collision_shape", collision_shape_native);
+    app.add_systems(
+        bevy::prelude::Update,
+        (edit_collider_click, stamp_strip_click).run_if(bevy::prelude::in_state(renzora_editor::SplashState::Editor)),
+    );
 
     app.register_tool(
         ToolEntry::new(
@@ -925,6 +930,229 @@ fn collision_shape_ui(
             });
         }
     });
+}
+
+// ── Collision Shape native drawer ───────────────────────────────────────────
+
+#[derive(Component)]
+struct EditColliderBtn;
+#[derive(Component)]
+struct StampBtn {
+    entity: Entity,
+}
+#[derive(Component)]
+struct StripBtn {
+    entity: Entity,
+}
+
+fn edit_active(w: &World) -> bool {
+    w.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false)
+}
+
+fn shape_of(w: &World, e: Entity) -> Option<CollisionShapeType> {
+    w.get::<CollisionShapeData>(e).map(|s| s.shape_type)
+}
+
+/// Native (ember) drawer for `CollisionShapeData` — mirrors `collision_shape_ui`:
+/// the Edit/Stamp/Strip buttons, the shape dropdown, the per-shape parameters
+/// (shown/hidden by shape type), and offset/friction/restitution/sensor.
+fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
+    use renzora_ember::font::{icon_text, ui_font};
+    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text};
+    use renzora_ember::theme::{accent, card_bg, rgb, text_muted, text_primary};
+    use renzora_ember::widgets::{drag_value, dropdown, toggle_switch, DragRange};
+
+    let Some(s) = world.get::<CollisionShapeData>(entity) else {
+        return world.spawn(Node::default()).id();
+    };
+    let shape_idx = match s.shape_type {
+        CollisionShapeType::Box => 0usize,
+        CollisionShapeType::Sphere => 1,
+        CollisionShapeType::Capsule => 2,
+        CollisionShapeType::Cylinder => 3,
+        CollisionShapeType::Mesh => 4,
+    };
+
+    inspector_body(world, move |commands, fonts| {
+        let col = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(2.0)),
+                ..default()
+            })
+            .id();
+
+        let float_row = |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, label: &'static str, speed: f32, min: f32, max: f32, get: fn(&CollisionShapeData) -> f32, set: fn(&mut CollisionShapeData, f32)| {
+            let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.0, speed);
+            commands.entity(dv).insert(DragRange { min, max });
+            bind_2way(
+                commands,
+                dv,
+                move |w| w.get::<CollisionShapeData>(entity).map(get).unwrap_or(0.0),
+                move |w, v: &f32| {
+                    if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                        set(&mut s, *v);
+                    }
+                },
+            );
+            inspector_row(commands, &fonts.ui, label, dv)
+        };
+
+        let vec3_row = |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, label: &'static str, get: fn(&CollisionShapeData) -> Vec3, set: fn(&mut CollisionShapeData, Vec3)| {
+            const AXES: [(&str, (u8, u8, u8)); 3] = [("X", (230, 90, 90)), ("Y", (130, 200, 90)), ("Z", (90, 150, 230))];
+            let group = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }).id();
+            let mut kids = Vec::new();
+            for (i, (ax, axc)) in AXES.iter().enumerate() {
+                let dv = drag_value(commands, &fonts.ui, ax, *axc, 0.0, 0.01);
+                bind_2way(
+                    commands,
+                    dv,
+                    move |w| w.get::<CollisionShapeData>(entity).map(|s| get(s)[i]).unwrap_or(0.0),
+                    move |w, v: &f32| {
+                        if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                            let mut cur = get(&s);
+                            cur[i] = *v;
+                            set(&mut s, cur);
+                        }
+                    },
+                );
+                kids.push(dv);
+            }
+            commands.entity(group).add_children(&kids);
+            inspector_row(commands, &fonts.ui, label, group)
+        };
+
+        // Edit Collider toggle button (active highlight + Edit/Editing… label).
+        let edit_btn = commands
+            .spawn((
+                Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+                BackgroundColor(rgb(card_bg())),
+                Interaction::default(),
+                EditColliderBtn,
+                Name::new("edit-collider-btn"),
+            ))
+            .id();
+        let edit_ic = icon_text(commands, &fonts.phosphor, "pencil-simple", text_primary(), 12.0);
+        let edit_lbl = commands.spawn((Text::new("Edit"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
+        bind_text(commands, edit_lbl, |w| if edit_active(w) { "Editing\u{2026}" } else { "Edit" }.to_string());
+        commands.entity(edit_btn).add_children(&[edit_ic, edit_lbl]);
+        bind_bg(commands, edit_btn, |w| if edit_active(w) { rgb(accent()) } else { rgb(card_bg()) });
+        let r_edit = inspector_row(commands, &fonts.ui, "Edit Collider", edit_btn);
+
+        // Apply to children: Stamp / Strip.
+        let action_button = |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, icon: &str, label: &str| {
+            let btn = commands
+                .spawn((
+                    Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+                    BackgroundColor(rgb(card_bg())),
+                    Interaction::default(),
+                ))
+                .id();
+            let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
+            let lbl = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
+            commands.entity(btn).add_children(&[ic, lbl]);
+            btn
+        };
+        let apply_group = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), flex_grow: 1.0, ..default() }).id();
+        let stamp = action_button(commands, fonts, "tree-structure", "Stamp");
+        commands.entity(stamp).insert(StampBtn { entity });
+        let strip = action_button(commands, fonts, "trash", "Strip");
+        commands.entity(strip).insert(StripBtn { entity });
+        commands.entity(apply_group).add_children(&[stamp, strip]);
+        let r_apply = inspector_row(commands, &fonts.ui, "Apply to children", apply_group);
+
+        // Shape dropdown.
+        let dd = dropdown(commands, fonts, &["Box", "Sphere", "Capsule", "Cylinder", "Mesh"], shape_idx);
+        bind_2way(
+            commands,
+            dd,
+            move |w| match shape_of(w, entity) {
+                Some(CollisionShapeType::Sphere) => 1usize,
+                Some(CollisionShapeType::Capsule) => 2,
+                Some(CollisionShapeType::Cylinder) => 3,
+                Some(CollisionShapeType::Mesh) => 4,
+                _ => 0,
+            },
+            move |w, v: &usize| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.shape_type = match v {
+                        1 => CollisionShapeType::Sphere,
+                        2 => CollisionShapeType::Capsule,
+                        3 => CollisionShapeType::Cylinder,
+                        4 => CollisionShapeType::Mesh,
+                        _ => CollisionShapeType::Box,
+                    };
+                }
+            },
+        );
+        let r_shape = inspector_row(commands, &fonts.ui, "Shape", dd);
+
+        // Per-shape parameters (shown/hidden by shape type).
+        let r_half_extents = vec3_row(commands, fonts, "Half Extents", |s| s.half_extents, |s, v| s.half_extents = v);
+        bind_display(commands, r_half_extents, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Box)));
+        let r_radius = float_row(commands, fonts, "Radius", 0.01, 0.001, f32::MAX, |s| s.radius, |s, v| s.radius = v);
+        bind_display(commands, r_radius, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Sphere | CollisionShapeType::Capsule | CollisionShapeType::Cylinder)));
+        let r_half_height = float_row(commands, fonts, "Half Height", 0.01, 0.001, f32::MAX, |s| s.half_height, |s, v| s.half_height = v);
+        bind_display(commands, r_half_height, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Capsule | CollisionShapeType::Cylinder)));
+        let mesh_note = commands
+            .spawn((Text::new("Uses the entity's mesh as a trimesh collider."), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
+            .id();
+        let r_mesh = inspector_row(commands, &fonts.ui, "", mesh_note);
+        bind_display(commands, r_mesh, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Mesh)));
+
+        // Offset / friction / restitution / sensor.
+        let r_offset = vec3_row(commands, fonts, "Offset", |s| s.offset, |s, v| s.offset = v);
+        let r_friction = float_row(commands, fonts, "Friction", 0.01, 0.0, 2.0, |s| s.friction, |s, v| s.friction = v);
+        let r_restitution = float_row(commands, fonts, "Restitution", 0.01, 0.0, 2.0, |s| s.restitution, |s, v| s.restitution = v);
+
+        let sensor = toggle_switch(commands, false);
+        bind_2way(
+            commands,
+            sensor,
+            move |w| w.get::<CollisionShapeData>(entity).map(|s| s.is_sensor).unwrap_or(false),
+            move |w, v: &bool| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    s.is_sensor = *v;
+                }
+            },
+        );
+        let r_sensor = inspector_row(commands, &fonts.ui, "Is Sensor", sensor);
+
+        let rows = [r_edit, r_apply, r_shape, r_half_extents, r_radius, r_half_height, r_mesh, r_offset, r_friction, r_restitution, r_sensor];
+        for (i, r) in rows.iter().enumerate() {
+            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
+        }
+        commands.entity(col).add_children(&rows);
+        col
+    })
+}
+
+fn edit_collider_click(q: Query<&Interaction, (Changed<Interaction>, With<EditColliderBtn>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(|w: &mut World| {
+            if let Some(mut m) = w.get_resource_mut::<ColliderEditMode>() {
+                m.active = !m.active;
+            }
+        });
+    }
+}
+
+fn stamp_strip_click(stamp: Query<(&Interaction, &StampBtn), Changed<Interaction>>, strip: Query<(&Interaction, &StripBtn), Changed<Interaction>>, mut commands: Commands) {
+    for (i, b) in &stamp {
+        if *i == Interaction::Pressed {
+            let e = b.entity;
+            commands.queue(move |w: &mut World| stamp_mesh_colliders_on_descendants(w, e));
+        }
+    }
+    for (i, b) in &strip {
+        if *i == Interaction::Pressed {
+            let e = b.entity;
+            commands.queue(move |w: &mut World| strip_colliders_on_descendants(w, e));
+        }
+    }
 }
 
 /// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
