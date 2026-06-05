@@ -58,23 +58,23 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
 
     let horizon = 0.45;
 
-    // ── Floor grid (below the horizon) ──
+    // ── Floor grid (below the horizon, receding upward into the distance) ──
     if (uv.y > horizon) {
-        let fy = (uv.y - horizon) / (1.0 - horizon);     // 0 at horizon → 1 at bottom
-        let depth = 1.0 / max(1.0 - fy, 0.02);           // large near the horizon
+        let fy = (uv.y - horizon) / (1.0 - horizon);     // 0 at horizon → 1 at the viewer (bottom)
+        let depth = 1.0 / max(fy, 0.02);                 // far (large) at the horizon, near (~1) at the viewer
 
-        // Horizontal lines scrolling toward the viewer.
-        let hl = fract(depth * 0.6 - t * 0.6);
+        // Horizontal floor lines, scrolling down toward the viewer.
+        let hl = fract(depth * 0.5 + t * 0.6);
         let hline = 1.0 - smoothstep(0.0, 0.06, min(hl, 1.0 - hl));
 
-        // Vertical lines fanning out with perspective.
+        // Vertical floor lines, converging to the horizon.
         let px = (uv.x - 0.5) * aspect * depth;
-        let vl = fract(px * 1.2);
-        let vw = clamp(0.04 * depth, 0.02, 0.4);
-        let vline = 1.0 - smoothstep(0.0, vw, min(vl, 1.0 - vl));
+        let vl = fract(px * 2.5);
+        let vline = 1.0 - smoothstep(0.0, 0.06, min(vl, 1.0 - vl));
 
-        let g = clamp(hline + vline, 0.0, 1.0) * clamp(fy * 1.5, 0.0, 1.0);
-        col = col + grid_col * g * 0.6;
+        // Fade out toward the horizon (where lines merge) and in toward the viewer.
+        let fade = clamp(fy * 1.6, 0.0, 1.0);
+        col = col + grid_col * clamp(hline + vline, 0.0, 1.0) * fade * 0.6;
     }
 
     // ── Constellation: drifting nodes linked to their neighbours ──
