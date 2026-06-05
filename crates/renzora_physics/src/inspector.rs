@@ -100,6 +100,9 @@ pub fn register_physics_inspectors(app: &mut App) {
 
     app.register_inspector(physics_body_entry())
         .register_inspector(collision_shape_entry());
+    // Native (bevy_ui) inspector drawers — match the egui layout exactly; egui
+    // keeps its custom_ui_fn.
+    app.register_native_inspector_ui("physics_body", physics_body_native);
 
     app.register_tool(
         ToolEntry::new(
@@ -462,6 +465,185 @@ fn physics_body_ui(
             }
         });
     });
+}
+
+/// Native (bevy_ui / ember) drawer for `PhysicsBodyData` — mirrors `physics_body_ui`.
+fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
+    use renzora_ember::font::ui_font;
+    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::theme::{rgb, text_muted};
+    use renzora_ember::widgets::{drag_value, dropdown, DragRange};
+
+    let Some(b) = world.get::<PhysicsBodyData>(entity) else {
+        return world.spawn(Node::default()).id();
+    };
+    let (bt_idx, mass, grav, lin, ang) = (
+        match b.body_type {
+            PhysicsBodyType::RigidBody => 0usize,
+            PhysicsBodyType::StaticBody => 1,
+            PhysicsBodyType::KinematicBody => 2,
+        },
+        b.mass,
+        b.gravity_scale,
+        b.linear_damping,
+        b.angular_damping,
+    );
+
+    inspector_body(world, move |commands, fonts| {
+        let col = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(2.0)),
+                ..default()
+            })
+            .id();
+        let mut rows: Vec<Entity> = Vec::new();
+
+        // Body Type dropdown.
+        let dd = dropdown(commands, fonts, &["Rigid Body", "Static Body", "Kinematic Body"], bt_idx);
+        bind_2way(
+            commands,
+            dd,
+            move |w| match w.get::<PhysicsBodyData>(entity).map(|b| b.body_type) {
+                Some(PhysicsBodyType::StaticBody) => 1usize,
+                Some(PhysicsBodyType::KinematicBody) => 2,
+                _ => 0,
+            },
+            move |w, v: &usize| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.body_type = match v {
+                        1 => PhysicsBodyType::StaticBody,
+                        2 => PhysicsBodyType::KinematicBody,
+                        _ => PhysicsBodyType::RigidBody,
+                    };
+                }
+            },
+        );
+        rows.push(inspector_row(commands, &fonts.ui, "Body Type", dd));
+
+        // Numeric fields (label, init, step, min, max, get, set).
+        let float_row =
+            |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, label: &'static str, init: f32, step: f32, min: f32, max: f32, get: fn(&PhysicsBodyData) -> f32, set: fn(&mut PhysicsBodyData, f32)| {
+                let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), init, step);
+                commands.entity(dv).insert(DragRange { min, max });
+                bind_2way(
+                    commands,
+                    dv,
+                    move |w| w.get::<PhysicsBodyData>(entity).map(get).unwrap_or(0.0),
+                    move |w, v: &f32| {
+                        if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                            set(&mut b, *v);
+                        }
+                    },
+                );
+                inspector_row(commands, &fonts.ui, label, dv)
+            };
+        rows.push(float_row(commands, fonts, "Mass", mass, 0.1, 0.001, f32::MAX, |b| b.mass, |b, v| b.mass = v));
+        rows.push(float_row(commands, fonts, "Gravity Scale", grav, 0.05, -10.0, 10.0, |b| b.gravity_scale, |b, v| b.gravity_scale = v));
+        rows.push(float_row(commands, fonts, "Linear Damping", lin, 0.01, 0.0, 100.0, |b| b.linear_damping, |b, v| b.linear_damping = v));
+        rows.push(float_row(commands, fonts, "Angular Damping", ang, 0.01, 0.0, 100.0, |b| b.angular_damping, |b, v| b.angular_damping = v));
+
+        // Alternating row stripe (matches the inspector look).
+        for (i, r) in rows.iter().enumerate() {
+            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
+        }
+        commands.entity(col).add_children(&rows);
+
+        // "Lock Axes" sub-header + the two grouped X/Y/Z checkbox rows.
+        let header = commands
+            .spawn((
+                Text::new("Lock Axes"),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_muted())),
+                Node { margin: UiRect::new(Val::Px(2.0), Val::ZERO, Val::Px(4.0), Val::Px(2.0)), ..default() },
+            ))
+            .id();
+        let trans = lock_row(commands, fonts, entity, "Translation", false);
+        let rot = lock_row(commands, fonts, entity, "Rotation", true);
+        commands.entity(trans).insert(BackgroundColor(inspector_stripe(0)));
+        commands.entity(rot).insert(BackgroundColor(inspector_stripe(1)));
+        commands.entity(col).add_children(&[header, trans, rot]);
+
+        col
+    })
+}
+
+/// One "Lock Axes" row: a label + three X/Y/Z checkboxes bound to the body's
+/// translation- or rotation-lock flags.
+fn lock_row(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, entity: Entity, label: &str, rotation: bool) -> Entity {
+    use renzora_ember::font::ui_font;
+    use renzora_ember::inspector::inspector_row;
+    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::theme::{rgb, text_muted};
+    use renzora_ember::widgets::checkbox;
+
+    let group = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            flex_grow: 1.0,
+            ..default()
+        })
+        .id();
+    let mut cells: Vec<Entity> = Vec::new();
+    for axis in 0..3usize {
+        // Initial value is corrected by the two-way binding on the first frame.
+        let cb = checkbox(commands, false);
+        bind_2way(
+            commands,
+            cb,
+            move |w| read_lock(w, entity, rotation, axis),
+            move |w, v: &bool| write_lock(w, entity, rotation, axis, *v),
+        );
+        let txt = commands
+            .spawn((
+                Text::new(["X", "Y", "Z"][axis]),
+                ui_font(&fonts.ui, 10.0),
+                TextColor(rgb(text_muted())),
+            ))
+            .id();
+        let cell = commands
+            .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), ..default() })
+            .id();
+        commands.entity(cell).add_children(&[cb, txt]);
+        cells.push(cell);
+    }
+    commands.entity(group).add_children(&cells);
+    inspector_row(commands, &fonts.ui, label, group)
+}
+
+fn read_lock(w: &World, e: Entity, rotation: bool, axis: usize) -> bool {
+    w.get::<PhysicsBodyData>(e)
+        .map(|b| {
+            if rotation {
+                [b.lock_rotation_x, b.lock_rotation_y, b.lock_rotation_z][axis]
+            } else {
+                [b.lock_translation_x, b.lock_translation_y, b.lock_translation_z][axis]
+            }
+        })
+        .unwrap_or(false)
+}
+
+fn write_lock(w: &mut World, e: Entity, rotation: bool, axis: usize, v: bool) {
+    if let Some(mut b) = w.get_mut::<PhysicsBodyData>(e) {
+        if rotation {
+            match axis {
+                0 => b.lock_rotation_x = v,
+                1 => b.lock_rotation_y = v,
+                _ => b.lock_rotation_z = v,
+            }
+        } else {
+            match axis {
+                0 => b.lock_translation_x = v,
+                1 => b.lock_translation_y = v,
+                _ => b.lock_translation_z = v,
+            }
+        }
+    }
 }
 
 // ── Collision Shape ─────────────────────────────────────────────────────────
