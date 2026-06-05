@@ -252,7 +252,6 @@ impl Plugin for WidgetsPlugin {
                     tooltip::tooltip_hover,
                     popover::popover_toggle,
                     modal::modal_toggle,
-                    popup::screen_menu_block,
                     popup::screen_menu_clamp,
                     popup::menu_action_run,
                     popup::screen_menu_dismiss,

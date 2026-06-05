@@ -45,6 +45,10 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
             GlobalZIndex(9000),
             ScreenMenu,
             OverlaySurface,
+            // Block pass-through directly at spawn — inserting it later (via an
+            // `Added` system) races with menus that are despawned the same frame
+            // (e.g. hover-switching a menu bar), crashing on the dead entity.
+            FocusPolicy::Block,
             RelativeCursorPosition::default(),
             Name::new("screen-menu"),
         ))
@@ -212,13 +216,6 @@ pub(crate) fn screen_menu_dismiss(
 /// the overlay's root node — that's all.
 #[derive(Component)]
 pub struct ScreenMenu;
-
-/// One-time: make every new [`ScreenMenu`] block pointer events behind it.
-pub(crate) fn screen_menu_block(mut commands: Commands, q: Query<Entity, Added<ScreenMenu>>) {
-    for e in &q {
-        commands.entity(e).insert(FocusPolicy::Block);
-    }
-}
 
 /// Clamp each [`ScreenMenu`]'s absolute top-left so its measured box fits inside
 /// the window.

@@ -103,7 +103,7 @@ fn apply_window_actions(
 /// current geometry so [`restore_to_saved`] can put it back.
 fn maximize(window: &mut Window, monitors: &Query<&Monitor>, queue: &mut WindowActionQueue) {
     queue.restore = Some((window.position, window.resolution.width(), window.resolution.height()));
-    if let Some(mon) = monitors.iter().next() {
+    if let Some(mon) = window_monitor(window, monitors) {
         let sf = mon.scale_factor as f32;
         window.position = WindowPosition::At(mon.physical_position);
         window
@@ -114,6 +114,31 @@ fn maximize(window: &mut Window, monitors: &Query<&Monitor>, queue: &mut WindowA
         window.set_maximized(true);
     }
     queue.maximized = true;
+}
+
+/// The monitor the window currently sits on (by its center), so maximize fills
+/// the *same* screen. Falls back to the first monitor.
+fn window_monitor<'a>(window: &Window, monitors: &'a Query<&Monitor>) -> Option<&'a Monitor> {
+    use bevy::math::Vec2;
+    let origin = match window.position {
+        WindowPosition::At(p) => p.as_vec2(),
+        _ => Vec2::ZERO,
+    };
+    let center = origin
+        + Vec2::new(
+            window.resolution.physical_width() as f32,
+            window.resolution.physical_height() as f32,
+        ) * 0.5;
+    monitors
+        .iter()
+        .find(|m| {
+            let p = m.physical_position.as_vec2();
+            center.x >= p.x
+                && center.x < p.x + m.physical_width as f32
+                && center.y >= p.y
+                && center.y < p.y + m.physical_height as f32
+        })
+        .or_else(|| monitors.iter().next())
 }
 
 fn restore_to_saved(window: &mut Window, queue: &mut WindowActionQueue) {

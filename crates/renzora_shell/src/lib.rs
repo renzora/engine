@@ -67,7 +67,7 @@ impl Plugin for ShellPlugin {
                 doc_tab_close,
                 sync_workspace_to_active_doc,
                 workspace_add_click,
-                (window_btn_click, window_drag, window_resize_start),
+                (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
             ),
         );
     }
@@ -104,7 +104,7 @@ fn theme_bridge(
         commands.insert_resource(theme);
         if switched && backend.is_bevy_ui() {
             for e in &roots {
-                commands.entity(e).despawn();
+                commands.entity(e).try_despawn();
             }
             dirty.0 = true;
         }
@@ -275,7 +275,7 @@ fn manage_shell_root(
         dirty.0 = true;
     } else if !want && have {
         for e in &roots {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
         }
     }
 }
@@ -644,6 +644,25 @@ struct WindowDragHandle;
 /// A perimeter hit zone that initiates an OS edge/corner resize on press.
 #[derive(Component)]
 struct WindowResizeZone(bevy::math::CompassOctant);
+
+/// The maximize button's icon — swapped between maximize/restore glyphs.
+#[derive(Component)]
+struct MaximizeIcon;
+
+/// Keep the maximize button's glyph in sync with the window's maximized state.
+fn update_maximize_icon(
+    queue: Option<Res<WindowActionQueue>>,
+    mut q: Query<&mut renzora_hui::icons::Icon, With<MaximizeIcon>>,
+) {
+    let maximized = queue.is_some_and(|q| q.maximized);
+    let want = if maximized { "arrows-in-simple" } else { "square" };
+    for mut icon in &mut q {
+        if icon.name != want {
+            icon.name = want.to_string();
+            icon.resolved = false; // force `apply_icons` to re-render the glyph
+        }
+    }
+}
 
 fn window_btn_click(
     q: Query<(&Interaction, &WindowBtn), Changed<Interaction>>,
@@ -1144,7 +1163,6 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             // reach it, while interactive children (menus/buttons) block it.
             Interaction::default(),
             WindowDragHandle,
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
             Name::new("top-bar"),
         ))
         .id();
@@ -1245,6 +1263,8 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ));
     }
+    // The maximize button's glyph reflects the state (square ↔ restore).
+    commands.entity(max).insert(MaximizeIcon);
     commands.entity(window).add_children(&[min, max, close]);
 
     commands
@@ -1822,7 +1842,7 @@ fn top_menu_open(
             continue;
         }
         if let Some(e) = open.menu.take() {
-            commands.entity(e).despawn();
+            commands.entity(e).try_despawn();
         }
         // Re-clicking the already-open menu just closes it.
         if open.kind == Some(menu.0) {
@@ -1859,7 +1879,7 @@ fn top_menu_hover(
     for (interaction, menu, rcp, cn) in &q {
         if *interaction == Interaction::Hovered && menu.0 != open_kind {
             if let Some(e) = open.menu.take() {
-                commands.entity(e).despawn();
+                commands.entity(e).try_despawn();
             }
             let Some(pos) = anchor_below(&windows, rcp, cn) else {
                 open.kind = None;
