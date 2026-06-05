@@ -16,7 +16,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
-use renzora_ember::widgets::{menu_item, screen_menu, text_input, EmberTextInput, Popup};
+use renzora_ember::widgets::{menu_item, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -64,6 +64,7 @@ impl Plugin for ShellPlugin {
                 doc_add_click,
                 doc_tab_click,
                 doc_tab_close,
+                sync_workspace_to_active_doc,
                 workspace_add_click,
             ),
         );
@@ -849,7 +850,13 @@ fn theme_dropup(
             }
         }));
     }
-    commands.entity(panel).add_children(&rows);
+    // Cap the height + scroll so the long theme list doesn't run off-screen.
+    let content = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+        .id();
+    commands.entity(content).add_children(&rows);
+    let scroll = scroll_area(commands, content, 260.0);
+    commands.entity(panel).add_child(scroll);
 
     let icon = icon_text(commands, &fonts.phosphor, "palette", text_muted(), 12.0);
     let label = commands
@@ -1454,6 +1461,35 @@ fn doc_add_click(
 }
 
 /// Click a document tab → activate it + switch to the workspace its kind maps to.
+/// Switch the bevy_ui workspace to match the active document tab whenever it
+/// changes — including programmatic opens (double-clicking an asset, the
+/// inspector's "edit" button), not just manual tab clicks. So opening a
+/// `.material` / `.particle` / script switches to its editor workspace instead
+/// of silently leaving the dock on the scene layout. The `Local` change-guard
+/// means it only fires on a real active-tab change, so ribbon navigation while a
+/// doc tab is open isn't fought (the scene entities are never touched — this is
+/// purely a layout switch). Mirrors the egui editor's context-driven layout.
+fn sync_workspace_to_active_doc(
+    state: Option<Res<renzora_ui::DocumentTabState>>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut last: Local<Option<u64>>,
+) {
+    let Some(state) = state else { return };
+    let active_id = state.active_tab_id();
+    if *last == active_id {
+        return;
+    }
+    *last = active_id;
+    let Some(name) = state.active_tab().and_then(|t| t.kind.layout_name()) else {
+        return;
+    };
+    if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
+        apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);
+    }
+}
+
 fn doc_tab_click(
     q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
