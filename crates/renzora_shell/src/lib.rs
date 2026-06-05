@@ -45,6 +45,7 @@ impl Plugin for ShellPlugin {
         app.init_resource::<renzora::ShellStatusRegistry>();
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
+        app.init_resource::<OpenTopMenu>();
         app.add_systems(
             Update,
             (
@@ -56,7 +57,7 @@ impl Plugin for ShellPlugin {
                 ribbon_focus_rename,
                 ribbon_rename_commit,
                 content_dispatch,
-                top_menu_open,
+                (top_menu_open, top_menu_hover, top_menu_sync),
                 settings_btn_click,
                 palette_btn_click,
                 theme_bridge,
@@ -1139,6 +1140,11 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(Color::NONE),
             ChromeBar::Top,
+            // The bar is the window drag handle; empty areas (zones pass through)
+            // reach it, while interactive children (menus/buttons) block it.
+            Interaction::default(),
+            WindowDragHandle,
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
             Name::new("top-bar"),
         ))
         .id();
@@ -1178,6 +1184,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 column_gap: Val::Px(2.0),
                 ..default()
             },
+            bevy::ui::FocusPolicy::Pass,
             Name::new("ribbon"),
         ))
         .id();
@@ -1666,9 +1673,9 @@ fn zone(
                 flex_grow: grow,
                 ..default()
             },
-            // Empty zone area drags the window (interactive children block it).
-            Interaction::default(),
-            WindowDragHandle,
+            // Structural container — let clicks fall through to the bar's drag
+            // handle behind it (interactive children still block on their own).
+            bevy::ui::FocusPolicy::Pass,
             Name::new(name.to_string()),
         ))
         .id()
@@ -1678,7 +1685,7 @@ fn zone(
 
 // ── Top-bar menus (File / Edit / View / Help) ────────────────────────────────
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum TopMenuKind {
     File,
     Edit,
@@ -1689,6 +1696,14 @@ enum TopMenuKind {
 
 #[derive(Component)]
 struct TopMenu(TopMenuKind);
+
+/// The currently-open top menu (so hovering a sibling switches to it, and a
+/// re-click toggles it closed). Cleared by [`top_menu_sync`] once dismissed.
+#[derive(Resource, Default)]
+struct OpenTopMenu {
+    menu: Option<Entity>,
+    kind: Option<TopMenuKind>,
+}
 
 /// An interactive top-bar menu title (File/Edit/View/Help).
 fn top_menu_item(
@@ -1722,22 +1737,20 @@ fn top_menu_item(
             Text::new(label),
             ui_font(font, 14.0),
             TextColor(rgb(text_muted())),
+            bevy::ui::FocusPolicy::Pass,
         ));
     });
     item
 }
 
-/// The account menu title (left bar, after Help): a user glyph + a reactive
-/// label (the signed-in username, or "Sign In"). Opens the account dropdown via
-/// [`top_menu_open`], anchored under the button like the other top menus.
+/// The account menu title (left bar, after Help). Identical styling to the other
+/// top menus, but its label is reactive (the signed-in username, or "Sign In").
 fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     let item = commands
         .spawn((
             Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
                 padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                align_items: AlignItems::Center,
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
@@ -1753,8 +1766,6 @@ fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
-    let icon = glyph(commands, "user", text_muted(), 13.0);
-    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
     let label = commands
         .spawn((
             Text::new("Sign In"),
@@ -1768,12 +1779,24 @@ fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             .and_then(|b| b.signed_in_username.clone())
             .unwrap_or_else(|| "Sign In".to_string())
     });
-    commands.entity(item).add_children(&[icon, label]);
+    commands.entity(item).add_child(label);
     item
 }
 
-/// Click a top-bar title → open its menu via the shared ember `screen_menu`,
-/// anchored to the button's bottom-left (stable, independent of cursor position).
+/// Spawn a top-menu dropdown anchored at `pos` and return its root.
+fn spawn_top_menu(commands: &mut Commands, fonts: &EmberFonts, kind: TopMenuKind, pos: Vec2, signed_in: bool) -> Entity {
+    let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
+    let kids = build_menu_items(commands, fonts, kind, signed_in);
+    commands.entity(root).add_children(&kids);
+    root
+}
+
+fn signed_in(bridge: &Option<Res<renzora::core::AuthBridge>>) -> bool {
+    bridge.as_ref().and_then(|b| b.signed_in_username.clone()).is_some()
+}
+
+/// Click a top-bar title → open its dropdown (anchored under the button), or
+/// re-click the open one to close it.
 fn top_menu_open(
     q: Query<
         (
@@ -1787,22 +1810,79 @@ fn top_menu_open(
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
+    mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else {
         return;
     };
-    let signed_in = bridge.and_then(|b| b.signed_in_username.clone()).is_some();
+    let signed = signed_in(&bridge);
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        if let Some(e) = open.menu.take() {
+            commands.entity(e).despawn();
+        }
+        // Re-clicking the already-open menu just closes it.
+        if open.kind == Some(menu.0) {
+            open.kind = None;
+            continue;
+        }
         let Some(pos) = anchor_below(&windows, rcp, cn) else {
+            open.kind = None;
             continue;
         };
-        let root = renzora_ember::widgets::screen_menu(&mut commands, pos.x, pos.y);
-        let kids = build_menu_items(&mut commands, &fonts, menu.0, signed_in);
-        commands.entity(root).add_children(&kids);
+        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, signed));
+        open.kind = Some(menu.0);
+    }
+}
+
+/// While a top menu is open, hovering a *different* title switches to it without
+/// a click — standard menu-bar behavior.
+fn top_menu_hover(
+    q: Query<(
+        &Interaction,
+        &TopMenu,
+        &bevy::ui::RelativeCursorPosition,
+        &bevy::ui::ComputedNode,
+    )>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    bridge: Option<Res<renzora::core::AuthBridge>>,
+    mut open: ResMut<OpenTopMenu>,
+    mut commands: Commands,
+) {
+    let Some(open_kind) = open.kind else { return };
+    let Some(fonts) = fonts else { return };
+    let signed = signed_in(&bridge);
+    for (interaction, menu, rcp, cn) in &q {
+        if *interaction == Interaction::Hovered && menu.0 != open_kind {
+            if let Some(e) = open.menu.take() {
+                commands.entity(e).despawn();
+            }
+            let Some(pos) = anchor_below(&windows, rcp, cn) else {
+                open.kind = None;
+                return;
+            };
+            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, signed));
+            open.kind = Some(menu.0);
+            return;
+        }
+    }
+}
+
+/// Forget the open menu once it's been dismissed (click-outside / item click,
+/// handled by ember), so the next hover/click starts fresh.
+fn top_menu_sync(
+    menus: Query<(), With<renzora_ember::widgets::ScreenMenu>>,
+    mut open: ResMut<OpenTopMenu>,
+) {
+    if let Some(e) = open.menu {
+        if menus.get(e).is_err() {
+            open.menu = None;
+            open.kind = None;
+        }
     }
 }
 
