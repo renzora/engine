@@ -14,14 +14,24 @@ use renzora_ember::reactive::{bind_2way, bind_bg};
 use renzora_ember::theme::{accent, rgb, text_muted};
 use renzora_ember::widgets::{bind_text_input, drag_value, dropdown, icon_label_button, text_input, DragRange};
 
-use renzora_game_ui::components::{DropdownData, UiStroke};
+use renzora_game_ui::components::{DropdownData, GradientStop, UiFill, UiStroke};
 
 pub(crate) fn register(app: &mut App) {
     app.register_native_inspector_ui("ui_stroke", stroke_native);
     app.register_native_inspector_ui("ui_dropdown_data", dropdown_native);
+    app.register_native_inspector_ui("ui_fill", fill_native);
     app.add_systems(
         Update,
-        (stroke_side_click, rebuild_dropdown, dropdown_add_click, dropdown_remove_click).run_if(in_state(SplashState::Editor)),
+        (
+            stroke_side_click,
+            rebuild_dropdown,
+            dropdown_add_click,
+            dropdown_remove_click,
+            rebuild_fill,
+            fill_add_stop_click,
+            fill_remove_stop_click,
+        )
+            .run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -315,6 +325,286 @@ fn dropdown_remove_click(q: Query<(&Interaction, &DropdownRemoveBtn), Changed<In
             if let Some(mut d) = w.get_mut::<DropdownData>(e) {
                 if d.options.len() > 1 {
                     d.options.pop();
+                }
+            }
+        });
+    }
+}
+
+// ── Fill (UiFill enum) ───────────────────────────────────────────────────────
+
+/// Root for the fill inspector. `sig` packs the variant discriminant + gradient
+/// stop count, so switching Type or Add/Remove-ing a stop restructures the rows;
+/// angle/center/color/pos edits sync via bindings (no rebuild).
+#[derive(Component)]
+struct FillRoot {
+    entity: Entity,
+    sig: Option<u64>,
+}
+#[derive(Component)]
+struct FillAddStop {
+    entity: Entity,
+}
+#[derive(Component)]
+struct FillRemoveStop {
+    entity: Entity,
+}
+
+fn fill_disc(f: &UiFill) -> usize {
+    match f {
+        UiFill::None => 0,
+        UiFill::Solid(_) => 1,
+        UiFill::LinearGradient { .. } => 2,
+        UiFill::RadialGradient { .. } => 3,
+    }
+}
+
+fn fill_stops_len(f: &UiFill) -> usize {
+    match f {
+        UiFill::LinearGradient { stops, .. } | UiFill::RadialGradient { stops, .. } => stops.len(),
+        _ => 0,
+    }
+}
+
+fn fill_stops_mut(f: &mut UiFill) -> Option<&mut Vec<GradientStop>> {
+    match f {
+        UiFill::LinearGradient { stops, .. } | UiFill::RadialGradient { stops, .. } => Some(stops),
+        _ => None,
+    }
+}
+
+fn fill_native(world: &mut World, entity: Entity) -> Entity {
+    world
+        .spawn((
+            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() },
+            FillRoot { entity, sig: None },
+            Name::new("fill-inspector-root"),
+        ))
+        .id()
+}
+
+/// Rebuild the variant-specific rows when the Type or the gradient-stop count changes.
+fn rebuild_fill(world: &mut World) {
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
+    let mut q = world.query::<(Entity, &FillRoot)>();
+    let roots: Vec<(Entity, Entity, Option<u64>)> = q.iter(world).map(|(r, d)| (r, d.entity, d.sig)).collect();
+    for (root, entity, old_sig) in roots {
+        let Some(fill) = world.get::<UiFill>(entity).cloned() else { continue };
+        let sig = (fill_disc(&fill) as u64) << 32 | fill_stops_len(&fill) as u64;
+        if old_sig == Some(sig) {
+            continue;
+        }
+        let existing: Vec<Entity> = world.get::<Children>(root).map(|c| c.iter().collect()).unwrap_or_default();
+        let mut queue = CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            for ch in existing {
+                commands.entity(ch).despawn();
+            }
+            build_fill_body(&mut commands, &fonts, root, entity, &fill);
+        }
+        queue.apply(world);
+        if let Some(mut fr) = world.get_mut::<FillRoot>(root) {
+            fr.sig = Some(sig);
+        }
+    }
+}
+
+fn build_fill_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, entity: Entity, fill: &UiFill) {
+    let mut rows: Vec<Entity> = Vec::new();
+
+    // Type combo.
+    let type_dd = dropdown(commands, fonts, &["None", "Solid", "Linear", "Radial"], fill_disc(fill));
+    bind_2way(
+        commands,
+        type_dd,
+        move |w| w.get::<UiFill>(entity).map(fill_disc).unwrap_or(0),
+        move |w, v: &usize| {
+            if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                *f = match v {
+                    1 => UiFill::Solid(Color::srgba(0.2, 0.2, 0.2, 1.0)),
+                    2 => UiFill::linear(0.0, Color::srgba(0.2, 0.2, 0.8, 1.0), Color::srgba(0.8, 0.2, 0.2, 1.0)),
+                    3 => UiFill::RadialGradient {
+                        center: [0.5, 0.5],
+                        stops: vec![
+                            GradientStop { position: 0.0, color: Color::WHITE },
+                            GradientStop { position: 1.0, color: Color::BLACK },
+                        ],
+                    },
+                    _ => UiFill::None,
+                };
+            }
+        },
+    );
+    rows.push(inspector_row(commands, &fonts.ui, "Type", type_dd));
+
+    match fill {
+        UiFill::Solid(_) => {
+            let color = color_field_rgba(
+                commands,
+                move |w| match w.get::<UiFill>(entity) {
+                    Some(UiFill::Solid(c)) => c.to_srgba().to_f32_array(),
+                    _ => [0.2, 0.2, 0.2, 1.0],
+                },
+                move |w, a: [f32; 4]| {
+                    if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                        *f = UiFill::Solid(Color::srgba(a[0], a[1], a[2], a[3]));
+                    }
+                },
+            );
+            rows.push(inspector_row(commands, &fonts.ui, "Color", color));
+        }
+        UiFill::LinearGradient { .. } => {
+            let angle = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.0, 1.0);
+            commands.entity(angle).insert(DragRange { min: 0.0, max: 360.0 });
+            bind_2way(
+                commands,
+                angle,
+                move |w| match w.get::<UiFill>(entity) {
+                    Some(UiFill::LinearGradient { angle, .. }) => *angle,
+                    _ => 0.0,
+                },
+                move |w, v: &f32| {
+                    if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                        if let UiFill::LinearGradient { angle, .. } = &mut *f {
+                            *angle = *v;
+                        }
+                    }
+                },
+            );
+            rows.push(inspector_row(commands, &fonts.ui, "Angle", angle));
+            build_gradient_stops(commands, fonts, entity, fill, &mut rows);
+        }
+        UiFill::RadialGradient { .. } => {
+            for (axis, label) in [(0usize, "Center X"), (1, "Center Y")] {
+                let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.5, 0.01);
+                commands.entity(dv).insert(DragRange { min: 0.0, max: 1.0 });
+                bind_2way(
+                    commands,
+                    dv,
+                    move |w| match w.get::<UiFill>(entity) {
+                        Some(UiFill::RadialGradient { center, .. }) => center[axis],
+                        _ => 0.5,
+                    },
+                    move |w, v: &f32| {
+                        if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                            if let UiFill::RadialGradient { center, .. } = &mut *f {
+                                center[axis] = *v;
+                            }
+                        }
+                    },
+                );
+                rows.push(inspector_row(commands, &fonts.ui, label, dv));
+            }
+            build_gradient_stops(commands, fonts, entity, fill, &mut rows);
+        }
+        UiFill::None => {}
+    }
+
+    for (i, r) in rows.iter().enumerate() {
+        commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
+    }
+    commands.entity(root).add_children(&rows);
+}
+
+/// Per-stop Pos + Color rows and the Add Stop / Remove buttons (pushed onto `rows`).
+fn build_gradient_stops(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, fill: &UiFill, rows: &mut Vec<Entity>) {
+    let n = fill_stops_len(fill);
+    for i in 0..n {
+        let pos = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.0, 0.01);
+        commands.entity(pos).insert(DragRange { min: 0.0, max: 1.0 });
+        bind_2way(
+            commands,
+            pos,
+            move |w| {
+                w.get::<UiFill>(entity)
+                    .and_then(|f| match f {
+                        UiFill::LinearGradient { stops, .. } | UiFill::RadialGradient { stops, .. } => stops.get(i).map(|s| s.position),
+                        _ => None,
+                    })
+                    .unwrap_or(0.0)
+            },
+            move |w, v: &f32| {
+                if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                    if let Some(stops) = fill_stops_mut(&mut f) {
+                        if let Some(s) = stops.get_mut(i) {
+                            s.position = *v;
+                        }
+                    }
+                }
+            },
+        );
+        rows.push(inspector_row(commands, &fonts.ui, &format!("Stop {} Pos", i + 1), pos));
+
+        let color = color_field_rgba(
+            commands,
+            move |w| {
+                w.get::<UiFill>(entity)
+                    .and_then(|f| match f {
+                        UiFill::LinearGradient { stops, .. } | UiFill::RadialGradient { stops, .. } => {
+                            stops.get(i).map(|s| s.color.to_srgba().to_f32_array())
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or([0.0; 4])
+            },
+            move |w, a: [f32; 4]| {
+                if let Some(mut f) = w.get_mut::<UiFill>(entity) {
+                    if let Some(stops) = fill_stops_mut(&mut f) {
+                        if let Some(s) = stops.get_mut(i) {
+                            s.color = Color::srgba(a[0], a[1], a[2], a[3]);
+                        }
+                    }
+                }
+            },
+        );
+        rows.push(inspector_row(commands, &fonts.ui, &format!("Stop {} Color", i + 1), color));
+    }
+
+    // Add Stop / Remove.
+    let add = icon_label_button(commands, fonts, "plus", "Add Stop");
+    commands.entity(add).insert(FillAddStop { entity });
+    let mut btns = vec![add];
+    if n > 2 {
+        let rem = icon_label_button(commands, fonts, "minus", "Remove");
+        commands.entity(rem).insert(FillRemoveStop { entity });
+        btns.push(rem);
+    }
+    let btn_group = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(4.0)), ..default() })
+        .id();
+    commands.entity(btn_group).add_children(&btns);
+    rows.push(btn_group);
+}
+
+fn fill_add_stop_click(q: Query<(&Interaction, &FillAddStop), Changed<Interaction>>, mut commands: Commands) {
+    for (interaction, b) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let e = b.entity;
+        commands.queue(move |w: &mut World| {
+            if let Some(mut f) = w.get_mut::<UiFill>(e) {
+                if let Some(stops) = fill_stops_mut(&mut f) {
+                    stops.push(GradientStop { position: 1.0, color: Color::WHITE });
+                }
+            }
+        });
+    }
+}
+
+fn fill_remove_stop_click(q: Query<(&Interaction, &FillRemoveStop), Changed<Interaction>>, mut commands: Commands) {
+    for (interaction, b) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let e = b.entity;
+        commands.queue(move |w: &mut World| {
+            if let Some(mut f) = w.get_mut::<UiFill>(e) {
+                if let Some(stops) = fill_stops_mut(&mut f) {
+                    if stops.len() > 2 {
+                        stops.pop();
+                    }
                 }
             }
         });

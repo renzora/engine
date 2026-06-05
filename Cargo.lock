@@ -10343,6 +10343,7 @@ dependencies = [
  "mlua",
  "renzora",
  "renzora_editor",
+ "renzora_ember",
  "renzora_scripting",
  "renzora_theme",
  "serde",
