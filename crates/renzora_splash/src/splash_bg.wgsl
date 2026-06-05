@@ -41,6 +41,19 @@ fn seg_dist(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
     return length(pa - ba * h);
 }
 
+// Whether a constellation cell carries a node (sparse, so it reads as scattered).
+fn node_exists(cell: vec2<f32>) -> bool {
+    return hash21(cell + 11.0) > 0.6;
+}
+
+// Antialiased grid line at integer values of `coord` (~1px wide via screen-space
+// derivatives), so perspective-warped lines stay thin and fade at the horizon.
+fn grid_line(coord: f32) -> f32 {
+    let d = max(fwidth(coord), 1e-5);
+    let g = abs(fract(coord - 0.5) - 0.5) / d;
+    return 1.0 - min(g, 1.0);
+}
+
 @fragment
 fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;                       // 0..1, y down
@@ -63,40 +76,39 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
         let fy = (uv.y - horizon) / (1.0 - horizon);     // 0 at horizon → 1 at the viewer (bottom)
         let depth = 1.0 / max(fy, 0.02);                 // far (large) at the horizon, near (~1) at the viewer
 
-        // Horizontal floor lines, scrolling down toward the viewer.
-        let hl = fract(depth * 0.5 + t * 0.6);
-        let hline = 1.0 - smoothstep(0.0, 0.06, min(hl, 1.0 - hl));
+        // Horizontal lines scroll toward the viewer; verticals converge to the horizon.
+        let hline = grid_line(depth * 0.5 + t * 0.6);
+        let vline = grid_line((uv.x - 0.5) * aspect * depth * 2.5);
 
-        // Vertical floor lines, converging to the horizon.
-        let px = (uv.x - 0.5) * aspect * depth;
-        let vl = fract(px * 2.5);
-        let vline = 1.0 - smoothstep(0.0, 0.06, min(vl, 1.0 - vl));
-
-        // Fade out toward the horizon (where lines merge) and in toward the viewer.
-        let fade = clamp(fy * 1.6, 0.0, 1.0);
-        col = col + grid_col * clamp(hline + vline, 0.0, 1.0) * fade * 0.6;
+        // Fade in toward the viewer (the original grid is subtle, not a bright band).
+        let fade = clamp(fy * 1.3, 0.0, 1.0) * 0.4;
+        col = col + grid_col * max(hline, vline) * fade;
     }
 
-    // ── Constellation: drifting nodes linked to their neighbours ──
-    let net = vec2<f32>(14.0 * aspect, 14.0);
+    // ── Constellation: sparse drifting nodes with faint links to neighbours ──
+    let net = vec2<f32>(11.0 * aspect, 11.0);
     let np = uv * net;
     let nc = floor(np);
-    let center_pt = cell_point(nc, t);
-    var dmin = 1000.0;
-    for (var dy = -1; dy <= 1; dy = dy + 1) {
-        for (var dx = -1; dx <= 1; dx = dx + 1) {
-            if (dx == 0 && dy == 0) {
-                continue;
+    if (node_exists(nc)) {
+        let center_pt = cell_point(nc, t);
+        var link = 0.0;
+        for (var dy = -1; dy <= 1; dy = dy + 1) {
+            for (var dx = -1; dx <= 1; dx = dx + 1) {
+                if (dx == 0 && dy == 0) {
+                    continue;
+                }
+                let ncell = nc + vec2<f32>(f32(dx), f32(dy));
+                if (node_exists(ncell)) {
+                    let d = seg_dist(np, center_pt, cell_point(ncell, t));
+                    link = max(link, 1.0 - smoothstep(0.0, 0.022, d));
+                }
             }
-            let npt = cell_point(nc + vec2<f32>(f32(dx), f32(dy)), t);
-            dmin = min(dmin, seg_dist(np, center_pt, npt));
         }
+        col = col + vec3<f32>(0.5, 0.58, 0.82) * link * 0.10;
+        let twinkle = 0.7 + 0.3 * sin(t * 2.0 + hash21(nc) * 40.0);
+        let pglow = 1.0 - smoothstep(0.0, 0.05, length(np - center_pt));
+        col = col + vec3<f32>(0.78, 0.83, 0.95) * pglow * twinkle * 0.5;
     }
-    let links = 1.0 - smoothstep(0.0, 0.035, dmin);
-    col = col + vec3<f32>(0.55, 0.62, 0.85) * links * 0.16;
-    let pglow = 1.0 - smoothstep(0.0, 0.07, length(np - center_pt));
-    let twinkle = 0.7 + 0.3 * sin(t * 2.0 + hash21(nc) * 40.0);
-    col = col + vec3<f32>(0.82, 0.86, 0.96) * pglow * twinkle * 0.7;
 
     // ── Bottom vignette for bottom-bar legibility ──
     let vig = smoothstep(0.82, 1.0, uv.y);
