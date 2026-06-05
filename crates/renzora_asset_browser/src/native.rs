@@ -534,14 +534,19 @@ fn asset_drag(
     let cursor = windows.iter().next().and_then(|w| w.cursor_position());
     if mouse.just_pressed(MouseButton::Left) {
         if let Some(c) = cursor {
+            // A pressed grid/list tile (file or folder)…
             if let Some((_, tile)) = tiles.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
                 state.drag_press = Some((tile.path.clone(), tile.is_dir, c));
+            // …or a pressed tree folder row (TreeNav targets are always folders).
+            } else if let Some((_, nav)) = tree.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
+                state.drag_press = Some((nav.0.clone(), true, c));
             }
         }
     }
     if payload.is_none() {
-        if let (Some((path, is_dir, origin)), Some(c)) = (state.drag_press.clone(), cursor) {
-            if !is_dir && c.distance(origin) > 5.0 {
+        if let (Some((path, _is_dir, origin)), Some(c)) = (state.drag_press.clone(), cursor) {
+            // Files *and* folders are draggable into folders.
+            if c.distance(origin) > 5.0 {
                 // Multi-drag: carry the whole selection if the dragged tile is
                 // part of it, else just the dragged file.
                 let paths: Vec<PathBuf> = if state.selection.contains(&path) && state.selection.len() > 1 {
@@ -2669,18 +2674,33 @@ fn tree_toggle_click(
 }
 
 fn tree_nav_click(
-    q: Query<(&Interaction, &TreeNav), Changed<Interaction>>,
+    q: Query<(&Interaction, &TreeNav)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
     mut state: ResMut<NativeAssets>,
+    mut press: Local<Option<(PathBuf, Vec2)>>,
 ) {
-    for (interaction, nav) in &q {
-        if *interaction == Interaction::Pressed {
-            state.current = Some(nav.0.clone());
-            state.selected = None;
-            // Clicking anywhere on a folder row also toggles its expansion.
-            if state.expanded.contains(&nav.0) {
-                state.expanded.remove(&nav.0);
-            } else {
-                state.expanded.insert(nav.0.clone());
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    if mouse.just_pressed(MouseButton::Left) {
+        if let (Some((_, nav)), Some(c)) =
+            (q.iter().find(|(i, _)| **i == Interaction::Pressed), cursor)
+        {
+            *press = Some((nav.0.clone(), c));
+        }
+    }
+    // Navigate on release only if it was a click (no drag) — a press that moved
+    // >5px is a folder drag (handled by `asset_drag`), not a navigation.
+    if mouse.just_released(MouseButton::Left) {
+        if let Some((path, origin)) = press.take() {
+            let moved = cursor.map(|c| c.distance(origin) > 5.0).unwrap_or(false);
+            if !moved {
+                state.current = Some(path.clone());
+                state.selected = None;
+                if state.expanded.contains(&path) {
+                    state.expanded.remove(&path);
+                } else {
+                    state.expanded.insert(path);
+                }
             }
         }
     }
