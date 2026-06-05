@@ -11,11 +11,12 @@
 //! egui `editor_ui_system` is gated off under `BevyUi`). **F10** toggles.
 
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
 use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
-use renzora_ember::widgets::{menu_item, Popup};
+use renzora_ember::widgets::{menu_item, screen_menu, text_input, EmberTextInput, Popup};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -42,16 +43,22 @@ impl Plugin for ShellPlugin {
         app.insert_resource(ShellLayouts { layouts, active: 0 });
         app.init_resource::<renzora::ShellPanelRegistry>();
         app.init_resource::<renzora::ShellStatusRegistry>();
+        app.init_resource::<RibbonDrag>();
+        app.init_resource::<RibbonRename>();
         app.add_systems(
             Update,
             (
                 toggle_backend,
                 manage_shell_root,
                 apply_panel_meta,
-                ribbon_switch,
+                ribbon_interact,
+                ribbon_context_menu,
+                ribbon_focus_rename,
+                ribbon_rename_commit,
                 content_dispatch,
                 top_menu_open,
                 settings_btn_click,
+                palette_btn_click,
                 theme_bridge,
                 apply_chrome_style,
                 doc_add_click,
@@ -189,6 +196,30 @@ struct RibbonItem {
 /// The ribbon's "+" — adds a new empty workspace.
 #[derive(Component)]
 struct WorkspaceAddBtn;
+
+/// The top-bar magnifier — toggles the command palette.
+#[derive(Component)]
+struct CommandPaletteBtn;
+
+/// In-progress ribbon drag (press-latch → reorder on release). `active` flips
+/// once the cursor moves past a small threshold so a plain click still switches.
+#[derive(Resource, Default)]
+struct RibbonDrag(Option<RibbonDragState>);
+
+struct RibbonDragState {
+    from: usize,
+    start_cursor: Vec2,
+    active: bool,
+}
+
+/// The workspace currently being inline-renamed (`None` = none). Read by
+/// `ribbon_snapshot` so that tab renders an edit field in place of its label.
+#[derive(Resource, Default)]
+struct RibbonRename(Option<usize>);
+
+/// Marks the inline rename text field, carrying the workspace index it renames.
+#[derive(Component)]
+struct RibbonRenameInput(usize);
 
 /// Marks the shell's root UI entity so it can be despawned when the backend
 /// switches back to egui.
@@ -375,23 +406,222 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
 /// Clicking a ribbon workspace button switches the dock layout: save the current
 /// dock back into its slot, load the chosen layout into the ember [`Dock`],
 /// flag a rebuild, and restyle the ribbon.
-fn ribbon_switch(
-    triggers: Query<(&RibbonItem, &Interaction), Changed<Interaction>>,
+/// Press-latch ribbon interaction: a plain click switches workspace; a drag past
+/// a small threshold reorders on release (mirrors the egui title-bar tabs).
+#[allow(clippy::too_many_arguments)]
+fn ribbon_interact(
+    mut drag: ResMut<RibbonDrag>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    rename: Res<RibbonRename>,
+    pressed: Query<(&RibbonItem, &Interaction)>,
+    geom: Query<(&RibbonItem, &GlobalTransform)>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
 ) {
-    let mut switch_to = None;
-    for (item, interaction) in &triggers {
-        if *interaction == Interaction::Pressed {
-            switch_to = Some(item.index);
-            break;
+    // Don't drag/switch while a tab is being renamed.
+    if rename.0.is_some() {
+        drag.0 = None;
+        return;
+    }
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+
+    if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
+        if let Some(cur) = cursor {
+            for (item, interaction) in &pressed {
+                if *interaction == Interaction::Pressed {
+                    drag.0 = Some(RibbonDragState { from: item.index, start_cursor: cur, active: false });
+                    break;
+                }
+            }
         }
     }
-    let Some(index) = switch_to else {
+
+    if let (Some(state), Some(cur)) = (drag.0.as_mut(), cursor) {
+        if (cur - state.start_cursor).length() > 5.0 {
+            state.active = true;
+        }
+    }
+
+    if mouse.just_released(MouseButton::Left) {
+        if let Some(state) = drag.0.take() {
+            if !state.active {
+                apply_workspace(state.from, &mut layouts, &mut dock, &mut dirty);
+            } else if let Some(cur) = cursor {
+                // Insertion slot = first tab whose center is right of the cursor.
+                let mut centers: Vec<(usize, f32)> = geom.iter().map(|(it, gt)| (it.index, gt.translation().x)).collect();
+                centers.sort_by_key(|(i, _)| *i);
+                let mut target = layouts.layouts.len();
+                for (i, cx) in &centers {
+                    if cur.x < *cx {
+                        target = *i;
+                        break;
+                    }
+                }
+                let from = state.from;
+                let post_to = if from < target { target.saturating_sub(1) } else { target };
+                if post_to != from {
+                    move_workspace(&mut layouts, &dock, from, post_to);
+                }
+            }
+        }
+    }
+}
+
+/// Move workspace `from` → `to` (remove-then-insert), saving the live dock tree
+/// into the active slot first and remapping the active index to follow.
+fn move_workspace(layouts: &mut ShellLayouts, dock: &Dock, from: usize, to: usize) {
+    let len = layouts.layouts.len();
+    if from >= len || to >= len || from == to {
+        return;
+    }
+    let active = layouts.active;
+    if let Some(slot) = layouts.layouts.get_mut(active) {
+        slot.1 = dock.tree.clone();
+    }
+    let item = layouts.layouts.remove(from);
+    layouts.layouts.insert(to, item);
+    layouts.active = if active == from {
+        to
+    } else {
+        let mut a = active;
+        if from < a {
+            a -= 1;
+        }
+        if to <= a {
+            a += 1;
+        }
+        a
+    };
+}
+
+/// Right-click a ribbon tab → context menu (Rename / Remove).
+fn ribbon_context_menu(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    items: Query<(&RibbonItem, &RelativeCursorPosition)>,
+    layouts: Res<ShellLayouts>,
+    mut commands: Commands,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Some(fonts) = fonts else { return };
+    let Some(cur) = windows.iter().next().and_then(|w| w.cursor_position()) else {
         return;
     };
-    apply_workspace(index, &mut layouts, &mut dock, &mut dirty);
+    for (item, rcp) in &items {
+        if !rcp.cursor_over {
+            continue;
+        }
+        let index = item.index;
+        let can_delete = layouts.layouts.len() > 1;
+        let menu = screen_menu(&mut commands, cur.x, cur.y);
+        let rename = menu_item(&mut commands, &fonts, "pencil-simple", "Rename", move |w| {
+            if let Some(mut r) = w.get_resource_mut::<RibbonRename>() {
+                r.0 = Some(index);
+            }
+        });
+        let mut kids = vec![rename];
+        if can_delete {
+            let remove = menu_item(&mut commands, &fonts, "trash", "Remove", move |w| remove_workspace(w, index));
+            kids.push(remove);
+        }
+        commands.entity(menu).add_children(&kids);
+        break;
+    }
+}
+
+/// Remove workspace `index`, remapping the active index (and switching the live
+/// dock to the new active's tree when the active workspace itself is removed).
+fn remove_workspace(world: &mut World, index: usize) {
+    let (len, active) = {
+        let Some(l) = world.get_resource::<ShellLayouts>() else { return };
+        (l.layouts.len(), l.active)
+    };
+    if len <= 1 || index >= len {
+        return;
+    }
+    let removing_active = index == active;
+    {
+        let mut l = world.resource_mut::<ShellLayouts>();
+        l.layouts.remove(index);
+        let new_len = l.layouts.len();
+        l.active = if active == index {
+            active.min(new_len - 1)
+        } else if active > index {
+            active - 1
+        } else {
+            active
+        };
+    }
+    if removing_active {
+        let new_tree = {
+            let l = world.resource::<ShellLayouts>();
+            l.layouts[l.active].1.clone()
+        };
+        world.resource_mut::<Dock>().tree = new_tree;
+        world.resource_mut::<DockDirty>().0 = true;
+    }
+}
+
+/// Auto-focus the rename field the frame it spawns.
+fn ribbon_focus_rename(mut q: Query<&mut EmberTextInput, Added<RibbonRenameInput>>) {
+    for mut inp in &mut q {
+        inp.focused = true;
+    }
+}
+
+/// Commit (Enter / blur) or cancel (Escape) the active ribbon rename.
+fn ribbon_rename_commit(
+    mut rename: ResMut<RibbonRename>,
+    keys: Res<ButtonInput<KeyCode>>,
+    inputs: Query<(&EmberTextInput, &RibbonRenameInput)>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut had_focus: Local<bool>,
+) {
+    let Some(index) = rename.0 else {
+        *had_focus = false;
+        return;
+    };
+    if keys.just_pressed(KeyCode::Escape) {
+        rename.0 = None;
+        *had_focus = false;
+        return;
+    }
+    let Some((inp, _)) = inputs.iter().find(|(_, r)| r.0 == index) else {
+        return;
+    };
+    if inp.focused {
+        *had_focus = true;
+    }
+    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let blurred = *had_focus && !inp.focused;
+    if !enter && !blurred {
+        return;
+    }
+    let new: String = inp.value.replace('\n', "").trim().to_string();
+    rename.0 = None;
+    *had_focus = false;
+    if new.is_empty() {
+        return;
+    }
+    if let Some(slot) = layouts.layouts.get_mut(index) {
+        slot.0 = new;
+    }
+}
+
+/// The top-bar magnifier → toggle the command palette (consumed by
+/// `renzora_command_palette`).
+fn palette_btn_click(
+    q: Query<&Interaction, (With<CommandPaletteBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::core::ToggleCommandPaletteRequested);
+    }
 }
 
 /// `+` → add a new empty workspace and switch to it.
@@ -410,7 +640,9 @@ fn workspace_add_click(
         slot.1 = dock.tree.clone();
     }
     let name = format!("Workspace {}", layouts.layouts.len() + 1);
-    layouts.layouts.push((name, DockTree::leaf("empty")));
+    // A genuinely empty workspace (not a tab literally named "empty"), so the
+    // dock shows its "Add Panel" button.
+    layouts.layouts.push((name, DockTree::Empty));
     let idx = layouts.layouts.len() - 1;
     dock.tree = layouts.layouts[idx].1.clone();
     layouts.active = idx;
@@ -790,6 +1022,19 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
+    // Search button — toggles the global command palette (Ctrl+P).
+    commands.entity(magnifier).insert((
+        Node {
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            padding: UiRect::axes(Val::Px(5.0), Val::Px(3.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+        Interaction::default(),
+        CommandPaletteBtn,
+        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+    ));
     // Reactive ribbon — one button per workspace in `ShellLayouts`.
     let ribbon = commands
         .spawn((
@@ -882,7 +1127,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 
 /// A top-bar ribbon entry (workspace switcher). Full height so the active
 /// item's blue underline pins to the bottom edge. Clicking switches workspace
-/// `index` (see [`ribbon_switch`]).
+/// `index`; dragging reorders, right-click renames/removes (see [`ribbon_interact`]).
 fn ribbon_item(
     commands: &mut Commands,
     font: &Handle<Font>,
@@ -899,6 +1144,7 @@ fn ribbon_item(
                 ..default()
             },
             Interaction::default(),
+            RelativeCursorPosition::default(),
             renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
         ))
@@ -952,6 +1198,7 @@ fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
         return empty();
     };
     let active = layouts.active;
+    let renaming = world.get_resource::<RibbonRename>().and_then(|r| r.0);
     let names: Vec<(usize, String)> = layouts
         .layouts
         .iter()
@@ -964,7 +1211,7 @@ fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             i.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (name, *i == active).hash(&mut h);
+            (name, *i == active, renaming == Some(*i)).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -972,9 +1219,32 @@ fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, idx| {
             let (i, name) = &names[idx];
-            ribbon_item(c, &f.ui, name, *i, *i == active)
+            if renaming == Some(*i) {
+                build_ribbon_rename_field(c, &f.ui, *i, name)
+            } else {
+                ribbon_item(c, &f.ui, name, *i, *i == active)
+            }
         }),
     }
+}
+
+/// Inline rename field for a ribbon tab (mirrors the native hierarchy's). Seeded
+/// with the current name; committed by [`ribbon_rename_commit`].
+fn build_ribbon_rename_field(commands: &mut Commands, font: &Handle<Font>, index: usize, name: &str) -> Entity {
+    let input = text_input(commands, font, "Name", name);
+    commands.entity(input).insert((
+        RibbonRenameInput(index),
+        Node {
+            width: Val::Px(96.0),
+            height: Val::Px(22.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(4.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            ..default()
+        },
+    ));
+    input
 }
 
 /// The document tab strip: the open documents (`DocumentTabState`, shared with
