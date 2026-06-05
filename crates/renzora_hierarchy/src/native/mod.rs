@@ -1,12 +1,12 @@
-//! Bevy-native (ember) Hierarchy panel — staged migration of the egui panel.
+//! Bevy-native (ember) Hierarchy panel — a full migration of the egui panel.
 //!
-//! **Stage 1 (this):** the entity tree — nesting, connector lines, expand/
-//! collapse, type icons, selection highlight, click-to-select. Reads the same
-//! `HierarchyTreeCache` + `EditorSelection` the egui panel uses.
-//!
-//! Later stages layer on (one file each): rename, drag-and-drop, the right-click
-//! context menu, the search box, the scene-starter picker, and the
-//! visibility/lock suffix toggles.
+//! The entity tree (nesting, connector lines, expand/collapse, type icons,
+//! selection highlight, click/ctrl/shift select) reads the same
+//! `HierarchyTreeCache` + `EditorSelection` the egui panel uses. Layered on
+//! (one file each): drag-and-drop reparenting (`drag`), the right-click context
+//! menu (`context_menu`), Add Entity (`add_entity`), search + type filter
+//! (`filter`), inline rename (`rename`), the empty-scene starter picker
+//! (`scene_starter`), and the visibility/lock suffix toggles (`row`/`systems`).
 
 mod add_entity;
 mod components;
@@ -15,6 +15,7 @@ mod drag;
 mod filter;
 mod rename;
 mod row;
+mod scene_starter;
 mod systems;
 mod tree;
 
@@ -85,8 +86,13 @@ pub fn register_native_hierarchy(app: &mut App) {
             .id();
         renzora_ember::reactive::keyed_list(commands, list, tree::hierarchy_snapshot);
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
+        // While the scene has entities, show the tree; when empty, the starter
+        // picker takes its place.
+        renzora_ember::reactive::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
+        let picker = scene_starter::build_picker(commands, fonts);
+        renzora_ember::reactive::bind_display(commands, picker, scene_starter::scene_is_empty);
 
-        commands.entity(root).add_children(&[header, scroll]);
+        commands.entity(root).add_children(&[header, scroll, picker]);
         root
     });
     app.add_systems(
@@ -108,4 +114,5 @@ pub fn register_native_hierarchy(app: &mut App) {
         )
             .run_if(in_state(SplashState::Editor)),
     );
+    scene_starter::register(app);
 }
