@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod marketplace;
+mod native;
 pub mod session;
 
 use bevy::ecs::system::SystemState;
@@ -29,6 +30,8 @@ impl Plugin for AuthPlugin {
             .insert_resource(try_restore_session())
             .init_resource::<renzora::core::AuthBridge>()
             .add_systems(Update, auth_system);
+        // Native (bevy_ui) sign-in modal — renders under the BevyUi backend (F10).
+        native::register(app);
     }
 }
 
@@ -60,41 +63,49 @@ fn auth_system(world: &mut World) {
         }
     }
 
-    // Render the auth window.
-    // Get the egui context
-    let mut state = SystemState::<EguiContexts>::new(world);
-    let mut contexts = state.get_mut(world);
-    let ctx = match contexts.ctx_mut() {
-        Ok(c) => c.clone(),
-        Err(_) => return,
-    };
-    state.apply(world);
+    // The egui modal renders only under the egui backend. Under the bevy_ui
+    // shell, `native::*` renders the sign-in modal + polls API results instead.
+    let bevy_ui = world
+        .get_resource::<renzora::EditorUiBackend>()
+        .is_some_and(|b| b.is_bevy_ui());
 
-    let theme = world
-        .get_resource::<ThemeManager>()
-        .map(|tm| tm.active_theme.clone())
-        .unwrap_or_default();
+    if !bevy_ui {
+        // Render the auth window.
+        // Get the egui context
+        let mut state = SystemState::<EguiContexts>::new(world);
+        let mut contexts = state.get_mut(world);
+        let ctx = match contexts.ctx_mut() {
+            Ok(c) => c.clone(),
+            Err(_) => return,
+        };
+        state.apply(world);
 
-    // Remove both resources to avoid double-borrow, render, then put them back.
-    let mut auth = world.remove_resource::<AuthState>();
-    let mut session = world.remove_resource::<AuthSession>();
-    let mut signed_in_just_now = false;
-    if let (Some(ref mut auth), Some(ref mut session)) = (&mut auth, &mut session) {
-        render_auth_window(&ctx, &theme, auth, session);
-        if auth.just_signed_in {
-            auth.just_signed_in = false;
-            signed_in_just_now = true;
+        let theme = world
+            .get_resource::<ThemeManager>()
+            .map(|tm| tm.active_theme.clone())
+            .unwrap_or_default();
+
+        // Remove both resources to avoid double-borrow, render, then put them back.
+        let mut auth = world.remove_resource::<AuthState>();
+        let mut session = world.remove_resource::<AuthSession>();
+        let mut signed_in_just_now = false;
+        if let (Some(ref mut auth), Some(ref mut session)) = (&mut auth, &mut session) {
+            render_auth_window(&ctx, &theme, auth, session);
+            if auth.just_signed_in {
+                auth.just_signed_in = false;
+                signed_in_just_now = true;
+            }
         }
-    }
-    if let Some(auth) = auth {
-        world.insert_resource(auth);
-    }
-    if let Some(session) = session {
-        world.insert_resource(session);
-    }
+        if let Some(auth) = auth {
+            world.insert_resource(auth);
+        }
+        if let Some(session) = session {
+            world.insert_resource(session);
+        }
 
-    if signed_in_just_now {
-        world.insert_resource(renzora::core::AuthJustSignedIn);
+        if signed_in_just_now {
+            world.insert_resource(renzora::core::AuthJustSignedIn);
+        }
     }
 
     // Sync the lightweight bridge resource for the editor title bar.

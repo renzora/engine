@@ -9108,6 +9108,7 @@ dependencies = [
  "bevy_egui",
  "dirs 6.0.0",
  "renzora",
+ "renzora_ember",
  "renzora_theme",
  "serde",
  "serde_json",

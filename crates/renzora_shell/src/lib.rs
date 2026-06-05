@@ -59,6 +59,7 @@ impl Plugin for ShellPlugin {
                 top_menu_open,
                 settings_btn_click,
                 palette_btn_click,
+                sign_in_click,
                 theme_bridge,
                 apply_chrome_style,
                 doc_add_click,
@@ -201,6 +202,10 @@ struct WorkspaceAddBtn;
 /// The top-bar magnifier — toggles the command palette.
 #[derive(Component)]
 struct CommandPaletteBtn;
+
+/// The top-bar account chip — opens the sign-in overlay.
+#[derive(Component)]
+struct SignInBtn;
 
 /// In-progress ribbon drag (press-latch → reorder on release). `active` flips
 /// once the cursor moves past a small threshold so a plain click still switches.
@@ -622,6 +627,16 @@ fn palette_btn_click(
 ) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.insert_resource(renzora::core::ToggleCommandPaletteRequested);
+    }
+}
+
+/// The account chip → toggle the sign-in overlay (consumed by `renzora_auth`).
+fn sign_in_click(
+    q: Query<&Interaction, (With<SignInBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
     }
 }
 
@@ -1092,8 +1107,13 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
+            Interaction::default(),
+            SignInBtn,
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("account"),
         ))
         .id();
@@ -1103,8 +1123,15 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             Text::new("Sign In"),
             ui_font(font, 12.0),
             TextColor(rgb(text_muted())),
+            bevy::ui::FocusPolicy::Pass,
         ))
         .id();
+    // Reflect the signed-in username (from the auth bridge) on the label.
+    renzora_ember::reactive::bind_text(commands, sign_in, |w| {
+        w.get_resource::<renzora::core::AuthBridge>()
+            .and_then(|b| b.signed_in_username.clone())
+            .unwrap_or_else(|| "Sign In".to_string())
+    });
     commands.entity(account).add_children(&[user, sign_in]);
 
     let window = commands

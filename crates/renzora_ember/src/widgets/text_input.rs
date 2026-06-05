@@ -18,6 +18,20 @@ pub struct EmberTextInput {
     pub text_entity: Entity,
     pub placeholder: String,
     pub caret: Entity,
+    /// When true, the value renders masked (`••••`) — for password fields.
+    pub password: bool,
+}
+
+/// The text + color to display for an input's current value (masked for password
+/// fields; the muted placeholder when empty).
+fn display_for(value: &str, placeholder: &str, password: bool) -> (String, (u8, u8, u8)) {
+    if value.is_empty() {
+        (placeholder.to_string(), text_muted())
+    } else if password {
+        ("\u{2022}".repeat(value.chars().count()), text_primary())
+    } else {
+        (value.to_string(), text_primary())
+    }
 }
 
 /// Spawn a blinking-caret bar (hidden until the input is focused).
@@ -46,7 +60,27 @@ pub fn text_input(
     placeholder: &str,
     value: &str,
 ) -> Entity {
-    let empty = value.is_empty();
+    build_input(commands, font, placeholder, value, false)
+}
+
+/// A [`text_input`] whose value renders masked (`••••`) — for passwords.
+pub fn password_input(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    placeholder: &str,
+    value: &str,
+) -> Entity {
+    build_input(commands, font, placeholder, value, true)
+}
+
+fn build_input(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    placeholder: &str,
+    value: &str,
+    password: bool,
+) -> Entity {
+    let (disp, col) = display_for(value, placeholder, password);
     let box_e = commands
         .spawn((
             Node {
@@ -66,11 +100,7 @@ pub fn text_input(
         ))
         .id();
     let text = commands
-        .spawn((
-            Text::new(if empty { placeholder } else { value }),
-            ui_font(font, 12.0),
-            TextColor(rgb(if empty { text_muted() } else { text_primary() })),
-        ))
+        .spawn((Text::new(disp), ui_font(font, 12.0), TextColor(rgb(col))))
         .id();
     let car = caret(commands);
     commands.entity(box_e).insert(EmberTextInput {
@@ -79,6 +109,7 @@ pub fn text_input(
         text_entity: text,
         placeholder: placeholder.to_string(),
         caret: car,
+        password,
     });
     commands.entity(box_e).add_children(&[text, car]);
     box_e
@@ -97,9 +128,9 @@ pub fn bind_text_input(
         if world.get_entity(input).is_err() {
             return false;
         }
-        let Some((focused, widget_val, text_e, ph)) = world
+        let Some((focused, widget_val, text_e, ph, password)) = world
             .get::<EmberTextInput>(input)
-            .map(|i| (i.focused, i.value.clone(), i.text_entity, i.placeholder.clone()))
+            .map(|i| (i.focused, i.value.clone(), i.text_entity, i.placeholder.clone(), i.password))
         else {
             return true;
         };
@@ -114,19 +145,12 @@ pub fn bind_text_input(
             if let Some(mut i) = world.get_mut::<EmberTextInput>(input) {
                 i.value = state_val.clone();
             }
+            let (disp, col) = display_for(&state_val, &ph, password);
             if let Some(mut t) = world.get_mut::<Text>(text_e) {
-                t.0 = if state_val.is_empty() {
-                    ph
-                } else {
-                    state_val.clone()
-                };
+                t.0 = disp;
             }
-            if let Some(mut col) = world.get_mut::<TextColor>(text_e) {
-                col.0 = rgb(if state_val.is_empty() {
-                    text_muted()
-                } else {
-                    text_primary()
-                });
+            if let Some(mut c) = world.get_mut::<TextColor>(text_e) {
+                c.0 = rgb(col);
             }
         }
         true
@@ -182,15 +206,11 @@ pub(crate) fn text_input_type(
                 }
                 _ => {}
             }
-            let (text_e, val, ph) = (inp.text_entity, inp.value.clone(), inp.placeholder.clone());
+            let (text_e, val, ph, pw) = (inp.text_entity, inp.value.clone(), inp.placeholder.clone(), inp.password);
             if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
-                if val.is_empty() {
-                    *t = Text::new(ph);
-                    c.0 = rgb(text_muted());
-                } else {
-                    *t = Text::new(val);
-                    c.0 = rgb(text_primary());
-                }
+                let (disp, col) = display_for(&val, &ph, pw);
+                *t = Text::new(disp);
+                c.0 = rgb(col);
             }
             break;
         }
