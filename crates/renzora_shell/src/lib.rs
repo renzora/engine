@@ -66,6 +66,7 @@ impl Plugin for ShellPlugin {
                 doc_tab_close,
                 sync_workspace_to_active_doc,
                 workspace_add_click,
+                (window_btn_click, window_drag, window_resize_start),
             ),
         );
     }
@@ -625,6 +626,99 @@ fn palette_btn_click(
     }
 }
 
+// ── Window controls (borderless chrome) ──────────────────────────────────────
+
+use bevy::window::SystemCursorIcon;
+use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
+
+/// A window-control button (minimize / maximize / close).
+#[derive(Component)]
+struct WindowBtn(WindowAction);
+
+/// An empty top-bar region that initiates an OS window-move on press (and, when
+/// maximized, restores first — Windows aero-snap then handles half/maximize).
+#[derive(Component)]
+struct WindowDragHandle;
+
+/// A perimeter hit zone that initiates an OS edge/corner resize on press.
+#[derive(Component)]
+struct WindowResizeZone(bevy::math::CompassOctant);
+
+fn window_btn_click(
+    q: Query<(&Interaction, &WindowBtn), Changed<Interaction>>,
+    queue: Option<ResMut<WindowActionQueue>>,
+) {
+    let Some(mut queue) = queue else { return };
+    for (interaction, btn) in &q {
+        if *interaction == Interaction::Pressed {
+            queue.push(btn.0);
+        }
+    }
+}
+
+fn window_drag(
+    q: Query<&Interaction, (With<WindowDragHandle>, Changed<Interaction>)>,
+    queue: Option<ResMut<WindowActionQueue>>,
+) {
+    let Some(mut queue) = queue else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        queue.push(WindowAction::StartDrag);
+    }
+}
+
+fn window_resize_start(
+    q: Query<(&Interaction, &WindowResizeZone), Changed<Interaction>>,
+    queue: Option<ResMut<WindowActionQueue>>,
+) {
+    let Some(mut queue) = queue else { return };
+    for (interaction, zone) in &q {
+        if *interaction == Interaction::Pressed {
+            queue.push(WindowAction::StartResize(zone.0));
+        }
+    }
+}
+
+/// Build the 8 invisible edge/corner resize zones overlaid on the window border.
+/// Returns them so the caller parents them under the shell root.
+fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
+    use bevy::math::CompassOctant as O;
+    const T: f32 = 5.0; // edge thickness
+    const C: f32 = 12.0; // corner size
+    let px = Val::Px;
+    // (octant, cursor, node)
+    let zones: [(O, SystemCursorIcon, Node); 8] = [
+        (O::North, SystemCursorIcon::NResize, Node { position_type: PositionType::Absolute, top: px(0.0), left: px(C), right: px(C), height: px(T), ..default() }),
+        (O::South, SystemCursorIcon::SResize, Node { position_type: PositionType::Absolute, bottom: px(0.0), left: px(C), right: px(C), height: px(T), ..default() }),
+        (O::West, SystemCursorIcon::WResize, Node { position_type: PositionType::Absolute, left: px(0.0), top: px(C), bottom: px(C), width: px(T), ..default() }),
+        (O::East, SystemCursorIcon::EResize, Node { position_type: PositionType::Absolute, right: px(0.0), top: px(C), bottom: px(C), width: px(T), ..default() }),
+        (O::NorthWest, SystemCursorIcon::NwResize, Node { position_type: PositionType::Absolute, top: px(0.0), left: px(0.0), width: px(C), height: px(C), ..default() }),
+        (O::NorthEast, SystemCursorIcon::NeResize, Node { position_type: PositionType::Absolute, top: px(0.0), right: px(0.0), width: px(C), height: px(C), ..default() }),
+        (O::SouthWest, SystemCursorIcon::SwResize, Node { position_type: PositionType::Absolute, bottom: px(0.0), left: px(0.0), width: px(C), height: px(C), ..default() }),
+        (O::SouthEast, SystemCursorIcon::SeResize, Node { position_type: PositionType::Absolute, bottom: px(0.0), right: px(0.0), width: px(C), height: px(C), ..default() }),
+    ];
+    zones
+        .into_iter()
+        .map(|(octant, cursor, node)| {
+            let id = commands
+                .spawn((
+                    node,
+                    BackgroundColor(Color::NONE),
+                    GlobalZIndex(60),
+                    Interaction::default(),
+                    WindowResizeZone(octant),
+                    renzora_hui::cursor_icon::HoverCursor(cursor),
+                    Name::new("resize-zone"),
+                ))
+                .id();
+            // Resizing makes no sense while maximized — hide the grips then.
+            renzora_ember::reactive::bind_display(commands, id, |w| {
+                !w.get_resource::<WindowActionQueue>().map(|q| q.maximized).unwrap_or(false)
+            });
+            id
+        })
+        .collect()
+}
+
 /// `+` → add a new empty workspace and switch to it.
 fn workspace_add_click(
     q: Query<&Interaction, (With<WorkspaceAddBtn>, Changed<Interaction>)>,
@@ -698,6 +792,10 @@ fn spawn_shell(commands: &mut Commands, fonts: &EmberFonts, themes: &[String], a
     commands
         .entity(root)
         .add_children(&[top_bar, doctabs, dock_area, statusbar]);
+
+    // Borderless-window edge/corner resize grips, overlaid on the perimeter.
+    let grips = build_resize_zones(commands);
+    commands.entity(root).add_children(&grips);
 }
 
 /// Which chrome bar an entity is, so [`apply_chrome_style`] can repaint each from
@@ -1102,6 +1200,17 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     let min = icon_item(commands, "minus", text_muted(), 14.0);
     let max = icon_item(commands, "square", text_muted(), 13.0);
     let close = icon_item(commands, "x", text_muted(), 14.0);
+    for (e, action) in [
+        (min, WindowAction::Minimize),
+        (max, WindowAction::ToggleMaximize),
+        (close, WindowAction::Close),
+    ] {
+        commands.entity(e).insert((
+            Interaction::default(),
+            WindowBtn(action),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        ));
+    }
     commands.entity(window).add_children(&[min, max, close]);
 
     commands
@@ -1530,6 +1639,9 @@ fn zone(
                 flex_grow: grow,
                 ..default()
             },
+            // Empty zone area drags the window (interactive children block it).
+            Interaction::default(),
+            WindowDragHandle,
             Name::new(name.to_string()),
         ))
         .id()
