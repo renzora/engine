@@ -656,12 +656,39 @@ fn window_btn_click(
     }
 }
 
+/// Click-timing for the drag handle: distinguishes a single press (window move)
+/// from a double-click (toggle maximize).
+#[derive(Default)]
+struct DragClickState {
+    last: f32,
+    /// Whether the previous press restored a maximized window (so a double-click
+    /// on a maximized window restores rather than re-maximizing).
+    restored_on_press: bool,
+}
+
+/// Press an empty top-bar area → start an OS window-move; double-click → toggle
+/// maximize/restore (the OS then handles aero-snap when you drag to an edge).
 fn window_drag(
     q: Query<&Interaction, (With<WindowDragHandle>, Changed<Interaction>)>,
     queue: Option<ResMut<WindowActionQueue>>,
+    time: Res<Time>,
+    mut state: Local<DragClickState>,
 ) {
     let Some(mut queue) = queue else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let now = time.elapsed_secs();
+    if now - state.last < 0.4 {
+        // Double-click. If the first press already restored a maximized window
+        // (via StartDrag), don't re-maximize — leave it restored.
+        state.last = 0.0;
+        if !state.restored_on_press {
+            queue.push(WindowAction::ToggleMaximize);
+        }
+    } else {
+        state.last = now;
+        state.restored_on_press = queue.maximized;
         queue.push(WindowAction::StartDrag);
     }
 }

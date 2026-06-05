@@ -12,7 +12,7 @@
 use bevy::app::AppExit;
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
-use bevy::window::{PrimaryWindow, Window};
+use bevy::window::{Monitor, PrimaryWindow, Window, WindowPosition};
 use bevy_egui::egui::{
     self, Color32, CornerRadius, CursorIcon, Pos2, Sense, Stroke, StrokeKind, Vec2,
 };
@@ -23,8 +23,10 @@ use egui_phosphor::regular as icons;
 #[derive(Resource, Default)]
 pub struct WindowActionQueue {
     actions: Vec<WindowAction>,
-    /// Mirror of the primary window's maximized state (Bevy doesn't expose a getter).
+    /// Whether the window is currently in our maximized (monitor-filling) state.
     pub maximized: bool,
+    /// Saved `(position, logical width, logical height)` to restore from maximize.
+    restore: Option<(WindowPosition, f32, f32)>,
 }
 
 impl WindowActionQueue {
@@ -59,6 +61,7 @@ impl Plugin for WindowChromePlugin {
 fn apply_window_actions(
     mut queue: ResMut<WindowActionQueue>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    monitors: Query<&Monitor>,
     mut exit: MessageWriter<AppExit>,
 ) {
     if queue.actions.is_empty() {
@@ -73,24 +76,80 @@ fn apply_window_actions(
             WindowAction::None => {}
             WindowAction::Minimize => window.set_minimized(true),
             WindowAction::ToggleMaximize => {
-                queue.maximized = !queue.maximized;
-                window.set_maximized(queue.maximized);
+                if queue.maximized {
+                    restore_to_saved(&mut window, &mut queue);
+                } else {
+                    maximize(&mut window, &monitors, &mut queue);
+                }
             }
             WindowAction::Close => {
                 exit.write(AppExit::Success);
             }
             WindowAction::StartDrag => {
                 // Standard OS behaviour: dragging the title bar of a maximized
-                // window restores it first, then starts the drag.
+                // window restores it (under the cursor) first, then starts the drag.
                 if queue.maximized {
-                    queue.maximized = false;
-                    window.set_maximized(false);
+                    restore_under_cursor(&mut window, &monitors, &mut queue);
                 }
                 window.start_drag_move();
             }
             WindowAction::StartResize(dir) => window.start_drag_resize(dir),
         }
     }
+}
+
+/// Maximize by filling the window's monitor (winit's `set_maximized` is ambiguous
+/// for borderless windows — it can target the work area or do nothing). Saves the
+/// current geometry so [`restore_to_saved`] can put it back.
+fn maximize(window: &mut Window, monitors: &Query<&Monitor>, queue: &mut WindowActionQueue) {
+    queue.restore = Some((window.position, window.resolution.width(), window.resolution.height()));
+    if let Some(mon) = monitors.iter().next() {
+        let sf = mon.scale_factor as f32;
+        window.position = WindowPosition::At(mon.physical_position);
+        window
+            .resolution
+            .set(mon.physical_width as f32 / sf, mon.physical_height as f32 / sf);
+    } else {
+        // No monitor info — fall back to winit's maximize.
+        window.set_maximized(true);
+    }
+    queue.maximized = true;
+}
+
+fn restore_to_saved(window: &mut Window, queue: &mut WindowActionQueue) {
+    if let Some((pos, w, h)) = queue.restore.take() {
+        window.position = pos;
+        window.resolution.set(w, h);
+    } else {
+        window.set_maximized(false);
+    }
+    queue.maximized = false;
+}
+
+/// Restore from maximized, repositioning so the cursor lands near the top of the
+/// restored window — so an immediate title-bar drag feels natural.
+fn restore_under_cursor(window: &mut Window, monitors: &Query<&Monitor>, queue: &mut WindowActionQueue) {
+    let Some((pos, w, h)) = queue.restore.take() else {
+        window.set_maximized(false);
+        queue.maximized = false;
+        return;
+    };
+    if let (Some(c), Some(mon)) = (window.cursor_position(), monitors.iter().next()) {
+        let sf = mon.scale_factor as f32;
+        let cursor_phys = mon.physical_position.as_vec2() + c * sf;
+        let frac = if window.resolution.width() > 0.0 {
+            (c.x / window.resolution.width()).clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
+        let new_x = cursor_phys.x - frac * w * sf;
+        let new_y = cursor_phys.y - 10.0 * sf;
+        window.position = WindowPosition::At(IVec2::new(new_x as i32, new_y as i32));
+    } else {
+        window.position = pos;
+    }
+    window.resolution.set(w, h);
+    queue.maximized = false;
 }
 
 /// Listens for a title-bar drag without registering an interactive widget.
