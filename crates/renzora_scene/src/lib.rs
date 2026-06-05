@@ -12,6 +12,7 @@ use renzora::core::{
 use renzora_camera::OrbitCameraState;
 use renzora_editor::SplashState;
 use renzora_engine::scene_io;
+use renzora_ui::{DocTabKind, DocumentTabState};
 use renzora_keybindings::{EditorAction, KeyBindings};
 use renzora_splash::{EditorLoadingOverlayActive, LoadingTaskHandle, LoadingTasks};
 use renzora_viewport::model_flatten::ImportedRoot;
@@ -48,7 +49,12 @@ pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
             Without<HideInHierarchy>,
         )>();
         for entity in query.iter(world) {
-            to_despawn.push(entity);
+            // Skip descendants of a `HideInHierarchy` root — that's the bevy_ui
+            // editor chrome (the `ShellRoot` carries it) and other editor-internal
+            // subtrees, which must survive scene clears.
+            if !has_hidden_ancestor(world, entity) {
+                to_despawn.push(entity);
+            }
         }
     }
     for &entity in &to_despawn {
@@ -57,6 +63,18 @@ pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
         }
     }
     to_despawn
+}
+
+/// Whether any ancestor of `e` is marked [`HideInHierarchy`] (editor-internal —
+/// chrome, gizmos, previews — that must not be despawned with the scene).
+pub(crate) fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
+    while let Some(parent) = world.get::<ChildOf>(e).map(|c| c.parent()) {
+        if world.get::<HideInHierarchy>(parent).is_some() {
+            return true;
+        }
+        e = parent;
+    }
+    false
 }
 
 /// On re-entering the splash from the editor (File → Open Project),
@@ -112,7 +130,20 @@ fn teardown_for_project_switch(world: &mut World) {
     }
 }
 
-fn handle_tab_switch(world: &mut World) {
+/// The document-tab kind for a tab id, if the tab still exists.
+fn tab_kind(world: &World, id: u64) -> Option<DocTabKind> {
+    world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.tabs.iter().find(|t| t.id == id).map(|t| t.kind))
+}
+
+/// React to a document-tab switch. Only **scene** tabs own a 3D scene; asset
+/// tabs (material / particle / script / shader / blueprint) edit assets *on top
+/// of* the current scene, so switching to one must NOT despawn the scene — that
+/// would empty the viewport/hierarchy and (in the bevy_ui shell) despawn the
+/// editor chrome, which the scene-clear query also catches. The live scene
+/// belongs to the most-recently-active scene tab, tracked in `live_scene`.
+fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
     let Some(request) = world.remove_resource::<TabSwitchRequest>() else {
         return;
     };
@@ -120,9 +151,35 @@ fn handle_tab_switch(world: &mut World) {
     let old_id = request.old_tab_id;
     let new_id = request.new_tab_id;
 
-    // 1. Serialize current scene entities into buffer for old tab
+    let old_is_scene = tab_kind(world, old_id) == Some(DocTabKind::Scene);
+    let new_is_scene = tab_kind(world, new_id) == Some(DocTabKind::Scene);
+
+    if live_scene.is_none() && old_is_scene {
+        *live_scene = Some(old_id);
+    }
+
+    // Switching to an asset tab — keep the current scene loaded; nothing to swap.
+    if !new_is_scene {
+        if old_is_scene {
+            *live_scene = Some(old_id);
+        }
+        return;
+    }
+
+    // Switching to a scene tab that's already live (e.g. coming back from a
+    // material tab) — the scene was never despawned, so there's nothing to do.
+    if *live_scene == Some(new_id) {
+        return;
+    }
+
+    // A genuine scene→scene switch: snapshot the live scene, despawn it, and
+    // restore the target scene's buffer. Save under the *live* scene tab, which
+    // may differ from `old_id` if we're arriving from an asset tab.
+    let save_id = live_scene.unwrap_or(old_id);
+
+    // 1. Serialize current scene entities into buffer for the live scene tab
     let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
-        warn!("Failed to serialize scene for tab {}: {}", old_id, e);
+        warn!("Failed to serialize scene for tab {}: {}", save_id, e);
         "(entities: {}, resources: {})".to_string()
     });
 
@@ -150,7 +207,7 @@ fn handle_tab_switch(world: &mut World) {
 
     // Store snapshot
     if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
-        buffers.buffers.insert(old_id, snapshot);
+        buffers.buffers.insert(save_id, snapshot);
     }
 
     // Pin every asset the leaving tab's entities currently reference so
@@ -159,7 +216,7 @@ fn handle_tab_switch(world: &mut World) {
     // RON but its `MaterialResolver` / `asset_server.load` calls have to
     // re-decode textures from disk (and worse, anything outside the
     // resolver path renders blank). See `tab_asset_cache` module doc.
-    tab_asset_cache::pin_live_tab_handles(world, old_id);
+    tab_asset_cache::pin_live_tab_handles(world, save_id);
 
     // 3. Despawn all scene entities
     despawn_scene_entities(world);
@@ -190,9 +247,11 @@ fn handle_tab_switch(world: &mut World) {
         }
     }
 
+    *live_scene = Some(new_id);
+
     renzora::core::console_log::console_info(
         "Scene",
-        format!("Switched from tab {} to tab {}", old_id, new_id),
+        format!("Switched scene tab {} -> {}", save_id, new_id),
     );
 }
 

@@ -770,7 +770,12 @@ fn process_pending_scene_loads(world: &mut World) {
             Without<Persistent>,
         )>();
         for entity in query.iter(world) {
-            to_despawn.push(entity);
+            // Skip descendants of a `HideInHierarchy` root — the bevy_ui editor
+            // chrome (the shell's `ShellRoot` carries it) and other editor-internal
+            // subtrees must survive scene loads.
+            if !has_hidden_ancestor(world, entity) {
+                to_despawn.push(entity);
+            }
         }
     }
 
@@ -790,6 +795,18 @@ fn process_pending_scene_loads(world: &mut World) {
 
     // 2. Load the new scene
     scene_io::load_scene(world, &scene_path);
+}
+
+/// Whether any ancestor of `e` is marked [`HideInHierarchy`] (editor-internal —
+/// the bevy_ui shell chrome, gizmos, previews — that must survive scene loads).
+fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
+    while let Some(parent) = world.get::<ChildOf>(e).map(|c| c.parent()) {
+        if world.get::<HideInHierarchy>(parent).is_some() {
+            return true;
+        }
+        e = parent;
+    }
+    false
 }
 
 /// Keep `ProjectAssetPath` in sync whenever `CurrentProject` changes.
