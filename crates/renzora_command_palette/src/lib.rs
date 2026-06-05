@@ -21,6 +21,8 @@ use renzora_editor::{
 };
 use renzora_theme::ThemeManager;
 
+mod native;
+
 // ── State ──────────────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]
@@ -51,12 +53,16 @@ impl Plugin for CommandPalettePlugin {
             ))
             .add_systems(
                 EguiPrimaryContextPass,
-                render_palette.run_if(in_state(SplashState::Editor)),
+                render_palette
+                    .run_if(in_state(SplashState::Editor))
+                    .run_if(native::egui_backend),
             )
             .add_systems(
                 Update,
                 consume_toggle_request.run_if(in_state(SplashState::Editor)),
             );
+        // Native (bevy_ui) palette — renders under the BevyUi backend (F10).
+        native::register(app);
     }
 }
 
