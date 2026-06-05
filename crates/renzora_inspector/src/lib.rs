@@ -5,6 +5,8 @@ mod native;
 mod scripts;
 mod state;
 
+pub use native::asset_drop_field;
+
 use std::sync::RwLock;
 
 use bevy::prelude::*;

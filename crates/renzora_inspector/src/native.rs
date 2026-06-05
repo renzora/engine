@@ -999,6 +999,22 @@ fn asset_display(v: Option<FieldValue>) -> (String, bool) {
     }
 }
 
+/// Reusable native asset-drop field (drag from the asset browser + clear button),
+/// for component drawers outside this crate. The drop / clear / highlight systems
+/// registered by `register_native_inspector` drive any `AssetDropZone`, so callers
+/// only supply get/set fn-pointers (using `FieldValue::Asset`) and the accepted
+/// extensions. Returns the row entity to place inside an `inspector_row`.
+pub fn asset_drop_field(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    get_fn: fn(&World, Entity) -> Option<FieldValue>,
+    set_fn: fn(&mut World, Entity, FieldValue),
+    extensions: Vec<String>,
+) -> Entity {
+    build_asset_field(commands, fonts, entity, get_fn, set_fn, extensions)
+}
+
 fn build_asset_field(
     commands: &mut Commands,
     fonts: &EmberFonts,
