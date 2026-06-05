@@ -478,7 +478,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::slider_fields(),
                 custom_ui_fn: Some(inspector::render_slider_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {

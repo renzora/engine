@@ -198,6 +198,28 @@ macro_rules! bool_field {
     };
 }
 
+/// Like [`bool_field!`] for a `bevy::prelude::Color` component field, rendered as
+/// an RGBA color editor with editable alpha (straight / unmultiplied sRGBA — the
+/// same space as the egui `color_edit_button_rgba_unmultiplied`).
+#[macro_export]
+macro_rules! color_rgba_field {
+    ($name:expr, $comp:ty, $field:ident $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::ColorRgba,
+            get_fn: |w, e| {
+                w.get::<$comp>(e)
+                    .map(|comp| $crate::FieldValue::ColorRgba(comp.$field.to_srgba().to_f32_array()))
+            },
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::ColorRgba(a), Some(mut comp)) = (v, w.get_mut::<$comp>(e)) {
+                    comp.$field = bevy::prelude::Color::srgba(a[0], a[1], a[2], a[3]);
+                }
+            },
+        }
+    };
+}
+
 /// Declare an [`FieldDef`] for a `u32` index-style enum field rendered as a
 /// dropdown of `labels` (index 0 = first label). For settings that store an
 /// enum mode as a plain `u32` (atmosphere/dof/...).

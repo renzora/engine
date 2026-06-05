@@ -1755,6 +1755,20 @@ fn push_interaction_style(
 // InspectorEntry now. The main inspector wraps each in a collapsible
 // automatically; these fns just render the inline_property rows.
 
+/// Declarative fields for `SliderData` (native bevy_ui inspector). Mirrors
+/// `render_slider_data_inspector`; egui keeps the custom_ui_fn.
+pub fn slider_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::float_field!("Value", components::SliderData, value, 0.01, f32::MIN, f32::MAX),
+        renzora_editor::float_field!("Min", components::SliderData, min, 0.1, f32::MIN, f32::MAX),
+        renzora_editor::float_field!("Max", components::SliderData, max, 0.1, f32::MIN, f32::MAX),
+        renzora_editor::float_field!("Step", components::SliderData, step, 0.01, 0.0, f32::MAX),
+        renzora_editor::color_rgba_field!("Track Color", components::SliderData, track_color),
+        renzora_editor::color_rgba_field!("Fill Color", components::SliderData, fill_color),
+        renzora_editor::color_rgba_field!("Thumb Color", components::SliderData, thumb_color),
+    ]
+}
+
 pub fn render_slider_data_inspector(
     ui: &mut egui::Ui,
     world: &World,
