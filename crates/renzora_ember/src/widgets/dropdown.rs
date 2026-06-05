@@ -7,6 +7,9 @@ use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::reactive::Bound;
 use crate::theme::*;
 
+/// Max height of an open dropdown list before it scrolls (≈ 8 rows).
+const DROPDOWN_MAX_HEIGHT: f32 = 220.0;
+
 #[derive(Component)]
 pub(crate) struct EmberDropdown {
     selected: usize,
@@ -88,7 +91,8 @@ pub fn dropdown(
         let row = commands
             .spawn((
                 Node {
-                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
                     align_items: AlignItems::Center,
                     border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..default()
@@ -112,7 +116,14 @@ pub fn dropdown(
             .id();
         rows.push(row);
     }
-    commands.entity(menu).add_children(&rows);
+    // Wrap the options in a height-capped scroll area so long lists scroll
+    // instead of running off-screen.
+    let content = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+        .id();
+    commands.entity(content).add_children(&rows);
+    let scroll = super::scroll_area::scroll_area(commands, content, DROPDOWN_MAX_HEIGHT);
+    commands.entity(menu).add_child(scroll);
     commands.entity(box_e).insert((
         EmberDropdown {
             selected: sel,
