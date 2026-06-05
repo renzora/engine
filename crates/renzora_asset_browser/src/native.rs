@@ -2476,13 +2476,8 @@ fn open_file(cmds: &Option<Res<EditorCommands>>, path: &Path) {
         return;
     };
     if is_code_kind(path) {
-        // Scripts/shaders/templates/text: just add the file to the code editor's
-        // open files — no document-tab / layout switch (that switch lands on the
-        // hidden asset-mode workspace, which renders blank in the bevy_ui dock).
         let p = path.to_path_buf();
-        cmds.push(move |w: &mut World| {
-            w.insert_resource(renzora::core::OpenCodeEditorFile { path: p });
-        });
+        cmds.push(move |w: &mut World| open_in_code_editor(w, p));
     } else if opens_in_editor(path) {
         let p = path.to_path_buf();
         cmds.push(move |w: &mut World| crate::open_double_clicked(w, p));
@@ -2541,10 +2536,27 @@ fn open_from_menu(world: &mut World, path: &Path) {
             s.selected = None;
         }
     } else if is_code_kind(path) {
-        // Code editor: open into CodeEditorState directly (no layout switch).
-        world.insert_resource(renzora::core::OpenCodeEditorFile { path: path.to_path_buf() });
+        open_in_code_editor(world, path.to_path_buf());
     } else {
         crate::open_double_clicked(world, path.to_path_buf());
+    }
+}
+
+/// Open a script/shader/template/text file in the code editor. Always loads it
+/// into `CodeEditorState` (no blank-prone document-tab layout switch); then makes
+/// the editor visible per the `code_open_switch_layout` setting — either adding a
+/// Code Editor panel to the current dock layout (default) or switching to the
+/// dedicated "Scripting" layout.
+fn open_in_code_editor(world: &mut World, path: PathBuf) {
+    world.insert_resource(renzora::core::OpenCodeEditorFile { path });
+    let switch = world
+        .get_resource::<renzora_editor::EditorSettings>()
+        .map(|s| s.code_open_switch_layout)
+        .unwrap_or(false);
+    if switch {
+        renzora_editor::switch_layout_by_name(world, "Scripting");
+    } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor::DockingState>() {
+        docking.tree.focus_or_add_panel("code_editor");
     }
 }
 

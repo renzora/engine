@@ -1547,6 +1547,12 @@ fn render_scripting_tab(ui: &mut egui::Ui, settings: &mut EditorSettings, theme:
                     "Show · for spaces and → for tabs",
                 )
             });
+            settings_row(ui, 4, "Open behavior", theme, |ui| {
+                ui.checkbox(
+                    &mut settings.code_open_switch_layout,
+                    "Switch to the Scripting layout (otherwise add a Code Editor panel to the current layout)",
+                )
+            });
         },
     );
 }
