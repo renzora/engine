@@ -506,6 +506,7 @@ fn load_persisted(mut state: ResMut<NativeAssets>, project: Option<Res<renzora::
 /// the egui drag lifecycle, which only runs in the egui pass.
 fn asset_drag(
     tiles: Query<(&Interaction, &AssetTile)>,
+    tree: Query<(&Interaction, &TreeNav)>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut state: ResMut<NativeAssets>,
@@ -513,6 +514,16 @@ fn asset_drag(
     mut commands: Commands,
 ) {
     if mouse.just_released(MouseButton::Left) {
+        // Dropped over a folder (a grid folder tile or a tree row) → move the
+        // dragged file(s) into it instead of spawning into the viewport.
+        if state.dragging {
+            if let Some(payload) = payload.as_ref() {
+                if let Some(target) = drop_folder(&tiles, &tree) {
+                    let sources = payload.paths.clone();
+                    commands.queue(move |w: &mut World| move_assets(w, &sources, &target));
+                }
+            }
+        }
         state.drag_press = None;
         state.dragging = false;
         if payload.is_some() {
@@ -531,18 +542,72 @@ fn asset_drag(
     if payload.is_none() {
         if let (Some((path, is_dir, origin)), Some(c)) = (state.drag_press.clone(), cursor) {
             if !is_dir && c.distance(origin) > 5.0 {
+                // Multi-drag: carry the whole selection if the dragged tile is
+                // part of it, else just the dragged file.
+                let paths: Vec<PathBuf> = if state.selection.contains(&path) && state.selection.len() > 1 {
+                    state.selection.iter().cloned().collect()
+                } else {
+                    vec![path.clone()]
+                };
+                let count = paths.len();
                 commands.insert_resource(renzora_editor::AssetDragPayload {
                     name: file_name_of(&path),
-                    paths: vec![path.clone()],
+                    paths,
                     icon: String::new(),
                     color: bevy_egui::egui::Color32::from_rgb(170, 175, 190),
                     origin: bevy_egui::egui::Pos2::new(origin.x, origin.y),
                     is_detached: true,
-                    drag_count: 1,
+                    drag_count: count,
                     path,
                 });
                 state.dragging = true;
             }
+        }
+    }
+}
+
+/// The folder under the cursor to drop onto — a hovered grid folder tile, else a
+/// hovered tree folder row.
+fn drop_folder(
+    tiles: &Query<(&Interaction, &AssetTile)>,
+    tree: &Query<(&Interaction, &TreeNav)>,
+) -> Option<PathBuf> {
+    // Accept Hovered *or* Pressed: on the release frame the folder under the
+    // cursor may still read Pressed (the button was down through the drag).
+    let over = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    if let Some((_, tile)) = tiles.iter().find(|(i, t)| t.is_dir && over(i)) {
+        return Some(tile.path.clone());
+    }
+    tree.iter().find(|(i, _)| over(i)).map(|(_, nav)| nav.0.clone())
+}
+
+/// Move `sources` into `target` (drag-to-folder). Skips no-op / into-itself
+/// moves and updates asset references via `emit_asset_path_change`, mirroring the
+/// egui browser's `pending_move`. Navigates to the target on success.
+fn move_assets(world: &mut World, sources: &[PathBuf], target: &Path) {
+    let mut moved = 0usize;
+    for source in sources {
+        let Some(file_name) = source.file_name() else { continue };
+        let dest = target.join(file_name);
+        if *source == dest || source.as_path() == target {
+            continue;
+        }
+        // Don't move a folder into itself / a descendant.
+        if dest.starts_with(source) {
+            continue;
+        }
+        let is_dir = source.is_dir();
+        if std::fs::rename(source, &dest).is_ok() {
+            moved += 1;
+            crate::emit_asset_path_change(world, source, &dest, is_dir);
+        }
+    }
+    if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        s.selection.clear();
+        s.selected = None;
+        if moved > 0 {
+            s.current = Some(target.to_path_buf());
+            s.expanded.insert(target.to_path_buf());
         }
     }
 }
