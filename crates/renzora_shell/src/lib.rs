@@ -16,7 +16,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora::{EditorUiBackend, NativePanelIds};
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
-use renzora_ember::widgets::{menu_item, menu_sep, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
+use renzora_ember::widgets::{menu_item, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -59,7 +59,6 @@ impl Plugin for ShellPlugin {
                 top_menu_open,
                 settings_btn_click,
                 palette_btn_click,
-                sign_in_click,
                 theme_bridge,
                 apply_chrome_style,
                 doc_add_click,
@@ -202,10 +201,6 @@ struct WorkspaceAddBtn;
 /// The top-bar magnifier — toggles the command palette.
 #[derive(Component)]
 struct CommandPaletteBtn;
-
-/// The top-bar account chip — opens the sign-in overlay.
-#[derive(Component)]
-struct SignInBtn;
 
 /// In-progress ribbon drag (press-latch → reorder on release). `active` flips
 /// once the cursor moves past a small threshold so a plain click still switches.
@@ -630,47 +625,6 @@ fn palette_btn_click(
     }
 }
 
-/// The account chip. Signed out → open the sign-in overlay. Signed in → a
-/// dropdown (My Library / Settings / Sign Out), mirroring the egui title bar.
-fn sign_in_click(
-    q: Query<&Interaction, (With<SignInBtn>, Changed<Interaction>)>,
-    bridge: Option<Res<renzora::core::AuthBridge>>,
-    fonts: Option<Res<EmberFonts>>,
-    windows: Query<&Window>,
-    mut commands: Commands,
-) {
-    if !q.iter().any(|i| *i == Interaction::Pressed) {
-        return;
-    }
-    let signed_in = bridge.and_then(|b| b.signed_in_username.clone()).is_some();
-    if !signed_in {
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
-        return;
-    }
-    let Some(fonts) = fonts else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
-
-    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-    let lib = menu_item(&mut commands, &fonts, "books", "My Library", |w| {
-        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-            dock.tree.focus_or_add_panel("hub_library");
-        }
-        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
-            d.0 = true;
-        }
-    });
-    let settings = menu_item(&mut commands, &fonts, "gear", "Settings", |w| {
-        if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
-            s.show_settings = !s.show_settings;
-        }
-    });
-    let sep = menu_sep(&mut commands);
-    let out = menu_item(&mut commands, &fonts, "sign-out", "Sign Out", |w| {
-        w.insert_resource(renzora::core::AuthSignOutRequest);
-    });
-    commands.entity(menu).add_children(&[lib, settings, sep, out]);
-}
-
 /// `+` → add a new empty workspace and switch to it.
 fn workspace_add_click(
     q: Query<&Interaction, (With<WorkspaceAddBtn>, Changed<Interaction>)>,
@@ -1070,6 +1024,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         top_menu_item(commands, font, "Edit", TopMenuKind::Edit),
         top_menu_item(commands, font, "View", TopMenuKind::View),
         top_menu_item(commands, font, "Help", TopMenuKind::Help),
+        account_menu_item(commands, font),
     ];
     commands.entity(left).add_children(&left_kids);
 
@@ -1132,39 +1087,6 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
 
-    let account = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            Interaction::default(),
-            SignInBtn,
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("account"),
-        ))
-        .id();
-    let user = glyph(commands, "user", text_muted(), 14.0);
-    let sign_in = commands
-        .spawn((
-            Text::new("Sign In"),
-            ui_font(font, 12.0),
-            TextColor(rgb(text_muted())),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    // Reflect the signed-in username (from the auth bridge) on the label.
-    renzora_ember::reactive::bind_text(commands, sign_in, |w| {
-        w.get_resource::<renzora::core::AuthBridge>()
-            .and_then(|b| b.signed_in_username.clone())
-            .unwrap_or_else(|| "Sign In".to_string())
-    });
-    commands.entity(account).add_children(&[user, sign_in]);
-
     let window = commands
         .spawn((
             Node {
@@ -1184,7 +1106,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 
     commands
         .entity(right)
-        .add_children(&[play, code, settings, account, window]);
+        .add_children(&[play, code, settings, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar
@@ -1623,6 +1545,7 @@ enum TopMenuKind {
     Edit,
     View,
     Help,
+    Account,
 }
 
 #[derive(Component)]
@@ -1665,6 +1588,51 @@ fn top_menu_item(
     item
 }
 
+/// The account menu title (left bar, after Help): a user glyph + a reactive
+/// label (the signed-in username, or "Sign In"). Opens the account dropdown via
+/// [`top_menu_open`], anchored under the button like the other top menus.
+fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+    let item = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            TopMenu(TopMenuKind::Account),
+            Name::new("menu:account"),
+        ))
+        .id();
+    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
+        _ => Color::NONE,
+    });
+    let icon = glyph(commands, "user", text_muted(), 13.0);
+    commands.entity(icon).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new("Sign In"),
+            ui_font(font, 14.0),
+            TextColor(rgb(text_muted())),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    renzora_ember::reactive::bind_text(commands, label, |w| {
+        w.get_resource::<renzora::core::AuthBridge>()
+            .and_then(|b| b.signed_in_username.clone())
+            .unwrap_or_else(|| "Sign In".to_string())
+    });
+    commands.entity(item).add_children(&[icon, label]);
+    item
+}
+
 /// Click a top-bar title → open its menu via the shared ember `screen_menu`,
 /// anchored to the button's bottom-left (stable, independent of cursor position).
 fn top_menu_open(
@@ -1679,11 +1647,13 @@ fn top_menu_open(
     >,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
+    bridge: Option<Res<renzora::core::AuthBridge>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else {
         return;
     };
+    let signed_in = bridge.and_then(|b| b.signed_in_username.clone()).is_some();
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -1692,7 +1662,7 @@ fn top_menu_open(
             continue;
         };
         let root = renzora_ember::widgets::screen_menu(&mut commands, pos.x, pos.y);
-        let kids = build_menu_items(&mut commands, &fonts, menu.0);
+        let kids = build_menu_items(&mut commands, &fonts, menu.0, signed_in);
         commands.entity(root).add_children(&kids);
     }
 }
@@ -1716,9 +1686,32 @@ fn build_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
     kind: TopMenuKind,
+    signed_in: bool,
 ) -> Vec<Entity> {
     use renzora_ember::widgets::{menu_item, menu_sep};
     match kind {
+        TopMenuKind::Account => {
+            if signed_in {
+                vec![
+                    menu_item(commands, fonts, "books", "My Library", |w| {
+                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                            dock.tree.focus_or_add_panel("hub_library");
+                        }
+                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                            d.0 = true;
+                        }
+                    }),
+                    menu_sep(commands),
+                    menu_item(commands, fonts, "sign-out", "Sign Out", |w| {
+                        w.insert_resource(renzora::core::AuthSignOutRequest);
+                    }),
+                ]
+            } else {
+                vec![menu_item(commands, fonts, "sign-in", "Sign In", |w| {
+                    w.insert_resource(renzora::core::AuthToggleWindowRequest);
+                })]
+            }
+        }
         TopMenuKind::File => vec![
             menu_item(commands, fonts, "folder-plus", "New Project", |w| {
                 renzora_editor::handle_new_project(w)

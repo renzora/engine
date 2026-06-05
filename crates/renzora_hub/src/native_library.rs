@@ -20,6 +20,8 @@ use crate::thumbs::HubThumbs;
 
 const GREEN: (u8, u8, u8) = (52, 180, 96);
 const RED: (u8, u8, u8) = (224, 80, 80);
+/// Library assets shown per page.
+const LIB_PER_PAGE: usize = 8;
 
 enum LibraryResult {
     Assets(Result<Vec<AssetSummary>, String>),
@@ -36,6 +38,8 @@ struct HubLibraryData {
     installing_id: Option<String>,
     rx: Option<Receiver<LibraryResult>>,
     needs_refresh: bool,
+    /// Current page index (0-based) into the filtered list.
+    page: usize,
 }
 
 impl Default for HubLibraryData {
@@ -49,6 +53,7 @@ impl Default for HubLibraryData {
             installing_id: None,
             rx: None,
             needs_refresh: true,
+            page: 0,
         }
     }
 }
@@ -63,6 +68,15 @@ impl HubLibraryData {
             })
             .cloned()
             .collect()
+    }
+
+    fn total_pages(&self) -> usize {
+        self.filtered().len().div_ceil(LIB_PER_PAGE).max(1)
+    }
+
+    /// `page` clamped into the valid range for the current filter.
+    fn current_page(&self) -> usize {
+        self.page.min(self.total_pages().saturating_sub(1))
     }
 }
 
@@ -80,6 +94,8 @@ impl Plugin for NativeHubLibrary {
                 library_refresh_click,
                 library_install_click,
                 library_filter_sync,
+                library_prev_click,
+                library_next_click,
                 request_lib_thumbs,
             )
                 .run_if(in_state(SplashState::Editor)),
@@ -93,6 +109,10 @@ struct LibFilter;
 struct LibRefreshBtn;
 #[derive(Component)]
 struct LibInstallBtn(String);
+#[derive(Component)]
+struct LibPrevBtn;
+#[derive(Component)]
+struct LibNextBtn;
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -173,9 +193,39 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, list, library_snapshot);
 
-    commands.entity(body).add_children(&[toolbar, status, list]);
+    // Pager — Prev / "Page X / Y" / Next; hidden when there's a single page.
+    let pager = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(10.0), margin: UiRect::top(Val::Px(4.0)), ..default() })
+        .id();
+    let prev = pager_btn(commands, fonts, "caret-left", LibPrevBtn);
+    let indicator = commands
+        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    bind_text(commands, indicator, |w| {
+        let d = w.resource::<HubLibraryData>();
+        format!("Page {} / {}", d.current_page() + 1, d.total_pages())
+    });
+    let next = pager_btn(commands, fonts, "caret-right", LibNextBtn);
+    commands.entity(pager).add_children(&[prev, indicator, next]);
+    bind_display(commands, pager, |w| w.resource::<HubLibraryData>().total_pages() > 1);
+
+    commands.entity(body).add_children(&[toolbar, status, list, pager]);
     commands.entity(root).add_children(&[signed_out, body]);
     root
+}
+
+fn pager_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: M) -> Entity {
+    let btn = commands
+        .spawn((
+            Node { width: Val::Px(26.0), height: Val::Px(24.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            BackgroundColor(rgb(hover_bg())),
+            Interaction::default(),
+            marker,
+            Name::new("lib-pager-btn"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 13.0);
+    commands.entity(btn).add_child(ic);
+    btn
 }
 
 fn library_snapshot(world: &World) -> KeyedSnapshot {
@@ -186,11 +236,16 @@ fn library_snapshot(world: &World) -> KeyedSnapshot {
     if d.assets.is_empty() {
         return note_snapshot("No purchased assets yet. Browse the Store to find assets.");
     }
-    let assets = d.filtered();
+    let all = d.filtered();
     let installing = d.installing_id.clone();
-    if assets.is_empty() {
+    if all.is_empty() {
         return note_snapshot("No matching assets.");
     }
+    // Slice to the current page.
+    let page = d.current_page();
+    let start = page * LIB_PER_PAGE;
+    let end = (start + LIB_PER_PAGE).min(all.len());
+    let assets: Vec<AssetSummary> = all[start..end].to_vec();
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = assets
         .iter()
@@ -336,7 +391,21 @@ fn library_filter_sync(input: Query<&EmberTextInput, With<LibFilter>>, mut data:
     for inp in &input {
         if data.filter != inp.value {
             data.filter = inp.value.clone();
+            data.page = 0; // a new filter resets to the first page
         }
+    }
+}
+
+fn library_prev_click(q: Query<&Interaction, (With<LibPrevBtn>, Changed<Interaction>)>, mut data: ResMut<HubLibraryData>) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        data.page = data.current_page().saturating_sub(1);
+    }
+}
+
+fn library_next_click(q: Query<&Interaction, (With<LibNextBtn>, Changed<Interaction>)>, mut data: ResMut<HubLibraryData>) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        let max = data.total_pages().saturating_sub(1);
+        data.page = (data.current_page() + 1).min(max);
     }
 }
 
