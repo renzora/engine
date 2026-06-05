@@ -298,6 +298,34 @@ pub fn render_field(
             });
         }
 
+        (FieldType::ColorRgba, FieldValue::ColorRgba(mut rgba)) => {
+            let set_fn = field.set_fn;
+
+            inline_property(ui, row_index, field.name, theme, |ui| {
+                let orig = rgba;
+                if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() && rgba != orig {
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::ColorRgba(orig),
+                        FieldValue::ColorRgba(rgba),
+                        set_fn,
+                    );
+                }
+                if reset_button(ui, theme) {
+                    push_field_change(
+                        cmds,
+                        entity,
+                        field.name,
+                        FieldValue::ColorRgba(orig),
+                        FieldValue::ColorRgba([1.0; 4]),
+                        set_fn,
+                    );
+                }
+            });
+        }
+
         (FieldType::String, FieldValue::String(mut s)) => {
             let set_fn = field.set_fn;
 

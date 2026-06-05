@@ -126,6 +126,7 @@ enum FieldKind {
     Vec3 { speed: f32 },
     Bool,
     Color,
+    ColorRgba,
     Text,
     Asset,
     Enum { options: &'static [&'static str] },
@@ -486,6 +487,9 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                     // color_field seeds itself from the live value; no init needed.
                     (FieldKind::Color, FieldInit::Text(String::new()))
                 }
+                (FieldType::ColorRgba, Some(FieldValue::ColorRgba(_))) => {
+                    (FieldKind::ColorRgba, FieldInit::Text(String::new()))
+                }
                 (FieldType::String, Some(FieldValue::String(s))) => {
                     (FieldKind::Text, FieldInit::Text(s.clone()))
                 }
@@ -537,6 +541,13 @@ fn format_value(v: Option<&FieldValue>) -> String {
             (col[0] * 255.0) as u8,
             (col[1] * 255.0) as u8,
             (col[2] * 255.0) as u8
+        ),
+        Some(FieldValue::ColorRgba(col)) => format!(
+            "#{:02X}{:02X}{:02X}{:02X}",
+            (col[0] * 255.0) as u8,
+            (col[1] * 255.0) as u8,
+            (col[2] * 255.0) as u8,
+            (col[3] * 255.0) as u8
         ),
         Some(FieldValue::String(s)) | Some(FieldValue::ReadOnly(s)) | Some(FieldValue::Enum(s)) => {
             s.clone()
@@ -745,6 +756,18 @@ fn build_field_value(
                     _ => [0.0; 3],
                 },
                 move |w, rgb: [f32; 3]| set_fn(w, entity, FieldValue::Color(rgb)),
+            );
+            commands.entity(value_parent).add_child(editor);
+        }
+        FieldKind::ColorRgba => {
+            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let editor = renzora_ember::inspector::color_field_rgba(
+                commands,
+                move |w| match get_fn(w, entity) {
+                    Some(FieldValue::ColorRgba(c)) => c,
+                    _ => [0.0; 4],
+                },
+                move |w, rgba: [f32; 4]| set_fn(w, entity, FieldValue::ColorRgba(rgba)),
             );
             commands.entity(value_parent).add_child(editor);
         }

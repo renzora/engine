@@ -9,6 +9,8 @@ pub enum FieldValue {
     Vec3([f32; 3]),
     Bool(bool),
     Color([f32; 3]),
+    /// RGBA color (straight / unmultiplied) — editable alpha.
+    ColorRgba([f32; 4]),
     String(String),
     ReadOnly(String),
     /// Asset path (project-relative).
@@ -30,6 +32,7 @@ impl FieldValue {
             FieldValue::Vec3(_) => FieldValue::Vec3([0.0; 3]),
             FieldValue::Bool(_) => FieldValue::Bool(false),
             FieldValue::Color(_) => FieldValue::Color([1.0; 3]),
+            FieldValue::ColorRgba(_) => FieldValue::ColorRgba([1.0; 4]),
             FieldValue::String(_) => FieldValue::String(String::new()),
             FieldValue::ReadOnly(s) => FieldValue::ReadOnly(s.clone()),
             FieldValue::Asset(_) => FieldValue::Asset(None),
@@ -54,6 +57,8 @@ pub enum FieldType {
     },
     Bool,
     Color,
+    /// RGBA color with an editable alpha channel.
+    ColorRgba,
     String,
     ReadOnly,
     /// Asset path field — accepts drag-drop from asset browser.

@@ -25,9 +25,9 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use crate::font::{ui_font, EmberFonts};
-use crate::reactive::bind_with;
+use crate::reactive::{bind_2way, bind_with};
 use crate::theme::*;
-use crate::widgets::{bind_hsv_picker, hsv_picker, Popup};
+use crate::widgets::{bind_hsv_picker, hsv_picker, slider, Popup};
 
 /// Width of the inspector label column. Labels are left-aligned and fixed-width
 /// so the value controls line up in a column directly to their right.
@@ -177,6 +177,117 @@ pub fn color_field(
                 ..default()
             },
             Name::new("color-wrap"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[swatch, panel]);
+    wrap
+}
+
+/// RGBA color field — like [`color_field`] plus an alpha track: the HSV picker
+/// drives RGB (preserving alpha) and a slider drives alpha (preserving RGB), so
+/// all four channels are editable. Get/set use straight (unmultiplied) `[r,g,b,a]`.
+pub fn color_field_rgba(
+    commands: &mut Commands,
+    get: impl Fn(&World) -> [f32; 4] + Clone + Send + Sync + 'static,
+    set: impl Fn(&mut World, [f32; 4]) + Clone + Send + Sync + 'static,
+) -> Entity {
+    let picker = hsv_picker(commands, 0.0, 0.0, 0.5);
+    // HSV picker drives RGB, preserving the current alpha.
+    {
+        let (g_rgb, g_a, s) = (get.clone(), get.clone(), set.clone());
+        bind_hsv_picker(
+            commands,
+            picker,
+            move |w| {
+                let c = g_rgb(w);
+                [c[0], c[1], c[2]]
+            },
+            move |w, rgb: [f32; 3]| {
+                let a = g_a(w)[3];
+                s(w, [rgb[0], rgb[1], rgb[2], a]);
+            },
+        );
+    }
+
+    // Alpha slider, preserving RGB.
+    let alpha = slider(commands, 1.0);
+    commands.entity(alpha).insert(Node {
+        width: Val::Percent(100.0),
+        height: Val::Px(16.0),
+        position_type: PositionType::Relative,
+        align_items: AlignItems::Center,
+        margin: UiRect::top(Val::Px(6.0)),
+        ..default()
+    });
+    {
+        let (g_a, g_rgb, s) = (get.clone(), get.clone(), set.clone());
+        bind_2way(
+            commands,
+            alpha,
+            move |w| g_a(w)[3],
+            move |w, a: &f32| {
+                let c = g_rgb(w);
+                s(w, [c[0], c[1], c[2], *a]);
+            },
+        );
+    }
+
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                padding: UiRect::all(Val::Px(6.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_direction: FlexDirection::Column,
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            GlobalZIndex(700),
+            RelativeCursorPosition::default(),
+            Name::new("color-panel-rgba"),
+        ))
+        .id();
+    commands.entity(panel).add_children(&[picker, alpha]);
+
+    let swatch = commands
+        .spawn((
+            Node {
+                width: Val::Px(44.0),
+                height: Val::Px(16.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(placeholder())),
+            BorderColor::all(rgb(border())),
+            Interaction::default(),
+            Popup::new(panel),
+            Name::new("color-swatch-rgba"),
+        ))
+        .id();
+    {
+        let g = get.clone();
+        bind_with(commands, swatch, g, |w, e, col: &[f32; 4]| {
+            if let Some(mut bg) = w.get_mut::<BackgroundColor>(e) {
+                bg.0 = Color::srgba(col[0], col[1], col[2], col[3]);
+            }
+        });
+    }
+
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Name::new("color-wrap-rgba"),
         ))
         .id();
     commands.entity(wrap).add_children(&[swatch, panel]);
