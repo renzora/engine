@@ -17,7 +17,7 @@ use renzora_editor::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRe
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
@@ -122,6 +122,10 @@ pub(crate) struct NativeAssets {
     sort_desc: bool,
     /// List view (rows) instead of the tile grid.
     list_view: bool,
+    /// The panel is too narrow for a usable grid alongside the tree: collapse to
+    /// a tree-only file browser (grid + splitter hidden, tree shows files). Set
+    /// by `responsive_layout` from the panel's measured width.
+    narrow: bool,
 }
 
 impl Default for NativeAssets {
@@ -146,6 +150,7 @@ impl Default for NativeAssets {
             sort: SortMode::Name,
             sort_desc: false,
             list_view: false,
+            narrow: false,
         }
     }
 }
@@ -305,6 +310,7 @@ pub fn register_native_asset_browser(app: &mut App) {
             sort_menu_open,
             view_toggle_click,
             update_grid_layout,
+            responsive_layout,
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -775,6 +781,26 @@ fn sort_menu_open(
     commands.entity(menu).add_children(&kids);
 }
 
+/// Collapse to a tree-only file browser when the panel is too narrow for a
+/// usable grid (mirrors the egui browser's `TREE_ONLY_WIDTH` behaviour).
+fn responsive_layout(
+    root: Query<&bevy::ui::ComputedNode, With<AssetRoot>>,
+    mut state: ResMut<NativeAssets>,
+) {
+    const TREE_ONLY_WIDTH: f32 = 310.0;
+    let Ok(cn) = root.single() else {
+        return;
+    };
+    let width = cn.size().x * cn.inverse_scale_factor();
+    if width <= 0.0 {
+        return;
+    }
+    let narrow = width < TREE_ONLY_WIDTH;
+    if state.narrow != narrow {
+        state.narrow = narrow;
+    }
+}
+
 /// Toggle grid/list view.
 fn view_toggle_click(
     q: Query<&Interaction, (With<ViewToggleBtn>, Changed<Interaction>)>,
@@ -1059,10 +1085,14 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_with(
         commands,
         tree_pane,
-        |w| w.get_resource::<NativeAssets>().map(|s| s.tree_width).unwrap_or(180.0),
-        |w, e, width: &f32| {
+        |w| {
+            let s = w.get_resource::<NativeAssets>();
+            (s.map(|s| s.narrow).unwrap_or(false), s.map(|s| s.tree_width).unwrap_or(180.0))
+        },
+        |w, e, (narrow, width): &(bool, f32)| {
             if let Some(mut n) = w.get_mut::<Node>(e) {
-                n.width = Val::Px(*width);
+                // Tree-only mode: the tree fills the panel; otherwise its fixed width.
+                n.width = if *narrow { Val::Percent(100.0) } else { Val::Px(*width) };
             }
         },
     );
@@ -1349,6 +1379,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(content)
         .add_children(&[toolbar, crumb_bar, grid_scroll]);
+
+    // Responsive: when the panel is too narrow, hide the grid + splitter so the
+    // tree fills it as a file browser (see `responsive_layout` / `narrow`).
+    bind_display(commands, content, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
+    bind_display(commands, splitter, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
 
     commands.entity(root).add_children(&[tree_pane, splitter, content]);
     root
@@ -1859,6 +1894,9 @@ struct TreeRow {
     /// For each ancestor level, whether that ancestor has more siblings below
     /// (i.e. draw a pass-through vertical line at that level).
     parent_lines: Vec<bool>,
+    /// A file row (tree-only narrow mode) rather than a folder — rendered with a
+    /// file icon + `AssetTile` so it selects/opens/drags like a grid tile.
+    is_file: bool,
 }
 
 fn has_subdirs(dir: &Path) -> bool {
@@ -1874,14 +1912,29 @@ fn has_subdirs(dir: &Path) -> bool {
 
 /// A 1.5px vertical guide line. `full` runs the whole row height; otherwise it
 /// stops at `height` (used for the elbow on a last child).
+/// Whether `dir` contains any non-hidden file (used to decide if a folder is
+/// expandable in tree-only file mode).
+fn has_visible_files(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                !e.file_name().to_string_lossy().starts_with('.')
+                    && e.file_type().map(|t| t.is_file()).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
 fn flatten_dirs(
     dir: &Path,
     depth: usize,
     expanded: &HashSet<PathBuf>,
+    show_files: bool,
     ancestors: &mut Vec<bool>,
     out: &mut Vec<TreeRow>,
 ) {
     let mut subs: Vec<(PathBuf, String)> = Vec::new();
+    let mut files: Vec<(PathBuf, String)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -1890,30 +1943,52 @@ fn flatten_dirs(
             }
             if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 subs.push((e.path(), name));
+            } else if show_files {
+                files.push((e.path(), name));
             }
         }
     }
     subs.sort_by_key(|a| a.1.to_lowercase());
+    files.sort_by_key(|a| a.1.to_lowercase());
+    let has_files = !files.is_empty();
     let last = subs.len().saturating_sub(1);
     for (idx, (path, name)) in subs.into_iter().enumerate() {
-        let is_last = idx == last;
+        // A folder isn't truly last if files follow it below.
+        let more_after = idx != last || has_files;
         let is_exp = expanded.contains(&path);
-        let has = has_subdirs(&path);
+        let has = has_subdirs(&path) || (show_files && has_visible_files(&path));
         out.push(TreeRow {
             path: path.clone(),
             name,
             depth,
             expanded: is_exp,
             has_children: has,
-            is_last,
+            is_last: !more_after,
             parent_lines: ancestors.clone(),
+            is_file: false,
         });
         if is_exp && has {
             // Descendants draw a pass-through line at this level iff this node
-            // has a sibling after it.
-            ancestors.push(!is_last);
-            flatten_dirs(&path, depth + 1, expanded, ancestors, out);
+            // has a sibling (folder or file) after it.
+            ancestors.push(more_after);
+            flatten_dirs(&path, depth + 1, expanded, show_files, ancestors, out);
             ancestors.pop();
+        }
+    }
+    // Files of this folder sort after its subfolders, at the same depth.
+    if show_files {
+        let last_f = files.len().saturating_sub(1);
+        for (idx, (path, name)) in files.into_iter().enumerate() {
+            out.push(TreeRow {
+                path,
+                name,
+                depth,
+                expanded: false,
+                has_children: false,
+                is_last: idx == last_f,
+                parent_lines: ancestors.clone(),
+                is_file: true,
+            });
         }
     }
 }
@@ -1948,6 +2023,7 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
     let fav_open = st.map(|s| s.fav_open).unwrap_or(false);
     let recent_open = st.map(|s| s.recent_open).unwrap_or(false);
+    let show_files = st.map(|s| s.narrow).unwrap_or(false);
 
     let mut items: Vec<TreeItem> = Vec::new();
     if !favorites.is_empty() {
@@ -1988,7 +2064,7 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
         open: true,
     });
     let mut rows = Vec::new();
-    flatten_dirs(&root, 0, &expanded, &mut Vec::new(), &mut rows);
+    flatten_dirs(&root, 0, &expanded, show_files, &mut Vec::new(), &mut rows);
     items.extend(rows.into_iter().map(TreeItem::Folder));
 
     let keyed: Vec<(u64, u64)> = items
@@ -2008,7 +2084,7 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
                 TreeItem::Folder(r) => {
                     (2u8, &r.path).hash(&mut k);
                     (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
-                    (r.is_last, &r.parent_lines).hash(&mut h);
+                    (r.is_last, &r.parent_lines, r.is_file).hash(&mut h);
                 }
             }
             (k.finish(), h.finish())
@@ -2181,7 +2257,9 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
         commands.entity(caret).add_child(g);
     }
 
-    // Nav zone (icon + name).
+    // Nav zone (icon + name). Folder rows navigate via TreeNav; file rows (shown
+    // in tree-only narrow mode) carry an AssetTile so they select/open/drag/
+    // right-click through the same systems as the grid tiles.
     let nav = commands
         .spawn((
             Node {
@@ -2195,17 +2273,25 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
                 ..default()
             },
             Interaction::default(),
-            TreeNav(r.path.clone()),
-            Name::new("tree-nav"),
+            Name::new(if r.is_file { "tree-file" } else { "tree-nav" }),
         ))
         .id();
-    let folder_icon = icon_text(
-        commands,
-        &fonts.phosphor,
-        if r.expanded { "folder-open" } else { "folder" },
-        folder_color(&r.name),
-        13.0,
-    );
+    if r.is_file {
+        commands.entity(nav).insert(AssetTile { path: r.path.clone(), is_dir: false });
+    } else {
+        commands.entity(nav).insert(TreeNav(r.path.clone()));
+    }
+    let folder_icon = if r.is_file {
+        icon_text(commands, &fonts.phosphor, icon_for(&r.path, false), asset_type_info(&r.path).0, 13.0)
+    } else {
+        icon_text(
+            commands,
+            &fonts.phosphor,
+            if r.expanded { "folder-open" } else { "folder" },
+            folder_color(&r.name),
+            13.0,
+        )
+    };
     let name = commands
         .spawn((
             Text::new(r.name.clone()),
@@ -2239,8 +2325,16 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
         ))
         .id();
     let sel_path = r.path.clone();
+    let is_file = r.is_file;
     bind_bg(commands, bg_visual, move |w| {
-        if current_folder(w).as_deref() == Some(sel_path.as_path()) {
+        let active = if is_file {
+            w.get_resource::<NativeAssets>()
+                .map(|s| s.selected.as_deref() == Some(sel_path.as_path()))
+                .unwrap_or(false)
+        } else {
+            current_folder(w).as_deref() == Some(sel_path.as_path())
+        };
+        if active {
             return rgb(accent()).with_alpha(0.30);
         }
         if matches!(
