@@ -499,7 +499,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::checkbox_fields(),
                 custom_ui_fn: Some(inspector::render_checkbox_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -518,7 +518,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::toggle_fields(),
                 custom_ui_fn: Some(inspector::render_toggle_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -539,7 +539,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::radio_fields(),
                 custom_ui_fn: Some(inspector::render_radio_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -581,7 +581,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::text_input_fields(),
                 custom_ui_fn: Some(inspector::render_text_input_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -602,7 +602,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::scroll_view_fields(),
                 custom_ui_fn: Some(inspector::render_scroll_view_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -621,7 +621,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::tooltip_fields(),
                 custom_ui_fn: Some(inspector::render_tooltip_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -640,7 +640,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::modal_fields(),
                 custom_ui_fn: Some(inspector::render_modal_data_inspector),
             });
             app.register_inspector(renzora_editor::InspectorEntry {
@@ -665,7 +665,7 @@ impl Plugin for GameUiPlugin {
                 }),
                 is_enabled_fn: None,
                 set_enabled_fn: None,
-                fields: Vec::new(),
+                fields: inspector::draggable_window_fields(),
                 custom_ui_fn: Some(inspector::render_draggable_window_data_inspector),
             });
 

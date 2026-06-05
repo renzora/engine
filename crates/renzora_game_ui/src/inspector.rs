@@ -1769,6 +1769,85 @@ pub fn slider_fields() -> Vec<renzora_editor::FieldDef> {
     ]
 }
 
+/// Declarative fields for `CheckboxData`.
+pub fn checkbox_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::bool_field!("Checked", components::CheckboxData, checked),
+        renzora_editor::string_field!("Label", components::CheckboxData, label),
+        renzora_editor::color_rgba_field!("Check Color", components::CheckboxData, check_color),
+        renzora_editor::color_rgba_field!("Box Color", components::CheckboxData, box_color),
+    ]
+}
+
+/// Declarative fields for `ToggleData`.
+pub fn toggle_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::bool_field!("On", components::ToggleData, on),
+        renzora_editor::string_field!("Label", components::ToggleData, label),
+        renzora_editor::color_rgba_field!("On Color", components::ToggleData, on_color),
+        renzora_editor::color_rgba_field!("Off Color", components::ToggleData, off_color),
+        renzora_editor::color_rgba_field!("Knob Color", components::ToggleData, knob_color),
+    ]
+}
+
+/// Declarative fields for `RadioButtonData`.
+pub fn radio_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::string_field!("Group", components::RadioButtonData, group),
+        renzora_editor::bool_field!("Selected", components::RadioButtonData, selected),
+        renzora_editor::string_field!("Label", components::RadioButtonData, label),
+        renzora_editor::color_rgba_field!("Active Color", components::RadioButtonData, active_color),
+    ]
+}
+
+/// Declarative fields for `TextInputData`.
+pub fn text_input_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::string_field!("Text", components::TextInputData, text),
+        renzora_editor::string_field!("Placeholder", components::TextInputData, placeholder),
+        renzora_editor::int_field!("Max Length", components::TextInputData, max_length, usize, 1.0, 1.0, 10000.0),
+        renzora_editor::bool_field!("Password", components::TextInputData, password),
+    ]
+}
+
+/// Declarative fields for `ScrollViewData`.
+pub fn scroll_view_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::float_field!("Scroll Speed", components::ScrollViewData, scroll_speed, 0.5, 1.0, 200.0),
+        renzora_editor::bool_field!("Horizontal", components::ScrollViewData, show_horizontal),
+        renzora_editor::bool_field!("Vertical", components::ScrollViewData, show_vertical),
+    ]
+}
+
+/// Declarative fields for `TooltipData`.
+pub fn tooltip_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::string_field!("Text", components::TooltipData, text),
+        renzora_editor::int_field!("Delay (ms)", components::TooltipData, delay_ms, u32, 1.0, 0.0, 5000.0),
+        renzora_editor::color_rgba_field!("Bg Color", components::TooltipData, bg_color),
+        renzora_editor::color_rgba_field!("Text Color", components::TooltipData, text_color),
+    ]
+}
+
+/// Declarative fields for `ModalData`.
+pub fn modal_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::string_field!("Title", components::ModalData, title),
+        renzora_editor::bool_field!("Closable", components::ModalData, closable),
+        renzora_editor::color_rgba_field!("Backdrop", components::ModalData, backdrop_color),
+    ]
+}
+
+/// Declarative fields for `DraggableWindowData`.
+pub fn draggable_window_fields() -> Vec<renzora_editor::FieldDef> {
+    vec![
+        renzora_editor::string_field!("Title", components::DraggableWindowData, title),
+        renzora_editor::bool_field!("Closable", components::DraggableWindowData, closable),
+        renzora_editor::bool_field!("Minimizable", components::DraggableWindowData, minimizable),
+        renzora_editor::color_rgba_field!("Title Bar", components::DraggableWindowData, title_bar_color),
+    ]
+}
+
 pub fn render_slider_data_inspector(
     ui: &mut egui::Ui,
     world: &World,

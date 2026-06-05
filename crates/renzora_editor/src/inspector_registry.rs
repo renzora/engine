@@ -198,6 +198,25 @@ macro_rules! bool_field {
     };
 }
 
+/// Like [`bool_field!`] for a `String` component field (single-line text input).
+#[macro_export]
+macro_rules! string_field {
+    ($name:expr, $comp:ty, $field:ident $(,)?) => {
+        $crate::FieldDef {
+            name: $name,
+            field_type: $crate::FieldType::String,
+            get_fn: |w, e| {
+                w.get::<$comp>(e).map(|comp| $crate::FieldValue::String(comp.$field.clone()))
+            },
+            set_fn: |w, e, v| {
+                if let ($crate::FieldValue::String(s), Some(mut comp)) = (v, w.get_mut::<$comp>(e)) {
+                    comp.$field = s;
+                }
+            },
+        }
+    };
+}
+
 /// Like [`bool_field!`] for a `bevy::prelude::Color` component field, rendered as
 /// an RGBA color editor with editable alpha (straight / unmultiplied sRGBA — the
 /// same space as the egui `color_edit_button_rgba_unmultiplied`).
