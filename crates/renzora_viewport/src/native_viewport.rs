@@ -129,13 +129,16 @@ fn report_viewport_geometry(
     windows: Query<&Window, With<PrimaryWindow>>,
     req: Option<Res<ViewportResizeRequest>>,
     overlays: Query<(), With<renzora_ember::widgets::Overlay>>,
+    over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
 ) {
     let Some(req) = req else {
         return;
     };
-    // A modal overlay swallows pointer input — don't let clicks/picking reach the
-    // scene behind it.
+    // A modal overlay swallows pointer input — and so does any open floating
+    // overlay (dropdown / menu / popup) the cursor is currently over — so clicks
+    // and picking never reach the scene behind it.
     let modal_open = !overlays.is_empty();
+    let over_overlay = over_overlay.is_some_and(|r| r.0);
     // Logical px from the window's top-left — the same space picking / camera
     // read `window.cursor_position()` in.
     let cursor = windows.iter().next().and_then(|w| w.cursor_position());
@@ -147,7 +150,7 @@ fn report_viewport_geometry(
         let size = cn.size() * inv; // logical
         slot.width.store(size.x.max(1.0) as u32, Ordering::Relaxed);
         slot.height.store(size.y.max(1.0) as u32, Ordering::Relaxed);
-        slot.hovered.store(rcp.cursor_over && !modal_open, Ordering::Relaxed);
+        slot.hovered.store(rcp.cursor_over && !modal_open && !over_overlay, Ordering::Relaxed);
         // Derive the node's screen top-left from the cursor + its normalized
         // position in the node ((-0.5,-0.5) = top-left). Scale-invariant, so it
         // lands in logical px regardless of DPI — and avoids UI `GlobalTransform`

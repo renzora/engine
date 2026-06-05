@@ -44,10 +44,42 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
             BorderColor::all(rgb(border())),
             GlobalZIndex(9000),
             ScreenMenu,
+            OverlaySurface,
             RelativeCursorPosition::default(),
             Name::new("screen-menu"),
         ))
         .id()
+}
+
+/// Marks a floating UI surface (popup panel, dropdown list, context menu) that
+/// should swallow pointer wheel/clicks so they never bleed through to the panels
+/// or viewport behind it. Attached automatically to popups/dropdowns/menus.
+#[derive(Component)]
+pub struct OverlaySurface;
+
+/// True while the cursor is over any *visible* [`OverlaySurface`]. Read by the
+/// scroll system and the native viewport so interaction never passes through an
+/// open overlay onto whatever sits behind it.
+#[derive(Resource, Default)]
+pub struct PointerOverOverlay(pub bool);
+
+/// Recompute [`PointerOverOverlay`] each frame from the visible overlay surfaces.
+pub(crate) fn update_pointer_over_overlay(
+    mut res: ResMut<PointerOverOverlay>,
+    surfaces: Query<(&RelativeCursorPosition, &Node), With<OverlaySurface>>,
+) {
+    let over = surfaces.iter().any(|(rcp, node)| node.display != Display::None && rcp.cursor_over);
+    if res.0 != over {
+        res.0 = over;
+    }
+}
+
+/// Tag every [`Popup`]'s panel as an [`OverlaySurface`] (and give it a
+/// `RelativeCursorPosition` if it lacks one) so it blocks pass-through.
+pub(crate) fn tag_popup_panels(q: Query<&Popup, Added<Popup>>, mut commands: Commands) {
+    for p in &q {
+        commands.entity(p.panel).insert((OverlaySurface, RelativeCursorPosition::default()));
+    }
 }
 
 /// An icon + label menu row that runs `on_click` (and closes the menu) when

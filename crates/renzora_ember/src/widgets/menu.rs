@@ -54,6 +54,8 @@ pub(crate) fn build_menu(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
+            super::popup::OverlaySurface,
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("menu"),
         ))
         .id();

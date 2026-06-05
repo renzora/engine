@@ -179,12 +179,16 @@ fn content_h(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
         .unwrap_or(0.0)
 }
 
-/// Wheel over a viewport → nudge its smooth-scroll target. While a
-/// [`super::overlay::ModalSurface`] is open, only scroll areas inside that modal
-/// respond — the wheel never bleeds through to panels behind it.
+/// Wheel over a viewport → nudge its smooth-scroll target. Only the *topmost*
+/// scroll area under the cursor scrolls (by `ComputedNode.stack_index`), so the
+/// wheel never bleeds through to panels behind it or to a panel beneath an open
+/// overlay. While a [`super::overlay::ModalSurface`] is open, only scroll areas
+/// inside that modal respond; and any visible [`super::popup::OverlaySurface`]
+/// (dropdown / menu / popup) stacked above the candidate swallows the wheel.
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
-    mut areas: Query<(Entity, &RelativeCursorPosition, &mut EmberScroll)>,
+    mut areas: Query<(Entity, &RelativeCursorPosition, &ComputedNode, &mut EmberScroll)>,
+    overlays: Query<(&RelativeCursorPosition, &ComputedNode, &Node), With<super::popup::OverlaySurface>>,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
 ) {
@@ -196,13 +200,37 @@ pub(crate) fn scroll_wheel(
         return;
     }
     let modal_open = !modals.is_empty();
-    for (e, rcp, mut s) in &mut areas {
+
+    // The frontmost scroll area under the cursor (highest stack index).
+    let mut best: Option<(Entity, u32)> = None;
+    for (e, rcp, cn, _) in &areas {
         if !rcp.cursor_over {
             continue;
         }
         if modal_open && !under_overlay(e, &parents, &modals) {
             continue;
         }
+        let si = cn.stack_index;
+        if best.is_none_or(|(_, b)| si >= b) {
+            best = Some((e, si));
+        }
+    }
+    let Some((target, target_si)) = best else {
+        return;
+    };
+
+    // An overlay stacked strictly above the chosen scroll area swallows the
+    // wheel (e.g. a context menu over a panel's list). A dropdown list is itself
+    // an overlay, but its inner scroll area stacks above its panel, so it wins.
+    let overlay_above = overlays
+        .iter()
+        .filter(|(rcp, _, node)| rcp.cursor_over && node.display != Display::None)
+        .any(|(_, cn, _)| cn.stack_index > target_si);
+    if overlay_above {
+        return;
+    }
+
+    if let Ok((_, _, _, mut s)) = areas.get_mut(target) {
         s.target -= dy * WHEEL_STEP;
         s.stick = false; // user took control; scroll_update re-sticks at bottom
     }

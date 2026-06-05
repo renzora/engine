@@ -205,6 +205,7 @@ pub struct WidgetsPlugin;
 
 impl Plugin for WidgetsPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<popup::PointerOverOverlay>();
         app.add_systems(
             Update,
             (
@@ -255,6 +256,8 @@ impl Plugin for WidgetsPlugin {
                     popup::screen_menu_clamp,
                     popup::menu_action_run,
                     popup::screen_menu_dismiss,
+                    popup::update_pointer_over_overlay,
+                    popup::tag_popup_panels,
                     overlay::overlay_dismiss,
                     search::search_list_focus,
                     search::search_list_visibility,

@@ -78,6 +78,8 @@ pub fn dropdown(
             },
             BackgroundColor(rgb(popup_bg())),
             GlobalZIndex(500),
+            super::popup::OverlaySurface,
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("dropdown-menu"),
         ))
         .id();
