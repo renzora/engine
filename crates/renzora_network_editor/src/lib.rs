@@ -34,7 +34,6 @@ fn networked_inspector() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 
@@ -59,7 +58,6 @@ fn network_transform_inspector() -> InspectorEntry {
             bool_field!("Sync Rotation", NetworkTransform, sync_rotation),
             bool_field!("Sync Scale", NetworkTransform, sync_scale),
         ],
-        custom_ui_fn: None,
     }
 }
 

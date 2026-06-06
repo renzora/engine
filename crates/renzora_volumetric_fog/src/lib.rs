@@ -139,7 +139,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
             renzora_editor::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
         ],
-        custom_ui_fn: None,
     }
 }
 

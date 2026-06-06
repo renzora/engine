@@ -522,7 +522,6 @@ fn node_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -563,7 +562,6 @@ fn background_color_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -608,7 +606,6 @@ fn border_color_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -650,7 +647,6 @@ fn text_font_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -689,7 +685,6 @@ fn text_color_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -756,6 +751,5 @@ fn image_node_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }

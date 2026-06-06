@@ -106,7 +106,6 @@ fn register_inspector_system(world: &mut World) {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        custom_ui_fn: None,
     };
 
     if let Some(mut registry) = world.get_resource_mut::<InspectorRegistry>() {

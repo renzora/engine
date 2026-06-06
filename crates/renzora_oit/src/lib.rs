@@ -116,7 +116,6 @@ fn oit_entry() -> InspectorEntry {
                 1.0
             ),
         ],
-        custom_ui_fn: None,
     }
 }
 

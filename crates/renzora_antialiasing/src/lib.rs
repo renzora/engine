@@ -331,7 +331,6 @@ fn fxaa_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -378,7 +377,6 @@ fn smaa_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -410,7 +408,6 @@ fn taa_entry() -> InspectorEntry {
             }
         }),
         fields: vec![renzora_editor::bool_field!("Reset", TaaSettings, reset)],
-        custom_ui_fn: None,
     }
 }
 
@@ -445,7 +442,6 @@ fn cas_entry() -> InspectorEntry {
             renzora_editor::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
             renzora_editor::bool_field!("Denoise", CasSettings, denoise),
         ],
-        custom_ui_fn: None,
     }
 }
 

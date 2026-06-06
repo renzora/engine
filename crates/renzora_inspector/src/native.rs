@@ -1,9 +1,9 @@
 //! Bevy-native (ember) inspector panel.
 //!
-//! Registry-driven like the egui inspector: each `InspectorRegistry` entry shows
-//! when its `has_fn` matches and renders either declarative `fields` (a
-//! `FieldType` + get/set fn-pointers, rendered generically here) or a bespoke
-//! `custom_ui_fn` egui closure (placeholder until the bevy_ui drawer contract).
+//! Registry-driven: each `InspectorRegistry` entry shows when its `has_fn`
+//! matches and renders either a registered native (bevy_ui) drawer, declarative
+//! `fields` (a `FieldType` + get/set fn-pointers, rendered generically here), or
+//! a placeholder when it has neither.
 //!
 //! `rebuild_inspector` (exclusive) rebuilds sections + rows whenever the
 //! selection / locked entity / component set / add-overlay changes (hashed
@@ -433,7 +433,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         };
         let enabled_now = enable.map(|(g, _)| g(world, entity)).unwrap_or(true);
         // Priority: a registered native bevy_ui drawer > declarative `fields` >
-        // placeholder (component has only an egui `custom_ui_fn`).
+        // placeholder note (component has neither a native drawer nor any fields).
         let native_drawer = native_reg.and_then(|r| r.get(entry.type_id));
         if native_drawer.is_some() {
             out.push(SectionSpec {
@@ -451,7 +451,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             });
             continue;
         }
-        if entry.fields.is_empty() && entry.custom_ui_fn.is_some() {
+        if entry.fields.is_empty() {
             out.push(SectionSpec {
                 title: entry.display_name,
                 icon: entry.icon,

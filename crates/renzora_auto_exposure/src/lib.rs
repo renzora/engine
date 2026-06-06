@@ -190,7 +190,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
             renzora_editor::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
         ],
-        custom_ui_fn: None,
     }
 }
 

@@ -1945,11 +1945,15 @@ fn tool_button(
     fonts: &EmberFonts,
     entry: &renzora_editor::ToolEntry,
 ) -> Entity {
-    // `entry.icon` is the Phosphor glyph itself (egui_phosphor constant), so it
-    // renders directly with the same Phosphor font ember uses.
+    // `entry.icon` is either a kebab-case Phosphor name (resolved via `icon_glyph`)
+    // or, for entries that still pass a raw glyph constant, the glyph char itself —
+    // fall back to rendering it verbatim when it isn't a known name.
+    let glyph_str = icon_glyph(entry.icon)
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| entry.icon.to_string());
     let glyph = commands
         .spawn((
-            Text::new(entry.icon),
+            Text::new(glyph_str),
             TextFont {
                 font: fonts.phosphor.clone(),
                 font_size: 15.0,

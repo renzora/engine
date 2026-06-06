@@ -109,7 +109,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
             renzora_editor::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
         ],
-        custom_ui_fn: None,
     }
 }
 

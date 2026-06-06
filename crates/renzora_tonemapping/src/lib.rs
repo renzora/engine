@@ -158,7 +158,6 @@ fn inspector_entry() -> InspectorEntry {
             ),
             renzora_editor::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -242,7 +241,6 @@ fn deband_dither_entry() -> InspectorEntry {
             }
         }),
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 

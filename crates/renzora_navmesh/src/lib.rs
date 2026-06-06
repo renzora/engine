@@ -348,7 +348,6 @@ fn inspector_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -375,7 +374,6 @@ fn obstacle_inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 
@@ -927,7 +925,6 @@ fn agent_inspector_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 

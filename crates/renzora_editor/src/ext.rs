@@ -5,7 +5,6 @@ use crate::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
 use crate::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
 use crate::toolbar_registry::{ToolEntry, ToolbarRegistry};
 use bevy::prelude::*;
-use renzora_ui::{PanelRegistry, StatusBarRegistry};
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
 ///
@@ -16,13 +15,6 @@ pub trait InspectableComponent: Component + Default + 'static {
 
 /// Extension methods on `App` for common editor registrations.
 pub trait AppEditorExt {
-    /// Register a panel with the `PanelRegistry`.
-    fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self;
-
-    /// Register a status bar item with the `StatusBarRegistry`.
-    fn register_status_item(&mut self, item: impl renzora_ui::StatusBarItem + 'static)
-        -> &mut Self;
-
     /// Register an `InspectorEntry` directly.
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self;
 
@@ -46,10 +38,9 @@ pub trait AppEditorExt {
     /// Register a button on the viewport toolbar. See [`ToolEntry`].
     fn register_tool(&mut self, entry: ToolEntry) -> &mut Self;
 
-    /// Register a native (bevy_ui) inspector drawer for a component `type_id` —
-    /// the bevy_ui analog of `custom_ui_fn`, for inspectors that need more than
-    /// declarative `fields` (conditional rows, buttons, custom widgets). See
-    /// [`NativeInspectorDrawer`].
+    /// Register a native (bevy_ui) inspector drawer for a component `type_id`,
+    /// for inspectors that need more than declarative `fields` (conditional rows,
+    /// buttons, custom widgets). See [`NativeInspectorDrawer`].
     fn register_native_inspector_ui(
         &mut self,
         type_id: &'static str,
@@ -58,22 +49,6 @@ pub trait AppEditorExt {
 
     /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
     fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self;
-
-    /// Register a header drawer that takes over the horizontal viewport
-    /// toolbar when the viewport is in the given mode.
-    fn register_mode_options(
-        &mut self,
-        mode: renzora::viewport_types::ViewportMode,
-        drawer: crate::ModeOptionsDrawer,
-    ) -> &mut Self;
-
-    /// Register a header drawer for a specific [`ActiveTool`] (Photoshop-style
-    /// tool-options bar).
-    fn register_tool_options(
-        &mut self,
-        tool: crate::ActiveTool,
-        drawer: crate::ToolOptionsDrawer,
-    ) -> &mut Self;
 
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
@@ -84,25 +59,6 @@ pub trait AppEditorExt {
 }
 
 impl AppEditorExt for App {
-    fn register_panel(&mut self, panel: impl renzora_ui::EditorPanel + 'static) -> &mut Self {
-        self.init_resource::<PanelRegistry>();
-        self.world_mut()
-            .resource_mut::<PanelRegistry>()
-            .register(panel);
-        self
-    }
-
-    fn register_status_item(
-        &mut self,
-        item: impl renzora_ui::StatusBarItem + 'static,
-    ) -> &mut Self {
-        self.init_resource::<StatusBarRegistry>();
-        self.world_mut()
-            .resource_mut::<StatusBarRegistry>()
-            .register(item);
-        self
-    }
-
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self {
         self.init_resource::<InspectorRegistry>();
         self.world_mut()
@@ -159,30 +115,6 @@ impl AppEditorExt for App {
         self.world_mut()
             .resource_mut::<crate::NativeInspectorRegistry>()
             .register(type_id, drawer);
-        self
-    }
-
-    fn register_mode_options(
-        &mut self,
-        mode: renzora::viewport_types::ViewportMode,
-        drawer: crate::ModeOptionsDrawer,
-    ) -> &mut Self {
-        self.init_resource::<crate::ViewportModeOptionsRegistry>();
-        self.world_mut()
-            .resource_mut::<crate::ViewportModeOptionsRegistry>()
-            .register(mode, drawer);
-        self
-    }
-
-    fn register_tool_options(
-        &mut self,
-        tool: crate::ActiveTool,
-        drawer: crate::ToolOptionsDrawer,
-    ) -> &mut Self {
-        self.init_resource::<crate::ToolOptionsRegistry>();
-        self.world_mut()
-            .resource_mut::<crate::ToolOptionsRegistry>()
-            .register(tool, drawer);
         self
     }
 

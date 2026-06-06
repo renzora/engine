@@ -264,7 +264,9 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
         });
     }
 
-    let icon_ident = syn::Ident::new(icon, proc_macro2::Span::call_site());
+    // Emit the icon as the kebab-case name string the native (bevy_ui) inspector
+    // resolves to a Phosphor glyph (e.g. "sparkle").
+    let icon_name = crate::field_parse::icon_kebab(icon);
 
     // Keep any non-post_process attributes from the original struct
     let kept_attrs: Vec<_> = input
@@ -310,7 +312,7 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
                 renzora_editor::InspectorEntry {
                     type_id: #type_id,
                     display_name: #display_name,
-                    icon: renzora_editor::egui_phosphor::regular::#icon_ident,
+                    icon: #icon_name,
                     category: #category,
                     has_fn: |world, entity| world.get::<#struct_name>(entity).is_some(),
                     add_fn: Some(|world, entity| { world.entity_mut(entity).insert(#struct_name::default()); }),
@@ -324,7 +326,6 @@ pub fn post_process_attr(attr: TokenStream, item: TokenStream) -> syn::Result<To
                         }
                     }),
                     fields: vec![#(#inspector_field_defs),*],
-                    custom_ui_fn: None,
                 }
             }
         }

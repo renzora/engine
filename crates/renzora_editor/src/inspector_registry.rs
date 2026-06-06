@@ -102,11 +102,6 @@ pub struct InspectorEntry {
     /// Set the component's enabled state (called on toggle switch click).
     pub set_enabled_fn: Option<fn(&mut World, Entity, bool)>,
     pub fields: Vec<FieldDef>,
-    /// Optional custom UI function. When set, the inspector calls this instead
-    /// of rendering the declarative `fields` list.
-    pub custom_ui_fn: Option<
-        fn(&mut bevy_egui::egui::Ui, &World, Entity, &crate::EditorCommands, &renzora_theme::Theme),
-    >,
 }
 
 /// Registry holding all inspector entries, keyed by component type_id.
@@ -153,8 +148,8 @@ impl InspectorRegistry {
 
 /// Declare a native-renderable `f32` [`FieldDef`] for a component field without
 /// hand-writing the get/set fn-pointers. The common case for effect/settings
-/// inspectors migrating off `custom_ui_fn` to declarative `fields` (which both
-/// the egui and bevy_ui inspectors render).
+/// inspectors whose UI is declarative `fields` (rendered by the bevy_ui
+/// inspector).
 ///
 /// ```ignore
 /// fields: vec![
@@ -271,8 +266,8 @@ macro_rules! enum_u32_field {
     };
 }
 
-/// A native (bevy_ui) inspector body builder for a component — the bevy_ui analog
-/// of `custom_ui_fn`. Reads state from `&mut World` (the component, `EmberFonts`,
+/// A native (bevy_ui) inspector body builder for a component, for inspectors that
+/// need more than declarative `fields`. Reads state from `&mut World` (the component, `EmberFonts`,
 /// theme) and builds + binds an arbitrary bevy_ui subtree, returning its root
 /// entity; the inspector parents it under the component's section header.
 ///
@@ -290,7 +285,7 @@ macro_rules! enum_u32_field {
 pub type NativeInspectorDrawer = fn(&mut World, Entity) -> Entity;
 
 /// Maps a component `type_id` to its native (bevy_ui) inspector drawer. Lets a
-/// plugin provide custom bevy_ui inspector UI without a `custom_ui_fn` (egui).
+/// plugin provide custom bevy_ui inspector UI beyond declarative `fields`.
 /// Registered via `App::register_native_inspector_ui`.
 #[derive(Resource, Default)]
 pub struct NativeInspectorRegistry {

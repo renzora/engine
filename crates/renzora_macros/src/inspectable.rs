@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields};
 
-use crate::field_parse::{infer_field_type, title_case, FieldAttrs};
+use crate::field_parse::{icon_kebab, infer_field_type, title_case, FieldAttrs};
 
 pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
     let struct_name = &input.ident;
@@ -202,8 +202,9 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
         });
     }
 
-    // Use the icon as a constant path (e.g., regular::HEART)
-    let icon_ident = syn::Ident::new(&icon, proc_macro2::Span::call_site());
+    // Emit the icon as the kebab-case name string the native (bevy_ui) inspector
+    // resolves to a Phosphor glyph (e.g. "heart").
+    let icon_name = icon_kebab(&icon);
 
     Ok(quote! {
         impl renzora_editor::InspectableComponent for #struct_name {
@@ -211,7 +212,7 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
                 renzora_editor::InspectorEntry {
                     type_id: #type_id,
                     display_name: #display_name,
-                    icon: egui_phosphor::regular::#icon_ident,
+                    icon: #icon_name,
                     category: #category,
                     has_fn: |world, entity| world.get::<#struct_name>(entity).is_some(),
                     add_fn: Some(|world, entity| { world.entity_mut(entity).insert(#struct_name::default()); }),
@@ -219,7 +220,6 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
                     is_enabled_fn: None,
                     set_enabled_fn: None,
                     fields: vec![#(#field_defs),*],
-                    custom_ui_fn: None,
                 }
             }
         }

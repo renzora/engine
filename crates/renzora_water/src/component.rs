@@ -457,7 +457,6 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        custom_ui_fn: None,
         fields: vec![
             // ── Colors ──
             FieldDef {
@@ -775,7 +774,6 @@ pub fn water_interactor_inspector_entry() -> renzora_editor::InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        custom_ui_fn: None,
         fields: vec![
             FieldDef {
                 name: "Radius",

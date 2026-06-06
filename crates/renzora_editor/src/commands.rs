@@ -7,7 +7,7 @@ use bevy::prelude::*;
 /// A queue of deferred world-mutation closures.
 ///
 /// Panels render with `&World` but sometimes need to write (e.g. drag a float → update Transform).
-/// They push closures here; `editor_ui_system` drains and executes them after all panels finish.
+/// They push closures here; `drain_editor_commands_native` drains and executes them each frame.
 #[derive(Resource)]
 pub struct EditorCommands {
     queue: Mutex<Vec<Box<dyn FnOnce(&mut World) + Send>>>,
@@ -27,7 +27,7 @@ impl EditorCommands {
         self.queue.lock().unwrap().push(Box::new(cmd));
     }
 
-    /// Drain all queued commands. Called by `editor_ui_system`.
+    /// Drain all queued commands. Called by `drain_editor_commands_native`.
     pub fn drain(&self) -> Vec<Box<dyn FnOnce(&mut World) + Send>> {
         std::mem::take(&mut *self.queue.lock().unwrap())
     }

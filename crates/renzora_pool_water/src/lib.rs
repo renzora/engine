@@ -330,7 +330,6 @@ fn pool_water_inspector_entry() -> renzora_editor::InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        custom_ui_fn: None,
         fields: vec![
             FieldDef {
                 name: "Water Level",

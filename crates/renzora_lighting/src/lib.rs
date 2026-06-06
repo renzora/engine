@@ -151,7 +151,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
             renzora_editor::bool_field!("Shadows", Sun, shadows_enabled),
         ],
-        custom_ui_fn: None,
     }
 }
 

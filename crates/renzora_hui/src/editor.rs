@@ -161,6 +161,5 @@ fn register_editor_entries(app: &mut App) {
                 }
             },
         }],
-        custom_ui_fn: None,
     });
 }

@@ -249,7 +249,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
             renzora_editor::tuple_color_field!("Color", NightStarsData, color),
         ],
-        custom_ui_fn: None,
     }
 }
 

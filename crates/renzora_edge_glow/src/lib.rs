@@ -143,7 +143,6 @@ fn inspector_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 

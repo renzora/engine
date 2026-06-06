@@ -1,7 +1,7 @@
 //! UI Inspector — declarative `FieldDef` builders for selected UiWidget /
 //! UiCanvas entities.
 //!
-//! The egui `custom_ui_fn` drawers that used to live here have been removed;
+//! The egui custom-drawer functions that used to live here have been removed;
 //! their native (bevy_ui) replacements live in the `renzora_game_ui_editor`
 //! crate. This module now only exposes the declarative `*_fields()` builders
 //! the `InspectorEntry` registrations in `lib.rs` consume.

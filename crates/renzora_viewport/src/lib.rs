@@ -141,14 +141,13 @@ impl Plugin for ViewportPlugin {
                     model_drop::native_model_drop
                         .run_if(renzora::core::editor_backend_is_bevy_ui),
                     // Cleanup must run after the editor's deferred-command
-                    // queue has drained — `check_viewport_model_drop` runs
-                    // inside `editor_ui_system` and pushes a deferred drop
-                    // handler that locks the placement entity into the
-                    // scene (clears `placement_entity` from state). If
-                    // cleanup ran first, it would despawn the still-being-
-                    // placed entity right out from under that handler.
+                    // queue has drained — the native drop handler pushes a
+                    // deferred drop that locks the placement entity into the
+                    // scene (clears `placement_entity` from state). If cleanup
+                    // ran first, it would despawn the still-being-placed entity
+                    // right out from under that handler.
                     model_drop::cleanup_model_drag_ghost
-                        .after(renzora_editor::editor_ui_system),
+                        .after(renzora_editor::drain_editor_commands_native),
                 ).chain(),
                 shape_drop::shape_drag_ground_tracking
                     .before(shape_drop::shape_drag_raycast_system),

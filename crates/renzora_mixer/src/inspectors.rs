@@ -45,7 +45,6 @@ fn audio_player_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 
@@ -91,7 +90,6 @@ fn audio_listener_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 

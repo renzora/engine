@@ -143,7 +143,6 @@ fn decal_entry() -> InspectorEntry {
             0.01,
             50.0
         )],
-        custom_ui_fn: None,
     }
 }
 

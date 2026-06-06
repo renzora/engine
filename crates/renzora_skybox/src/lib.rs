@@ -636,7 +636,6 @@ fn inspector_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 

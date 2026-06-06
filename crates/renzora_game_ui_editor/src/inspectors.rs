@@ -2,7 +2,6 @@
 //! can't be a flat declarative field list (grouped controls, conditional UI,
 //! dynamic lists). They live here because they need `renzora_ember`, and
 //! `game_ui` itself can't depend on ember (the `ember -> hui -> game_ui` cycle).
-//! Each mirrors its egui `custom_ui_fn`; egui keeps that one.
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;

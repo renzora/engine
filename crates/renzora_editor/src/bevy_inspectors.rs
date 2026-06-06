@@ -8,7 +8,6 @@ use bevy::light::{
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 
 use crate::inspector_registry::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
@@ -23,7 +22,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "empty_entity",
         display_name: "Empty Entity",
-        icon: regular::CIRCLE,
+        icon: "circle",
         category: "general",
         spawn_fn: |world| {
             world
@@ -35,7 +34,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "directional_light",
         display_name: "Directional Light",
-        icon: regular::SUN,
+        icon: "sun",
         category: "lighting",
         spawn_fn: |world| {
             world
@@ -51,7 +50,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "point_light",
         display_name: "Point Light",
-        icon: regular::LIGHTBULB,
+        icon: "lightbulb",
         category: "lighting",
         spawn_fn: |world| {
             world
@@ -67,7 +66,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "spot_light",
         display_name: "Spot Light",
-        icon: regular::FLASHLIGHT,
+        icon: "flashlight",
         category: "lighting",
         spawn_fn: |world| {
             world
@@ -83,7 +82,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "ambient_light",
         display_name: "Ambient Light",
-        icon: regular::SUN_DIM,
+        icon: "sun-dim",
         category: "lighting",
         spawn_fn: |world| {
             world
@@ -102,7 +101,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "camera_3d",
         display_name: "Camera 3D",
-        icon: regular::VIDEO_CAMERA,
+        icon: "video-camera",
         category: "camera",
         spawn_fn: |world| {
             let mut count = 0u32;
@@ -141,7 +140,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "camera_2d",
         display_name: "Camera 2D",
-        icon: regular::VIDEO_CAMERA,
+        icon: "video-camera",
         category: "camera",
         spawn_fn: |world| {
             // Mirror the 3D preset: tag with SceneCamera so play mode can
@@ -188,7 +187,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "sprite",
         display_name: "Sprite",
-        icon: regular::IMAGE_SQUARE,
+        icon: "image-square",
         category: "nodes_2d",
         // Default spawn is a 100×100 light-blue square. Bevy's Sprite renders
         // a flat-colored quad when no image is set — gives the user something
@@ -215,7 +214,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     registry.register(EntityPreset {
         id: "node_2d",
         display_name: "Node 2D",
-        icon: regular::SHAPES,
+        icon: "shapes",
         category: "nodes_2d",
         spawn_fn: |world| {
             world
@@ -234,7 +233,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Camera3d>(),
         name: "Camera",
-        icon: regular::VIDEO_CAMERA,
+        icon: "video-camera",
         color: [100, 180, 255],
         priority: 100,
         dynamic_icon_fn: None,
@@ -242,7 +241,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Camera2d>(),
         name: "Camera 2D",
-        icon: regular::VIDEO_CAMERA,
+        icon: "video-camera",
         color: [180, 220, 130],
         priority: 100,
         dynamic_icon_fn: None,
@@ -250,7 +249,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Sprite>(),
         name: "Sprite",
-        icon: regular::IMAGE_SQUARE,
+        icon: "image-square",
         color: [180, 220, 130],
         priority: 50,
         dynamic_icon_fn: None,
@@ -258,7 +257,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<renzora::core::Node2d>(),
         name: "Node 2D",
-        icon: regular::SHAPES,
+        icon: "shapes",
         color: [180, 220, 130],
         priority: 70,
         dynamic_icon_fn: None,
@@ -266,7 +265,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<DirectionalLight>(),
         name: "Directional Light",
-        icon: regular::SUN,
+        icon: "sun",
         color: [255, 220, 100],
         priority: 90,
         dynamic_icon_fn: None,
@@ -274,7 +273,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<PointLight>(),
         name: "Point Light",
-        icon: regular::LIGHTBULB,
+        icon: "lightbulb",
         color: [255, 200, 80],
         priority: 90,
         dynamic_icon_fn: None,
@@ -282,7 +281,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<SpotLight>(),
         name: "Spot Light",
-        icon: regular::FLASHLIGHT,
+        icon: "flashlight",
         color: [255, 200, 80],
         priority: 90,
         dynamic_icon_fn: None,
@@ -290,7 +289,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<AmbientLight>(),
         name: "Ambient Light",
-        icon: regular::SUN_DIM,
+        icon: "sun-dim",
         color: [200, 200, 150],
         priority: 80,
         dynamic_icon_fn: None,
@@ -298,7 +297,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Mesh3d>(),
         name: "Mesh",
-        icon: regular::CUBE,
+        icon: "cube",
         color: [255, 170, 100],
         priority: 50,
         dynamic_icon_fn: None,
@@ -334,7 +333,7 @@ fn sprite_image_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "sprite_image",
         display_name: "Sprite Image",
-        icon: regular::IMAGE_SQUARE,
+        icon: "image-square",
         category: "rendering",
         // Show for any Sprite — `SpriteImagePath` is auto-added on first
         // assignment if missing, so the user always sees the drop slot.
@@ -388,7 +387,6 @@ fn sprite_image_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -396,7 +394,7 @@ fn name_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "name",
         display_name: "Name",
-        icon: regular::TAG,
+        icon: "tag",
         category: "transform",
         has_fn: |world, entity| world.get::<Name>(entity).is_some(),
         add_fn: None,
@@ -463,7 +461,6 @@ fn name_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -471,7 +468,7 @@ fn transform_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "transform",
         display_name: "Transform",
-        icon: regular::ARROWS_OUT_CARDINAL,
+        icon: "arrows-out-cardinal",
         category: "transform",
         has_fn: |world, entity| world.get::<Transform>(entity).is_some(),
         add_fn: None,
@@ -534,7 +531,6 @@ fn transform_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -542,7 +538,7 @@ fn visibility_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "visibility",
         display_name: "Visibility",
-        icon: regular::EYE,
+        icon: "eye",
         category: "rendering",
         has_fn: |world, entity| world.get::<Visibility>(entity).is_some(),
         add_fn: None,
@@ -569,7 +565,6 @@ fn visibility_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -577,7 +572,7 @@ fn directional_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "directional_light",
         display_name: "Directional Light",
-        icon: regular::SUN,
+        icon: "sun",
         category: "lighting",
         has_fn: |world, entity| world.get::<DirectionalLight>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -643,7 +638,6 @@ fn directional_light_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -651,7 +645,7 @@ fn point_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "point_light",
         display_name: "Point Light",
-        icon: regular::LIGHTBULB,
+        icon: "lightbulb",
         category: "lighting",
         has_fn: |world, entity| world.get::<PointLight>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -737,7 +731,6 @@ fn point_light_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -745,7 +738,7 @@ fn spot_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "spot_light",
         display_name: "Spot Light",
-        icon: regular::FLASHLIGHT,
+        icon: "flashlight",
         category: "lighting",
         has_fn: |world, entity| world.get::<SpotLight>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -871,7 +864,6 @@ fn spot_light_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -879,7 +871,7 @@ fn ambient_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "ambient_light",
         display_name: "Ambient Light",
-        icon: regular::SUN_DIM,
+        icon: "sun-dim",
         category: "lighting",
         has_fn: |world, entity| world.get::<AmbientLight>(entity).is_some(),
         add_fn: None,
@@ -925,7 +917,6 @@ fn ambient_light_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -933,7 +924,7 @@ fn camera_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "camera",
         display_name: "Camera",
-        icon: regular::VIDEO_CAMERA,
+        icon: "video-camera",
         category: "camera",
         has_fn: |world, entity| world.get::<Camera>(entity).is_some(),
         add_fn: None,
@@ -1013,7 +1004,6 @@ fn camera_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -1021,7 +1011,7 @@ fn camera3d_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "camera3d",
         display_name: "Camera 3D",
-        icon: regular::APERTURE,
+        icon: "aperture",
         category: "camera",
         has_fn: |world, entity| world.get::<Camera3d>(entity).is_some(),
         add_fn: None,
@@ -1038,7 +1028,6 @@ fn camera3d_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -1046,7 +1035,7 @@ fn mesh3d_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "mesh3d",
         display_name: "Mesh 3D",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "rendering",
         has_fn: |world, entity| world.get::<Mesh3d>(entity).is_some(),
         add_fn: None,
@@ -1063,7 +1052,6 @@ fn mesh3d_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -1071,7 +1059,7 @@ fn environment_map_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "environment_map_light",
         display_name: "Environment Map",
-        icon: regular::GLOBE_HEMISPHERE_EAST,
+        icon: "globe-hemisphere-east",
         category: "lighting",
         has_fn: |world, entity| world.get::<EnvironmentMapLight>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -1148,7 +1136,6 @@ fn environment_map_light_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -1156,7 +1143,7 @@ fn light_probe_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "light_probe",
         display_name: "Light Probe",
-        icon: regular::BROADCAST,
+        icon: "broadcast",
         category: "lighting",
         has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -1179,7 +1166,6 @@ fn light_probe_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
     }
 }
 
@@ -1187,7 +1173,7 @@ fn lightmap_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "lightmap",
         display_name: "Lightmap",
-        icon: regular::IMAGE,
+        icon: "image",
         category: "lighting",
         has_fn: |world, entity| world.get::<Lightmap>(entity).is_some(),
         add_fn: None,
@@ -1224,7 +1210,6 @@ fn lightmap_entry() -> InspectorEntry {
                 set_fn: |_, _, _| {},
             },
         ],
-        custom_ui_fn: None,
     }
 }
 
@@ -1232,7 +1217,7 @@ fn volumetric_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "volumetric_light",
         display_name: "Volumetric Light",
-        icon: regular::SUN_HORIZON,
+        icon: "sun-horizon",
         category: "lighting",
         has_fn: |world, entity| world.get::<VolumetricLight>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -1255,7 +1240,6 @@ fn volumetric_light_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
-        custom_ui_fn: None,
     }
 }
 

@@ -218,7 +218,6 @@ impl Plugin for GameUiPlugin {
                     renzora_editor::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
                     renzora_editor::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
                 ],
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_widget",
@@ -231,7 +230,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::widget_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_layout",
@@ -250,7 +248,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::layout_fields(),
-                custom_ui_fn: None,
             });
             // Per-style components — each is individually addable via the
             // Add Component overlay and removable via the trash icon. A text
@@ -273,7 +270,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_stroke",
@@ -293,7 +289,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_border_radius",
@@ -314,7 +309,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::border_radius_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_text",
@@ -333,7 +327,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::text_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_padding",
@@ -352,7 +345,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::padding_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_opacity",
@@ -369,7 +361,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::opacity_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_shadow",
@@ -388,7 +379,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::shadow_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_clip",
@@ -409,7 +399,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::clip_content_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_cursor",
@@ -428,7 +417,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::cursor_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_interaction",
@@ -453,7 +441,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: None,
             });
             // Per-widget-type data components — Phase C. Each is its own
             // entry; users can swap a slider's data, drop a tooltip's data,
@@ -475,7 +462,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::slider_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_checkbox_data",
@@ -496,7 +482,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::checkbox_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_toggle_data",
@@ -515,7 +500,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::toggle_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_radio_data",
@@ -536,7 +520,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::radio_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_dropdown_data",
@@ -557,7 +540,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: Vec::new(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_text_input_data",
@@ -578,7 +560,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::text_input_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_scroll_view_data",
@@ -599,7 +580,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::scroll_view_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_tooltip_data",
@@ -618,7 +598,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::tooltip_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_modal_data",
@@ -637,7 +616,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::modal_fields(),
-                custom_ui_fn: None,
             });
             app.register_inspector(renzora_editor::InspectorEntry {
                 type_id: "ui_draggable_window_data",
@@ -662,7 +640,6 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: inspector::draggable_window_fields(),
-                custom_ui_fn: None,
             });
 
             // Register hierarchy icons for UI entities

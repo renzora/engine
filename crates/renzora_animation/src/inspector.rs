@@ -19,7 +19,6 @@ pub fn animator_inspector_entry() -> InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        custom_ui_fn: None,
         fields: vec![renzora_editor::float_field!(
             "Blend Duration",
             AnimatorComponent,

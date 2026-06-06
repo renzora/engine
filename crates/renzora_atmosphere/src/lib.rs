@@ -208,7 +208,6 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
             renzora_editor::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
         ],
-        custom_ui_fn: None,
     }
 }
 

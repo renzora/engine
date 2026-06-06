@@ -154,7 +154,6 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![],
-        custom_ui_fn: None,
     }
 }
 
