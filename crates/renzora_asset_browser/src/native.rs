@@ -482,8 +482,17 @@ fn import_click(
         return;
     }
     commands.insert_resource(renzora::core::ImportRequested);
-    if let Some(folder) = state.current.clone().or_else(|| project.map(|p| p.path.clone())) {
-        commands.insert_resource(renzora::core::ImportTargetDir(folder.to_string_lossy().to_string()));
+    // Pass a PROJECT-RELATIVE target (e.g. "models/foo"), not an absolute path —
+    // the overlay prefixes it with "assets/". Empty (project root) → use default.
+    let Some(project) = project else { return };
+    let folder = state.current.clone().unwrap_or_else(|| project.path.clone());
+    let target_dir = folder
+        .strip_prefix(&project.path)
+        .ok()
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    if !target_dir.is_empty() {
+        commands.insert_resource(renzora::core::ImportTargetDir(target_dir));
     }
 }
 
