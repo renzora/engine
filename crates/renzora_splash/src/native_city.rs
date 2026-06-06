@@ -23,7 +23,8 @@ const CITY_LAYER: usize = 6;
 const RES: UVec2 = UVec2::new(1920, 1080);
 const GRID: i32 = 15; // buildings per side
 const SPACING: f32 = 9.0;
-const EMISSIVE: f32 = 3.5;
+/// Seconds each camera "shot" holds before cutting to the next angle.
+const SHOT_SECS: f32 = 9.0;
 
 /// The fullscreen UI image node (in the splash root) that shows the city render.
 #[derive(Component)]
@@ -183,30 +184,14 @@ fn spawn_city(
     // shows through as the floor.
     let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
 
+    // All buildings share one dark material — lit only by the coloured rim
+    // lights, so they read as dark silhouettes against the glowing sky.
     let dark = materials.add(StandardMaterial {
         base_color: Color::srgb(0.03, 0.035, 0.05),
         perceptual_roughness: 0.55,
         metallic: 0.2,
         ..default()
     });
-    let neon_colors = [
-        Color::srgb(0.0, 0.9, 1.0),  // cyan
-        Color::srgb(1.0, 0.2, 0.8),  // magenta
-        Color::srgb(1.0, 0.55, 0.1), // amber
-        Color::srgb(0.5, 0.3, 1.0),  // violet
-    ];
-    let neon: Vec<Handle<StandardMaterial>> = neon_colors
-        .iter()
-        .map(|cc| {
-            let l = cc.to_linear();
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.02, 0.02, 0.03),
-                emissive: LinearRgba::new(l.red * EMISSIVE, l.green * EMISSIVE, l.blue * EMISSIVE, 1.0),
-                perceptual_roughness: 0.4,
-                ..default()
-            })
-        })
-        .collect();
 
     let half = GRID / 2;
     for i in -half..=half {
@@ -226,15 +211,9 @@ fn spawn_city(
             // wavelength).
             let phase = (x * x + z * z).sqrt() * 0.10;
 
-            let mat = if hash01(seed ^ 0x6666) > 0.62 {
-                neon[(hash01(seed ^ 0x7777) * neon.len() as f32) as usize % neon.len()].clone()
-            } else {
-                dark.clone()
-            };
-
             commands.spawn((
                 Mesh3d(cube.clone()),
-                MeshMaterial3d(mat),
+                MeshMaterial3d(dark.clone()),
                 Transform {
                     translation: Vec3::new(x, h * 0.5, z),
                     scale: Vec3::new(w, h, d),
@@ -252,18 +231,43 @@ fn spawn_city(
 
 // ── Animation ────────────────────────────────────────────────────────────────
 
+/// Periodically cut between a few camera "shots" (each slowly drifting), like a
+/// demo reel — mid orbit, top-down, far wide push-in, high distant orbit.
 fn animate_city(time: Res<Time>, mut cam: Query<&mut Transform, With<CityCamera>>) {
     let t = time.elapsed_secs();
+    let shot = (t / SHOT_SECS).floor();
+    let lt = t - shot * SHOT_SECS; // local time within this shot
+    let idx = (shot as i64).rem_euclid(4);
 
-    // Camera: orbit with a slow dolly in/out and a vertical bob, plus a drifting
-    // look target — enough motion to read as a live flythrough.
-    let a = t * 0.10;
-    let r = 80.0 + 18.0 * (t * 0.07).sin();
-    let height = 26.0 + 8.0 * (t * 0.13).sin();
-    let pos = Vec3::new(a.cos() * r, height, a.sin() * r);
-    let look = Vec3::new(4.0 * (t * 0.05).sin(), 11.0 + 2.0 * (t * 0.11).cos(), 0.0);
+    let (pos, look, up) = match idx {
+        0 => {
+            // Mid orbit with a vertical bob.
+            let a = lt * 0.14;
+            (
+                Vec3::new(a.cos() * 82.0, 26.0 + 5.0 * (lt * 0.2).sin(), a.sin() * 82.0),
+                Vec3::new(0.0, 11.0, 0.0),
+                Vec3::Y,
+            )
+        }
+        1 => {
+            // Top-down, slowly rotating.
+            let a = lt * 0.12;
+            (Vec3::new(a.cos() * 18.0, 125.0, a.sin() * 18.0), Vec3::ZERO, Vec3::Z)
+        }
+        2 => {
+            // Far, wide, slow push-in.
+            let r = 150.0 - lt * 3.0;
+            (Vec3::new(28.0 * (lt * 0.1).sin(), 22.0, r), Vec3::new(0.0, 12.0, 0.0), Vec3::Y)
+        }
+        _ => {
+            // High distant orbit.
+            let a = lt * 0.07;
+            (Vec3::new(a.cos() * 135.0, 72.0, a.sin() * 135.0), Vec3::new(0.0, 5.0, 0.0), Vec3::Y)
+        }
+    };
+
     for mut tr in &mut cam {
-        *tr = Transform::from_translation(pos).looking_at(look, Vec3::Y);
+        *tr = Transform::from_translation(pos).looking_at(look, up);
     }
 }
 

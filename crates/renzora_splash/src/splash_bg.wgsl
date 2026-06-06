@@ -76,7 +76,7 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
 
     // Pixelated sky: a dithered vertical gradient + a pulsating radial glow,
     // posterised into chunky blocks for a retro look.
-    let blocks = vec2<f32>(96.0 * aspect, 96.0);
+    let blocks = vec2<f32>(190.0 * aspect, 190.0);
     let cell = floor(uv * blocks);
     let buv = (cell + 0.5) / blocks;                 // block-centre uv
     let dith = bayer4(vec2<i32>(i32(cell.x), i32(cell.y)));
@@ -91,8 +91,8 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let radial = (1.0 - smoothstep(0.0, 0.62, length(rc))) * mix(0.18, 0.85, pulse);
     sky = sky + vec3<f32>(0.55, 0.14, 0.62) * radial;
 
-    // Posterise + ordered-dither → pixelated bands.
-    let levels = 16.0;
+    // Posterise + ordered-dither → subtle pixelated bands.
+    let levels = 28.0;
     var col = floor(sky * levels + dith) / levels;
 
     // Hue-cycled grid colour (slow, so the scene reads as alive but not busy).
