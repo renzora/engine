@@ -3,7 +3,6 @@
 //! External crates implement `EditorPanel` and register via `PanelRegistry`.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 /// Where a panel prefers to appear by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,9 +34,6 @@ pub trait EditorPanel: Send + Sync + 'static {
     fn category(&self) -> &str {
         "General"
     }
-
-    /// Render the panel content into the given `egui::Ui`.
-    fn ui(&self, ui: &mut egui::Ui, world: &World);
 
     /// Whether this panel can be closed by the user.
     fn closable(&self) -> bool {

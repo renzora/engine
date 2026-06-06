@@ -5,13 +5,10 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
-bevy_egui = "0.39"
 egui-phosphor = { version = "0.11", features = ["regular"] }
-renzora_theme = { path = "../renzora_theme" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 dirs = "5"
-image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true

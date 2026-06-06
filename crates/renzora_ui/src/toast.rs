@@ -1,8 +1,12 @@
-//! Toast notification system — ephemeral messages that appear in the bottom-right
-//! corner of the editor and fade out after a configurable duration.
+//! Toast notification queue — ephemeral messages surfaced by the editor shell.
+//!
+//! This is a pure data queue: editor systems push notifications via
+//! [`Toasts::info`]/[`success`](Toasts::success)/[`warning`](Toasts::warning)/
+//! [`error`](Toasts::error), and the native (bevy_ui) shell drains and renders
+//! them. The legacy egui rendering lived here but was removed in the native
+//! migration.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 /// Severity level for a toast notification.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -14,15 +18,17 @@ pub enum ToastLevel {
 }
 
 impl ToastLevel {
-    pub fn color(&self) -> egui::Color32 {
+    /// Accent color for this level (RGB).
+    pub fn color(&self) -> [u8; 3] {
         match self {
-            ToastLevel::Info => egui::Color32::from_rgb(140, 180, 220),
-            ToastLevel::Success => egui::Color32::from_rgb(100, 200, 120),
-            ToastLevel::Warning => egui::Color32::from_rgb(230, 180, 80),
-            ToastLevel::Error => egui::Color32::from_rgb(220, 80, 80),
+            ToastLevel::Info => [140, 180, 220],
+            ToastLevel::Success => [100, 200, 120],
+            ToastLevel::Warning => [230, 180, 80],
+            ToastLevel::Error => [220, 80, 80],
         }
     }
 
+    /// Phosphor icon glyph for this level.
     pub fn icon(&self) -> &'static str {
         match self {
             ToastLevel::Info => egui_phosphor::regular::INFO,
@@ -43,7 +49,6 @@ pub struct Toast {
 }
 
 const DEFAULT_DURATION: f64 = 3.0;
-const FADE_DURATION: f64 = 0.5;
 
 /// Resource that stores active toast notifications.
 #[derive(Resource, Default)]
@@ -72,98 +77,29 @@ impl Toasts {
         self.entries.push(Toast {
             message: message.into(),
             level,
-            created: 0.0, // filled in at render time if zero
+            created: 0.0, // filled in by the consumer when first shown
             duration: DEFAULT_DURATION,
         });
     }
 
-    /// Render toasts in the bottom-right corner. Call this from the main editor UI.
-    pub fn show(&mut self, ctx: &egui::Context, current_time: f64) {
-        // Stamp creation time on new toasts
-        for toast in &mut self.entries {
-            if toast.created == 0.0 {
-                toast.created = current_time;
-            }
-        }
+    /// Whether any toasts are queued.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 
-        // Remove expired
-        self.entries
-            .retain(|t| current_time - t.created < t.duration);
+    /// Borrow the queued toasts (e.g. for a native renderer).
+    pub fn entries(&self) -> &[Toast] {
+        &self.entries
+    }
 
-        if self.entries.is_empty() {
-            return;
-        }
+    /// Mutably borrow the queued toasts (e.g. to stamp creation time or prune
+    /// expired entries from a native renderer).
+    pub fn entries_mut(&mut self) -> &mut Vec<Toast> {
+        &mut self.entries
+    }
 
-        let screen = ctx.available_rect();
-        let margin = 12.0;
-        let toast_width = 300.0;
-        let toast_height = 32.0;
-        let spacing = 4.0;
-
-        for (i, toast) in self.entries.iter().rev().enumerate() {
-            let age = current_time - toast.created;
-            let fade_in = (age / 0.15).min(1.0) as f32;
-            let fade_out = if age > toast.duration - FADE_DURATION {
-                ((toast.duration - age) / FADE_DURATION).max(0.0) as f32
-            } else {
-                1.0
-            };
-            let alpha = fade_in * fade_out;
-            if alpha <= 0.0 {
-                continue;
-            }
-
-            let y = screen.max.y - margin - (i as f32 + 1.0) * (toast_height + spacing);
-            let x = screen.max.x - margin - toast_width;
-
-            egui::Area::new(egui::Id::new("toast").with(i))
-                .fixed_pos(egui::pos2(x, y))
-                .order(egui::Order::Foreground)
-                .interactable(false)
-                .show(ctx, |ui| {
-                    let color = toast.level.color();
-                    let bg =
-                        egui::Color32::from_rgba_unmultiplied(30, 30, 35, (alpha * 240.0) as u8);
-                    let border = egui::Color32::from_rgba_unmultiplied(
-                        color.r(),
-                        color.g(),
-                        color.b(),
-                        (alpha * 180.0) as u8,
-                    );
-                    let text_color =
-                        egui::Color32::from_rgba_unmultiplied(230, 230, 230, (alpha * 255.0) as u8);
-                    let icon_color = egui::Color32::from_rgba_unmultiplied(
-                        color.r(),
-                        color.g(),
-                        color.b(),
-                        (alpha * 255.0) as u8,
-                    );
-
-                    egui::Frame::NONE
-                        .fill(bg)
-                        .stroke(egui::Stroke::new(1.0, border))
-                        .inner_margin(egui::Margin::symmetric(10, 6))
-                        .corner_radius(egui::CornerRadius::same(6))
-                        .show(ui, |ui| {
-                            ui.set_width(toast_width - 22.0);
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 8.0;
-                                ui.label(
-                                    egui::RichText::new(toast.level.icon())
-                                        .size(14.0)
-                                        .color(icon_color),
-                                );
-                                ui.label(
-                                    egui::RichText::new(&toast.message)
-                                        .size(12.0)
-                                        .color(text_color),
-                                );
-                            });
-                        });
-                });
-        }
-
-        // Request repaint while toasts are visible
-        ctx.request_repaint();
+    /// Remove and return all queued toasts.
+    pub fn drain(&mut self) -> Vec<Toast> {
+        std::mem::take(&mut self.entries)
     }
 }

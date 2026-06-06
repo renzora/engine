@@ -567,12 +567,8 @@ fn asset_drag(
                     name: file_name_of(&path),
                     paths,
                     icon: String::new(),
-                    // `AssetDragPayload` (renzora_ui) still types these fields as
-                    // egui's `Color32`/`Pos2`; they only feed the legacy egui drag
-                    // ghost, which the native browser replaces with `drag_ghost`.
-                    // The values are inert under the bevy_ui shell.
-                    color: egui::Color32::from_rgb(170, 175, 190),
-                    origin: egui::Pos2::new(origin.x, origin.y),
+                    color: [170, 175, 190],
+                    origin: Vec2::new(origin.x, origin.y),
                     is_detached: true,
                     drag_count: count,
                     path,
