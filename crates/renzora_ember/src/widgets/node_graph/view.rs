@@ -169,6 +169,7 @@ pub fn graph_node_view(
     x: f32,
     y: f32,
     selected: bool,
+    thumbnail: Option<Handle<Image>>,
 ) -> Entity {
     let node = commands
         .spawn((
@@ -219,6 +220,26 @@ pub fn graph_node_view(
         let port = port_dot(commands, node_id, pin, true, NODE_W, cy, *pin_color);
         commands.entity(node).add_children(&[r, port]);
         row += 1;
+    }
+    // Optional preview thumbnail (e.g. texture nodes).
+    if let Some(img) = thumbnail {
+        let thumb = commands
+            .spawn((
+                Node {
+                    width: Val::Px(NODE_W - 16.0),
+                    height: Val::Px(NODE_W - 16.0),
+                    margin: UiRect::all(Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                ImageNode::new(img),
+                BorderColor::all(rgb(tree_line())),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("ngv-node-thumb"),
+            ))
+            .id();
+        commands.entity(node).add_child(thumb);
     }
     node
 }

@@ -20,7 +20,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
-use renzora_shader::material::graph::{PinDir, PinType};
+use renzora_shader::material::graph::{PinDir, PinType, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
@@ -133,12 +133,23 @@ fn pin_rgb(t: PinType) -> (u8, u8, u8) {
 
 type Port = (String, String, (u8, u8, u8));
 
-#[allow(clippy::type_complexity)]
+struct NodeSnap {
+    id: u64,
+    title: String,
+    color: (u8, u8, u8),
+    pos: [f32; 2],
+    inputs: Vec<Port>,
+    outputs: Vec<Port>,
+    selected: bool,
+    tex_path: Option<String>,
+    thumb: Option<Handle<Image>>,
+}
+
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
+    let assets = world.get_resource::<AssetServer>();
     let sel = s.selected_node;
-    // (id, title, color, position, inputs, outputs, selected)
-    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool)> = s
+    let nodes: Vec<NodeSnap> = s
         .graph
         .nodes
         .iter()
@@ -149,27 +160,31 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
             let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
             let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
-            (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
+            let tex_path = n.input_values.get("texture").and_then(|v| match v {
+                PinValue::TexturePath(p) if !p.is_empty() => Some(p.clone()),
+                _ => None,
+            });
+            let thumb = tex_path.as_ref().and_then(|p| assets.map(|a| a.load::<Image>(p)));
+            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb }
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
         .iter()
-        .map(|(id, title, color, _pos, ins, outs, _selected)| {
+        .map(|n| {
             let mut k = hasher();
-            id.hash(&mut k);
+            n.id.hash(&mut k);
             let mut h = hasher();
             // Structure only (NOT position OR selection) so neither dragging nor
-            // selecting a node rebuilds it — selection is applied in-place by the
-            // view (a mid-drag rebuild would otherwise kill the drag).
-            (title, color, ins, outs).hash(&mut h);
+            // selecting rebuilds a node — selection is applied in place by the view.
+            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, title, color, pos, ins, outs, selected) = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected)
+            let n = &nodes[i];
+            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone())
         }),
     }
 }
