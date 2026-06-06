@@ -25,10 +25,14 @@ use crate::SplashState;
 /// Free render layer (5 = vello, 7 = material thumbs, 8 = model thumbs).
 const CITY_LAYER: usize = 6;
 const RES: UVec2 = UVec2::new(1920, 1080);
-const GRID: i32 = 27; // buildings per side
+const GRID: i32 = 31; // buildings per side
 const SPACING: f32 = 9.0;
 /// Seconds each camera "shot" holds before cutting to the next angle.
 const SHOT_SECS: f32 = 9.0;
+/// Count of small drifting/spinning cubes floating over the city.
+const SMALL_CUBES: usize = 2400;
+/// Half-extent the small cubes scatter across (x/z).
+const CITY_EXTENT: f32 = 160.0;
 
 /// The fullscreen UI image node (in the splash root) that shows the city render.
 #[derive(Component)]
@@ -42,9 +46,20 @@ struct CityCamera;
 #[derive(Component)]
 struct CityBuilding {
     base_h: f32,
+    base_w: f32,
+    base_d: f32,
     phase: f32,
     /// Base elevation, so buildings don't all sit on the same floor level.
     floor_y: f32,
+}
+
+/// A small floating cube that spins in place (and breathes with the rest).
+#[derive(Component)]
+struct SpinCube {
+    axis: Vec3,
+    speed: f32,
+    phase: f32,
+    scale: f32,
 }
 
 /// Marker on every world entity the city owns, for one-shot teardown.
@@ -88,7 +103,7 @@ pub(crate) fn register(app: &mut App) {
         .add_plugins(UiMaterialPlugin::<GlitchMaterial>::default())
         .add_systems(
             Update,
-            (manage_city, attach_city_view, animate_city, animate_buildings, update_glitch),
+            (manage_city, attach_city_view, animate_city, animate_buildings, animate_spincubes, update_glitch),
         );
 }
 
@@ -278,7 +293,7 @@ fn spawn_city(
                     scale: Vec3::new(w, h, d),
                     ..default()
                 },
-                CityBuilding { base_h: h, phase, floor_y },
+                CityBuilding { base_h: h, base_w: w, base_d: d, phase, floor_y },
                 layer.clone(),
                 CityEntity,
                 renzora::HideInHierarchy,
@@ -286,6 +301,72 @@ fn spawn_city(
             ));
         }
     }
+
+    // ── Thousands of small spinning shapes (mixed primitives, muted colours) ──
+    let shapes: [Handle<Mesh>; 5] = [
+        cube.clone(),
+        meshes.add(Sphere::new(0.6)),
+        meshes.add(Cylinder::new(0.45, 1.1)),
+        meshes.add(Capsule3d::new(0.35, 0.8)),
+        meshes.add(Torus::new(0.22, 0.5)),
+    ];
+    // Muted, low-intensity emissive palette (not bright).
+    let palette = [
+        (0.18, 0.10, 0.22), // violet
+        (0.09, 0.18, 0.20), // teal
+        (0.20, 0.13, 0.07), // amber
+        (0.11, 0.19, 0.13), // green
+        (0.17, 0.09, 0.16), // magenta
+        (0.09, 0.13, 0.22), // blue
+    ];
+    let small_mats: Vec<Handle<StandardMaterial>> = palette
+        .iter()
+        .map(|(r, g, b)| {
+            materials.add(StandardMaterial {
+                base_color: Color::srgb(0.02, 0.02, 0.03),
+                emissive: LinearRgba::new(*r, *g, *b, 1.0),
+                perceptual_roughness: 0.35,
+                metallic: 0.3,
+                ..default()
+            })
+        })
+        .collect();
+    for k in 0..SMALL_CUBES {
+        let s = (k as u32).wrapping_mul(2_654_435_761).wrapping_add(101);
+        let x = (hash01(s ^ 0xA1) - 0.5) * 2.0 * CITY_EXTENT;
+        let z = (hash01(s ^ 0xB2) - 0.5) * 2.0 * CITY_EXTENT;
+        let y = 3.0 + hash01(s ^ 0xC3) * 90.0;
+        let axis = Vec3::new(
+            hash01(s ^ 0xD4) - 0.5,
+            hash01(s ^ 0xE5) - 0.5,
+            hash01(s ^ 0xF6) - 0.5,
+        )
+        .normalize_or_zero();
+        let axis = if axis == Vec3::ZERO { Vec3::Y } else { axis };
+        let scale = 0.35 + hash01(s ^ 0x17) * 1.1;
+        let mesh = shapes[(hash01(s ^ 0x4A) * shapes.len() as f32) as usize % shapes.len()].clone();
+        let mat = small_mats[(hash01(s ^ 0x5B) * small_mats.len() as f32) as usize % small_mats.len()].clone();
+        commands.spawn((
+            Mesh3d(mesh),
+            MeshMaterial3d(mat),
+            Transform { translation: Vec3::new(x, y, z), scale: Vec3::splat(scale), ..default() },
+            SpinCube {
+                axis,
+                speed: 0.4 + hash01(s ^ 0x28) * 1.8,
+                phase: hash01(s ^ 0x39) * 6.2832,
+                scale,
+            },
+            layer.clone(),
+            CityEntity,
+            renzora::HideInHierarchy,
+            Name::new("Splash City Spark"),
+        ));
+    }
+}
+
+/// Slow global breathing factor shared by buildings and sparks.
+fn breathe(t: f32) -> f32 {
+    1.0 + 0.08 * (t * 0.4).sin()
 }
 
 // ── Animation ────────────────────────────────────────────────────────────────
@@ -335,10 +416,21 @@ fn animate_city(time: Res<Time>, mut cam: Query<&mut Transform, With<CityCamera>
 /// grow upward from the ground (base stays at y = 0).
 fn animate_buildings(time: Res<Time>, mut q: Query<(&CityBuilding, &mut Transform)>) {
     let t = time.elapsed_secs();
+    let br = breathe(t);
     for (b, mut tr) in &mut q {
         let amp = 1.5 + b.base_h * 0.18;
-        let h = (b.base_h + amp * (b.phase - t * 0.45).sin()).max(2.0);
-        tr.scale.y = h;
+        let h = (b.base_h + amp * (b.phase - t * 0.45).sin()).max(2.0) * br;
+        tr.scale = Vec3::new(b.base_w * br, h, b.base_d * br);
         tr.translation.y = b.floor_y + h * 0.5;
+    }
+}
+
+/// Spin the small cubes in place and breathe them (a touch more than buildings).
+fn animate_spincubes(time: Res<Time>, mut q: Query<(&SpinCube, &mut Transform)>) {
+    let t = time.elapsed_secs();
+    let br = 1.0 + 0.2 * (t * 0.5).sin();
+    for (s, mut tr) in &mut q {
+        tr.rotation = Quat::from_axis_angle(s.axis, t * s.speed + s.phase);
+        tr.scale = Vec3::splat(s.scale * br);
     }
 }

@@ -144,5 +144,8 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let vig = smoothstep(0.82, 1.0, uv.y);
     col = mix(col, vec3<f32>(0.02, 0.024, 0.047), vig * 0.6);
 
+    // Film grain over the whole sky.
+    col = col + (hash21(uv * 950.0 + vec2<f32>(t, t * 1.3)) - 0.5) * 0.018;
+
     return vec4<f32>(pow(col, vec3<f32>(2.2)), 1.0);
 }

@@ -35,9 +35,14 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let cb = textureSample(tex, tex_sampler, vec2<f32>(clamp(ux - sep, 0.0, 1.0), in.uv.y));
     var col = vec3<f32>(cr.r, cg.g, cb.b);
 
-    // Scanline brightness flicker.
+    // Scanline brightness flicker (during glitches).
     let flick = 1.0 + (rand(slice * 2.3 + floor(t * 50.0)) - 0.5) * 0.6 * g;
     col = col * flick;
+
+    // Always-on touches: faint grain + edge vignette.
+    col = col + (rand(in.uv.x * 53.7 + in.uv.y * 91.3 + t * 7.0) - 0.5) * 0.022;
+    let vig = smoothstep(0.95, 0.45, length(in.uv - vec2<f32>(0.5, 0.5)));
+    col = col * mix(0.78, 1.0, vig);
 
     return vec4<f32>(col, cg.a);
 }
