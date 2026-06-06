@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -107,54 +105,19 @@ fn oit_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
-        custom_ui_fn: Some(oit_custom_ui),
+        fields: vec![
+            renzora_editor::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
+            renzora_editor::float_field!(
+                "Alpha Threshold",
+                OitSettings,
+                alpha_threshold,
+                0.01,
+                0.0,
+                1.0
+            ),
+        ],
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn oit_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<OitSettings>(entity) else {
-        return;
-    };
-    let mut row = 0;
-
-    let mut layers = settings.layer_count;
-    inline_property(ui, row, "Layers", theme, |ui| {
-        let orig = layers;
-        ui.add(egui::DragValue::new(&mut layers).speed(1).range(1..=32));
-        if layers != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<OitSettings>(entity) {
-                    s.layer_count = layers;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    let mut threshold = settings.alpha_threshold;
-    inline_property(ui, row, "Alpha Threshold", theme, |ui| {
-        let orig = threshold;
-        ui.add(
-            egui::DragValue::new(&mut threshold)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-        if threshold != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<OitSettings>(entity) {
-                    s.alpha_threshold = threshold;
-                }
-            });
-        }
-    });
 }
 
 #[derive(Default)]

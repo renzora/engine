@@ -25,10 +25,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -182,8 +180,7 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui) in both backends; the
-        // egui inspector still uses `custom_ui_fn` below.
+        // Declarative fields render natively (bevy_ui).
         fields: vec![
             renzora_editor::float_field!("Speed Brighten", AutoExposureSettings, speed_brighten, 0.1, 0.0, 10.0),
             renzora_editor::float_field!("Speed Darken", AutoExposureSettings, speed_darken, 0.1, 0.0, 10.0),
@@ -193,115 +190,7 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
             renzora_editor::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
         ],
-        custom_ui_fn: Some(auto_exposure_custom_ui),
-    }
-}
-
-#[cfg(feature = "editor")]
-fn auto_exposure_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<AutoExposureSettings>(entity) else {
-        return;
-    };
-    let mut data = settings.clone();
-    let mut row = 0;
-    let mut changed = false;
-
-    inline_property(ui, row, "Speed Brighten", theme, |ui| {
-        let orig = data.speed_brighten;
-        ui.add(
-            egui::DragValue::new(&mut data.speed_brighten)
-                .speed(0.1)
-                .range(0.0..=10.0),
-        );
-        if data.speed_brighten != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Speed Darken", theme, |ui| {
-        let orig = data.speed_darken;
-        ui.add(
-            egui::DragValue::new(&mut data.speed_darken)
-                .speed(0.1)
-                .range(0.0..=10.0),
-        );
-        if data.speed_darken != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Range Min (EV)", theme, |ui| {
-        let orig = data.range_min;
-        ui.add(
-            egui::DragValue::new(&mut data.range_min)
-                .speed(0.1)
-                .range(-16.0..=8.0),
-        );
-        if data.range_min != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Range Max (EV)", theme, |ui| {
-        let orig = data.range_max;
-        ui.add(
-            egui::DragValue::new(&mut data.range_max)
-                .speed(0.1)
-                .range(-8.0..=16.0),
-        );
-        if data.range_max != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Filter Low (%)", theme, |ui| {
-        let orig = data.filter_low;
-        ui.add(
-            egui::DragValue::new(&mut data.filter_low)
-                .speed(0.01)
-                .range(0.0..=0.5),
-        );
-        if data.filter_low != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Filter High (%)", theme, |ui| {
-        let orig = data.filter_high;
-        ui.add(
-            egui::DragValue::new(&mut data.filter_high)
-                .speed(0.01)
-                .range(0.5..=1.0),
-        );
-        if data.filter_high != orig {
-            changed = true;
-        }
-    });
-    row += 1;
-    inline_property(ui, row, "Anti-Jitter Band", theme, |ui| {
-        let orig = data.exponential_transition_distance;
-        ui.add(
-            egui::DragValue::new(&mut data.exponential_transition_distance)
-                .speed(0.05)
-                .range(0.0..=5.0),
-        );
-        if data.exponential_transition_distance != orig {
-            changed = true;
-        }
-    });
-
-    if changed {
-        cmds.push(move |world: &mut World| {
-            if let Some(mut s) = world.get_mut::<AutoExposureSettings>(entity) {
-                *s = data;
-            }
-        });
+        custom_ui_fn: None,
     }
 }
 

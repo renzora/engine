@@ -104,7 +104,7 @@ impl ScriptPerfStats {
             .iter()
             .map(|(p, s)| (p.clone(), s.clone()))
             .collect();
-        out.sort_by(|a, b| b.1.last_on_update.cmp(&a.1.last_on_update));
+        out.sort_by_key(|x| std::cmp::Reverse(x.1.last_on_update));
         out
     }
 

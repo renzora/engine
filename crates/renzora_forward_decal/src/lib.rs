@@ -5,10 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 /// Wrapper settings for a forward decal entity.
@@ -137,58 +135,16 @@ fn decal_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
-        custom_ui_fn: Some(decal_custom_ui),
+        fields: vec![renzora_editor::float_field!(
+            "Depth Fade",
+            DecalSettings,
+            depth_fade_factor,
+            0.1,
+            0.01,
+            50.0
+        )],
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn decal_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<DecalSettings>(entity) else {
-        return;
-    };
-    let mut row = 0;
-
-    // Base color
-    let col = settings.base_color.to_srgba();
-    let mut rgba = [col.red, col.green, col.blue, col.alpha];
-    inline_property(ui, row, "Color", theme, |ui| {
-        let orig = rgba;
-        ui.color_edit_button_rgba_unmultiplied(&mut rgba);
-        if rgba != orig {
-            let c = Color::srgba(rgba[0], rgba[1], rgba[2], rgba[3]);
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
-                    s.base_color = c;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Depth fade factor
-    let mut fade = settings.depth_fade_factor;
-    inline_property(ui, row, "Depth Fade", theme, |ui| {
-        let orig = fade;
-        ui.add(
-            egui::DragValue::new(&mut fade)
-                .speed(0.1)
-                .range(0.01..=50.0),
-        );
-        if fade != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
-                    s.depth_fade_factor = fade;
-                }
-            });
-        }
-    });
 }
 
 #[derive(Default)]

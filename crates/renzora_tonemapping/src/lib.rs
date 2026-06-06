@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -160,63 +158,8 @@ fn inspector_entry() -> InspectorEntry {
             ),
             renzora_editor::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
         ],
-        custom_ui_fn: Some(tonemapping_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn tonemapping_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<TonemappingSettings>(entity) else {
-        return;
-    };
-
-    let mut row = 0;
-
-    // Mode combo box
-    let current_idx = settings.mode as usize;
-    inline_property(ui, row, "Mode", theme, |ui| {
-        let mut new_idx = current_idx;
-        egui::ComboBox::from_id_salt("tonemapping_mode")
-            .selected_text(*MODE_LABELS.get(current_idx).unwrap_or(&"Unknown"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, label) in MODE_LABELS.iter().enumerate() {
-                    if ui.selectable_value(&mut new_idx, i, *label).changed() {
-                        let mode = new_idx as u32;
-                        cmds.push(move |world: &mut World| {
-                            if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) {
-                                s.mode = mode;
-                            }
-                        });
-                    }
-                }
-            });
-    });
-    row += 1;
-
-    // EV100
-    let mut ev100 = settings.ev100;
-    inline_property(ui, row, "EV100", theme, |ui| {
-        let orig = ev100;
-        ui.add(
-            egui::DragValue::new(&mut ev100)
-                .speed(0.1)
-                .range(-16.0..=16.0),
-        );
-        if ev100 != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<TonemappingSettings>(entity) {
-                    s.ev100 = ev100;
-                }
-            });
-        }
-    });
 }
 
 // ── Deband Dither ──

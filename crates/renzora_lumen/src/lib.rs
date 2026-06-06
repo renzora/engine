@@ -31,10 +31,8 @@ pub use voxel_downsample::VoxelDownsamplePlugin;
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular::LIGHTNING,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
@@ -325,89 +323,7 @@ fn inspector_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: Some(lumen_custom_ui),
-    }
-}
-
-#[cfg(feature = "editor")]
-fn lumen_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<LumenLighting>(entity) else { return; };
-    let mut data = settings.clone();
-    let mut changed = false;
-
-    inline_property(ui, 0, "Quality", theme, |ui| {
-        let orig = data.quality;
-        egui::ComboBox::from_id_salt("lumen_quality")
-            .selected_text(format!("{:?}", data.quality))
-            .show_ui(ui, |ui| {
-                for q in [
-                    LumenQuality::Off,
-                    LumenQuality::ScreenSpace,
-                    LumenQuality::SdfLow,
-                    LumenQuality::SdfHigh,
-                    LumenQuality::Hwrt,
-                ] {
-                    let label = match q {
-                        LumenQuality::Off => "Off",
-                        LumenQuality::ScreenSpace => "Screen Space (SSGI)",
-                        LumenQuality::SdfLow => "SDF Low (Phase 5)",
-                        LumenQuality::SdfHigh => "SDF High (Phase 5)",
-                        LumenQuality::Hwrt => "Hardware RT (Phase 10)",
-                    };
-                    ui.selectable_value(&mut data.quality, q, label);
-                }
-            });
-        if data.quality != orig {
-            changed = true;
-        }
-    });
-
-    inline_property(ui, 1, "Intensity", theme, |ui| {
-        let orig = data.intensity;
-        ui.add(egui::DragValue::new(&mut data.intensity).speed(0.05).range(0.0..=5.0));
-        if data.intensity != orig {
-            changed = true;
-        }
-    });
-
-    inline_property(ui, 2, "Debug", theme, |ui| {
-        let orig = data.debug;
-        egui::ComboBox::from_id_salt("lumen_debug")
-            .selected_text(match data.debug {
-                LumenDebug::None => "None",
-                LumenDebug::IndirectOnly => "Indirect Only",
-                LumenDebug::VoxelCache => "Voxel Cache",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut data.debug, LumenDebug::None, "None");
-                ui.selectable_value(
-                    &mut data.debug,
-                    LumenDebug::IndirectOnly,
-                    "Indirect Only",
-                );
-                ui.selectable_value(
-                    &mut data.debug,
-                    LumenDebug::VoxelCache,
-                    "Voxel Cache",
-                );
-            });
-        if data.debug != orig {
-            changed = true;
-        }
-    });
-
-    if changed {
-        cmds.push(move |world: &mut World| {
-            if let Some(mut s) = world.get_mut::<LumenLighting>(entity) {
-                *s = data;
-            }
-        });
+        custom_ui_fn: None,
     }
 }
 

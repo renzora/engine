@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:renzora_editor", "dep:renzora_theme", "dep:bevy_egui", "dep:egui-phosphor", "dep:renzora_ember", "dep:renzora_inspector"]
+editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:renzora_ember", "dep:renzora_inspector"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -16,10 +16,8 @@ ron = "0.8"
 
 # Editor-only deps
 renzora_editor = { path = "../renzora_editor", optional = true }
-renzora_theme = { path = "../renzora_theme", optional = true }
 renzora_ember = { path = "../renzora_ember", optional = true }
 renzora_inspector = { path = "../renzora_inspector", optional = true }
-bevy_egui = { version = "0.39", optional = true }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
 [lints]

@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -76,9 +74,6 @@ fn sync_dof(
 }
 
 #[cfg(feature = "editor")]
-const DOF_MODE_LABELS: [&str; 2] = ["Gaussian", "Bokeh"];
-
-#[cfg(feature = "editor")]
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "depth_of_field",
@@ -107,104 +102,15 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
+        // Declarative fields render natively (bevy_ui).
         fields: vec![
             renzora_editor::enum_u32_field!("Mode", DepthOfFieldSettings, mode, ["Gaussian", "Bokeh"]),
             renzora_editor::float_field!("Focal Distance", DepthOfFieldSettings, focal_distance, 0.1, 0.1, 1000.0),
             renzora_editor::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
             renzora_editor::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
         ],
-        custom_ui_fn: Some(dof_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn dof_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<DepthOfFieldSettings>(entity) else {
-        return;
-    };
-
-    let mut row = 0;
-
-    // Mode
-    let current = settings.mode as usize;
-    inline_property(ui, row, "Mode", theme, |ui| {
-        let mut new_idx = current;
-        egui::ComboBox::from_id_salt("dof_mode")
-            .selected_text(*DOF_MODE_LABELS.get(current).unwrap_or(&"Unknown"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, label) in DOF_MODE_LABELS.iter().enumerate() {
-                    if ui.selectable_value(&mut new_idx, i, *label).changed() {
-                        let mode = new_idx as u32;
-                        cmds.push(move |world: &mut World| {
-                            if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
-                                s.mode = mode;
-                            }
-                        });
-                    }
-                }
-            });
-    });
-    row += 1;
-
-    // Focal Distance
-    let mut focal = settings.focal_distance;
-    inline_property(ui, row, "Focal Distance", theme, |ui| {
-        let orig = focal;
-        ui.add(
-            egui::DragValue::new(&mut focal)
-                .speed(0.1)
-                .range(0.1..=1000.0),
-        );
-        if focal != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
-                    s.focal_distance = focal;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Aperture
-    let mut aperture = settings.aperture_f_stops;
-    inline_property(ui, row, "Aperture", theme, |ui| {
-        let orig = aperture;
-        ui.add(
-            egui::DragValue::new(&mut aperture)
-                .speed(0.1)
-                .range(0.1..=64.0),
-        );
-        if aperture != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
-                    s.aperture_f_stops = aperture;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Max CoC
-    let mut coc = settings.max_circle_of_confusion_diameter;
-    inline_property(ui, row, "Max CoC", theme, |ui| {
-        let orig = coc;
-        ui.add(egui::DragValue::new(&mut coc).speed(1.0).range(1.0..=256.0));
-        if coc != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
-                    s.max_circle_of_confusion_diameter = coc;
-                }
-            });
-        }
-    });
 }
 
 fn cleanup_dof(

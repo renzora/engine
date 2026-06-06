@@ -20,10 +20,8 @@ use prepare::RtPipeline;
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular::LIGHTNING,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
 };
 
 /// Output mode for the SSGI pass. Drives a uniform that the shader
@@ -209,53 +207,36 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
-        custom_ui_fn: Some(rt_custom_ui),
+        fields: vec![
+            renzora_editor::float_field!("Intensity", RtLighting, intensity, 0.05, 0.0, 5.0),
+            FieldDef {
+                name: "Debug",
+                field_type: FieldType::Enum {
+                    options: &["Composite", "Indirect Only"],
+                },
+                get_fn: |w, e| {
+                    w.get::<RtLighting>(e).map(|s| {
+                        FieldValue::Enum(
+                            match s.debug {
+                                RtDebugMode::Composite => "Composite",
+                                RtDebugMode::IndirectOnly => "Indirect Only",
+                            }
+                            .to_string(),
+                        )
+                    })
+                },
+                set_fn: |w, e, v| {
+                    if let (FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<RtLighting>(e)) {
+                        s.debug = match label.as_str() {
+                            "Indirect Only" => RtDebugMode::IndirectOnly,
+                            _ => RtDebugMode::Composite,
+                        };
+                    }
+                },
+            },
+        ],
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn rt_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<RtLighting>(entity) else { return; };
-    let mut intensity = settings.intensity;
-    inline_property(ui, 0, "Intensity", theme, |ui| {
-        let orig = intensity;
-        ui.add(egui::DragValue::new(&mut intensity).speed(0.05).range(0.0..=5.0));
-        if intensity != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<RtLighting>(entity) {
-                    s.intensity = intensity;
-                }
-            });
-        }
-    });
-
-    let mut debug = settings.debug;
-    inline_property(ui, 1, "Debug", theme, |ui| {
-        let orig = debug;
-        egui::ComboBox::from_id_salt("rt_debug")
-            .selected_text(match debug {
-                RtDebugMode::Composite => "Composite",
-                RtDebugMode::IndirectOnly => "Indirect Only",
-            })
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut debug, RtDebugMode::Composite, "Composite");
-                ui.selectable_value(&mut debug, RtDebugMode::IndirectOnly, "Indirect Only");
-            });
-        if debug != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<RtLighting>(entity) {
-                    s.debug = debug;
-                }
-            });
-        }
-    });
 }
 
 renzora::add!(RtPlugin);

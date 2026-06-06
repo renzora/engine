@@ -9,10 +9,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular::SUN_HORIZON,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 // ============================================================================
@@ -118,107 +116,6 @@ fn sync_sun(
 // ============================================================================
 
 #[cfg(feature = "editor")]
-fn sun_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(sun) = world.get::<Sun>(entity) else {
-        return;
-    };
-
-    let mut data = sun.clone();
-    let mut changed = false;
-    let mut row = 0;
-
-    changed |= inline_property(ui, row, "Azimuth", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.azimuth)
-                .speed(1.0)
-                .range(0.0..=360.0)
-                .suffix("°"),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Elevation", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.elevation)
-                .speed(1.0)
-                .range(-90.0..=90.0)
-                .suffix("°"),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Color", theme, |ui| {
-        let mut color = egui::Color32::from_rgb(
-            (data.color.x * 255.0) as u8,
-            (data.color.y * 255.0) as u8,
-            (data.color.z * 255.0) as u8,
-        );
-        let resp = ui.color_edit_button_srgba(&mut color).changed();
-        if resp {
-            data.color = Vec3::new(
-                color.r() as f32 / 255.0,
-                color.g() as f32 / 255.0,
-                color.b() as f32 / 255.0,
-            );
-        }
-        resp
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Illuminance", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.illuminance)
-                .speed(100.0)
-                .range(0.0..=f32::MAX),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Angular Diameter", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.angular_diameter)
-                .speed(0.01)
-                .range(0.0..=10.0)
-                .suffix("°"),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Disk Intensity", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.sun_disk_intensity)
-                .speed(0.01)
-                .range(0.0..=10.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Shadows", theme, |ui| {
-        ui.checkbox(&mut data.shadows_enabled, "").changed()
-    });
-
-    if changed {
-        let new_data = data;
-        cmds.push(move |world: &mut World| {
-            if let Some(mut sun) = world.get_mut::<Sun>(entity) {
-                *sun = new_data;
-            }
-        });
-    }
-}
-
-#[cfg(feature = "editor")]
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "sun",
@@ -254,7 +151,7 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
             renzora_editor::bool_field!("Shadows", Sun, shadows_enabled),
         ],
-        custom_ui_fn: Some(sun_custom_ui),
+        custom_ui_fn: None,
     }
 }
 

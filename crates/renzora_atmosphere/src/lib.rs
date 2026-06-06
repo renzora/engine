@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -153,9 +151,6 @@ fn cleanup_atmosphere(
 }
 
 #[cfg(feature = "editor")]
-const ATMO_MODE_LABELS: [&str; 2] = ["Lookup Texture", "Raymarched"];
-
-#[cfg(feature = "editor")]
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "atmosphere",
@@ -187,7 +182,6 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
         fields: vec![
             renzora_editor::FieldDef {
                 name: "Rendering",
@@ -214,122 +208,8 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
             renzora_editor::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
         ],
-        custom_ui_fn: Some(atmosphere_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn atmosphere_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<AtmosphereComponentSettings>(entity) else {
-        return;
-    };
-    let mut row = 0;
-
-    // Rendering mode
-    let current = settings.mode as usize;
-    inline_property(ui, row, "Rendering", theme, |ui| {
-        let mut new_idx = current;
-        egui::ComboBox::from_id_salt("atmo_mode")
-            .selected_text(*ATMO_MODE_LABELS.get(current).unwrap_or(&"Unknown"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, label) in ATMO_MODE_LABELS.iter().enumerate() {
-                    if ui.selectable_value(&mut new_idx, i, *label).changed() {
-                        let mode = new_idx as u32;
-                        cmds.push(move |world: &mut World| {
-                            if let Some(mut s) =
-                                world.get_mut::<AtmosphereComponentSettings>(entity)
-                            {
-                                s.mode = mode;
-                            }
-                        });
-                    }
-                }
-            });
-    });
-    row += 1;
-
-    // Bottom Radius
-    let mut bottom = settings.bottom_radius;
-    inline_property(ui, row, "Bottom Radius", theme, |ui| {
-        let orig = bottom;
-        ui.add(
-            egui::DragValue::new(&mut bottom)
-                .speed(1000.0)
-                .range(0.0..=100_000_000.0),
-        );
-        if bottom != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
-                    s.bottom_radius = bottom;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Top Radius
-    let mut top = settings.top_radius;
-    inline_property(ui, row, "Top Radius", theme, |ui| {
-        let orig = top;
-        ui.add(
-            egui::DragValue::new(&mut top)
-                .speed(1000.0)
-                .range(0.0..=100_000_000.0),
-        );
-        if top != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
-                    s.top_radius = top;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Ground Albedo
-    let mut albedo = settings.ground_albedo;
-    inline_property(ui, row, "Ground Albedo", theme, |ui| {
-        let orig = albedo;
-        ui.add(
-            egui::DragValue::new(&mut albedo)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-        if albedo != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
-                    s.ground_albedo = albedo;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Scene Units to Meters
-    let mut scale = settings.scene_units_to_m;
-    inline_property(ui, row, "Units to m", theme, |ui| {
-        let orig = scale;
-        ui.add(
-            egui::DragValue::new(&mut scale)
-                .speed(0.1)
-                .range(0.0001..=10000.0)
-                .max_decimals(4),
-        );
-        if scale != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
-                    s.scene_units_to_m = scale;
-                }
-            });
-        }
-    });
 }
 
 #[derive(Default)]

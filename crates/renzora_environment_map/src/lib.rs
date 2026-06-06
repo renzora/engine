@@ -27,10 +27,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 /// User-authored settings for sky-driven image-based lighting. Attach to
@@ -235,38 +233,8 @@ fn inspector_entry() -> InspectorEntry {
             0.0,
             10.0
         )],
-        custom_ui_fn: Some(environment_map_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn environment_map_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<EnvironmentMapComponentSettings>(entity) else {
-        return;
-    };
-
-    let mut intensity = settings.intensity;
-    inline_property(ui, 0, "Intensity", theme, |ui| {
-        let orig = intensity;
-        ui.add(
-            egui::DragValue::new(&mut intensity)
-                .speed(0.01)
-                .range(0.0..=10.0),
-        );
-        if intensity != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<EnvironmentMapComponentSettings>(entity) {
-                    s.intensity = intensity;
-                }
-            });
-        }
-    });
 }
 
 renzora::add!(EnvironmentMapPlugin);

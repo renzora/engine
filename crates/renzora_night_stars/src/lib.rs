@@ -7,15 +7,9 @@ use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use bevy_egui::egui;
-#[cfg(feature = "editor")]
 use egui_phosphor::regular::MOON_STARS;
 #[cfg(feature = "editor")]
-use renzora_editor::{
-    get_theme_colors, inline_property, AppEditorExt, EditorCommands, InspectorEntry,
-};
-#[cfg(feature = "editor")]
-use renzora_theme::Theme;
+use renzora_editor::{AppEditorExt, InspectorEntry};
 
 // ============================================================================
 // Data types
@@ -218,121 +212,6 @@ fn sync_night_stars(
 }
 
 // ============================================================================
-// Custom inspector UI (editor only)
-// ============================================================================
-
-#[cfg(feature = "editor")]
-fn rgb_to_color32(r: f32, g: f32, b: f32) -> egui::Color32 {
-    egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
-}
-
-#[cfg(feature = "editor")]
-fn color32_to_rgb(color: egui::Color32) -> (f32, f32, f32) {
-    (
-        color.r() as f32 / 255.0,
-        color.g() as f32 / 255.0,
-        color.b() as f32 / 255.0,
-    )
-}
-
-#[cfg(feature = "editor")]
-fn night_stars_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let _theme_colors = get_theme_colors(ui.ctx());
-
-    let Some(stars) = world.get::<NightStarsData>(entity) else {
-        return;
-    };
-
-    let mut data = stars.clone();
-    let mut changed = false;
-    let mut row = 0;
-
-    changed |= inline_property(ui, row, "Density", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.density)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Brightness", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.brightness)
-                .speed(0.05)
-                .range(0.0..=10.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Star Size", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.star_size)
-                .speed(0.05)
-                .range(0.2..=5.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Twinkle Speed", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.twinkle_speed)
-                .speed(0.05)
-                .range(0.0..=10.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Twinkle Amount", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.twinkle_amount)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Horizon Fade", theme, |ui| {
-        ui.add(
-            egui::DragValue::new(&mut data.horizon_fade)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        )
-        .changed()
-    });
-    row += 1;
-
-    changed |= inline_property(ui, row, "Color", theme, |ui| {
-        let mut color = rgb_to_color32(data.color.0, data.color.1, data.color.2);
-        let resp = ui.color_edit_button_srgba(&mut color).changed();
-        if resp {
-            data.color = color32_to_rgb(color);
-        }
-        resp
-    });
-
-    if changed {
-        let new_data = data;
-        cmds.push(move |world: &mut World| {
-            if let Some(mut stars) = world.get_mut::<NightStarsData>(entity) {
-                *stars = new_data;
-            }
-        });
-    }
-}
-
-// ============================================================================
 // Inspector entry (editor only)
 // ============================================================================
 
@@ -370,7 +249,7 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
             renzora_editor::tuple_color_field!("Color", NightStarsData, color),
         ],
-        custom_ui_fn: Some(night_stars_custom_ui),
+        custom_ui_fn: None,
     }
 }
 

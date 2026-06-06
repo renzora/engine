@@ -14,15 +14,13 @@ crate-type = ["cdylib"]
 [features]
 default = ["editor", "dlopen"]
 dlopen = []
-editor = ["renzora/editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
+editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [dependencies]
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-bevy_egui = { version = "0.39", optional = true }
-renzora_theme = { path = "../renzora_theme", optional = true }
 renzora = { path = "../renzora", default-features = false }
 
 [lints]

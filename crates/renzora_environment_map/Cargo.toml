@@ -6,7 +6,7 @@ description = "Image-based lighting (IBL) component — controls sky-derived env
 
 [features]
 default = []
-editor = ["dep:renzora_editor", "dep:egui-phosphor", "dep:bevy_egui", "dep:renzora_theme"]
+editor = ["dep:renzora_editor", "dep:egui-phosphor"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -16,9 +16,7 @@ renzora = { path = "../renzora", default-features = false }
 # scene goes properly dark at night (no residual atmospheric ambient).
 renzora_lighting = { path = "../renzora_lighting" }
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-bevy_egui = { version = "0.39", optional = true }
 renzora_editor = { path = "../renzora_editor", optional = true }
-renzora_theme = { path = "../renzora_theme", optional = true }
 
 [lints]
 workspace = true

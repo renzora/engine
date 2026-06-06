@@ -7,12 +7,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{
-        inline_property, toggle_switch, AppEditorExt, EditorCommands, InspectorEntry,
-    },
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 // ── FXAA Settings ──
@@ -297,7 +293,6 @@ fn fxaa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
         fields: vec![
             renzora_editor::FieldDef {
                 name: "Edge Threshold",
@@ -336,67 +331,8 @@ fn fxaa_entry() -> InspectorEntry {
                 },
             },
         ],
-        custom_ui_fn: Some(fxaa_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn fxaa_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<FxaaSettings>(entity) else {
-        return;
-    };
-    let mut row = 0;
-
-    // Edge Threshold
-    let et = settings.edge_threshold as usize;
-    inline_property(ui, row, "Edge Threshold", theme, |ui| {
-        let mut new_et = et;
-        egui::ComboBox::from_id_salt("fxaa_et")
-            .selected_text(*SENSITIVITY_LABELS.get(et).unwrap_or(&"?"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, l) in SENSITIVITY_LABELS.iter().enumerate() {
-                    ui.selectable_value(&mut new_et, i, *l);
-                }
-            });
-        if new_et != et {
-            let val = new_et as u32;
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
-                    s.edge_threshold = val;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Edge Threshold Min
-    let etm = settings.edge_threshold_min as usize;
-    inline_property(ui, row, "Edge Thr. Min", theme, |ui| {
-        let mut new_etm = etm;
-        egui::ComboBox::from_id_salt("fxaa_etm")
-            .selected_text(*SENSITIVITY_LABELS.get(etm).unwrap_or(&"?"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, l) in SENSITIVITY_LABELS.iter().enumerate() {
-                    ui.selectable_value(&mut new_etm, i, *l);
-                }
-            });
-        if new_etm != etm {
-            let val = new_etm as u32;
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<FxaaSettings>(entity) {
-                    s.edge_threshold_min = val;
-                }
-            });
-        }
-    });
 }
 
 #[cfg(feature = "editor")]
@@ -424,7 +360,6 @@ fn smaa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
         fields: vec![renzora_editor::FieldDef {
             name: "Preset",
             field_type: renzora_editor::FieldType::Enum { options: &SMAA_LABELS },
@@ -443,41 +378,8 @@ fn smaa_entry() -> InspectorEntry {
                 }
             },
         }],
-        custom_ui_fn: Some(smaa_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn smaa_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<SmaaSettings>(entity) else {
-        return;
-    };
-
-    let current = settings.preset as usize;
-    inline_property(ui, 0, "Preset", theme, |ui| {
-        let mut new_idx = current;
-        egui::ComboBox::from_id_salt("smaa_preset")
-            .selected_text(*SMAA_LABELS.get(current).unwrap_or(&"?"))
-            .width(ui.available_width())
-            .show_ui(ui, |ui| {
-                for (i, l) in SMAA_LABELS.iter().enumerate() {
-                    if ui.selectable_value(&mut new_idx, i, *l).changed() {
-                        let preset = new_idx as u32;
-                        cmds.push(move |world: &mut World| {
-                            if let Some(mut s) = world.get_mut::<SmaaSettings>(entity) {
-                                s.preset = preset;
-                            }
-                        });
-                    }
-                }
-            });
-    });
 }
 
 #[cfg(feature = "editor")]
@@ -508,34 +410,8 @@ fn taa_entry() -> InspectorEntry {
             }
         }),
         fields: vec![renzora_editor::bool_field!("Reset", TaaSettings, reset)],
-        custom_ui_fn: Some(taa_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn taa_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<TaaSettings>(entity) else {
-        return;
-    };
-
-    let reset = settings.reset;
-    inline_property(ui, 0, "Reset", theme, |ui| {
-        let id = ui.id().with("taa_reset");
-        if toggle_switch(ui, id, reset) {
-            let new_val = !reset;
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<TaaSettings>(entity) {
-                    s.reset = new_val;
-                }
-            });
-        }
-    });
 }
 
 #[cfg(feature = "editor")]
@@ -565,60 +441,12 @@ fn cas_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        // Declarative fields render natively (bevy_ui); egui keeps custom_ui_fn.
         fields: vec![
             renzora_editor::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
             renzora_editor::bool_field!("Denoise", CasSettings, denoise),
         ],
-        custom_ui_fn: Some(cas_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn cas_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<CasSettings>(entity) else {
-        return;
-    };
-    let mut row = 0;
-
-    // Strength
-    let mut strength = settings.sharpening_strength;
-    inline_property(ui, row, "Strength", theme, |ui| {
-        let orig = strength;
-        ui.add(
-            egui::DragValue::new(&mut strength)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-        if strength != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<CasSettings>(entity) {
-                    s.sharpening_strength = strength;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    // Denoise
-    let denoise = settings.denoise;
-    inline_property(ui, row, "Denoise", theme, |ui| {
-        let id = ui.id().with("cas_denoise");
-        if toggle_switch(ui, id, denoise) {
-            let new_val = !denoise;
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<CasSettings>(entity) {
-                    s.denoise = new_val;
-                }
-            });
-        }
-    });
 }
 
 #[derive(Default)]

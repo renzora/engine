@@ -16,10 +16,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
 use {
-    bevy_egui::egui,
     egui_phosphor::regular,
-    renzora_editor::{inline_property, AppEditorExt, EditorCommands, InspectorEntry},
-    renzora_theme::Theme,
+    renzora_editor::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -141,95 +139,8 @@ fn inspector_entry() -> InspectorEntry {
             renzora_editor::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
             renzora_editor::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
         ],
-        custom_ui_fn: Some(volumetric_fog_custom_ui),
+        custom_ui_fn: None,
     }
-}
-
-#[cfg(feature = "editor")]
-fn volumetric_fog_custom_ui(
-    ui: &mut egui::Ui,
-    world: &World,
-    entity: Entity,
-    cmds: &EditorCommands,
-    theme: &Theme,
-) {
-    let Some(settings) = world.get::<VolumetricFogSettings>(entity) else {
-        return;
-    };
-
-    let mut row = 0;
-
-    let (r, g, b) = settings.ambient_color;
-    inline_property(ui, row, "Color", theme, |ui| {
-        let mut color = egui::Color32::from_rgb(
-            (r * 255.0) as u8,
-            (g * 255.0) as u8,
-            (b * 255.0) as u8,
-        );
-        if ui.color_edit_button_srgba(&mut color).changed() {
-            let new_color = (
-                color.r() as f32 / 255.0,
-                color.g() as f32 / 255.0,
-                color.b() as f32 / 255.0,
-            );
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<VolumetricFogSettings>(entity) {
-                    s.ambient_color = new_color;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    let mut intensity = settings.ambient_intensity;
-    inline_property(ui, row, "Ambient Intensity", theme, |ui| {
-        let orig = intensity;
-        ui.add(
-            egui::DragValue::new(&mut intensity)
-                .speed(0.01)
-                .range(0.0..=4.0),
-        );
-        if intensity != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<VolumetricFogSettings>(entity) {
-                    s.ambient_intensity = intensity;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    let mut steps = settings.step_count as f32;
-    inline_property(ui, row, "Step Count", theme, |ui| {
-        let orig = steps;
-        ui.add(egui::DragValue::new(&mut steps).speed(1.0).range(8.0..=256.0));
-        if steps != orig {
-            let v = steps as u32;
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<VolumetricFogSettings>(entity) {
-                    s.step_count = v;
-                }
-            });
-        }
-    });
-    row += 1;
-
-    let mut jitter = settings.jitter;
-    inline_property(ui, row, "Jitter", theme, |ui| {
-        let orig = jitter;
-        ui.add(
-            egui::DragValue::new(&mut jitter)
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-        if jitter != orig {
-            cmds.push(move |world: &mut World| {
-                if let Some(mut s) = world.get_mut::<VolumetricFogSettings>(entity) {
-                    s.jitter = jitter;
-                }
-            });
-        }
-    });
 }
 
 #[derive(Default)]
