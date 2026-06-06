@@ -17,6 +17,7 @@ pub mod model_flatten;
 mod native_camera_preview;
 mod native_drop;
 mod native_header;
+mod native_nav;
 mod native_viewport;
 pub mod persistence;
 pub mod play_mode;

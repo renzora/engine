@@ -39,6 +39,7 @@ pub fn register_native_viewport(app: &mut App) {
         report_viewport_geometry.run_if(in_state(SplashState::Editor)),
     );
     crate::native_header::register(app);
+    crate::native_nav::register(app);
 }
 
 fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> Entity {
@@ -86,6 +87,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         },
     );
     commands.entity(content).add_child(img);
+
+    // Nav overlay (pan/zoom drag + grid/scene-icon toggles), right edge.
+    let nav = crate::native_nav::build(commands, fonts);
+    commands.entity(content).add_child(nav);
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the
     // extra slots are bare camera-angle views.
