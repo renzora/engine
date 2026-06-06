@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -102,6 +102,11 @@ struct NgvWire {
 /// The rubber-band selection rectangle (spawned while box-selecting).
 #[derive(Component)]
 struct NgvBoxRect;
+/// The temporary cable drawn from a pending output port to the cursor.
+#[derive(Component)]
+struct NgvPreview {
+    viewport: Entity,
+}
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +138,18 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
         ))
         .id();
     let grid = grid_node(commands, canvas);
-    commands.entity(viewport).add_children(&[grid, canvas]);
+    // Live connection preview cable (hidden until dragging from an output port).
+    let preview = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), display: Display::None, ..default() },
+            NgvPreview { viewport },
+            bevy::ui::FocusPolicy::Pass,
+            Pickable::IGNORE,
+            GlobalZIndex(2),
+            Name::new("ngv-preview"),
+        ))
+        .id();
+    commands.entity(viewport).add_children(&[grid, canvas, preview]);
     NodeGraphHandle { viewport, canvas }
 }
 
@@ -258,10 +274,78 @@ pub fn graph_wire_view(commands: &mut Commands, viewport: Entity, from_node: u64
 
 // ── Systems ──────────────────────────────────────────────────────────────────
 
-fn ngv_cable_attach(mut commands: Commands, mut materials: ResMut<Assets<CableMaterial>>, cables: Query<Entity, (With<NgvWire>, Without<MaterialNode<CableMaterial>>)>) {
+#[allow(clippy::type_complexity)]
+fn ngv_cable_attach(mut commands: Commands, mut materials: ResMut<Assets<CableMaterial>>, cables: Query<Entity, (Or<(With<NgvWire>, With<NgvPreview>)>, Without<MaterialNode<CableMaterial>>)>) {
     for e in &cables {
         let handle = materials.add(CableMaterial::default());
         commands.entity(e).insert(MaterialNode(handle));
+    }
+}
+
+/// Right-click a port → disconnect every wire on it (egui parity).
+fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort, &ChildOf)>, parents: Query<&NgvNode>, wires: Query<&NgvWire>, mut graphs: Query<&mut NodeGraphView>) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Some((_, port, child_of)) = ports.iter().find(|(i, _, _)| matches!(i, Interaction::Hovered | Interaction::Pressed)) else { return };
+    let Ok(node) = parents.get(child_of.parent()) else { return };
+    let Ok(mut g) = graphs.get_mut(node.viewport) else { return };
+    for w in &wires {
+        if w.viewport != node.viewport {
+            continue;
+        }
+        let hit = if port.is_output {
+            w.from_node == port.node_id && w.from_pin == port.pin
+        } else {
+            w.to_node == port.node_id && w.to_pin == port.pin
+        };
+        if hit {
+            g.pending.push(GraphEdit::Disconnect { from_node: w.from_node, from_pin: w.from_pin.clone(), to_node: w.to_node, to_pin: w.to_pin.clone() });
+        }
+    }
+}
+
+/// While dragging from an output port, draw a live cable from it to the cursor.
+#[allow(clippy::type_complexity)]
+fn ngv_preview(
+    windows: Query<&Window>,
+    mut materials: ResMut<Assets<CableMaterial>>,
+    graphs: Query<&NodeGraphView>,
+    ports: Query<(&NgvPort, &UiGlobalTransform)>,
+    transforms: Query<&UiGlobalTransform>,
+    computeds: Query<&ComputedNode>,
+    mut previews: Query<(&NgvPreview, &mut Node, &MaterialNode<CableMaterial>)>,
+) {
+    if previews.is_empty() {
+        return;
+    }
+    let map = port_map(&ports);
+    let cur = cursor(&windows);
+    for (pv, mut node, mat) in &mut previews {
+        let pending = graphs.get(pv.viewport).ok().and_then(|g| g.pending_connect.clone());
+        let (Some((nid, pin)), Some(c)) = (pending, cur) else {
+            if node.display != Display::None {
+                node.display = Display::None;
+            }
+            continue;
+        };
+        let (Some(&(p0, col)), Ok(vgt), Ok(vcn)) = (map.get(&(nid, pin, true)), transforms.get(pv.viewport), computeds.get(pv.viewport)) else {
+            node.display = Display::None;
+            continue;
+        };
+        let isf = vcn.inverse_scale_factor();
+        let top_left = vgt.translation - vcn.size() * 0.5;
+        let a = p0 - top_left;
+        let b = c / isf - top_left;
+        let (c1, c2) = control_points(a, b);
+        let lin = rgb(col).to_linear();
+        if let Some(m) = materials.get_mut(&mat.0) {
+            m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
+            m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
+            m.color = Vec4::new(lin.red, lin.green, lin.blue, 0.7);
+            m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
+        }
+        node.display = Display::Flex;
     }
 }
 
