@@ -43,7 +43,7 @@ enum ExportMsg {
 }
 
 /// Handle for a running background export.
-struct ExportTask {
+pub(crate) struct ExportTask {
     rx: Mutex<mpsc::Receiver<ExportMsg>>,
 }
 
@@ -71,23 +71,23 @@ pub struct ExportOverlayState {
     pub output_dir: String,
     pub progress: ExportProgress,
     /// Background export task (if running).
-    active_task: Option<ExportTask>,
+    pub(crate) active_task: Option<ExportTask>,
     /// Available runtime-compatible plugins (scanned once).
     pub available_plugins: Vec<dynamic_plugin_loader::DynamicPluginInfo>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
     /// Whether plugins have been scanned yet.
-    plugins_scanned: bool,
+    pub(crate) plugins_scanned: bool,
     /// Latest GitHub release info (for runtime downloads).
     pub release_info: Option<ReleaseInfo>,
     /// Background fetch of release manifest.
     release_fetch_rx: Option<Mutex<mpsc::Receiver<Result<ReleaseInfo, String>>>>,
     /// Whether release fetch has been kicked off.
-    release_fetch_started: bool,
+    pub(crate) release_fetch_started: bool,
     /// Last error from release manifest fetch (if any).
     pub release_fetch_error: Option<String>,
     /// Active runtime download task.
-    download_task: Option<DownloadTask>,
+    pub(crate) download_task: Option<DownloadTask>,
     /// Last download status (per platform shown in UI).
     pub download_status: Option<(Platform, DownloadProgress)>,
 }
@@ -128,7 +128,7 @@ impl Default for ExportOverlayState {
 }
 
 /// Drain progress messages from the background thread into overlay state.
-fn poll_export_task(world: &mut World) {
+pub(crate) fn poll_export_task(world: &mut World) {
     let has_task = world.resource::<ExportOverlayState>().active_task.is_some();
     if !has_task {
         return;
@@ -187,7 +187,7 @@ fn poll_export_task(world: &mut World) {
 // drop(state) ends the Mut<Resource> borrow early so `world` is free again;
 // Mut isn't Drop so clippy flags it, but the lifetime-ending effect is intended.
 #[allow(clippy::drop_non_drop)]
-fn ensure_release_fetch(world: &mut World) {
+pub(crate) fn ensure_release_fetch(world: &mut World) {
     let mut state = world.resource_mut::<ExportOverlayState>();
     if state.release_fetch_started {
         return;
@@ -202,7 +202,7 @@ fn ensure_release_fetch(world: &mut World) {
 }
 
 /// Drain release manifest result if it has arrived.
-fn poll_release_fetch(world: &mut World) {
+pub(crate) fn poll_release_fetch(world: &mut World) {
     let mut state = world.resource_mut::<ExportOverlayState>();
     let Some(rx) = state.release_fetch_rx.as_ref() else {
         return;
@@ -223,7 +223,7 @@ fn poll_release_fetch(world: &mut World) {
 }
 
 /// Drain progress messages from the runtime download thread.
-fn poll_download_task(world: &mut World) {
+pub(crate) fn poll_download_task(world: &mut World) {
     let has_task = world
         .resource::<ExportOverlayState>()
         .download_task
@@ -1504,7 +1504,7 @@ fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color3
     );
 }
 
-fn run_export(world: &mut World, project_name: &str) {
+pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let project = world.resource::<CurrentProject>().clone();
     let export_state = world.resource::<ExportOverlayState>();
     let platform = export_state.platform;

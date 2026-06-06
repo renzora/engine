@@ -9,6 +9,8 @@ mod apk_signer;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
 #[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(not(target_arch = "wasm32"))]
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;
@@ -37,6 +39,7 @@ impl Plugin for ExportPlugin {
             _app.init_resource::<ExportOverlayState>()
                 .init_resource::<TemplateManager>()
                 .add_systems(EguiPrimaryContextPass, export_overlay_system);
+            native::register(_app);
         }
     }
 }
@@ -76,7 +79,15 @@ fn export_overlay_system(world: &mut World) {
         return;
     }
 
-    overlay::draw_export_overlay(world, &ctx);
+    // Native bevy_ui renders under the BevyUi backend (see `native`); egui only
+    // under the Egui backend.
+    let egui_backend = world
+        .get_resource::<renzora::core::EditorUiBackend>()
+        .map(|b| b.is_egui())
+        .unwrap_or(true);
+    if egui_backend {
+        overlay::draw_export_overlay(world, &ctx);
+    }
 }
 
 renzora::add!(ExportPlugin, Editor);

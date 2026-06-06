@@ -9534,6 +9534,8 @@ dependencies = [
  "egui-phosphor",
  "rcgen",
  "renzora",
+ "renzora_ember",
+ "renzora_hui",
  "renzora_import",
  "renzora_rpak",
  "renzora_theme",
