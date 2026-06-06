@@ -104,6 +104,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<model_drop::ModelDragPreviewState>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
+            .init_resource::<native_drop::ArmedViewportDrop>()
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
@@ -161,15 +162,17 @@ impl Plugin for ViewportPlugin {
                 (
                     shape_drop::native_shape_drop,
                     html_drop::native_html_drop,
-                    // Native (bevy_ui) asset drops that mirror the egui
-                    // `check_viewport_*_drop` helpers (which only run inside the
-                    // egui dock). Gated on the bevy_ui backend so they never
-                    // double-fire with the egui path.
+                    // Native (bevy_ui) asset drops (material / scene / sprite)
+                    // that mirror the egui `check_viewport_*_drop` helpers (which
+                    // only run inside the egui dock). `arm` captures the hovering
+                    // drop candidate each frame; `commit` fires it on release —
+                    // see `native_drop` for why we can't read the payload at
+                    // release. Gated on bevy_ui so they don't double-fire.
                     (
-                        native_drop::native_material_drop,
-                        native_drop::native_scene_drop,
-                        native_drop::native_sprite_drop,
+                        native_drop::arm_viewport_drop,
+                        native_drop::commit_viewport_drop,
                     )
+                        .chain()
                         .run_if(renzora::core::editor_backend_is_bevy_ui),
                 ),
                 shape_drop::handle_shape_spawn,

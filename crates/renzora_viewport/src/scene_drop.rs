@@ -54,8 +54,9 @@ pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect
 }
 
 /// Commit a `.ron` scene-instance drop at the given viewport-space pointer.
-/// Shared by the egui drop check (deferred) and `native_scene_drop` (inline).
-/// `screen_pos` / `vp_rect` are in window logical pixels.
+/// Shared by the egui drop check and the native bevy_ui drop
+/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// logical pixels.
 pub(crate) fn commit_scene_drop(world: &mut World, screen_pos: Vec2, vp_rect: Rect, path: PathBuf) {
     // Reject dropping a scene into itself.
     let host_abs = world.get_resource::<CurrentProject>().and_then(|p| {

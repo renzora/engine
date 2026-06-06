@@ -244,19 +244,98 @@ pub(crate) fn commit_model_drop(
     }
 }
 
-/// Native (bevy_ui) counterpart of [`check_viewport_model_drop`]. Runs inline as
-/// an exclusive system so the preview-entity promotion happens *before*
-/// `cleanup_model_drag_ghost` (which would otherwise despawn the still-being-
-/// placed entity once the asset-drag payload is removed). The egui path drains
-/// its drop command inside `editor_ui_system` instead; this only runs under the
-/// bevy_ui backend, so the two never double-fire.
-pub fn native_model_drop(world: &mut World) {
-    let Some((cursor, vp_rect, path, name)) =
-        crate::native_drop::released_drop_on_viewport(world, MODEL_EXTENSIONS)
-    else {
+/// Native (bevy_ui) counterpart of [`check_viewport_model_drop`].
+///
+/// Unlike the egui path, this **cannot** read the [`AssetDragPayload`] at release
+/// time: the native asset browser removes it via a deferred command on mouse-up,
+/// and any intervening exclusive system flushes that removal before we'd see it.
+/// So the drop is driven entirely off [`ModelDragPreviewState`] — which nothing
+/// else touches — plus the mouse-release edge. A live `ghost_root` means an
+/// in-project drag preview is active; if the cursor is over the focused viewport
+/// on release we promote that entity in place (same markers the egui commit
+/// adds). Released outside the viewport (or Escape, which doesn't fire
+/// `just_released`) falls through to `cleanup_model_drag_ghost`, which cancels.
+///
+/// Runs before `cleanup_model_drag_ghost` (clears `ghost_root` synchronously via
+/// `ResMut`), so cleanup never despawns a promoted entity. Gated on the bevy_ui
+/// backend, so it never double-fires with the egui drop check.
+#[allow(clippy::too_many_arguments)]
+pub fn native_model_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut state: ResMut<ModelDragPreviewState>,
+    viewport: Res<ViewportState>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    mut commands: Commands,
+    children_query: Query<&Children>,
+    scene_root_query: Query<(), With<SceneRoot>>,
+    selection: Option<Res<EditorSelection>>,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    // Only in-project drags spawn a preview ghost to promote.
+    let Some(entity) = state.ghost_root else {
         return;
     };
-    commit_model_drop(world, cursor, vp_rect, path, name);
+
+    // Released over the focused viewport? Recompute from the live cursor rather
+    // than trusting `cursor_in_viewport`, which `track_model_drag_preview` may
+    // have already reset once the payload vanished.
+    let over_viewport = window_query
+        .single()
+        .ok()
+        .and_then(|w| w.cursor_position())
+        .map(|c| {
+            let min = viewport.screen_position;
+            let max = min + viewport.screen_size;
+            c.x >= min.x && c.y >= min.y && c.x <= max.x && c.y <= max.y
+        })
+        .unwrap_or(false);
+    if !over_viewport {
+        // Cancel — let `cleanup_model_drag_ghost` despawn the preview.
+        return;
+    }
+
+    // Promote the preview entity in place: take the placement data out of the
+    // state (so neither cleanup nor `update_model_drag_ghost` touch the entity
+    // again) but leave `origin_path` set so `track_model_drag_preview` skips
+    // re-initializing for the payload that may linger one extra frame.
+    let ground_pos = state.ground_position;
+    let asset_path = state.asset_path.take();
+    let gltf_handle = state.mesh_handle.take();
+    state.ghost_root = None;
+    state.name = None;
+    state.cursor_in_viewport = false;
+
+    let (Some(asset_path), Some(gltf_handle)) = (asset_path, gltf_handle) else {
+        return;
+    };
+
+    commands.entity(entity).insert((
+        MeshInstanceData {
+            model_path: Some(asset_path),
+        },
+        ImportedRoot,
+        PendingMaterialBinding { gltf_handle },
+        NeedsGroundAlignment {
+            target_y: ground_pos.y,
+        },
+    ));
+
+    // Tag the SceneRoot child so the flatten pass collapses gltf wrappers once
+    // the scene is fully populated.
+    if let Ok(kids) = children_query.get(entity) {
+        for child in kids.iter() {
+            if scene_root_query.get(child).is_ok() {
+                commands.entity(child).insert(PendingFlatten::default());
+                break;
+            }
+        }
+    }
+
+    if let Some(selection) = selection {
+        selection.set(Some(entity));
+    }
 }
 
 /// Compute a world-space ground position (Y=0 plane) from a viewport-space

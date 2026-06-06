@@ -59,8 +59,9 @@ pub fn check_viewport_material_drop(ui: &mut egui::Ui, world: &World, viewport_r
 }
 
 /// Commit a material drop — raycast for the mesh under `screen_pos` and apply the
-/// `.material`. Shared by the egui drop check (deferred) and `native_material_drop`
-/// (inline). `screen_pos` / `vp_rect` are in window logical pixels.
+/// `.material`. Shared by the egui drop check and the native bevy_ui drop
+/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// logical pixels.
 pub(crate) fn commit_material_drop(
     world: &mut World,
     screen_pos: Vec2,

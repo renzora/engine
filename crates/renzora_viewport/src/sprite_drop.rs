@@ -70,8 +70,9 @@ pub fn check_viewport_sprite_drop(ui: &mut egui::Ui, world: &World, viewport_rec
 }
 
 /// Commit an image-to-sprite drop at the given viewport-space pointer. Shared by
-/// the egui drop check (deferred) and `native_sprite_drop` (inline). `screen_pos`
-/// / `vp_rect` are in window logical pixels.
+/// the egui drop check and the native bevy_ui drop
+/// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
+/// logical pixels.
 pub(crate) fn commit_sprite_drop(
     world: &mut World,
     screen_pos: Vec2,
