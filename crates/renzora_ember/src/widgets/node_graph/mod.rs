@@ -38,7 +38,9 @@ pub(crate) struct NodeGraphPlugin;
 impl Plugin for NodeGraphPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "cable.wgsl");
+        bevy::asset::embedded_asset!(app, "grid.wgsl");
         app.add_plugins(UiMaterialPlugin::<CableMaterial>::default());
+        app.add_plugins(UiMaterialPlugin::<GridMaterial>::default());
         app.add_plugins(view::NodeGraphViewPlugin);
         app.add_systems(
             Update,
@@ -49,12 +51,13 @@ impl Plugin for NodeGraphPlugin {
                 graph_connect,
                 graph_remove,
                 cable_attach,
+                grid_attach,
                 apply_node_graph_style,
             ),
         );
         app.add_systems(
             PostUpdate,
-            update_endpoints.after(bevy::ui::UiSystems::Layout),
+            (update_endpoints, update_grid).after(bevy::ui::UiSystems::Layout),
         );
     }
 }
@@ -122,6 +125,100 @@ impl Default for CableMaterial {
 impl UiMaterial for CableMaterial {
     fn fragment_shader() -> ShaderRef {
         "embedded://renzora_ember/widgets/node_graph/cable.wgsl".into()
+    }
+}
+
+/// GPU-painted dotted grid background; uniforms refreshed from the canvas pan/zoom.
+#[derive(Asset, TypePath, AsBindGroup, Clone, Default)]
+pub(crate) struct GridMaterial {
+    #[uniform(0)]
+    view: Vec4,
+    #[uniform(0)]
+    size: Vec4,
+    #[uniform(0)]
+    bg: Vec4,
+    #[uniform(0)]
+    dot: Vec4,
+}
+
+impl UiMaterial for GridMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "embedded://renzora_ember/widgets/node_graph/grid.wgsl".into()
+    }
+}
+
+/// The dotted background node for a graph; reads pan/zoom from `canvas`.
+#[derive(Component)]
+pub(crate) struct GraphGrid {
+    pub(crate) canvas: Entity,
+}
+
+/// Grid spacing in canvas-logical px (matches the egui editor's 20px dot grid).
+const GRID_SPACING: f32 = 20.0;
+
+/// Spawn a full-viewport dotted-grid background node that tracks `canvas`'s
+/// pan/zoom. Add it behind the canvas in the viewport.
+pub(crate) fn grid_node(commands: &mut Commands, canvas: Entity) -> Entity {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            GraphGrid { canvas },
+            GlobalZIndex(0),
+            bevy::ui::FocusPolicy::Pass,
+            Pickable::IGNORE,
+            Name::new("node-graph-grid"),
+        ))
+        .id()
+}
+
+/// Give freshly-spawned grid nodes a `GridMaterial`.
+fn grid_attach(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<GridMaterial>>,
+    grids: Query<Entity, (With<GraphGrid>, Without<MaterialNode<GridMaterial>>)>,
+) {
+    for e in &grids {
+        let handle = materials.add(GridMaterial::default());
+        commands.entity(e).insert(MaterialNode(handle));
+    }
+}
+
+/// Refresh each grid's uniforms from its canvas pan/zoom + the theme colours.
+fn update_grid(
+    theme: Res<crate::style::Theme>,
+    mut materials: ResMut<Assets<GridMaterial>>,
+    grids: Query<(&GraphGrid, &ComputedNode, &MaterialNode<GridMaterial>)>,
+    views: Query<&GraphView>,
+) {
+    if grids.is_empty() {
+        return;
+    }
+    let bg_c = theme.node_graph.canvas_bg.color();
+    let bg = bg_c.to_linear();
+    // Dots a touch lighter than the canvas (egui: 25 → 35).
+    let bg_s = bg_c.to_srgba();
+    let dot = Color::srgb(bg_s.red + 0.045, bg_s.green + 0.045, bg_s.blue + 0.05).to_linear();
+    for (grid, cn, mat) in &grids {
+        let Ok(view) = views.get(grid.canvas) else {
+            continue;
+        };
+        let isf = cn.inverse_scale_factor().max(1e-5);
+        let pan = view.pan / isf; // logical → physical px
+        let spacing = GRID_SPACING / isf;
+        let dot_r = (1.5 * view.zoom.sqrt()) / isf;
+        if let Some(m) = materials.get_mut(&mat.0) {
+            m.view = Vec4::new(view.zoom, pan.x, pan.y, spacing);
+            m.size = Vec4::new(dot_r, 0.0, 0.0, 0.0);
+            m.bg = Vec4::new(bg.red, bg.green, bg.blue, 1.0);
+            m.dot = Vec4::new(dot.red, dot.green, dot.blue, 1.0);
+        }
     }
 }
 
@@ -199,6 +296,7 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(border())),
+            RelativeCursorPosition::default(),
             NgPart::Canvas,
             Name::new("node-graph"),
         ))
@@ -223,7 +321,8 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("graph-canvas"),
         ))
         .id();
-    commands.entity(viewport).add_child(canvas);
+    let grid = grid_node(commands, canvas);
+    commands.entity(viewport).add_children(&[grid, canvas]);
 
     let (n_tex, _, tex_out) =
         graph_node(commands, fonts, canvas, viewport, "Texture", &[], &["RGB"], 20.0, 26.0);
@@ -484,9 +583,13 @@ pub(crate) fn graph_pan(
     *last = Some(c);
 }
 
+/// Cursor-anchored zoom: scaling the canvas around its centre, then adjusting the
+/// pan so the canvas point under the cursor stays put. `q` is the cursor offset
+/// from the viewport centre (logical px); `pan' = pan*r + q*(1-r)` keeps it fixed.
 pub(crate) fn graph_zoom(
     mut wheel: MessageReader<MouseWheel>,
-    mut canvases: Query<(&RelativeCursorPosition, &mut GraphView, &mut UiTransform), With<GraphPan>>,
+    mut canvases: Query<(&mut GraphView, &mut UiTransform, &ChildOf), With<GraphPan>>,
+    viewports: Query<(&RelativeCursorPosition, &ComputedNode)>,
 ) {
     let mut dy = 0.0;
     for ev in wheel.read() {
@@ -495,12 +598,25 @@ pub(crate) fn graph_zoom(
     if dy == 0.0 {
         return;
     }
-    for (rcp, mut view, mut tf) in &mut canvases {
+    for (mut view, mut tf, child_of) in &mut canvases {
+        let Ok((rcp, cn)) = viewports.get(child_of.parent()) else {
+            continue;
+        };
         if !rcp.cursor_over {
             continue;
         }
-        view.zoom = (view.zoom * (1.0 + dy * 0.12)).clamp(0.4, 2.5);
-        tf.scale = Vec2::splat(view.zoom);
+        let old = view.zoom;
+        let new = (old * (1.0 + dy * 0.12)).clamp(0.4, 2.5);
+        if (new - old).abs() < 1e-5 {
+            continue;
+        }
+        let r = new / old;
+        let size = cn.size() * cn.inverse_scale_factor(); // logical px
+        let q = rcp.normalized.unwrap_or(Vec2::ZERO) * size; // cursor − centre
+        view.pan = view.pan * r + q * (1.0 - r);
+        view.zoom = new;
+        tf.translation = Val2::px(view.pan.x, view.pan.y);
+        tf.scale = Vec2::splat(new);
     }
 }
 

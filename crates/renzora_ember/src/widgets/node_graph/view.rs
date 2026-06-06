@@ -20,7 +20,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform, UiTransf
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
-use super::{CableMaterial, GraphPan, GraphView};
+use super::{grid_node, CableMaterial, GraphPan, GraphView};
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
 
@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_remove));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_remove, ngv_apply_selection));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -52,6 +52,10 @@ pub enum GraphEdit {
 #[derive(Component, Default)]
 pub struct NodeGraphView {
     pub pending: Vec<GraphEdit>,
+    /// Currently-selected node id — drives the node border without rebuilding
+    /// the node entity (so a drag-started selection doesn't kill the drag). The
+    /// caller may also set this to reflect external selection changes.
+    pub selected: Option<u64>,
 }
 
 /// Entities the caller mounts content into.
@@ -112,7 +116,8 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
             Name::new("node-graph-view-canvas"),
         ))
         .id();
-    commands.entity(viewport).add_child(canvas);
+    let grid = grid_node(commands, canvas);
+    commands.entity(viewport).add_children(&[grid, canvas]);
     NodeGraphHandle { viewport, canvas }
 }
 
@@ -273,6 +278,9 @@ fn ngv_drag(
                     if *interaction == Interaction::Pressed {
                         *active = Some((e, c, false));
                         if let Ok(mut g) = graphs.get_mut(n.viewport) {
+                            // Select immediately (visual updates without a rebuild,
+                            // so the drag entity stays alive) + record the edit.
+                            g.selected = Some(n.id);
                             g.pending.push(GraphEdit::Select { id: Some(n.id) });
                         }
                         break;
@@ -311,6 +319,20 @@ fn ngv_drag(
         now_moved = true;
     }
     *active = Some((node, c, now_moved));
+}
+
+/// Drive each node's border (width + colour) from its viewport's `selected` id,
+/// in place — so selecting a node never rebuilds it (which would kill an
+/// in-progress drag). Only writes when the selection state actually flips.
+fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Node, &mut BorderColor)>) {
+    for (n, mut node, mut bc) in &mut nodes {
+        let sel = views.get(n.viewport).map(|v| v.selected == Some(n.id)).unwrap_or(false);
+        let want = UiRect::all(Val::Px(if sel { 2.0 } else { 1.0 }));
+        if node.border != want {
+            node.border = want;
+            *bc = BorderColor::all(rgb(if sel { accent() } else { tree_line() }));
+        }
+    }
 }
 
 /// Output-port click then input-port click → record a `Connect`.

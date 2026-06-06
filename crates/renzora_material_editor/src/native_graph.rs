@@ -38,7 +38,7 @@ impl Plugin for NativeMaterialGraph {
         // the egui panel only running its sync inside `ui()`).
         app.add_systems(
             Update,
-            (mat_graph_load, mat_graph_sync)
+            (mat_graph_load, mat_graph_sync, sync_graph_selection)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<MatGraph>),
@@ -125,12 +125,14 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         .collect();
     let items: Vec<(u64, u64)> = nodes
         .iter()
-        .map(|(id, title, color, _pos, ins, outs, selected)| {
+        .map(|(id, title, color, _pos, ins, outs, _selected)| {
             let mut k = hasher();
             id.hash(&mut k);
             let mut h = hasher();
-            // Structure + selection (NOT position) so dragging never rebuilds.
-            (title, color, ins, outs, selected).hash(&mut h);
+            // Structure only (NOT position OR selection) so neither dragging nor
+            // selecting a node rebuilds it — selection is applied in-place by the
+            // view (a mid-drag rebuild would otherwise kill the drag).
+            (title, color, ins, outs).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -283,6 +285,17 @@ fn pending_first_save(world: &mut World, entity: Entity) {
     world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
     world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
     world.resource_mut::<MaterialEditorState>().edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
+}
+
+/// Mirror the model's selected node into the view each frame so external
+/// selection changes (loading a material, etc.) reflect — without rebuilding nodes.
+fn sync_graph_selection(st: Option<Res<MaterialEditorState>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
+    let Some(st) = st else { return };
+    for mut v in &mut views {
+        if v.selected != st.selected_node {
+            v.selected = st.selected_node;
+        }
+    }
 }
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {
