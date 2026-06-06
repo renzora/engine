@@ -127,11 +127,6 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-/// Run condition for the egui fallback: true until the native root exists.
-pub(crate) fn native_splash_absent(q: Query<(), With<SplashRoot>>) -> bool {
-    q.is_empty()
-}
-
 fn native_reopen(
     mut commands: Commands,
     reopen: Option<Res<crate::PendingProjectReopen>>,

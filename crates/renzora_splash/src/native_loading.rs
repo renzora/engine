@@ -40,11 +40,6 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-/// Run condition: true until the native Loading screen has spawned (egui fallback).
-pub(crate) fn loading_native_absent(q: Query<(), With<LoadingScreenRoot>>) -> bool {
-    q.is_empty()
-}
-
 // ── Colours (mirror loading.rs) ──────────────────────────────────────────────
 
 fn c(r: u8, g: u8, b: u8) -> Color {

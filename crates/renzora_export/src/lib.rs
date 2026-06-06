@@ -30,63 +30,28 @@ impl Plugin for ExportPlugin {
         info!("[editor] ExportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
-
-            if !_app.is_plugin_added::<EguiPlugin>() {
-                _app.add_plugins(EguiPlugin::default());
-            }
-
             _app.init_resource::<ExportOverlayState>()
                 .init_resource::<TemplateManager>()
-                .add_systems(EguiPrimaryContextPass, export_overlay_system);
+                .add_systems(Update, export_open_on_request);
             native::register(_app);
         }
     }
 }
 
+/// Backend-agnostic orchestration: open the export modal when the editor menu
+/// fires [`ExportRequested`]. The native (bevy_ui) modal renders the UI and
+/// polls the worker while visible.
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Resource)]
-struct ExportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
-
-#[cfg(not(target_arch = "wasm32"))]
-fn export_overlay_system(world: &mut World) {
-    use bevy::ecs::system::SystemState;
-
-    if !world.contains_resource::<ExportEguiState>() {
-        let s = ExportEguiState(SystemState::new(world));
-        world.insert_resource(s);
-    }
-    let mut cached = world.remove_resource::<ExportEguiState>().unwrap();
-    let mut contexts = cached.0.get_mut(world);
-    let Ok(ctx) = contexts.ctx_mut() else {
-        world.insert_resource(cached);
-        return;
-    };
-    let ctx = ctx.clone();
-    cached.0.apply(world);
-    world.insert_resource(cached);
-
-    // Check for ExportRequested marker from the editor menu
-    if world
-        .remove_resource::<renzora::core::ExportRequested>()
-        .is_some()
-    {
-        world.resource_mut::<ExportOverlayState>().visible = true;
-    }
-
-    let show = world.resource::<ExportOverlayState>().visible;
-    if !show {
-        return;
-    }
-
-    // Native bevy_ui renders under the BevyUi backend (see `native`); egui only
-    // under the Egui backend.
-    let egui_backend = world
-        .get_resource::<renzora::core::EditorUiBackend>()
-        .map(|b| b.is_egui())
-        .unwrap_or(true);
-    if egui_backend {
-        overlay::draw_export_overlay(world, &ctx);
+fn export_open_on_request(
+    mut requested: Option<ResMut<ExportOverlayState>>,
+    marker: Option<Res<renzora::core::ExportRequested>>,
+    mut commands: Commands,
+) {
+    if marker.is_some() {
+        if let Some(state) = requested.as_mut() {
+            state.visible = true;
+        }
+        commands.remove_resource::<renzora::core::ExportRequested>();
     }
 }
 

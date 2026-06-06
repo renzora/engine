@@ -33,8 +33,6 @@ use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
 
-use bevy_egui::egui::Color32;
-
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
 const SIDEBAR_W: f32 = 160.0;
@@ -1695,13 +1693,13 @@ fn theme_color_row(
         move |w, rgb| {
             let mut tm = w.resource_mut::<ThemeManager>();
             let a = get(&tm.active_theme).0.to_array()[3];
-            let col = Color32::from_rgba_unmultiplied(
+            let col = ThemeColor::with_alpha(
                 (rgb[0] * 255.0).round() as u8,
                 (rgb[1] * 255.0).round() as u8,
                 (rgb[2] * 255.0).round() as u8,
                 a,
             );
-            set(&mut tm.active_theme, ThemeColor(col));
+            set(&mut tm.active_theme, col);
             tm.mark_modified();
         },
     );

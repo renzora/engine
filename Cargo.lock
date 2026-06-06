@@ -9084,11 +9084,9 @@ name = "renzora_auth"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "dirs 6.0.0",
  "renzora",
  "renzora_ember",
- "renzora_theme",
  "serde",
  "serde_json",
  "ureq",
@@ -9242,12 +9240,9 @@ name = "renzora_command_palette"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
 ]
 
 [[package]]
@@ -9483,16 +9478,13 @@ name = "renzora_export"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "dynamic_plugin_loader",
- "egui-phosphor",
  "rcgen",
  "renzora",
  "renzora_ember",
  "renzora_hui",
  "renzora_import",
  "renzora_rpak",
- "renzora_theme",
  "rfd",
  "ring",
  "serde",
@@ -9846,15 +9838,12 @@ name = "renzora_import_ui"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "log",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_hui",
  "renzora_import",
- "renzora_theme",
  "rfd",
 ]
 
@@ -10723,9 +10712,7 @@ name = "renzora_splash"
 version = "0.2.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "dirs 6.0.0",
- "egui-phosphor",
  "renzora",
  "renzora_ember",
  "renzora_hui",

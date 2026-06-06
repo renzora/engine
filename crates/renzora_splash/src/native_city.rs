@@ -353,7 +353,7 @@ fn spawn_city(
             SpinCube {
                 axis,
                 speed: 0.4 + hash01(s ^ 0x28) * 1.8,
-                phase: hash01(s ^ 0x39) * 6.2832,
+                phase: hash01(s ^ 0x39) * std::f32::consts::TAU,
                 scale,
             },
             layer.clone(),

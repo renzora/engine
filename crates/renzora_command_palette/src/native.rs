@@ -1,11 +1,9 @@
-//! Bevy-native (ember) command palette modal — the bevy_ui counterpart to the
-//! egui `render_palette`. Same behavior: a dimmed backdrop + centered panel with
-//! a search field and a scrollable, filterable list of every tool / action /
-//! layout / panel / setting / menu command. Type to filter, ↑/↓ to navigate,
-//! Enter to run, Esc or a backdrop click to dismiss.
+//! Bevy-native (ember) command palette modal — a dimmed backdrop + centered
+//! panel with a search field and a scrollable, filterable list of every tool /
+//! action / layout / panel / setting / menu command. Type to filter, ↑/↓ to
+//! navigate, Enter to run, Esc or a backdrop click to dismiss.
 //!
-//! Shares [`CommandPaletteState`] with the egui version; each renders only under
-//! its own [`EditorUiBackend`], so F10 swaps between them.
+//! Renders only under the bevy_ui [`EditorUiBackend`].
 
 use std::sync::Arc;
 
@@ -65,10 +63,6 @@ pub(crate) fn register(app: &mut App) {
 
 pub(crate) fn bevy_ui_backend(backend: Option<Res<EditorUiBackend>>) -> bool {
     backend.is_some_and(|b| b.is_bevy_ui())
-}
-
-pub(crate) fn egui_backend(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.is_none_or(|b| !b.is_bevy_ui())
 }
 
 fn sig_of(query: &str, len: usize) -> u64 {
@@ -365,7 +359,7 @@ fn palette_backdrop_click(q: Query<&Interaction, (With<PaletteBackdrop>, Changed
 }
 
 /// Close the palette and run the handler at `index` (deferred through
-/// `EditorCommands` so it orders with other deferred work, like the egui path).
+/// `EditorCommands` so it orders with other deferred work).
 fn run_palette_item(world: &mut World, index: usize) {
     let handler = world.resource::<PaletteHandlers>().0.get(index).cloned();
     world.resource_mut::<CommandPaletteState>().open = false;

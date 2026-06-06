@@ -19,41 +19,62 @@ impl Plugin for ImportPlugin {
         info!("[editor] ImportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
-
-            if !_app.is_plugin_added::<EguiPlugin>() {
-                _app.add_plugins(EguiPlugin::default());
-            }
-
             _app.init_resource::<overlay::ImportOverlayState>()
-                .add_systems(EguiPrimaryContextPass, import_overlay_system);
+                .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain());
             native::register(_app);
         }
     }
 }
 
+/// Drain Bevy's global file-drop events into the overlay's pending list.
+/// Persisted via `EventReader` so each drop is processed exactly once.
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Resource)]
-struct ImportEguiState(bevy::ecs::system::SystemState<bevy_egui::EguiContexts<'static, 'static>>);
-
-#[cfg(not(target_arch = "wasm32"))]
-fn import_overlay_system(world: &mut World) {
-    use bevy::ecs::system::SystemState;
-
-    if !world.contains_resource::<ImportEguiState>() {
-        let s = ImportEguiState(SystemState::new(world));
-        world.insert_resource(s);
-    }
-    let mut cached = world.remove_resource::<ImportEguiState>().unwrap();
-    let mut contexts = cached.0.get_mut(world);
-    let Ok(ctx) = contexts.ctx_mut() else {
-        world.insert_resource(cached);
+fn collect_dropped_files(
+    mut events: MessageReader<bevy::window::FileDragAndDrop>,
+    mut state: Option<ResMut<overlay::ImportOverlayState>>,
+    settings: Option<Res<renzora_editor::EditorSettings>>,
+) {
+    let Some(state) = state.as_mut() else {
+        events.clear();
         return;
     };
-    let ctx = ctx.clone();
-    cached.0.apply(world);
-    world.insert_resource(cached);
+    let dropped: Vec<std::path::PathBuf> = events
+        .read()
+        .filter_map(|ev| match ev {
+            bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } => Some(path_buf.clone()),
+            _ => None,
+        })
+        .filter(|p| renzora_import::formats::is_supported(p))
+        .collect();
+    if dropped.is_empty() {
+        return;
+    }
+    let was_empty = state.pending_files.is_empty();
+    for path in &dropped {
+        if !state.pending_files.contains(path) {
+            state.pending_files.push(path.clone());
+        }
+    }
+    // Auto-detect unit scale from the first file.
+    if was_empty && state.settings.scale == 1.0 {
+        if let Some(scale) = renzora_import::units::detect_unit_scale(&dropped[0]) {
+            state.settings.scale = scale;
+        }
+    }
+    // When the user hasn't opted into silent auto-import, a drop opens the
+    // modal so they can confirm; otherwise the orchestrator imports silently.
+    let auto_import = settings.map(|s| s.auto_import_on_drop).unwrap_or(true);
+    if !auto_import {
+        state.visible = true;
+    }
+}
 
+/// Backend-agnostic orchestration: opens the overlay when the asset browser
+/// fires [`ImportRequested`] and runs the silent auto-import path. Global file
+/// drops are gathered upstream by [`collect_dropped_files`]. The native
+/// (bevy_ui) modal renders the actual UI and polls the worker while visible.
+#[cfg(not(target_arch = "wasm32"))]
+fn import_orchestrate_system(world: &mut World) {
     let auto_import = world
         .get_resource::<renzora_editor::EditorSettings>()
         .map(|s| s.auto_import_on_drop)
@@ -73,37 +94,6 @@ fn import_overlay_system(world: &mut World) {
         // An explicit Import click always opens the overlay (the user needs
         // the file picker). `auto_import` only governs drag-and-drop.
         state.visible = true;
-    }
-
-    // Check for global file drops (3D model files)
-    {
-        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(|f| f.path.clone())
-                .filter(|p| renzora_import::formats::is_supported(p))
-                .collect()
-        });
-
-        if !dropped.is_empty() {
-            let mut state = world.resource_mut::<overlay::ImportOverlayState>();
-            let was_empty = state.pending_files.is_empty();
-            for path in &dropped {
-                if !state.pending_files.contains(path) {
-                    state.pending_files.push(path.clone());
-                }
-            }
-            // Auto-detect unit scale from the first file
-            if was_empty && state.settings.scale == 1.0 {
-                if let Some(scale) = renzora_import::units::detect_unit_scale(&dropped[0]) {
-                    state.settings.scale = scale;
-                }
-            }
-            if !auto_import {
-                state.visible = true;
-            }
-        }
     }
 
     // Auto-import path: kick off the worker silently when files are pending
@@ -132,21 +122,6 @@ fn import_overlay_system(world: &mut World) {
             state.progress = overlay::ImportProgress::Idle;
             state.log_entries.clear();
         }
-        return;
-    }
-
-    if !overlay_visible {
-        return;
-    }
-
-    // Native bevy_ui renders the overlay under the BevyUi backend (see
-    // `native`); egui only under the Egui backend.
-    let egui_backend = world
-        .get_resource::<renzora::core::EditorUiBackend>()
-        .map(|b| b.is_egui())
-        .unwrap_or(true);
-    if egui_backend {
-        overlay::draw_import_overlay(world, &ctx);
     }
 }
 

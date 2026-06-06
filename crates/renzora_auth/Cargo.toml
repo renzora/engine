@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-renzora_theme = { path = "../renzora_theme" }
 renzora_ember = { path = "../renzora_ember" }
-bevy_egui = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 serde = { version = "1", features = ["derive"] }
