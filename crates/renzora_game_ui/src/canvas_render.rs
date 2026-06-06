@@ -16,7 +16,6 @@ use bevy::camera::RenderTarget;
 use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use crate::components::UiCanvas;
 
@@ -25,12 +24,12 @@ use crate::components::UiCanvas;
 pub const UI_RENDER_WIDTH: u32 = 1280;
 pub const UI_RENDER_HEIGHT: u32 = 720;
 
-/// Resource holding the editor's UI render target — image, egui texture
-/// id, and the camera entity that renders bevy_ui to it.
+/// Resource holding the editor's UI render target — the offscreen image and
+/// the camera entity that renders bevy_ui to it. Consumers display the render
+/// via `image_handle` (a bevy_ui `ImageNode`).
 #[derive(Resource)]
 pub struct UiCanvasRender {
     pub image_handle: Handle<Image>,
-    pub texture_id: Option<bevy_egui::egui::TextureId>,
     pub camera_entity: Entity,
 }
 
@@ -38,13 +37,9 @@ pub struct UiCanvasRender {
 #[derive(Component)]
 pub struct UiEditorRenderCamera;
 
-/// Startup system — creates the render-target image, registers it with
-/// egui, and spawns the dedicated 2D camera that renders bevy_ui to it.
-pub fn setup_ui_canvas_render(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
-) {
+/// Startup system — creates the render-target image and spawns the dedicated
+/// 2D camera that renders bevy_ui to it.
+pub fn setup_ui_canvas_render(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let size = Extent3d {
         width: UI_RENDER_WIDTH,
         height: UI_RENDER_HEIGHT,
@@ -63,8 +58,6 @@ pub fn setup_ui_canvas_render(
     image.sampler = ImageSampler::linear();
 
     let image_handle = images.add(image);
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-    let texture_id = user_textures.image_id(image_handle.id());
 
     // Dedicated 2D camera. UI rendering hangs off any active camera with a
     // `Camera` + render target — Camera2d is the lightest setup that
@@ -98,7 +91,6 @@ pub fn setup_ui_canvas_render(
 
     commands.insert_resource(UiCanvasRender {
         image_handle,
-        texture_id,
         camera_entity,
     });
 }
