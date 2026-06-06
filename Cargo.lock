@@ -9261,11 +9261,8 @@ name = "renzora_context_menu"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
- "renzora_theme",
 ]
 
 [[package]]
@@ -9532,14 +9529,11 @@ name = "renzora_foliage_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_hui",
  "renzora_terrain",
- "renzora_theme",
 ]
 
 [[package]]
@@ -10036,7 +10030,6 @@ name = "renzora_mesh_draw"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_editor",
@@ -10048,11 +10041,8 @@ name = "renzora_mesh_edit"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
- "renzora_theme",
  "renzora_undo",
 ]
 
@@ -10490,7 +10480,6 @@ dependencies = [
  "renzora_volumetric_fog",
  "renzora_vst",
  "renzora_water",
- "renzora_widget_gallery",
  "toml 0.8.23",
  "winit",
 ]
@@ -10913,11 +10902,7 @@ name = "renzora_tracy"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
- "renzora_editor",
- "renzora_theme",
  "tracy-client",
 ]
 
@@ -11073,18 +11058,6 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
-]
-
-[[package]]
-name = "renzora_widget_gallery"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
- "renzora",
- "renzora_editor",
- "renzora_theme",
 ]
 
 [[package]]

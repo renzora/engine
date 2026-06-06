@@ -6,13 +6,9 @@ description = "Tracy profiler plugin for Renzora. Always linked; dormant until a
 
 [features]
 default = []
-editor = [
-    "renzora/editor",
-    "dep:renzora_editor",
-    "dep:renzora_theme",
-    "dep:bevy_egui",
-    "dep:egui-phosphor",
-]
+# Kept (empty bar the core cascade) so `renzora_tracy/editor` references still
+# resolve; the egui status panel was removed in the egui purge.
+editor = ["renzora/editor"]
 
 [dependencies]
 # Always pull in `trace_tracy` on bevy. Feature unification propagates
@@ -27,13 +23,6 @@ renzora = { path = "../renzora", default-features = false }
 # bounded buffer at idle, which was likely the cause of past 1GB/s
 # idle memory growth.
 tracy-client = { version = "0.18.3", features = ["ondemand"] }
-
-# Editor-only deps for the status panel. Skipped in runtime/server
-# builds so we don't drag egui into shipped game binaries.
-renzora_editor = { path = "../renzora_editor", optional = true }
-renzora_theme = { path = "../renzora_theme", optional = true }
-bevy_egui = { workspace = true, optional = true }
-egui-phosphor = { workspace = true, optional = true }
 
 [lints]
 workspace = true

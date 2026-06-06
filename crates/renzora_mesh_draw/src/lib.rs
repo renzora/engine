@@ -18,14 +18,13 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui::{self, Color32 as EColor, CursorIcon as ECursor};
 use egui_phosphor::regular::{CUBE, LINK, POLYGON};
 use renzora::core::keybindings::KeyBinding;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_editor::{
     ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry, ToolEntry,
-    ToolSection, ViewportOverlayRegistry,
+    ToolSection,
 };
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -190,10 +189,6 @@ impl Plugin for MeshDrawPlugin {
                 )
                     .chain(),
             );
-
-        app.world_mut()
-            .resource_mut::<ViewportOverlayRegistry>()
-            .register(200, draw_cursor_overlay);
     }
 }
 
@@ -611,27 +606,6 @@ fn draw_wire_box(gizmos: &mut Gizmos, min: Vec3, max: Vec3, color: Color) {
     ] {
         gizmos.line(a, b, color);
     }
-}
-
-// ── Viewport overlay (cursor + border tint) ────────────────────────────────
-
-fn draw_cursor_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    let Some(state) = world.get_resource::<MeshDrawState>() else {
-        return;
-    };
-    if !state.active {
-        return;
-    }
-    let pointer_in = ui
-        .ctx()
-        .pointer_hover_pos()
-        .is_some_and(|p| rect.contains(p));
-    if pointer_in {
-        ui.ctx().set_cursor_icon(ECursor::Crosshair);
-    }
-    let stroke = egui::Stroke::new(1.0, EColor::from_rgba_unmultiplied(90, 190, 255, 180));
-    ui.painter()
-        .rect_stroke(rect, 0.0, stroke, egui::StrokeKind::Inside);
 }
 
 // ── Commit drawn meshes ────────────────────────────────────────────────────

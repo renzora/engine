@@ -20,10 +20,8 @@
 use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportMode;
 use renzora_editor::sdk::conditions::in_mode;
-use renzora_editor::AppEditorExt;
 
 pub mod edit_mesh;
-pub mod header;
 pub mod operators;
 pub mod selection;
 pub mod systems;
@@ -41,7 +39,6 @@ impl Plugin for MeshEditPlugin {
         app.init_resource::<MeshSelection>()
             .init_resource::<systems::GrabState>()
             .init_resource::<systems::EditModeActive>()
-            .register_mode_options(ViewportMode::Edit, header::draw_edit_header)
             .add_systems(
                 Update,
                 (

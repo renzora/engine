@@ -62,7 +62,6 @@ editor = [
     "dep:renzora_test_component",
     "dep:renzora_theme_status",
     "dep:renzora_vst",
-    "dep:renzora_widget_gallery",
     # Cascade editor sub-features into dual-mode crates
     "renzora_engine/editor",
     "renzora_physics/editor",
@@ -206,7 +205,6 @@ renzora_terrain_editor = { path = "../renzora_terrain_editor", optional = true }
 renzora_test_component = { path = "../renzora_test_component", optional = true }
 renzora_theme_status = { path = "../renzora_theme_status", optional = true }
 renzora_vst = { path = "../renzora_vst", optional = true }
-renzora_widget_gallery = { path = "../renzora_widget_gallery", optional = true }
 
 
 [lints]

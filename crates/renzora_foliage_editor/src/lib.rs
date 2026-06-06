@@ -1,7 +1,6 @@
 //! Foliage Editor — painting foliage onto terrain with brush tools.
 
 mod native;
-mod panel;
 pub mod systems;
 
 use bevy::prelude::*;

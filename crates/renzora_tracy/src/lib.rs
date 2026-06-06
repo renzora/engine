@@ -17,8 +17,6 @@
 
 use bevy::prelude::*;
 
-#[cfg(feature = "editor")]
-mod panel;
 mod plots;
 
 #[derive(Default)]
@@ -30,9 +28,6 @@ impl Plugin for TracyPlugin {
             "[engine] TracyPlugin — dormant until a Tracy GUI 0.11.x connects to localhost"
         );
         plots::register(app);
-
-        #[cfg(feature = "editor")]
-        panel::register(app);
     }
 }
 
