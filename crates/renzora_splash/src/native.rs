@@ -1,13 +1,12 @@
-//! Bevy-native (ember) splash launcher — a focused project launcher: a
-//! borderless window-chrome strip carrying the New/Open actions, a single
-//! centred Projects panel (search + recent-project cards), the animated
-//! background ([`crate::native_bg`]) and a bottom social bar.
+//! Bevy-native (ember) splash launcher — an open, chrome-less project launcher
+//! floating over the animated city + grid/network background: a search field at
+//! top-centre, the "Renzora" title + a narrow recent-projects list in the
+//! middle, and the New/Open actions + social links at bottom-centre. Window
+//! controls float in the top-right; the whole background is a drag handle.
 //!
-//! Unlike the editor's native panels (which gate on `EditorUiBackend`), the
-//! splash runs at startup *before* the F10 backend toggle is meaningful and the
-//! backend defaults to `Egui`. So this renders unconditionally while in
-//! [`SplashState::Splash`], and the egui splash only paints as a fallback until
-//! the native root has spawned (see `native_splash_absent`).
+//! Renders unconditionally while in [`SplashState::Splash`] (the backend is
+//! `Egui` at startup, before the F10 toggle is meaningful); the egui splash only
+//! paints as a fallback until the native root spawns (see `native_splash_absent`).
 
 use bevy::ecs::world::CommandQueue;
 use bevy::math::CompassOctant;
@@ -37,12 +36,6 @@ fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
 }
 
-fn bg_color() -> Color {
-    c(5, 4, 10)
-}
-fn panel_bg() -> Color {
-    ca(18, 20, 30, 235)
-}
 fn panel_hover() -> Color {
     ca(30, 34, 52, 250)
 }
@@ -56,7 +49,7 @@ fn text() -> Color {
     c(224, 228, 240)
 }
 fn text_muted() -> Color {
-    c(130, 138, 160)
+    c(150, 158, 178)
 }
 fn accent() -> Color {
     c(110, 150, 255)
@@ -76,6 +69,8 @@ const WEBSITE_URL: &str = "https://renzora.com";
 const YOUTUBE_URL: &str = "https://youtube.com/@renzoragame";
 const DISCORD_URL: &str = "https://discord.gg/9UHUGUyDJv";
 const GITHUB_URL: &str = "https://github.com/renzora/engine";
+
+const CONTENT_W: f32 = 460.0;
 
 // ── Markers / resources ──────────────────────────────────────────────────────
 
@@ -175,6 +170,8 @@ fn manage_splash(world: &mut World) {
 }
 
 fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
+    // The root is also the window drag handle — clicking empty background space
+    // (the city/shader children are click-through) drags the borderless window.
     let root = commands
         .spawn((
             Node {
@@ -186,9 +183,11 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(bg_color()),
+            BackgroundColor(c(5, 4, 10)),
             GlobalZIndex(500),
             FocusPolicy::Block,
+            Interaction::default(),
+            SplashDragHandle,
             SplashRoot,
             Name::new("splash-root"),
         ))
@@ -196,114 +195,142 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
 
     let backdrop = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                right: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                ..default()
-            },
+            fullscreen_abs(),
             FocusPolicy::Pass,
             crate::native_bg::BgBackground,
             Name::new("splash-bg"),
         ))
         .id();
-
-    // 3D city render, shown behind the panels (image attached by native_city).
     let city = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                right: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                ..default()
-            },
-            FocusPolicy::Pass,
-            crate::native_city::CityView,
-            Name::new("splash-city"),
-        ))
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_city::CityView, Name::new("splash-city")))
         .id();
 
-    let chrome = build_chrome(commands, fonts);
-    let content = build_content(commands, fonts);
-    commands
-        .entity(root)
-        .add_children(&[backdrop, city, chrome, content]);
+    let layout = build_layout(commands, fonts);
+    let controls = build_window_controls(commands, fonts);
 
+    commands.entity(root).add_children(&[backdrop, city, layout, controls]);
     build_resize_zones(commands, root);
 }
 
-// ── Window chrome strip (with the New / Open actions) ────────────────────────
+fn fullscreen_abs() -> Node {
+    Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(0.0),
+        top: Val::Px(0.0),
+        right: Val::Px(0.0),
+        bottom: Val::Px(0.0),
+        ..default()
+    }
+}
 
-fn build_chrome(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let bar = commands
+// ── Main layout (top search · middle title+recents · bottom actions) ─────────
+
+fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                padding: UiRect::vertical(Val::Px(20.0)),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            Name::new("splash-layout"),
+        ))
+        .id();
+
+    // ── Top: search, centred ──
+    let top = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(40.0),
                 flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                padding: UiRect::left(Val::Px(10.0)),
-                border: UiRect::bottom(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                padding: UiRect::top(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(c(12, 14, 22)),
-            BorderColor::all(border_soft()),
-            Name::new("splash-chrome"),
+            FocusPolicy::Pass,
         ))
         .id();
+    let search = build_search(commands, fonts);
+    commands.entity(top).add_child(search);
 
-    // Left: wordmark + version pill.
-    let left = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(9.0), ..default() })
-        .id();
-    let brand = commands
-        .spawn((Text::new("Renzora".to_string()), ui_font(&fonts.ui, 13.0), TextColor(white()), FocusPolicy::Pass))
-        .id();
-    let pill = commands
+    // ── Middle: title + recents, vertically centred ──
+    let middle = commands
         .spawn((
             Node {
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(7.0), Val::Px(2.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(9.0)),
+                row_gap: Val::Px(18.0),
                 ..default()
             },
-            BackgroundColor(ca(110, 150, 255, 40)),
-            BorderColor::all(ca(110, 150, 255, 140)),
+            FocusPolicy::Pass,
         ))
         .id();
-    let pill_t = commands
-        .spawn((Text::new(VERSION.to_string()), ui_font(&fonts.mono, 10.5), TextColor(accent()), FocusPolicy::Pass))
-        .id();
-    commands.entity(pill).add_child(pill_t);
-    commands.entity(left).add_children(&[brand, pill]);
 
-    // Drag region fills the gap between the brand and the social/window controls.
-    let drag = commands
+    let title_block = commands
+        .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let title = commands
+        .spawn((Text::new("Renzora".to_string()), ui_font(&fonts.ui, 34.0), TextColor(white()), FocusPolicy::Pass))
+        .id();
+    let tagline = commands
+        .spawn((Text::new(format!("Game Engine  ·  {VERSION}")), ui_font(&fonts.ui, 12.5), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    commands.entity(title_block).add_children(&[title, tagline]);
+
+    // Recents block: heading + capped scroll list + empty state.
+    let recents = commands
+        .spawn((Node { width: Val::Px(CONTENT_W), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let heading = commands
+        .spawn((Text::new("Recent Projects".to_string()), ui_font(&fonts.ui, 13.0), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    let list = commands
         .spawn((
-            Node { flex_grow: 1.0, height: Val::Percent(100.0), ..default() },
-            Interaction::default(),
-            SplashDragHandle,
-            HoverCursor(SystemCursorIcon::Grab),
-            Name::new("splash-drag"),
+            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() },
+            RecentsContainer,
         ))
         .id();
+    keyed_list(commands, list, recents_snapshot);
+    let scroll = renzora_ember::widgets::scroll_area(commands, list, 320.0);
+    let empty = commands
+        .spawn((Text::new("No recent projects yet.".to_string()), ui_font(&fonts.ui, 12.5), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    commands.entity(empty).insert(Node { margin: UiRect::top(Val::Px(6.0)), align_self: AlignSelf::Center, ..default() });
+    bind_display(commands, empty, |w| filtered_rows(w).is_empty());
+    commands.entity(recents).add_children(&[heading, scroll, empty]);
 
-    // Social links (moved up from the old footer).
+    commands.entity(middle).add_children(&[title_block, recents]);
+
+    // ── Bottom: actions + socials, centred ──
+    let bottom = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(12.0),
+                padding: UiRect::bottom(Val::Px(8.0)),
+                ..default()
+            },
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let actions = commands
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let new = pill_button(commands, fonts, "plus", "New Project", true);
+    commands.entity(new).insert(NewProjectBtn);
+    let open = pill_button(commands, fonts, "folder-open", "Open Project", false);
+    commands.entity(open).insert(OpenProjectBtn);
+    commands.entity(actions).add_children(&[new, open]);
+
     let socials = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::right(Val::Px(8.0)),
-            ..default()
-        })
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass))
         .id();
     let website = social_button(commands, fonts, "globe", "Website", WEBSITE_URL, false);
     let youtube = social_button(commands, fonts, "youtube-logo", "YouTube", YOUTUBE_URL, false);
@@ -311,68 +338,69 @@ fn build_chrome(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
     commands.entity(socials).add_children(&[website, youtube, discord, star]);
 
-    let winbtns = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Stretch, height: Val::Percent(100.0), ..default() })
+    commands.entity(bottom).add_children(&[actions, socials]);
+
+    commands.entity(col).add_children(&[top, middle, bottom]);
+    col
+}
+
+fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Px(380.0),
+                height: Val::Px(40.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(12.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(ca(10, 12, 20, 225)),
+            BorderColor::all(border_soft()),
+        ))
+        .id();
+    let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", (150, 158, 178), 14.0);
+    commands.entity(mag).insert(FocusPolicy::Pass);
+    let search = text_input(commands, &fonts.ui, "Search projects…", "");
+    commands.entity(search).insert(Node { flex_grow: 1.0, height: Val::Percent(100.0), align_items: AlignItems::Center, ..default() });
+    commands.entity(search).insert((BackgroundColor(Color::NONE), BorderColor::all(Color::NONE)));
+    bind_text_input(commands, search, g_filter, s_filter);
+    commands.entity(row).add_children(&[mag, search]);
+    row
+}
+
+// ── Floating window controls (top-right) ─────────────────────────────────────
+
+fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                height: Val::Px(36.0),
+                flex_direction: FlexDirection::Row,
+                ..default()
+            },
+            GlobalZIndex(600),
+            Name::new("splash-window-controls"),
+        ))
         .id();
     let min = win_button(commands, fonts, WinBtn::Min, "minus", false);
     let max = win_button(commands, fonts, WinBtn::Max, "square", false);
     let close = win_button(commands, fonts, WinBtn::Close, "x", true);
-    commands.entity(winbtns).add_children(&[min, max, close]);
-
-    commands.entity(bar).add_children(&[left, drag, socials, winbtns]);
-    bar
-}
-
-/// A compact icon+label button sized for the 40px chrome bar.
-fn chrome_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label_txt: &str, primary: bool) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                height: Val::Px(28.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::horizontal(Val::Px(12.0)),
-                border: if primary { UiRect::ZERO } else { UiRect::all(Val::Px(1.0)) },
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..default()
-            },
-            BackgroundColor(if primary { accent() } else { ca(255, 255, 255, 12) }),
-            BorderColor::all(if primary { Color::NONE } else { border() }),
-            Interaction::default(),
-            HoverCursor(SystemCursorIcon::Pointer),
-        ))
-        .id();
-    bind_bg(commands, btn, move |w| {
-        let hov = is_hovered(w, btn);
-        if primary {
-            if hov { accent_hover() } else { accent() }
-        } else if hov {
-            ca(255, 255, 255, 24)
-        } else {
-            ca(255, 255, 255, 12)
-        }
-    });
-    let ic = icon_text(commands, &fonts.phosphor, icon, if primary { (255, 255, 255) } else { (224, 228, 240) }, 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands
-        .spawn((
-            Text::new(label_txt.to_string()),
-            ui_font(&fonts.ui, 12.5),
-            TextColor(if primary { white() } else { text() }),
-            FocusPolicy::Pass,
-        ))
-        .id();
-    commands.entity(btn).add_children(&[ic, t]);
-    btn
+    commands.entity(row).add_children(&[min, max, close]);
+    row
 }
 
 fn win_button(commands: &mut Commands, fonts: &EmberFonts, kind: WinBtn, icon: &str, is_close: bool) -> Entity {
     let btn = commands
         .spawn((
             Node {
-                width: Val::Px(40.0),
+                width: Val::Px(44.0),
                 height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -410,135 +438,87 @@ fn is_hovered(w: &World, e: Entity) -> bool {
     matches!(w.get::<Interaction>(e), Some(Interaction::Hovered) | Some(Interaction::Pressed))
 }
 
-// ── Centre: a single Projects panel ──────────────────────────────────────────
+// ── Buttons ──────────────────────────────────────────────────────────────────
 
-fn build_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let area = commands
+/// Icon + label action button (New / Open).
+fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label_txt: &str, primary: bool) -> Entity {
+    let btn = commands
         .spawn((
             Node {
-                flex_grow: 1.0,
-                width: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                padding: UiRect::all(Val::Px(28.0)),
-                ..default()
-            },
-            Name::new("splash-content"),
-        ))
-        .id();
-    let panel = build_projects_panel(commands, fonts);
-    commands.entity(area).add_child(panel);
-    area
-}
-
-fn build_projects_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let panel = commands
-        .spawn((
-            Node {
-                width: Val::Px(680.0),
-                max_width: Val::Percent(96.0),
-                height: Val::Percent(100.0),
-                max_height: Val::Px(620.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(24.0)),
-                row_gap: Val::Px(16.0),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(12.0)),
-                ..default()
-            },
-            BackgroundColor(panel_bg()),
-            BorderColor::all(border()),
-            Name::new("projects-panel"),
-        ))
-        .id();
-
-    // Header: title + subtitle on the left, New / Open actions on the right.
-    let header = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::SpaceBetween,
-            ..default()
-        })
-        .id();
-    let titles = commands
-        .spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
-        .id();
-    let title = label(commands, fonts, "Projects", 20.0, white());
-    let subtitle = label(commands, fonts, "Open a recent project, or create a new one.", 12.0, text_muted());
-    commands.entity(titles).add_children(&[title, subtitle]);
-
-    let actions = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() })
-        .id();
-    let new = chrome_button(commands, fonts, "plus", "New Project", true);
-    commands.entity(new).insert(NewProjectBtn);
-    let open = chrome_button(commands, fonts, "folder-open", "Open Project", false);
-    commands.entity(open).insert(OpenProjectBtn);
-    commands.entity(actions).add_children(&[new, open]);
-
-    commands.entity(header).add_children(&[titles, actions]);
-
-    // Search field (with a leading magnifier).
-    let search_row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(40.0),
+                height: Val::Px(36.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                padding: UiRect::horizontal(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(7.0),
+                padding: UiRect::horizontal(Val::Px(16.0)),
+                border: if primary { UiRect::ZERO } else { UiRect::all(Val::Px(1.0)) },
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(ca(10, 12, 20, 220)),
-            BorderColor::all(border_soft()),
+            BackgroundColor(if primary { accent() } else { ca(255, 255, 255, 14) }),
+            BorderColor::all(if primary { Color::NONE } else { border() }),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
-    let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", (130, 138, 160), 14.0);
-    commands.entity(mag).insert(FocusPolicy::Pass);
-    let search = text_input(commands, &fonts.ui, "Search projects…", "");
-    commands.entity(search).insert(Node {
-        flex_grow: 1.0,
-        height: Val::Percent(100.0),
-        align_items: AlignItems::Center,
-        ..default()
+    bind_bg(commands, btn, move |w| {
+        let hov = is_hovered(w, btn);
+        if primary {
+            if hov { accent_hover() } else { accent() }
+        } else if hov {
+            ca(255, 255, 255, 28)
+        } else {
+            ca(255, 255, 255, 14)
+        }
     });
-    // The input keeps its own bg/border by default; strip them so it blends.
-    commands.entity(search).insert((BackgroundColor(Color::NONE), BorderColor::all(Color::NONE)));
-    bind_text_input(commands, search, g_filter, s_filter);
-    commands.entity(search_row).add_children(&[mag, search]);
-
-    // Recents list (keyed, filtered) inside a scroll view.
-    let list = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() },
-            RecentsContainer,
-        ))
+    let ic = icon_text(commands, &fonts.phosphor, icon, if primary { (255, 255, 255) } else { (224, 228, 240) }, 14.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let t = commands
+        .spawn((Text::new(label_txt.to_string()), ui_font(&fonts.ui, 13.0), TextColor(if primary { white() } else { text() }), FocusPolicy::Pass))
         .id();
-    keyed_list(commands, list, recents_snapshot);
-    let scroll = renzora_ember::widgets::scroll_view(commands, list);
-
-    // Empty state shown when the (filtered) list is empty.
-    let empty = label(commands, fonts, "No projects found. Use New Project or Open Project above.", 12.5, text_muted());
-    commands.entity(empty).insert(Node {
-        margin: UiRect::top(Val::Px(8.0)),
-        align_self: AlignSelf::Center,
-        ..default()
-    });
-    bind_display(commands, empty, |w| filtered_rows(w).is_empty());
-
-    commands.entity(panel).add_children(&[header, search_row, empty, scroll]);
-    panel
+    commands.entity(btn).add_children(&[ic, t]);
+    btn
 }
 
-fn label(commands: &mut Commands, fonts: &EmberFonts, txt: &str, size: f32, color: Color) -> Entity {
-    commands
-        .spawn((Text::new(txt.to_string()), ui_font(&fonts.ui, size), TextColor(color)))
-        .id()
+fn social_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, txt: &str, url: &str, starred: bool) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                height: Val::Px(30.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(12.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                ..default()
+            },
+            BackgroundColor(ca(255, 255, 255, 12)),
+            BorderColor::all(border_soft()),
+            Interaction::default(),
+            SplashUrl(url.to_string()),
+            HoverCursor(SystemCursorIcon::Pointer),
+        ))
+        .id();
+    bind_bg(commands, btn, move |w| if is_hovered(w, btn) { ca(255, 255, 255, 26) } else { ca(255, 255, 255, 12) });
+    let col = if starred { (235, 195, 80) } else { (224, 228, 240) };
+    let ic = icon_text(commands, &fonts.phosphor, icon, col, 13.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    let t = commands
+        .spawn((Text::new(txt.to_string()), ui_font(&fonts.ui, 12.5), TextColor(if starred { c(235, 195, 80) } else { text() }), FocusPolicy::Pass))
+        .id();
+    commands.entity(btn).add_children(&[ic, t]);
+    if starred {
+        bind_text(commands, t, |w| {
+            let stars = w.get_resource::<GithubStats>().and_then(|s| s.stars);
+            match stars {
+                Some(n) => format!("Star us on GitHub  ({})", format_count(n)),
+                None => "Star us on GitHub".to_string(),
+            }
+        });
+    }
+    btn
 }
 
 // ── Recents ──────────────────────────────────────────────────────────────────
@@ -607,16 +587,16 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(62.0),
+                height: Val::Px(58.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(14.0),
-                padding: UiRect::horizontal(Val::Px(16.0)),
+                column_gap: Val::Px(13.0),
+                padding: UiRect::horizontal(Val::Px(14.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(ca(255, 255, 255, 8)),
+            BackgroundColor(ca(16, 18, 28, 220)),
             BorderColor::all(border_soft()),
             Interaction::default(),
         ))
@@ -624,37 +604,27 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
     if row.exists {
         commands.entity(container).insert((RecentOpen(row.path.clone()), HoverCursor(SystemCursorIcon::Pointer)));
         let cc = container;
-        bind_bg(commands, container, move |w| if is_hovered(w, cc) { panel_hover() } else { ca(255, 255, 255, 8) });
+        bind_bg(commands, container, move |w| if is_hovered(w, cc) { panel_hover() } else { ca(16, 18, 28, 220) });
     }
 
-    // Folder icon.
-    let icon = icon_text(commands, &fonts.phosphor, "folder", if row.exists { (110, 150, 255) } else { (130, 138, 160) }, 22.0);
+    let icon = icon_text(commands, &fonts.phosphor, "folder", if row.exists { (110, 150, 255) } else { (150, 158, 178) }, 21.0);
     commands.entity(icon).insert(FocusPolicy::Pass);
 
-    // Name + path.
     let info = commands
         .spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, FocusPolicy::Pass))
         .id();
     let name_txt = if row.exists { row.name.clone() } else { format!("{}  (missing)", row.name) };
     let name = commands
-        .spawn((Text::new(name_txt), ui_font(&fonts.ui, 15.0), TextColor(if row.exists { text() } else { text_muted() }), FocusPolicy::Pass))
+        .spawn((Text::new(name_txt), ui_font(&fonts.ui, 14.0), TextColor(if row.exists { text() } else { text_muted() }), FocusPolicy::Pass))
         .id();
     let path = commands
-        .spawn((Text::new(elide_path(&row.path_display, 70)), ui_font(&fonts.mono, 10.5), TextColor(text_muted()), FocusPolicy::Pass))
+        .spawn((Text::new(elide_path(&row.path_display, 56)), ui_font(&fonts.mono, 10.0), TextColor(text_muted()), FocusPolicy::Pass))
         .id();
     commands.entity(info).add_children(&[name, path]);
 
-    // Remove-from-recents button (× — does not delete from disk).
     let remove = commands
         .spawn((
-            Node {
-                width: Val::Px(26.0),
-                height: Val::Px(26.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(5.0)),
-                ..default()
-            },
+            Node { width: Val::Px(26.0), height: Val::Px(26.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
             BackgroundColor(Color::NONE),
             Interaction::default(),
             RecentRemove(row.path.clone()),
@@ -663,7 +633,7 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
         .id();
     let rc = remove;
     bind_bg(commands, remove, move |w| if is_hovered(w, rc) { ca(239, 68, 68, 40) } else { Color::NONE });
-    let rx = icon_text(commands, &fonts.phosphor, "x", (130, 138, 160), 13.0);
+    let rx = icon_text(commands, &fonts.phosphor, "x", (150, 158, 178), 13.0);
     commands.entity(rx).insert(FocusPolicy::Pass);
     bind_text_color_on_hover(commands, rx, remove);
     commands.entity(remove).add_child(rx);
@@ -672,7 +642,6 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
     container
 }
 
-/// Tint a glyph red while `btn` is hovered.
 fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity) {
     react(commands, move |world: &mut World| {
         if world.get_entity(text_e).is_err() || world.get_entity(btn).is_err() {
@@ -693,54 +662,6 @@ fn elide_path(s: &str, max: usize) -> String {
     } else {
         s.to_string()
     }
-}
-
-// ── Social buttons (in the title bar) ────────────────────────────────────────
-
-fn social_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, txt: &str, url: &str, starred: bool) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                height: Val::Px(30.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::horizontal(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(7.0)),
-                ..default()
-            },
-            BackgroundColor(ca(255, 255, 255, 12)),
-            BorderColor::all(border_soft()),
-            Interaction::default(),
-            SplashUrl(url.to_string()),
-            HoverCursor(SystemCursorIcon::Pointer),
-        ))
-        .id();
-    bind_bg(commands, btn, move |w| if is_hovered(w, btn) { ca(255, 255, 255, 26) } else { ca(255, 255, 255, 12) });
-    let col = if starred { (235, 195, 80) } else { (224, 228, 240) };
-    let ic = icon_text(commands, &fonts.phosphor, icon, col, 13.0);
-    commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands
-        .spawn((
-            Text::new(txt.to_string()),
-            ui_font(&fonts.ui, 12.5),
-            TextColor(if starred { c(235, 195, 80) } else { text() }),
-            FocusPolicy::Pass,
-        ))
-        .id();
-    commands.entity(btn).add_children(&[ic, t]);
-    if starred {
-        bind_text(commands, t, |w| {
-            let stars = w.get_resource::<GithubStats>().and_then(|s| s.stars);
-            match stars {
-                Some(n) => format!("Star us on GitHub  ({})", format_count(n)),
-                None => "Star us on GitHub".to_string(),
-            }
-        });
-    }
-    btn
 }
 
 // ── Resize zones ─────────────────────────────────────────────────────────────
