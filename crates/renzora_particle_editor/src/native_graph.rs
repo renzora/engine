@@ -108,30 +108,35 @@ fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
 
+type Port = (String, String, (u8, u8, u8));
+/// Neutral port colour for particle pins.
+const PART_PORT: (u8, u8, u8) = (140, 150, 175);
+
 #[allow(clippy::type_complexity)]
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<ParticleEditorState>() else { return empty() };
     let Some(graph) = s.node_graph.as_ref() else { return empty() };
     let sel = s.selected_node;
-    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<(String, String)>, Vec<(String, String)>, bool)> = graph
+    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool)> = graph
         .nodes
         .iter()
         .map(|n| {
             let title = n.node_type.display_name().to_string();
             let color = cat_color(n.node_type.category());
             let pins = n.node_type.pins();
-            let inputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone())).collect();
-            let outputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone())).collect();
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), PART_PORT)).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), PART_PORT)).collect();
             (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
         .iter()
-        .map(|(id, title, color, _pos, ins, outs, selected)| {
+        .map(|(id, title, color, _pos, ins, outs, _selected)| {
             let mut k = hasher();
             id.hash(&mut k);
             let mut h = hasher();
-            (title, color, ins, outs, selected).hash(&mut h);
+            // Structure only (not selection) so selecting never rebuilds a node.
+            (title, color, ins, outs).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -139,7 +144,7 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         items,
         build: Box::new(move |c, f, i| {
             let (id, title, color, pos, ins, outs, selected) = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected)
+            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None)
         }),
     }
 }
@@ -201,6 +206,15 @@ fn part_graph_sync(mut views: Query<&mut NodeGraphView, With<PartGraph>>, state:
                     if let Some(g) = s.node_graph.as_mut() {
                         g.disconnect(to_node, &to_pin);
                         changed = true;
+                    }
+                }
+                GraphEdit::Delete { id } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        g.remove_node(id);
+                        changed = true;
+                    }
+                    if s.selected_node == Some(id) {
+                        s.selected_node = None;
                     }
                 }
                 GraphEdit::Select { id } => s.selected_node = id,
