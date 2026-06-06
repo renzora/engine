@@ -33,7 +33,7 @@ pub struct NativeMaterialGraph;
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
-        app.add_systems(Update, (apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, (apply_click, add_node_open, view_op_click).run_if(in_state(SplashState::Editor)));
         // Orchestration: only while the graph panel is actually mounted (mirrors
         // the egui panel only running its sync inside `ui()`).
         app.add_systems(
@@ -52,6 +52,15 @@ struct MatGraph;
 struct ApplyBtn;
 #[derive(Component)]
 struct AddNodeBtn;
+#[derive(Clone, Copy)]
+enum ViewOp {
+    Fit,
+    Center,
+    ZoomIn,
+    ZoomOut,
+}
+#[derive(Component)]
+struct ViewOpBtn(ViewOp);
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
@@ -71,7 +80,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
     let apply = tool_button(commands, fonts, "check", "Apply", text_primary(), ApplyBtn);
-    commands.entity(bar).add_children(&[add, apply]);
+    let fit = tool_button(commands, fonts, "arrows-in", "Fit", text_primary(), ViewOpBtn(ViewOp::Fit));
+    let center = tool_button(commands, fonts, "crosshair-simple", "Center", text_primary(), ViewOpBtn(ViewOp::Center));
+    let zin = tool_button(commands, fonts, "magnifying-glass-plus", "+", text_primary(), ViewOpBtn(ViewOp::ZoomIn));
+    let zout = tool_button(commands, fonts, "magnifying-glass-minus", "−", text_primary(), ViewOpBtn(ViewOp::ZoomOut));
+    commands.entity(bar).add_children(&[add, apply, fit, center, zin, zout]);
 
     // Canvas.
     let handle = node_graph_view(commands, fonts);
@@ -308,6 +321,23 @@ fn pending_first_save(world: &mut World, entity: Entity) {
     world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
     world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
     world.resource_mut::<MaterialEditorState>().edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
+}
+
+/// Toolbar view ops just set request flags on the shared widget, which acts on them.
+fn view_op_click(q: Query<(&Interaction, &ViewOpBtn), Changed<Interaction>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
+    for (i, op) in &q {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        for mut v in &mut views {
+            match op.0 {
+                ViewOp::Fit => v.fit_request = true,
+                ViewOp::Center => v.center_request = true,
+                ViewOp::ZoomIn => v.zoom_request = Some(1.25),
+                ViewOp::ZoomOut => v.zoom_request = Some(0.8),
+            }
+        }
+    }
 }
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {

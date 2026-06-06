@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform, UiTransform};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -667,6 +667,72 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
             m.color = Vec4::new(lin.red, lin.green, lin.blue, 1.0);
             m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
         }
+    }
+}
+
+/// Apply the caller's view requests: `fit_request` frames all nodes,
+/// `center_request` recenters at the current zoom, `zoom_request` multiplies the
+/// zoom (centre-anchored). Drives the canvas `GraphView` + `UiTransform`.
+#[allow(clippy::type_complexity)]
+fn ngv_view_ops(
+    mut graphs: Query<(Entity, &mut NodeGraphView, &ComputedNode, &Children)>,
+    mut canvases: Query<(&mut GraphView, &mut UiTransform)>,
+    nodes: Query<(&NgvNode, &Node, &ComputedNode)>,
+) {
+    for (vp, mut g, vcn, children) in &mut graphs {
+        if !g.fit_request && !g.center_request && g.zoom_request.is_none() {
+            continue;
+        }
+        let Some(canvas) = children.iter().find(|&c| canvases.contains(c)) else {
+            g.fit_request = false;
+            g.center_request = false;
+            g.zoom_request = None;
+            continue;
+        };
+        let vp_isf = vcn.inverse_scale_factor();
+        let vp_size = vcn.size() * vp_isf;
+        let center = vp_size * 0.5;
+        let Ok((mut view, mut tf)) = canvases.get_mut(canvas) else { continue };
+
+        // Toolbar zoom ± (centre-anchored): pan scales with the zoom ratio.
+        if let Some(factor) = g.zoom_request.take() {
+            let cur = view.zoom.max(0.01);
+            let new = (cur * factor).clamp(0.4, 2.5);
+            let r = new / cur;
+            view.pan *= r;
+            view.zoom = new;
+        }
+
+        if g.fit_request || g.center_request {
+            let z = view.zoom.max(0.01);
+            let (mut mn, mut mx, mut any) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false);
+            for (n, node, ncn) in &nodes {
+                if n.viewport != vp {
+                    continue;
+                }
+                let pos = Vec2::new(px(node.left), px(node.top));
+                let size = ncn.size() * vp_isf / z; // canvas-local logical
+                mn = mn.min(pos);
+                mx = mx.max(pos + size);
+                any = true;
+            }
+            if any {
+                let bbox_c = (mn + mx) * 0.5;
+                let bbox_s = (mx - mn).max(Vec2::splat(1.0));
+                if g.fit_request {
+                    let pad = 80.0;
+                    let zoom = (vp_size.x / (bbox_s.x + pad)).min(vp_size.y / (bbox_s.y + pad)).clamp(0.25, 1.5);
+                    view.zoom = zoom;
+                    view.pan = (center - bbox_c) * zoom;
+                } else {
+                    view.pan = (center - bbox_c) * view.zoom;
+                }
+            }
+            g.fit_request = false;
+            g.center_request = false;
+        }
+        tf.translation = Val2::px(view.pan.x, view.pan.y);
+        tf.scale = Vec2::splat(view.zoom);
     }
 }
 
