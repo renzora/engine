@@ -10580,8 +10580,6 @@ name = "renzora_settings"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
@@ -10760,12 +10758,9 @@ name = "renzora_system_monitor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "nvml-wrapper",
  "renzora",
  "renzora_editor",
- "renzora_theme",
  "sysinfo 0.35.2",
 ]
 
@@ -10828,8 +10823,6 @@ name = "renzora_theme_status"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_theme",

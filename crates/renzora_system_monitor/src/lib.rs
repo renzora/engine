@@ -1,19 +1,14 @@
 //! System monitor status bar plugin — FPS counter and hardware info.
 
-use std::sync::RwLock;
-
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use bevy_egui::egui;
-use egui_phosphor::regular;
 use nvml_wrapper::Nvml;
 
 use renzora::{
     RenderingMode, RenzoraShellExt, ResolvedRenderingMode, ShellStatusAlign, ShellStatusItem,
     ShellStatusSegment,
 };
-use renzora_editor::{AppEditorExt, SplashState, StatusBarAlignment, StatusBarItem};
-use renzora_theme::ThemeManager;
+use renzora_editor::SplashState;
 
 // ============================================================================
 // State
@@ -122,134 +117,6 @@ fn extract_gpu_name(
 }
 
 // ============================================================================
-// Status bar item
-// ============================================================================
-
-struct SystemMonitorStatusItem {
-    state: RwLock<SystemMonitorState>,
-}
-
-impl Default for SystemMonitorStatusItem {
-    fn default() -> Self {
-        Self {
-            state: RwLock::new(SystemMonitorState::default()),
-        }
-    }
-}
-
-impl StatusBarItem for SystemMonitorStatusItem {
-    fn id(&self) -> &str {
-        "system_monitor"
-    }
-
-    fn alignment(&self) -> StatusBarAlignment {
-        StatusBarAlignment::Right
-    }
-
-    fn order(&self) -> i32 {
-        100
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        // Sync from world resource
-        if let Some(world_state) = world.get_resource::<SystemMonitorState>() {
-            if let Ok(mut local) = self.state.write() {
-                *local = world_state.clone();
-            }
-        }
-
-        let theme = world
-            .get_resource::<ThemeManager>()
-            .map(|tm| tm.active_theme.clone())
-            .unwrap_or_default();
-
-        let text_color = theme.text.secondary.to_color32();
-        let muted_color = theme.text.muted.to_color32();
-
-        let state = match self.state.read() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
-        let fps_color = if state.fps >= 55.0 {
-            egui::Color32::from_rgb(100, 200, 100) // green
-        } else if state.fps >= 30.0 {
-            egui::Color32::from_rgb(220, 180, 50) // yellow
-        } else {
-            egui::Color32::from_rgb(220, 80, 80) // red
-        };
-
-        // GPU name
-        if !state.gpu_name.is_empty() {
-            ui.label(
-                egui::RichText::new(format!("{} {}", regular::GRAPHICS_CARD, state.gpu_name))
-                    .size(11.0)
-                    .color(muted_color),
-            );
-        }
-
-        // Rendering mode (Forward/Deferred), shown next to the renderer. Read
-        // live every frame so the deferred-prepass race is observable: watch
-        // whether a load resolves to "Deferred" (the crash-prone path) and
-        // whether it differs between project loads. Never "Auto" — by now the
-        // abstract preference is resolved to a concrete path.
-        if let Some(mode) = world.get_resource::<ResolvedRenderingMode>() {
-            let (label, color) = match mode.0 {
-                RenderingMode::Deferred => {
-                    // amber — the known-fragile path that triggers the crash
-                    ("Deferred", egui::Color32::from_rgb(220, 180, 50))
-                }
-                _ => ("Forward", text_color),
-            };
-            ui.label(
-                egui::RichText::new(format!("{} {}", regular::STACK, label))
-                    .size(11.0)
-                    .color(color),
-            );
-        }
-
-        // GPU usage + VRAM
-        if state.gpu_vram_total_gb > 0.0 {
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} {:.0}% {:.1}/{:.0} GB",
-                    regular::GRAPHICS_CARD,
-                    state.gpu_usage_pct,
-                    state.gpu_vram_used_gb,
-                    state.gpu_vram_total_gb,
-                ))
-                .size(11.0)
-                .color(text_color),
-            );
-        }
-
-        // RAM
-        ui.label(
-            egui::RichText::new(format!(
-                "{} {:.1} / {:.0} GB",
-                regular::MEMORY,
-                state.used_ram_gb,
-                state.total_ram_gb,
-            ))
-            .size(11.0)
-            .color(text_color),
-        );
-
-        // FPS + frame time
-        ui.label(
-            egui::RichText::new(format!(
-                "{} {:.0} FPS ({:.2}ms)",
-                regular::SPEEDOMETER,
-                state.fps,
-                state.frame_time_ms,
-            ))
-            .size(11.0)
-            .color(fps_color),
-        );
-    }
-}
-
-// ============================================================================
 // Plugin
 // ============================================================================
 
@@ -279,7 +146,6 @@ impl Plugin for SystemMonitorPlugin {
                 .run_if(in_state(SplashState::Editor)),
         );
 
-        app.register_status_item(SystemMonitorStatusItem::default());
         // bevy_ui shell status item (the egui-free path).
         app.register_shell_status_item(ShellStatusItem {
             id: "system_monitor",
