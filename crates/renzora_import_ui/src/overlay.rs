@@ -800,7 +800,7 @@ fn section_label(ui: &mut egui::Ui, icon: &str, label: &str, color: egui::Color3
     );
 }
 
-fn close_overlay(world: &mut World) {
+pub(crate) fn close_overlay(world: &mut World) {
     let mut state = world.resource_mut::<ImportOverlayState>();
     state.visible = false;
     state.pending_files.clear();

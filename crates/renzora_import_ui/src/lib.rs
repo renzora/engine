@@ -5,6 +5,8 @@
 //! assets directory.
 
 #[cfg(not(target_arch = "wasm32"))]
+mod native;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod overlay;
 
 use bevy::prelude::*;
@@ -25,6 +27,7 @@ impl Plugin for ImportPlugin {
 
             _app.init_resource::<overlay::ImportOverlayState>()
                 .add_systems(EguiPrimaryContextPass, import_overlay_system);
+            native::register(_app);
         }
     }
 }
@@ -136,7 +139,15 @@ fn import_overlay_system(world: &mut World) {
         return;
     }
 
-    overlay::draw_import_overlay(world, &ctx);
+    // Native bevy_ui renders the overlay under the BevyUi backend (see
+    // `native`); egui only under the Egui backend.
+    let egui_backend = world
+        .get_resource::<renzora::core::EditorUiBackend>()
+        .map(|b| b.is_egui())
+        .unwrap_or(true);
+    if egui_backend {
+        overlay::draw_import_overlay(world, &ctx);
+    }
 }
 
 renzora::add!(ImportPlugin, Editor);
