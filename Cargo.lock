@@ -9817,13 +9817,10 @@ name = "renzora_history"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_hui",
- "renzora_theme",
  "renzora_undo",
 ]
 
