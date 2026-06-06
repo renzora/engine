@@ -21,7 +21,7 @@ use crate::SplashState;
 /// Free render layer (5 = vello, 7 = material thumbs, 8 = model thumbs).
 const CITY_LAYER: usize = 6;
 const RES: UVec2 = UVec2::new(1920, 1080);
-const GRID: i32 = 15; // buildings per side
+const GRID: i32 = 27; // buildings per side
 const SPACING: f32 = 9.0;
 /// Seconds each camera "shot" holds before cutting to the next angle.
 const SHOT_SECS: f32 = 9.0;
@@ -39,6 +39,8 @@ struct CityCamera;
 struct CityBuilding {
     base_h: f32,
     phase: f32,
+    /// Base elevation, so buildings don't all sit on the same floor level.
+    floor_y: f32,
 }
 
 /// Marker on every world entity the city owns, for one-shot teardown.
@@ -210,16 +212,18 @@ fn spawn_city(
             // Radial phase → waves ripple outward from the centre (long, gentle
             // wavelength).
             let phase = (x * x + z * z).sqrt() * 0.10;
+            // Varied base elevation so the floor isn't a single flat plane.
+            let floor_y = hash01(seed ^ 0x8888).powf(1.6) * 20.0 - 4.0;
 
             commands.spawn((
                 Mesh3d(cube.clone()),
                 MeshMaterial3d(dark.clone()),
                 Transform {
-                    translation: Vec3::new(x, h * 0.5, z),
+                    translation: Vec3::new(x, floor_y + h * 0.5, z),
                     scale: Vec3::new(w, h, d),
                     ..default()
                 },
-                CityBuilding { base_h: h, phase },
+                CityBuilding { base_h: h, phase, floor_y },
                 layer.clone(),
                 CityEntity,
                 renzora::HideInHierarchy,
@@ -280,6 +284,6 @@ fn animate_buildings(time: Res<Time>, mut q: Query<(&CityBuilding, &mut Transfor
         let amp = 1.5 + b.base_h * 0.18;
         let h = (b.base_h + amp * (b.phase - t * 0.45).sin()).max(2.0);
         tr.scale.y = h;
-        tr.translation.y = h * 0.5;
+        tr.translation.y = b.floor_y + h * 0.5;
     }
 }
