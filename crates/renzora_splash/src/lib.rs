@@ -4,6 +4,7 @@ pub mod github;
 pub mod loading;
 mod native;
 mod native_bg;
+mod native_city;
 mod native_loading;
 pub mod project;
 mod ui;
@@ -110,6 +111,7 @@ impl Plugin for SplashPlugin {
         native::register(app);
         native_loading::register(app);
         native_bg::register(app);
+        native_city::register(app);
     }
 }
 

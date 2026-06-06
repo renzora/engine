@@ -210,12 +210,28 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
         ))
         .id();
 
+    // 3D city render, shown behind the panels (image attached by native_city).
+    let city = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                ..default()
+            },
+            FocusPolicy::Pass,
+            crate::native_city::CityView,
+            Name::new("splash-city"),
+        ))
+        .id();
+
     let chrome = build_chrome(commands, fonts);
     let content = build_content(commands, fonts);
-    let bottom = build_bottom_bar(commands, fonts);
     commands
         .entity(root)
-        .add_children(&[backdrop, chrome, content, bottom]);
+        .add_children(&[backdrop, city, chrome, content]);
 
     build_resize_zones(commands, root);
 }
@@ -241,23 +257,34 @@ fn build_chrome(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Wordmark.
+    // Left: wordmark + version pill.
+    let left = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(9.0), ..default() })
+        .id();
     let brand = commands
+        .spawn((Text::new("Renzora".to_string()), ui_font(&fonts.ui, 13.0), TextColor(white()), FocusPolicy::Pass))
+        .id();
+    let pill = commands
         .spawn((
-            Text::new("Renzora".to_string()),
-            ui_font(&fonts.ui, 13.0),
-            TextColor(white()),
-            FocusPolicy::Pass,
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(7.0), Val::Px(2.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(9.0)),
+                ..default()
+            },
+            BackgroundColor(ca(110, 150, 255, 40)),
+            BorderColor::all(ca(110, 150, 255, 140)),
         ))
         .id();
+    let pill_t = commands
+        .spawn((Text::new(VERSION.to_string()), ui_font(&fonts.mono, 10.5), TextColor(accent()), FocusPolicy::Pass))
+        .id();
+    commands.entity(pill).add_child(pill_t);
+    commands.entity(left).add_children(&[brand, pill]);
 
-    // Action buttons.
-    let new = chrome_button(commands, fonts, "plus", "New Project", true);
-    commands.entity(new).insert(NewProjectBtn);
-    let open = chrome_button(commands, fonts, "folder-open", "Open Project", false);
-    commands.entity(open).insert(OpenProjectBtn);
-
-    // Drag region fills the gap between the actions and the window controls.
+    // Drag region fills the gap between the brand and the social/window controls.
     let drag = commands
         .spawn((
             Node { flex_grow: 1.0, height: Val::Percent(100.0), ..default() },
@@ -268,13 +295,31 @@ fn build_chrome(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
+    // Social links (moved up from the old footer).
+    let socials = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            margin: UiRect::right(Val::Px(8.0)),
+            ..default()
+        })
+        .id();
+    let website = social_button(commands, fonts, "globe", "Website", WEBSITE_URL, false);
+    let youtube = social_button(commands, fonts, "youtube-logo", "YouTube", YOUTUBE_URL, false);
+    let discord = social_button(commands, fonts, "discord-logo", "Discord", DISCORD_URL, false);
+    let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
+    commands.entity(socials).add_children(&[website, youtube, discord, star]);
+
+    let winbtns = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Stretch, height: Val::Percent(100.0), ..default() })
+        .id();
     let min = win_button(commands, fonts, WinBtn::Min, "minus", false);
     let max = win_button(commands, fonts, WinBtn::Max, "square", false);
     let close = win_button(commands, fonts, WinBtn::Close, "x", true);
+    commands.entity(winbtns).add_children(&[min, max, close]);
 
-    commands
-        .entity(bar)
-        .add_children(&[brand, new, open, drag, min, max, close]);
+    commands.entity(bar).add_children(&[left, drag, socials, winbtns]);
     bar
 }
 
@@ -407,13 +452,33 @@ fn build_projects_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Title.
-    let title = label(commands, fonts, "Projects", 20.0, white());
-    let subtitle = label(commands, fonts, "Open a recent project, or create a new one from the title bar.", 12.0, text_muted());
+    // Header: title + subtitle on the left, New / Open actions on the right.
     let header = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceBetween,
+            ..default()
+        })
+        .id();
+    let titles = commands
         .spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
         .id();
-    commands.entity(header).add_children(&[title, subtitle]);
+    let title = label(commands, fonts, "Projects", 20.0, white());
+    let subtitle = label(commands, fonts, "Open a recent project, or create a new one.", 12.0, text_muted());
+    commands.entity(titles).add_children(&[title, subtitle]);
+
+    let actions = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() })
+        .id();
+    let new = chrome_button(commands, fonts, "plus", "New Project", true);
+    commands.entity(new).insert(NewProjectBtn);
+    let open = chrome_button(commands, fonts, "folder-open", "Open Project", false);
+    commands.entity(open).insert(OpenProjectBtn);
+    commands.entity(actions).add_children(&[new, open]);
+
+    commands.entity(header).add_children(&[titles, actions]);
 
     // Search field (with a leading magnifier).
     let search_row = commands
@@ -630,63 +695,7 @@ fn elide_path(s: &str, max: usize) -> String {
     }
 }
 
-// ── Bottom bar ───────────────────────────────────────────────────────────────
-
-fn build_bottom_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let bar = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(56.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::horizontal(Val::Px(24.0)),
-                border: UiRect::top(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(ca(8, 10, 18, 220)),
-            BorderColor::all(border_soft()),
-            Name::new("splash-bottom"),
-        ))
-        .id();
-
-    let left = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() })
-        .id();
-    let wordmark = label(commands, fonts, "Renzora Engine", 13.0, white());
-    let pill = commands
-        .spawn((
-            Node {
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(7.0), Val::Px(2.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(9.0)),
-                ..default()
-            },
-            BackgroundColor(ca(110, 150, 255, 40)),
-            BorderColor::all(ca(110, 150, 255, 140)),
-        ))
-        .id();
-    let pill_t = commands
-        .spawn((Text::new(VERSION.to_string()), ui_font(&fonts.mono, 10.5), TextColor(accent())))
-        .id();
-    commands.entity(pill).add_child(pill_t);
-    commands.entity(left).add_children(&[wordmark, pill]);
-
-    let right = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() })
-        .id();
-    let website = social_button(commands, fonts, "globe", "Website", WEBSITE_URL, false);
-    let youtube = social_button(commands, fonts, "youtube-logo", "YouTube", YOUTUBE_URL, false);
-    let discord = social_button(commands, fonts, "discord-logo", "Discord", DISCORD_URL, false);
-    let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
-    commands.entity(right).add_children(&[website, youtube, discord, star]);
-
-    commands.entity(bar).add_children(&[left, right]);
-    bar
-}
+// ── Social buttons (in the title bar) ────────────────────────────────────────
 
 fn social_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, txt: &str, url: &str, starred: bool) -> Entity {
     let btn = commands
