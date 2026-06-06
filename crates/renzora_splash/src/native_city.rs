@@ -1,7 +1,9 @@
 //! Procedural synthwave city behind the splash — a grid of box "buildings" lit
 //! by coloured rim lights with bloom + distance fog, rendered by an isolated
 //! `Camera3d` to an offscreen image that the splash shows as its background
-//! ([`CityView`]). Render-to-texture + a dedicated render layer keep it fully
+//! ([`CityView`]). The camera clears to **transparent**, so the buildings
+//! composite over the animated grid/network shader background ([`crate::native_bg`])
+//! rather than hiding it. Render-to-texture + a dedicated render layer keep it
 //! isolated from the editor's cameras; it only exists while in
 //! [`SplashState::Splash`] (spawned/despawned by [`manage_city`]).
 
@@ -21,6 +23,7 @@ const CITY_LAYER: usize = 6;
 const RES: UVec2 = UVec2::new(1920, 1080);
 const GRID: i32 = 15; // buildings per side
 const SPACING: f32 = 9.0;
+const EMISSIVE: f32 = 3.5;
 
 /// The fullscreen UI image node (in the splash root) that shows the city render.
 #[derive(Component)]
@@ -37,6 +40,9 @@ struct CityEntity;
 struct CityScene {
     image: Handle<Image>,
     built: bool,
+    /// Neon tower materials + their base emissive, pulsed in [`animate_city`].
+    neon: Vec<Handle<StandardMaterial>>,
+    neon_base: Vec<LinearRgba>,
 }
 
 pub(crate) fn register(app: &mut App) {
@@ -63,12 +69,17 @@ fn manage_city(
         if scene.image == Handle::default() {
             scene.image = images.add(make_target(RES));
         }
-        spawn_city(&mut commands, &mut meshes, &mut materials, scene.image.clone());
+        let image = scene.image.clone();
+        let (neon, neon_base) = spawn_city(&mut commands, &mut meshes, &mut materials, image);
+        scene.neon = neon;
+        scene.neon_base = neon_base;
         scene.built = true;
     } else if !want && built {
         for e in &owned {
             commands.entity(e).try_despawn();
         }
+        scene.neon.clear();
+        scene.neon_base.clear();
         scene.built = false;
     }
 }
@@ -113,30 +124,31 @@ fn hash01(n: u32) -> f32 {
     (((x >> 22) ^ x) & 0x00FF_FFFF) as f32 / 0x0100_0000 as f32
 }
 
+/// Build the city; returns the neon materials + their base emissive for pulsing.
 fn spawn_city(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     image: Handle<Image>,
-) {
+) -> (Vec<Handle<StandardMaterial>>, Vec<LinearRgba>) {
     let layer = RenderLayers::layer(CITY_LAYER);
-    let sky = Color::srgb(0.020, 0.015, 0.045);
 
-    // Camera — HDR + bloom + fog; orbits the city (see `animate_city`).
+    // Camera — HDR + bloom + fog; clears transparent so the grid/network show
+    // through. Animated in `animate_city`.
     commands.spawn((
         Camera3d::default(),
         Hdr,
         Bloom::NATURAL,
         Msaa::Sample4,
         Camera {
-            clear_color: ClearColorConfig::Custom(sky),
+            clear_color: ClearColorConfig::Custom(Color::NONE),
             order: -50,
             ..default()
         },
         RenderTarget::Image(image.into()),
         DistanceFog {
             color: Color::srgb(0.10, 0.05, 0.18),
-            falloff: FogFalloff::Exponential { density: 0.010 },
+            falloff: FogFalloff::Exponential { density: 0.008 },
             ..default()
         },
         AmbientLight { color: Color::srgb(0.6, 0.7, 1.0), brightness: 220.0, affects_lightmapped_meshes: false },
@@ -148,9 +160,9 @@ fn spawn_city(
         Name::new("Splash City Camera"),
     ));
 
-    // Coloured rim lights (synthwave magenta + cyan) and a soft cool key.
+    // Coloured rim lights (synthwave magenta + cyan).
     commands.spawn((
-        DirectionalLight { color: Color::srgb(1.0, 0.25, 0.7), illuminance: 4000.0, ..default() },
+        DirectionalLight { color: Color::srgb(1.0, 0.25, 0.7), illuminance: 4500.0, ..default() },
         Transform::from_xyz(-60.0, 50.0, 20.0).looking_at(Vec3::ZERO, Vec3::Y),
         layer.clone(),
         CityEntity,
@@ -158,7 +170,7 @@ fn spawn_city(
         Name::new("Splash City Light M"),
     ));
     commands.spawn((
-        DirectionalLight { color: Color::srgb(0.25, 0.7, 1.0), illuminance: 4000.0, ..default() },
+        DirectionalLight { color: Color::srgb(0.25, 0.7, 1.0), illuminance: 4500.0, ..default() },
         Transform::from_xyz(60.0, 40.0, -20.0).looking_at(Vec3::ZERO, Vec3::Y),
         layer.clone(),
         CityEntity,
@@ -166,28 +178,10 @@ fn spawn_city(
         Name::new("Splash City Light C"),
     ));
 
-    // Ground.
-    let ground = meshes.add(Cuboid::new(600.0, 1.0, 600.0));
-    let ground_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.015, 0.015, 0.03),
-        perceptual_roughness: 0.85,
-        ..default()
-    });
-    commands.spawn((
-        Mesh3d(ground),
-        MeshMaterial3d(ground_mat),
-        Transform::from_xyz(0.0, -0.5, 0.0),
-        layer.clone(),
-        CityEntity,
-        renzora::HideInHierarchy,
-        Name::new("Splash City Ground"),
-    ));
-
-    // Shared unit cube, scaled per building.
+    // Shared unit cube, scaled per building. No ground plane — the shader grid
+    // shows through as the floor.
     let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
 
-    // A small palette of materials: dark (lit by rim lights) + neon (emissive,
-    // blooms). Picked per building by hash so the skyline has scattered lit towers.
     let dark = materials.add(StandardMaterial {
         base_color: Color::srgb(0.03, 0.035, 0.05),
         perceptual_roughness: 0.55,
@@ -200,26 +194,26 @@ fn spawn_city(
         Color::srgb(1.0, 0.55, 0.1), // amber
         Color::srgb(0.5, 0.3, 1.0),  // violet
     ];
-    let neon: Vec<Handle<StandardMaterial>> = neon_colors
-        .iter()
-        .map(|cc| {
-            let l = cc.to_linear();
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.02, 0.02, 0.03),
-                emissive: LinearRgba::new(l.red * 3.5, l.green * 3.5, l.blue * 3.5, 1.0),
-                perceptual_roughness: 0.4,
-                ..default()
-            })
-        })
-        .collect();
+    let mut neon = Vec::new();
+    let mut neon_base = Vec::new();
+    for cc in neon_colors {
+        let l = cc.to_linear();
+        let base = LinearRgba::new(l.red * EMISSIVE, l.green * EMISSIVE, l.blue * EMISSIVE, 1.0);
+        neon.push(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.02, 0.02, 0.03),
+            emissive: base,
+            perceptual_roughness: 0.4,
+            ..default()
+        }));
+        neon_base.push(base);
+    }
 
     let half = GRID / 2;
     for i in -half..=half {
         for j in -half..=half {
-            let seed = ((i + 64) as u32) << 16 | (j + 64) as u32;
-            // Carve some plots into roads/plazas.
+            let seed = (((i + 64) as u32) << 16) | (j + 64) as u32;
             if hash01(seed) < 0.12 {
-                continue;
+                continue; // carve roads/plazas
             }
             let jx = (hash01(seed ^ 0x1111) - 0.5) * SPACING * 0.25;
             let jz = (hash01(seed ^ 0x2222) - 0.5) * SPACING * 0.25;
@@ -250,16 +244,37 @@ fn spawn_city(
             ));
         }
     }
+
+    (neon, neon_base)
 }
 
 // ── Animation ────────────────────────────────────────────────────────────────
 
-fn animate_city(time: Res<Time>, mut cam: Query<&mut Transform, With<CityCamera>>) {
+fn animate_city(
+    time: Res<Time>,
+    scene: Res<CityScene>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cam: Query<&mut Transform, With<CityCamera>>,
+) {
     let t = time.elapsed_secs();
-    let a = t * 0.04;
-    let r = 88.0;
-    let pos = Vec3::new(a.cos() * r, 30.0 + 4.0 * (t * 0.15).sin(), a.sin() * r);
+
+    // Camera: orbit with a slow dolly in/out and a vertical bob, plus a drifting
+    // look target — enough motion to read as a live flythrough.
+    let a = t * 0.10;
+    let r = 80.0 + 18.0 * (t * 0.07).sin();
+    let height = 26.0 + 8.0 * (t * 0.13).sin();
+    let pos = Vec3::new(a.cos() * r, height, a.sin() * r);
+    let look = Vec3::new(4.0 * (t * 0.05).sin(), 11.0 + 2.0 * (t * 0.11).cos(), 0.0);
     for mut tr in &mut cam {
-        *tr = Transform::from_translation(pos).looking_at(Vec3::new(0.0, 11.0, 0.0), Vec3::Y);
+        *tr = Transform::from_translation(pos).looking_at(look, Vec3::Y);
+    }
+
+    // Neon: pulse each colour group out of phase so the skyline twinkles.
+    for (i, h) in scene.neon.iter().enumerate() {
+        if let Some(m) = materials.get_mut(h) {
+            let base = scene.neon_base[i];
+            let pulse = 0.55 + 0.45 * (t * 1.6 + i as f32 * 1.7).sin();
+            m.emissive = LinearRgba::new(base.red * pulse, base.green * pulse, base.blue * pulse, 1.0);
+        }
     }
 }
