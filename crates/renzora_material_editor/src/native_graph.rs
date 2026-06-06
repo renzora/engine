@@ -20,7 +20,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
-use renzora_shader::material::graph::PinDir;
+use renzora_shader::material::graph::{PinDir, PinType};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
@@ -104,12 +104,28 @@ fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
 
+/// Per-type pin colour (matches the egui editor's `pin_color`).
+fn pin_rgb(t: PinType) -> (u8, u8, u8) {
+    match t {
+        PinType::Float => (0, 212, 170),
+        PinType::Vec2 => (127, 204, 25),
+        PinType::Vec3 => (255, 215, 0),
+        PinType::Vec4 => (255, 102, 255),
+        PinType::Color => (255, 200, 60),
+        PinType::Bool => (255, 68, 68),
+        PinType::Texture2D | PinType::Sampler => (200, 150, 120),
+        PinType::String => (180, 110, 200),
+    }
+}
+
+type Port = (String, String, (u8, u8, u8));
+
 #[allow(clippy::type_complexity)]
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let sel = s.selected_node;
     // (id, title, color, position, inputs, outputs, selected)
-    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<(String, String)>, Vec<(String, String)>, bool)> = s
+    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool)> = s
         .graph
         .nodes
         .iter()
@@ -118,8 +134,8 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
             let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
             let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
             let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-            let inputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone())).collect();
-            let outputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone())).collect();
+            let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
+            let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), pin_rgb(p.pin_type))).collect();
             (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
         })
         .collect();

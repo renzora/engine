@@ -77,6 +77,7 @@ struct NgvPort {
     node_id: u64,
     pin: String,
     is_output: bool,
+    color: (u8, u8, u8),
 }
 #[derive(Component)]
 struct NgvWire {
@@ -132,8 +133,8 @@ pub fn graph_node_view(
     node_id: u64,
     title: &str,
     color: (u8, u8, u8),
-    inputs: &[(String, String)],
-    outputs: &[(String, String)],
+    inputs: &[(String, String, (u8, u8, u8))],
+    outputs: &[(String, String, (u8, u8, u8))],
     x: f32,
     y: f32,
     selected: bool,
@@ -174,17 +175,17 @@ pub fn graph_node_view(
     commands.entity(node).add_child(title_bar);
 
     let mut row = 0usize;
-    for (pin, label) in inputs {
+    for (pin, label, pin_color) in inputs {
         let cy = HEAD_H + row as f32 * ROW_H + ROW_H / 2.0;
         let r = graph_row(commands, fonts, label, false);
-        let port = port_dot(commands, node_id, pin, false, 0.0, cy);
+        let port = port_dot(commands, node_id, pin, false, 0.0, cy, *pin_color);
         commands.entity(node).add_children(&[r, port]);
         row += 1;
     }
-    for (pin, label) in outputs {
+    for (pin, label, pin_color) in outputs {
         let cy = HEAD_H + row as f32 * ROW_H + ROW_H / 2.0;
         let r = graph_row(commands, fonts, label, true);
-        let port = port_dot(commands, node_id, pin, true, NODE_W, cy);
+        let port = port_dot(commands, node_id, pin, true, NODE_W, cy, *pin_color);
         commands.entity(node).add_children(&[r, port]);
         row += 1;
     }
@@ -210,13 +211,13 @@ fn graph_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, output: bo
         .id()
 }
 
-fn port_dot(commands: &mut Commands, node_id: u64, pin: &str, is_output: bool, x: f32, cy: f32) -> Entity {
+fn port_dot(commands: &mut Commands, node_id: u64, pin: &str, is_output: bool, x: f32, cy: f32, color: (u8, u8, u8)) -> Entity {
     commands
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(x - 5.0), top: Val::Px(cy - 5.0), width: Val::Px(10.0), height: Val::Px(10.0), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
-            BackgroundColor(rgb(window_bg())),
-            BorderColor::all(rgb(accent())),
-            NgvPort { node_id, pin: pin.to_string(), is_output },
+            BackgroundColor(rgb(color)),
+            BorderColor::all(rgb(color)),
+            NgvPort { node_id, pin: pin.to_string(), is_output, color },
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("ngv-port"),
@@ -377,7 +378,7 @@ fn ngv_remove(
     let map = port_map(&ports);
     let mut best: Option<(u64, String, u64, String, f32)> = None;
     for w in &wires {
-        let (Some(&p0), Some(&p3)) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
+        let (Some(&(p0, _)), Some(&(p3, _))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
             continue;
         };
         let (Ok(vgt), Ok(vcn)) = (transforms.get(w.viewport), computeds.get(w.viewport)) else {
@@ -408,10 +409,10 @@ fn ngv_remove(
     }
 }
 
-fn port_map(ports: &Query<(&NgvPort, &UiGlobalTransform)>) -> HashMap<(u64, String, bool), Vec2> {
+fn port_map(ports: &Query<(&NgvPort, &UiGlobalTransform)>) -> HashMap<(u64, String, bool), (Vec2, (u8, u8, u8))> {
     let mut map = HashMap::default();
     for (p, gt) in ports {
-        map.insert((p.node_id, p.pin.clone(), p.is_output), gt.translation);
+        map.insert((p.node_id, p.pin.clone(), p.is_output), (gt.translation, p.color));
     }
     map
 }
@@ -422,9 +423,8 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
         return;
     }
     let map = port_map(&ports);
-    let accent = rgb(accent()).to_linear();
     for (w, mat) in &wires {
-        let (Some(&p0), Some(&p3)) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
+        let (Some(&(p0, wire_col)), Some(&(p3, _))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
             continue;
         };
         let (Ok(vgt), Ok(vcn)) = (transforms.get(w.viewport), computeds.get(w.viewport)) else {
@@ -435,10 +435,11 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
         let a = p0 - top_left;
         let b = p3 - top_left;
         let (c1, c2) = control_points(a, b);
+        let lin = rgb(wire_col).to_linear(); // wire takes the output pin's colour
         if let Some(m) = materials.get_mut(&mat.0) {
             m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
             m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
-            m.color = Vec4::new(accent.red, accent.green, accent.blue, 1.0);
+            m.color = Vec4::new(lin.red, lin.green, lin.blue, 1.0);
             m.params = Vec4::new(WIRE_W / isf, 1.0, 0.0, 0.0);
         }
     }

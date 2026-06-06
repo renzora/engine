@@ -36,7 +36,7 @@ impl Plugin for NativeBlueprintGraph {
         app.add_systems(Update, (apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
         app.add_systems(
             Update,
-            (bp_graph_load, bp_graph_sync)
+            (bp_graph_load, bp_graph_sync, sync_graph_selection)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<BpGraph>),
@@ -117,10 +117,14 @@ fn tool_button<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: 
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
 
+type Port = (String, String, (u8, u8, u8));
+/// Neutral port colour for blueprint pins (material pins are typed/coloured).
+const BP_PORT: (u8, u8, u8) = (140, 150, 175);
+
 #[allow(clippy::type_complexity)]
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let sel = world.get_resource::<BlueprintEditorState>().and_then(|s| s.selected_node);
-    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<(String, String)>, Vec<(String, String)>, bool)> = with_active_graph(world, |g| {
+    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool)> = with_active_graph(world, |g| {
         g.nodes
             .iter()
             .map(|n| {
@@ -128,8 +132,8 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
                 let title = def.map(|d| d.display_name.to_string()).unwrap_or_else(|| n.node_type.clone());
                 let color = def.map(|d| (d.color[0], d.color[1], d.color[2])).unwrap_or((90, 90, 100));
                 let pins = def.map(|d| (d.pins)()).unwrap_or_default();
-                let inputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone())).collect();
-                let outputs: Vec<(String, String)> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone())).collect();
+                let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
+                let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
                 (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
             })
             .collect()
@@ -137,11 +141,12 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
     .unwrap_or_default();
     let items: Vec<(u64, u64)> = nodes
         .iter()
-        .map(|(id, title, color, _pos, ins, outs, selected)| {
+        .map(|(id, title, color, _pos, ins, outs, _selected)| {
             let mut k = hasher();
             id.hash(&mut k);
             let mut h = hasher();
-            (title, color, ins, outs, selected).hash(&mut h);
+            // Structure only (not selection) so selecting never rebuilds a node.
+            (title, color, ins, outs).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -266,6 +271,17 @@ fn bp_graph_sync(world: &mut World) {
             world.resource_mut::<BlueprintEditorState>().is_dirty = false;
         } else if let Some(e) = world.resource::<BlueprintEditorState>().editing_entity {
             world.entity_mut(e).insert(g);
+        }
+    }
+}
+
+/// Mirror the model's selected node into the view (the shared `ngv_apply_selection`
+/// drives node borders from `NodeGraphView.selected`, not from a rebuild).
+fn sync_graph_selection(st: Option<Res<BlueprintEditorState>>, mut views: Query<&mut NodeGraphView, With<BpGraph>>) {
+    let Some(st) = st else { return };
+    for mut v in &mut views {
+        if v.selected != st.selected_node {
+            v.selected = st.selected_node;
         }
     }
 }
