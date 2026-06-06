@@ -26,7 +26,7 @@ impl Plugin for AuthPlugin {
             .insert_resource(try_restore_session())
             .init_resource::<renzora::core::AuthBridge>()
             .add_systems(Update, auth_system);
-        // Native (bevy_ui) sign-in modal — renders under the BevyUi backend (F10).
+        // Native (bevy_ui) sign-in modal.
         native::register(app);
     }
 }

@@ -135,11 +135,9 @@ impl Plugin for ViewportPlugin {
                     model_drop::update_model_drag_ghost,
                     // Native (bevy_ui) drop: promote the preview entity in
                     // place. Must run before cleanup despawns the ghost once
-                    // the payload is removed — under bevy_ui `editor_ui_system`
-                    // doesn't run, so the cleanup `.after` constraint below is
-                    // vacuous and we order against this system explicitly.
-                    model_drop::native_model_drop
-                        .run_if(renzora::core::editor_backend_is_bevy_ui),
+                    // the payload is removed, so we order against this system
+                    // explicitly.
+                    model_drop::native_model_drop,
                     // Cleanup must run after the editor's deferred-command
                     // queue has drained — the native drop handler pushes a
                     // deferred drop that locks the placement entity into the
@@ -157,18 +155,15 @@ impl Plugin for ViewportPlugin {
                 (
                     shape_drop::native_shape_drop,
                     html_drop::native_html_drop,
-                    // Native (bevy_ui) asset drops (material / scene / sprite)
-                    // that mirror the egui `check_viewport_*_drop` helpers (which
-                    // only run inside the egui dock). `arm` captures the hovering
-                    // drop candidate each frame; `commit` fires it on release —
-                    // see `native_drop` for why we can't read the payload at
-                    // release. Gated on bevy_ui so they don't double-fire.
+                    // Native (bevy_ui) asset drops (material / scene / sprite).
+                    // `arm` captures the hovering drop candidate each frame;
+                    // `commit` fires it on release — see `native_drop` for why
+                    // we can't read the payload at release.
                     (
                         native_drop::arm_viewport_drop,
                         native_drop::commit_viewport_drop,
                     )
-                        .chain()
-                        .run_if(renzora::core::editor_backend_is_bevy_ui),
+                        .chain(),
                 ),
                 shape_drop::handle_shape_spawn,
                 handle_view_shortcuts,

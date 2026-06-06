@@ -1218,48 +1218,11 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
     !play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())
 }
 
-/// Which UI backend the editor renders with.
-///
-/// Transitional state for the egui → bevy_ui/HUI migration. `Egui` is the
-/// legacy immediate-mode editor; `BevyUi` is the new `renzora_shell` bevy_ui
-/// host. The editor is now bevy_ui-only (egui has been removed), so this always
-/// resolves to `BevyUi`; the `Egui` variant is retained only so the historical
-/// run-conditions still type-check and renders nothing.
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum EditorUiBackend {
-    Egui,
-    #[default]
-    BevyUi,
-}
-
-impl EditorUiBackend {
-    pub fn is_egui(&self) -> bool {
-        matches!(self, EditorUiBackend::Egui)
-    }
-    pub fn is_bevy_ui(&self) -> bool {
-        matches!(self, EditorUiBackend::BevyUi)
-    }
-}
-
-/// Run condition: true when the legacy egui editor should render. egui has been
-/// removed, so this is effectively always false (kept so historical
-/// `.run_if(editor_backend_is_egui)` call sites still compile).
-pub fn editor_backend_is_egui(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.as_ref().map(|b| b.is_egui()).unwrap_or(false)
-}
-
-/// Run condition: true when the bevy_ui (ember) editor should render — the only
-/// backend now. Absent resource defaults to `true`.
-pub fn editor_backend_is_bevy_ui(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.as_ref().map(|b| b.is_bevy_ui()).unwrap_or(true)
-}
-
 /// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.
 ///
-/// Transitional bridge for the egui → bevy_ui migration: `renzora_editor`
-/// populates this from its egui `PanelRegistry` (so the shell gets each panel's
-/// real title/icon without linking egui). Once panels register a bevy-native
-/// renderer directly, this becomes their primary registration.
+/// `renzora_editor` populates this from its `PanelRegistry` so the shell gets
+/// each panel's real title/icon. Once panels register a bevy-native renderer
+/// directly, this becomes their primary registration.
 #[derive(Resource, Default)]
 pub struct ShellPanelRegistry {
     pub panels: bevy::platform::collections::HashMap<String, ShellPanelInfo>,

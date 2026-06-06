@@ -4,9 +4,7 @@
 //! middle, and the New/Open actions + social links at bottom-centre. Window
 //! controls float in the top-right; the whole background is a drag handle.
 //!
-//! Renders unconditionally while in [`SplashState::Splash`] (the backend is
-//! `Egui` at startup, before the F10 toggle is meaningful); the egui splash only
-//! paints as a fallback until the native root spawns (see `native_splash_absent`).
+//! Renders while in [`SplashState::Splash`].
 
 use bevy::ecs::world::CommandQueue;
 use bevy::math::CompassOctant;

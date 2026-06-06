@@ -755,7 +755,7 @@ impl KeyBindings {
     /// Programmatic dispatches are consumed on read (removed from the
     /// pending set) so the action fires exactly once regardless of which
     /// schedule the dispatch originated from. This avoids a frame-timing
-    /// issue where dispatches from `EguiPrimaryContextPass` could be
+    /// issue where dispatches from an Update-schedule system could be
     /// swept out by the `Last`-schedule cleaner before any Update-schedule
     /// consumer ran.
     pub fn just_pressed(&self, action: EditorAction, keyboard: &ButtonInput<KeyCode>) -> bool {

@@ -37,8 +37,7 @@ pub(crate) fn register(app: &mut App) {
             import_click,
             cancel_click,
             remove_file_click,
-        )
-            .run_if(renzora::core::editor_backend_is_bevy_ui),
+        ),
     );
 }
 

@@ -77,10 +77,7 @@ fn manage_loading_screen(world: &mut World) {
 fn manage_editor_overlay(world: &mut World) {
     let in_editor = matches!(world.resource::<State<SplashState>>().get(), SplashState::Editor);
     let active = world.get_resource::<EditorLoadingOverlayActive>().is_some_and(|a| a.0);
-    let bevy_ui = world
-        .get_resource::<renzora::core::EditorUiBackend>()
-        .is_some_and(|b| b.is_bevy_ui());
-    let want = in_editor && active && bevy_ui;
+    let want = in_editor && active;
 
     let mut q = world.query_filtered::<Entity, With<EditorOverlayRoot>>();
     let existing: Vec<Entity> = q.iter(world).collect();

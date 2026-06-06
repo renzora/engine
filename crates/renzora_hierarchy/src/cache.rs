@@ -1,7 +1,7 @@
 //! Hierarchy tree cache — rebuilds the tree only when ECS changes actually
 //! affect it.
 //!
-//! The panel's `ui()` runs every frame in `EguiPrimaryContextPass` and used
+//! The panel's `ui()` runs every frame in an Update-schedule system and used
 //! to call `build_entity_tree()` unconditionally, which iterates every
 //! archetype and walks each entity's ancestor chain. For scenes with
 //! thousands of entities this dominated frame time.

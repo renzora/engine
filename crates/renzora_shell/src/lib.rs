@@ -4,16 +4,11 @@
 //! wiring that drives the reusable [`renzora_ember`] dock. The dock itself —
 //! splits, tabs, drag-docking — lives in `renzora_ember::dock`; the shell just
 //! supplies the layout, the dock area, and editor-specific behavior.
-//!
-//! ## Coexistence during the migration
-//! [`renzora::EditorUiBackend`] selects which editor renders — the legacy egui
-//! editor (`Egui`, default) or this shell (`BevyUi`) — mutually exclusive (the
-//! egui `editor_ui_system` is gated off under `BevyUi`). **F10** toggles.
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora::{EditorUiBackend, NativePanelIds};
+use renzora::NativePanelIds;
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
 use renzora_ember::widgets::{menu_item, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
@@ -34,7 +29,6 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
         app.add_plugins(EmberPlugin);
-        app.init_resource::<EditorUiBackend>();
         let layouts = dock::workspace_layouts();
         // The dock starts on the first workspace (overrides DockPlugin's empty).
         app.insert_resource(Dock {
@@ -78,7 +72,6 @@ impl Plugin for ShellPlugin {
 /// (that would close the Theme tab's color picker every frame).
 fn theme_bridge(
     tm: Option<Res<renzora_theme::ThemeManager>>,
-    backend: Res<EditorUiBackend>,
     project: Option<Res<renzora::CurrentProject>>,
     mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
@@ -101,7 +94,7 @@ fn theme_bridge(
         // cascaded with the active theme file's per-widget style sections.
         let theme = build_ember_theme(project.as_deref(), &tm.active_theme_name);
         commands.insert_resource(theme);
-        if switched && backend.is_bevy_ui() {
+        if switched {
             for e in &roots {
                 commands.entity(e).try_despawn();
             }
@@ -230,17 +223,15 @@ struct ShellRoot;
 
 // ── Systems ─────────────────────────────────────────────────────────────────
 
-/// Spawn the chrome + dock area when the backend is `BevyUi` (and trigger the
-/// ember dock to build into it); tear it down when it isn't.
+/// Spawn the chrome + dock area (and trigger the ember dock to build into it).
 fn manage_shell_root(
     mut commands: Commands,
-    backend: Res<EditorUiBackend>,
     fonts: Option<Res<EmberFonts>>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
-    let want = backend.is_bevy_ui();
+    let want = true;
     let have = !roots.is_empty();
     if want && !have {
         // Wait for fonts so text/icons render from the first frame.

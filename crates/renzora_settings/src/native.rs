@@ -1,19 +1,16 @@
-//! bevy_ui-native settings overlay — the egui → bevy_ui migration of the
-//! Settings window. Mirrors the egui overlay (`super::draw_settings_overlay`):
-//! a centered modal with a vertical tab sidebar and a scrollable content pane,
-//! driven by [`EditorSettings::show_settings`] and only under the `BevyUi`
-//! editor backend (the egui overlay is gated off there).
+//! bevy_ui-native settings overlay — a centered modal with a vertical tab
+//! sidebar and a scrollable content pane, driven by
+//! [`EditorSettings::show_settings`].
 //!
 //! Controls two-way-bind to the live resources via `bind_2way`, so edits write
-//! straight back to `EditorSettings` / `ViewportSettings` the same frame — no
-//! snapshot/diff round-trip like the egui version needs.
+//! straight back to `EditorSettings` / `ViewportSettings` the same frame.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora::{
-    AspectMode, CurrentProject, EditorUiBackend, RenderingMode, StretchMode, TextureFilter,
+    AspectMode, CurrentProject, RenderingMode, StretchMode, TextureFilter,
     WindowMode,
 };
 use renzora_editor::{
@@ -153,28 +150,22 @@ pub(crate) fn build(app: &mut App) {
         )
             .run_if(in_state(renzora_editor::SplashState::Editor)),
     );
-    // Key/mouse-rebind capture — gated to the bevy_ui backend so it never steals
-    // the egui Settings overlay's own capture flow under the legacy backend.
+    // Key/mouse-rebind capture.
     app.add_systems(
         Update,
         (rebind_btn_click, rebind_capture, reset_bindings_click, input_listen_capture)
-            .run_if(in_state(renzora_editor::SplashState::Editor))
-            .run_if(renzora::editor_backend_is_bevy_ui),
+            .run_if(in_state(renzora_editor::SplashState::Editor)),
     );
 }
 
 // ── Lifecycle: spawn / despawn / rebuild on tab change ───────────────────────
 
 fn manage_native_settings(world: &mut World) {
-    let backend_bevy = world
-        .get_resource::<EditorUiBackend>()
-        .map(|b| b.is_bevy_ui())
-        .unwrap_or(false);
     let (show, tab) = world
         .get_resource::<EditorSettings>()
         .map(|s| (s.show_settings, s.settings_tab))
         .unwrap_or((false, SettingsTab::default()));
-    let open = backend_bevy && show;
+    let open = show;
     let theme_name = world
         .get_resource::<ThemeManager>()
         .map(|t| t.active_theme_name.clone());

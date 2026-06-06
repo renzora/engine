@@ -2,8 +2,6 @@
 //! panel with a search field and a scrollable, filterable list of every tool /
 //! action / layout / panel / setting / menu command. Type to filter, ↑/↓ to
 //! navigate, Enter to run, Esc or a backdrop click to dismiss.
-//!
-//! Renders only under the bevy_ui [`EditorUiBackend`].
 
 use std::sync::Arc;
 
@@ -12,7 +10,6 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora::core::keybindings::KeyBindings;
-use renzora::EditorUiBackend;
 use renzora_editor::{EditorCommands, ShortcutRegistry, SplashState, ToolbarRegistry};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::bind_bg;
@@ -56,13 +53,8 @@ pub(crate) fn register(app: &mut App) {
             palette_row_click,
             palette_backdrop_click,
         )
-            .run_if(in_state(SplashState::Editor))
-            .run_if(bevy_ui_backend),
+            .run_if(in_state(SplashState::Editor)),
     );
-}
-
-pub(crate) fn bevy_ui_backend(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.is_some_and(|b| b.is_bevy_ui())
 }
 
 fn sig_of(query: &str, len: usize) -> u64 {

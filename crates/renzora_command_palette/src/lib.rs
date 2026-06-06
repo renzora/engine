@@ -50,7 +50,7 @@ impl Plugin for CommandPalettePlugin {
                 Update,
                 consume_toggle_request.run_if(in_state(SplashState::Editor)),
             );
-        // Native (bevy_ui) palette — renders under the BevyUi backend (F10).
+        // Native (bevy_ui) palette.
         native::register(app);
     }
 }

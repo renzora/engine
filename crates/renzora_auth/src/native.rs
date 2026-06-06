@@ -1,14 +1,11 @@
-//! Bevy-native (ember) sign-in modal — the bevy_ui counterpart to the egui
-//! `render_auth_window`. Same three views (Sign In / Create Account / Reset
-//! Password), the same fields, links, status/error messages and async API calls
-//! (reusing `spawn_auth_request` / `poll_auth_result`). Renders only under the
-//! BevyUi backend; the egui modal renders under egui. F10 swaps them.
+//! Bevy-native (ember) sign-in modal. Three views (Sign In / Create Account /
+//! Reset Password) with their fields, links, status/error messages and async
+//! API calls (reusing `spawn_auth_request` / `poll_auth_result`).
 
 use bevy::prelude::*;
 use bevy::ecs::world::CommandQueue;
 use bevy::ui::FocusPolicy;
 
-use renzora::EditorUiBackend;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, border, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, password_input, text_input, EmberTextInput, OverlaySurface};
@@ -43,16 +40,11 @@ pub(crate) fn register(app: &mut App) {
             auth_link_click,
             auth_backdrop_click,
             auth_escape,
-        )
-            .run_if(bevy_ui_backend),
+        ),
     );
 }
 
-fn bevy_ui_backend(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.is_some_and(|b| b.is_bevy_ui())
-}
-
-// ── Async result polling (the egui path does this inside render_auth_window) ──
+// ── Async result polling ─────────────────────────────────────────────────────
 
 fn native_auth_poll(world: &mut World) {
     let mut auth = world.remove_resource::<AuthState>();
