@@ -1,8 +1,8 @@
-//! Bevy-native (ember) port of the egui `RecordPanel`: a record/stop button +
-//! live status, ffmpeg-readiness notices, and Source/FPS/Quality/Preset combo
-//! rows. The capture/encode machinery is unchanged (backend-agnostic systems);
-//! this only re-renders the panel UI, reading the same resources and pushing the
-//! same `start_recording` / `request_stop` / config-change commands.
+//! Bevy-native (ember) Record panel: a record/stop button + live status,
+//! ffmpeg-readiness notices, and Source/FPS/Quality/Preset combo rows. The
+//! capture/encode machinery is unchanged (backend-agnostic systems); this only
+//! renders the panel UI, reading the recording resources and pushing the
+//! `start_recording` / `request_stop` / config-change commands.
 
 use bevy::prelude::*;
 

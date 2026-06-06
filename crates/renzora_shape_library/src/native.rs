@@ -1,6 +1,6 @@
-//! Bevy-native (ember) port of the egui `ShapeLibraryPanel`: a search box over a
-//! wrapping grid of shape tiles (icon + name). Clicking a tile spawns that shape
-//! at the origin (undoable `SpawnShapeCmd`). Reads `ShapeRegistry`.
+//! Bevy-native (ember) shape library panel: a search box over a wrapping grid
+//! of shape tiles (icon + name). Clicking a tile spawns that shape at the origin
+//! (undoable `SpawnShapeCmd`). Reads `ShapeRegistry`.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -178,13 +178,7 @@ fn shape_tile(
             rgb(section_bg())
         }
     });
-    let ic = commands
-        .spawn((
-            Text::new(icon.to_string()),
-            TextFont { font: fonts.phosphor.clone(), font_size: 26.0, ..default() },
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
+    let ic = renzora_ember::font::icon_text(commands, &fonts.phosphor, icon, text_primary(), 26.0);
     let lbl = commands
         .spawn((
             Text::new(name),
@@ -223,7 +217,7 @@ fn shape_press(
 
 /// Resolve a pending press: drag once the cursor moves past a threshold (hand
 /// off to the viewport via `ShapeDragState`), else spawn at the origin on
-/// release (the egui panel's click fallback).
+/// release (the click fallback).
 fn shape_drag_or_click(
     mut press: ResMut<ShapePress>,
     mouse: Res<ButtonInput<MouseButton>>,

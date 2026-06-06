@@ -20,16 +20,9 @@ use bevy::math::UVec2;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui::{self, Color32};
-use egui_phosphor::regular;
 
 use renzora::core::{CurrentProject, ViewportRenderTarget};
-use renzora_editor::{AppEditorExt, EditorCommands};
-use renzora_theme::{Theme, ThemeManager};
-use renzora_ui::{
-    alert, enum_combobox, inline_property, section_header, spinner, AlertKind, EditorPanel,
-    PanelLocation, Toasts,
-};
+use renzora_ui::Toasts;
 
 use crate::encoder::{
     ensure_ffmpeg_available, start as start_encoder, EncoderHandle, EncoderResult, EncoderSettings,
@@ -82,7 +75,7 @@ pub enum RecordTarget {
     /// editor chrome.
     #[default]
     Viewport,
-    /// The whole primary window, including egui chrome and panels.
+    /// The whole primary window, including editor chrome and panels.
     Window,
 }
 
@@ -134,272 +127,7 @@ impl Default for RecordingConfig {
     }
 }
 
-// ─── Panel ──────────────────────────────────────────────────────────────────
-
-pub struct RecordPanel;
-
-impl Default for RecordPanel {
-    fn default() -> Self {
-        Self
-    }
-}
-
-impl EditorPanel for RecordPanel {
-    fn id(&self) -> &str {
-        "record"
-    }
-
-    fn title(&self) -> &str {
-        "Record"
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(regular::RECORD)
-    }
-
-    fn category(&self) -> &str {
-        "Tools"
-    }
-
-    fn min_size(&self) -> [f32; 2] {
-        [220.0, 200.0]
-    }
-
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Right
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let Some(tm) = world.get_resource::<ThemeManager>() else {
-            ui.label("Theme not loaded yet.");
-            return;
-        };
-        let theme = tm.active_theme.clone();
-        let theme = &theme;
-
-        let cmds = world.get_resource::<EditorCommands>();
-        let state = world.get_resource::<RecordingState>();
-        let config = world.get_resource::<RecordingConfig>();
-        let readiness = world.get_resource::<FfmpegReadiness>();
-        let (Some(state), Some(config), Some(cmds), Some(readiness)) =
-            (state, config, cmds, readiness)
-        else {
-            ui.label("Recording resources not initialised yet.");
-            return;
-        };
-
-        let snapshot = state
-            .inner
-            .lock()
-            .map(|g| InnerSnapshot::from(&*g))
-            .unwrap_or(InnerSnapshot::Idle);
-        let ffmpeg = readiness.snapshot();
-
-        ui.add_space(8.0);
-        draw_top_row(ui, &snapshot, &ffmpeg, theme, cmds);
-        ui.add_space(8.0);
-
-        // Surface readiness / failure as themed alerts. Successful saves are
-        // announced via a toast (see `drive_finalise`) so the panel doesn't
-        // hold a stale "Saved" banner.
-        match (&snapshot, &ffmpeg) {
-            (InnerSnapshot::Idle | InnerSnapshot::Done(_), FfmpegState::Preparing) => {
-                alert(
-                    ui,
-                    AlertKind::Info,
-                    "Preparing ffmpeg",
-                    "Downloading the ffmpeg binary — record will be available shortly.",
-                    theme,
-                );
-            }
-            (_, FfmpegState::Failed(e)) => {
-                alert(ui, AlertKind::Error, "ffmpeg unavailable", e, theme);
-            }
-            _ => {}
-        }
-
-        ui.add_space(8.0);
-        section_header(ui, "Settings", theme);
-
-        let editable = matches!(snapshot, InnerSnapshot::Idle | InnerSnapshot::Done(_));
-        ui.add_enabled_ui(editable, |ui| {
-            draw_settings_rows(ui, theme, config, cmds);
-        });
-
-        ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new("Saved as MP4 (H.264) under <project>/recordings/")
-                .small()
-                .color(theme.text.muted.to_color32()),
-        );
-    }
-}
-
-/// Top row: record/stop button on the left, status text on the right.
-fn draw_top_row(
-    ui: &mut egui::Ui,
-    snapshot: &InnerSnapshot,
-    ffmpeg: &FfmpegState,
-    theme: &Theme,
-    cmds: &EditorCommands,
-) {
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        match snapshot {
-            InnerSnapshot::Idle | InnerSnapshot::Done(_) => match ffmpeg {
-                FfmpegState::Ready => {
-                    if record_button(ui, false) {
-                        cmds.push(|world: &mut World| start_recording(world));
-                    }
-                }
-                FfmpegState::Preparing => {
-                    ui.add_enabled(false, egui::Button::new("Preparing ffmpeg…"));
-                    spinner(ui, 14.0, theme);
-                }
-                FfmpegState::Failed(_) => {
-                    ui.add_enabled(false, egui::Button::new("ffmpeg unavailable"));
-                }
-            },
-            InnerSnapshot::Recording { .. } => {
-                if record_button(ui, true) {
-                    cmds.push(|world: &mut World| request_stop(world));
-                }
-            }
-            InnerSnapshot::Stopping => {
-                ui.add_enabled(false, egui::Button::new("Encoding…"));
-                spinner(ui, 14.0, theme);
-            }
-        }
-        ui.add_space(8.0);
-
-        match snapshot {
-            InnerSnapshot::Idle if matches!(ffmpeg, FfmpegState::Ready) => {
-                ui.label(egui::RichText::new("Idle").color(theme.text.muted.to_color32()));
-            }
-            InnerSnapshot::Recording {
-                elapsed_secs,
-                frame_index,
-                size,
-            } => {
-                ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!("● REC  {}", fmt_elapsed(*elapsed_secs)))
-                            .color(Color32::from_rgb(220, 60, 60))
-                            .strong(),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} frames  ·  {}×{}",
-                            frame_index, size.x, size.y
-                        ))
-                        .small()
-                        .color(theme.text.muted.to_color32()),
-                    );
-                });
-            }
-            InnerSnapshot::Stopping => {
-                ui.label(
-                    egui::RichText::new("Finalising file…")
-                        .italics()
-                        .color(theme.text.muted.to_color32()),
-                );
-            }
-            _ => {}
-        }
-    });
-}
-
-/// Source / FPS / Quality / Preset rows, each as an `inline_property`.
-fn draw_settings_rows(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    config: &RecordingConfig,
-    cmds: &EditorCommands,
-) {
-    const TARGET_VALUES: [RecordTarget; 2] = [RecordTarget::Viewport, RecordTarget::Window];
-    const TARGET_LABELS: &[&str] = &["Viewport (3D scene only)", "Entire window (full editor)"];
-    const FPS_VALUES: [u32; 4] = [24, 30, 60, 120];
-    const FPS_LABELS: &[&str] = &["24", "30", "60", "120"];
-    const CRF_VALUES: [u8; 5] = [0, 12, 17, 20, 23];
-    const CRF_LABELS: &[&str] = &[
-        "Lossless (huge files)",
-        "Archival",
-        "Visually lossless",
-        "High",
-        "Default",
-    ];
-    const PRESET_OPTIONS: &[&str] = &["ultrafast", "fast", "medium", "slow", "veryslow"];
-
-    let target_idx = TARGET_VALUES
-        .iter()
-        .position(|t| *t == config.target)
-        .unwrap_or(0);
-    inline_property(ui, 0, "Source", theme, |ui| {
-        if let Some(idx) = enum_combobox(
-            ui,
-            egui::Id::new("record_target"),
-            target_idx,
-            TARGET_LABELS,
-        ) {
-            let new_target = TARGET_VALUES[idx];
-            cmds.push(move |w: &mut World| {
-                if let Some(mut cfg) = w.get_resource_mut::<RecordingConfig>() {
-                    cfg.target = new_target;
-                }
-            });
-        }
-    });
-
-    let fps_idx = FPS_VALUES
-        .iter()
-        .position(|f| *f == config.fps)
-        .unwrap_or(2);
-    inline_property(ui, 1, "FPS", theme, |ui| {
-        if let Some(idx) = enum_combobox(ui, egui::Id::new("record_fps"), fps_idx, FPS_LABELS) {
-            let new_fps = FPS_VALUES[idx];
-            cmds.push(move |w: &mut World| {
-                if let Some(mut cfg) = w.get_resource_mut::<RecordingConfig>() {
-                    cfg.fps = new_fps;
-                }
-            });
-        }
-    });
-
-    let crf_idx = CRF_VALUES
-        .iter()
-        .position(|c| *c == config.crf)
-        .unwrap_or(2);
-    inline_property(ui, 2, "Quality", theme, |ui| {
-        if let Some(idx) = enum_combobox(ui, egui::Id::new("record_crf"), crf_idx, CRF_LABELS) {
-            let new_crf = CRF_VALUES[idx];
-            cmds.push(move |w: &mut World| {
-                if let Some(mut cfg) = w.get_resource_mut::<RecordingConfig>() {
-                    cfg.crf = new_crf;
-                }
-            });
-        }
-    });
-
-    let preset_idx = PRESET_OPTIONS
-        .iter()
-        .position(|p| *p == config.preset)
-        .unwrap_or(3);
-    inline_property(ui, 3, "Preset", theme, |ui| {
-        if let Some(idx) = enum_combobox(
-            ui,
-            egui::Id::new("record_preset"),
-            preset_idx,
-            PRESET_OPTIONS,
-        ) {
-            let new_preset = PRESET_OPTIONS[idx].to_string();
-            cmds.push(move |w: &mut World| {
-                if let Some(mut cfg) = w.get_resource_mut::<RecordingConfig>() {
-                    cfg.preset = new_preset;
-                }
-            });
-        }
-    });
-}
+// ─── Panel state snapshot ─────────────────────────────────────────────────────
 
 /// Read-only snapshot of the recording state for the UI. The lock is dropped
 /// before drawing.
@@ -428,36 +156,6 @@ impl From<&Inner> for InnerSnapshot {
             Inner::Done(msg) => InnerSnapshot::Done(msg.clone()),
         }
     }
-}
-
-fn record_button(ui: &mut egui::Ui, active: bool) -> bool {
-    let (label, color) = if active {
-        (
-            format!("{}  Stop", regular::STOP),
-            Color32::from_rgb(220, 60, 60),
-        )
-    } else {
-        (
-            format!("{}  Record", regular::RECORD),
-            Color32::from_rgb(220, 60, 60),
-        )
-    };
-    let btn = egui::Button::new(
-        egui::RichText::new(label)
-            .size(13.0)
-            .color(Color32::WHITE)
-            .strong(),
-    )
-    .fill(color)
-    .min_size(egui::vec2(110.0, 28.0));
-    ui.add(btn).clicked()
-}
-
-fn fmt_elapsed(secs: f32) -> String {
-    let total = secs as u64;
-    let m = total / 60;
-    let s = total % 60;
-    format!("{:02}:{:02}", m, s)
 }
 
 // ─── Start / stop / capture ─────────────────────────────────────────────────
@@ -750,7 +448,6 @@ impl Plugin for RecordPlugin {
         app.add_systems(Last, capture_frame_system);
         app.add_systems(Update, (drive_stop_transition, drive_finalise).chain());
 
-        app.register_panel(RecordPanel);
         app.add_plugins(native::NativeRecordPanel);
     }
 }

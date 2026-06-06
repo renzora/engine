@@ -1,13 +1,12 @@
-//! Bevy-native (ember) port of the egui `NavMeshPanel`: global toggles
-//! ("Show Agent Paths", "Auto Rebuild") and action buttons ("Rebuild All",
-//! "Reset Agents", "Bake to Disk") over a status line and a per-volume list.
-//! Each volume card shows its name + entity, a colored build-status label with
-//! polygon count, a "Debug Draw" checkbox, and a "Rebuild" button.
+//! Bevy-native (ember) NavMesh panel: global toggles ("Show Agent Paths",
+//! "Auto Rebuild") and action buttons ("Rebuild All", "Reset Agents", "Bake to
+//! Disk") over a status line and a per-volume list. Each volume card shows its
+//! name + entity, a colored build-status label with polygon count, a "Debug
+//! Draw" checkbox, and a "Rebuild" button.
 //!
-//! The native content overrides the egui panel body at runtime. It drives the
-//! exact same `NavMeshPanelState` action queue + mirror that the egui panel
-//! used, so `drain_panel_actions` / `apply_auto_rebuild_setting` /
-//! `flush_bake_request` still do all the work — only the UI surface changes.
+//! The native content drives the `NavMeshPanelState` action queue + mirror, so
+//! `drain_panel_actions` / `apply_auto_rebuild_setting` / `flush_bake_request`
+//! do all the work — this is only the UI surface.
 
 use std::hash::{Hash, Hasher};
 
@@ -26,7 +25,7 @@ use vleue_navigator::prelude::NavMeshStatus;
 
 use crate::editor_panel::{NavMeshPanelMirror, NavMeshPanelState};
 
-/// Native plugin that overrides the egui navmesh panel body with an ember one.
+/// Native plugin that registers the ember navmesh panel body.
 pub struct NativeNavmesh;
 
 impl Plugin for NativeNavmesh {
@@ -85,7 +84,7 @@ fn volume_polys(w: &World, entity: Entity) -> Option<usize> {
         .and_then(|r| r.polygon_count)
 }
 
-/// (label, color) for a build status — mirrors the egui colors.
+/// (label, color) for a build status.
 fn status_label(status: NavMeshStatus) -> (&'static str, (u8, u8, u8)) {
     match status {
         NavMeshStatus::Built => ("Built", (120, 220, 120)),

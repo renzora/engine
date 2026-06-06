@@ -168,8 +168,10 @@ struct SectionSpec {
     fields: Vec<FieldSpec>,
 }
 
-fn c32(col: bevy_egui::egui::Color32) -> (u8, u8, u8) {
-    (col.r(), col.g(), col.b())
+/// Extract an `(r, g, b)` triple from a theme color (no egui types in scope).
+fn c32(col: renzora_theme::ThemeColor) -> (u8, u8, u8) {
+    let [r, g, b, _] = col.to_color32().to_array();
+    (r, g, b)
 }
 
 /// Replicates `renzora_ui::category_colors`: maps a component category to its
@@ -189,7 +191,7 @@ fn category_rgb(theme: &renzora_theme::Theme, category: &str) -> ((u8, u8, u8), 
         "effects" | "particles" => &theme.categories.effects,
         _ => &theme.categories.transform,
     };
-    (c32(s.accent.to_color32()), c32(s.header_bg.to_color32()))
+    (c32(s.accent), c32(s.header_bg))
 }
 
 // ── Component filter ─────────────────────────────────────────────────────────
@@ -1163,7 +1165,7 @@ fn asset_drop_highlight(
     mut zones: Query<(&bevy::ui::RelativeCursorPosition, &AssetDropZone, &mut BorderColor)>,
 ) {
     let accent = theme
-        .map(|t| c(c32(t.active_theme.semantic.accent.to_color32())))
+        .map(|t| c(c32(t.active_theme.semantic.accent)))
         .unwrap_or(c((120, 140, 200)));
     for (rcp, zone, mut bc) in &mut zones {
         let active = payload.as_ref().is_some_and(|p| {

@@ -4,121 +4,14 @@
 //! (meshes + lights + camera) similar to Unreal Engine's level templates.
 
 mod native;
-pub mod panels;
 pub mod state;
 
-use std::sync::{Arc, Mutex, RwLock};
-
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
-use renzora_editor::{AppEditorExt, EditorPanel, PanelLocation};
 use renzora_lighting::Sun;
-use renzora_theme::ThemeManager;
 
 use state::*;
-
-// ============================================================================
-// Bridge for mutable panel state
-// ============================================================================
-
-#[derive(Default)]
-struct BridgeInner {
-    state: Option<LevelPresetsState>,
-}
-
-#[derive(Resource)]
-struct LevelPresetsBridge {
-    pending: Arc<Mutex<BridgeInner>>,
-}
-
-impl Default for LevelPresetsBridge {
-    fn default() -> Self {
-        Self {
-            pending: Arc::new(Mutex::new(BridgeInner::default())),
-        }
-    }
-}
-
-fn get_theme(world: &World) -> renzora_theme::Theme {
-    world
-        .get_resource::<ThemeManager>()
-        .map(|tm| tm.active_theme.clone())
-        .unwrap_or_default()
-}
-
-// ============================================================================
-// Panel
-// ============================================================================
-
-struct LevelPresetsPanel {
-    bridge: Arc<Mutex<BridgeInner>>,
-    local: RwLock<LevelPresetsState>,
-}
-
-impl LevelPresetsPanel {
-    fn new(bridge: Arc<Mutex<BridgeInner>>) -> Self {
-        Self {
-            bridge,
-            local: RwLock::new(LevelPresetsState::default()),
-        }
-    }
-}
-
-impl EditorPanel for LevelPresetsPanel {
-    fn id(&self) -> &str {
-        "level_presets"
-    }
-    fn title(&self) -> &str {
-        "Level Presets"
-    }
-    fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::MAP_TRIFOLD)
-    }
-    fn category(&self) -> &str {
-        "Tools"
-    }
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Right
-    }
-    fn min_size(&self) -> [f32; 2] {
-        [250.0, 300.0]
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        if let Some(state) = world.get_resource::<LevelPresetsState>() {
-            if let Ok(mut local) = self.local.write() {
-                local.entity_count = state.entity_count;
-                local.has_active_level = state.has_active_level;
-            }
-        }
-        let theme = get_theme(world);
-        if let Ok(mut local) = self.local.write() {
-            panels::presets::render_level_presets_content(ui, &mut local, &theme);
-        }
-        if let Ok(mut pending) = self.bridge.lock() {
-            if let Ok(mut local) = self.local.write() {
-                pending.state = Some(local.clone());
-                local.commands.clear();
-            }
-        }
-    }
-}
-
-// ============================================================================
-// Sync bridge → world
-// ============================================================================
-
-fn sync_bridge(bridge: Res<LevelPresetsBridge>, mut state: ResMut<LevelPresetsState>) {
-    if let Ok(mut pending) = bridge.pending.lock() {
-        if let Some(s) = pending.state.take() {
-            state.selected = s.selected;
-            state.scale = s.scale;
-            state.commands = s.commands;
-        }
-    }
-}
 
 // ============================================================================
 // Command processing
@@ -176,20 +69,13 @@ impl Plugin for LevelPresetsPlugin {
         // Register World Environment and Sun spawn presets
         register_lighting_presets(app);
 
-        let bridge = LevelPresetsBridge::default();
-        let arc = bridge.pending.clone();
-        app.insert_resource(bridge);
-
         use renzora_editor::SplashState;
         app.add_systems(
             Update,
-            (sync_bridge, process_level_commands).run_if(in_state(SplashState::Editor)),
+            process_level_commands.run_if(in_state(SplashState::Editor)),
         );
 
-        app.register_panel(LevelPresetsPanel::new(arc));
-
-        // Native (ember/bevy_ui) panel content — overrides the egui body at
-        // runtime while the egui panel stays registered for its metadata.
+        // Native (ember/bevy_ui) panel content.
         app.add_plugins(native::NativeLevelPresets);
     }
 }

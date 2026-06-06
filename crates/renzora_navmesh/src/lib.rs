@@ -150,11 +150,10 @@ fn sync_volume_changes(
 
 #[cfg(feature = "editor")]
 fn inspector_entry() -> InspectorEntry {
-    use egui_phosphor::regular;
     InspectorEntry {
         type_id: "nav_mesh_volume",
         display_name: "NavMesh Volume",
-        icon: regular::POLYGON,
+        icon: "polygon",
         category: "navigation",
         has_fn: |world, entity| world.get::<NavMeshVolume>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -355,11 +354,10 @@ fn inspector_entry() -> InspectorEntry {
 
 #[cfg(feature = "editor")]
 fn obstacle_inspector_entry() -> InspectorEntry {
-    use egui_phosphor::regular;
     InspectorEntry {
         type_id: "nav_mesh_obstacle",
         display_name: "NavMesh Obstacle",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "navigation",
         has_fn: |world, entity| world.get::<NavMeshObstacle>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -813,11 +811,10 @@ fn handle_nav_script_actions(trigger: On<renzora::ScriptAction>, mut agents: Que
 
 #[cfg(feature = "editor")]
 fn agent_inspector_entry() -> InspectorEntry {
-    use egui_phosphor::regular;
     InspectorEntry {
         type_id: "nav_agent",
         display_name: "NavMesh Agent",
-        icon: regular::PERSON_SIMPLE_WALK,
+        icon: "person-simple-walk",
         category: "navigation",
         has_fn: |world, entity| world.get::<NavAgent>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -985,7 +982,7 @@ impl Plugin for NavMeshPlugin {
                 registry.register(EntityPreset {
                     id: "navmesh_volume",
                     display_name: "NavMesh Volume",
-                    icon: egui_phosphor::regular::POLYGON,
+                    icon: "polygon",
                     category: "Navigation",
                     spawn_fn: |world: &mut World| {
                         world
@@ -1002,8 +999,7 @@ impl Plugin for NavMeshPlugin {
             app.init_resource::<editor_panel::NavMeshPanelState>();
             app.init_resource::<editor_panel::NavMeshPanelMirror>();
             app.init_resource::<editor_panel::NavMeshBakeRequest>();
-            app.register_panel(editor_panel::NavMeshPanel);
-            // Native (ember) content overrides the egui panel body at runtime.
+            // Native (ember) panel content.
             app.add_plugins(native::NativeNavmesh);
             app.add_systems(
                 Update,

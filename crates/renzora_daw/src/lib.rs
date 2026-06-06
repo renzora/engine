@@ -8,8 +8,6 @@
 use bevy::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
-mod drop;
-#[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
 mod panel;
@@ -30,14 +28,12 @@ impl Plugin for DawPlugin {
 impl Plugin for DawPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] DawPlugin");
-        use crate::panel::{apply_intents, request_clip_waveforms, DawIntentBuffer, DawPanel};
+        use crate::panel::{apply_intents, request_clip_waveforms, DawIntentBuffer};
         use crate::waveform_cache::WaveformCache;
-        use renzora_editor::AppEditorExt;
 
         app.init_resource::<DawIntentBuffer>();
         app.init_resource::<WaveformCache>();
-        app.register_panel(DawPanel::default());
-        // Bevy-native (ember) DAW content overrides the egui panel body.
+        // Bevy-native (ember) DAW panel content.
         app.add_plugins(crate::native::NativeDaw);
         // Apply panel intents before the audio scheduler sees them.
         app.add_systems(Update, apply_intents);

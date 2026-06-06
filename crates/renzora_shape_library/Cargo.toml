@@ -9,13 +9,10 @@ editor = []
 
 [dependencies]
 renzora_undo = { path = "../renzora_undo" }
-renzora_theme = { path = "../renzora_theme" }
-egui-phosphor = { workspace = true }
-bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-# bevy_ui-native panel content (the egui → bevy_ui migration).
+# bevy_ui-native panel content.
 renzora_ember = { path = "../renzora_ember" }
 
 [lints]

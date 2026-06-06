@@ -21,15 +21,12 @@ use renzora_viewport::model_flatten::ImportedRoot;
 pub use scene_io::{load_current_scene, load_scene, save_current_scene, save_scene};
 
 mod panel;
-pub use panel::ScenesPanel;
 
 mod tab_asset_cache;
 pub use tab_asset_cache::TabAssetCache;
 
-mod diagnostics_panel;
 mod native_diagnostics;
 mod native_scenes;
-pub use diagnostics_panel::SceneDiagnosticsPanel;
 use native_diagnostics::NativeSceneDiagnostics;
 use native_scenes::NativeScenesPanel;
 
@@ -1105,7 +1102,6 @@ impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScenePlugin");
         use renzora_editor::{AppEditorExt, ComponentIconEntry};
-        app.register_panel(panel::ScenesPanel::default());
 
         // Hierarchy icon for nested-scene instance roots (distinguishes them
         // from plain folder-like grouping entities).
@@ -1131,7 +1127,6 @@ impl Plugin for ScenePlugin {
                 tab_asset_cache::update_scene_diag_snapshot
                     .run_if(in_state(SplashState::Editor)),
             )
-            .register_panel(SceneDiagnosticsPanel)
             .add_plugins(NativeSceneDiagnostics)
             .add_plugins(NativeScenesPanel)
             // When the user closes a tab, drop its strong handles so

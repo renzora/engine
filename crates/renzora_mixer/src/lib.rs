@@ -22,8 +22,6 @@ mod inspectors;
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
 mod native_strips;
-#[cfg(not(target_arch = "wasm32"))]
-mod render;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Plugin for MixerPlugin {

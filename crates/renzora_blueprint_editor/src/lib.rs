@@ -4,11 +4,9 @@ mod graph_editor;
 mod graph_panel;
 mod native_graph;
 mod native_properties;
-mod properties_panel;
 
 use bevy::prelude::*;
 use renzora_blueprint::BlueprintGraph;
-use renzora_editor::AppEditorExt;
 
 /// Tracks what the blueprint editor is currently focused on. Two modes:
 ///
@@ -41,8 +39,6 @@ impl Plugin for BlueprintEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] BlueprintEditorPlugin");
         app.init_resource::<BlueprintEditorState>();
-        app.register_panel(graph_panel::BlueprintGraphPanel);
-        app.register_panel(properties_panel::BlueprintPropertiesPanel);
         app.add_plugins(native_properties::NativeBlueprintProperties);
         app.add_plugins(native_graph::NativeBlueprintGraph);
     }

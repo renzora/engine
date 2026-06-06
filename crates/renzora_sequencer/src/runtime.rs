@@ -736,5 +736,8 @@ pub struct ClipView {
     pub start: f32,
     pub duration: f32,
     pub name: String,
+    /// Keyframe count for the clip — surfaced by the native timeline's clip
+    /// overlay (the egui panel printed "{n} keys"); kept on the view model.
+    #[allow(dead_code)]
     pub key_count: usize,
 }

@@ -33,22 +33,6 @@ impl LevelPreset {
         }
     }
 
-    pub fn icon(&self) -> &'static str {
-        use egui_phosphor::regular::*;
-        match self {
-            Self::FPS => CROSSHAIR,
-            Self::ThirdPerson => PERSON,
-            Self::Platformer => STAIRS,
-            Self::TopDown => MAP_TRIFOLD,
-            Self::Racing => FLAG_CHECKERED,
-            Self::Sandbox => CUBE,
-            Self::Corridor => PATH,
-            Self::Arena => SHIELD,
-            Self::Showcase => EYE,
-            Self::Terrain => MOUNTAINS,
-        }
-    }
-
     /// Phosphor icon name (kebab-case) for the bevy_ui/ember `icon_text` map.
     /// Mirrors [`Self::icon`] which returns the egui glyph chars.
     pub fn icon_name(&self) -> &'static str {

@@ -9160,15 +9160,12 @@ name = "renzora_blueprint_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_blueprint",
  "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
- "renzora_theme",
- "renzora_ui",
  "serde_json",
 ]
 
@@ -9275,13 +9272,10 @@ name = "renzora_console"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
- "renzora_theme",
 ]
 
 [[package]]
@@ -9325,15 +9319,11 @@ name = "renzora_daw"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "kira",
  "renzora",
  "renzora_audio",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
- "renzora_ui",
 ]
 
 [[package]]
@@ -9633,12 +9623,9 @@ name = "renzora_gamepad"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
 ]
 
 [[package]]
@@ -9646,13 +9633,10 @@ name = "renzora_gauges"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "bevy_gauge 0.4.5",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
 ]
 
 [[package]]
@@ -9917,15 +9901,12 @@ name = "renzora_inspector"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
- "renzora_undo",
 ]
 
 [[package]]
@@ -9989,7 +9970,6 @@ name = "renzora_level_presets"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_antialiasing",
@@ -10010,7 +9990,6 @@ dependencies = [
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
- "renzora_theme",
  "renzora_tonemapping",
  "renzora_volumetric_fog",
 ]
@@ -10125,14 +10104,12 @@ name = "renzora_mixer"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_audio",
  "renzora_editor",
  "renzora_ember",
  "renzora_inspector",
- "renzora_theme",
 ]
 
 [[package]]
@@ -10165,8 +10142,6 @@ version = "0.1.0"
 dependencies = [
  "avian3d 0.6.1",
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "mlua",
  "polyanya",
  "renzora",
@@ -10197,13 +10172,10 @@ name = "renzora_network_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
  "renzora_network",
- "renzora_theme",
 ]
 
 [[package]]
@@ -10431,14 +10403,11 @@ name = "renzora_record"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "crossbeam-channel",
- "egui-phosphor",
  "ffmpeg-sidecar",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
  "renzora_ui",
 ]
 
@@ -10590,7 +10559,6 @@ name = "renzora_scene"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "egui-phosphor",
  "renzora",
  "renzora_camera",
@@ -10600,7 +10568,6 @@ dependencies = [
  "renzora_keybindings",
  "renzora_shader",
  "renzora_splash",
- "renzora_theme",
  "renzora_ui",
  "renzora_viewport",
  "rfd",
@@ -10623,14 +10590,10 @@ name = "renzora_script_variables"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_code_editor",
- "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
- "renzora_theme",
 ]
 
 [[package]]
@@ -10666,13 +10629,9 @@ name = "renzora_sequencer"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
- "renzora_ui",
  "ron 0.8.1",
  "serde",
 ]
@@ -10734,12 +10693,9 @@ name = "renzora_shape_library"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
  "renzora",
  "renzora_editor",
  "renzora_ember",
- "renzora_theme",
  "renzora_undo",
 ]
 

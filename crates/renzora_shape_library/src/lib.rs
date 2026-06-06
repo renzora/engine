@@ -17,38 +17,38 @@ use renzora::core::{ShapeEntry, ShapeRegistry};
 
 /// Add icons to shapes already registered by the engine (editor only).
 fn add_shape_icons(registry: &mut ShapeRegistry) {
-    use egui_phosphor::regular;
+    // Phosphor icon names (kebab-case), resolved to glyphs by the native panel.
     let icons: &[(&str, &str)] = &[
-        ("cube", regular::CUBE),
-        ("sphere", regular::GLOBE),
-        ("cylinder", regular::CYLINDER),
-        ("plane", regular::SQUARE),
-        ("cone", regular::TRIANGLE),
-        ("torus", regular::CIRCLE),
-        ("capsule", regular::CYLINDER),
-        ("hemisphere", regular::GLOBE),
-        ("wedge", regular::TRIANGLE),
-        ("stairs", regular::STAIRS),
-        ("arch", regular::CIRCLE),
-        ("half_cylinder", regular::CYLINDER),
-        ("quarter_pipe", regular::POLYGON),
-        ("corner", regular::POLYGON),
-        ("wall", regular::WALL),
-        ("ramp", regular::TRIANGLE),
-        ("curved_wall", regular::WALL),
-        ("doorway", regular::DOOR),
-        ("window_wall", regular::FRAME_CORNERS),
-        ("l_shape", regular::POLYGON),
-        ("t_shape", regular::POLYGON),
-        ("cross_shape", regular::PLUS),
-        ("spiral_stairs", regular::SPIRAL),
-        ("pillar", regular::COLUMNS),
-        ("pipe", regular::PIPE),
-        ("ring", regular::CIRCLE),
-        ("funnel", regular::TRIANGLE),
-        ("gutter", regular::CYLINDER),
-        ("prism", regular::HEXAGON),
-        ("pyramid", regular::DIAMOND),
+        ("cube", "cube"),
+        ("sphere", "globe"),
+        ("cylinder", "cylinder"),
+        ("plane", "square"),
+        ("cone", "triangle"),
+        ("torus", "circle"),
+        ("capsule", "cylinder"),
+        ("hemisphere", "globe"),
+        ("wedge", "triangle"),
+        ("stairs", "stairs"),
+        ("arch", "circle"),
+        ("half_cylinder", "cylinder"),
+        ("quarter_pipe", "polygon"),
+        ("corner", "polygon"),
+        ("wall", "wall"),
+        ("ramp", "triangle"),
+        ("curved_wall", "wall"),
+        ("doorway", "door"),
+        ("window_wall", "frame-corners"),
+        ("l_shape", "polygon"),
+        ("t_shape", "polygon"),
+        ("cross_shape", "plus"),
+        ("spiral_stairs", "spiral"),
+        ("pillar", "columns"),
+        ("pipe", "pipe"),
+        ("ring", "circle"),
+        ("funnel", "triangle"),
+        ("gutter", "cylinder"),
+        ("prism", "hexagon"),
+        ("pyramid", "diamond"),
     ];
     for (id, icon) in icons {
         if let Some(entry) = registry.get_mut(id) {
@@ -61,12 +61,25 @@ fn add_shape_icons(registry: &mut ShapeRegistry) {
 fn register_builtin_shapes(registry: &mut ShapeRegistry) {
     use procedural_meshes as pm;
 
-    use egui_phosphor::regular;
-
+    // Phosphor icon names (kebab-case), resolved to glyphs by the native panel.
     macro_rules! icon {
-        ($name:ident) => {
-            regular::$name
-        };
+        (CUBE) => { "cube" };
+        (GLOBE) => { "globe" };
+        (CYLINDER) => { "cylinder" };
+        (SQUARE) => { "square" };
+        (TRIANGLE) => { "triangle" };
+        (CIRCLE) => { "circle" };
+        (STAIRS) => { "stairs" };
+        (POLYGON) => { "polygon" };
+        (WALL) => { "wall" };
+        (DOOR) => { "door" };
+        (FRAME_CORNERS) => { "frame-corners" };
+        (PLUS) => { "plus" };
+        (SPIRAL) => { "spiral" };
+        (COLUMNS) => { "columns" };
+        (PIPE) => { "pipe" };
+        (HEXAGON) => { "hexagon" };
+        (DIAMOND) => { "diamond" };
     }
 
     // Basic
@@ -329,7 +342,6 @@ fn register_builtin_shapes(registry: &mut ShapeRegistry) {
 }
 
 mod native;
-mod panel;
 
 /// Shape library plugin — registers built-in shapes and adds the shape browser panel.
 #[derive(Default)]
@@ -342,8 +354,6 @@ impl Plugin for ShapeLibraryPlugin {
         // Add icons to the shapes already registered by the engine
         add_shape_icons(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
-        use renzora_editor::AppEditorExt;
-        app.register_panel(panel::ShapeLibraryPanel::default());
         app.add_plugins(native::NativeShapeLibrary);
     }
 }

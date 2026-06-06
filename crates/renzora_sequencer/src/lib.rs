@@ -15,11 +15,9 @@
 
 mod model;
 mod native;
-mod panel;
 mod runtime;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
 
 pub use model::{
     CameraClip, CameraKey, MarkerClip, MediaClip, Sequence, Track, TrackKind, TransformClip,
@@ -34,10 +32,8 @@ impl Plugin for SequencerPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] SequencerPlugin");
 
-        let bridge = runtime::SequencerBridge::default();
-
         app.init_resource::<runtime::SequencerState>();
-        app.insert_resource(bridge.clone());
+        app.insert_resource(runtime::SequencerBridge::default());
 
         app.add_systems(
             Update,
@@ -50,7 +46,6 @@ impl Plugin for SequencerPlugin {
                 .chain(),
         );
 
-        app.register_panel(panel::SequencerPanel::new(bridge));
         app.add_plugins(native::NativeSequencer);
     }
 }
