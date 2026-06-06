@@ -26,7 +26,6 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::scene::SceneInstanceReady;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor::{model_thumb_path, ModelThumbnailRegistry};
@@ -133,8 +132,7 @@ pub(crate) struct PendingCaptures {
 }
 
 /// Disk-cached PNG loads in flight. When `Handle<Image>` reaches
-/// `LoadState::Loaded`, register the texture with egui and complete
-/// the registry entry.
+/// `LoadState::Loaded`, complete the registry entry with the handle.
 #[derive(Resource, Default)]
 struct PendingDiskLoads {
     entries: Vec<PendingDiskLoad>,
@@ -786,10 +784,9 @@ fn world_aabb(
 }
 
 /// Resolve disk-cached PNG loads — when each handle reaches `Loaded`,
-/// register with egui and complete the registry entry.
+/// complete the registry entry with the loaded `Handle<Image>`.
 fn resolve_model_disk_loads(
     mut disk_loads: ResMut<PendingDiskLoads>,
-    mut user_textures: ResMut<EguiUserTextures>,
     mut registry: ResMut<ModelThumbnailRegistry>,
     asset_server: Res<AssetServer>,
 ) {
@@ -799,11 +796,7 @@ fn resolve_model_disk_loads(
         match state {
             Some(LoadState::Loaded) => {
                 let entry = disk_loads.entries.swap_remove(i);
-                user_textures.add_image(EguiTextureHandle::Strong(entry.handle.clone()));
-                match user_textures.image_id(entry.handle.id()) {
-                    Some(tid) => registry.complete(entry.model_path, tid, entry.handle.clone()),
-                    None => registry.cancel(&entry.model_path),
-                }
+                registry.complete(entry.model_path, entry.handle);
             }
             Some(LoadState::Failed(_)) => {
                 let entry = disk_loads.entries.swap_remove(i);
@@ -901,7 +894,6 @@ pub(crate) fn tick_warmup_and_dispatch(
                 move |trigger: On<ScreenshotCaptured>,
                       mut cmds: Commands,
                       mut imgs: ResMut<Assets<Image>>,
-                      mut tex: ResMut<EguiUserTextures>,
                       mut reg: ResMut<ModelThumbnailRegistry>,
                       mut pend: ResMut<PendingCaptures>,
                       mut cls: ResMut<CaptureCells>| {
@@ -927,11 +919,7 @@ pub(crate) fn tick_warmup_and_dispatch(
                     }
 
                     let captured_handle = imgs.add(captured);
-                    tex.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
-                    match tex.image_id(captured_handle.id()) {
-                        Some(tid) => reg.complete(model_path.clone(), tid, captured_handle.clone()),
-                        None => reg.cancel(&model_path),
-                    }
+                    reg.complete(model_path.clone(), captured_handle);
 
                     if let Some(idx) = pend.jobs.iter().position(|j| j.model_path == model_path) {
                         pend.jobs.swap_remove(idx);

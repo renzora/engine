@@ -612,10 +612,9 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
 
                     // Publish the rendered thumbnail's `Handle<Image>` to the
                     // registry; the native (bevy_ui) browser/inspector display it
-                    // via `ImageNode`. The egui `TextureId` slot is unused by the
-                    // native UI, so pass a placeholder.
+                    // via `ImageNode`.
                     let captured_handle = images.add(captured);
-                    registry.complete(material_path.clone(), egui::TextureId::User(0), captured_handle.clone());
+                    registry.complete(material_path.clone(), captured_handle.clone());
 
                     if let Some(job) = job.as_ref() {
                         tasks.advance(job.handle, 1);
@@ -737,7 +736,7 @@ fn resolve_disk_loads(
                     .and_then(|n| n.to_str())
                     .unwrap_or("")
                     .to_string();
-                registry.complete(entry.material_path, egui::TextureId::User(0), entry.handle.clone());
+                registry.complete(entry.material_path, entry.handle.clone());
                 if let Some(job) = job.as_ref() {
                     tasks.advance(job.handle, 1);
                     if let Some(t) = tasks

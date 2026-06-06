@@ -1,10 +1,9 @@
-//! Bevy-native (ember) Asset Browser — Increment 1: a navigable tile grid.
+//! Bevy-native (ember) Asset Browser — the sole asset browser implementation.
 //!
 //! Toolbar (back + breadcrumb + search) over a wrapping grid of folder/file
 //! tiles read from the current folder. Click a folder to navigate in, a file to
-//! select. Thumbnails, the folder tree, drag-drop, rename/delete and the context
-//! menu are later increments; the egui `AssetBrowserPanel` stays the source for
-//! those until then.
+//! select. Includes thumbnails, the folder tree, drag-drop, rename/delete and
+//! the context menu. The former egui `AssetBrowserPanel` has been removed.
 
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -568,8 +567,12 @@ fn asset_drag(
                     name: file_name_of(&path),
                     paths,
                     icon: String::new(),
-                    color: bevy_egui::egui::Color32::from_rgb(170, 175, 190),
-                    origin: bevy_egui::egui::Pos2::new(origin.x, origin.y),
+                    // `AssetDragPayload` (renzora_ui) still types these fields as
+                    // egui's `Color32`/`Pos2`; they only feed the legacy egui drag
+                    // ghost, which the native browser replaces with `drag_ghost`.
+                    // The values are inert under the bevy_ui shell.
+                    color: egui::Color32::from_rgb(170, 175, 190),
+                    origin: egui::Pos2::new(origin.x, origin.y),
                     is_detached: true,
                     drag_count: count,
                     path,

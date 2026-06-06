@@ -4,8 +4,8 @@
 //! [`MaterialThumbnailRegistry::request`]. The material thumbnail renderer
 //! (in `renzora_material_editor`) drains `incoming_requests`, captures a
 //! one-shot render of a sphere with the compiled material, writes a PNG to
-//! `<project>/.cache/thumbnails/materials/<rel>.png`, and publishes the resulting egui
-//! `TextureId` via [`MaterialThumbnailRegistry::complete`].
+//! `<project>/.cache/thumbnails/materials/<rel>.png`, and publishes the resulting
+//! `Handle<Image>` via [`MaterialThumbnailRegistry::complete`].
 //!
 //! Thumbnails persist across sessions: when a request hits and the PNG is
 //! already on disk, the renderer skips the capture and simply reloads the
@@ -15,37 +15,27 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
 
 #[derive(Resource, Default)]
 pub struct MaterialThumbnailRegistry {
-    entries: HashMap<PathBuf, egui::TextureId>,
-    /// The `Handle<Image>` per path, for the bevy-native browser.
+    /// The rendered `Handle<Image>` per path, shown via `ImageNode`.
     handles: HashMap<PathBuf, Handle<Image>>,
     in_flight: HashSet<PathBuf>,
     pub incoming_requests: VecDeque<PathBuf>,
 }
 
 impl MaterialThumbnailRegistry {
-    pub fn get(&self, path: &PathBuf) -> Option<egui::TextureId> {
-        self.entries.get(path).copied()
-    }
-
     /// The rendered thumbnail's image handle, if ready.
     pub fn handle(&self, path: &PathBuf) -> Option<Handle<Image>> {
         self.handles.get(path).cloned()
     }
 
-    pub fn entries(&self) -> &HashMap<PathBuf, egui::TextureId> {
-        &self.entries
-    }
-
     /// Non-blocking request. If the thumbnail is already cached or a capture
     /// is already queued for this path, this is a no-op.
     pub fn request(&mut self, path: PathBuf) {
-        if self.entries.contains_key(&path) || self.in_flight.contains(&path) {
+        if self.handles.contains_key(&path) || self.in_flight.contains(&path) {
             return;
         }
         self.in_flight.insert(path.clone());
@@ -54,10 +44,9 @@ impl MaterialThumbnailRegistry {
 
     /// Called by the renderer when a thumbnail becomes available (either
     /// fresh capture or disk-cache reload).
-    pub fn complete(&mut self, path: PathBuf, id: egui::TextureId, handle: Handle<Image>) {
+    pub fn complete(&mut self, path: PathBuf, handle: Handle<Image>) {
         self.in_flight.remove(&path);
-        self.handles.insert(path.clone(), handle);
-        self.entries.insert(path, id);
+        self.handles.insert(path, handle);
     }
 
     /// Called by the renderer when a capture failed (parse error, unsupported
@@ -69,7 +58,6 @@ impl MaterialThumbnailRegistry {
 
     /// Forces a re-capture next time this file is viewed. Call on save.
     pub fn invalidate(&mut self, path: &PathBuf) {
-        self.entries.remove(path);
         self.handles.remove(path);
         self.in_flight.remove(path);
     }
@@ -84,7 +72,6 @@ impl MaterialThumbnailRegistry {
     /// Doesn't touch the on-disk PNG cache — those are still valid
     /// across sessions and will be reloaded by the first re-request.
     pub fn reset(&mut self) {
-        self.entries.clear();
         self.handles.clear();
         self.in_flight.clear();
         self.incoming_requests.clear();

@@ -6,7 +6,7 @@
 //! `renzora_asset_browser::model_thumbnails`) drains the queue, performs a
 //! one-shot offscreen capture of the loaded GLB scene, writes a PNG to
 //! `<project>/.cache/thumbnails/models/<rel>.png`, and publishes the
-//! resulting egui `TextureId` via [`ModelThumbnailRegistry::complete`].
+//! resulting `Handle<Image>` via [`ModelThumbnailRegistry::complete`].
 //!
 //! Lives in `renzora_editor` rather than the asset browser so other panels
 //! (inspector, asset preview, drag preview) can read the registry without
@@ -16,38 +16,27 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 use renzora::core::CurrentProject;
 
 #[derive(Resource, Default)]
 pub struct ModelThumbnailRegistry {
-    entries: HashMap<PathBuf, egui::TextureId>,
-    /// The `Handle<Image>` per path, for the bevy-native browser (which shows
-    /// it via `ImageNode` rather than the egui `TextureId`).
+    /// The rendered `Handle<Image>` per path, shown via `ImageNode`.
     handles: HashMap<PathBuf, Handle<Image>>,
     in_flight: HashSet<PathBuf>,
     pub incoming_requests: VecDeque<PathBuf>,
 }
 
 impl ModelThumbnailRegistry {
-    pub fn get(&self, path: &PathBuf) -> Option<egui::TextureId> {
-        self.entries.get(path).copied()
-    }
-
     /// The rendered thumbnail's image handle, if ready.
     pub fn handle(&self, path: &PathBuf) -> Option<Handle<Image>> {
         self.handles.get(path).cloned()
     }
 
-    pub fn entries(&self) -> &HashMap<PathBuf, egui::TextureId> {
-        &self.entries
-    }
-
     /// Non-blocking request. If the thumbnail is already cached or a
     /// capture is already queued for this path, this is a no-op.
     pub fn request(&mut self, path: PathBuf) {
-        if self.entries.contains_key(&path) || self.in_flight.contains(&path) {
+        if self.handles.contains_key(&path) || self.in_flight.contains(&path) {
             return;
         }
         self.in_flight.insert(path.clone());
@@ -56,10 +45,9 @@ impl ModelThumbnailRegistry {
 
     /// Called by the renderer when a thumbnail becomes available (either
     /// fresh capture or disk-cache reload).
-    pub fn complete(&mut self, path: PathBuf, id: egui::TextureId, handle: Handle<Image>) {
+    pub fn complete(&mut self, path: PathBuf, handle: Handle<Image>) {
         self.in_flight.remove(&path);
-        self.handles.insert(path.clone(), handle);
-        self.entries.insert(path, id);
+        self.handles.insert(path, handle);
     }
 
     /// Called by the renderer when a capture failed (asset load timeout,
@@ -72,7 +60,6 @@ impl ModelThumbnailRegistry {
     /// Forces a re-capture next time this model is viewed. Call when
     /// the source file changes on disk.
     pub fn invalidate(&mut self, path: &PathBuf) {
-        self.entries.remove(path);
         self.handles.remove(path);
         self.in_flight.remove(path);
     }
@@ -83,7 +70,6 @@ impl ModelThumbnailRegistry {
     /// `request` doesn't short-circuit on every path the previous
     /// session had thumbnailed.
     pub fn reset(&mut self) {
-        self.entries.clear();
         self.handles.clear();
         self.in_flight.clear();
         self.incoming_requests.clear();

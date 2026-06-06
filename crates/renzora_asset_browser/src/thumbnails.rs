@@ -1,8 +1,9 @@
-//! Asset thumbnail cache — loads image files as Bevy images and registers them
-//! with egui so the asset browser grid can display visual previews.
+//! Asset thumbnail cache — loads image files as Bevy images and publishes their
+//! `Handle<Image>` so the bevy-native asset browser grid can display visual
+//! previews via `ImageNode`.
 //!
 //! Images with incompatible GPU formats (R16Uint, R32Float, etc.) are
-//! automatically converted to Rgba8UnormSrgb for thumbnail display.
+//! automatically converted to Rgba8UnormSrgb when encoding the cached PNG.
 //!
 //! **Persistent cache** — once a source loads, a downscaled 256×256 PNG is
 //! saved to `<project>/.cache/thumbnails/textures/<asset-rel>.png`. Future
@@ -16,8 +17,6 @@ use std::path::{Path, PathBuf};
 use bevy::asset::LoadState;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy_egui::egui;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use renzora::core::CurrentProject;
 use renzora_editor::thumbnail_cache_dir;
 
@@ -25,25 +24,6 @@ use renzora_editor::thumbnail_cache_dir;
 /// renders at ~96px so 256 keeps headroom for HiDPI without bloating
 /// the cache. Source aspect ratio is preserved within this bound.
 const CACHE_THUMB_SIZE: u32 = 256;
-
-/// Returns true if the image format is safe to register with egui
-/// (filterable float sample type).
-fn is_egui_compatible(format: TextureFormat) -> bool {
-    matches!(
-        format,
-        TextureFormat::Rgba8Unorm
-            | TextureFormat::Rgba8UnormSrgb
-            | TextureFormat::Bgra8Unorm
-            | TextureFormat::Bgra8UnormSrgb
-            | TextureFormat::Rgba16Float
-            | TextureFormat::Rgba32Float
-            | TextureFormat::R8Unorm
-            | TextureFormat::Rg8Unorm
-            | TextureFormat::R16Float
-            | TextureFormat::Rg16Float
-            | TextureFormat::Rg11b10Ufloat
-    )
-}
 
 /// Convert an image with an incompatible format to Rgba8UnormSrgb for thumbnail use.
 /// Returns None if the format is unrecognized or the data is malformed.
@@ -292,8 +272,6 @@ const MAX_LOADED: usize = 256;
 pub struct ThumbnailCache {
     /// Path → loaded Bevy image handle.
     handles: HashMap<PathBuf, Handle<Image>>,
-    /// Path → registered egui texture ID (ready to display).
-    texture_ids: HashMap<PathBuf, egui::TextureId>,
     /// Paths currently in-flight (waiting for asset server to load).
     loading: HashSet<PathBuf>,
     /// Paths that failed to load.
@@ -308,11 +286,6 @@ pub struct ThumbnailCache {
 }
 
 impl ThumbnailCache {
-    /// Get the egui texture ID for a loaded thumbnail, if ready.
-    pub fn get_texture_id(&self, path: &PathBuf) -> Option<egui::TextureId> {
-        self.texture_ids.get(path).copied()
-    }
-
     /// Get the `Handle<Image>` for a loaded thumbnail, if ready — for the
     /// bevy-native browser, which displays it via `ImageNode` (no egui texture).
     pub fn handle(&self, path: &PathBuf) -> Option<Handle<Image>> {
@@ -335,8 +308,7 @@ impl ThumbnailCache {
         asset_server: &AssetServer,
         project: Option<&CurrentProject>,
     ) -> bool {
-        if self.texture_ids.contains_key(&path)
-            || self.handles.contains_key(&path)
+        if self.handles.contains_key(&path)
             || self.loading.contains(&path)
             || self.failed.contains(&path)
         {
@@ -346,8 +318,8 @@ impl ThumbnailCache {
             return false;
         }
         // Persistent cache hit: load the cached PNG instead of the
-        // source. The egui texture this session ends up using is the
-        // 256-px PNG, so memory + decode time both shrink. Without a
+        // source. The handle this session ends up publishing points at
+        // the 256-px PNG, so memory + decode time both shrink. Without a
         // project we can't compute the cache path, so fall through.
         if let Some(p) = project {
             if let Some(cache_path) = texture_thumb_path(&path, p) {
@@ -396,11 +368,6 @@ impl ThumbnailCache {
     pub fn is_loading(&self, path: &PathBuf) -> bool {
         self.loading.contains(path)
     }
-
-    /// Return a snapshot of all ready texture IDs (for passing to the grid).
-    pub fn texture_id_map(&self) -> HashMap<PathBuf, egui::TextureId> {
-        self.texture_ids.clone()
-    }
 }
 
 /// Returns `true` if the file extension is a supported image thumbnail format.
@@ -430,40 +397,13 @@ pub fn supports_model_thumbnail(filename: &str) -> bool {
     matches!(ext.as_str(), "glb" | "gltf")
 }
 
-/// Try to register the image with egui. If the format is incompatible, convert
-/// it to Rgba8UnormSrgb first. Returns the egui TextureId on success.
-fn register_thumbnail(
-    image: &Image,
-    original_handle: &Handle<Image>,
-    images: &mut Assets<Image>,
-    user_textures: &mut EguiUserTextures,
-) -> Option<egui::TextureId> {
-    if is_egui_compatible(image.texture_descriptor.format) {
-        // Format is fine — register directly
-        user_textures.add_image(EguiTextureHandle::Strong(original_handle.clone()));
-        return user_textures.image_id(original_handle.id());
-    }
-
-    // Convert to RGBA8 for thumbnail display
-    if let Some(converted) = convert_to_rgba8(image) {
-        let converted_handle = images.add(converted);
-        user_textures.add_image(EguiTextureHandle::Strong(converted_handle.clone()));
-        return user_textures.image_id(converted_handle.id());
-    }
-
-    warn!(
-        "Cannot convert thumbnail format {:?} to RGBA8",
-        image.texture_descriptor.format
-    );
-    None
-}
-
-/// System that checks loading state and registers completed thumbnails with egui.
+/// System that checks loading state and, once a thumbnail's image lands,
+/// persists a downscaled PNG to the on-disk cache. The `Handle<Image>` stays
+/// published in `handles` for the native browser to display via `ImageNode`.
 pub fn update_thumbnail_cache(
     asset_server: Res<AssetServer>,
     mut cache: ResMut<ThumbnailCache>,
-    mut user_textures: ResMut<EguiUserTextures>,
-    mut images: ResMut<Assets<Image>>,
+    images: Res<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
 ) {
     // Collect paths that are still in the loading set and check their state.
@@ -479,26 +419,14 @@ pub fn update_thumbnail_cache(
             Some(LoadState::Loaded) => {
                 cache.loading.remove(&path);
                 if let Some(image) = images.get(&handle) {
-                    // Clone data we need before borrowing images mutably
-                    let image_clone = image.clone();
                     // Persist a downscaled PNG once we know the bytes are
-                    // stable. `register_thumbnail` may swap the handle
-                    // (format conversion path), so do this *before* it
-                    // runs — `image_clone` already has the source bytes.
+                    // stable so future sessions can hit the cache.
                     if cache.pending_disk_save.remove(&path) {
                         if let Some(p) = project.as_deref() {
                             if let Some(cache_path) = texture_thumb_path(&path, p) {
-                                save_thumbnail_to_disk(&image_clone, &cache_path);
+                                save_thumbnail_to_disk(image, &cache_path);
                             }
                         }
-                    }
-                    if let Some(id) =
-                        register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures)
-                    {
-                        cache.texture_ids.insert(path, id);
-                    } else {
-                        cache.failed.insert(path.clone());
-                        cache.handles.remove(&path);
                     }
                 }
             }
@@ -512,36 +440,23 @@ pub fn update_thumbnail_cache(
         }
     }
 
-    // Also register any handles that loaded before we got to check (race).
-    let unregistered: Vec<PathBuf> = cache
-        .handles
+    // Catch handles that loaded before we got to check (race) and still owe a
+    // disk save.
+    let pending: Vec<PathBuf> = cache
+        .pending_disk_save
         .iter()
-        .filter(|(p, _)| {
-            !cache.texture_ids.contains_key(*p)
-                && !cache.loading.contains(*p)
-                && !cache.failed.contains(*p)
-        })
-        .map(|(p, _)| p.clone())
+        .filter(|p| !cache.loading.contains(*p) && !cache.failed.contains(*p))
+        .cloned()
         .collect();
 
-    for path in unregistered {
+    for path in pending {
         if let Some(handle) = cache.handles.get(&path).cloned() {
             if let Some(image) = images.get(&handle) {
-                let image_clone = image.clone();
-                if cache.pending_disk_save.remove(&path) {
-                    if let Some(p) = project.as_deref() {
-                        if let Some(cache_path) = texture_thumb_path(&path, p) {
-                            save_thumbnail_to_disk(&image_clone, &cache_path);
-                        }
+                cache.pending_disk_save.remove(&path);
+                if let Some(p) = project.as_deref() {
+                    if let Some(cache_path) = texture_thumb_path(&path, p) {
+                        save_thumbnail_to_disk(image, &cache_path);
                     }
-                }
-                if let Some(id) =
-                    register_thumbnail(&image_clone, &handle, &mut images, &mut user_textures)
-                {
-                    cache.texture_ids.insert(path, id);
-                } else {
-                    cache.failed.insert(path.clone());
-                    cache.handles.remove(&path);
                 }
             }
         }
