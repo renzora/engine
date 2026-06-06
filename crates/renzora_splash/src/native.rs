@@ -210,8 +210,9 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
 
     let layout = build_layout(commands, fonts);
     let controls = build_window_controls(commands, fonts);
+    let footer = build_footer(commands, fonts);
 
-    commands.entity(root).add_children(&[backdrop, city, layout, controls]);
+    commands.entity(root).add_children(&[backdrop, city, layout, controls, footer]);
     build_resize_zones(commands, root);
 }
 
@@ -260,29 +261,21 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let search = build_search(commands, fonts);
     commands.entity(top).add_child(search);
 
-    // ── Middle: title + recents, vertically centred ──
+    // ── Middle: actions + recents, near the top (below the search) ──
     let middle = commands
         .spawn((
             Node {
                 flex_grow: 1.0,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
+                justify_content: JustifyContent::FlexStart,
+                padding: UiRect::top(Val::Px(40.0)),
                 row_gap: Val::Px(18.0),
                 ..default()
             },
             FocusPolicy::Pass,
         ))
         .id();
-
-    let title_block = commands
-        .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }, FocusPolicy::Pass))
-        .id();
-    let title = build_title(commands, fonts);
-    let tagline = commands
-        .spawn((Text::new(format!("version {VERSION}")), ui_font(&fonts.ui, 12.5), TextColor(text_muted()), FocusPolicy::Pass))
-        .id();
-    commands.entity(title_block).add_children(&[title, tagline]);
 
     // Recents block: heading + capped scroll list + empty state.
     let recents = commands
@@ -306,9 +299,19 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, empty, |w| filtered_rows(w).is_empty());
     commands.entity(recents).add_children(&[heading, scroll, empty]);
 
-    commands.entity(middle).add_children(&[title_block, recents]);
+    // Actions (New / Open) occupy the spot the large title used to.
+    let actions = commands
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let new = pill_button(commands, fonts, "plus", "New Project", true);
+    commands.entity(new).insert(NewProjectBtn);
+    let open = pill_button(commands, fonts, "folder-open", "Open Project", false);
+    commands.entity(open).insert(OpenProjectBtn);
+    commands.entity(actions).add_children(&[new, open]);
 
-    // ── Bottom: actions + socials, centred ──
+    commands.entity(middle).add_children(&[actions, recents]);
+
+    // ── Bottom: social links, centred ──
     let bottom = commands
         .spawn((
             Node {
@@ -321,15 +324,6 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             FocusPolicy::Pass,
         ))
         .id();
-    let actions = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }, FocusPolicy::Pass))
-        .id();
-    let new = pill_button(commands, fonts, "plus", "New Project", true);
-    commands.entity(new).insert(NewProjectBtn);
-    let open = pill_button(commands, fonts, "folder-open", "Open Project", false);
-    commands.entity(open).insert(OpenProjectBtn);
-    commands.entity(actions).add_children(&[new, open]);
-
     let socials = commands
         .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass))
         .id();
@@ -339,40 +333,30 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
     commands.entity(socials).add_children(&[website, youtube, discord, star]);
 
-    commands.entity(bottom).add_children(&[actions, socials]);
+    commands.entity(bottom).add_child(socials);
 
     commands.entity(col).add_children(&[top, middle, bottom]);
     col
 }
 
-/// The "Renzora Engine" wordmark — large, two-tone, with a soft drop shadow.
-fn build_title(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let wrap = commands
-        .spawn((Node { position_type: PositionType::Relative, flex_direction: FlexDirection::Row, ..default() }, FocusPolicy::Pass))
-        .id();
-    // Drop shadow behind the wordmark (rendered first → underneath).
-    let shadow = commands
+/// Small version label tucked into the bottom-right corner.
+fn build_footer(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    commands
         .spawn((
-            Text::new("Renzora Engine".to_string()),
-            ui_font(&fonts.ui, 48.0),
-            TextColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-            Node { position_type: PositionType::Absolute, left: Val::Px(2.0), top: Val::Px(3.0), ..default() },
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(14.0),
+                bottom: Val::Px(8.0),
+                ..default()
+            },
+            Text::new(format!("Renzora Engine · version {VERSION}")),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(text_muted()),
+            GlobalZIndex(600),
             FocusPolicy::Pass,
+            Name::new("splash-footer"),
         ))
-        .id();
-    // Two-tone wordmark: white "Renzora" + accent "Engine".
-    let row = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, ..default() }, FocusPolicy::Pass))
-        .id();
-    let a = commands
-        .spawn((Text::new("Renzora ".to_string()), ui_font(&fonts.ui, 48.0), TextColor(white()), FocusPolicy::Pass))
-        .id();
-    let b = commands
-        .spawn((Text::new("Engine".to_string()), ui_font(&fonts.ui, 48.0), TextColor(accent()), FocusPolicy::Pass))
-        .id();
-    commands.entity(row).add_children(&[a, b]);
-    commands.entity(wrap).add_children(&[shadow, row]);
-    wrap
+        .id()
 }
 
 fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
