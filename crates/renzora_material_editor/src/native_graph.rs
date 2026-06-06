@@ -33,7 +33,7 @@ pub struct NativeMaterialGraph;
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
-        app.add_systems(Update, (apply_click, add_node_open, view_op_click).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, (apply_click, add_node_open, view_op_click, context_menu_open).run_if(in_state(SplashState::Editor)));
         // Orchestration: only while the graph panel is actually mounted (mirrors
         // the egui panel only running its sync inside `ui()`).
         app.add_systems(
@@ -372,7 +372,24 @@ fn add_node_open(
     let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    open_add_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, [60.0, 60.0]);
+}
+
+/// Right-click on empty canvas → the shared widget records `context_menu`; open
+/// the add-node menu at the cursor and spawn nodes at the clicked canvas point.
+fn context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
+    let Some(fonts) = fonts else { return };
+    for mut v in &mut views {
+        if let Some((screen, canvas)) = v.context_menu.take() {
+            open_add_menu(&mut commands, &fonts, screen.x, screen.y, [canvas.x, canvas.y]);
+        }
+    }
+}
+
+/// Build the categorised add-node menu at `(x, y)`, spawning each new node near
+/// `base` (canvas px).
+fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, base: [f32; 2]) {
+    let menu = screen_menu(commands, x, y);
     let mut kids: Vec<Entity> = Vec::new();
     let mut offset = 0.0f32;
     for category in categories() {
@@ -382,9 +399,9 @@ fn add_node_open(
         let icon = category_icon(category);
         for def in nodes_in_category(category) {
             let node_type = def.node_type;
-            let pos = [60.0 + offset, 60.0 + offset];
+            let pos = [base[0] + offset, base[1] + offset];
             offset += 6.0;
-            kids.push(menu_item(&mut commands, &fonts, icon, def.display_name, move |w| {
+            kids.push(menu_item(commands, fonts, icon, def.display_name, move |w| {
                 if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {
                     s.graph.add_node(node_type, pos);
                     let graph = s.graph.clone();

@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops, ngv_highlight_slots, ngv_context));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -60,14 +60,19 @@ pub struct NodeGraphView {
     /// The (multi-) selection set — drives node borders in place (no rebuild, so
     /// a drag-started selection never kills the drag).
     pub selected: HashSet<u64>,
-    /// An output `(node, pin)` waiting for an input click to complete a wire.
-    pub pending_connect: Option<(u64, String)>,
+    /// The port a cable is being dragged from: `(node, pin, is_output, colour)`.
+    /// Releasing over an opposite-direction, colour-matching port completes it.
+    pub pending_connect: Option<(u64, String, bool, (u8, u8, u8))>,
     /// Caller sets to re-frame all nodes; cleared by the widget once applied.
     pub fit_request: bool,
     /// Caller sets to recenter (keep zoom); cleared once applied.
     pub center_request: bool,
     /// Caller sets to multiply the zoom (toolbar +/−); cleared once applied.
     pub zoom_request: Option<f32>,
+    /// Set by the widget on right-click over empty canvas: `(screen_pos,
+    /// canvas_pos)`. The caller opens its add-node menu at `screen_pos`, spawns
+    /// new nodes at `canvas_pos`, and clears this.
+    pub context_menu: Option<(Vec2, Vec2)>,
 }
 
 /// Entities the caller mounts content into.
@@ -90,6 +95,7 @@ struct NgvPort {
     pin: String,
     is_output: bool,
     color: (u8, u8, u8),
+    viewport: Entity,
 }
 #[derive(Component)]
 struct NgvWire {
@@ -98,6 +104,12 @@ struct NgvWire {
     to_node: u64,
     to_pin: String,
     viewport: Entity,
+}
+/// The small visual dot inside a port row (the connection target); enlarged
+/// while connecting / hovered by [`ngv_highlight_slots`].
+#[derive(Component)]
+struct NgvPortDot {
+    is_output: bool,
 }
 /// The rubber-band selection rectangle (spawned while box-selecting).
 #[derive(Component)]
@@ -206,20 +218,13 @@ pub fn graph_node_view(
         .id();
     commands.entity(node).add_child(title_bar);
 
-    let mut row = 0usize;
     for (pin, label, pin_color) in inputs {
-        let cy = HEAD_H + row as f32 * ROW_H + ROW_H / 2.0;
-        let r = graph_row(commands, fonts, label, false);
-        let port = port_dot(commands, node_id, pin, false, 0.0, cy, *pin_color);
-        commands.entity(node).add_children(&[r, port]);
-        row += 1;
+        let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color);
+        commands.entity(node).add_child(r);
     }
     for (pin, label, pin_color) in outputs {
-        let cy = HEAD_H + row as f32 * ROW_H + ROW_H / 2.0;
-        let r = graph_row(commands, fonts, label, true);
-        let port = port_dot(commands, node_id, pin, true, NODE_W, cy, *pin_color);
-        commands.entity(node).add_children(&[r, port]);
-        row += 1;
+        let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color);
+        commands.entity(node).add_child(r);
     }
     // Optional preview thumbnail (e.g. texture nodes).
     if let Some(img) = thumbnail {
@@ -244,37 +249,68 @@ pub fn graph_node_view(
     node
 }
 
-fn graph_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, output: bool) -> Entity {
-    commands
+/// A pin row whose **label + dot** form the connection slot (the interactive
+/// [`NgvPort`]) — easy to grab, while the row's empty space stays click-through
+/// so the node can be dragged from it. The slot hugs the node edge (justified
+/// left for inputs / right for outputs), so `port_map`'s `centre ± width/2` lands
+/// the cable endpoint on the dot at the node edge.
+#[allow(clippy::too_many_arguments)]
+fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport: Entity, pin: &str, label: &str, is_output: bool, color: (u8, u8, u8)) -> Entity {
+    let row = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(ROW_H),
                 align_items: AlignItems::Center,
-                justify_content: if output { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
-                padding: if output { UiRect::right(Val::Px(12.0)) } else { UiRect::left(Val::Px(12.0)) },
+                justify_content: if is_output { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
                 ..default()
             },
             bevy::ui::FocusPolicy::Pass,
+            Name::new("ngv-port-row"),
         ))
-        .with_children(|p| {
-            p.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap()));
-        })
-        .id()
-}
-
-fn port_dot(commands: &mut Commands, node_id: u64, pin: &str, is_output: bool, x: f32, cy: f32, color: (u8, u8, u8)) -> Entity {
-    commands
+        .id();
+    let slot = commands
         .spawn((
-            Node { position_type: PositionType::Absolute, left: Val::Px(x - 5.0), top: Val::Px(cy - 5.0), width: Val::Px(10.0), height: Val::Px(10.0), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
-            BackgroundColor(rgb(color)),
-            BorderColor::all(rgb(color)),
-            NgvPort { node_id, pin: pin.to_string(), is_output, color },
+            Node {
+                height: Val::Percent(100.0),
+                position_type: PositionType::Relative,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: if is_output { UiRect::right(Val::Px(12.0)) } else { UiRect::left(Val::Px(12.0)) },
+                ..default()
+            },
+            NgvPort { node_id, pin: pin.to_string(), is_output, color, viewport },
             Interaction::default(),
             renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
-            Name::new("ngv-port"),
+            Name::new("ngv-port-slot"),
         ))
-        .id()
+        .id();
+    let text = commands
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap(), bevy::ui::FocusPolicy::Pass))
+        .id();
+    let dot = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: if is_output { Val::Auto } else { Val::Px(-5.0) },
+                right: if is_output { Val::Px(-5.0) } else { Val::Auto },
+                top: Val::Px((ROW_H - 10.0) * 0.5),
+                width: Val::Px(10.0),
+                height: Val::Px(10.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(color)),
+            BorderColor::all(rgb(color)),
+            NgvPortDot { is_output },
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("ngv-port-dot"),
+        ))
+        .id();
+    commands.entity(slot).add_children(&[text, dot]);
+    commands.entity(row).add_child(slot);
+    row
 }
 
 /// Build a wire between two model pins. Returns the cable entity (add it to
@@ -304,15 +340,14 @@ fn ngv_cable_attach(mut commands: Commands, mut materials: ResMut<Assets<CableMa
 }
 
 /// Right-click a port → disconnect every wire on it (egui parity).
-fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort, &ChildOf)>, parents: Query<&NgvNode>, wires: Query<&NgvWire>, mut graphs: Query<&mut NodeGraphView>) {
+fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort)>, wires: Query<&NgvWire>, mut graphs: Query<&mut NodeGraphView>) {
     if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let Some((_, port, child_of)) = ports.iter().find(|(i, _, _)| matches!(i, Interaction::Hovered | Interaction::Pressed)) else { return };
-    let Ok(node) = parents.get(child_of.parent()) else { return };
-    let Ok(mut g) = graphs.get_mut(node.viewport) else { return };
+    let Some((_, port)) = ports.iter().find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed)) else { return };
+    let Ok(mut g) = graphs.get_mut(port.viewport) else { return };
     for w in &wires {
-        if w.viewport != node.viewport {
+        if w.viewport != port.viewport {
             continue;
         }
         let hit = if port.is_output {
@@ -332,7 +367,7 @@ fn ngv_preview(
     windows: Query<&Window>,
     mut materials: ResMut<Assets<CableMaterial>>,
     graphs: Query<&NodeGraphView>,
-    ports: Query<(&NgvPort, &UiGlobalTransform)>,
+    ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
     transforms: Query<&UiGlobalTransform>,
     computeds: Query<&ComputedNode>,
     mut previews: Query<(&NgvPreview, &mut Node, &MaterialNode<CableMaterial>)>,
@@ -344,13 +379,13 @@ fn ngv_preview(
     let cur = cursor(&windows);
     for (pv, mut node, mat) in &mut previews {
         let pending = graphs.get(pv.viewport).ok().and_then(|g| g.pending_connect.clone());
-        let (Some((nid, pin)), Some(c)) = (pending, cur) else {
+        let (Some((nid, pin, is_out, _scol)), Some(c)) = (pending, cur) else {
             if node.display != Display::None {
                 node.display = Display::None;
             }
             continue;
         };
-        let (Some(&(p0, col)), Ok(vgt), Ok(vcn)) = (map.get(&(nid, pin, true)), transforms.get(pv.viewport), computeds.get(pv.viewport)) else {
+        let (Some(&(p0, col)), Ok(vgt), Ok(vcn)) = (map.get(&(nid, pin, is_out)), transforms.get(pv.viewport), computeds.get(pv.viewport)) else {
             node.display = Display::None;
             continue;
         };
@@ -476,20 +511,111 @@ fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode,
     }
 }
 
-/// Output-port click then input-port click → record a `Connect`. The pending
-/// output lives on the view so Esc / the live preview can see it.
-fn ngv_connect(pressed: Query<(&Interaction, &NgvPort, &ChildOf), Changed<Interaction>>, parents: Query<&NgvNode>, mut graphs: Query<&mut NodeGraphView>) {
-    for (interaction, port, child_of) in &pressed {
-        if *interaction != Interaction::Pressed {
+/// Drag-to-connect: press an output port to start (pending lives on the view so
+/// the live preview + Esc see it), then **release** over an input port to record
+/// the `Connect`. Releasing elsewhere cancels.
+fn ngv_connect(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort)>, mut graphs: Query<(Entity, &mut NodeGraphView)>) {
+    if mouse.just_pressed(MouseButton::Left) {
+        if let Some((_, p)) = ports.iter().find(|(i, _)| **i == Interaction::Pressed) {
+            if let Ok((_, mut g)) = graphs.get_mut(p.viewport) {
+                g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color));
+            }
+        }
+    }
+    if mouse.just_released(MouseButton::Left) {
+        let target = ports
+            .iter()
+            .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+            .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color));
+        for (vp, mut g) in &mut graphs {
+            if let Some((snode, spin, s_out, scol)) = g.pending_connect.take() {
+                if let Some((tvp, tnode, tpin, t_out, tcol)) = &target {
+                    // Opposite direction + matching colour + different node + same graph.
+                    if *tvp == vp && *t_out != s_out && *tcol == scol && *tnode != snode {
+                        let (from_node, from_pin, to_node, to_pin) = if s_out {
+                            (snode, spin, *tnode, tpin.clone())
+                        } else {
+                            (*tnode, tpin.clone(), snode, spin)
+                        };
+                        g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node, to_pin });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// While dragging a cable, show only the **valid drop slots** (opposite direction
+/// with matching colour) enlarged; hide every incompatible dot. With no drag, dots
+/// rest at base size and just grow on hover.
+fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &Interaction, &Children)>, mut dots: Query<(&NgvPortDot, &mut Node)>) {
+    for (port, interaction, children) in &ports {
+        let pending = graphs.get(port.viewport).ok().and_then(|g| g.pending_connect.clone());
+        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let (visible, size) = match &pending {
+            Some((snode, spin, s_out, scol)) => {
+                let is_source = port.node_id == *snode && &port.pin == spin && port.is_output == *s_out;
+                let valid = port.is_output != *s_out && port.color == *scol && port.node_id != *snode;
+                if is_source {
+                    (true, 13.0)
+                } else if valid {
+                    (true, if hovered { 16.0 } else { 13.0 })
+                } else {
+                    (false, 10.0)
+                }
+            }
+            None => (true, if hovered { 13.0 } else { 10.0 }),
+        };
+        for &c in children {
+            if let Ok((dot, mut node)) = dots.get_mut(c) {
+                let disp = if visible { Display::Flex } else { Display::None };
+                if node.display != disp {
+                    node.display = disp;
+                }
+                let want = Val::Px(size);
+                if node.width != want {
+                    node.width = want;
+                    node.height = want;
+                    node.top = Val::Px((ROW_H - size) * 0.5);
+                    let off = Val::Px(-size * 0.5);
+                    if dot.is_output {
+                        node.right = off;
+                    } else {
+                        node.left = off;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Right-click over empty canvas → record `(screen, canvas)` for the caller's
+/// add-node menu. (Right-click on a port is handled by [`ngv_port_rmb`].)
+fn ngv_context(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    node_blockers: Query<&Interaction, With<NgvNode>>,
+    port_blockers: Query<&Interaction, With<NgvPort>>,
+    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    views: Query<&GraphView>,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    if node_blockers.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed)) || port_blockers.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed)) {
+        return;
+    }
+    let Some(c) = cursor(&windows) else { return };
+    for (mut g, rcp, vcn, children) in &mut graphs {
+        if !rcp.cursor_over {
             continue;
         }
-        let Ok(node) = parents.get(child_of.parent()) else { continue };
-        let Ok(mut g) = graphs.get_mut(node.viewport) else { continue };
-        if port.is_output {
-            g.pending_connect = Some((port.node_id, port.pin.clone()));
-        } else if let Some((from_node, from_pin)) = g.pending_connect.take() {
-            g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node: port.node_id, to_pin: port.pin.clone() });
-        }
+        let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
+        let size = vcn.size() * vcn.inverse_scale_factor();
+        let center = size * 0.5;
+        // screen→canvas (inverse of the canvas transform).
+        let canvas = center + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
+        g.context_menu = Some((c, canvas));
     }
 }
 
@@ -545,7 +671,7 @@ fn ngv_box(
     node_rects: Query<(&NgvNode, &UiGlobalTransform, &ComputedNode)>,
     mut box_nodes: Query<&mut Node, With<NgvBoxRect>>,
     wires: Query<&NgvWire>,
-    ports: Query<(&NgvPort, &UiGlobalTransform)>,
+    ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
@@ -655,16 +781,21 @@ fn ngv_box(
     *active = None;
 }
 
-fn port_map(ports: &Query<(&NgvPort, &UiGlobalTransform)>) -> HashMap<(u64, String, bool), (Vec2, (u8, u8, u8))> {
+/// Map `(node, pin, is_output) → (cable endpoint, colour)`. The port row spans
+/// the node width, so the endpoint is its outer edge (`centre.x ± width/2`), not
+/// the row centre — cables attach at the dot on the node's edge.
+fn port_map(ports: &Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>) -> HashMap<(u64, String, bool), (Vec2, (u8, u8, u8))> {
     let mut map = HashMap::default();
-    for (p, gt) in ports {
-        map.insert((p.node_id, p.pin.clone(), p.is_output), (gt.translation, p.color));
+    for (p, gt, cn) in ports {
+        let hw = cn.size().x * 0.5;
+        let x = if p.is_output { gt.translation.x + hw } else { gt.translation.x - hw };
+        map.insert((p.node_id, p.pin.clone(), p.is_output), (Vec2::new(x, gt.translation.y), p.color));
     }
     map
 }
 
 /// Refresh every cable's control points from its endpoints' live transforms.
-fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&NgvWire, &MaterialNode<CableMaterial>)>, ports: Query<(&NgvPort, &UiGlobalTransform)>, transforms: Query<&UiGlobalTransform>, computeds: Query<&ComputedNode>) {
+fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&NgvWire, &MaterialNode<CableMaterial>)>, ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>, transforms: Query<&UiGlobalTransform>, computeds: Query<&ComputedNode>) {
     if wires.is_empty() {
         return;
     }
