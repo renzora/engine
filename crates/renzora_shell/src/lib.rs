@@ -49,7 +49,6 @@ impl Plugin for ShellPlugin {
         app.add_systems(
             Update,
             (
-                toggle_backend,
                 manage_shell_root,
                 apply_panel_meta,
                 ribbon_interact,
@@ -230,18 +229,6 @@ struct RibbonRenameInput(usize);
 struct ShellRoot;
 
 // ── Systems ─────────────────────────────────────────────────────────────────
-
-/// F10 flips the active editor UI backend between the legacy egui editor and
-/// the bevy_ui shell.
-fn toggle_backend(keys: Res<ButtonInput<KeyCode>>, mut backend: ResMut<EditorUiBackend>) {
-    if keys.just_pressed(KeyCode::F10) {
-        *backend = match *backend {
-            EditorUiBackend::Egui => EditorUiBackend::BevyUi,
-            EditorUiBackend::BevyUi => EditorUiBackend::Egui,
-        };
-        info!("[shell] editor UI backend -> {:?}", *backend);
-    }
-}
 
 /// Spawn the chrome + dock area when the backend is `BevyUi` (and trigger the
 /// ember dock to build into it); tear it down when it isn't.
