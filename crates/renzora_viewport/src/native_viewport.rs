@@ -40,6 +40,7 @@ pub fn register_native_viewport(app: &mut App) {
     );
     crate::native_header::register(app);
     crate::native_nav::register(app);
+    crate::native_axis_gizmo::register(app);
 }
 
 fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> Entity {
@@ -91,6 +92,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     // Nav overlay (pan/zoom drag + grid/scene-icon toggles), right edge.
     let nav = crate::native_nav::build(commands, fonts);
     commands.entity(content).add_child(nav);
+
+    // Axis-orientation gizmo, top-right.
+    let gizmo = crate::native_axis_gizmo::build(commands, fonts);
+    commands.entity(content).add_child(gizmo);
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the
     // extra slots are bare camera-angle views.

@@ -14,6 +14,7 @@ pub mod material_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
+mod native_axis_gizmo;
 mod native_camera_preview;
 mod native_drop;
 mod native_header;
