@@ -1,17 +1,15 @@
 //! Light gizmos.
 //!
-//! Two layers:
-//! 1. **Always-visible icons** — phosphor glyphs painted on top of the
-//!    viewport at each light's projected screen position via the
-//!    [`ViewportOverlayRegistry`]. These act as scene icons so lights are
-//!    findable/clickable from any angle without lighting a wireframe sphere
-//!    in the 3D view.
-//! 2. **Selection extras** — when a light is selected, draw 3D wireframes
-//!    that visualise its falloff (point radius sphere, spot inner/outer
-//!    cone, sun direction arrow) using Bevy's immediate-mode gizmos.
+//! When a light is selected, draw 3D wireframes that visualise its falloff
+//! (point radius sphere, spot inner/outer cone, sun direction arrow) using
+//! Bevy's immediate-mode gizmos.
+//!
+//! Note: the always-visible phosphor scene-icon overlay was dropped in the
+//! egui purge and is pending a native re-implementation. The
+//! [`SceneIconCache`] icon-position bookkeeping is retained for that future
+//! port.
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 use egui_phosphor::regular as icons;
 
 use renzora::SceneCamera;
@@ -90,13 +88,6 @@ pub fn update_scene_icon_cache(
 const SPOT_COLOR: Color = Color::srgb(1.0, 0.78, 0.35);
 const POINT_COLOR: Color = Color::srgb(1.0, 0.85, 0.35);
 const SUN_COLOR: Color = Color::srgb(1.0, 0.92, 0.55);
-
-/// Icon glyph point size — sized to read like Unreal's scene icons (large
-/// and easy to click) rather than tiny annotations.
-pub(crate) const ICON_FONT_SIZE: f32 = 44.0;
-pub(crate) const ICON_COLOR: egui::Color32 =
-    egui::Color32::from_rgba_premultiplied(255, 220, 130, 235);
-pub(crate) const ICON_SHADOW: egui::Color32 = egui::Color32::from_rgba_premultiplied(0, 0, 0, 200);
 
 // ── Selection-only 3D wireframe extras ──────────────────────────────────────
 
@@ -215,81 +206,3 @@ fn draw_arrow(
     gizmos.line(tip, back - up * head * 0.6, color);
 }
 
-// ── Phosphor icon overlay (always-visible scene icons) ──────────────────────
-
-/// Painter callback registered with [`ViewportOverlayRegistry`]. Iterates
-/// every entity that carries a light component, projects its world position
-/// through the editor camera, and paints a phosphor glyph at the resulting
-/// screen position.
-pub fn draw_light_icon_overlay(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    if !icons_enabled(world) {
-        return;
-    }
-    let Some(cache) = world.get_resource::<SceneIconCache>() else {
-        return;
-    };
-    let Some(cam_entity) = cache.editor_camera else {
-        return;
-    };
-    let Some(camera) = world.get::<Camera>(cam_entity) else {
-        return;
-    };
-    let Some(cam_gt) = world.get::<GlobalTransform>(cam_entity) else {
-        return;
-    };
-    let painter = ui.painter_at(rect);
-    let font = egui::FontId::proportional(ICON_FONT_SIZE);
-
-    for &(world_pos, glyph) in &cache.light_icons {
-        let Some(pos) = project_world_to_rect(camera, cam_gt, world_pos, rect) else {
-            continue;
-        };
-        painter.text(
-            pos + egui::vec2(1.0, 1.0),
-            egui::Align2::CENTER_CENTER,
-            glyph,
-            font.clone(),
-            ICON_SHADOW,
-        );
-        painter.text(
-            pos,
-            egui::Align2::CENTER_CENTER,
-            glyph,
-            font.clone(),
-            ICON_COLOR,
-        );
-    }
-}
-
-/// Whether scene icons should render. Read from `ViewportSettings` so the
-/// Display dropdown checkbox controls both the light and camera overlays.
-/// Hidden in non-3D viewport views — light/camera icons are 3D scene
-/// concerns and don't belong in 2D or UI surfaces.
-pub(crate) fn icons_enabled(world: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-    let Some(settings) = world.get_resource::<ViewportSettings>() else {
-        return true;
-    };
-    settings.show_scene_icons && settings.viewport_view == ViewportView::Three
-}
-
-/// Project a world-space point into egui rect coordinates. Returns `None`
-/// if the point is behind the camera or outside the rect.
-pub(crate) fn project_world_to_rect(
-    camera: &Camera,
-    cam_gt: &GlobalTransform,
-    world_pos: Vec3,
-    rect: egui::Rect,
-) -> Option<egui::Pos2> {
-    let ndc = camera.world_to_ndc(cam_gt, world_pos)?;
-    if !(0.0..=1.0).contains(&ndc.z) {
-        return None;
-    }
-    let x = rect.min.x + (ndc.x + 1.0) * 0.5 * rect.width();
-    let y = rect.min.y + (1.0 - ndc.y) * 0.5 * rect.height();
-    let pos = egui::pos2(x, y);
-    if !rect.contains(pos) {
-        return None;
-    }
-    Some(pos)
-}

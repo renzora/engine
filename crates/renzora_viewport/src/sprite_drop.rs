@@ -11,63 +11,12 @@ use std::path::PathBuf;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
-use bevy_egui::egui;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 use renzora::core::{CurrentProject, EditorCamera2d, SpriteImagePath};
-use renzora_editor::EditorCommands;
-use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;
 
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
-
-/// Called from the viewport panel's `ui()` each frame. On release of an
-/// image drag-drop payload over the 2D viewport, queues a deferred
-/// command that decides whether to retarget an existing sprite or spawn
-/// a new one.
-pub fn check_viewport_sprite_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    // Only fire in 2D view — 3D mode is owned by model/material/shape drops.
-    let view = world
-        .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view)
-        .unwrap_or_default();
-    if view != ViewportView::Two {
-        return;
-    }
-
-    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(IMAGE_EXTENSIONS) {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
-    if !pointer_in_viewport {
-        return;
-    }
-
-    let pointer_released = !ui.ctx().input(|i| i.pointer.any_down());
-    if !pointer_released {
-        return;
-    }
-
-    let path = payload.path.clone();
-    let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let sp = Vec2::new(screen_pos.x, screen_pos.y);
-    let vp_rect = Rect::from_corners(
-        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
-        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
-    );
-
-    if let Some(commands) = world.get_resource::<EditorCommands>() {
-        commands.push(move |world: &mut World| {
-            commit_sprite_drop(world, sp, vp_rect, path);
-        });
-    }
-}
 
 /// Commit an image-to-sprite drop at the given viewport-space pointer. Shared by
 /// the egui drop check and the native bevy_ui drop

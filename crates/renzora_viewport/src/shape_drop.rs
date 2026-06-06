@@ -7,7 +7,6 @@
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui;
 
 use renzora::core::{EditorCamera, ShapeRegistry};
 use renzora_ui::shape_drag::{
@@ -17,63 +16,11 @@ use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
 use crate::ViewportState;
 
-// ── Viewport UI: drop detection + ground position tracking ─────────────────
-
-/// Called from the viewport panel's `ui()` method every frame.
-///
-/// Updates `drag_ground_position` while dragging, and on pointer release
-/// sets `pending_drop` so the spawn system picks it up next frame.
-pub fn check_viewport_shape_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let Some(drag_state) = world.get_resource::<ShapeDragState>() else {
-        return;
-    };
-    if drag_state.dragging_shape.is_none() {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_hover_pos();
-    let in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
-
-    // On release: set pending_drop or cancel
-    if ui.ctx().input(|i| i.pointer.any_released()) {
-        if in_viewport {
-            let shape_id = drag_state.dragging_shape.unwrap();
-            let drop_pos = drag_state
-                .drag_surface_position
-                .or(drag_state.drag_ground_position)
-                .unwrap_or(Vec3::ZERO);
-            let normal = drag_state.drag_surface_normal;
-
-            if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                cmds.push(move |world: &mut World| {
-                    let state = world.resource_mut::<ShapeDragState>();
-                    state.into_inner().pending_drop = Some(PendingShapeDrop {
-                        shape_id,
-                        position: drop_pos,
-                        normal,
-                    });
-                });
-            }
-        }
-        // Clear dragging in both cases (drop or cancel)
-        if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-            cmds.push(|world: &mut World| {
-                let mut state = world.resource_mut::<ShapeDragState>();
-                state.dragging_shape = None;
-                state.drag_ground_position = None;
-                state.drag_surface_position = None;
-                state.drag_surface_normal = Vec3::ZERO;
-            });
-        }
-    }
-}
-
 // ── Native (bevy_ui) drop handler ──────────────────────────────────────────
 
-/// Bevy_ui equivalent of [`check_viewport_shape_drop`]: on left-mouse release of
-/// a drag started from the native shape library (`native_drag`), drop the shape
-/// onto the viewport (or cancel). The egui path uses `check_viewport_shape_drop`
-/// instead, so this only acts on native drags to avoid double-handling.
+/// On left-mouse release of a drag started from the native shape library
+/// (`native_drag`), drop the shape onto the viewport (or cancel). Only acts on
+/// native drags.
 pub fn native_shape_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     mut drag_state: ResMut<ShapeDragState>,

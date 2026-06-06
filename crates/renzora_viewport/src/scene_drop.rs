@@ -4,54 +4,14 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 use renzora::core::{CurrentProject, EditorCamera};
-use renzora_editor::{EditorCommands, EditorSelection};
-use renzora_ui::asset_drag::AssetDragPayload;
+use renzora_editor::EditorSelection;
 use renzora_ui::{DocumentTabState, Toasts};
 
 use crate::ViewportState;
 
 pub(crate) const SCENE_EXTENSIONS: &[&str] = &["ron"];
-
-/// Called from the viewport panel's `ui()` method (read-only `&World`).
-///
-/// When a `.ron` asset is released over the viewport, queues a deferred
-/// command to create a `SceneInstance` entity at the drop position.
-pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(SCENE_EXTENSIONS) {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
-    if !pointer_in_viewport {
-        return;
-    }
-
-    let pointer_released = !ui.ctx().input(|i| i.pointer.any_down());
-    if !pointer_released {
-        return;
-    }
-
-    let path = payload.path.clone();
-    let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let sp = Vec2::new(screen_pos.x, screen_pos.y);
-    let vp_rect = Rect::from_corners(
-        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
-        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
-    );
-
-    if let Some(commands) = world.get_resource::<EditorCommands>() {
-        commands.push(move |world: &mut World| {
-            commit_scene_drop(world, sp, vp_rect, path);
-        });
-    }
-}
 
 /// Commit a `.ron` scene-instance drop at the given viewport-space pointer.
 /// Shared by the egui drop check and the native bevy_ui drop

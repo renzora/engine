@@ -1,7 +1,7 @@
-//! Renzora Viewport — editor panel that displays the 3D game world.
+//! Renzora Viewport — bevy_ui (ember) panel that displays the 3D game world.
 //!
 //! Creates an offscreen render target, wires it to the runtime camera,
-//! and displays the result as an egui image inside the docking panel system.
+//! and displays the result inside the native docking panel system.
 
 pub mod camera_preview;
 pub mod debug_material;
@@ -9,7 +9,6 @@ pub mod debug_viz;
 pub mod effect_routing;
 pub mod external_runtime;
 pub mod glb_compat;
-pub mod header;
 pub mod material_drop;
 pub mod html_drop;
 pub mod model_drop;
@@ -27,7 +26,6 @@ pub mod scene_drop;
 pub mod settings;
 pub mod shape_drop;
 pub mod sprite_drop;
-pub mod toolbar;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -38,13 +36,9 @@ use bevy::pbr::{
 };
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui;
-use bevy_egui::{EguiContexts, EguiTextureHandle, EguiUserTextures};
-use egui_phosphor::regular;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
-use renzora_editor::{AppEditorExt, DockingState, EditorPanel, PanelLocation};
-use renzora_theme::ThemeManager;
+use renzora_editor::DockingState;
 
 pub use camera_preview::CameraPreviewState;
 // Re-export all viewport types from core (they now live in renzora::viewport_types)
@@ -211,68 +205,14 @@ impl Plugin for ViewportPlugin {
                 .run_if(camera_preview::camera_preview_panel_mounted),
         );
 
-        // Register the crosshair overlay so the cursor goes to Crosshair
-        // whenever the pointer is over the viewport rect.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(150, draw_viewport_cursor_overlay);
-
         app.add_systems(Last, external_runtime::kill_on_app_exit);
 
         // Throttle / restore the editor's render loop around external runs.
         // Not gated on `SplashState` so the restore always runs.
         app.add_systems(Update, external_runtime::apply_runtime_pause_render);
 
-        // Full-screen "preparing export runtime" / "editor paused" overlay,
-        // drawn on top of all editor UI while an external runtime is active.
-        app.add_systems(
-            bevy_egui::EguiPrimaryContextPass,
-            external_runtime::draw_runtime_overlay
-                .run_if(in_state(renzora_editor::SplashState::Editor)),
-        );
-
-        for i in 0..renzora::core::viewport_types::VIEWPORT_COUNT {
-            app.register_panel(ViewportPanel { index: i });
-        }
         native_viewport::register_native_viewport(app);
         native_camera_preview::register(app);
-        app.register_panel(CameraPreviewPanel);
-    }
-}
-
-/// Egui overlay that sets the viewport cursor to a crosshair whenever the
-/// pointer is inside the viewport rect. Brush tools and modal transforms
-/// separately hide the OS cursor, so the crosshair is only actually seen
-/// in the "normal" gizmo-tool states, which is what we want.
-fn draw_viewport_cursor_overlay(
-    ui: &mut bevy_egui::egui::Ui,
-    world: &World,
-    rect: bevy_egui::egui::Rect,
-) {
-    use bevy_egui::egui::CursorIcon;
-    use renzora_editor::ActiveTool;
-
-    // Brushes hide the cursor entirely; don't fight them with a crosshair icon.
-    if let Some(tool) = world.get_resource::<ActiveTool>() {
-        if matches!(
-            *tool,
-            ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
-        ) {
-            return;
-        }
-    }
-
-    // Only show the crosshair when the pointer is actually over the viewport
-    // with nothing on top. `is_pointer_over_area` reports true when the pointer
-    // is over any floating egui Area — dropdowns, popups, context menus,
-    // tooltips, and the vertical toolbar / nav / play overlays. The viewport
-    // itself is drawn into a panel (not an Area), so this cleanly excludes
-    // overlays without excluding the viewport.
-    let ctx = ui.ctx();
-    let pointer_in = ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p));
-    let obstructed = ctx.is_pointer_over_area() || ctx.wants_pointer_input();
-    if pointer_in && !obstructed {
-        ctx.set_cursor_icon(CursorIcon::Crosshair);
     }
 }
 
@@ -348,14 +288,12 @@ impl Default for ViewportResizeRequest {
     }
 }
 
-/// Creates one offscreen render target per viewport slot and registers each
-/// with egui. Slot 0's image is also published as the shared
-/// `ViewportRenderTarget` (the UI-canvas backdrop / recorder read from it) and
-/// mirrored into the focused-viewport `ViewportState`.
+/// Creates one offscreen render target per viewport slot. Slot 0's image is also
+/// published as the shared `ViewportRenderTarget` (the UI-canvas backdrop /
+/// recorder read from it) and mirrored into the focused-viewport `ViewportState`.
 fn setup_viewport(
     mut images: ResMut<Assets<Image>>,
     mut render_target: ResMut<ViewportRenderTarget>,
-    mut user_textures: ResMut<EguiUserTextures>,
     mut viewport_state: ResMut<ViewportState>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
 ) {
@@ -381,7 +319,6 @@ fn setup_viewport(
             | TextureUsages::RENDER_ATTACHMENT;
 
         let image_handle = images.add(image);
-        user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
 
         viewports.slots[i].image = Some(image_handle.clone());
         viewports.slots[i].current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
@@ -476,480 +413,30 @@ fn resolve_viewport_slots(
     viewport_state.screen_size = slot.screen_size;
 }
 
-// ── Viewport Panel ──────────────────────────────────────────────────────────
-
-/// Editor panel that displays the 3D game world rendered by one of the editor's
-/// viewport cameras. There is one instance per slot (`index` 0..`VIEWPORT_COUNT`);
-/// slot 0 is the primary viewport (full header / 2D / UI), the rest are extra
-/// 3D camera angles of the same scene. Each draws its own slot's render image;
-/// the focused slot additionally draws the gizmo/grid/nav overlays.
-pub struct ViewportPanel {
-    pub index: usize,
-}
-
 /// Dock panel id for each viewport slot. Slot 0 keeps the historical `"viewport"`
 /// id so existing saved layouts and `contains_panel("viewport")` checks keep working.
 const VIEWPORT_PANEL_IDS: [&str; renzora::core::viewport_types::VIEWPORT_COUNT] =
     ["viewport", "viewport-2", "viewport-3", "viewport-4"];
 
-impl EditorPanel for ViewportPanel {
-    fn id(&self) -> &str {
-        VIEWPORT_PANEL_IDS[self.index.min(VIEWPORT_PANEL_IDS.len() - 1)]
-    }
-
-    fn title(&self) -> &str {
-        match self.index {
-            0 => "Viewport",
-            1 => "Viewport 2",
-            2 => "Viewport 3",
-            _ => "Viewport 4",
-        }
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(regular::MONITOR)
-    }
-
-    fn category(&self) -> &str {
-        "Scene"
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        use renzora::core::viewport_types::{ViewportView, Viewports};
-
-        let index = self.index;
-        let is_primary = index == 0;
-        let is_focused = world
-            .get_resource::<Viewports>()
-            .map(|v| v.focused == index)
-            .unwrap_or(is_primary);
-
-        // Only the primary viewport owns the shared header bar and the
-        // 3D / 2D / UI mode switch. The extra views are always 3D.
-        if is_primary {
-            header::viewport_header(ui, world);
-
-            let view = world
-                .get_resource::<ViewportSettings>()
-                .map(|s| s.viewport_view)
-                .unwrap_or_default();
-            match view {
-                ViewportView::Three | ViewportView::Two => {}
-                ViewportView::Ui => {
-                    if let Some(panel) =
-                        world.get_resource::<renzora_game_ui::canvas::UiCanvasPanel>()
-                    {
-                        panel.ui(ui, world);
-                    }
-                    return;
-                }
-            }
-        }
-
-        let rect = ui.available_rect_before_wrap();
-
-        // Report this slot's size / position / hover to the resolver, which
-        // resizes the render image and picks the focused slot.
-        if let Some(slot_req) = world
-            .get_resource::<ViewportResizeRequest>()
-            .and_then(|req| req.slots.get(index))
-        {
-            let w = (rect.width().max(1.0)) as u32;
-            let h = (rect.height().max(1.0)) as u32;
-            slot_req.width.store(w, Ordering::Relaxed);
-            slot_req.height.store(h, Ordering::Relaxed);
-            slot_req.screen_x.store(rect.min.x.to_bits(), Ordering::Relaxed);
-            slot_req.screen_y.store(rect.min.y.to_bits(), Ordering::Relaxed);
-            // Treat the viewport as NOT hovered while any egui widget is
-            // being dragged (panel resize handle, tab undock, hierarchy
-            // drag, etc.) so the gizmo's box-select gesture doesn't arm
-            // and viewport-only systems sleep until the drag releases.
-            let egui_dragging = ui.ctx().dragged_id().is_some() || ui.ctx().is_using_pointer();
-            let is_hovered = ui.rect_contains_pointer(rect) && !egui_dragging;
-            slot_req.hovered.store(is_hovered, Ordering::Relaxed);
-        }
-
-        // Look up the egui texture id for THIS slot's render image.
-        let texture_id = world
-            .get_resource::<Viewports>()
-            .and_then(|v| v.slots.get(index).and_then(|s| s.image.clone()))
-            .and_then(|handle| {
-                world
-                    .get_resource::<EguiUserTextures>()
-                    .and_then(|ut| ut.image_id(handle.id()))
-            });
-
-        let Some(texture_id) = texture_id else {
-            // Fallback while the render target is being set up.
-            ui.painter()
-                .rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 20, 25));
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "Initializing viewport...",
-                egui::FontId::proportional(14.0),
-                egui::Color32::from_white_alpha(80),
-            );
-            return;
-        };
-
-        let size = egui::vec2(rect.width(), rect.height());
-        ui.put(
-            rect,
-            egui::Image::new(egui::load::SizedTexture::new(texture_id, size)),
-        );
-
-        // The gizmo / grid / drop / nav stack all act through the focused
-        // viewport mirror (`ViewportState` + the `EditorCamera` marker), so it
-        // only makes sense on the focused slot — a background view just shows
-        // its image with a faint border hinting that clicking focuses it.
-        if !is_focused {
-            ui.painter().rect_stroke(
-                rect,
-                0.0,
-                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(12)),
-                egui::StrokeKind::Inside,
-            );
-            return;
-        }
-
-        // Focus ring on the active viewport.
-        ui.painter().rect_stroke(
-            rect,
-            0.0,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(90, 130, 200)),
-            egui::StrokeKind::Inside,
-        );
-
-        // CPU-projected overlays (grid, gizmos) paint on top of the 3D
-        // image, bypassing the Bevy render pipeline entirely.
-        if let Some(overlay) = world.get_resource::<renzora_editor::ViewportOverlayRegistry>() {
-            overlay.draw_all(ui, world, rect);
-        }
-
-        // Asset drops on the focused viewport.
-        model_drop::check_viewport_model_drop(ui, world, rect);
-        material_drop::check_viewport_material_drop(ui, world, rect);
-        scene_drop::check_viewport_scene_drop(ui, world, rect);
-        shape_drop::check_viewport_shape_drop(ui, world, rect);
-        sprite_drop::check_viewport_sprite_drop(ui, world, rect);
-        html_drop::check_viewport_html_drop(ui, world, rect);
-
-        // Overlay: modal transform HUD (scale circle, mode text, axis info)
-        render_modal_transform_hud(ui.ctx(), world, rect);
-
-        // Overlay: horizontal tool bar under the header (gizmo modes, terrain tools)
-        toolbar::render_tool_overlay(ui.ctx(), world, rect);
-
-        // Overlay: on-screen console logs during play mode
-        render_viewport_logs(ui, world, rect);
-
-        // Overlay: resolution indicator (this slot's render size)
-        let theme = world
-            .get_resource::<ThemeManager>()
-            .map(|tm| &tm.active_theme);
-        let info_color = theme
-            .map(|t| t.text.muted.to_color32())
-            .unwrap_or(egui::Color32::from_white_alpha(50));
-        if let Some(slot) = world
-            .get_resource::<Viewports>()
-            .and_then(|v| v.slots.get(index).cloned())
-        {
-            ui.painter().text(
-                egui::Pos2::new(rect.max.x - 8.0, rect.min.y + 6.0),
-                egui::Align2::RIGHT_TOP,
-                format!("{} x {}", slot.current_size.x, slot.current_size.y),
-                egui::FontId::proportional(10.0),
-                info_color,
-            );
-        }
-
-        // Overlay: model load progress (mesh-only ghost + textured drops)
-        render_model_load_progress(ui, world, rect);
-
-        // Overlay: axis orientation gizmo. The extra views are always 3D; the
-        // primary follows its mode (meaningless in 2D / UI).
-        let settings_for_overlays = world.get_resource::<ViewportSettings>();
-        let show_axis = settings_for_overlays.is_none_or(|s| s.show_axis_gizmo);
-        let view = settings_for_overlays
-            .map(|s| s.viewport_view)
-            .unwrap_or_default();
-        let is_three = !is_primary || view == ViewportView::Three;
-        let play_mode = world.get_resource::<renzora::core::PlayModeState>();
-        let in_play = play_mode.is_some_and(|p| p.is_in_play_mode());
-        if show_axis && !in_play && is_three {
-            render_axis_gizmo(ui.ctx(), world, rect);
-        }
-
-        // Overlay: nav pan/zoom buttons. The drag handles drive the 3D
-        // orbit camera state — irrelevant in 2D / UI mode.
-        if !in_play && is_three {
-            toolbar::render_nav_overlay(ui.ctx(), world, rect);
-        }
-    }
-
-    fn closable(&self) -> bool {
-        // The primary viewport is permanent; extra views can be closed.
-        self.index != 0
-    }
-
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Center
-    }
-}
-
-// ── Camera Preview Panel ────────────────────────────────────────────────────
-
-pub struct CameraPreviewPanel;
-
-impl EditorPanel for CameraPreviewPanel {
-    fn id(&self) -> &str {
-        "camera_preview"
-    }
-
-    fn title(&self) -> &str {
-        "Camera Preview"
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(regular::APERTURE)
-    }
-
-    fn category(&self) -> &str {
-        "Scene"
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let preview = world.get_resource::<CameraPreviewState>();
-        let user_textures = world.get_resource::<EguiUserTextures>();
-
-        let has_preview = preview.as_ref().is_some_and(|p| p.previewing.is_some());
-
-        if !has_preview {
-            let theme = world
-                .get_resource::<ThemeManager>()
-                .map(|tm| &tm.active_theme);
-            let text_color = theme
-                .map(|t| t.text.muted.to_color32())
-                .unwrap_or(egui::Color32::from_white_alpha(80));
-
-            ui.centered_and_justified(|ui| {
-                ui.label(egui::RichText::new("No cameras in scene").color(text_color));
-            });
-            return;
-        }
-
-        // Camera name overlay
-        let previewing_entity = preview.as_ref().and_then(|p| p.previewing);
-        let camera_name = previewing_entity
-            .and_then(|e| world.get::<Name>(e).map(|n| n.as_str().to_string()))
-            .unwrap_or_else(|| "Camera".to_string());
-
-        let is_default = previewing_entity.is_some_and(|e| {
-            world.get::<renzora::core::DefaultCamera>(e).is_some()
-        });
-
-        let theme = world
-            .get_resource::<ThemeManager>()
-            .map(|tm| &tm.active_theme);
-        let muted_color = theme
-            .map(|t| t.text.muted.to_color32())
-            .unwrap_or(egui::Color32::from_white_alpha(80));
-
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(&camera_name)
-                    .size(11.0)
-                    .color(muted_color),
-            );
-            if is_default {
-                ui.label(
-                    egui::RichText::new(regular::STAR)
-                        .size(10.0)
-                        .color(egui::Color32::from_rgb(255, 200, 80)),
-                );
-            }
-        });
-
-        // Fill the rest of the panel with the preview.
-        let rect = ui.available_rect_before_wrap();
-
-        // Drive the render target to this rect at native (physical) pixel size
-        // so the preview is crisp instead of upscaled from a fixed 640×360.
-        let ppp = ui.ctx().pixels_per_point();
-        if let Some(req) = world.get_resource::<camera_preview::PreviewResizeRequest>() {
-            let w = (rect.width().max(1.0) * ppp) as u32;
-            let h = (rect.height().max(1.0) * ppp) as u32;
-            req.width.store(w, std::sync::atomic::Ordering::Relaxed);
-            req.height.store(h, std::sync::atomic::Ordering::Relaxed);
-        }
-
-        let texture_id = preview.and_then(|p| {
-            p.texture_id
-                .or_else(|| user_textures.and_then(|ut| ut.image_id(p.image_handle.id())))
-        });
-
-        if let Some(texture_id) = texture_id {
-            ui.put(
-                rect,
-                egui::Image::new(egui::load::SizedTexture::new(
-                    texture_id,
-                    [rect.width(), rect.height()],
-                )),
-            );
-        } else {
-            let bg = theme
-                .map(|t| t.surfaces.faint.to_color32())
-                .unwrap_or(egui::Color32::from_gray(30));
-            let text_color = theme
-                .map(|t| t.text.disabled.to_color32())
-                .unwrap_or(egui::Color32::from_white_alpha(50));
-
-            ui.painter().rect_filled(rect, 0.0, bg);
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "Preview loading...",
-                egui::FontId::proportional(13.0),
-                text_color,
-            );
-        }
-    }
-
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Bottom
-    }
-}
-
 // ── Input focus tracking ─────────────────────────────────────────────────────
 
-/// Sync egui keyboard focus state so keyboard shortcut systems can skip
-/// when the user is typing in a text field.
+/// Sync keyboard / pointer focus state so keyboard shortcut systems can skip
+/// when the user is typing in a text field, and so the gizmo box-select gesture
+/// doesn't arm while the pointer is over a floating overlay.
 fn update_input_focus(
-    mut ctx: EguiContexts,
     mut input_focus: ResMut<renzora::core::InputFocusState>,
     ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
+    over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
 ) {
-    // A focused bevy_ui (ember) text field also "wants keyboard" — so editor
-    // keybindings (G/R/S, Delete, …) don't fire while typing in the bevy_ui
-    // shell, mirroring how egui's `wants_keyboard_input` already gates them.
+    // A focused bevy_ui (ember) text field "wants keyboard" — so editor
+    // keybindings (G/R/S, Delete, …) don't fire while typing in the shell.
     let ember_focused = ember_inputs.iter().any(|i| i.focused);
-    let (egui_kb, egui_ptr) = ctx
-        .ctx_mut()
-        .ok()
-        .map(|c| (c.wants_keyboard_input(), c.wants_pointer_input() || c.is_pointer_over_area()))
-        .unwrap_or((false, false));
-    input_focus.egui_wants_keyboard = egui_kb || ember_focused;
-    input_focus.egui_has_pointer = egui_ptr;
-}
-
-// ── Modal transform HUD overlay ──────────────────────────────────────────────
-
-fn render_modal_transform_hud(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
-    let Some(hud) = world.get_resource::<renzora::core::ModalTransformHud>() else {
-        return;
-    };
-    if !hud.active {
-        return;
-    }
-
-    let axis_color = egui::Color32::from_rgba_unmultiplied(
-        hud.axis_color[0],
-        hud.axis_color[1],
-        hud.axis_color[2],
-        hud.axis_color[3],
-    );
-
-    // Scale mode: draw circle at pivot + line to cursor + dots
-    if hud.is_scale {
-        if let Some(pivot) = hud.pivot {
-            let painter = ctx.layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                egui::Id::new("modal_scale_overlay"),
-            ));
-
-            let pivot_pos = egui::Pos2::new(pivot[0], pivot[1]);
-            let cursor_pos = egui::Pos2::new(hud.cursor[0], hud.cursor[1]);
-
-            const CIRCLE_RADIUS: f32 = 30.0;
-            painter.circle_stroke(pivot_pos, CIRCLE_RADIUS, egui::Stroke::new(1.5, axis_color));
-            painter.line_segment([pivot_pos, cursor_pos], egui::Stroke::new(1.5, axis_color));
-            painter.circle_filled(pivot_pos, 3.0, axis_color);
-            painter.circle_filled(cursor_pos, 3.0, axis_color);
-        }
-    }
-
-    // HUD bar at bottom of viewport
-    let hud_height = 60.0;
-    let hud_width = 300.0;
-    let hud_rect = egui::Rect::from_min_size(
-        egui::Pos2::new(
-            viewport_rect.center().x - hud_width / 2.0,
-            viewport_rect.max.y - hud_height - 10.0,
-        ),
-        egui::Vec2::new(hud_width, hud_height),
-    );
-
-    egui::Area::new(egui::Id::new("modal_transform_hud"))
-        .fixed_pos(hud_rect.min)
-        .order(egui::Order::Foreground)
-        .interactable(false)
-        .show(ctx, |ui| {
-            let painter = ui.painter();
-
-            // Background
-            painter.rect_filled(
-                hud_rect,
-                8.0,
-                egui::Color32::from_rgba_unmultiplied(30, 30, 35, 230),
-            );
-            painter.rect_stroke(
-                hud_rect,
-                8.0,
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70)),
-                egui::StrokeKind::Outside,
-            );
-
-            // Mode text
-            painter.text(
-                egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 16.0),
-                egui::Align2::CENTER_CENTER,
-                hud.mode,
-                egui::FontId::proportional(16.0),
-                egui::Color32::WHITE,
-            );
-
-            // Axis constraint
-            if !hud.axis_name.is_empty() {
-                painter.text(
-                    egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 32.0),
-                    egui::Align2::CENTER_CENTER,
-                    format!("Axis: {}", hud.axis_name),
-                    egui::FontId::proportional(12.0),
-                    axis_color,
-                );
-            }
-
-            // Numeric input
-            if !hud.numeric_display.is_empty() {
-                painter.text(
-                    egui::Pos2::new(hud_rect.center().x, hud_rect.min.y + 44.0),
-                    egui::Align2::CENTER_CENTER,
-                    format!("Value: {}", hud.numeric_display),
-                    egui::FontId::proportional(12.0),
-                    egui::Color32::from_rgb(100, 200, 255),
-                );
-            }
-
-            // Help text
-            painter.text(
-                egui::Pos2::new(hud_rect.center().x, hud_rect.max.y - 8.0),
-                egui::Align2::CENTER_CENTER,
-                "X/Y/Z axis | Enter confirm | Esc cancel",
-                egui::FontId::proportional(10.0),
-                egui::Color32::from_rgb(120, 120, 130),
-            );
-        });
+    input_focus.egui_wants_keyboard = ember_focused;
+    // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
+    // / popup). The viewport's own hover flag (which already excludes overlays)
+    // is what gates per-viewport interaction, so this only needs to flag the
+    // overlay case for the gizmo's box-select guard.
+    input_focus.egui_has_pointer = over_overlay.is_some_and(|r| r.0);
 }
 
 // ── View toggle shortcuts ────────────────────────────────────────────────────
@@ -1044,386 +531,12 @@ fn handle_play_shortcuts(
     }
 }
 
-// ── Model load progress overlay ────────────────────────────────────────────
-
-fn render_model_load_progress(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let entries = model_drop::collect_model_load_progress(world);
-    if entries.is_empty() {
-        return;
-    }
-
-    let theme = match world.get_resource::<ThemeManager>() {
-        Some(tm) => tm.active_theme.clone(),
-        None => return,
-    };
-
-    let panel_width: f32 = 240.0;
-    let row_height: f32 = 32.0;
-    let padding: f32 = 8.0;
-    let total_height = padding * 2.0 + row_height * entries.len() as f32;
-    let pos = egui::Pos2::new(
-        viewport_rect.min.x + 12.0,
-        viewport_rect.max.y - total_height - 12.0,
-    );
-
-    egui::Area::new(egui::Id::new("viewport_model_load_progress"))
-        .fixed_pos(pos)
-        .order(egui::Order::Foreground)
-        .interactable(false)
-        .show(ui.ctx(), |ui| {
-            let frame = egui::Frame::NONE
-                .fill(theme.surfaces.panel.to_color32())
-                .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32()))
-                .inner_margin(egui::Margin::symmetric(8, 8))
-                .corner_radius(egui::CornerRadius::same(4));
-            frame.show(ui, |ui| {
-                ui.set_width(panel_width);
-                for (name, frac) in entries {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        renzora_ui::widgets::spinner(ui, 12.0, &theme);
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new(name)
-                                    .font(egui::FontId::proportional(10.0))
-                                    .color(theme.text.primary.to_color32()),
-                            );
-                            renzora_ui::widgets::progress_bar(ui, frac.unwrap_or(0.4), 4.0, &theme);
-                        });
-                    });
-                }
-            });
-        });
-    ui.ctx().request_repaint();
-}
-
-// ── On-screen console log overlay (play mode) ──────────────────────────────
-
-const LOG_MAX_VISIBLE: usize = 12;
-const LOG_DISPLAY_DURATION: f64 = 5.0;
-const LOG_FADE_DURATION: f64 = 1.0;
-
-fn render_viewport_logs(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    use renzora_console::state::ConsoleState;
-
-    // Only show during play mode
-    let Some(play_mode) = world.get_resource::<renzora::core::PlayModeState>() else {
-        return;
-    };
-    if !play_mode.is_in_play_mode() && !play_mode.is_scripts_only() {
-        return;
-    }
-
-    let Some(console) = world.get_resource::<ConsoleState>() else {
-        return;
-    };
-    let current_time = world.resource::<Time>().elapsed_secs_f64();
-
-    // Collect recent entries (within display duration)
-    let recent: Vec<_> = console
-        .entries
-        .iter()
-        .rev()
-        .filter(|e| {
-            let age = current_time - e.timestamp;
-            age < LOG_DISPLAY_DURATION && e.timestamp > 0.0
-        })
-        .take(LOG_MAX_VISIBLE)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-
-    if recent.is_empty() {
-        return;
-    }
-
-    let painter = ui.painter();
-    let mut y = viewport_rect.min.y + 10.0;
-    let x = viewport_rect.min.x + 12.0;
-    let font = egui::FontId::monospace(12.0);
-
-    for entry in &recent {
-        let age = current_time - entry.timestamp;
-        let fade_start = LOG_DISPLAY_DURATION - LOG_FADE_DURATION;
-        let alpha = if age > fade_start {
-            ((LOG_DISPLAY_DURATION - age) / LOG_FADE_DURATION) as f32
-        } else {
-            1.0
-        }
-        .clamp(0.0, 1.0);
-
-        if alpha <= 0.0 {
-            continue;
-        }
-
-        let [r, g, b] = entry.level.color();
-        let color = egui::Color32::from_rgba_unmultiplied(r, g, b, (alpha * 255.0) as u8);
-        let shadow_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, (alpha * 180.0) as u8);
-
-        let prefix = if entry.category.is_empty() {
-            String::new()
-        } else {
-            format!("[{}] ", entry.category)
-        };
-        let text = format!("{}{}", prefix, entry.message);
-
-        // Drop shadow
-        painter.text(
-            egui::Pos2::new(x + 1.0, y + 1.0),
-            egui::Align2::LEFT_TOP,
-            &text,
-            font.clone(),
-            shadow_color,
-        );
-        // Foreground
-        painter.text(
-            egui::Pos2::new(x, y),
-            egui::Align2::LEFT_TOP,
-            &text,
-            font.clone(),
-            color,
-        );
-
-        y += 16.0;
-    }
-}
 
 // ── Axis orientation gizmo (top-right corner) ───────────────────────────────
 
 pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
 pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
 
-fn render_axis_gizmo(ctx: &egui::Context, world: &World, viewport_rect: egui::Rect) {
-    let Some(orbit) = world.get_resource::<CameraOrbitSnapshot>() else {
-        return;
-    };
-    let Some(nav) = world.get_resource::<NavOverlayState>() else {
-        return;
-    };
-    let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() else {
-        return;
-    };
-    let center = egui::Pos2::new(
-        viewport_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
-        viewport_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,
-    );
-
-    let cos_yaw = orbit.yaw.cos();
-    let sin_yaw = orbit.yaw.sin();
-    let cos_pitch = orbit.pitch.cos();
-    let sin_pitch = orbit.pitch.sin();
-
-    // Axes: (world dir, color, label, target_yaw, target_pitch, is_positive)
-    let axes: [(Vec3, egui::Color32, &str, f32, f32, bool); 6] = [
-        (
-            Vec3::X,
-            egui::Color32::from_rgb(237, 76, 92),
-            "X",
-            std::f32::consts::FRAC_PI_2,
-            0.0,
-            true,
-        ),
-        (
-            Vec3::Y,
-            egui::Color32::from_rgb(139, 201, 63),
-            "Y",
-            0.0,
-            std::f32::consts::FRAC_PI_2,
-            true,
-        ),
-        (
-            Vec3::Z,
-            egui::Color32::from_rgb(68, 138, 255),
-            "Z",
-            0.0,
-            0.0,
-            true,
-        ),
-        (
-            -Vec3::X,
-            egui::Color32::from_rgb(150, 50, 60),
-            "-X",
-            -std::f32::consts::FRAC_PI_2,
-            0.0,
-            false,
-        ),
-        (
-            -Vec3::Y,
-            egui::Color32::from_rgb(80, 120, 40),
-            "-Y",
-            0.0,
-            -std::f32::consts::FRAC_PI_2,
-            false,
-        ),
-        (
-            -Vec3::Z,
-            egui::Color32::from_rgb(40, 80, 150),
-            "-Z",
-            std::f32::consts::PI,
-            0.0,
-            false,
-        ),
-    ];
-
-    let axis_length = AXIS_GIZMO_SIZE / 2.0 - 12.0;
-
-    // Project each axis to screen space, collecting (depth, offset, color, label, yaw, pitch, positive)
-    let mut projected: Vec<(f32, egui::Vec2, egui::Color32, &str, f32, f32, bool)> = axes
-        .iter()
-        .map(|(dir, color, label, yaw, pitch, positive)| {
-            // Rotate by yaw
-            let r = Vec3::new(
-                dir.x * cos_yaw + dir.z * sin_yaw,
-                dir.y,
-                -dir.x * sin_yaw + dir.z * cos_yaw,
-            );
-            // Rotate by pitch
-            let v = Vec3::new(
-                r.x,
-                r.y * cos_pitch + r.z * sin_pitch,
-                -r.y * sin_pitch + r.z * cos_pitch,
-            );
-            let offset = egui::Vec2::new(v.x * axis_length, -v.y * axis_length);
-            (v.z, offset, *color, *label, *yaw, *pitch, *positive)
-        })
-        .collect();
-
-    // Sort back-to-front
-    projected.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
-    let gizmo_rect =
-        egui::Rect::from_center_size(center, egui::vec2(AXIS_GIZMO_SIZE, AXIS_GIZMO_SIZE));
-
-    egui::Area::new(egui::Id::new("viewport_axis_gizmo"))
-        .fixed_pos(gizmo_rect.min)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
-            let resp = ui.interact(
-                gizmo_rect,
-                egui::Id::new("axis_gizmo_interact"),
-                egui::Sense::click_and_drag(),
-            );
-
-            if resp.drag_started() {
-                nav.orbit_dragging.store(true, Ordering::Relaxed);
-            }
-            if resp.drag_stopped() {
-                nav.orbit_dragging.store(false, Ordering::Relaxed);
-            }
-
-            if resp.dragged() {
-                let d = resp.drag_delta();
-                nav.orbit_delta_x
-                    .fetch_add((d.x * 1000.0) as i32, Ordering::Relaxed);
-                nav.orbit_delta_y
-                    .fetch_add((d.y * 1000.0) as i32, Ordering::Relaxed);
-            }
-
-            if resp.clicked() {
-                if let Some(pos) = resp.interact_pointer_pos() {
-                    let local_pos = pos - center;
-
-                    // Find closest axis endpoint
-                    let mut closest_axis = None;
-                    let mut min_dist = 15.0; // Click radius
-
-                    for &(_depth, offset, _color, _label, yaw, pitch, _is_positive) in &projected {
-                        let dist = (local_pos - offset).length();
-                        if dist < min_dist {
-                            min_dist = dist;
-                            closest_axis = Some((yaw, pitch));
-                        }
-                    }
-
-                    if let Some((yaw, pitch)) = closest_axis {
-                        cmds.push(move |w: &mut World| {
-                            if let Some(mut settings) = w.get_resource_mut::<ViewportSettings>() {
-                                settings.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
-                            }
-                        });
-                    }
-                }
-            }
-
-            if resp.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            }
-
-            let painter = ui.painter();
-
-            // Draw background sphere highlight
-            let is_active = nav.orbit_dragging.load(Ordering::Relaxed);
-            if resp.hovered() || is_active {
-                let theme_mgr = world.get_resource::<renzora_theme::ThemeManager>();
-                let theme = theme_mgr.map(|tm| &tm.active_theme);
-
-                let bg_color = if is_active {
-                    theme
-                        .map(|t| t.semantic.accent.to_color32().gamma_multiply(0.2))
-                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 40))
-                } else {
-                    theme
-                        .map(|t| t.widgets.hovered_bg.to_color32().gamma_multiply(0.3))
-                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20))
-                };
-                painter.circle_filled(center, AXIS_GIZMO_SIZE / 2.0, bg_color);
-
-                if is_active {
-                    let stroke_color = theme
-                        .map(|t| t.semantic.accent.to_color32())
-                        .unwrap_or(egui::Color32::from_rgba_unmultiplied(100, 100, 255, 180));
-                    painter.circle_stroke(
-                        center,
-                        AXIS_GIZMO_SIZE / 2.0,
-                        egui::Stroke::new(1.0, stroke_color),
-                    );
-                }
-            }
-
-            for &(_depth, offset, color, label, _yaw, _pitch, is_positive) in &projected {
-                let end = center + offset;
-
-                // Fade axes pointing away
-                let alpha = if _depth < -0.1 { 100 } else { 255 };
-                let c =
-                    egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
-
-                let line_width = if is_positive {
-                    if _depth < -0.1 {
-                        2.0
-                    } else {
-                        3.0
-                    }
-                } else if _depth < -0.1 {
-                    1.0
-                } else {
-                    1.5
-                };
-
-                if is_positive {
-                    painter.line_segment([center, end], egui::Stroke::new(line_width, c));
-                }
-
-                let cap_size = if is_positive { 9.0 } else { 6.0 };
-                if is_positive {
-                    painter.circle_filled(end, cap_size, c);
-                    painter.text(
-                        end,
-                        egui::Align2::CENTER_CENTER,
-                        label,
-                        egui::FontId::proportional(10.0),
-                        egui::Color32::WHITE,
-                    );
-                } else {
-                    painter.circle_stroke(end, cap_size, egui::Stroke::new(line_width, c));
-                }
-            }
-
-            // Center dot
-            painter.circle_filled(center, 3.0, egui::Color32::from_rgb(180, 180, 180));
-        });
-}
 
 /// Toggles each viewport camera's `is_active` based on whether its panel is
 /// docked. The primary (slot 0) camera additionally follows the shared 3D / 2D

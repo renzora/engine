@@ -11,7 +11,6 @@ use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight};
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{
     DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera,
@@ -52,11 +51,10 @@ impl Default for PreviewResizeRequest {
     }
 }
 
-/// Resource holding the camera preview render texture and egui texture id.
+/// Resource holding the camera preview render texture.
 #[derive(Resource)]
 pub struct CameraPreviewState {
     pub image_handle: Handle<Image>,
-    pub texture_id: Option<bevy_egui::egui::TextureId>,
     /// The entity whose camera we're currently previewing.
     pub previewing: Option<Entity>,
     /// Render-target pixel size last applied. Used to skip redundant resizes.
@@ -67,11 +65,10 @@ pub struct CameraPreviewState {
 #[derive(Component)]
 pub struct CameraPreviewMarker;
 
-/// Creates the camera preview render texture and registers it with egui.
+/// Creates the camera preview render texture.
 pub fn setup_camera_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
 ) {
     let size = Extent3d {
         width: PREVIEW_WIDTH,
@@ -90,13 +87,8 @@ pub fn setup_camera_preview(
 
     let image_handle = images.add(image);
 
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-
-    let texture_id = user_textures.image_id(image_handle.id());
-
     commands.insert_resource(CameraPreviewState {
         image_handle,
-        texture_id,
         previewing: None,
         current_size: UVec2::new(PREVIEW_WIDTH, PREVIEW_HEIGHT),
     });

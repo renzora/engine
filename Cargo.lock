@@ -9623,7 +9623,6 @@ name = "renzora_gizmo"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "bevy_mod_outline",
  "egui-phosphor",
  "renzora",
@@ -10975,9 +10974,7 @@ name = "renzora_viewport"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "bevy_egui",
  "bytemuck",
- "egui-phosphor",
  "renzora",
  "renzora_animation",
  "renzora_console",

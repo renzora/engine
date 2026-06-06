@@ -16,11 +16,10 @@ use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
 use bevy::scene::{SceneInstanceReady, SceneRoot};
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui;
 
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
-use renzora_editor::{EditorCommands, EditorSelection};
+use renzora_editor::EditorSelection;
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::glb_compat;
@@ -111,55 +110,15 @@ pub struct PendingMaterialBinding {
 #[derive(Component)]
 pub struct MaterialBindingDone;
 
-/// Called from the viewport panel's `ui()` method (read-only `&World`).
+/// Commit a model drop at the given viewport-space pointer. Either promotes the
+/// live drag-preview entity in place, or for out-of-project drags with no preview
+/// runs the import-then-spawn pipeline.
 ///
-/// Detects when a model asset is being dragged over the viewport and, on release,
-/// queues a deferred command to initiate loading.
-pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(MODEL_EXTENSIONS) {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
-
-    if !pointer_in_viewport {
-        return;
-    }
-
-    // Check if the pointer was just released (= drop)
-    let pointer_released = !ui.ctx().input(|i| i.pointer.any_down());
-    if !pointer_released {
-        return;
-    }
-
-    let path = payload.path.clone();
-    let name = payload.name.clone();
-
-    // Capture viewport info for ground-position computation in the deferred closure
-    let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let sp = Vec2::new(screen_pos.x, screen_pos.y);
-    let vp_rect = Rect::from_corners(
-        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
-        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
-    );
-
-    // Queue the spawn command (deferred — runs with &mut World). The egui pass
-    // drains `EditorCommands` at its end, before `cleanup_model_drag_ghost`.
-    if let Some(commands) = world.get_resource::<EditorCommands>() {
-        commands.push(move |world: &mut World| {
-            commit_model_drop(world, sp, vp_rect, path, name);
-        });
-    }
-}
-
-/// Commit a model drop at the given viewport-space pointer — shared by the egui
-/// drop check (deferred via `EditorCommands`) and the native `native_model_drop`
-/// (called inline). Either promotes the live drag-preview entity in place, or for
-/// out-of-project drags with no preview runs the import-then-spawn pipeline.
+/// Currently unused: the native drop path ([`native_model_drop`]) promotes the
+/// in-project preview ghost inline and does not yet route out-of-project drags
+/// through here. Kept (with the import pipeline below) so that path can be wired
+/// up without re-deriving it.
+#[allow(dead_code)]
 pub(crate) fn commit_model_drop(
     world: &mut World,
     screen_pos: Vec2,
@@ -244,7 +203,7 @@ pub(crate) fn commit_model_drop(
     }
 }
 
-/// Native (bevy_ui) counterpart of [`check_viewport_model_drop`].
+/// Native (bevy_ui) model drop handler.
 ///
 /// Unlike the egui path, this **cannot** read the [`AssetDragPayload`] at release
 /// time: the native asset browser removes it via a deferred command on mouse-up,
@@ -885,7 +844,7 @@ pub fn track_model_drag_preview(
 /// The entity we spawn here is the **final** scene entity — same components
 /// any post-drop spawn would produce. While the drag is active, this system
 /// updates its transform every frame so it follows the cursor. On release,
-/// `check_viewport_model_drop`'s deferred handler adds `NeedsGroundAlignment`
+/// `native_model_drop` adds `NeedsGroundAlignment`
 /// and clears the placement state; from there the entity is just a regular
 /// scene entity. No "ghost", no despawn-and-respawn — Bevy's SceneSpawner
 /// only instantiates the GLB once, and that single instance becomes the

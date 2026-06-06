@@ -9,54 +9,14 @@ use std::path::PathBuf;
 use bevy::ecs::system::SystemState;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
-use bevy_egui::egui;
 
 use renzora::core::{CurrentProject, EditorCamera};
-use renzora_editor::EditorCommands;
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
-use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;
 
 pub(crate) const MATERIAL_EXTENSIONS: &[&str] = &["material"];
-
-/// Called from the viewport panel's `ui()` method. On release of a
-/// `.material` drag payload over the viewport, queue a deferred command
-/// that raycasts for the mesh under the pointer and applies the material.
-pub fn check_viewport_material_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(MATERIAL_EXTENSIONS) {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_latest_pos();
-    let pointer_in_viewport = pointer_pos.is_some_and(|p| viewport_rect.contains(p));
-    if !pointer_in_viewport {
-        return;
-    }
-
-    let pointer_released = !ui.ctx().input(|i| i.pointer.any_down());
-    if !pointer_released {
-        return;
-    }
-
-    let path = payload.path.clone();
-    let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let sp = Vec2::new(screen_pos.x, screen_pos.y);
-    let vp_rect = Rect::from_corners(
-        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
-        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
-    );
-
-    if let Some(commands) = world.get_resource::<EditorCommands>() {
-        commands.push(move |world: &mut World| {
-            commit_material_drop(world, sp, vp_rect, path);
-        });
-    }
-}
 
 /// Commit a material drop — raycast for the mesh under `screen_pos` and apply the
 /// `.material`. Shared by the egui drop check and the native bevy_ui drop

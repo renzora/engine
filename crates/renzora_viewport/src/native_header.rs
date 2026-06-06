@@ -9,7 +9,6 @@
 
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
-use bevy_egui::egui::Color32;
 
 use renzora::core::viewport_types::{
     CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
@@ -50,8 +49,9 @@ enum HeaderAction {
 #[derive(Component)]
 struct HeaderIcon(Entity);
 
-fn col(c: Color32) -> Color {
-    Color::srgb_u8(c.r(), c.g(), c.b())
+fn col(c: renzora_theme::ThemeColor) -> Color {
+    let [r, g, b, _a] = c.to_color32().to_array();
+    Color::srgb_u8(r, g, b)
 }
 
 /// Build the header row (child 0 of the primary viewport panel).
@@ -496,9 +496,9 @@ fn update_dropdown_visuals(
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent.to_color32());
-    let inactive = col(t.widgets.inactive_bg.to_color32());
-    let hovered = col(t.widgets.hovered_bg.to_color32());
+    let accent = col(t.semantic.accent);
+    let inactive = col(t.widgets.inactive_bg);
+    let hovered = col(t.widgets.hovered_bg);
 
     let current_view = ViewportView::ALL
         .iter()
@@ -601,13 +601,13 @@ fn update_header_visuals(
         is_editing: is_editing_raw && !runtime_alive,
         is_scripts,
         maximized: maximized.is_some_and(|m| m.0),
-        primary: col(t.text.primary.to_color32()),
-        muted: col(t.text.muted.to_color32()),
-        play: col(t.semantic.success.to_color32()),
-        scripts: col(t.semantic.accent.to_color32()),
-        stop: col(t.semantic.error.to_color32()),
-        accent: col(t.semantic.accent.to_color32()),
-        hovered_bg: col(t.widgets.hovered_bg.to_color32()),
+        primary: col(t.text.primary),
+        muted: col(t.text.muted),
+        play: col(t.semantic.success),
+        scripts: col(t.semantic.accent),
+        stop: col(t.semantic.error),
+        accent: col(t.semantic.accent),
+        hovered_bg: col(t.widgets.hovered_bg),
     };
 
     for (action, icon, interaction, mut bg) in actions {
@@ -1034,9 +1034,9 @@ fn update_display_visuals(
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent.to_color32());
-    let inactive = col(t.widgets.inactive_bg.to_color32());
-    let hovered = col(t.widgets.hovered_bg.to_color32());
+    let accent = col(t.semantic.accent);
+    let inactive = col(t.widgets.inactive_bg);
+    let hovered = col(t.widgets.hovered_bg);
 
     for (interaction, toggle, mut bg) in triggers {
         let want = if toggle.open || *interaction == Interaction::Hovered {
@@ -1109,8 +1109,8 @@ fn update_header_chrome(
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
-    let panel = col(t.surfaces.panel.to_color32());
-    let widget = col(t.widgets.inactive_bg.to_color32());
+    let panel = col(t.surfaces.panel);
+    let widget = col(t.widgets.inactive_bg);
     for mut bg in &mut panels {
         if bg.0 != panel {
             bg.0 = panel;
@@ -1279,8 +1279,8 @@ fn update_snap_toggles(
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent.to_color32());
-    let inactive = col(t.widgets.inactive_bg.to_color32());
+    let accent = col(t.semantic.accent);
+    let inactive = col(t.widgets.inactive_bg);
 
     for (pill, mut bg) in &mut pills {
         let enabled = match pill.0 {
@@ -1735,7 +1735,7 @@ fn update_click_rows(
     >,
 ) {
     let Some(theme) = theme else { return };
-    let hovered = col(theme.active_theme.widgets.hovered_bg.to_color32());
+    let hovered = col(theme.active_theme.widgets.hovered_bg);
     for (interaction, mut bg) in &mut q {
         let want = if *interaction == Interaction::Hovered {
             hovered
@@ -1758,9 +1758,9 @@ fn update_panel_buttons(
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent.to_color32());
-    let inactive = col(t.widgets.inactive_bg.to_color32());
-    let hovered = col(t.widgets.hovered_bg.to_color32());
+    let accent = col(t.semantic.accent);
+    let inactive = col(t.widgets.inactive_bg);
+    let hovered = col(t.widgets.hovered_bg);
 
     for (opt, interaction, mut bg) in &mut proj {
         let want = if settings.projection_mode == opt.0 {
@@ -1808,9 +1808,9 @@ fn update_camera_snap_triggers(
         return;
     };
     let t = &theme.active_theme;
-    let accent = col(t.semantic.accent.to_color32());
-    let inactive = col(t.widgets.inactive_bg.to_color32());
-    let hovered = col(t.widgets.hovered_bg.to_color32());
+    let accent = col(t.semantic.accent);
+    let inactive = col(t.widgets.inactive_bg);
+    let hovered = col(t.widgets.hovered_bg);
 
     for (interaction, toggle, mut bg) in &mut cam {
         let want = if toggle.open || *interaction == Interaction::Hovered {
@@ -2000,12 +2000,12 @@ fn update_tool_buttons(world: &mut World) {
             return;
         };
         (
-            col(tm.active_theme.semantic.accent.to_color32()),
-            col(tm.active_theme.widgets.hovered_bg.to_color32()),
+            col(tm.active_theme.semantic.accent),
+            col(tm.active_theme.widgets.hovered_bg),
             // White-ish on the accent fill when active; a clear neutral otherwise
             // (so tool icons stay legible on light themes).
-            col(tm.active_theme.widgets.active_fg.to_color32()),
-            col(tm.active_theme.text.secondary.to_color32()),
+            col(tm.active_theme.widgets.active_fg),
+            col(tm.active_theme.text.secondary),
         )
     };
     let results: Vec<(Entity, bool, Color, Entity, Color)> = collected

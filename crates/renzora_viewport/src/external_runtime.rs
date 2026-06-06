@@ -21,7 +21,7 @@ const PREPARE_GRACE_SECS: f32 = 2.0;
 
 /// Which stage of the external-runtime lifecycle we're in. Drives the
 /// full-screen overlay that pauses the editor while the runtime owns the
-/// screen — see [`draw_runtime_overlay`].
+/// screen.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePhase {
     /// No external runtime — editor behaves normally.
@@ -163,90 +163,6 @@ pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntim
     if runtime.prepare_elapsed >= PREPARE_GRACE_SECS {
         runtime.phase = RuntimePhase::Running;
     }
-}
-
-/// Full-screen overlay that pauses the editor while an external runtime is
-/// active. During [`RuntimePhase::Preparing`] it shows "Preparing export
-/// runtime" with a spinner; during [`RuntimePhase::Running`] it shows that
-/// the editor is paused until the runtime window closes. The dim backdrop
-/// swallows all pointer input so the editor underneath isn't interactable.
-pub fn draw_runtime_overlay(
-    mut contexts: bevy_egui::EguiContexts,
-    runtime: Res<ExternalRuntime>,
-    theme: Res<renzora_theme::ThemeManager>,
-) {
-    use bevy_egui::egui::{self, Align2, Color32, Id, Order, Sense};
-
-    let phase = runtime.phase;
-    if phase == RuntimePhase::Idle {
-        return;
-    }
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-    let ctx = ctx.clone();
-
-    // Deliberately do NOT request repaints here. The overlay is fully static,
-    // so the editor can sit idle — `apply_runtime_pause_render` drops it to a
-    // slow wakeup rate, and those wakeups (not repaint requests) are what
-    // redraw this screen and poll for the runtime window closing. The result
-    // is a frozen dark screen rather than a live, repainting editor.
-
-    let t = &theme.active_theme;
-    let panel_bg = t.surfaces.panel.0;
-    let border = t.widgets.border.0;
-    let text_primary = t.text.primary.0;
-    let text_secondary = t.text.secondary.0;
-
-    // Opaque near-black fill covering the whole window: a blank dark screen
-    // that fully hides the (no-longer-rendering) editor, and swallows all
-    // pointer input so nothing underneath is reachable.
-    let screen = ctx.content_rect();
-    egui::Area::new(Id::new("external_runtime_backdrop"))
-        .order(Order::Foreground)
-        .fixed_pos(screen.min)
-        .interactable(true)
-        .show(&ctx, |ui| {
-            let (_, resp) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
-            ui.painter()
-                .rect_filled(resp.rect, 0.0, Color32::from_rgb(10, 10, 12));
-        });
-
-    let (heading, sub) = match phase {
-        RuntimePhase::Preparing => (
-            "Preparing export runtime",
-            "Launching the exported game window…",
-        ),
-        RuntimePhase::Running => (
-            "Export runtime running",
-            "Editor paused — close the runtime window to resume editing.",
-        ),
-        RuntimePhase::Idle => return,
-    };
-
-    egui::Area::new(Id::new("external_runtime_card"))
-        .order(Order::Foreground)
-        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(&ctx, |ui| {
-            egui::Frame::new()
-                .fill(panel_bg)
-                .stroke(egui::Stroke::new(1.0, border))
-                .inner_margin(egui::Margin::same(24))
-                .corner_radius(8)
-                .show(ui, |ui| {
-                    ui.set_min_width(320.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new(heading)
-                                .color(text_primary)
-                                .size(18.0)
-                                .strong(),
-                        );
-                        ui.add_space(6.0);
-                        ui.label(egui::RichText::new(sub).color(text_secondary).size(13.0));
-                    });
-                });
-        });
 }
 
 /// Reap any running child when the editor decides to exit. Without this

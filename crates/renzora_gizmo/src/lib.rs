@@ -13,12 +13,8 @@ mod grid_2d;
 mod light_gizmo;
 pub mod modal_transform;
 mod picker_2d;
-mod plane_fill;
-mod rotation_pie;
-mod ruler_2d;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
-mod window_bounds_2d;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::input::mouse::MouseMotion;
@@ -193,8 +189,7 @@ impl GizmoAxis {
 
     /// Plane axes with `axis_signs` baked in so plane handles flip into the
     /// quadrant facing the camera, matching how single-axis arrows already
-    /// flip via `signed_direction`. Used by both the picking quads and the
-    /// egui plane fills so they stay aligned.
+    /// flip via `signed_direction`. Used by the picking quads.
     pub(crate) fn signed_plane_axes(self, signs: Vec3) -> Option<(Vec3, Vec3)> {
         match self {
             Self::XY => Some((Vec3::new(signs.x, 0.0, 0.0), Vec3::new(0.0, signs.y, 0.0))),
@@ -459,22 +454,6 @@ impl Plugin for GizmoPlugin {
                 light_gizmo::update_editor_camera_2d_cache
                     .run_if(in_state(renzora_editor::SplashState::Editor)),
             )
-            .init_resource::<rotation_pie::RotationPieState>()
-            .add_systems(
-                Update,
-                rotation_pie::update_rotation_pie_state
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
-            )
-            .init_resource::<plane_fill::PlaneFillState>()
-            .add_systems(
-                Update,
-                plane_fill::update_plane_fill_state
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
-            )
             .add_systems(
                 Update,
                 (
@@ -516,12 +495,6 @@ impl Plugin for GizmoPlugin {
                 .run_if(renzora::core::in_two_view),
         );
 
-        // 2D selection outline overlay — shares the gizmo band order so
-        // it paints above the rendered image but under HUDs.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(140, picker_2d::draw_selection_outline_2d);
-
         // 2D editor grid drawn via Bevy gizmos (not an egui overlay)
         // so it renders into the offscreen image *under* sprites
         // instead of being painted on top of the rendered viewport.
@@ -531,43 +504,6 @@ impl Plugin for GizmoPlugin {
             Update,
             grid_2d::draw_grid_2d_gizmos.run_if(renzora::core::in_two_view),
         );
-
-        // Project window-size outline + axis lines at order 85 — drawn
-        // first so the opaque ruler strips cover them where they overlap.
-        // Only visible in 2D view.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(85, window_bounds_2d::draw_window_bounds_2d);
-
-        // 2D ruler at order 90 — over the window bounds / axis lines so
-        // those don't bleed across the strip, under selection outlines
-        // and gizmos so those paint cleanly on top.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(90, ruler_2d::draw_ruler_2d);
-
-        // Always-visible scene icons painted as phosphor glyphs on the
-        // viewport overlay. Order 150 sits between the gizmo band (~100)
-        // and HUD band (~200) so icons paint above wireframes but under
-        // modal HUDs.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(150, light_gizmo::draw_light_icon_overlay);
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(150, camera_gizmo::draw_camera_icon_overlay);
-        // Rotation pie at order 130 — under icons (so the wedge doesn't
-        // hide them) but above the wireframe rotate ring. Wireframe gizmos
-        // paint into the 3D image first; the egui overlay blends on top.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(130, rotation_pie::draw_pie_overlay);
-        // Plane handle fills at order 130 too (same band as the pie). The
-        // arrows / cones still render as wireframe; the egui fills paint
-        // the XY/XZ/YZ squares as solid polygons over the 3D image.
-        app.world_mut()
-            .resource_mut::<renzora_editor::ViewportOverlayRegistry>()
-            .register(130, plane_fill::draw_plane_fill_overlay);
     }
 }
 
@@ -992,9 +928,9 @@ fn draw_line_gizmos(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            // Plane handles (XY/XZ/YZ filled quads + outlines) are painted
-            // by `plane_fill::draw_plane_fill_overlay` so they render as
-            // proper solid polygons via egui rather than line gizmos.
+            // Plane handles (XY/XZ/YZ filled quads) have no immediate-mode
+            // representation here — they were drawn by a native overlay that
+            // has not yet been ported.
         }
         GizmoMode::Rotate => {
             let radius = GIZMO_SIZE * gs * 0.7;
@@ -1025,9 +961,6 @@ fn draw_line_gizmos(
                 y_color,
             );
             gizmos.circle(Isometry3d::new(pos, Quat::IDENTITY), radius, z_color);
-            // Unity-style rotation pie is drawn as a filled egui polygon by
-            // `rotation_pie::draw_pie_overlay` — line gizmos can't paint
-            // proper triangles.
         }
         GizmoMode::Scale => {
             let scale_size = GIZMO_SIZE * gs;

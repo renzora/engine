@@ -7,26 +7,22 @@
 //! [`drag_move_2d_system`] then executes Move or Resize each frame until
 //! the mouse is released.
 //!
-//! All work is gated on `viewport_view == Two`. The selection outline is
-//! registered with `ViewportOverlayRegistry` so it paints on top of the
-//! rendered image alongside the existing 3D overlays.
+//! All work is gated on `viewport_view == Two`.
+//!
+//! Note: the egui selection-outline overlay (registered with
+//! `ViewportOverlayRegistry`) was dropped in the egui purge and is pending a
+//! native re-implementation. The pick / drag / resize input logic is retained.
 
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui;
-use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
+use renzora::core::viewport_types::ViewportState;
 use renzora::core::{Node2d, PlayModeState};
 use renzora_editor::EditorSelection;
 
 /// Hit threshold for handle picking, in panel pixels. Generous so users
 /// don't have to be sub-pixel accurate on a small sprite.
 const HANDLE_HIT_RADIUS: f32 = 8.0;
-/// Drawn handle size in panel pixels. Smaller than the hit radius so
-/// users can grab a handle even if their cursor is just outside the
-/// drawn square.
-const HANDLE_DRAW_SIZE: f32 = 9.0;
-
 /// Which resize handle the user grabbed. Indexed by which corner / edge
 /// of the entity AABB the handle sits at.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -652,112 +648,4 @@ pub fn keyboard_nudge_2d(
     };
     tr.translation.x += delta.x;
     tr.translation.y += delta.y;
-}
-
-/// Egui overlay: paint a yellow rectangle outline + 8 handles around the
-/// selected 2D entity.
-pub fn draw_selection_outline_2d(ui: &mut egui::Ui, world: &World, rect: egui::Rect) {
-    let view = world
-        .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view)
-        .unwrap_or_default();
-    if view != ViewportView::Two {
-        return;
-    }
-
-    let Some(selection) = world.get_resource::<EditorSelection>() else {
-        return;
-    };
-    let Some(entity) = selection.get() else {
-        return;
-    };
-    let Some(viewport) = world.get_resource::<ViewportState>() else {
-        return;
-    };
-    let Some((camera, cam_gt)) = find_editor_camera_2d(world) else {
-        return;
-    };
-    let Some(translation_3d) = entity_translation(world, entity) else {
-        return;
-    };
-    let Some(half) = entity_half_size(world, entity) else {
-        return;
-    };
-
-    let translation = translation_3d.truncate();
-    let z = translation_3d.z;
-
-    let to_screen = |world_pos: Vec3| -> Option<egui::Pos2> {
-        let panel = world_to_panel(world_pos, viewport, camera, cam_gt)?;
-        Some(egui::Pos2::new(rect.min.x + panel.x, rect.min.y + panel.y))
-    };
-
-    // Outline corners.
-    let tl = to_screen(Vec3::new(translation.x - half.x, translation.y + half.y, z));
-    let tr_corner = to_screen(Vec3::new(translation.x + half.x, translation.y + half.y, z));
-    let bl = to_screen(Vec3::new(translation.x - half.x, translation.y - half.y, z));
-    let br = to_screen(Vec3::new(translation.x + half.x, translation.y - half.y, z));
-    let (Some(tl), Some(tr_corner), Some(bl), Some(br)) = (tl, tr_corner, bl, br) else {
-        return;
-    };
-
-    let outline_color = egui::Color32::from_rgb(250, 220, 100);
-    let painter = ui.painter_at(rect);
-
-    let outline = egui::Rect::from_two_pos(tl.min(bl), tr_corner.max(br));
-    painter.rect_stroke(
-        outline,
-        0.0,
-        egui::Stroke::new(2.0, outline_color),
-        egui::StrokeKind::Outside,
-    );
-
-    // Handles: 4 corners + 4 edge midpoints. Drawn after the outline so
-    // they paint on top of the rectangle stroke. Each carries the
-    // direction it represents so we can pick the right resize cursor on
-    // hover.
-    let handle_fill = egui::Color32::from_rgb(255, 255, 255);
-    let handle_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 50));
-    let edge_n = to_screen(Vec3::new(translation.x, translation.y + half.y, z));
-    let edge_s = to_screen(Vec3::new(translation.x, translation.y - half.y, z));
-    let edge_w = to_screen(Vec3::new(translation.x - half.x, translation.y, z));
-    let edge_e = to_screen(Vec3::new(translation.x + half.x, translation.y, z));
-    let mut handles: Vec<(ResizeHandle, egui::Pos2)> = vec![
-        (ResizeHandle::NW, tl),
-        (ResizeHandle::NE, tr_corner),
-        (ResizeHandle::SW, bl),
-        (ResizeHandle::SE, br),
-    ];
-    if let (Some(n), Some(s), Some(w), Some(e)) = (edge_n, edge_s, edge_w, edge_e) {
-        handles.extend_from_slice(&[
-            (ResizeHandle::N, n),
-            (ResizeHandle::S, s),
-            (ResizeHandle::W, w),
-            (ResizeHandle::E, e),
-        ]);
-    }
-
-    // Cursor hint: if the pointer is over a handle, set the matching
-    // resize cursor so users feel the affordance before they click.
-    if let Some(cursor) = ui.ctx().pointer_hover_pos() {
-        for (handle, pos) in &handles {
-            if (*pos - cursor).length() <= HANDLE_HIT_RADIUS {
-                let icon = match handle {
-                    ResizeHandle::NW | ResizeHandle::SE => egui::CursorIcon::ResizeNwSe,
-                    ResizeHandle::NE | ResizeHandle::SW => egui::CursorIcon::ResizeNeSw,
-                    ResizeHandle::N | ResizeHandle::S => egui::CursorIcon::ResizeVertical,
-                    ResizeHandle::E | ResizeHandle::W => egui::CursorIcon::ResizeHorizontal,
-                };
-                ui.ctx().set_cursor_icon(icon);
-                break;
-            }
-        }
-    }
-
-    for (_, pos) in handles {
-        let h_rect =
-            egui::Rect::from_center_size(pos, egui::Vec2::new(HANDLE_DRAW_SIZE, HANDLE_DRAW_SIZE));
-        painter.rect_filled(h_rect, 1.0, handle_fill);
-        painter.rect_stroke(h_rect, 1.0, handle_stroke, egui::StrokeKind::Inside);
-    }
 }

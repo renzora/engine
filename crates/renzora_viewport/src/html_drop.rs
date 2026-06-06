@@ -8,17 +8,14 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::egui;
 
 use renzora_editor::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
 const HTML_EXTENSIONS: &[&str] = &["html"];
 
-/// Native (bevy_ui viewport) counterpart of [`check_viewport_html_drop`]: on
-/// release of an `.html` asset-drag over the native viewport, spawn the UI
-/// template. The native viewport overrides the egui panel body, so the egui
-/// `check_viewport_html_drop` no longer runs — this is the only handler then.
+/// On release of an `.html` asset-drag over the native viewport, spawn the UI
+/// template.
 pub fn native_html_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
@@ -48,32 +45,6 @@ pub fn native_html_drop(
     }
     let abs_path = payload.path.clone();
     cmds.push(move |world: &mut World| spawn_html_template(world, abs_path));
-}
-
-/// Called from the viewport panel's `ui()` each frame. On release of an `.html`
-/// drag-drop payload over the viewport, queues a deferred command that spawns a
-/// UI Canvas + template-carrying child.
-pub fn check_viewport_html_drop(ui: &mut egui::Ui, world: &World, viewport_rect: egui::Rect) {
-    let Some(payload) = world.get_resource::<AssetDragPayload>() else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(HTML_EXTENSIONS) {
-        return;
-    }
-
-    let pointer_pos = ui.ctx().pointer_latest_pos();
-    if !pointer_pos.is_some_and(|p| viewport_rect.contains(p)) {
-        return;
-    }
-    // Wait for the pointer to be released over the viewport.
-    if ui.ctx().input(|i| i.pointer.any_down()) {
-        return;
-    }
-
-    let abs_path = payload.path.clone();
-    if let Some(commands) = world.get_resource::<EditorCommands>() {
-        commands.push(move |world: &mut World| spawn_html_template(world, abs_path));
-    }
 }
 
 fn spawn_html_template(world: &mut World, abs_path: PathBuf) {
