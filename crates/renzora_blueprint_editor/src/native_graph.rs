@@ -36,7 +36,7 @@ impl Plugin for NativeBlueprintGraph {
         app.add_systems(Update, (apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
         app.add_systems(
             Update,
-            (bp_graph_load, bp_graph_sync, sync_graph_selection)
+            (bp_graph_load, bp_graph_sync)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<BpGraph>),
@@ -253,6 +253,15 @@ fn bp_graph_sync(world: &mut World) {
                     changed = true;
                 }
             }
+            GraphEdit::Delete { id } => {
+                if let Some(g) = graph.as_mut() {
+                    g.remove_node(id);
+                    changed = true;
+                    if world.resource::<BlueprintEditorState>().selected_node == Some(id) {
+                        new_sel = Some(None);
+                    }
+                }
+            }
             GraphEdit::Select { id } => new_sel = Some(id),
         }
     }
@@ -271,17 +280,6 @@ fn bp_graph_sync(world: &mut World) {
             world.resource_mut::<BlueprintEditorState>().is_dirty = false;
         } else if let Some(e) = world.resource::<BlueprintEditorState>().editing_entity {
             world.entity_mut(e).insert(g);
-        }
-    }
-}
-
-/// Mirror the model's selected node into the view (the shared `ngv_apply_selection`
-/// drives node borders from `NodeGraphView.selected`, not from a rebuild).
-fn sync_graph_selection(st: Option<Res<BlueprintEditorState>>, mut views: Query<&mut NodeGraphView, With<BpGraph>>) {
-    let Some(st) = st else { return };
-    for mut v in &mut views {
-        if v.selected != st.selected_node {
-            v.selected = st.selected_node;
         }
     }
 }

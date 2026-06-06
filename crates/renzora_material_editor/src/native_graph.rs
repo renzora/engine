@@ -38,7 +38,7 @@ impl Plugin for NativeMaterialGraph {
         // the egui panel only running its sync inside `ui()`).
         app.add_systems(
             Update,
-            (mat_graph_load, mat_graph_sync, sync_graph_selection)
+            (mat_graph_load, mat_graph_sync)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<MatGraph>),
@@ -255,6 +255,13 @@ fn mat_graph_sync(world: &mut World) {
                     st.graph.disconnect(to_node, &to_pin);
                     structural = true;
                 }
+                GraphEdit::Delete { id } => {
+                    st.graph.remove_node(id);
+                    if st.selected_node == Some(id) {
+                        st.selected_node = None;
+                    }
+                    structural = true;
+                }
                 GraphEdit::Select { id } => {
                     if st.selected_node != id {
                         st.selected_node = id;
@@ -301,17 +308,6 @@ fn pending_first_save(world: &mut World, entity: Entity) {
     world.entity_mut(entity).remove::<renzora_shader::material::resolver::MaterialResolved>();
     world.entity_mut(entity).insert(MaterialRef(asset_path.clone()));
     world.resource_mut::<MaterialEditorState>().edit_mode = MaterialEditMode::Existing { path: asset_path, entity };
-}
-
-/// Mirror the model's selected node into the view each frame so external
-/// selection changes (loading a material, etc.) reflect — without rebuilding nodes.
-fn sync_graph_selection(st: Option<Res<MaterialEditorState>>, mut views: Query<&mut NodeGraphView, With<MatGraph>>) {
-    let Some(st) = st else { return };
-    for mut v in &mut views {
-        if v.selected != st.selected_node {
-            v.selected = st.selected_node;
-        }
-    }
 }
 
 fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, mut commands: Commands) {

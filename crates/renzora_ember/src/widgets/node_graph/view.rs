@@ -12,7 +12,7 @@
 //! the [`NodeGraphView`] component; the caller drains them and applies them to its
 //! model (marking it dirty).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_remove, ngv_apply_selection));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_remove, ngv_apply_selection, ngv_keys));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -45,17 +45,29 @@ pub enum GraphEdit {
     NodeMoved { id: u64, x: f32, y: f32 },
     Connect { from_node: u64, from_pin: String, to_node: u64, to_pin: String },
     Disconnect { from_node: u64, from_pin: String, to_node: u64, to_pin: String },
+    Delete { id: u64 },
+    /// Primary selection (for the caller's inspector). The widget owns the full
+    /// (multi-) selection set itself; this just reports the focused node.
     Select { id: Option<u64> },
 }
 
-/// Lives on the graph viewport; the caller syncs by draining `pending`.
+/// Lives on the graph viewport; the caller syncs by draining `pending`. The
+/// widget owns all interaction — selection, drag, connect, delete, view ops — so
+/// any graph editor reuses it by feeding nodes/wires and draining `pending`.
 #[derive(Component, Default)]
 pub struct NodeGraphView {
     pub pending: Vec<GraphEdit>,
-    /// Currently-selected node id — drives the node border without rebuilding
-    /// the node entity (so a drag-started selection doesn't kill the drag). The
-    /// caller may also set this to reflect external selection changes.
-    pub selected: Option<u64>,
+    /// The (multi-) selection set — drives node borders in place (no rebuild, so
+    /// a drag-started selection never kills the drag).
+    pub selected: HashSet<u64>,
+    /// An output `(node, pin)` waiting for an input click to complete a wire.
+    pub pending_connect: Option<(u64, String)>,
+    /// Caller sets to re-frame all nodes; cleared by the widget once applied.
+    pub fit_request: bool,
+    /// Caller sets to recenter (keep zoom); cleared once applied.
+    pub center_request: bool,
+    /// Caller sets to multiply the zoom (toolbar +/−); cleared once applied.
+    pub zoom_request: Option<f32>,
 }
 
 /// Entities the caller mounts content into.
@@ -262,43 +274,60 @@ fn px(v: Val) -> f32 {
     }
 }
 
-/// Drag a node body → move it; on release record `NodeMoved`. Press → `Select`.
+/// Press a node → select it (Ctrl toggles/extends, plain click replaces); drag →
+/// move every selected node together; on release record `NodeMoved` for each.
+/// Selecting in place (via `NodeGraphView.selected`) never rebuilds a node, so
+/// the drag survives.
+#[allow(clippy::type_complexity)]
 fn ngv_drag(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
-    mut active: Local<Option<(Entity, Vec2, bool)>>,
-    picks: Query<(Entity, &Interaction, &NgvNode)>,
+    mut active: Local<Option<(Vec2, bool, Entity, Entity)>>, // (last, moved, viewport, canvas)
+    node_picks: Query<(&Interaction, &NgvNode)>,
+    port_picks: Query<&Interaction, With<NgvPort>>,
     views: Query<&GraphView>,
-    mut nodes: Query<&mut Node>,
+    mut nodes: Query<(&NgvNode, &mut Node)>,
     mut graphs: Query<&mut NodeGraphView>,
 ) {
     if active.is_none() {
-        if mouse.just_pressed(MouseButton::Left) {
-            if let Some(c) = cursor(&windows) {
-                for (e, interaction, n) in &picks {
-                    if *interaction == Interaction::Pressed {
-                        *active = Some((e, c, false));
-                        if let Ok(mut g) = graphs.get_mut(n.viewport) {
-                            // Select immediately (visual updates without a rebuild,
-                            // so the drag entity stays alive) + record the edit.
-                            g.selected = Some(n.id);
-                            g.pending.push(GraphEdit::Select { id: Some(n.id) });
-                        }
-                        break;
-                    }
-                }
-            }
+        if !mouse.just_pressed(MouseButton::Left) {
+            return;
         }
+        if port_picks.iter().any(|i| *i == Interaction::Pressed) {
+            return; // a port press is a connect, not a drag
+        }
+        let Some(c) = cursor(&windows) else { return };
+        let Some((_, n)) = node_picks.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+        let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+        if let Ok(mut g) = graphs.get_mut(n.viewport) {
+            if ctrl {
+                if !g.selected.remove(&n.id) {
+                    g.selected.insert(n.id);
+                }
+            } else if !g.selected.contains(&n.id) {
+                g.selected.clear();
+                g.selected.insert(n.id);
+            }
+            let prim = if g.selected.contains(&n.id) { Some(n.id) } else { g.selected.iter().copied().next() };
+            g.pending.push(GraphEdit::Select { id: prim });
+        }
+        *active = Some((c, false, n.viewport, n.canvas));
         return;
     }
+
     if !mouse.pressed(MouseButton::Left) {
-        if let Some((e, _, moved)) = *active {
+        if let Some((_, moved, vp, _)) = *active {
             if moved {
-                if let (Ok((_, _, n)), Ok(node)) = (picks.get(e), nodes.get(e)) {
-                    let (x, y) = (px(node.left), px(node.top));
-                    let vp = n.viewport;
-                    if let Ok(mut g) = graphs.get_mut(vp) {
-                        g.pending.push(GraphEdit::NodeMoved { id: n.id, x, y });
+                let sel: HashSet<u64> = graphs.get(vp).map(|g| g.selected.clone()).unwrap_or_default();
+                let moves: Vec<(u64, f32, f32)> = nodes
+                    .iter()
+                    .filter(|(n, _)| n.viewport == vp && sel.contains(&n.id))
+                    .map(|(n, node)| (n.id, px(node.left), px(node.top)))
+                    .collect();
+                if let Ok(mut g) = graphs.get_mut(vp) {
+                    for (id, x, y) in moves {
+                        g.pending.push(GraphEdit::NodeMoved { id, x, y });
                     }
                 }
             }
@@ -306,20 +335,23 @@ fn ngv_drag(
         *active = None;
         return;
     }
-    let (Some((node, last, moved)), Some(c)) = (*active, cursor(&windows)) else {
+
+    let (Some((last, _, vp, canvas)), Some(c)) = (*active, cursor(&windows)) else {
         return;
     };
     let delta = c - last;
-    let zoom = picks.get(node).ok().and_then(|(_, _, n)| views.get(n.canvas).ok()).map(|v| v.zoom).unwrap_or(1.0);
-    let mut now_moved = moved;
-    if delta != Vec2::ZERO {
-        if let Ok(mut n) = nodes.get_mut(node) {
-            n.left = Val::Px(px(n.left) + delta.x / zoom);
-            n.top = Val::Px(px(n.top) + delta.y / zoom);
-        }
-        now_moved = true;
+    if delta == Vec2::ZERO {
+        return;
     }
-    *active = Some((node, c, now_moved));
+    let zoom = views.get(canvas).map(|v| v.zoom).unwrap_or(1.0);
+    let sel: HashSet<u64> = graphs.get(vp).map(|g| g.selected.clone()).unwrap_or_default();
+    for (n, mut node) in &mut nodes {
+        if n.viewport == vp && sel.contains(&n.id) {
+            node.left = Val::Px(px(node.left) + delta.x / zoom);
+            node.top = Val::Px(px(node.top) + delta.y / zoom);
+        }
+    }
+    *active = Some((c, true, vp, canvas));
 }
 
 /// Drive each node's border (width + colour) from its viewport's `selected` id,
@@ -327,7 +359,7 @@ fn ngv_drag(
 /// in-progress drag). Only writes when the selection state actually flips.
 fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Node, &mut BorderColor)>) {
     for (n, mut node, mut bc) in &mut nodes {
-        let sel = views.get(n.viewport).map(|v| v.selected == Some(n.id)).unwrap_or(false);
+        let sel = views.get(n.viewport).map(|v| v.selected.contains(&n.id)).unwrap_or(false);
         let want = UiRect::all(Val::Px(if sel { 2.0 } else { 1.0 }));
         if node.border != want {
             node.border = want;
@@ -336,20 +368,55 @@ fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode,
     }
 }
 
-/// Output-port click then input-port click → record a `Connect`.
-fn ngv_connect(mut pending: Local<Option<(u64, String)>>, pressed: Query<(&Interaction, &NgvPort, &ChildOf), Changed<Interaction>>, parents: Query<&NgvNode>, mut graphs: Query<&mut NodeGraphView>) {
+/// Output-port click then input-port click → record a `Connect`. The pending
+/// output lives on the view so Esc / the live preview can see it.
+fn ngv_connect(pressed: Query<(&Interaction, &NgvPort, &ChildOf), Changed<Interaction>>, parents: Query<&NgvNode>, mut graphs: Query<&mut NodeGraphView>) {
     for (interaction, port, child_of) in &pressed {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        let Ok(node) = parents.get(child_of.parent()) else { continue };
+        let Ok(mut g) = graphs.get_mut(node.viewport) else { continue };
         if port.is_output {
-            *pending = Some((port.node_id, port.pin.clone()));
-        } else if let Some((from_node, from_pin)) = pending.take() {
-            // The viewport is reachable via the owning node.
-            if let Ok(node) = parents.get(child_of.parent()) {
-                if let Ok(mut g) = graphs.get_mut(node.viewport) {
-                    g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node: port.node_id, to_pin: port.pin.clone() });
-                }
+            g.pending_connect = Some((port.node_id, port.pin.clone()));
+        } else if let Some((from_node, from_pin)) = g.pending_connect.take() {
+            g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node: port.node_id, to_pin: port.pin.clone() });
+        }
+    }
+}
+
+/// Keyboard ops over the graph under the cursor: Delete/Backspace removes the
+/// selection, Ctrl+A selects all, Esc cancels a pending connection then clears
+/// the selection.
+fn ngv_keys(keys: Res<ButtonInput<KeyCode>>, all_nodes: Query<&NgvNode>, mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition)>) {
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let del = keys.just_pressed(KeyCode::Delete) || keys.just_pressed(KeyCode::Backspace);
+    let all = ctrl && keys.just_pressed(KeyCode::KeyA);
+    let esc = keys.just_pressed(KeyCode::Escape);
+    if !del && !all && !esc {
+        return;
+    }
+    for (vp, mut g, rcp) in &mut graphs {
+        if !rcp.cursor_over {
+            continue;
+        }
+        if del && !g.selected.is_empty() {
+            let ids: Vec<u64> = g.selected.iter().copied().collect();
+            for id in ids {
+                g.pending.push(GraphEdit::Delete { id });
+            }
+            g.selected.clear();
+            g.pending.push(GraphEdit::Select { id: None });
+        }
+        if all {
+            g.selected = all_nodes.iter().filter(|n| n.viewport == vp).map(|n| n.id).collect();
+        }
+        if esc {
+            if g.pending_connect.is_some() {
+                g.pending_connect = None;
+            } else if !g.selected.is_empty() {
+                g.selected.clear();
+                g.pending.push(GraphEdit::Select { id: None });
             }
         }
     }
