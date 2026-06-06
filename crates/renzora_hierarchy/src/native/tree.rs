@@ -4,7 +4,6 @@
 
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
-use bevy_egui::egui::Color32;
 use renzora_ember::reactive::KeyedSnapshot;
 
 use crate::cache::HierarchyTreeCache;
@@ -13,8 +12,8 @@ use crate::state::EntityNode;
 use super::row::{build_row, RowSnapshot};
 use super::HierExpanded;
 
-fn c32(c: Color32) -> Color {
-    Color::srgba_u8(c.r(), c.g(), c.b(), c.a())
+fn c32([r, g, b]: [u8; 3]) -> Color {
+    Color::srgba_u8(r, g, b, 255)
 }
 
 #[allow(clippy::too_many_arguments)]

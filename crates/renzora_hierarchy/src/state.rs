@@ -1,120 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32};
 use egui_phosphor::regular;
-use renzora_blueprint::BlueprintGraph;
-use renzora_editor::TreeDropZone;
 use renzora_editor::{
     ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter,
     HierarchyOrder,
 };
-
-/// Persistent UI state for the hierarchy panel.
-pub struct HierarchyState {
-    pub expanded: HashSet<Entity>,
-    pub search: String,
-    pub show_add_overlay: bool,
-    pub add_search: String,
-
-    // Drag & drop
-    pub drag_entities: Vec<Entity>,
-    pub drop_target: Option<(Entity, TreeDropZone)>,
-
-    // Inline rename
-    pub renaming_entity: Option<Entity>,
-    pub rename_buffer: String,
-    pub rename_focus_set: bool,
-
-    // Visible entity order — for Shift+click range selection
-    pub visible_entity_order: Vec<Entity>,
-    pub building_entity_order: Vec<Entity>,
-
-    /// Selection snapshot from the previous frame. Used to detect selection
-    /// changes so we can auto-expand the ancestors of newly selected entities
-    /// (otherwise clicking a mesh in the viewport selects a parent that's
-    /// collapsed in the tree, and the user sees nothing).
-    pub last_selection: Vec<Entity>,
-
-    /// On the next render, nudge the scroll just enough to bring this
-    /// entity's row into the visible area. Set whenever the selection
-    /// changes (e.g. viewport pick), uses `Align::None` so already-visible
-    /// rows don't move the viewport at all.
-    pub pending_reveal: Option<Entity>,
-
-    /// Force the tree's scroll back to the top on the next render. Set when
-    /// the user edits the search field so filtered results always start
-    /// from the top instead of the previous scroll position.
-    pub pending_scroll_top: bool,
-
-    // Batch rename
-    pub batch_rename_active: bool,
-    pub batch_rename_base: String,
-    pub batch_rename_start: u32,
-    pub batch_rename_entities: Vec<Entity>,
-
-    // Marquee drag selection
-    pub marquee_origin: Option<egui::Pos2>,
-    pub row_rects: Vec<(Entity, egui::Rect)>,
-
-    /// Per-rendered-row metadata captured by the tree pass and consumed by
-    /// the sticky-parent overlay in `lib.rs`. Cleared and rebuilt on each
-    /// render. Keeps just enough info to re-paint a row as a sticky header
-    /// without re-walking the cache.
-    pub row_meta: Vec<StickyRowMeta>,
-
-    /// Filter-by-type — set of registered type names the user wants to show.
-    /// Empty means no filter (show everything). The `"__other__"` sentinel
-    /// matches entities that don't have a registered type.
-    pub type_filter: HashSet<&'static str>,
-}
-
-impl Default for HierarchyState {
-    fn default() -> Self {
-        Self {
-            expanded: HashSet::new(),
-            search: String::new(),
-            show_add_overlay: false,
-            add_search: String::new(),
-            drag_entities: Vec::new(),
-            drop_target: None,
-            renaming_entity: None,
-            rename_buffer: String::new(),
-            rename_focus_set: false,
-            visible_entity_order: Vec::new(),
-            building_entity_order: Vec::new(),
-            last_selection: Vec::new(),
-            pending_reveal: None,
-            pending_scroll_top: false,
-            batch_rename_active: false,
-            batch_rename_base: String::new(),
-            batch_rename_start: 1,
-            batch_rename_entities: Vec::new(),
-            marquee_origin: None,
-            row_rects: Vec::new(),
-            row_meta: Vec::new(),
-            type_filter: HashSet::new(),
-        }
-    }
-}
-
-/// Data captured per rendered row, used by the sticky-parent overlay so it
-/// can re-paint a parent row at the top of the scroll viewport when the
-/// original row has scrolled off screen.
-#[derive(Clone)]
-pub struct StickyRowMeta {
-    pub entity: Entity,
-    pub rect: egui::Rect,
-    pub depth: usize,
-    pub has_children: bool,
-    pub is_expanded: bool,
-    pub name: String,
-    pub icon: &'static str,
-    pub icon_color: Color32,
-    pub label_color: Option<[u8; 3]>,
-    pub is_visible: bool,
-    pub is_locked: bool,
-}
 
 /// A node in the entity tree, built from ECS data. Cached in
 /// [`HierarchyTreeCache`] and only rebuilt when the tree actually changes
@@ -125,21 +16,14 @@ pub struct EntityNode {
     pub entity: Entity,
     pub name: String,
     pub icon: &'static str,
-    pub icon_color: Color32,
+    pub icon_color: [u8; 3],
     pub children: Vec<EntityNode>,
     /// Effective label color for rendering — the entity's own color, or the
     /// nearest ancestor's color if this entity hasn't been assigned one.
     pub label_color: Option<[u8; 3]>,
-    /// The entity's own assigned color, ignoring inheritance. Used by the
-    /// inspector / right-click menu so "Clear" and swatch highlights only
-    /// reflect what was actually set on this entity.
-    pub own_label_color: Option<[u8; 3]>,
     pub is_visible: bool,
     pub is_locked: bool,
-    pub is_camera: bool,
     pub is_default_camera: bool,
-    pub has_blueprint: bool,
-    pub is_scene_instance: bool,
     /// Registered type label from `ComponentIconRegistry`, or `None` when the
     /// entity didn't match any registered icon entry. Used by the hierarchy's
     /// "filter by type" UI — `None` is grouped under "Other".
@@ -177,15 +61,12 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         entity: Entity,
         name: String,
         icon: &'static str,
-        color: Color32,
+        color: [u8; 3],
         parent: Option<Entity>,
         label_color: Option<[u8; 3]>,
         is_visible: bool,
         is_locked: bool,
-        is_camera: bool,
         is_default_camera: bool,
-        has_blueprint: bool,
-        is_scene_instance: bool,
         type_name: Option<&'static str>,
     }
 
@@ -284,10 +165,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 .map(|v| *v != Visibility::Hidden)
                 .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
-            let is_camera = world.get::<Camera3d>(entity).is_some();
             let is_default_camera = world.get::<renzora::core::DefaultCamera>(entity).is_some();
-            let has_blueprint = world.get::<BlueprintGraph>(entity).is_some();
-            let is_scene_instance = world.get::<renzora::SceneInstance>(entity).is_some();
 
             named_entities.insert(entity);
             entries.push(Entry {
@@ -299,10 +177,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 label_color,
                 is_visible,
                 is_locked,
-                is_camera,
                 is_default_camera,
-                has_blueprint,
-                is_scene_instance,
                 type_name,
             });
         }
@@ -420,7 +295,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             entry.icon
         };
         let final_color = if !children.is_empty() && entry.icon == regular::CIRCLE {
-            Color32::from_rgb(170, 175, 190)
+            [170, 175, 190]
         } else {
             entry.color
         };
@@ -432,13 +307,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             icon_color: final_color,
             children,
             label_color: effective_label_color,
-            own_label_color: entry.label_color,
             is_visible: entry.is_visible,
             is_locked: entry.is_locked,
-            is_camera: entry.is_camera,
             is_default_camera: entry.is_default_camera,
-            has_blueprint: entry.has_blueprint,
-            is_scene_instance: entry.is_scene_instance,
             type_name: entry.type_name,
         }
     }
@@ -451,13 +322,13 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
 
 /// Detect an icon and color for an entity using the `ComponentIconRegistry`.
 /// Falls back to a generic circle icon if no match is found.
-fn entity_icon(world: &World, entity: Entity) -> (&'static str, Color32) {
+fn entity_icon(world: &World, entity: Entity) -> (&'static str, [u8; 3]) {
     if let Some(registry) = world.get_resource::<ComponentIconRegistry>() {
-        if let Some((icon, [r, g, b])) = registry.entity_icon(world, entity) {
-            return (icon, Color32::from_rgb(r, g, b));
+        if let Some((icon, rgb)) = registry.entity_icon(world, entity) {
+            return (icon, rgb);
         }
     }
-    (regular::CIRCLE, Color32::from_rgb(150, 150, 165))
+    (regular::CIRCLE, [150, 150, 165])
 }
 
 /// Filter the tree to only include nodes whose name matches the search.

@@ -1,5 +1,5 @@
-//! Shader preview panel — renders compiled code shaders on a fullscreen quad
-//! via render-to-texture in an egui panel.
+﻿//! Shader preview â€” renders compiled code shaders on a mesh via
+//! render-to-texture. The image is consumed by the bevy-native preview panel.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
@@ -7,19 +7,15 @@ use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui::{self, RichText, TextureId};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::{EditorCommands, EditorPanel, PanelLocation};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
-use renzora_theme::ThemeManager;
 
 use crate::ShaderEditorState;
 
 pub const SHADER_PREVIEW_LAYER: usize = 9;
 
-// ── Preview mesh selection ───────────────────────────────────────────────────
+// ---- Preview mesh selection -------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PreviewMesh {
@@ -80,26 +76,14 @@ impl PreviewMesh {
     }
 }
 
-// ── Resources ────────────────────────────────────────────────────────────────
+// ---- Resources --------------------------------------------------------------
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct ShaderPreviewImage {
     pub handle: Handle<Image>,
-    pub texture_id: Option<TextureId>,
-    pub size: (u32, u32),
 }
 
-impl Default for ShaderPreviewImage {
-    fn default() -> Self {
-        Self {
-            handle: Handle::default(),
-            texture_id: None,
-            size: (512, 512),
-        }
-    }
-}
-
-// ── Components ───────────────────────────────────────────────────────────────
+// ---- Components -------------------------------------------------------------
 
 #[derive(Component)]
 pub struct ShaderPreviewCamera;
@@ -107,12 +91,11 @@ pub struct ShaderPreviewCamera;
 #[derive(Component)]
 pub struct ShaderPreviewQuad;
 
-// ── Setup system ─────────────────────────────────────────────────────────────
+// ---- Setup system -----------------------------------------------------------
 
 fn setup_shader_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<CodeShaderMaterial>>,
 ) {
@@ -133,13 +116,8 @@ fn setup_shader_preview(
 
     let image_handle = images.add(image);
 
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-    let texture_id = user_textures.image_id(image_handle.id());
-
     commands.insert_resource(ShaderPreviewImage {
         handle: image_handle.clone(),
-        texture_id,
-        size: (512, 512),
     });
 
     // Orthographic camera looking at the quad
@@ -200,7 +178,7 @@ fn setup_shader_preview(
     ));
 }
 
-// ── Camera sync ──────────────────────────────────────────────────────────────
+// ---- Camera sync ------------------------------------------------------------
 
 fn sync_shader_preview_camera(
     editor_state: Res<ShaderEditorState>,
@@ -214,7 +192,7 @@ fn sync_shader_preview_camera(
     }
 }
 
-// ── Shader hot-swap ──────────────────────────────────────────────────────────
+// ---- Shader hot-swap --------------------------------------------------------
 
 fn update_shader_preview(
     editor_state: Res<ShaderEditorState>,
@@ -245,7 +223,7 @@ fn update_shader_preview(
     }
 }
 
-// ── Mesh swap ────────────────────────────────────────────────────────────────
+// ---- Mesh swap --------------------------------------------------------------
 
 fn swap_preview_mesh(
     editor_state: Res<ShaderEditorState>,
@@ -276,7 +254,7 @@ fn swap_preview_mesh(
     }
 }
 
-// ── Plugin ───────────────────────────────────────────────────────────────────
+// ---- Plugin -----------------------------------------------------------------
 
 pub struct ShaderPreviewPlugin;
 
@@ -293,146 +271,5 @@ impl Plugin for ShaderPreviewPlugin {
                     swap_preview_mesh,
                 ),
             );
-    }
-}
-
-// ── Panel ────────────────────────────────────────────────────────────────────
-
-pub struct ShaderPreviewPanel;
-
-impl EditorPanel for ShaderPreviewPanel {
-    fn id(&self) -> &str {
-        "shader_preview"
-    }
-
-    fn title(&self) -> &str {
-        "Shader Preview"
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::MONITOR)
-    }
-
-    fn category(&self) -> &str {
-        "Visual"
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = match world.get_resource::<ThemeManager>() {
-            Some(tm) => &tm.active_theme,
-            None => return,
-        };
-        let muted = theme.text.muted.to_color32();
-
-        let Some(preview_image) = world.get_resource::<ShaderPreviewImage>() else {
-            ui.label("Preview not initialized");
-            return;
-        };
-
-        let Some(texture_id) = preview_image.texture_id else {
-            ui.label("Preview texture not ready");
-            return;
-        };
-
-        let editor_state = world.get_resource::<ShaderEditorState>();
-        let has_shader = editor_state.is_some_and(|s| s.compiled_wgsl.is_some());
-
-        if !has_shader {
-            ui.centered_and_justified(|ui| {
-                ui.label(RichText::new("No shader compiled").size(12.0).color(muted));
-            });
-            return;
-        }
-
-        let preview_ok = editor_state.is_none_or(|s| s.preview_compatible);
-        if !preview_ok {
-            let msg = match editor_state.map(|s| s.shader_file.shader_type) {
-                Some(renzora_shader::file::ShaderType::Material) => {
-                    "Material shaders use custom bind groups — preview in scene viewport"
-                }
-                Some(renzora_shader::file::ShaderType::PostProcess) => {
-                    "Post-process preview not yet supported"
-                }
-                _ => "Preview unavailable — shader uses custom material bindings",
-            };
-            ui.centered_and_justified(|ui| {
-                ui.label(RichText::new(msg).size(11.0).color(muted));
-            });
-            return;
-        }
-
-        // ── Mesh selector toolbar ──
-        egui::Frame::new()
-            .inner_margin(egui::Margin::symmetric(8, 2))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(RichText::new("Mesh").size(11.0).color(muted));
-                    let current_mesh =
-                        editor_state.map_or(PreviewMesh::default(), |s| s.preview_mesh);
-                    egui::ComboBox::from_id_salt("preview_mesh_select")
-                        .selected_text(current_mesh.label())
-                        .width(90.0)
-                        .show_ui(ui, |ui| {
-                            for mesh in PreviewMesh::ALL {
-                                if ui
-                                    .selectable_label(current_mesh == *mesh, mesh.label())
-                                    .clicked()
-                                {
-                                    let m = *mesh;
-                                    if let Some(cmds) = world.get_resource::<EditorCommands>() {
-                                        cmds.push(move |world: &mut World| {
-                                            if let Some(mut s) =
-                                                world.get_resource_mut::<ShaderEditorState>()
-                                            {
-                                                s.preview_mesh = m;
-                                            }
-                                        });
-                                    }
-                                }
-                            }
-                        });
-                });
-            });
-
-        ui.separator();
-
-        // Render preview filling available space
-        let available = ui.available_size();
-        let size = available.x.min(available.y);
-
-        ui.vertical_centered(|ui| {
-            ui.add(
-                egui::Image::new(egui::load::SizedTexture::new(texture_id, [size, size]))
-                    .fit_to_exact_size(egui::vec2(size, size)),
-            );
-        });
-
-        // Language info below
-        if let Some(state) = editor_state {
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&state.shader_file.language)
-                        .size(11.0)
-                        .color(muted),
-                );
-                if let Some(ref path) = state.file_path {
-                    let name = std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown");
-                    ui.label(RichText::new(name).size(10.0).color(muted));
-                }
-            });
-        }
-    }
-
-    fn closable(&self) -> bool {
-        true
-    }
-
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Right
     }
 }

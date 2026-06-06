@@ -4,21 +4,15 @@
 //! - `animation` — clip library, state machine states/transitions, parameters, layers
 //! - `timeline` — transport bar, time ruler, scrubber, track lanes, keyframe editing
 
-mod animation_panel;
 mod native_animation;
 mod native_params;
 mod native_state_machine;
 mod native_studio_preview;
 mod native_timeline;
-mod params_panel;
 mod preview;
-mod state_machine_panel;
 pub mod studio_preview;
-mod studio_preview_panel;
-mod timeline_panel;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
 
 use std::sync::{Arc, Mutex};
 
@@ -268,7 +262,6 @@ impl Plugin for AnimationEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] AnimationEditorPlugin");
         let bridge = AnimEditorBridge::default();
-        let arc = bridge.pending.clone();
 
         app.init_resource::<AnimationEditorState>();
         app.init_resource::<preview::PreviewPlaybackState>();
@@ -316,15 +309,10 @@ impl Plugin for AnimationEditorPlugin {
                 .run_if(studio_preview::studio_preview_panel_mounted),
         );
 
-        app.register_panel(animation_panel::AnimationPanel::new(arc.clone()));
         app.add_plugins(native_animation::NativeAnimationPanel);
-        app.register_panel(timeline_panel::TimelinePanel::new(arc.clone()));
         app.add_plugins(native_timeline::NativeAnimTimeline);
-        app.register_panel(params_panel::AnimatorParamsPanel::new(arc));
         app.add_plugins(native_params::NativeAnimParams);
-        app.register_panel(state_machine_panel::StateMachinePanel::new());
         app.add_plugins(native_state_machine::NativeStateMachine);
-        app.register_panel(studio_preview_panel::StudioPreviewPanel);
         app.add_plugins(native_studio_preview::NativeStudioPreview);
     }
 }

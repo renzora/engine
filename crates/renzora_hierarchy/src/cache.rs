@@ -84,7 +84,7 @@ pub fn mark_hierarchy_dirty(
 }
 
 /// Exclusive system: rebuilds `HierarchyTreeCache` when dirty. Runs in
-/// `Update` so the cache is populated before the egui pass reads it.
+/// `Update` so the cache is populated before the panel reads it.
 pub fn update_hierarchy_cache(world: &mut World) {
     let dirty = world.resource::<HierarchyDirty>().0;
     let empty = world.resource::<HierarchyTreeCache>().nodes.is_empty();

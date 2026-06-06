@@ -1,7 +1,7 @@
-#![allow(deprecated)] // egui API rename pending; will migrate at next bevy_egui bump.
-
-//! Material preview panel — renders the compiled material on a preview sphere
-//! with orbit camera, displayed via render-to-texture in an egui panel.
+//! Material preview — renders the compiled material on a preview shape with an
+//! orbit camera, displayed via render-to-texture. The panel chrome lives in the
+//! native (bevy_ui) `native_preview` module; this file owns the render plugin,
+//! resources, and the shader/texture hot-swap systems.
 
 use std::marker::PhantomData;
 
@@ -11,16 +11,12 @@ use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui::{self, RichText, TextureId};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::{EditorPanel, PanelLocation};
 use renzora_shader::material::runtime::{
     new_graph_material, FallbackTexture, GraphMaterial, GraphMaterialShaderState,
 };
-use renzora_theme::ThemeManager;
 
 use crate::MaterialEditorState;
 
@@ -31,7 +27,6 @@ pub const MATERIAL_PREVIEW_LAYER: usize = 8;
 #[derive(Resource)]
 pub struct MaterialPreviewImage {
     pub handle: Handle<Image>,
-    pub texture_id: Option<TextureId>,
     pub size: (u32, u32),
 }
 
@@ -39,7 +34,6 @@ impl Default for MaterialPreviewImage {
     fn default() -> Self {
         Self {
             handle: Handle::default(),
-            texture_id: None,
             size: (512, 512),
         }
     }
@@ -73,13 +67,14 @@ impl PreviewShape {
         }
     }
 
+    /// Phosphor icon *name* for this shape (resolved to a glyph by the native UI).
     pub fn icon(self) -> &'static str {
         match self {
-            Self::Sphere => egui_phosphor::regular::GLOBE_HEMISPHERE_EAST,
-            Self::Cube => egui_phosphor::regular::CUBE,
-            Self::Cylinder => egui_phosphor::regular::CYLINDER,
-            Self::Torus => egui_phosphor::regular::CIRCLE_DASHED,
-            Self::Plane => egui_phosphor::regular::SQUARE,
+            Self::Sphere => "globe-hemisphere-east",
+            Self::Cube => "cube",
+            Self::Cylinder => "cylinder",
+            Self::Torus => "circle-dashed",
+            Self::Plane => "square",
         }
     }
 }
@@ -131,7 +126,6 @@ pub struct MaterialPreviewMesh;
 fn setup_material_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<GraphMaterial>>,
     fallback: Res<FallbackTexture>,
@@ -153,12 +147,8 @@ fn setup_material_preview(
 
     let image_handle = images.add(image);
 
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-    let texture_id = user_textures.image_id(image_handle.id());
-
     commands.insert_resource(MaterialPreviewImage {
         handle: image_handle.clone(),
-        texture_id,
         size: (512, 512),
     });
 
@@ -520,201 +510,3 @@ impl Plugin for MaterialPreviewPlugin {
     }
 }
 
-// ── Panel ───────────────────────────────────────────────────────────────────
-
-pub struct MaterialPreviewPanel;
-
-impl EditorPanel for MaterialPreviewPanel {
-    fn id(&self) -> &str {
-        "material_preview"
-    }
-
-    fn title(&self) -> &str {
-        "Material Preview"
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some(egui_phosphor::regular::CUBE)
-    }
-
-    fn category(&self) -> &str {
-        "Visual"
-    }
-
-    fn ui(&self, ui: &mut egui::Ui, world: &World) {
-        let theme = match world.get_resource::<ThemeManager>() {
-            Some(tm) => &tm.active_theme,
-            None => return,
-        };
-        let text_muted = theme.text.muted.to_color32();
-
-        let Some(preview_image) = world.get_resource::<MaterialPreviewImage>() else {
-            ui.label("Preview not initialized");
-            return;
-        };
-
-        let Some(texture_id) = preview_image.texture_id else {
-            ui.label("Preview texture not ready");
-            return;
-        };
-
-        let editor_state = world.get_resource::<MaterialEditorState>();
-        let has_material = editor_state.is_some_and(|s| s.compiled_wgsl.is_some());
-
-        if !has_material {
-            ui.centered_and_justified(|ui| {
-                ui.label(
-                    RichText::new("No material compiled")
-                        .size(12.0)
-                        .color(text_muted),
-                );
-            });
-            return;
-        }
-
-        let orbit = world.get_resource::<MaterialPreviewOrbit>();
-
-        // ── Toolbar ──
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
-            ui.style_mut().spacing.button_padding = egui::vec2(4.0, 1.0);
-
-            if let Some(orbit) = orbit {
-                // Shape dropdown
-                let shape_label = format!("{} {}", orbit.shape.icon(), orbit.shape.label());
-                let shape_btn = ui.add(egui::Button::new(
-                    RichText::new(shape_label).size(10.0).color(text_muted),
-                ));
-                let shape_id = ui.make_persistent_id("preview_shape");
-                if shape_btn.clicked() {
-                    ui.memory_mut(|m| m.toggle_popup(shape_id));
-                }
-                egui::popup_below_widget(
-                    ui,
-                    shape_id,
-                    &shape_btn,
-                    egui::PopupCloseBehavior::CloseOnClick,
-                    |ui| {
-                        for &s in PreviewShape::ALL {
-                            if ui.button(format!("{} {}", s.icon(), s.label())).clicked() {
-                                let shape = s;
-                                if let Some(cmds) =
-                                    world.get_resource::<renzora_editor::EditorCommands>()
-                                {
-                                    cmds.push(move |world: &mut World| {
-                                        world.resource_mut::<MaterialPreviewOrbit>().shape = shape;
-                                    });
-                                }
-                            }
-                        }
-                    },
-                );
-
-                ui.separator();
-
-                // Auto-rotate toggle
-                let rotate_icon = if orbit.auto_rotate {
-                    egui_phosphor::regular::ARROWS_CLOCKWISE
-                } else {
-                    egui_phosphor::regular::ARROW_CLOCKWISE
-                };
-                let rotate_color = if orbit.auto_rotate {
-                    egui::Color32::from_rgb(80, 200, 120)
-                } else {
-                    text_muted
-                };
-                if ui
-                    .add(egui::Button::new(
-                        RichText::new(rotate_icon).size(11.0).color(rotate_color),
-                    ))
-                    .on_hover_text("Auto-rotate")
-                    .clicked()
-                {
-                    let new_val = !orbit.auto_rotate;
-                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                        cmds.push(move |world: &mut World| {
-                            world.resource_mut::<MaterialPreviewOrbit>().auto_rotate = new_val;
-                        });
-                    }
-                }
-
-                // Background toggle
-                let bg_icon = if orbit.dark_bg {
-                    egui_phosphor::regular::MOON
-                } else {
-                    egui_phosphor::regular::SUN
-                };
-                if ui
-                    .add(egui::Button::new(
-                        RichText::new(bg_icon).size(11.0).color(text_muted),
-                    ))
-                    .on_hover_text("Toggle background")
-                    .clicked()
-                {
-                    let new_val = !orbit.dark_bg;
-                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                        cmds.push(move |world: &mut World| {
-                            world.resource_mut::<MaterialPreviewOrbit>().dark_bg = new_val;
-                        });
-                    }
-                }
-            }
-        });
-
-        ui.separator();
-
-        // ── Preview image ──
-        let available = ui.available_size();
-        let size = available.x.min(available.y);
-
-        ui.vertical_centered(|ui| {
-            let response = ui.add(
-                egui::Image::new(egui::load::SizedTexture::new(texture_id, [size, size]))
-                    .fit_to_exact_size(egui::vec2(size, size))
-                    .sense(egui::Sense::click_and_drag()),
-            );
-
-            // Orbit interaction — drag to rotate, scroll to zoom
-            if let Some(orbit) = orbit {
-                let mut new_yaw = orbit.yaw;
-                let mut new_pitch = orbit.pitch;
-                let mut new_distance = orbit.distance;
-
-                if response.dragged_by(egui::PointerButton::Primary) {
-                    let delta = response.drag_delta();
-                    new_yaw += delta.x * 0.01;
-                    new_pitch = (new_pitch - delta.y * 0.01).clamp(-1.4, 1.4);
-                }
-
-                if response.hovered() {
-                    let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                    if scroll.abs() > 0.0 {
-                        new_distance = (new_distance - scroll * 0.01).clamp(1.5, 10.0);
-                    }
-                }
-
-                if (new_yaw - orbit.yaw).abs() > 1e-5
-                    || (new_pitch - orbit.pitch).abs() > 1e-5
-                    || (new_distance - orbit.distance).abs() > 1e-5
-                {
-                    if let Some(cmds) = world.get_resource::<renzora_editor::EditorCommands>() {
-                        cmds.push(move |world: &mut World| {
-                            let mut orbit = world.resource_mut::<MaterialPreviewOrbit>();
-                            orbit.yaw = new_yaw;
-                            orbit.pitch = new_pitch;
-                            orbit.distance = new_distance;
-                        });
-                    }
-                }
-            }
-        });
-    }
-
-    fn closable(&self) -> bool {
-        true
-    }
-
-    fn default_location(&self) -> PanelLocation {
-        PanelLocation::Left
-    }
-}

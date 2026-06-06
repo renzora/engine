@@ -4,15 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-renzora_theme = { path = "../renzora_theme" }
-egui-phosphor = { workspace = true }
-bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_auth = { path = "../renzora_auth" }
-renzora_splash = { path = "../renzora_splash" }
-renzora_shader = { path = "../renzora_shader" }
 # bevy_ui-native panel content + Send+Sync channels for the async result polling.
 renzora_ember = { path = "../renzora_ember" }
 crossbeam-channel = "0.5"
@@ -21,7 +16,6 @@ crossbeam-channel = "0.5"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ureq = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
-kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
 
 [lints]
 workspace = true

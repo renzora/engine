@@ -4,23 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-renzora_theme = { path = "../renzora_theme" }
-egui = { workspace = true }
-egui-phosphor = { workspace = true }
-egui_code_editor = { workspace = true }
-bevy_egui = { workspace = true }
 renzora_editor = { path = "../renzora_editor" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_ui = { path = "../renzora_ui" }
 renzora_shader = { path = "../renzora_shader" }
 # bevy_ui-native panel content (the egui → bevy_ui migration).
 renzora_ember = { path = "../renzora_ember" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rfd = "0.15"
 
 [lints]
 workspace = true

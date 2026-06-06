@@ -123,7 +123,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     // Current shape glyph (raw phosphor char from PreviewShape::icon()).
     let glyph = commands.spawn((Text::new(""), ui_font(&fonts.phosphor, 11.0), TextColor(rgb(text_muted())))).id();
-    bind_with(commands, glyph, |w| orbit(w).map(|o| o.shape.icon().to_string()).unwrap_or_default(), |w, e, s: &String| {
+    bind_with(commands, glyph, |w| orbit(w).and_then(|o| icon_glyph(o.shape.icon())).map(|g| g.to_string()).unwrap_or_default(), |w, e, s: &String| {
         if let Some(mut t) = w.get_mut::<Text>(e) {
             if t.0 != *s {
                 t.0 = s.clone();

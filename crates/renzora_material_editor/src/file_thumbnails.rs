@@ -26,7 +26,6 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use uuid::Uuid;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
@@ -575,7 +574,6 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
                 move |trigger: On<ScreenshotCaptured>,
                       mut cmds: Commands,
                       mut images: ResMut<Assets<Image>>,
-                      mut user_textures: ResMut<EguiUserTextures>,
                       mut registry: ResMut<MaterialThumbnailRegistry>,
                       mut pending: ResMut<PendingCaptures>,
                       mut cells: ResMut<CaptureCells>,
@@ -612,12 +610,12 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
                         }
                     }
 
+                    // Publish the rendered thumbnail's `Handle<Image>` to the
+                    // registry; the native (bevy_ui) browser/inspector display it
+                    // via `ImageNode`. The egui `TextureId` slot is unused by the
+                    // native UI, so pass a placeholder.
                     let captured_handle = images.add(captured);
-                    user_textures.add_image(EguiTextureHandle::Strong(captured_handle.clone()));
-                    match user_textures.image_id(captured_handle.id()) {
-                        Some(tid) => registry.complete(material_path.clone(), tid, captured_handle.clone()),
-                        None => registry.cancel(&material_path),
-                    }
+                    registry.complete(material_path.clone(), egui::TextureId::User(0), captured_handle.clone());
 
                     if let Some(job) = job.as_ref() {
                         tasks.advance(job.handle, 1);
@@ -722,7 +720,6 @@ fn queue_loading_thumbnails(
 
 fn resolve_disk_loads(
     mut disk_loads: ResMut<PendingDiskLoads>,
-    mut user_textures: ResMut<EguiUserTextures>,
     mut registry: ResMut<MaterialThumbnailRegistry>,
     mut tasks: ResMut<LoadingTasks>,
     job: Option<Res<MaterialThumbnailLoadingJob>>,
@@ -740,11 +737,7 @@ fn resolve_disk_loads(
                     .and_then(|n| n.to_str())
                     .unwrap_or("")
                     .to_string();
-                user_textures.add_image(EguiTextureHandle::Strong(entry.handle.clone()));
-                match user_textures.image_id(entry.handle.id()) {
-                    Some(tid) => registry.complete(entry.material_path, tid, entry.handle.clone()),
-                    None => registry.cancel(&entry.material_path),
-                }
+                registry.complete(entry.material_path, egui::TextureId::User(0), entry.handle.clone());
                 if let Some(job) = job.as_ref() {
                     tasks.advance(job.handle, 1);
                     if let Some(t) = tasks

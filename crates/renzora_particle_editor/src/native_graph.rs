@@ -21,8 +21,6 @@ use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_g
 use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
 use renzora_hanabi::{load_effect_from_file, ParticleEditorState};
 
-use crate::graph_editor::category_icon;
-
 pub struct NativeParticleGraph;
 
 impl Plugin for NativeParticleGraph {
@@ -45,6 +43,19 @@ struct PartGraph;
 struct AddNodeBtn;
 #[derive(Component)]
 struct PresetsBtn;
+
+/// Phosphor icon name for a particle node category (for native ember menus).
+fn category_icon(category: &str) -> &'static str {
+    match category {
+        "Spawn" => "sparkle",
+        "Init" => "arrows-out",
+        "Update" => "wind",
+        "Render" => "palette",
+        "Math" => "calculator",
+        "Constants" => "hash",
+        _ => "circle",
+    }
+}
 
 fn cat_color(category: &str) -> (u8, u8, u8) {
     match category {

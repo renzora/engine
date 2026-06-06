@@ -19,12 +19,28 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
+use renzora_editor::AssetDragPayload;
 use renzora_shader::material::graph::{PinDir, PinTemplate, PinType, PinValue};
 use renzora_shader::material::nodes::node_def;
-use renzora_ui::asset_drag::AssetDragPayload;
 
-use crate::graph_editor::category_icon;
 use crate::MaterialEditorState;
+
+/// Phosphor icon name for a material node category (for native ember headers).
+fn category_icon(category: &str) -> &'static str {
+    match category {
+        "Input" => "sign-in",
+        "Parameter" => "sliders-horizontal",
+        "Texture" => "image",
+        "Math" => "calculator",
+        "Vector" => "arrows-out-cardinal",
+        "Color" => "palette",
+        "Procedural" => "waves",
+        "Animation" => "timer",
+        "Utility" => "wrench",
+        "Output" => "sign-out",
+        _ => "circle",
+    }
+}
 
 const LABEL_W: f32 = 88.0;
 const AXES: [(&str, (u8, u8, u8)); 4] =

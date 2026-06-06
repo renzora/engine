@@ -1,11 +1,8 @@
-pub mod camera;
-pub mod culling;
-pub mod ecs_stats;
+//! Shared diagnostic state resources read by the native (ember) debug panels.
+//!
+//! These modules hold only the per-frame snapshot `Resource`s (updated by the
+//! crate's backend-agnostic `update_*` systems); the native panels in
+//! [`crate::native`] render them.
+
 pub mod lumen;
-pub mod material_resolver;
-pub mod memory;
-pub mod performance;
-pub mod render_pipeline;
-pub mod render_stats;
 pub mod scripting;
-pub mod system_profiler;

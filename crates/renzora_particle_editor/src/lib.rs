@@ -2,18 +2,12 @@
 //!
 //! Full-featured editor for bevy_hanabi particle effects with live preview.
 
-mod editor_panel;
-mod graph_editor;
-mod graph_panel;
 mod native_editor_panel;
 mod native_graph;
 mod native_preview_panel;
 mod preview;
-mod preview_panel;
-mod widgets;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
 
 #[derive(Default)]
 pub struct ParticleEditorPlugin;
@@ -22,9 +16,6 @@ impl Plugin for ParticleEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ParticleEditorPlugin");
         app.add_plugins(preview::ParticlePreviewPlugin);
-        app.register_panel(editor_panel::ParticleEditorPanel);
-        app.register_panel(graph_panel::ParticleGraphPanel);
-        app.register_panel(preview_panel::ParticlePreviewPanel);
         app.add_plugins(native_preview_panel::NativeParticlePreview);
         app.add_plugins(native_editor_panel::NativeParticleEditor);
         app.add_plugins(native_graph::NativeParticleGraph);

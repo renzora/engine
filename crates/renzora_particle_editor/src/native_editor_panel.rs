@@ -598,10 +598,34 @@ fn save_current(w: &mut World, save_as: bool) {
             std::path::PathBuf::from(format!("{}.particle", base))
         }
     };
-    if crate::editor_panel::save_effect_to_file(&target, &effect) {
+    if save_effect_to_file(&target, &effect) {
         if let Some(mut s) = w.get_resource_mut::<ParticleEditorState>() {
             s.current_file_path = Some(target.to_string_lossy().to_string());
             s.is_modified = false;
+        }
+    }
+}
+
+/// Serialize a particle effect definition to a `.particle` (RON) file.
+fn save_effect_to_file(path: &std::path::Path, effect: &HanabiEffectDefinition) -> bool {
+    let pretty = ron::ser::PrettyConfig::new()
+        .depth_limit(4)
+        .separate_tuple_members(true);
+
+    match ron::ser::to_string_pretty(effect, pretty) {
+        Ok(contents) => match std::fs::write(path, contents) {
+            Ok(_) => {
+                info!("Saved particle effect to {:?}", path);
+                true
+            }
+            Err(e) => {
+                error!("Failed to write particle effect {:?}: {}", path, e);
+                false
+            }
+        },
+        Err(e) => {
+            error!("Failed to serialize particle effect: {}", e);
+            false
         }
     }
 }

@@ -20,13 +20,29 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
-use renzora_shader::material::graph::{PinDir, PinType, PinValue};
+use renzora_shader::material::codegen;
+use renzora_shader::material::graph::{MaterialGraph, PinDir, PinType, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::nodes::{categories, node_def, nodes_in_category};
 
-use crate::graph_editor::category_icon;
-use crate::graph_panel::{sync_to_entity, sync_to_file};
 use crate::{MaterialEditMode, MaterialEditorState};
+
+/// Phosphor icon name for a material node category (for native ember menus).
+fn category_icon(category: &str) -> &'static str {
+    match category {
+        "Input" => "sign-in",
+        "Parameter" => "sliders-horizontal",
+        "Texture" => "image",
+        "Math" => "calculator",
+        "Vector" => "arrows-out-cardinal",
+        "Color" => "palette",
+        "Procedural" => "waves",
+        "Animation" => "timer",
+        "Utility" => "wrench",
+        "Output" => "sign-out",
+        _ => "circle",
+    }
+}
 
 pub struct NativeMaterialGraph;
 
@@ -421,4 +437,113 @@ fn empty() -> KeyedSnapshot {
 }
 fn hasher() -> std::collections::hash_map::DefaultHasher {
     std::collections::hash_map::DefaultHasher::new()
+}
+
+// ── Selection / document orchestration ───────────────────────────────────────
+
+/// Load (or create) a material graph for a standalone `.material` document tab.
+fn sync_to_file(world: &mut World, path: String) {
+    let fs_path = if let Some(project) = world.get_resource::<CurrentProject>() {
+        project.resolve_path(&path).to_string_lossy().to_string()
+    } else {
+        path.clone()
+    };
+
+    let mut state = world.resource_mut::<MaterialEditorState>();
+    state.editing_entity = None;
+    state.selected_node = None;
+    state.is_dirty = false;
+
+    if let Ok(json) = std::fs::read_to_string(&fs_path) {
+        if let Ok(graph) = serde_json::from_str::<MaterialGraph>(&json) {
+            let result = codegen::compile(&graph);
+            state.compiled_wgsl = Some(result.fragment_shader);
+            state.compile_errors = result.errors;
+            state.graph = graph;
+            state.edit_mode = MaterialEditMode::EditingFile { path };
+            return;
+        }
+    }
+
+    // File missing or unparseable — start a fresh graph named after the file
+    // so the user can save it back into place.
+    warn!("[material_editor] Failed to load asset '{}', starting fresh", path);
+    let name = std::path::Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("material").to_string();
+    let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+    let result = codegen::compile(&graph);
+    state.compiled_wgsl = Some(result.fragment_shader);
+    state.compile_errors = result.errors;
+    state.graph = graph;
+    state.edit_mode = MaterialEditMode::EditingFile { path };
+}
+
+/// Load or create a material graph for the newly selected entity.
+fn sync_to_entity(
+    world: &mut World,
+    new_entity: Option<Entity>,
+    has_mesh: bool,
+    mat_ref_path: Option<String>,
+    entity_name: Option<String>,
+) {
+    let mut state = world.resource_mut::<MaterialEditorState>();
+    state.editing_entity = new_entity;
+    state.selected_node = None;
+    state.is_dirty = false;
+
+    let Some(entity) = new_entity else {
+        state.edit_mode = MaterialEditMode::Inactive;
+        state.graph = MaterialGraph::new("New Material", renzora_shader::material::graph::MaterialDomain::Surface);
+        state.compiled_wgsl = None;
+        state.compile_errors.clear();
+        return;
+    };
+
+    if !has_mesh {
+        state.edit_mode = MaterialEditMode::Inactive;
+        state.graph = MaterialGraph::new("New Material", renzora_shader::material::graph::MaterialDomain::Surface);
+        state.compiled_wgsl = None;
+        state.compile_errors.clear();
+        return;
+    }
+
+    if let Some(path) = mat_ref_path {
+        // Entity has a MaterialRef — load the .material file.
+        let fs_path = if let Some(project) = world.get_resource::<CurrentProject>() {
+            project.resolve_path(&path).to_string_lossy().to_string()
+        } else {
+            path.clone()
+        };
+
+        let mut state = world.resource_mut::<MaterialEditorState>();
+        if let Ok(json) = std::fs::read_to_string(&fs_path) {
+            if let Ok(graph) = serde_json::from_str::<MaterialGraph>(&json) {
+                let result = codegen::compile(&graph);
+                state.compiled_wgsl = Some(result.fragment_shader);
+                state.compile_errors = result.errors;
+                state.graph = graph;
+                state.edit_mode = MaterialEditMode::Existing { path, entity };
+                return;
+            }
+        }
+
+        warn!("[material_editor] Failed to load '{}', starting fresh", path);
+        let name = std::path::Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("material").to_string();
+        let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+        let result = codegen::compile(&graph);
+        state.compiled_wgsl = Some(result.fragment_shader);
+        state.compile_errors = result.errors;
+        state.graph = graph;
+        state.edit_mode = MaterialEditMode::Pending { entity };
+    } else {
+        // No MaterialRef — show empty graph, will save on first edit.
+        let name = entity_name.unwrap_or_else(|| format!("material_{}", entity.index()));
+        let graph = MaterialGraph::new(&name, renzora_shader::material::graph::MaterialDomain::Surface);
+        let result = codegen::compile(&graph);
+
+        let mut state = world.resource_mut::<MaterialEditorState>();
+        state.compiled_wgsl = Some(result.fragment_shader);
+        state.compile_errors = result.errors;
+        state.graph = graph;
+        state.edit_mode = MaterialEditMode::Pending { entity };
+    }
 }

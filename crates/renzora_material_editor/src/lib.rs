@@ -4,16 +4,12 @@
 //! into the graph editor. Edits auto-save to disk.
 
 pub mod file_thumbnails;
-mod graph_editor;
-mod graph_panel;
-mod inspector;
 mod material_inspector;
 mod native_graph;
 mod native_inspector;
 mod native_material_ref;
 mod native_preview;
 pub mod preview;
-mod thumbnails;
 
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
@@ -82,11 +78,7 @@ impl Plugin for MaterialEditorPlugin {
         app.init_resource::<MaterialEditorState>();
         app.register_type::<Mesh3d>();
         app.add_plugins(preview::MaterialPreviewPlugin);
-        app.add_plugins(thumbnails::NodeThumbnailPlugin);
         app.add_plugins(file_thumbnails::MaterialFileThumbnailPlugin);
-        app.register_panel(graph_panel::MaterialGraphPanel);
-        app.register_panel(inspector::MaterialInspectorPanel);
-        app.register_panel(preview::MaterialPreviewPanel);
         app.add_plugins(native_inspector::NativeMaterialInspector);
         app.add_plugins(native_material_ref::NativeMaterialRef);
         app.add_plugins(native_preview::NativeMaterialPreview);

@@ -2,24 +2,21 @@
 
 mod brush_layer_paint;
 mod native;
-mod panel;
 mod spline_gizmos;
 mod systems;
 mod terrain_inspector;
 mod terrain_layers_ui;
-mod tool_options;
-mod tool_panel;
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
 use renzora_editor::{
     ActiveTool, AppEditorExt, EditorSelection, EntityPreset, InspectorEntry, ToolEntry,
-    ToolOptionsRegistry, ToolSection,
+    ToolSection,
 };
 use renzora_spline::SplinePath;
 use renzora_terrain::data::TerrainData;
 
-use terrain_inspector::{render_terrain_inspector, sync_active_tool_system, TerrainInspectorTab};
+use terrain_inspector::{sync_active_tool_system, TerrainInspectorTab};
 
 #[derive(Default)]
 pub struct TerrainEditorPlugin;
@@ -27,22 +24,12 @@ pub struct TerrainEditorPlugin;
 impl Plugin for TerrainEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] TerrainEditorPlugin");
-        app.register_panel(panel::TerrainToolsPanel::new());
-        // Native (bevy_ui/ember) port of the egui terrain panel; its registered
-        // content overrides the egui panel body for id "terrain_tools".
+        // Native (bevy_ui/ember) terrain tools panel (id "terrain_tools").
         app.add_plugins(native::NativeTerrain);
         app.register_inspector(terrain_data_entry())
             .register_inspector(terrain_layers_ui::terrain_layers_entry())
-            .init_resource::<ToolOptionsRegistry>()
             .init_resource::<TerrainInspectorTab>()
             .init_resource::<terrain_layers_ui::ActiveBrushLayer>();
-
-        // Register context-sensitive viewport-header options for brush tools.
-        {
-            let mut reg = app.world_mut().resource_mut::<ToolOptionsRegistry>();
-            reg.register(ActiveTool::TerrainSculpt, tool_options::draw_sculpt_options);
-            reg.register(ActiveTool::TerrainPaint, tool_options::draw_paint_options);
-        }
 
         // Terrain toolbar buttons — visible whenever a terrain exists in the
         // scene (even if not currently selected). Clicking selects the terrain,
@@ -239,7 +226,7 @@ fn terrain_data_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],
-        custom_ui_fn: Some(render_terrain_inspector),
+        custom_ui_fn: None,
     }
 }
 

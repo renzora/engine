@@ -1,15 +1,12 @@
 //! Shader Editor — code-based shader authoring with multi-language support.
 
-pub mod code_panel;
-pub mod compiler_log;
+mod code_panel;
 mod native_compiler_log;
 mod native_preview;
 mod native_properties;
 pub mod preview;
-pub mod properties;
 
 use bevy::prelude::*;
-use renzora_editor::AppEditorExt;
 use renzora_shader::backend::ShaderCompileError;
 use renzora_shader::file::ShaderFile;
 
@@ -62,10 +59,6 @@ impl Plugin for ShaderEditorPlugin {
         info!("[editor] ShaderEditorPlugin");
         app.init_resource::<ShaderEditorState>();
         app.add_plugins(preview::ShaderPreviewPlugin);
-        app.register_panel(code_panel::ShaderCodePanel::default());
-        app.register_panel(compiler_log::ShaderCompilerLogPanel);
-        app.register_panel(properties::ShaderPropertiesPanel);
-        app.register_panel(preview::ShaderPreviewPanel);
         app.add_plugins(native_preview::NativeShaderPreview);
         app.add_plugins(native_compiler_log::NativeShaderCompilerLog);
         app.add_plugins(native_properties::NativeShaderProperties);

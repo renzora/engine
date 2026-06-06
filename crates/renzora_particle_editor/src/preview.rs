@@ -8,8 +8,6 @@ use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy_egui::egui::TextureId;
-use bevy_egui::{EguiTextureHandle, EguiUserTextures};
 use bevy_hanabi::prelude::*;
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor::DockingState;
@@ -23,7 +21,6 @@ pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 #[derive(Resource)]
 pub struct ParticlePreviewImage {
     pub handle: Handle<Image>,
-    pub texture_id: Option<TextureId>,
     pub size: (u32, u32),
 }
 
@@ -31,7 +28,6 @@ impl Default for ParticlePreviewImage {
     fn default() -> Self {
         Self {
             handle: Handle::default(),
-            texture_id: None,
             size: (512, 512),
         }
     }
@@ -78,7 +74,6 @@ pub struct ParticlePreviewTracker {
 fn setup_particle_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut user_textures: ResMut<EguiUserTextures>,
 ) {
     let size = Extent3d {
         width: 512,
@@ -97,12 +92,8 @@ fn setup_particle_preview(
 
     let image_handle = images.add(image);
 
-    user_textures.add_image(EguiTextureHandle::Strong(image_handle.clone()));
-    let texture_id = user_textures.image_id(image_handle.id());
-
     commands.insert_resource(ParticlePreviewImage {
         handle: image_handle.clone(),
-        texture_id,
         size: (512, 512),
     });
 

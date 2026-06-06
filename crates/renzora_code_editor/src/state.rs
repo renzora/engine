@@ -67,7 +67,7 @@ pub struct CodeEditorState {
     /// Highlighted row in the popup.
     pub autocomplete_selected: usize,
     /// Anchor position (bottom-left of the screen-space popup).
-    pub autocomplete_anchor: Option<bevy_egui::egui::Pos2>,
+    pub autocomplete_anchor: Option<bevy::math::Vec2>,
     /// Set by a popup row click; consumed the same frame to insert + close.
     pub autocomplete_click_commit: bool,
 
