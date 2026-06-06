@@ -260,7 +260,7 @@ fn show_crash_dialog(report: &CrashReport) {
 }
 
 // =============================================================================
-// Editor-only: egui window for previous session crash reports
+// Editor-only: native (ember / bevy_ui) window for previous-session crash reports
 // =============================================================================
 
 /// State for the crash report window UI
@@ -272,7 +272,7 @@ pub struct CrashReportWindowState {
 
 /// Plugin that installs crash reporting.
 /// - Always installs the panic hook and checks for previous crashes.
-/// - When the `editor` feature is enabled, also renders an egui crash report window.
+/// - With the `editor` feature, renders a native bevy_ui (ember) crash window.
 pub struct CrashReportPlugin;
 
 impl Plugin for CrashReportPlugin {
@@ -283,9 +283,14 @@ impl Plugin for CrashReportPlugin {
 
         #[cfg(feature = "editor")]
         {
+            use renzora_editor::SplashState;
             app.add_systems(
-                bevy_egui::EguiPrimaryContextPass,
-                render_crash_report_window,
+                Update,
+                (
+                    overlay_ui::manage_crash_overlay,
+                    overlay_ui::crash_overlay_buttons,
+                )
+                    .run_if(in_state(SplashState::Editor)),
             );
         }
     }
@@ -300,88 +305,189 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
     }
 }
 
-/// System to render the crash report window (editor only)
+/// Native bevy_ui (ember) crash report overlay — the replacement for the old
+/// egui window. A dimmed backdrop + centered panel showing the previous
+/// session's error / location / backtrace, with Copy-to-clipboard and Close.
 #[cfg(feature = "editor")]
-fn render_crash_report_window(
-    mut contexts: bevy_egui::EguiContexts,
-    mut state: ResMut<CrashReportWindowState>,
-) {
-    use bevy_egui::egui;
+mod overlay_ui {
+    use super::{CrashReport, CrashReportWindowState};
 
-    if !state.show_window {
-        return;
+    use bevy::ecs::world::CommandQueue;
+    use bevy::prelude::*;
+    use bevy::ui::FocusPolicy;
+
+    use renzora_ember::font::{ui_font, EmberFonts};
+    use renzora_ember::theme::{border, popup_bg, rgb, text_muted, text_primary};
+    use renzora_ember::widgets::{button, scroll_area, OverlaySurface};
+
+    #[derive(Component)]
+    pub(super) struct CrashOverlayRoot;
+    #[derive(Component)]
+    pub(super) struct CrashCloseButton;
+    #[derive(Component)]
+    pub(super) struct CrashCopyButton;
+
+    /// Spawn the overlay when a previous crash is flagged; tear it down when cleared.
+    pub(super) fn manage_crash_overlay(world: &mut World) {
+        let show = world
+            .get_resource::<CrashReportWindowState>()
+            .is_some_and(|s| s.show_window && s.report.is_some());
+        let mut q = world.query_filtered::<Entity, With<CrashOverlayRoot>>();
+        let existing: Vec<Entity> = q.iter(world).collect();
+
+        if show && existing.is_empty() {
+            let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+                return;
+            };
+            let report = world
+                .resource::<CrashReportWindowState>()
+                .report
+                .clone()
+                .unwrap();
+            let mut queue = CommandQueue::default();
+            {
+                let mut commands = Commands::new(&mut queue, world);
+                spawn_overlay(&mut commands, &fonts, &report);
+            }
+            queue.apply(world);
+        } else if !show && !existing.is_empty() {
+            for e in existing {
+                world.entity_mut(e).despawn();
+            }
+        }
     }
 
-    let Some(report) = state.report.clone() else {
-        state.show_window = false;
-        return;
-    };
+    fn line(
+        commands: &mut Commands,
+        font: &Handle<Font>,
+        text: &str,
+        color: (u8, u8, u8),
+        size: f32,
+    ) -> Entity {
+        commands
+            .spawn((Text::new(text), ui_font(font, size), TextColor(rgb(color))))
+            .id()
+    }
 
-    let Ok(ctx) = contexts.ctx_mut() else { return };
+    fn spawn_overlay(commands: &mut Commands, fonts: &EmberFonts, report: &CrashReport) {
+        let backdrop = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+                GlobalZIndex(9800),
+                FocusPolicy::Block,
+                Interaction::default(),
+                OverlaySurface,
+                CrashOverlayRoot,
+                Name::new("crash-overlay"),
+            ))
+            .id();
 
-    let mut open = state.show_window;
-    let mut close_clicked = false;
+        let panel = commands
+            .spawn((
+                Node {
+                    width: Val::Px(640.0),
+                    max_width: Val::Percent(94.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(6.0),
+                    padding: UiRect::all(Val::Px(14.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(popup_bg())),
+                BorderColor::all(rgb(border())),
+                FocusPolicy::Block,
+                Name::new("crash-panel"),
+            ))
+            .id();
 
-    egui::Window::new("Previous Session Crash Report")
-        .open(&mut open)
-        .default_size([600.0, 400.0])
-        .resizable(true)
-        .collapsible(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
-            ui.vertical(|ui| {
-                ui.heading("The application crashed in the previous session");
-                ui.add_space(8.0);
+        let heading = line(
+            commands,
+            &fonts.ui,
+            "The application crashed in the previous session",
+            text_primary(),
+            15.0,
+        );
+        let ts = line(
+            commands,
+            &fonts.ui,
+            &format!("Timestamp: {}", report.timestamp),
+            text_muted(),
+            12.0,
+        );
+        let err_label = line(commands, &fonts.ui, "Error:", text_muted(), 12.0);
+        let err = line(commands, &fonts.ui, &report.message, (235, 110, 110), 13.0);
+        let loc_label = line(commands, &fonts.ui, "Location:", text_muted(), 12.0);
+        let loc = line(commands, &fonts.ui, &report.location, text_primary(), 12.0);
+        let bt_label = line(commands, &fonts.ui, "Backtrace:", text_muted(), 12.0);
 
-                ui.horizontal(|ui| {
-                    ui.label("Timestamp:");
-                    ui.monospace(&report.timestamp);
-                });
+        // Scrollable backtrace.
+        let bt_content = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(6.0)),
+                ..default()
+            })
+            .id();
+        let bt_text = commands
+            .spawn((
+                Text::new(report.backtrace.clone()),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_muted())),
+            ))
+            .id();
+        commands.entity(bt_content).add_child(bt_text);
+        let bt_scroll = scroll_area(commands, bt_content, 240.0);
 
-                ui.add_space(4.0);
+        // Button row.
+        let copy_btn = button(commands, &fonts.ui, "Copy to Clipboard");
+        commands.entity(copy_btn).insert(CrashCopyButton);
+        let close_btn = button(commands, &fonts.ui, "Close");
+        commands.entity(close_btn).insert(CrashCloseButton);
+        let btn_row = commands
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                column_gap: Val::Px(8.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                ..default()
+            })
+            .id();
+        commands.entity(btn_row).add_children(&[copy_btn, close_btn]);
 
-                ui.label("Error:");
-                ui.label(
-                    egui::RichText::new(&report.message)
-                        .color(egui::Color32::from_rgb(255, 100, 100)),
-                );
+        commands.entity(panel).add_children(&[
+            heading, ts, err_label, err, loc_label, loc, bt_label, bt_scroll, btn_row,
+        ]);
+        commands.entity(backdrop).add_child(panel);
+    }
 
-                ui.label("Location:");
-                ui.monospace(&report.location);
-
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                ui.label("Backtrace:");
-                egui::ScrollArea::vertical()
-                    .max_height(200.0)
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut report.backtrace.as_str())
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(f32::INFINITY)
-                                .interactive(false),
-                        );
-                    });
-
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                ui.horizontal(|ui| {
-                    if ui.button("Copy to Clipboard").clicked() {
-                        ui.ctx().copy_text(report.format());
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Close").clicked() {
-                            close_clicked = true;
-                        }
-                    });
-                });
-            });
-        });
-
-    state.show_window = open && !close_clicked;
+    /// Handle Copy / Close clicks.
+    pub(super) fn crash_overlay_buttons(
+        mut state: ResMut<CrashReportWindowState>,
+        close_q: Query<&Interaction, (Changed<Interaction>, With<CrashCloseButton>)>,
+        copy_q: Query<&Interaction, (Changed<Interaction>, With<CrashCopyButton>)>,
+    ) {
+        if close_q.iter().any(|i| *i == Interaction::Pressed) {
+            state.show_window = false;
+        }
+        if copy_q.iter().any(|i| *i == Interaction::Pressed) {
+            if let Some(report) = state.report.clone() {
+                if let Ok(mut cb) = arboard::Clipboard::new() {
+                    let _ = cb.set_text(report.format());
+                }
+            }
+        }
+    }
 }

@@ -9486,14 +9486,13 @@ dependencies = [
  "arboard",
  "avian3d 0.6.1",
  "bevy 0.18.0",
- "bevy_egui",
  "dirs 6.0.0",
- "egui-phosphor",
  "futures-lite",
  "renzora",
  "renzora_animation",
  "renzora_audio",
  "renzora_editor",
+ "renzora_ember",
  "renzora_lighting",
  "renzora_macros",
  "renzora_network",
@@ -10359,20 +10358,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_physics_playground"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
- "renzora",
- "renzora_editor",
- "renzora_ember",
- "renzora_physics",
- "renzora_theme",
-]
-
-[[package]]
 name = "renzora_pillowbox"
 version = "0.1.0"
 dependencies = [
@@ -10589,7 +10574,6 @@ dependencies = [
  "renzora_oit",
  "renzora_particle_editor",
  "renzora_physics",
- "renzora_physics_playground",
  "renzora_postprocess",
  "renzora_rt",
  "renzora_scene",
@@ -10613,7 +10597,6 @@ dependencies = [
  "renzora_theme_status",
  "renzora_tonemapping",
  "renzora_tracy",
- "renzora_tutorial",
  "renzora_undo",
  "renzora_viewport",
  "renzora_volumetric_fog",
@@ -11080,18 +11063,6 @@ dependencies = [
  "renzora_editor",
  "renzora_theme",
  "tracy-client",
-]
-
-[[package]]
-name = "renzora_tutorial"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "bevy_egui",
- "egui-phosphor",
- "renzora",
- "renzora_editor",
- "renzora_theme",
 ]
 
 [[package]]
