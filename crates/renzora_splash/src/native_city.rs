@@ -32,6 +32,14 @@ pub(crate) struct CityView;
 #[derive(Component)]
 struct CityCamera;
 
+/// A building's rest height + a position-based phase, so [`animate_buildings`]
+/// can ripple the skyline up and down like a waveform.
+#[derive(Component)]
+struct CityBuilding {
+    base_h: f32,
+    phase: f32,
+}
+
 /// Marker on every world entity the city owns, for one-shot teardown.
 #[derive(Component)]
 struct CityEntity;
@@ -47,7 +55,7 @@ struct CityScene {
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<CityScene>()
-        .add_systems(Update, (manage_city, attach_city_view, animate_city));
+        .add_systems(Update, (manage_city, attach_city_view, animate_city, animate_buildings));
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -222,6 +230,9 @@ fn spawn_city(
             let h = 4.0 + hash01(seed ^ 0x3333).powf(2.0) * 34.0;
             let w = SPACING * (0.5 + hash01(seed ^ 0x4444) * 0.25);
             let d = SPACING * (0.5 + hash01(seed ^ 0x5555) * 0.25);
+            // Radial phase → waves ripple outward from the centre (long, gentle
+            // wavelength).
+            let phase = (x * x + z * z).sqrt() * 0.10;
 
             let mat = if hash01(seed ^ 0x6666) > 0.62 {
                 neon[(hash01(seed ^ 0x7777) * neon.len() as f32) as usize % neon.len()].clone()
@@ -237,6 +248,7 @@ fn spawn_city(
                     scale: Vec3::new(w, h, d),
                     ..default()
                 },
+                CityBuilding { base_h: h, phase },
                 layer.clone(),
                 CityEntity,
                 renzora::HideInHierarchy,
@@ -276,5 +288,18 @@ fn animate_city(
             let pulse = 0.55 + 0.45 * (t * 1.6 + i as f32 * 1.7).sin();
             m.emissive = LinearRgba::new(base.red * pulse, base.green * pulse, base.blue * pulse, 1.0);
         }
+    }
+}
+
+/// Ripple the skyline up and down like a waveform — each building oscillates
+/// around its rest height, phased by its distance from the centre. Buildings
+/// grow upward from the ground (base stays at y = 0).
+fn animate_buildings(time: Res<Time>, mut q: Query<(&CityBuilding, &mut Transform)>) {
+    let t = time.elapsed_secs();
+    for (b, mut tr) in &mut q {
+        let amp = 1.5 + b.base_h * 0.18;
+        let h = (b.base_h + amp * (b.phase - t * 0.45).sin()).max(2.0);
+        tr.scale.y = h;
+        tr.translation.y = h * 0.5;
     }
 }
