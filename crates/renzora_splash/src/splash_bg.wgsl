@@ -54,16 +54,46 @@ fn grid_line(coord: f32) -> f32 {
     return 1.0 - min(g, 1.0);
 }
 
+// Ordered (Bayer 4x4) dither threshold 0..1 for a cell — for the chunky,
+// pixelated gradient banding.
+fn bayer4(p: vec2<i32>) -> f32 {
+    var m = array<f32, 16>(
+        0.0, 8.0, 2.0, 10.0,
+        12.0, 4.0, 14.0, 6.0,
+        3.0, 11.0, 1.0, 9.0,
+        15.0, 7.0, 13.0, 5.0
+    );
+    let x = p.x & 3;
+    let y = p.y & 3;
+    return (m[y * 4 + x] + 0.5) / 16.0;
+}
+
 @fragment
 fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;                       // 0..1, y down
     let t = u.params.x;
     let aspect = max(u.params.y, 0.0001);
 
-    // Base vertical gradient (sRGB space).
-    let top = vec3<f32>(8.0, 7.0, 16.0) / 255.0;
-    let bot = vec3<f32>(3.0, 2.0, 8.0) / 255.0;
-    var col = mix(top, bot, uv.y);
+    // Pixelated sky: a dithered vertical gradient + a pulsating radial glow,
+    // posterised into chunky blocks for a retro look.
+    let blocks = vec2<f32>(96.0 * aspect, 96.0);
+    let cell = floor(uv * blocks);
+    let buv = (cell + 0.5) / blocks;                 // block-centre uv
+    let dith = bayer4(vec2<i32>(i32(cell.x), i32(cell.y)));
+
+    let top = vec3<f32>(34.0, 18.0, 60.0) / 255.0;
+    let bot = vec3<f32>(4.0, 3.0, 12.0) / 255.0;
+    var sky = mix(top, bot, buv.y);
+
+    // Pulsating radial glow centred in the upper-middle sky.
+    let rc = vec2<f32>((buv.x - 0.5) * aspect, buv.y - 0.40);
+    let pulse = 0.5 + 0.5 * sin(t * 1.1);
+    let radial = (1.0 - smoothstep(0.0, 0.62, length(rc))) * mix(0.18, 0.85, pulse);
+    sky = sky + vec3<f32>(0.55, 0.14, 0.62) * radial;
+
+    // Posterise + ordered-dither → pixelated bands.
+    let levels = 16.0;
+    var col = floor(sky * levels + dith) / levels;
 
     // Hue-cycled grid colour (slow, so the scene reads as alive but not busy).
     let hue = fract(t * 0.05);

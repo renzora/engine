@@ -39,11 +39,14 @@ fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
 fn panel_hover() -> Color {
     ca(30, 34, 52, 250)
 }
-fn border() -> Color {
-    c(48, 54, 74)
-}
 fn border_soft() -> Color {
     c(36, 40, 56)
+}
+fn btn_dark() -> Color {
+    ca(12, 14, 22, 235)
+}
+fn btn_dark_hover() -> Color {
+    ca(26, 30, 46, 245)
 }
 fn text() -> Color {
     c(224, 228, 240)
@@ -275,11 +278,9 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let title_block = commands
         .spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }, FocusPolicy::Pass))
         .id();
-    let title = commands
-        .spawn((Text::new("Renzora".to_string()), ui_font(&fonts.ui, 34.0), TextColor(white()), FocusPolicy::Pass))
-        .id();
+    let title = build_title(commands, fonts);
     let tagline = commands
-        .spawn((Text::new(format!("Game Engine  ·  {VERSION}")), ui_font(&fonts.ui, 12.5), TextColor(text_muted()), FocusPolicy::Pass))
+        .spawn((Text::new(format!("version {VERSION}")), ui_font(&fonts.ui, 12.5), TextColor(text_muted()), FocusPolicy::Pass))
         .id();
     commands.entity(title_block).add_children(&[title, tagline]);
 
@@ -342,6 +343,36 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(col).add_children(&[top, middle, bottom]);
     col
+}
+
+/// The "Renzora Engine" wordmark — large, two-tone, with a soft drop shadow.
+fn build_title(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let wrap = commands
+        .spawn((Node { position_type: PositionType::Relative, flex_direction: FlexDirection::Row, ..default() }, FocusPolicy::Pass))
+        .id();
+    // Drop shadow behind the wordmark (rendered first → underneath).
+    let shadow = commands
+        .spawn((
+            Text::new("Renzora Engine".to_string()),
+            ui_font(&fonts.ui, 48.0),
+            TextColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            Node { position_type: PositionType::Absolute, left: Val::Px(2.0), top: Val::Px(3.0), ..default() },
+            FocusPolicy::Pass,
+        ))
+        .id();
+    // Two-tone wordmark: white "Renzora" + accent "Engine".
+    let row = commands
+        .spawn((Node { flex_direction: FlexDirection::Row, ..default() }, FocusPolicy::Pass))
+        .id();
+    let a = commands
+        .spawn((Text::new("Renzora ".to_string()), ui_font(&fonts.ui, 48.0), TextColor(white()), FocusPolicy::Pass))
+        .id();
+    let b = commands
+        .spawn((Text::new("Engine".to_string()), ui_font(&fonts.ui, 48.0), TextColor(accent()), FocusPolicy::Pass))
+        .id();
+    commands.entity(row).add_children(&[a, b]);
+    commands.entity(wrap).add_children(&[shadow, row]);
+    wrap
 }
 
 fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -451,12 +482,10 @@ fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label_tx
                 justify_content: JustifyContent::Center,
                 column_gap: Val::Px(7.0),
                 padding: UiRect::horizontal(Val::Px(16.0)),
-                border: if primary { UiRect::ZERO } else { UiRect::all(Val::Px(1.0)) },
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(if primary { accent() } else { ca(255, 255, 255, 14) }),
-            BorderColor::all(if primary { Color::NONE } else { border() }),
+            BackgroundColor(if primary { accent() } else { btn_dark() }),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
@@ -466,9 +495,9 @@ fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label_tx
         if primary {
             if hov { accent_hover() } else { accent() }
         } else if hov {
-            ca(255, 255, 255, 28)
+            btn_dark_hover()
         } else {
-            ca(255, 255, 255, 14)
+            btn_dark()
         }
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, if primary { (255, 255, 255) } else { (224, 228, 240) }, 14.0);
@@ -490,18 +519,16 @@ fn social_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, txt: &
                 justify_content: JustifyContent::Center,
                 column_gap: Val::Px(6.0),
                 padding: UiRect::horizontal(Val::Px(12.0)),
-                border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(7.0)),
                 ..default()
             },
-            BackgroundColor(ca(255, 255, 255, 12)),
-            BorderColor::all(border_soft()),
+            BackgroundColor(btn_dark()),
             Interaction::default(),
             SplashUrl(url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
-    bind_bg(commands, btn, move |w| if is_hovered(w, btn) { ca(255, 255, 255, 26) } else { ca(255, 255, 255, 12) });
+    bind_bg(commands, btn, move |w| if is_hovered(w, btn) { btn_dark_hover() } else { btn_dark() });
     let col = if starred { (235, 195, 80) } else { (224, 228, 240) };
     let ic = icon_text(commands, &fonts.phosphor, icon, col, 13.0);
     commands.entity(ic).insert(FocusPolicy::Pass);

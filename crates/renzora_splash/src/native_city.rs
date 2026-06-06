@@ -48,9 +48,6 @@ struct CityEntity;
 struct CityScene {
     image: Handle<Image>,
     built: bool,
-    /// Neon tower materials + their base emissive, pulsed in [`animate_city`].
-    neon: Vec<Handle<StandardMaterial>>,
-    neon_base: Vec<LinearRgba>,
 }
 
 pub(crate) fn register(app: &mut App) {
@@ -78,16 +75,12 @@ fn manage_city(
             scene.image = images.add(make_target(RES));
         }
         let image = scene.image.clone();
-        let (neon, neon_base) = spawn_city(&mut commands, &mut meshes, &mut materials, image);
-        scene.neon = neon;
-        scene.neon_base = neon_base;
+        spawn_city(&mut commands, &mut meshes, &mut materials, image);
         scene.built = true;
     } else if !want && built {
         for e in &owned {
             commands.entity(e).try_despawn();
         }
-        scene.neon.clear();
-        scene.neon_base.clear();
         scene.built = false;
     }
 }
@@ -132,13 +125,13 @@ fn hash01(n: u32) -> f32 {
     (((x >> 22) ^ x) & 0x00FF_FFFF) as f32 / 0x0100_0000 as f32
 }
 
-/// Build the city; returns the neon materials + their base emissive for pulsing.
+/// Build the city geometry, lights and camera.
 fn spawn_city(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     image: Handle<Image>,
-) -> (Vec<Handle<StandardMaterial>>, Vec<LinearRgba>) {
+) {
     let layer = RenderLayers::layer(CITY_LAYER);
 
     // Camera — HDR + bloom + fog; clears transparent so the grid/network show
@@ -202,19 +195,18 @@ fn spawn_city(
         Color::srgb(1.0, 0.55, 0.1), // amber
         Color::srgb(0.5, 0.3, 1.0),  // violet
     ];
-    let mut neon = Vec::new();
-    let mut neon_base = Vec::new();
-    for cc in neon_colors {
-        let l = cc.to_linear();
-        let base = LinearRgba::new(l.red * EMISSIVE, l.green * EMISSIVE, l.blue * EMISSIVE, 1.0);
-        neon.push(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.02, 0.02, 0.03),
-            emissive: base,
-            perceptual_roughness: 0.4,
-            ..default()
-        }));
-        neon_base.push(base);
-    }
+    let neon: Vec<Handle<StandardMaterial>> = neon_colors
+        .iter()
+        .map(|cc| {
+            let l = cc.to_linear();
+            materials.add(StandardMaterial {
+                base_color: Color::srgb(0.02, 0.02, 0.03),
+                emissive: LinearRgba::new(l.red * EMISSIVE, l.green * EMISSIVE, l.blue * EMISSIVE, 1.0),
+                perceptual_roughness: 0.4,
+                ..default()
+            })
+        })
+        .collect();
 
     let half = GRID / 2;
     for i in -half..=half {
@@ -256,18 +248,11 @@ fn spawn_city(
             ));
         }
     }
-
-    (neon, neon_base)
 }
 
 // ── Animation ────────────────────────────────────────────────────────────────
 
-fn animate_city(
-    time: Res<Time>,
-    scene: Res<CityScene>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cam: Query<&mut Transform, With<CityCamera>>,
-) {
+fn animate_city(time: Res<Time>, mut cam: Query<&mut Transform, With<CityCamera>>) {
     let t = time.elapsed_secs();
 
     // Camera: orbit with a slow dolly in/out and a vertical bob, plus a drifting
@@ -279,15 +264,6 @@ fn animate_city(
     let look = Vec3::new(4.0 * (t * 0.05).sin(), 11.0 + 2.0 * (t * 0.11).cos(), 0.0);
     for mut tr in &mut cam {
         *tr = Transform::from_translation(pos).looking_at(look, Vec3::Y);
-    }
-
-    // Neon: pulse each colour group out of phase so the skyline twinkles.
-    for (i, h) in scene.neon.iter().enumerate() {
-        if let Some(m) = materials.get_mut(h) {
-            let base = scene.neon_base[i];
-            let pulse = 0.55 + 0.45 * (t * 1.6 + i as f32 * 1.7).sin();
-            m.emissive = LinearRgba::new(base.red * pulse, base.green * pulse, base.blue * pulse, 1.0);
-        }
     }
 }
 
