@@ -34,7 +34,7 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_remove, ngv_apply_selection, ngv_keys));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -99,6 +99,9 @@ struct NgvWire {
     to_pin: String,
     viewport: Entity,
 }
+/// The rubber-band selection rectangle (spawned while box-selecting).
+#[derive(Component)]
+struct NgvBoxRect;
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
@@ -422,58 +425,129 @@ fn ngv_keys(keys: Res<ButtonInput<KeyCode>>, all_nodes: Query<&NgvNode>, mut gra
     }
 }
 
-/// Click empty canvas over a cable → record a `Disconnect`.
-fn ngv_remove(
+/// Empty-canvas left interaction: drag → rubber-band box select (Ctrl extends);
+/// click (no drag) over a cable → disconnect it, else clear the selection.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn ngv_box(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
-    blockers: Query<&Interaction, Or<(With<NgvNode>, With<NgvPort>)>>,
+    mut commands: Commands,
+    node_blockers: Query<&Interaction, With<NgvNode>>,
+    port_blockers: Query<&Interaction, With<NgvPort>>,
+    mut active: Local<Option<(Vec2, Entity, Entity, bool)>>, // (start, viewport, rect, moved)
+    mut vps: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &UiGlobalTransform, &ComputedNode)>,
+    node_rects: Query<(&NgvNode, &UiGlobalTransform, &ComputedNode)>,
+    mut box_nodes: Query<&mut Node, With<NgvBoxRect>>,
     wires: Query<&NgvWire>,
     ports: Query<(&NgvPort, &UiGlobalTransform)>,
-    transforms: Query<&UiGlobalTransform>,
-    computeds: Query<&ComputedNode>,
-    mut graphs: Query<&mut NodeGraphView>,
 ) {
-    if !mouse.just_pressed(MouseButton::Left) {
+    if active.is_none() {
+        if !mouse.just_pressed(MouseButton::Left) {
+            return;
+        }
+        if node_blockers.iter().any(|i| *i == Interaction::Pressed) || port_blockers.iter().any(|i| *i == Interaction::Pressed) {
+            return; // press landed on a node/port → not a box
+        }
+        let Some(c) = cursor(&windows) else { return };
+        let Some(vp) = vps.iter().find(|(_, _, rcp, _, _)| rcp.cursor_over).map(|(e, _, _, _, _)| e) else { return };
+        let a = rgb(accent());
+        let rect = commands
+            .spawn((
+                Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
+                BackgroundColor(a.with_alpha(0.12)),
+                BorderColor::all(a),
+                GlobalZIndex(10),
+                bevy::ui::FocusPolicy::Pass,
+                Pickable::IGNORE,
+                NgvBoxRect,
+                Name::new("ngv-box"),
+            ))
+            .id();
+        commands.entity(vp).add_child(rect);
+        *active = Some((c, vp, rect, false));
         return;
     }
-    if blockers.iter().any(|i| *i == Interaction::Pressed) {
-        return;
-    }
-    let Some(cl) = cursor(&windows) else {
+
+    let (start, vp, rect, moved) = active.unwrap();
+    let Some(c) = cursor(&windows) else { return };
+    let Some((_, mut g, _, vgt, vcn)) = vps.iter_mut().find(|(e, _, _, _, _)| *e == vp) else {
+        commands.entity(rect).try_despawn();
+        *active = None;
         return;
     };
-    let map = port_map(&ports);
-    let mut best: Option<(u64, String, u64, String, f32)> = None;
-    for w in &wires {
-        let (Some(&(p0, _)), Some(&(p3, _))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
-            continue;
-        };
-        let (Ok(vgt), Ok(vcn)) = (transforms.get(w.viewport), computeds.get(w.viewport)) else {
-            continue;
-        };
-        let isf = vcn.inverse_scale_factor();
-        let top_left = vgt.translation - vcn.size() * 0.5;
-        let cur = cl / isf - top_left;
-        let a = p0 - top_left;
-        let b = p3 - top_left;
-        let (c1, c2) = control_points(a, b);
-        let mut d = f32::MAX;
-        let mut prev = a;
-        for i in 1..=24 {
-            let pt = bezier(a, c1, c2, b, i as f32 / 24.0);
-            d = d.min(seg_dist(cur, prev, pt));
-            prev = pt;
+    let isf = vcn.inverse_scale_factor();
+    let top_left = vgt.translation - vcn.size() * 0.5;
+
+    if mouse.pressed(MouseButton::Left) {
+        let tl_logical = top_left * isf;
+        let s = start - tl_logical;
+        let e = c - tl_logical;
+        let mn = s.min(e);
+        let sz = (e - s).abs();
+        if let Ok(mut bn) = box_nodes.get_mut(rect) {
+            bn.left = Val::Px(mn.x);
+            bn.top = Val::Px(mn.y);
+            bn.width = Val::Px(sz.x);
+            bn.height = Val::Px(sz.y);
         }
-        if d < 8.0 / isf && best.as_ref().is_none_or(|(_, _, _, _, bd)| d < *bd) {
-            best = Some((w.from_node, w.from_pin.clone(), w.to_node, w.to_pin.clone(), d));
-        }
+        let now_moved = moved || (c - start).length() > 3.0;
+        *active = Some((start, vp, rect, now_moved));
+        return;
     }
-    if let Some((fnode, fpin, tnode, tpin, _)) = best {
-        // Record on the first viewport (single graph per view).
-        if let Some(mut g) = graphs.iter_mut().next() {
+
+    commands.entity(rect).try_despawn();
+    if moved {
+        let (bmin, bmax) = ((start / isf).min(c / isf), (start / isf).max(c / isf));
+        let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+        if !ctrl {
+            g.selected.clear();
+        }
+        for (n, ngt, ncn) in &node_rects {
+            if n.viewport != vp {
+                continue;
+            }
+            let half = ncn.size() * 0.5;
+            let (nmin, nmax) = (ngt.translation - half, ngt.translation + half);
+            if nmin.x <= bmax.x && nmax.x >= bmin.x && nmin.y <= bmax.y && nmax.y >= bmin.y {
+                g.selected.insert(n.id);
+            }
+        }
+        let prim = g.selected.iter().copied().next();
+        g.pending.push(GraphEdit::Select { id: prim });
+    } else {
+        // A plain click: cut a cable under the cursor, else clear selection.
+        let map = port_map(&ports);
+        let cur = c / isf - top_left;
+        let mut best: Option<(u64, String, u64, String, f32)> = None;
+        for w in &wires {
+            if w.viewport != vp {
+                continue;
+            }
+            let (Some(&(p0, _)), Some(&(p3, _))) = (map.get(&(w.from_node, w.from_pin.clone(), true)), map.get(&(w.to_node, w.to_pin.clone(), false))) else {
+                continue;
+            };
+            let (a, b) = (p0 - top_left, p3 - top_left);
+            let (c1, c2) = control_points(a, b);
+            let mut d = f32::MAX;
+            let mut prev = a;
+            for i in 1..=24 {
+                let pt = bezier(a, c1, c2, b, i as f32 / 24.0);
+                d = d.min(seg_dist(cur, prev, pt));
+                prev = pt;
+            }
+            if d < 8.0 / isf && best.as_ref().is_none_or(|(_, _, _, _, bd)| d < *bd) {
+                best = Some((w.from_node, w.from_pin.clone(), w.to_node, w.to_pin.clone(), d));
+            }
+        }
+        if let Some((fnode, fpin, tnode, tpin, _)) = best {
             g.pending.push(GraphEdit::Disconnect { from_node: fnode, from_pin: fpin, to_node: tnode, to_pin: tpin });
+        } else if !g.selected.is_empty() {
+            g.selected.clear();
+            g.pending.push(GraphEdit::Select { id: None });
         }
     }
+    *active = None;
 }
 
 fn port_map(ports: &Query<(&NgvPort, &UiGlobalTransform)>) -> HashMap<(u64, String, bool), (Vec2, (u8, u8, u8))> {
