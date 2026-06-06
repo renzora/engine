@@ -1687,12 +1687,12 @@ fn theme_color_row(
     let cf = color_field(
         commands,
         move |w| {
-            let [r, g, b, _] = get(&w.resource::<ThemeManager>().active_theme).0.to_array();
+            let [r, g, b, _] = get(&w.resource::<ThemeManager>().active_theme).0;
             [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
         },
         move |w, rgb| {
             let mut tm = w.resource_mut::<ThemeManager>();
-            let a = get(&tm.active_theme).0.to_array()[3];
+            let a = get(&tm.active_theme).0[3];
             let col = ThemeColor::with_alpha(
                 (rgb[0] * 255.0).round() as u8,
                 (rgb[1] * 255.0).round() as u8,

@@ -1222,13 +1222,13 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
 ///
 /// Transitional state for the egui → bevy_ui/HUI migration. `Egui` is the
 /// legacy immediate-mode editor; `BevyUi` is the new `renzora_shell` bevy_ui
-/// host. The two are mutually exclusive — the egui `editor_ui_system` only runs
-/// under `Egui`, and the shell only spawns under `BevyUi`. Toggle at runtime
-/// (F10) to compare. Defaults to `Egui` until the shell reaches parity.
+/// host. The editor is now bevy_ui-only (egui has been removed), so this always
+/// resolves to `BevyUi`; the `Egui` variant is retained only so the historical
+/// run-conditions still type-check and renders nothing.
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum EditorUiBackend {
-    #[default]
     Egui,
+    #[default]
     BevyUi,
 }
 
@@ -1241,16 +1241,17 @@ impl EditorUiBackend {
     }
 }
 
-/// Run condition: true when the legacy egui editor should render. Absent
-/// resource defaults to egui so the editor works even if the shell crate isn't
-/// linked. Use as `.run_if(editor_backend_is_egui)`.
+/// Run condition: true when the legacy egui editor should render. egui has been
+/// removed, so this is effectively always false (kept so historical
+/// `.run_if(editor_backend_is_egui)` call sites still compile).
 pub fn editor_backend_is_egui(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.as_ref().map(|b| b.is_egui()).unwrap_or(true)
+    backend.as_ref().map(|b| b.is_egui()).unwrap_or(false)
 }
 
-/// Run condition: true when the bevy_ui shell should render.
+/// Run condition: true when the bevy_ui (ember) editor should render — the only
+/// backend now. Absent resource defaults to `true`.
 pub fn editor_backend_is_bevy_ui(backend: Option<Res<EditorUiBackend>>) -> bool {
-    backend.as_ref().map(|b| b.is_bevy_ui()).unwrap_or(false)
+    backend.as_ref().map(|b| b.is_bevy_ui()).unwrap_or(true)
 }
 
 /// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.

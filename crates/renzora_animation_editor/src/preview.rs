@@ -201,11 +201,11 @@ pub fn sync_preview_clear_color(
 ) {
     let Some(tm) = theme_manager else { return };
 
-    let c = tm.active_theme.surfaces.panel.to_color32();
+    let [r, g, b, _] = tm.active_theme.surfaces.panel.to_array();
     let clear = Color::srgba(
-        c.r() as f32 / 255.0,
-        c.g() as f32 / 255.0,
-        c.b() as f32 / 255.0,
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
         1.0,
     );
 

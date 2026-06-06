@@ -50,7 +50,7 @@ enum HeaderAction {
 struct HeaderIcon(Entity);
 
 fn col(c: renzora_theme::ThemeColor) -> Color {
-    let [r, g, b, _a] = c.to_color32().to_array();
+    let [r, g, b, _a] = c.to_array();
     Color::srgb_u8(r, g, b)
 }
 

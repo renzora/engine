@@ -131,7 +131,7 @@ fn build_ember_theme(
 
 fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette {
     fn tc(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
-        let [r, g, b, _] = c.0.to_array();
+        let [r, g, b, _] = c.0;
         (r, g, b)
     }
     renzora_ember::theme::Palette {

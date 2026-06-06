@@ -11,7 +11,7 @@ use super::*;
 #[test]
 fn parse_hex_rgb() {
     let color = ThemeColor::from_hex("#FF8800").unwrap();
-    let [r, g, b, a] = color.0.to_array();
+    let [r, g, b, a] = color.0;
     assert_eq!((r, g, b), (255, 136, 0));
     assert_eq!(a, 255);
 }
@@ -27,14 +27,14 @@ fn parse_hex_rgba() {
 #[test]
 fn parse_hex_lowercase() {
     let color = ThemeColor::from_hex("#ff8800").unwrap();
-    let [r, g, b, _] = color.0.to_array();
+    let [r, g, b, _] = color.0;
     assert_eq!((r, g, b), (255, 136, 0));
 }
 
 #[test]
 fn parse_hex_no_hash() {
     let color = ThemeColor::from_hex("FF8800").unwrap();
-    let [r, g, b, _] = color.0.to_array();
+    let [r, g, b, _] = color.0;
     assert_eq!((r, g, b), (255, 136, 0));
 }
 
@@ -142,21 +142,14 @@ fn all_color_group_defaults_valid() {
 #[test]
 fn theme_color_default_is_white() {
     let c = ThemeColor::default();
-    assert_eq!(c.0, Color32::WHITE);
+    assert_eq!(c.0, [255, 255, 255, 255]);
 }
 
 #[test]
-fn theme_color_from_color32_conversion() {
-    let c32 = Color32::from_rgb(10, 20, 30);
-    let tc = ThemeColor::from_color32(c32);
-    assert_eq!(tc.to_color32(), c32);
-}
-
-#[test]
-fn theme_color_into_conversion() {
+fn theme_color_byte_roundtrip() {
     let tc = ThemeColor::new(10, 20, 30);
-    let c32: Color32 = tc.into();
-    assert_eq!(c32, Color32::from_rgb(10, 20, 30));
+    assert_eq!(tc.to_array(), [10, 20, 30, 255]);
+    assert_eq!(ThemeColor::with_alpha(10, 20, 30, 128).to_array(), [10, 20, 30, 128]);
 }
 
 #[test]

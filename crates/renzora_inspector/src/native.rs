@@ -170,7 +170,7 @@ struct SectionSpec {
 
 /// Extract an `(r, g, b)` triple from a theme color (no egui types in scope).
 fn c32(col: renzora_theme::ThemeColor) -> (u8, u8, u8) {
-    let [r, g, b, _] = col.to_color32().to_array();
+    let [r, g, b, _] = col.to_array();
     (r, g, b)
 }
 

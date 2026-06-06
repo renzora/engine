@@ -45,16 +45,12 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 # under `cargo build -p <mobile_crate>` only see their own dep tree
 # (resolver = "2") and stay clean of dynamic_linking.
 bevy = { version = "0.18", features = ["bluenoise_texture", "experimental_pbr_pcss", "jpeg", "serialize"] }
-# Shared external deps. Plugins opt in by name (`bevy_egui = { workspace = true }`)
-# so versions stay locked across the workspace.
-bevy_egui = "0.39"
-# Pin egui to the version bevy_egui 0.39 ships with. Any third-party crate that
-# imports `egui::*` directly (e.g. `egui_code_editor`) must consume this same
-# version, otherwise their `egui::Ui` and bevy_egui's `egui::Ui` are different
-# types and won't unify at the call boundary.
-egui = "0.33"
+# egui-phosphor supplies the Phosphor icon-glyph `&'static str` constants the
+# inspector/tool registries pass around (resolved natively via
+# `renzora_hui::phosphor_map::icon_glyph`). It pulls no egui runtime — the editor
+# UI is bevy_ui (ember). bevy_egui / egui / egui_code_editor were removed when the
+# editor finished migrating off egui.
 egui-phosphor = { version = "0.11", features = ["regular"] }
-egui_code_editor = "0.2"
 log = "0.4"
 
 [package]

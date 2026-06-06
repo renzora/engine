@@ -13,27 +13,24 @@ mod tests;
 
 pub use loader::*;
 
-use bevy_egui::egui::Color32;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// A color wrapper that serializes to/from hex format (#RRGGBB or #RRGGBBAA)
+/// A color wrapper that serializes to/from hex format (#RRGGBB or #RRGGBBAA).
+/// Stored as straight (unmultiplied) sRGBA bytes `[r, g, b, a]`.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ThemeColor(pub Color32);
+pub struct ThemeColor(pub [u8; 4]);
 
 impl ThemeColor {
     pub fn new(r: u8, g: u8, b: u8) -> Self {
-        Self(Color32::from_rgb(r, g, b))
+        Self([r, g, b, 255])
     }
 
     pub fn with_alpha(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self(Color32::from_rgba_unmultiplied(r, g, b, a))
+        Self([r, g, b, a])
     }
 
-    pub fn from_color32(color: Color32) -> Self {
-        Self(color)
-    }
-
-    pub fn to_color32(self) -> Color32 {
+    /// Straight (unmultiplied) sRGBA bytes `[r, g, b, a]`.
+    pub fn to_array(self) -> [u8; 4] {
         self.0
     }
 
@@ -60,7 +57,7 @@ impl ThemeColor {
 
     /// Convert to hex string (#RRGGBB or #RRGGBBAA if alpha != 255)
     pub fn to_hex(self) -> String {
-        let [r, g, b, a] = self.0.to_array();
+        let [r, g, b, a] = self.0;
         if a == 255 {
             format!("#{:02X}{:02X}{:02X}", r, g, b)
         } else {
@@ -71,19 +68,7 @@ impl ThemeColor {
 
 impl Default for ThemeColor {
     fn default() -> Self {
-        Self(Color32::WHITE)
-    }
-}
-
-impl From<Color32> for ThemeColor {
-    fn from(color: Color32) -> Self {
-        Self(color)
-    }
-}
-
-impl From<ThemeColor> for Color32 {
-    fn from(color: ThemeColor) -> Self {
-        color.0
+        Self([255, 255, 255, 255])
     }
 }
 
