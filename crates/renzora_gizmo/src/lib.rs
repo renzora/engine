@@ -2524,39 +2524,58 @@ fn find_named_ancestor(
 
 // ── Box selection overlay ────────────────────────────────────────────────────
 
-fn render_box_selection(box_sel: Res<BoxSelectionState>, mut ctx: bevy_egui::EguiContexts) {
+/// Marker for the native bevy_ui box-selection rectangle node.
+#[derive(Component)]
+struct BoxSelectionRect;
+
+/// Native (bevy_ui) box-selection overlay — a translucent blue rectangle node
+/// sized to the drag rect. Replaces the egui-painted version. `get_rect`
+/// returns window logical pixels, which map directly to an absolute UI node.
+///
+/// The node is `Pickable::IGNORE` + `FocusPolicy::Pass` so it never occludes the
+/// viewport's hover/pick (the drag itself is driven by `box_selection_system`
+/// reading the raw cursor, not UI interaction).
+fn render_box_selection(
+    mut commands: Commands,
+    box_sel: Res<BoxSelectionState>,
+    mut existing: Query<(Entity, &mut Node), With<BoxSelectionRect>>,
+) {
     if !box_sel.active || !box_sel.is_drag() {
+        for (e, _) in &existing {
+            commands.entity(e).despawn();
+        }
         return;
     }
 
-    let Some(ctx) = ctx.ctx_mut().ok() else {
-        return;
-    };
     let (min, max) = box_sel.get_rect();
+    let w = (max.x - min.x).max(0.0);
+    let h = (max.y - min.y).max(0.0);
 
-    let rect = bevy_egui::egui::Rect::from_min_max(
-        bevy_egui::egui::Pos2::new(min.x, min.y),
-        bevy_egui::egui::Pos2::new(max.x, max.y),
-    );
-
-    bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("box_selection"))
-        .fixed_pos(rect.min)
-        .order(bevy_egui::egui::Order::Foreground)
-        .interactable(false)
-        .show(ctx, |ui| {
-            let painter = ui.painter();
-            painter.rect_filled(
-                rect,
-                bevy_egui::egui::CornerRadius::ZERO,
-                bevy_egui::egui::Color32::from_rgba_unmultiplied(66, 150, 250, 40),
-            );
-            painter.rect_stroke(
-                rect,
-                bevy_egui::egui::CornerRadius::ZERO,
-                bevy_egui::egui::Stroke::new(1.0, bevy_egui::egui::Color32::from_rgb(66, 150, 250)),
-                bevy_egui::egui::StrokeKind::Outside,
-            );
-        });
+    if let Some((_, mut node)) = existing.iter_mut().next() {
+        node.left = Val::Px(min.x);
+        node.top = Val::Px(min.y);
+        node.width = Val::Px(w);
+        node.height = Val::Px(h);
+    } else {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(min.x),
+                top: Val::Px(min.y),
+                width: Val::Px(w),
+                height: Val::Px(h),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(66.0 / 255.0, 150.0 / 255.0, 250.0 / 255.0, 0.157)),
+            BorderColor::all(Color::srgb_u8(66, 150, 250)),
+            GlobalZIndex(8000),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::picking::Pickable::IGNORE,
+            BoxSelectionRect,
+            Name::new("box-selection-rect"),
+        ));
+    }
 }
 
 renzora::add!(GizmoPlugin, Editor);
