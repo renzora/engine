@@ -1,6 +1,8 @@
 //! Drag-and-drop scene-instance spawning — detects `.ron` asset drops on the
 //! viewport and spawns a `SceneInstance` entity expanded from that file.
 
+use std::path::PathBuf;
+
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -11,7 +13,7 @@ use renzora_ui::{DocumentTabState, Toasts};
 
 use crate::ViewportState;
 
-const SCENE_EXTENSIONS: &[&str] = &["ron"];
+pub(crate) const SCENE_EXTENSIONS: &[&str] = &["ron"];
 
 /// Called from the viewport panel's `ui()` method (read-only `&World`).
 ///
@@ -38,62 +40,74 @@ pub fn check_viewport_scene_drop(ui: &mut egui::Ui, world: &World, viewport_rect
 
     let path = payload.path.clone();
     let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let vp_rect = viewport_rect;
+    let sp = Vec2::new(screen_pos.x, screen_pos.y);
+    let vp_rect = Rect::from_corners(
+        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
+        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
+    );
 
     if let Some(commands) = world.get_resource::<EditorCommands>() {
         commands.push(move |world: &mut World| {
-            // Reject dropping a scene into itself.
-            let host_abs = world.get_resource::<CurrentProject>().and_then(|p| {
-                world
-                    .get_resource::<DocumentTabState>()
-                    .and_then(|t| {
-                        t.tabs
-                            .get(t.active_tab)
-                            .and_then(|tab| tab.scene_path.clone())
-                    })
-                    .map(|rel| p.resolve_path(&rel))
-            });
-            if let (Some(host_abs), Some(project_root)) = (
-                host_abs,
-                world
-                    .get_resource::<CurrentProject>()
-                    .map(|p| p.path.clone()),
-            ) {
-                let mut cache = world
-                    .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
-                    .unwrap_or_default();
-                let cycle = renzora_engine::scene_io::would_create_reference_cycle(
-                    &mut cache,
-                    &project_root,
-                    &host_abs,
-                    &path,
-                );
-                world.insert_resource(cache);
-                if cycle {
-                    if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
-                        toasts.warning("You cannot add a scene to itself");
-                    }
-                    return;
-                }
-            }
-            let pos = compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO);
-            let transform = Transform::from_translation(pos);
-            if let Some(entity) =
-                renzora_engine::scene_io::spawn_scene_instance(world, &path, None, transform)
-            {
-                if let Some(sel) = world.get_resource::<EditorSelection>() {
-                    sel.set(Some(entity));
-                }
-            }
+            commit_scene_drop(world, sp, vp_rect, path);
         });
     }
 }
 
-/// Raycast the editor camera onto the Y=0 plane.
+/// Commit a `.ron` scene-instance drop at the given viewport-space pointer.
+/// Shared by the egui drop check (deferred) and `native_scene_drop` (inline).
+/// `screen_pos` / `vp_rect` are in window logical pixels.
+pub(crate) fn commit_scene_drop(world: &mut World, screen_pos: Vec2, vp_rect: Rect, path: PathBuf) {
+    // Reject dropping a scene into itself.
+    let host_abs = world.get_resource::<CurrentProject>().and_then(|p| {
+        world
+            .get_resource::<DocumentTabState>()
+            .and_then(|t| {
+                t.tabs
+                    .get(t.active_tab)
+                    .and_then(|tab| tab.scene_path.clone())
+            })
+            .map(|rel| p.resolve_path(&rel))
+    });
+    if let (Some(host_abs), Some(project_root)) = (
+        host_abs,
+        world
+            .get_resource::<CurrentProject>()
+            .map(|p| p.path.clone()),
+    ) {
+        let mut cache = world
+            .remove_resource::<renzora_engine::scene_io::SceneReferenceCache>()
+            .unwrap_or_default();
+        let cycle = renzora_engine::scene_io::would_create_reference_cycle(
+            &mut cache,
+            &project_root,
+            &host_abs,
+            &path,
+        );
+        world.insert_resource(cache);
+        if cycle {
+            if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
+                toasts.warning("You cannot add a scene to itself");
+            }
+            return;
+        }
+    }
+    let pos = compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO);
+    let transform = Transform::from_translation(pos);
+    if let Some(entity) =
+        renzora_engine::scene_io::spawn_scene_instance(world, &path, None, transform)
+    {
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            sel.set(Some(entity));
+        }
+    }
+}
+
+/// Raycast the editor camera onto the Y=0 plane. `screen_pos` / `viewport_rect`
+/// are in window logical pixels.
 fn compute_ground_position(
     world: &mut World,
-    screen_pos: egui::Pos2,
-    viewport_rect: egui::Rect,
+    screen_pos: Vec2,
+    viewport_rect: Rect,
 ) -> Option<Vec3> {
     let mut q = world.query_filtered::<(&GlobalTransform, &Camera), With<EditorCamera>>();
     let (camera_transform, camera) = q.iter(world).next()?;

@@ -15,6 +15,7 @@ pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;
 mod native_camera_preview;
+mod native_drop;
 mod native_header;
 mod native_viewport;
 pub mod persistence;
@@ -135,6 +136,13 @@ impl Plugin for ViewportPlugin {
                 (
                     model_drop::track_model_drag_preview,
                     model_drop::update_model_drag_ghost,
+                    // Native (bevy_ui) drop: promote the preview entity in
+                    // place. Must run before cleanup despawns the ghost once
+                    // the payload is removed — under bevy_ui `editor_ui_system`
+                    // doesn't run, so the cleanup `.after` constraint below is
+                    // vacuous and we order against this system explicitly.
+                    model_drop::native_model_drop
+                        .run_if(renzora::core::editor_backend_is_bevy_ui),
                     // Cleanup must run after the editor's deferred-command
                     // queue has drained — `check_viewport_model_drop` runs
                     // inside `editor_ui_system` and pushes a deferred drop
@@ -150,7 +158,20 @@ impl Plugin for ViewportPlugin {
                 shape_drop::shape_drag_raycast_system
                     .before(shape_drop::update_shape_drag_preview),
                 shape_drop::update_shape_drag_preview,
-                (shape_drop::native_shape_drop, html_drop::native_html_drop),
+                (
+                    shape_drop::native_shape_drop,
+                    html_drop::native_html_drop,
+                    // Native (bevy_ui) asset drops that mirror the egui
+                    // `check_viewport_*_drop` helpers (which only run inside the
+                    // egui dock). Gated on the bevy_ui backend so they never
+                    // double-fire with the egui path.
+                    (
+                        native_drop::native_material_drop,
+                        native_drop::native_scene_drop,
+                        native_drop::native_sprite_drop,
+                    )
+                        .run_if(renzora::core::editor_backend_is_bevy_ui),
+                ),
                 shape_drop::handle_shape_spawn,
                 handle_view_shortcuts,
                 handle_play_shortcuts,

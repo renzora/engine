@@ -20,7 +20,7 @@ use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;
 
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
 
 /// Called from the viewport panel's `ui()` each frame. On release of an
 /// image drag-drop payload over the 2D viewport, queues a deferred
@@ -56,20 +56,27 @@ pub fn check_viewport_sprite_drop(ui: &mut egui::Ui, world: &World, viewport_rec
 
     let path = payload.path.clone();
     let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let vp_rect = viewport_rect;
+    let sp = Vec2::new(screen_pos.x, screen_pos.y);
+    let vp_rect = Rect::from_corners(
+        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
+        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
+    );
 
     if let Some(commands) = world.get_resource::<EditorCommands>() {
         commands.push(move |world: &mut World| {
-            handle_sprite_drop(world, path, screen_pos, vp_rect);
+            commit_sprite_drop(world, sp, vp_rect, path);
         });
     }
 }
 
-fn handle_sprite_drop(
+/// Commit an image-to-sprite drop at the given viewport-space pointer. Shared by
+/// the egui drop check (deferred) and `native_sprite_drop` (inline). `screen_pos`
+/// / `vp_rect` are in window logical pixels.
+pub(crate) fn commit_sprite_drop(
     world: &mut World,
+    screen_pos: Vec2,
+    vp_rect: Rect,
     abs_path: PathBuf,
-    screen_pos: egui::Pos2,
-    vp_rect: egui::Rect,
 ) {
     // Asset path stored in components stays project-relative so it
     // survives moving the project to a different machine.

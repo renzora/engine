@@ -141,96 +141,131 @@ pub fn check_viewport_model_drop(ui: &mut egui::Ui, world: &World, viewport_rect
 
     // Capture viewport info for ground-position computation in the deferred closure
     let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let vp_rect = viewport_rect;
+    let sp = Vec2::new(screen_pos.x, screen_pos.y);
+    let vp_rect = Rect::from_corners(
+        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
+        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
+    );
 
-    // Queue the spawn command (deferred — runs with &mut World)
+    // Queue the spawn command (deferred — runs with &mut World). The egui pass
+    // drains `EditorCommands` at its end, before `cleanup_model_drag_ghost`.
     if let Some(commands) = world.get_resource::<EditorCommands>() {
         commands.push(move |world: &mut World| {
-            // Prefer the ground position the ghost was tracking — it matches
-            // exactly what the user saw under their cursor at drop time.
-            let preview_pos = world
-                .get_resource::<ModelDragPreviewState>()
-                .filter(|s| s.origin_path.as_deref() == Some(path.as_path()))
-                .map(|s| s.ground_position);
-            let ground_pos = preview_pos
-                .or_else(|| compute_ground_position(world, screen_pos, vp_rect))
-                .unwrap_or(Vec3::ZERO);
-
-            // If we spawned a preview entity during drag (in-project
-            // asset), promote it in place: add the production markers
-            // that drive the binder/resolver/flatten pipeline. Same
-            // entity, no despawn, no second SceneSpawner instantiation.
-            //
-            // We clear `placement_entity` and `mesh_handle` so neither
-            // cleanup nor `update_model_placement` will touch the entity
-            // again, but we leave `origin_path` set so
-            // `track_model_drag_preview` skips re-initializing for the
-            // still-active drag (egui can hold the payload one extra
-            // frame after release).
-            let promotion = world
-                .get_resource_mut::<ModelDragPreviewState>()
-                .and_then(|mut s| {
-                    let entity = s.ghost_root.take();
-                    let asset_path = s.asset_path.take();
-                    let gltf_handle = s.mesh_handle.take();
-                    s.name = None;
-                    s.cursor_in_viewport = false;
-                    entity
-                        .zip(asset_path)
-                        .zip(gltf_handle)
-                        .map(|((e, p), h)| (e, p, h))
-                });
-
-            if let Some((entity, asset_path, gltf_handle)) = promotion {
-                // Add production markers to the parent entity in place.
-                if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
-                    entity_mut.insert((
-                        MeshInstanceData {
-                            model_path: Some(asset_path),
-                        },
-                        ImportedRoot,
-                        PendingMaterialBinding { gltf_handle },
-                        NeedsGroundAlignment {
-                            target_y: ground_pos.y,
-                        },
-                    ));
-                }
-                // Add `PendingFlatten` to the entity's SceneRoot child so
-                // the flatten pass collapses gltf wrapper nodes once the
-                // scene is fully populated.
-                let candidate_children: Vec<Entity> = world
-                    .get::<Children>(entity)
-                    .map(|kids| kids.iter().collect())
-                    .unwrap_or_default();
-                let mut scene_root_child: Option<Entity> = None;
-                for child in candidate_children {
-                    if world.get::<SceneRoot>(child).is_some() {
-                        scene_root_child = Some(child);
-                        break;
-                    }
-                }
-                if let Some(child) = scene_root_child {
-                    world.entity_mut(child).insert(PendingFlatten::default());
-                }
-                if let Some(selection) = world.get_resource::<EditorSelection>() {
-                    selection.set(Some(entity));
-                }
-            } else {
-                // No placement entity — out-of-project drag (the preview
-                // path skipped this asset because it wasn't already in the
-                // project). Run the import-then-spawn pipeline so the GLB
-                // gets copied into the project and a fresh entity spawned.
-                initiate_model_load(world, path, name, ground_pos);
-            }
+            commit_model_drop(world, sp, vp_rect, path, name);
         });
     }
 }
 
-/// Compute a world-space ground position (Y=0 plane) from a screen-space pointer.
+/// Commit a model drop at the given viewport-space pointer — shared by the egui
+/// drop check (deferred via `EditorCommands`) and the native `native_model_drop`
+/// (called inline). Either promotes the live drag-preview entity in place, or for
+/// out-of-project drags with no preview runs the import-then-spawn pipeline.
+pub(crate) fn commit_model_drop(
+    world: &mut World,
+    screen_pos: Vec2,
+    vp_rect: Rect,
+    path: PathBuf,
+    name: String,
+) {
+    // Prefer the ground position the ghost was tracking — it matches
+    // exactly what the user saw under their cursor at drop time.
+    let preview_pos = world
+        .get_resource::<ModelDragPreviewState>()
+        .filter(|s| s.origin_path.as_deref() == Some(path.as_path()))
+        .map(|s| s.ground_position);
+    let ground_pos = preview_pos
+        .or_else(|| compute_ground_position(world, screen_pos, vp_rect))
+        .unwrap_or(Vec3::ZERO);
+
+    // If we spawned a preview entity during drag (in-project
+    // asset), promote it in place: add the production markers
+    // that drive the binder/resolver/flatten pipeline. Same
+    // entity, no despawn, no second SceneSpawner instantiation.
+    //
+    // We clear `ghost_root` and `mesh_handle` so neither cleanup nor
+    // `update_model_drag_ghost` will touch the entity again, but we leave
+    // `origin_path` set so `track_model_drag_preview` skips re-initializing
+    // for the still-active drag (the payload can linger one extra frame
+    // after release).
+    let promotion = world
+        .get_resource_mut::<ModelDragPreviewState>()
+        .and_then(|mut s| {
+            let entity = s.ghost_root.take();
+            let asset_path = s.asset_path.take();
+            let gltf_handle = s.mesh_handle.take();
+            s.name = None;
+            s.cursor_in_viewport = false;
+            entity
+                .zip(asset_path)
+                .zip(gltf_handle)
+                .map(|((e, p), h)| (e, p, h))
+        });
+
+    if let Some((entity, asset_path, gltf_handle)) = promotion {
+        // Add production markers to the parent entity in place.
+        if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+            entity_mut.insert((
+                MeshInstanceData {
+                    model_path: Some(asset_path),
+                },
+                ImportedRoot,
+                PendingMaterialBinding { gltf_handle },
+                NeedsGroundAlignment {
+                    target_y: ground_pos.y,
+                },
+            ));
+        }
+        // Add `PendingFlatten` to the entity's SceneRoot child so
+        // the flatten pass collapses gltf wrapper nodes once the
+        // scene is fully populated.
+        let candidate_children: Vec<Entity> = world
+            .get::<Children>(entity)
+            .map(|kids| kids.iter().collect())
+            .unwrap_or_default();
+        let mut scene_root_child: Option<Entity> = None;
+        for child in candidate_children {
+            if world.get::<SceneRoot>(child).is_some() {
+                scene_root_child = Some(child);
+                break;
+            }
+        }
+        if let Some(child) = scene_root_child {
+            world.entity_mut(child).insert(PendingFlatten::default());
+        }
+        if let Some(selection) = world.get_resource::<EditorSelection>() {
+            selection.set(Some(entity));
+        }
+    } else {
+        // No placement entity — out-of-project drag (the preview
+        // path skipped this asset because it wasn't already in the
+        // project). Run the import-then-spawn pipeline so the GLB
+        // gets copied into the project and a fresh entity spawned.
+        initiate_model_load(world, path, name, ground_pos);
+    }
+}
+
+/// Native (bevy_ui) counterpart of [`check_viewport_model_drop`]. Runs inline as
+/// an exclusive system so the preview-entity promotion happens *before*
+/// `cleanup_model_drag_ghost` (which would otherwise despawn the still-being-
+/// placed entity once the asset-drag payload is removed). The egui path drains
+/// its drop command inside `editor_ui_system` instead; this only runs under the
+/// bevy_ui backend, so the two never double-fire.
+pub fn native_model_drop(world: &mut World) {
+    let Some((cursor, vp_rect, path, name)) =
+        crate::native_drop::released_drop_on_viewport(world, MODEL_EXTENSIONS)
+    else {
+        return;
+    };
+    commit_model_drop(world, cursor, vp_rect, path, name);
+}
+
+/// Compute a world-space ground position (Y=0 plane) from a viewport-space
+/// pointer. `screen_pos` / `viewport_rect` are in window logical pixels — the
+/// space egui pointer positions and [`ViewportState::screen_position`] share.
 fn compute_ground_position(
     world: &mut World,
-    screen_pos: egui::Pos2,
-    viewport_rect: egui::Rect,
+    screen_pos: Vec2,
+    viewport_rect: Rect,
 ) -> Option<Vec3> {
     // Query the editor camera
     let mut q = world.query_filtered::<(&GlobalTransform, &Camera), With<EditorCamera>>();

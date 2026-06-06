@@ -19,7 +19,7 @@ use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;
 
-const MATERIAL_EXTENSIONS: &[&str] = &["material"];
+pub(crate) const MATERIAL_EXTENSIONS: &[&str] = &["material"];
 
 /// Called from the viewport panel's `ui()` method. On release of a
 /// `.material` drag payload over the viewport, queue a deferred command
@@ -45,25 +45,41 @@ pub fn check_viewport_material_drop(ui: &mut egui::Ui, world: &World, viewport_r
 
     let path = payload.path.clone();
     let screen_pos = pointer_pos.unwrap_or(viewport_rect.center());
-    let vp_rect = viewport_rect;
+    let sp = Vec2::new(screen_pos.x, screen_pos.y);
+    let vp_rect = Rect::from_corners(
+        Vec2::new(viewport_rect.min.x, viewport_rect.min.y),
+        Vec2::new(viewport_rect.max.x, viewport_rect.max.y),
+    );
 
     if let Some(commands) = world.get_resource::<EditorCommands>() {
         commands.push(move |world: &mut World| {
-            let Some(entity) = pick_mesh_under_pointer(world, screen_pos, vp_rect) else {
-                info!("[material_drop] No mesh under pointer — ignoring drop");
-                return;
-            };
-            apply_material_to_entity(world, entity, path);
+            commit_material_drop(world, sp, vp_rect, path);
         });
     }
 }
 
+/// Commit a material drop — raycast for the mesh under `screen_pos` and apply the
+/// `.material`. Shared by the egui drop check (deferred) and `native_material_drop`
+/// (inline). `screen_pos` / `vp_rect` are in window logical pixels.
+pub(crate) fn commit_material_drop(
+    world: &mut World,
+    screen_pos: Vec2,
+    vp_rect: Rect,
+    path: PathBuf,
+) {
+    let Some(entity) = pick_mesh_under_pointer(world, screen_pos, vp_rect) else {
+        info!("[material_drop] No mesh under pointer — ignoring drop");
+        return;
+    };
+    apply_material_to_entity(world, entity, path);
+}
+
 /// Raycast against scene meshes to find the closest entity under the given
-/// screen-space pointer position.
+/// viewport-space pointer position (window logical pixels).
 fn pick_mesh_under_pointer(
     world: &mut World,
-    screen_pos: egui::Pos2,
-    viewport_rect: egui::Rect,
+    screen_pos: Vec2,
+    viewport_rect: Rect,
 ) -> Option<Entity> {
     let mut state: SystemState<(
         MeshRayCast,
