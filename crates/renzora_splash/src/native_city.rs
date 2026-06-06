@@ -7,14 +7,18 @@
 //! isolated from the editor's cameras; it only exists while in
 //! [`SplashState::Splash`] (spawned/despawned by [`manage_city`]).
 
+use bevy::asset::Asset;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
+use bevy::reflect::TypePath;
+use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::Hdr;
-use bevy::ui::widget::NodeImageMode;
+use bevy::shader::ShaderRef;
+use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
+use bevy::ui_render::UiMaterialPlugin;
 
 use crate::SplashState;
 
@@ -53,9 +57,39 @@ struct CityScene {
     built: bool,
 }
 
+/// Glitch state — `amount` spikes to 1 on each camera cut and decays.
+#[derive(Resource, Default)]
+struct CityGlitch {
+    last_shot: i64,
+    amount: f32,
+}
+
+/// UI material that runs the city image through `glitch.wgsl`.
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct GlitchMaterial {
+    /// x = time, y = glitch intensity.
+    #[uniform(0)]
+    params: Vec4,
+    #[texture(1)]
+    #[sampler(2)]
+    image: Option<Handle<Image>>,
+}
+
+impl UiMaterial for GlitchMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "embedded://renzora_splash/glitch.wgsl".into()
+    }
+}
+
 pub(crate) fn register(app: &mut App) {
+    bevy::asset::embedded_asset!(app, "glitch.wgsl");
     app.init_resource::<CityScene>()
-        .add_systems(Update, (manage_city, attach_city_view, animate_city, animate_buildings));
+        .init_resource::<CityGlitch>()
+        .add_plugins(UiMaterialPlugin::<GlitchMaterial>::default())
+        .add_systems(
+            Update,
+            (manage_city, attach_city_view, animate_city, animate_buildings, update_glitch),
+        );
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -101,21 +135,42 @@ fn make_target(size: UVec2) -> Image {
     img
 }
 
-/// Attach the rendered image to the splash's background node once both exist.
+/// Attach the glitch material (sampling the rendered city image) to the splash
+/// background node once both exist.
 fn attach_city_view(
     mut commands: Commands,
     scene: Res<CityScene>,
-    views: Query<Entity, (With<CityView>, Without<ImageNode>)>,
+    mut mats: ResMut<Assets<GlitchMaterial>>,
+    views: Query<Entity, (With<CityView>, Without<MaterialNode<GlitchMaterial>>)>,
 ) {
     if !scene.built {
         return;
     }
     for e in &views {
-        commands.entity(e).insert(ImageNode {
-            image: scene.image.clone(),
-            image_mode: NodeImageMode::Stretch,
-            ..default()
-        });
+        let handle = mats.add(GlitchMaterial { params: Vec4::ZERO, image: Some(scene.image.clone()) });
+        commands.entity(e).insert(MaterialNode(handle));
+    }
+}
+
+/// Spike the glitch on each camera cut, then decay it; feed time + intensity to
+/// the material.
+fn update_glitch(
+    time: Res<Time>,
+    mut glitch: ResMut<CityGlitch>,
+    mut mats: ResMut<Assets<GlitchMaterial>>,
+    views: Query<&MaterialNode<GlitchMaterial>, With<CityView>>,
+) {
+    let t = time.elapsed_secs();
+    let shot = (t / SHOT_SECS).floor() as i64;
+    if shot != glitch.last_shot {
+        glitch.last_shot = shot;
+        glitch.amount = 1.0;
+    }
+    glitch.amount = (glitch.amount - time.delta_secs() / 0.45).max(0.0);
+    for mat in &views {
+        if let Some(m) = mats.get_mut(&mat.0) {
+            m.params = Vec4::new(t, glitch.amount, 0.0, 0.0);
+        }
     }
 }
 
