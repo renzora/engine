@@ -261,16 +261,15 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let search = build_search(commands, fonts);
     commands.entity(top).add_child(search);
 
-    // ── Middle: actions + recents, near the top (below the search) ──
+    // ── Middle: actions + recents, vertically centred ──
     let middle = commands
         .spawn((
             Node {
                 flex_grow: 1.0,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::FlexStart,
-                padding: UiRect::top(Val::Px(40.0)),
-                row_gap: Val::Px(18.0),
+                justify_content: JustifyContent::Center,
+                row_gap: Val::Px(30.0),
                 ..default()
             },
             FocusPolicy::Pass,
