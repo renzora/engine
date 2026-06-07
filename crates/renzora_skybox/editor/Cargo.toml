@@ -1,0 +1,17 @@
+[package]
+name = "renzora_skybox_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_skybox: the Skybox inspector entry + native (ember) mode-specific drawer (Color/Procedural/Panorama/Tiled, color pickers) + panorama file browser. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_skybox = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+renzora_inspector = { path = "../../renzora_inspector" }
+rfd = { version = "0.15" }
+
+[lints]
+workspace = true

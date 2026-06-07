@@ -3,19 +3,14 @@ name = "renzora_skybox"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-editor = ["renzora/editor", "dep:egui-phosphor", "dep:renzora_ui", "dep:rfd", "dep:renzora_ember", "dep:renzora_inspector"]
+# No `editor` feature: lean runtime crate. The Skybox inspector entry + native
+# (ember) mode-specific inspector drawer + panorama file browser moved to the
+# nested renzora_skybox_editor crate (crates/renzora_skybox/editor).
 
 [dependencies]
 bevy = { workspace = true }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora = { path = "../renzora", default-features = false }
-renzora_ui = { path = "../renzora_ui", optional = true }
 serde = { version = "1", features = ["derive"] }
-rfd = { version = "0.15", optional = true }
-renzora_ember = { path = "../renzora_ember", optional = true }
-renzora_inspector = { path = "../renzora_inspector", optional = true }
 
 [lints]
 workspace = true

@@ -105,7 +105,7 @@ editor = [
     "dep:renzora_lumen_editor",
     "dep:renzora_auto_exposure_editor",
     "dep:renzora_oit_editor",
-    "renzora_skybox/editor",
+    "dep:renzora_skybox_editor",
     "dep:renzora_night_stars_editor",
     "dep:renzora_clouds_editor",
     "renzora_network/editor",
@@ -220,6 +220,7 @@ renzora_auto_exposure_editor = { path = "../renzora_auto_exposure/editor", optio
 renzora_oit             = { path = "../renzora_oit" }
 renzora_oit_editor      = { path = "../renzora_oit/editor", optional = true }
 renzora_skybox          = { path = "../renzora_skybox" }
+renzora_skybox_editor   = { path = "../renzora_skybox/editor", optional = true }
 renzora_night_stars     = { path = "../renzora_night_stars" }
 renzora_night_stars_editor = { path = "../renzora_night_stars/editor", optional = true }
 renzora_clouds          = { path = "../renzora_clouds" }
