@@ -13,6 +13,20 @@ use bevy::prelude::*;
 /// Global crash report storage
 static CRASH_REPORT: Mutex<Option<CrashReport>> = Mutex::new(None);
 
+/// Whether this process is an editor session. Set once by [`install_panic_hook`]
+/// from `main` (which already accounts for `--no-editor` and server launches).
+/// The panic hook and the crash-file helpers run outside the Bevy `World` (the
+/// hook runs in the panic handler itself), so they can't read `EditorSession`
+/// — they consult this process-global instead. Editor crashes overwrite
+/// `~/.renzora/crashes/last_crash.txt` (picked up + shown next launch); game
+/// crashes append `<exe_dir>/crash.log` beside the shipped binary.
+static IS_EDITOR_PROCESS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn is_editor_process() -> bool {
+    IS_EDITOR_PROCESS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Crash report information
 #[derive(Clone, Debug)]
 pub struct CrashReport {
@@ -38,8 +52,11 @@ impl CrashReport {
     }
 }
 
-/// Install the custom panic hook. Call this before `app.run()`.
-pub fn install_panic_hook() {
+/// Install the custom panic hook. Call this before `app.run()`. `is_editor`
+/// records whether this is an editor session so the hook can pick the right
+/// crash-file location + dialog behaviour (it can't read the Bevy `World`).
+pub fn install_panic_hook(is_editor: bool) {
+    IS_EDITOR_PROCESS.store(is_editor, std::sync::atomic::Ordering::Relaxed);
     let default_hook = panic::take_hook();
 
     panic::set_hook(Box::new(move |panic_info| {
@@ -75,11 +92,14 @@ pub fn install_panic_hook() {
 
         let _ = save_crash_report(&report);
 
-        #[cfg(all(
-            feature = "editor",
-            not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
-        ))]
-        show_crash_dialog(&report);
+        // Editor sessions get a native dialog; shipped games write crash.log
+        // silently. `is_editor_process()` carries the decision out of `main`.
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+        {
+            if is_editor_process() {
+                show_crash_dialog(&report);
+            }
+        }
 
         default_hook(panic_info);
     }));
@@ -128,14 +148,12 @@ fn save_crash_report(report: &CrashReport) -> std::io::Result<()> {
     let crash_dir = get_crash_dir();
     std::fs::create_dir_all(&crash_dir)?;
 
-    #[cfg(feature = "editor")]
-    {
+    if is_editor_process() {
+        // Editor: overwrite so the next editor launch shows just the latest.
         let crash_file = crash_dir.join("last_crash.txt");
         std::fs::write(&crash_file, report.format())?;
-    }
-
-    #[cfg(not(feature = "editor"))]
-    {
+    } else {
+        // Game: append beside the shipped binary where players can find it.
         use std::io::Write as _;
         let crash_file = crash_dir.join("crash.log");
         let mut f = std::fs::OpenOptions::new()
@@ -153,16 +171,22 @@ fn save_crash_report(report: &CrashReport) -> std::io::Result<()> {
 /// Editor builds keep history under the user's home dir; runtime builds drop
 /// the file next to the executable so it ships with the game directory.
 fn get_crash_dir() -> std::path::PathBuf {
-    #[cfg(all(feature = "editor", not(target_arch = "wasm32")))]
+    #[cfg(target_arch = "wasm32")]
     {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(".renzora").join("crashes");
-        }
         std::path::PathBuf::from(".renzora/crashes")
     }
 
-    #[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
+    #[cfg(not(target_arch = "wasm32"))]
     {
+        if is_editor_process() {
+            // Editor keeps history under the user's home dir.
+            if let Some(home) = dirs::home_dir() {
+                return home.join(".renzora").join("crashes");
+            }
+            return std::path::PathBuf::from(".renzora/crashes");
+        }
+        // Game drops the file next to the executable so it ships with the
+        // game directory.
         if let Some(exe_dir) = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -170,11 +194,6 @@ fn get_crash_dir() -> std::path::PathBuf {
             return exe_dir;
         }
         std::path::PathBuf::from(".")
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        std::path::PathBuf::from(".renzora/crashes")
     }
 }
 
@@ -227,11 +246,9 @@ pub fn check_previous_crash() -> Option<CrashReport> {
 }
 
 /// Show a native crash dialog using rfd, with option to copy to clipboard.
-/// Editor-only — shipped runtime builds write `crash.log` silently instead.
-#[cfg(all(
-    feature = "editor",
-    not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
-))]
+/// Called only for editor sessions (gated by `is_editor_process()` at the call
+/// site); shipped games write `crash.log` silently instead.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
 fn show_crash_dialog(report: &CrashReport) {
     let short_message = format!(
         "The application has crashed.\n\n\
@@ -260,19 +277,22 @@ fn show_crash_dialog(report: &CrashReport) {
 }
 
 // =============================================================================
-// Editor-only: native (ember / bevy_ui) window for previous-session crash reports
+// Crash-report state + plugin (runtime). The native (ember) overlay that shows
+// a previous-session crash while in the editor lives in `renzora_engine_editor`
+// (it needs `renzora_ember`); it reads `CrashReportWindowState` from here.
 // =============================================================================
 
-/// State for the crash report window UI
+/// Previous-session crash surfaced to the UI. Set by `check_for_previous_crash_system`
+/// (runtime, here); read + cleared by the editor crash overlay.
 #[derive(Resource, Default)]
 pub struct CrashReportWindowState {
     pub show_window: bool,
     pub report: Option<CrashReport>,
 }
 
-/// Plugin that installs crash reporting.
-/// - Always installs the panic hook and checks for previous crashes.
-/// - With the `editor` feature, renders a native bevy_ui (ember) crash window.
+/// Installs crash reporting: inits `CrashReportWindowState` and the startup
+/// check for a previous crash. The editor's `EngineEditorPlugin` adds the
+/// overlay that renders it.
 pub struct CrashReportPlugin;
 
 impl Plugin for CrashReportPlugin {
@@ -280,19 +300,6 @@ impl Plugin for CrashReportPlugin {
         info!("[runtime] CrashReportPlugin");
         app.init_resource::<CrashReportWindowState>()
             .add_systems(Startup, check_for_previous_crash_system);
-
-        #[cfg(feature = "editor")]
-        {
-            use renzora::SplashState;
-            app.add_systems(
-                Update,
-                (
-                    overlay_ui::manage_crash_overlay,
-                    overlay_ui::crash_overlay_buttons,
-                )
-                    .run_if(in_state(SplashState::Editor)),
-            );
-        }
     }
 }
 
@@ -302,192 +309,5 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
         warn!("Previous session crashed: {}", report.message);
         state.report = Some(report);
         state.show_window = true;
-    }
-}
-
-/// Native bevy_ui (ember) crash report overlay — the replacement for the old
-/// egui window. A dimmed backdrop + centered panel showing the previous
-/// session's error / location / backtrace, with Copy-to-clipboard and Close.
-#[cfg(feature = "editor")]
-mod overlay_ui {
-    use super::{CrashReport, CrashReportWindowState};
-
-    use bevy::ecs::world::CommandQueue;
-    use bevy::prelude::*;
-    use bevy::ui::FocusPolicy;
-
-    use renzora_ember::font::{ui_font, EmberFonts};
-    use renzora_ember::theme::{border, popup_bg, rgb, text_muted, text_primary};
-    use renzora_ember::widgets::{button, scroll_area, OverlaySurface};
-
-    #[derive(Component)]
-    pub(super) struct CrashOverlayRoot;
-    #[derive(Component)]
-    pub(super) struct CrashCloseButton;
-    #[derive(Component)]
-    pub(super) struct CrashCopyButton;
-
-    /// Spawn the overlay when a previous crash is flagged; tear it down when cleared.
-    pub(super) fn manage_crash_overlay(world: &mut World) {
-        let show = world
-            .get_resource::<CrashReportWindowState>()
-            .is_some_and(|s| s.show_window && s.report.is_some());
-        let mut q = world.query_filtered::<Entity, With<CrashOverlayRoot>>();
-        let existing: Vec<Entity> = q.iter(world).collect();
-
-        if show && existing.is_empty() {
-            let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
-                return;
-            };
-            let report = world
-                .resource::<CrashReportWindowState>()
-                .report
-                .clone()
-                .unwrap();
-            let mut queue = CommandQueue::default();
-            {
-                let mut commands = Commands::new(&mut queue, world);
-                spawn_overlay(&mut commands, &fonts, &report);
-            }
-            queue.apply(world);
-        } else if !show && !existing.is_empty() {
-            for e in existing {
-                world.entity_mut(e).despawn();
-            }
-        }
-    }
-
-    fn line(
-        commands: &mut Commands,
-        font: &Handle<Font>,
-        text: &str,
-        color: (u8, u8, u8),
-        size: f32,
-    ) -> Entity {
-        commands
-            .spawn((Text::new(text), ui_font(font, size), TextColor(rgb(color))))
-            .id()
-    }
-
-    fn spawn_overlay(commands: &mut Commands, fonts: &EmberFonts, report: &CrashReport) {
-        let backdrop = commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    right: Val::Px(0.0),
-                    bottom: Val::Px(0.0),
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-                GlobalZIndex(9800),
-                FocusPolicy::Block,
-                Interaction::default(),
-                OverlaySurface,
-                CrashOverlayRoot,
-                Name::new("crash-overlay"),
-            ))
-            .id();
-
-        let panel = commands
-            .spawn((
-                Node {
-                    width: Val::Px(640.0),
-                    max_width: Val::Percent(94.0),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(6.0),
-                    padding: UiRect::all(Val::Px(14.0)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(rgb(popup_bg())),
-                BorderColor::all(rgb(border())),
-                FocusPolicy::Block,
-                Name::new("crash-panel"),
-            ))
-            .id();
-
-        let heading = line(
-            commands,
-            &fonts.ui,
-            "The application crashed in the previous session",
-            text_primary(),
-            15.0,
-        );
-        let ts = line(
-            commands,
-            &fonts.ui,
-            &format!("Timestamp: {}", report.timestamp),
-            text_muted(),
-            12.0,
-        );
-        let err_label = line(commands, &fonts.ui, "Error:", text_muted(), 12.0);
-        let err = line(commands, &fonts.ui, &report.message, (235, 110, 110), 13.0);
-        let loc_label = line(commands, &fonts.ui, "Location:", text_muted(), 12.0);
-        let loc = line(commands, &fonts.ui, &report.location, text_primary(), 12.0);
-        let bt_label = line(commands, &fonts.ui, "Backtrace:", text_muted(), 12.0);
-
-        // Scrollable backtrace.
-        let bt_content = commands
-            .spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(6.0)),
-                ..default()
-            })
-            .id();
-        let bt_text = commands
-            .spawn((
-                Text::new(report.backtrace.clone()),
-                ui_font(&fonts.ui, 11.0),
-                TextColor(rgb(text_muted())),
-            ))
-            .id();
-        commands.entity(bt_content).add_child(bt_text);
-        let bt_scroll = scroll_area(commands, bt_content, 240.0);
-
-        // Button row.
-        let copy_btn = button(commands, &fonts.ui, "Copy to Clipboard");
-        commands.entity(copy_btn).insert(CrashCopyButton);
-        let close_btn = button(commands, &fonts.ui, "Close");
-        commands.entity(close_btn).insert(CrashCloseButton);
-        let btn_row = commands
-            .spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::SpaceBetween,
-                column_gap: Val::Px(8.0),
-                margin: UiRect::top(Val::Px(4.0)),
-                ..default()
-            })
-            .id();
-        commands.entity(btn_row).add_children(&[copy_btn, close_btn]);
-
-        commands.entity(panel).add_children(&[
-            heading, ts, err_label, err, loc_label, loc, bt_label, bt_scroll, btn_row,
-        ]);
-        commands.entity(backdrop).add_child(panel);
-    }
-
-    /// Handle Copy / Close clicks.
-    pub(super) fn crash_overlay_buttons(
-        mut state: ResMut<CrashReportWindowState>,
-        close_q: Query<&Interaction, (Changed<Interaction>, With<CrashCloseButton>)>,
-        copy_q: Query<&Interaction, (Changed<Interaction>, With<CrashCopyButton>)>,
-    ) {
-        if close_q.iter().any(|i| *i == Interaction::Pressed) {
-            state.show_window = false;
-        }
-        if copy_q.iter().any(|i| *i == Interaction::Pressed) {
-            if let Some(report) = state.report.clone() {
-                if let Ok(mut cb) = arboard::Clipboard::new() {
-                    let _ = cb.set_text(report.format());
-                }
-            }
-        }
     }
 }

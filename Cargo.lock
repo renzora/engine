@@ -9329,6 +9329,7 @@ dependencies = [
  "renzora_dof",
  "renzora_editor_framework",
  "renzora_engine",
+ "renzora_engine_editor",
  "renzora_environment_map",
  "renzora_export",
  "renzora_foliage_editor",
@@ -9437,7 +9438,6 @@ dependencies = [
  "renzora",
  "renzora_animation",
  "renzora_audio",
- "renzora_ember",
  "renzora_lighting",
  "renzora_macros",
  "renzora_network",
@@ -9452,6 +9452,17 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora_engine_editor"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_ember",
+ "renzora_engine",
 ]
 
 [[package]]
@@ -10379,6 +10390,7 @@ dependencies = [
  "renzora_dof",
  "renzora_editor_framework",
  "renzora_engine",
+ "renzora_engine_editor",
  "renzora_environment_map",
  "renzora_export",
  "renzora_foliage_editor",

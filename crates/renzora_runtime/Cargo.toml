@@ -63,7 +63,7 @@ editor = [
     "dep:renzora_theme_status",
     "dep:renzora_vst",
     # Cascade editor sub-features into dual-mode crates
-    "renzora_engine/editor",
+    "dep:renzora_engine_editor",
     "renzora_physics/editor",
     "renzora_scripting/editor",
     "renzora_lighting/editor",
@@ -108,6 +108,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Core
 renzora_engine = { path = "../renzora_engine" }
+# Editor-only half of renzora_engine (nested split crate); pulled in only by the
+# dormant `editor` feature, same as the other `/editor` cascades.
+renzora_engine_editor = { path = "../renzora_engine/editor", optional = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting" }
 renzora_blueprint = { path = "../renzora_blueprint" }

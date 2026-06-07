@@ -84,7 +84,8 @@ editor = [
     "dep:renzora_vst",
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
-    "renzora_engine/editor",
+    # renzora_engine is fully split: its editor half is a separate dep crate.
+    "dep:renzora_engine_editor",
     "renzora_physics/editor",
     "renzora_scripting/editor",
     "renzora_lighting/editor",
@@ -172,6 +173,7 @@ renzora_test_component     = { path = "../renzora_test_component", optional = tr
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_vst                = { path = "../renzora_vst", optional = true }
 renzora_game_ui_editor     = { path = "../renzora_game_ui_editor", optional = true }
+renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
 # ── Dual-mode crates touched by the `editor` cascade above ───────────────────
 # Non-optional: they arrive transitively anyway; listing them directly makes

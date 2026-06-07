@@ -290,55 +290,9 @@ pub fn spawn_editor_2d_camera(mut commands: Commands, render_target: Res<Viewpor
     }
 }
 
-/// Tracks the last selection processed for auto-view-switching, so the
-/// 2D-flip fires on selection *change* only — same pattern the UI
-/// auto-switch uses, but kept independent so the two systems don't
-/// fight over a shared tracker.
-#[cfg(feature = "editor")]
-#[derive(Resource, Default)]
-pub struct LastSelectionForView2dSwitch(pub Option<bevy::ecs::entity::Entity>);
-
-/// When the selection changes to a 2D entity (Sprite or Camera2d), flip the
-/// viewport to 2D view. When it changes to a non-2D entity *and* we're
-/// currently in 2D view, fall back to 3D. Other view transitions (3D ↔ UI)
-/// are left to the UI auto-switch system or the user.
-#[cfg(feature = "editor")]
-pub fn auto_switch_view_on_2d_selection(world: &mut World) {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-
-    let current_sel = world
-        .get_resource::<renzora::EditorSelection>()
-        .and_then(|s| s.get());
-    let last_sel = world
-        .get_resource::<LastSelectionForView2dSwitch>()
-        .map(|l| l.0)
-        .unwrap_or(None);
-    if current_sel == last_sel {
-        return;
-    }
-    if let Some(mut last) = world.get_resource_mut::<LastSelectionForView2dSwitch>() {
-        last.0 = current_sel;
-    }
-    let Some(entity) = current_sel else { return };
-
-    let is_2d = world.get::<bevy::sprite::Sprite>(entity).is_some()
-        || world.get::<Camera2d>(entity).is_some()
-        || world.get::<renzora::core::Node2d>(entity).is_some();
-
-    let view = world
-        .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view)
-        .unwrap_or_default();
-    let target = match (is_2d, view) {
-        (true, ViewportView::Two) => return,
-        (true, _) => ViewportView::Two,
-        (false, ViewportView::Two) => ViewportView::Three,
-        (false, _) => return,
-    };
-    if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
-        settings.viewport_view = target;
-    }
-}
+// `LastSelectionForView2dSwitch` + `auto_switch_view_on_2d_selection` moved to
+// the `renzora_engine_editor` crate (editor-only; they read `EditorSelection`,
+// which is behind renzora's `editor` feature).
 
 /// Pan + zoom controls for the editor 2D camera.
 ///

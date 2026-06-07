@@ -1,0 +1,18 @@
+[package]
+name = "renzora_engine_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_engine (the dual-mode crate split). Registers the editor camera lifecycle, save-scene observer, 2D auto-view-switch, and the native crash-report overlay; installed only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_engine = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+# Clipboard for the crash-overlay "Copy to Clipboard" button. The editor bundle
+# is desktop-only, so an unconditional dep is fine (and avoids a cfg split
+# between the dep and the code that calls it).
+arboard = "3"
+
+[lints]
+workspace = true

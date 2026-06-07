@@ -127,6 +127,16 @@ pub struct RuntimePlugin;
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] RuntimePlugin");
+        // Editor-vs-game branch. `renzora_engine` is compiled lean (no `editor`
+        // cargo feature), so the editor/runtime split that used to be
+        // `#[cfg]`-gated is decided at RUNTIME from `EditorSession`, inserted by
+        // `add_engine_plugins(is_editor)` before this plugin builds. Defaults to
+        // game (`false`) if absent — the safe shipping behaviour.
+        let is_editor = app
+            .world()
+            .get_resource::<renzora::EditorSession>()
+            .map(|s| s.0)
+            .unwrap_or(false);
         // Default rendering mode (auto-resolved by platform). Gets
         // overridden below if `project.toml` specifies an explicit
         // mode. Must exist before camera spawn so the spawn site can
@@ -179,8 +189,9 @@ impl Plugin for RuntimePlugin {
 
         app.add_plugins(debug_log::DebugLogPlugin);
 
-        #[cfg(not(feature = "editor"))]
-        {
+        // Game startup: rpak/project/scene load + scene rehydration. Runs only
+        // in a game session — in the editor the splash/project flow owns this.
+        if !is_editor {
             // Try VFS first (rpak), then CLI --project, then local project.toml
             let vfs = Vfs::detect();
 
@@ -614,70 +625,22 @@ impl Plugin for RuntimePlugin {
         app.init_resource::<renzora::PendingSceneLoad>();
         app.add_systems(Update, process_pending_scene_loads);
 
-        // In standalone (non-editor) mode, populate EffectRouting from scene cameras.
-        #[cfg(not(feature = "editor"))]
-        {
+        // In a game session, populate EffectRouting from scene cameras. The
+        // editor wires effect routing through its own viewport cameras (the
+        // editor camera registration lives in `renzora_engine_editor`).
+        if !is_editor {
             app.add_systems(Update, update_runtime_effect_routing);
         }
 
-        #[cfg(feature = "editor")]
-        {
-            // Editor camera spawn deferred until the loading screen
-            // hands off to the editor view (`OnEnter(SplashState::Editor)`).
-            // By then the user has picked a project, its assets are
-            // loaded, and crucially `project.toml` has been read so the
-            // `ResolvedRenderingMode` resource reflects the project's
-            // choice. Spawning at Startup (the old behaviour) was too
-            // early -- no project loaded yet, so the camera always got
-            // the default (Forward) regardless of `rendering.mode` in
-            // the project. Bevy 0.18 specializes the prepass pipeline at
-            // first render, so the prepass attachments must be correct
-            // *at spawn time* -- we can't retrofit `DeferredPrepass`
-            // later. Deferring to `OnEnter(Editor)` is the only place
-            // both conditions hold.
-            app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
-                .init_resource::<camera::LastSelectionForView2dSwitch>()
-                .add_systems(
-                    OnEnter(renzora::SplashState::Editor),
-                    (
-                        // MUST run before camera spawn -- updates
-                        // `ResolvedRenderingMode` from the loaded
-                        // project so the camera attaches the right
-                        // prepass attachments at spawn time.
-                        sync_rendering_mode_from_project,
-                        camera::spawn_editor_camera,
-                        camera::spawn_editor_2d_camera,
-                    )
-                        .chain(),
-                )
-                .add_systems(
-                    Update,
-                    (
-                        camera::sync_camera_render_target,
-                        camera::sync_viewport_camera_targets,
-                        camera::share_sky_to_secondary_viewports,
-                        camera::share_ibl_to_secondary_viewports,
-                        camera::update_editor_camera_matrix,
-                        camera::editor_2d_camera_controller,
-                        camera::auto_switch_view_on_2d_selection,
-                    ),
-                );
-            // Listen for save-scene event from the editor
-            app.add_observer(on_save_current_scene);
-        }
+        // Editor camera lifecycle, the save-scene observer and the 2D
+        // auto-view-switch moved to the `renzora_engine_editor` crate
+        // (`EngineEditorPlugin`, Editor scope) — installed only by the editor
+        // bundle, so the lean runtime carries none of it.
     }
-}
-
-#[cfg(feature = "editor")]
-fn on_save_current_scene(_trigger: On<renzora::SaveCurrentScene>, mut commands: Commands) {
-    commands.queue(|world: &mut World| {
-        scene_io::save_current_scene(world);
-    });
 }
 
 /// Wire the VFS file reader into the scripting engine so scripts can be loaded
 /// from rpak archives (Android, exported builds) instead of the filesystem.
-#[cfg(not(feature = "editor"))]
 fn setup_vfs_script_reader(
     vfs: Res<Vfs>,
     mut engine: Option<ResMut<renzora_scripting::ScriptEngine>>,
@@ -698,9 +661,9 @@ fn setup_vfs_script_reader(
     info!("[runtime] VFS file reader set on scripting engine");
 }
 
-/// In standalone (non-editor) mode, route effects from the default scene camera
-/// (and all non-camera entities with Settings) to the active rendering camera.
-#[cfg(not(feature = "editor"))]
+/// In a game session, route effects from the default scene camera (and all
+/// non-camera entities with Settings) to the active rendering camera. Gated at
+/// the call site by `EditorSession` (added only when `!is_editor`).
 fn update_runtime_effect_routing(
     mut routing: ResMut<renzora::EffectRouting>,
     cameras: Query<(Entity, Option<&DefaultCamera>, &Camera), With<SceneCamera>>,
@@ -855,7 +818,7 @@ fn install_audio_asset_loader(
     }));
 }
 
-#[cfg(all(not(feature = "editor"), not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn parse_project_arg() -> Option<std::path::PathBuf> {
     let args: Vec<String> = std::env::args().collect();
     for i in 0..args.len() {

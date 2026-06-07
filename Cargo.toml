@@ -9,10 +9,13 @@ members = [
     # Engine crate + every plugin (`renzora` + `renzora_*`).
     "crates/renzora",
     "crates/renzora_*",
-    # NOTE: nested editor halves of split dual-mode crates (e.g.
-    # `crates/renzora_engine/editor`) are added here as
-    # `"crates/renzora_*/editor"` — but ONLY once at least one such `editor/`
-    # subcrate exists (a member glob that matches nothing is a hard error).
+    # Nested editor halves of split dual-mode crates (e.g.
+    # `crates/renzora_engine/editor` = `renzora_engine_editor`). The lean
+    # runtime crate sits at `crates/renzora_<name>/`; its editor-only code lives
+    # in the nested `editor/` subcrate, linked only by the editor bundle. A
+    # member glob that matches nothing is a hard error, so this stays valid only
+    # while ≥1 `editor/` subcrate exists.
+    "crates/renzora_*/editor",
     # Non-plugin engine support crate.
     "crates/dynamic_plugin_loader",
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a

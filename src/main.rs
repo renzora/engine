@@ -132,13 +132,15 @@ pub fn start() {
 // only difference between shipping the editor and shipping the game.
 #[cfg(not(all(target_arch = "wasm32", feature = "runtime")))]
 fn main() {
-    renzora_runtime::renzora_engine::crash::install_panic_hook();
-
     // `--host` wins if both are passed. A server/host launch is never an
     // editor session even if the bundle dll happens to sit beside the exe.
     let host_mode = std::env::args().any(|a| a == "--host");
     let server_mode = !host_mode && std::env::args().any(|a| a == "--server");
     let is_editor = !server_mode && !host_mode && editor_session();
+
+    // Install the panic hook now that we know the session kind — it picks the
+    // crash-file location + dialog from `is_editor` (it can't read the World).
+    renzora_runtime::renzora_engine::crash::install_panic_hook(is_editor);
 
     // Windows release is `windows_subsystem = "windows"` (no console). Editor
     // sessions grab one so their log output is visible; a shipped game stays
