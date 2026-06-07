@@ -1,0 +1,15 @@
+[package]
+name = "renzora_distance_fog_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only inspector + native drawer for renzora_distance_fog. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_distance_fog = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+egui-phosphor = { workspace = true }
+
+[lints]
+workspace = true

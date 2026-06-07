@@ -2,12 +2,6 @@ use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DepthOfFieldSettings {
@@ -73,45 +67,6 @@ fn sync_dof(
     }
 }
 
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "depth_of_field",
-        display_name: "Depth of Field",
-        icon: regular::CAMERA,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(DepthOfFieldSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(DepthOfFieldSettings, DepthOfField)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<DepthOfFieldSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DepthOfFieldSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        // Declarative fields render natively (bevy_ui).
-        fields: vec![
-            renzora::enum_u32_field!("Mode", DepthOfFieldSettings, mode, ["Gaussian", "Bokeh"]),
-            renzora::float_field!("Focal Distance", DepthOfFieldSettings, focal_distance, 0.1, 0.1, 1000.0),
-            renzora::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
-            renzora::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
-        ],
-    }
-}
-
 fn cleanup_dof(
     mut commands: Commands,
     mut removed: RemovedComponents<DepthOfFieldSettings>,
@@ -134,8 +89,6 @@ impl Plugin for DepthOfFieldPlugin {
         info!("[runtime] DepthOfFieldPlugin");
         app.register_type::<DepthOfFieldSettings>();
         app.add_systems(Update, (sync_dof, cleanup_dof));
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
     }
 }
 

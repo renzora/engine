@@ -8921,9 +8921,18 @@ name = "renzora_antialiasing"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_antialiasing_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_antialiasing",
 ]
 
 [[package]]
@@ -9245,10 +9254,19 @@ name = "renzora_distance_fog"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "renzora",
+ "serde",
+]
+
+[[package]]
+name = "renzora_distance_fog_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
+ "renzora_distance_fog",
  "renzora_ember",
- "serde",
 ]
 
 [[package]]
@@ -9280,10 +9298,19 @@ name = "renzora_dof"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_macros",
  "serde",
+]
+
+[[package]]
+name = "renzora_dof_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_dof",
 ]
 
 [[package]]
@@ -9319,6 +9346,7 @@ dependencies = [
  "renzora_animation",
  "renzora_animation_editor",
  "renzora_antialiasing",
+ "renzora_antialiasing_editor",
  "renzora_asset_browser",
  "renzora_asset_registry",
  "renzora_atmosphere",
@@ -9336,7 +9364,9 @@ dependencies = [
  "renzora_daw",
  "renzora_debugger",
  "renzora_distance_fog",
+ "renzora_distance_fog_editor",
  "renzora_dof",
+ "renzora_dof_editor",
  "renzora_editor_framework",
  "renzora_engine",
  "renzora_engine_editor",
@@ -9365,6 +9395,7 @@ dependencies = [
  "renzora_mesh_edit",
  "renzora_mixer",
  "renzora_motion_blur",
+ "renzora_motion_blur_editor",
  "renzora_navmesh",
  "renzora_navmesh_editor",
  "renzora_network",
@@ -9385,17 +9416,21 @@ dependencies = [
  "renzora_skybox",
  "renzora_splash",
  "renzora_ssao",
+ "renzora_ssao_editor",
  "renzora_ssr",
+ "renzora_ssr_editor",
  "renzora_system_monitor",
  "renzora_terrain",
  "renzora_terrain_editor",
  "renzora_test_component",
  "renzora_theme_status",
  "renzora_tonemapping",
+ "renzora_tonemapping_editor",
  "renzora_tracy",
  "renzora_undo",
  "renzora_viewport",
  "renzora_volumetric_fog",
+ "renzora_volumetric_fog_editor",
  "renzora_vst",
  "renzora_water",
  "toml 0.8.23",
@@ -10079,10 +10114,19 @@ name = "renzora_motion_blur"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_macros",
  "serde",
+]
+
+[[package]]
+name = "renzora_motion_blur_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_motion_blur",
 ]
 
 [[package]]
@@ -10669,9 +10713,18 @@ name = "renzora_ssao"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_ssao_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_ssao",
 ]
 
 [[package]]
@@ -10679,9 +10732,18 @@ name = "renzora_ssr"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_ssr_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_ssr",
 ]
 
 [[package]]
@@ -10806,9 +10868,18 @@ name = "renzora_tonemapping"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_tonemapping_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_tonemapping",
 ]
 
 [[package]]
@@ -10936,9 +11007,18 @@ name = "renzora_volumetric_fog"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_volumetric_fog_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_volumetric_fog",
 ]
 
 [[package]]

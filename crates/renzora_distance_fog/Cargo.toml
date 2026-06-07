@@ -3,15 +3,12 @@ name = "renzora_distance_fog"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-editor = ["renzora/editor", "dep:renzora_ember", "dep:egui-phosphor"]
+# No `editor` feature: lean runtime crate. The inspector + native drawer moved to
+# the nested renzora_distance_fog_editor crate (crates/renzora_distance_fog/editor).
 
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_ember = { path = "../renzora_ember", optional = true }
 renzora = { path = "../renzora", default-features = false }
 
 [lints]

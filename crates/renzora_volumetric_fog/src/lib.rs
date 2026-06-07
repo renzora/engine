@@ -14,12 +14,6 @@ use bevy::light::VolumetricFog;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct VolumetricFogSettings {
@@ -104,44 +98,6 @@ fn cleanup_volumetric_fog(
     }
 }
 
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "volumetric_fog",
-        display_name: "Volumetric Fog",
-        icon: regular::CLOUD_FOG,
-        category: "environment",
-        has_fn: |world, entity| world.get::<VolumetricFogSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(VolumetricFogSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(VolumetricFogSettings, VolumetricFog)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<VolumetricFogSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<VolumetricFogSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![
-            renzora::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
-            renzora::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
-            renzora::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
-            renzora::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
-        ],
-    }
-}
-
 #[derive(Default)]
 pub struct VolumetricFogPlugin;
 
@@ -150,8 +106,6 @@ impl Plugin for VolumetricFogPlugin {
         info!("[runtime] VolumetricFogPlugin");
         app.register_type::<VolumetricFogSettings>();
         app.add_systems(Update, (sync_volumetric_fog, cleanup_volumetric_fog));
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
     }
 }
 

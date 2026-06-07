@@ -2,12 +2,6 @@ use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SsaoSettings {
@@ -69,37 +63,6 @@ fn cleanup_ssao(
     }
 }
 
-#[cfg(feature = "editor")]
-fn ssao_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "ssao",
-        display_name: "SSAO",
-        icon: regular::CIRCLE_HALF,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<SsaoSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(SsaoSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(SsaoSettings, ScreenSpaceAmbientOcclusion)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<SsaoSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SsaoSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![],
-    }
-}
-
 #[derive(Default)]
 pub struct SsaoPlugin;
 
@@ -108,8 +71,6 @@ impl Plugin for SsaoPlugin {
         info!("[runtime] SsaoPlugin");
         app.register_type::<SsaoSettings>();
         app.add_systems(Update, (sync_ssao, cleanup_ssao));
-        #[cfg(feature = "editor")]
-        app.register_inspector(ssao_entry());
     }
 }
 

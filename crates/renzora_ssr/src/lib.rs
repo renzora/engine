@@ -3,12 +3,6 @@ use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SsrSettings {
@@ -87,37 +81,6 @@ fn cleanup_ssr(
     }
 }
 
-#[cfg(feature = "editor")]
-fn ssr_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "ssr",
-        display_name: "SSR",
-        icon: regular::SWAP,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<SsrSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(SsrSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(SsrSettings, ScreenSpaceReflections)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<SsrSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SsrSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![],
-    }
-}
-
 #[derive(Default)]
 pub struct SsrPlugin;
 
@@ -126,8 +89,6 @@ impl Plugin for SsrPlugin {
         info!("[runtime] SsrPlugin");
         app.register_type::<SsrSettings>();
         app.add_systems(Update, (sync_ssr, cleanup_ssr));
-        #[cfg(feature = "editor")]
-        app.register_inspector(ssr_entry());
     }
 }
 

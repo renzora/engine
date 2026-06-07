@@ -90,17 +90,17 @@ editor = [
     "renzora_scripting/editor",
     "renzora_lighting/editor",
     "renzora_hanabi/editor",
-    "renzora_tonemapping/editor",
+    "dep:renzora_tonemapping_editor",
     "dep:renzora_bloom_effect_editor",
-    "renzora_dof/editor",
-    "renzora_motion_blur/editor",
-    "renzora_antialiasing/editor",
-    "renzora_distance_fog/editor",
-    "renzora_volumetric_fog/editor",
+    "dep:renzora_dof_editor",
+    "dep:renzora_motion_blur_editor",
+    "dep:renzora_antialiasing_editor",
+    "dep:renzora_distance_fog_editor",
+    "dep:renzora_volumetric_fog_editor",
     "renzora_atmosphere/editor",
     "renzora_environment_map/editor",
-    "renzora_ssao/editor",
-    "renzora_ssr/editor",
+    "dep:renzora_ssao_editor",
+    "dep:renzora_ssr_editor",
     "renzora_rt/editor",
     "renzora_lumen/editor",
     "renzora_auto_exposure/editor",
@@ -189,17 +189,25 @@ renzora_scripting       = { path = "../renzora_scripting" }
 renzora_lighting        = { path = "../renzora_lighting" }
 renzora_hanabi          = { path = "../renzora_hanabi" }
 renzora_tonemapping     = { path = "../renzora_tonemapping" }
+renzora_tonemapping_editor = { path = "../renzora_tonemapping/editor", optional = true }
 renzora_bloom_effect    = { path = "../renzora_bloom_effect" }
 renzora_bloom_effect_editor = { path = "../renzora_bloom_effect/editor", optional = true }
 renzora_dof             = { path = "../renzora_dof" }
+renzora_dof_editor      = { path = "../renzora_dof/editor", optional = true }
 renzora_motion_blur     = { path = "../renzora_motion_blur" }
+renzora_motion_blur_editor = { path = "../renzora_motion_blur/editor", optional = true }
 renzora_antialiasing    = { path = "../renzora_antialiasing" }
+renzora_antialiasing_editor = { path = "../renzora_antialiasing/editor", optional = true }
 renzora_distance_fog    = { path = "../renzora_distance_fog" }
+renzora_distance_fog_editor = { path = "../renzora_distance_fog/editor", optional = true }
 renzora_volumetric_fog  = { path = "../renzora_volumetric_fog" }
+renzora_volumetric_fog_editor = { path = "../renzora_volumetric_fog/editor", optional = true }
 renzora_atmosphere      = { path = "../renzora_atmosphere" }
 renzora_environment_map = { path = "../renzora_environment_map" }
 renzora_ssao            = { path = "../renzora_ssao" }
+renzora_ssao_editor     = { path = "../renzora_ssao/editor", optional = true }
 renzora_ssr             = { path = "../renzora_ssr" }
+renzora_ssr_editor      = { path = "../renzora_ssr/editor", optional = true }
 renzora_rt              = { path = "../renzora_rt" }
 renzora_lumen           = { path = "../renzora_lumen" }
 renzora_auto_exposure   = { path = "../renzora_auto_exposure" }
