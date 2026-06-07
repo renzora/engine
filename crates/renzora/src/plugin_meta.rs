@@ -29,26 +29,21 @@ use bevy::app::App;
 pub enum PluginScope {
     Editor = 0,
     Runtime = 1,
-    EditorAndRuntime = 2,
 }
 
 impl PluginScope {
     /// Whether a plugin with `self` scope should be loaded for a host
     /// running in `host` scope.
     ///
-    /// `EditorAndRuntime` plugins are loaded as part of the Runtime pass,
-    /// not the Editor pass. The editor build calls both
-    /// `add_engine_plugins(Runtime)` and `add_editor_plugins(Editor)`,
-    /// so if `EditorAndRuntime` matched both we'd register the same
-    /// plugin twice (Bevy panics with "plugin was already added"). Treat
-    /// the Runtime pass as the canonical home for "loads everywhere"
-    /// plugins; Editor only adds the editor-only ones on top.
+    /// Every plugin is exclusively `Runtime` or `Editor` — there is no
+    /// "both" scope. `Runtime` plugins load in the runtime pass, which the
+    /// editor host runs too, so they appear in the editor viewport *and* the
+    /// shipped game. `Editor` plugins load only in the editor pass (the
+    /// `renzora_editor` bundle). A feature that needs editor tooling on top of
+    /// runtime behaviour ships TWO plugins — one of each scope.
     #[inline]
     pub fn matches(self, host: PluginScope) -> bool {
-        match (self, host) {
-            (PluginScope::EditorAndRuntime, PluginScope::Runtime) => true,
-            (a, b) => a == b,
-        }
+        self == host
     }
 }
 
@@ -102,25 +97,30 @@ pub fn for_each_static_plugin<F: FnMut(&'static StaticPlugin)>(host_scope: Plugi
 /// # Examples
 ///
 /// ```rust,ignore
-/// // Loads in both editor and exported games (default scope).
+/// // Runtime (default): gameplay/rendering. Runs in the editor viewport AND
+/// // the exported game. This is the default scope.
 /// renzora::add!(MyPlugin);
 ///
 /// // Editor only — won't ship with exported games.
 /// renzora::add!(MyEditorTool, Editor);
 ///
-/// // Runtime only — gameplay systems, no editor UI.
+/// // Runtime, stated explicitly.
 /// renzora::add!(MyGameplay, Runtime);
 ///
 /// // With explicit priority (lower = earlier; default 0).
-/// renzora::add!(MyFoundation, EditorAndRuntime, priority = -100);
+/// renzora::add!(MyFoundation, Runtime, priority = -100);
 /// ```
+///
+/// There is no "both" scope: a plugin is exclusively `Runtime` or `Editor`. A
+/// feature needing editor tooling on top of runtime behaviour ships two plugins
+/// (e.g. `GameUiPlugin` + `GameUiEditorPlugin`).
 ///
 /// The plugin type must implement [`Default`]. If your plugin needs a
 /// non-default constructor, implement `Default` to delegate to it.
 #[macro_export]
 macro_rules! add {
     ($plugin_type:ty) => {
-        $crate::add!($plugin_type, EditorAndRuntime, priority = 0);
+        $crate::add!($plugin_type, Runtime, priority = 0);
     };
     ($plugin_type:ty, $scope:ident) => {
         $crate::add!($plugin_type, $scope, priority = 0);
@@ -211,7 +211,7 @@ macro_rules! add {
 ///   Operation Merge) must therefore NOT statically register editor-scope plugins.
 /// - **Editor host installs only `Editor` scope.** `for_each_static_plugin`
 ///   applies [`PluginScope::matches`]: an editor host (`host_scope = Editor`)
-///   gets `Editor`-only; `EditorAndRuntime`/default-scope plugins match a
+///   gets `Editor`-only; default-scope (`Runtime`) plugins match a
 ///   *Runtime* host and belong in the statically-linked host, not a bundle.
 /// - **Foundation plugins aren't in the inventory.** The editor SDK foundation
 ///   (`AssetRegistryPlugin`, `RenzoraEditorPlugin`, `KeybindingsPlugin`, …) is
@@ -251,7 +251,7 @@ macro_rules! export_plugin_bundle {
             /// Install this bundle's plugins into `*app` for the given host scope
             /// and return the count of plugins that **panicked** during install
             /// (0 = all good). `host_scope` is the `PluginScope` discriminant as
-            /// `u8` (Editor=0, Runtime=1, EditorAndRuntime=2). See the macro docs
+            /// `u8` (Editor=0, Runtime=1). See the macro docs
             /// for the global-inventory + deployment-contract semantics.
             ///
             /// SAFETY: `app` must be a valid, exclusively-borrowed pointer to an
@@ -265,8 +265,7 @@ macro_rules! export_plugin_bundle {
             ) -> u32 {
                 let scope = match host_scope {
                     0 => $crate::PluginScope::Editor,
-                    1 => $crate::PluginScope::Runtime,
-                    _ => $crate::PluginScope::EditorAndRuntime,
+                    _ => $crate::PluginScope::Runtime,
                 };
                 let app: &mut $crate::bevy::app::App = match unsafe { app.as_mut() } {
                     ::std::option::Option::Some(a) => a,

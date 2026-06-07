@@ -182,14 +182,14 @@ mod platform {
                     .ok()
                     .map(|f| match (*f)() {
                         0 => PluginScope::Editor,
-                        1 => PluginScope::Runtime,
-                        _ => PluginScope::EditorAndRuntime,
+                        _ => PluginScope::Runtime,
                     })
-                    .unwrap_or(PluginScope::EditorAndRuntime)
+                    .unwrap_or(PluginScope::Runtime)
             };
 
+            // Exclusive scopes: Editor plugins load only in the editor, Runtime
+            // plugins only in a game. A plugin that wants both ships two plugins.
             let should_load = match scope {
-                PluginScope::EditorAndRuntime => true,
                 PluginScope::Editor => is_editor,
                 PluginScope::Runtime => !is_editor,
             };
@@ -343,7 +343,7 @@ mod platform {
             scope: if is_editor {
                 PluginScope::Editor
             } else {
-                PluginScope::EditorAndRuntime
+                PluginScope::Runtime
             },
         });
         registry._libraries.push(library);
@@ -371,8 +371,8 @@ mod platform {
             // Skip editor BUNDLE cdylibs (they export `plugin_install_scope`,
             // not the single-plugin `plugin_scope`/`plugin_create` trio). A
             // bundle is the removable editor, not a shippable game plugin —
-            // without this it'd fall through to the `EditorAndRuntime` default
-            // below and the export UI would offer to ship the editor in a game.
+            // without this it'd fall through to the `Runtime` default below and
+            // the export UI would offer to ship the editor in a game.
             if unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }.is_ok() {
                 continue;
             }
@@ -383,13 +383,12 @@ mod platform {
                     .ok()
                     .map(|f| match (*f)() {
                         0 => PluginScope::Editor,
-                        1 => PluginScope::Runtime,
-                        _ => PluginScope::EditorAndRuntime,
+                        _ => PluginScope::Runtime,
                     })
-                    .unwrap_or(PluginScope::EditorAndRuntime)
+                    .unwrap_or(PluginScope::Runtime)
             };
 
-            if matches!(scope, PluginScope::Runtime | PluginScope::EditorAndRuntime) {
+            if matches!(scope, PluginScope::Runtime) {
                 result.push(DynamicPluginInfo {
                     id: stem,
                     path: path.clone(),
