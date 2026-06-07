@@ -503,7 +503,7 @@ fn suffix_toggle(
     }
     let g = commands
         .spawn((
-            Text::new(glyph),
+            Text::new(glyph_str(glyph)),
             TextFont {
                 font: fonts.phosphor.clone(),
                 font_size: 13.0,

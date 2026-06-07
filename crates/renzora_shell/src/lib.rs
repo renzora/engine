@@ -37,6 +37,7 @@ impl Plugin for ShellPlugin {
         app.insert_resource(ShellLayouts { layouts, active: 0 });
         app.init_resource::<renzora::ShellPanelRegistry>();
         app.init_resource::<renzora::ShellStatusRegistry>();
+        seed_panel_meta(app);
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
         app.init_resource::<OpenTopMenu>();
@@ -258,6 +259,101 @@ fn manage_shell_root(
     }
 }
 
+/// Chrome metadata (id, title, icon, category) for every editor panel, seeded
+/// into [`renzora::ShellPanelRegistry`] at startup. Without this the dock tabs
+/// fall back to ember's generic circle glyph and the Add-Panel `+` picker is
+/// empty (nothing else populates the registry). Icons are kebab-case Phosphor
+/// names, resolved to glyphs via `renzora_ember::font::icon_glyph`.
+const PANEL_META: &[(&str, &str, &str, &str)] = &[
+    // Scene / editing
+    ("hierarchy", "Hierarchy", "tree-structure", "Scene"),
+    ("inspector", "Inspector", "sliders-horizontal", "Editing"),
+    ("scenes", "Scenes", "stack", "Scene"),
+    ("scene_diagnostics", "Scene Diagnostics", "first-aid", "Debug"),
+    ("assets", "Assets", "folder-open", "Assets"),
+    ("shape_library", "Shapes", "shapes", "Assets"),
+    ("level_presets", "Level Presets", "globe", "Scene"),
+    ("history", "History", "clock-counter-clockwise", "Editing"),
+    ("outline", "Outline", "list-dashes", "Editing"),
+    ("code_editor", "Code", "code", "Editing"),
+    ("problems", "Problems", "warning-circle", "Debug"),
+    ("script_variables", "Variables", "brackets-curly", "Scripting"),
+    ("scripts_on_entity", "Scripts", "file-code", "Scripting"),
+    // Viewports
+    ("viewport", "Viewport", "perspective", "Scene"),
+    ("viewport-2", "Viewport 2", "perspective", "Scene"),
+    ("viewport-3", "Viewport 3", "perspective", "Scene"),
+    ("viewport-4", "Viewport 4", "perspective", "Scene"),
+    ("camera_preview", "Camera Preview", "video-camera", "Scene"),
+    // Audio
+    ("mixer", "Mixer", "faders", "Audio"),
+    ("record", "Record", "record", "Audio"),
+    ("daw", "Record", "record", "Audio"),
+    // Animation
+    ("timeline", "Timeline", "film-strip", "Animation"),
+    ("sequencer", "Sequencer", "film-slate", "Animation"),
+    ("animation", "Animation", "play-circle", "Animation"),
+    ("studio_preview", "Studio Preview", "person", "Animation"),
+    ("animator_state_machine", "State Machine", "graph", "Animation"),
+    ("animator_params", "Parameters", "sliders-horizontal", "Animation"),
+    // Material
+    ("material_preview", "Material Preview", "sphere", "Material"),
+    ("material_inspector", "Material", "palette", "Material"),
+    ("material_graph", "Material Graph", "graph", "Material"),
+    // Particle
+    ("particle_preview", "Particle Preview", "sparkle", "Particle"),
+    ("particle_editor", "Particle Editor", "sparkle", "Particle"),
+    ("particle_graph", "Particle Graph", "graph", "Particle"),
+    // Shader
+    ("shader_properties", "Shader", "graphics-card", "Shader"),
+    ("shader_preview", "Shader Preview", "image", "Shader"),
+    ("shader_compiler_log", "Compiler Log", "list-dashes", "Shader"),
+    // Blueprint
+    ("blueprint_graph", "Blueprint", "blueprint", "Blueprint"),
+    ("blueprint_properties", "Blueprint Properties", "sliders-horizontal", "Blueprint"),
+    // Hub
+    ("hub_store", "Hub Store", "storefront", "Hub"),
+    ("hub_library", "Library", "books", "Hub"),
+    // Network
+    ("network_monitor", "Network", "broadcast", "Network"),
+    ("network_entities", "Net Entities", "users-three", "Network"),
+    ("network_settings", "Net Settings", "gear", "Network"),
+    // Terrain / foliage / navigation
+    ("terrain_tools", "Terrain", "mountains", "Terrain"),
+    ("foliage_painting", "Foliage", "tree", "Terrain"),
+    ("navmesh", "Navmesh", "path", "Navigation"),
+    ("gauges", "Gauges", "gauge", "Debug"),
+    // Input
+    ("gamepad", "Gamepad", "game-controller", "Input"),
+    // Debug / profiling
+    ("performance", "Performance", "gauge", "Debug"),
+    ("render_stats", "Render Stats", "chart-bar", "Debug"),
+    ("render_pipeline", "Render Pipeline", "graph", "Debug"),
+    ("ecs_stats", "ECS Stats", "list-numbers", "Debug"),
+    ("memory_profiler", "Memory", "memory", "Debug"),
+    ("system_profiler", "System", "cpu", "Debug"),
+    ("physics_debug", "Physics Debug", "atom", "Debug"),
+    ("camera_debug", "Camera Debug", "video-camera", "Debug"),
+    ("culling_debug", "Culling", "scissors", "Debug"),
+    ("material_resolver_diag", "Material Diag", "palette", "Debug"),
+    ("lumen_diag", "Lumen Diag", "lightbulb", "Debug"),
+    ("scripting_diag", "Scripting Diag", "bug", "Debug"),
+];
+
+/// Seed [`renzora::ShellPanelRegistry`] from [`PANEL_META`] (as defaults — a
+/// plugin that already called `register_shell_panel` for an id wins).
+fn seed_panel_meta(app: &mut App) {
+    use renzora::ShellPanelInfo;
+    let mut reg = app.world_mut().resource_mut::<renzora::ShellPanelRegistry>();
+    for &(id, title, icon, category) in PANEL_META {
+        reg.panels.entry(id.to_string()).or_insert_with(|| ShellPanelInfo {
+            title: title.to_string(),
+            icon: icon.to_string(),
+            category: category.to_string(),
+        });
+    }
+}
+
 /// Apply real panel titles/icons from [`renzora::ShellPanelRegistry`] onto the
 /// dock tabs (overriding ember's humanized defaults). Cheap; only writes on a
 /// real change.
@@ -281,9 +377,14 @@ fn apply_panel_meta(
             }
         }
         if !info.icon.is_empty() {
+            // `info.icon` is a kebab-case Phosphor NAME; resolve it to the glyph
+            // the tab's phosphor-font Text expects (mirrors the status bar).
+            let glyph = renzora_ember::font::icon_glyph(&info.icon)
+                .unwrap_or('\u{E4C6}')
+                .to_string();
             if let Ok(mut t) = texts.get_mut(tab.icon) {
-                if t.0 != info.icon {
-                    t.0 = info.icon.clone();
+                if t.0 != glyph {
+                    t.0 = glyph;
                 }
             }
         }

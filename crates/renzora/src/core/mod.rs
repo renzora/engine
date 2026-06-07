@@ -1220,9 +1220,9 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
 
 /// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.
 ///
-/// `renzora_editor_framework` populates this from its `PanelRegistry` so the shell gets
-/// each panel's real title/icon. Once panels register a bevy-native renderer
-/// directly, this becomes their primary registration.
+/// `renzora_shell` seeds this with each panel's title/icon at startup (its
+/// `PANEL_META` table); plugins can add or override entries via
+/// [`RenzoraShellExt::register_shell_panel`].
 #[derive(Resource, Default)]
 pub struct ShellPanelRegistry {
     pub panels: bevy::platform::collections::HashMap<String, ShellPanelInfo>,
@@ -1231,8 +1231,8 @@ pub struct ShellPanelRegistry {
 #[derive(Clone, Default)]
 pub struct ShellPanelInfo {
     pub title: String,
-    /// Phosphor glyph string for the panel's icon (empty if none). The Phosphor
-    /// font shares codepoints with egui-phosphor, so the glyph renders directly.
+    /// Phosphor icon NAME (kebab-case), resolved to a glyph via
+    /// `renzora_ember::font::icon_glyph` (empty if none).
     pub icon: String,
     pub category: String,
 }
