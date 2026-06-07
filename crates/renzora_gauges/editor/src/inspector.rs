@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use renzora::InspectorEntry;
 
-use crate::{Attributes, Gauges};
+use renzora_gauges::{Attributes, Gauges};
 
 /// Build the inspector entry for the `Gauges` component.
 pub fn gauges_inspector_entry() -> InspectorEntry {

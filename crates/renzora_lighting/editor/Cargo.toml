@@ -1,0 +1,14 @@
+[package]
+name = "renzora_lighting_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_lighting: the Sun inspector entry. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_lighting = { path = ".." }
+egui-phosphor = { workspace = true }
+
+[lints]
+workspace = true

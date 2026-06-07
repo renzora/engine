@@ -19,7 +19,7 @@ use renzora_ember::reactive::{
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, text_input, EmberTextInput};
 
-use crate::{GaugeEntitySnapshot, GaugesSnapshot};
+use renzora_gauges::{GaugeEntitySnapshot, GaugesSnapshot};
 
 /// Native plugin that overrides the egui gauges panel body with an ember one.
 pub struct NativeGauges;

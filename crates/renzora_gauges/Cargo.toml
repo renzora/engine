@@ -3,17 +3,13 @@ name = "renzora_gauges"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-editor = ["renzora/editor", "dep:renzora_ember"]
+# No `editor` feature: lean runtime crate. The Gauges inspector + native debug
+# panel moved to the nested renzora_gauges_editor crate (crates/renzora_gauges/editor).
 
 [dependencies]
 bevy = { workspace = true }
 bevy_gauge = "0.4"
 renzora = { path = "../renzora", default-features = false }
-
-# Editor (optional)
-renzora_ember = { path = "../renzora_ember", optional = true }
 
 [lints]
 workspace = true

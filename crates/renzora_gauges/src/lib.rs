@@ -1,7 +1,8 @@
 //! Renzora Gauges — attribute/stat system powered by `bevy_gauge`.
 //!
-//! Provides a `Gauges` marker component for the inspector, the `bevy_gauge`
-//! plugin, and an optional editor panel for live attribute debugging.
+//! Provides a `Gauges` marker component, the `bevy_gauge` plugin, and a
+//! `GaugesSnapshot` resource the editor panel reads. The inspector entry and
+//! native debug panel live in the nested `renzora_gauges_editor` crate.
 //!
 //! Script bindings are registered via the `ScriptExtension` trait, keeping
 //! the scripting crate decoupled from gauge logic.
@@ -12,11 +13,6 @@ pub use bevy_gauge::prelude::*;
 use bevy::prelude::*;
 
 mod script_extension;
-
-#[cfg(feature = "editor")]
-mod inspector;
-#[cfg(feature = "editor")]
-mod native;
 
 // ── Marker component ─────────────────────────────────────────────────────
 
@@ -47,14 +43,6 @@ impl Plugin for GaugesPlugin {
 
         // Script actions (decoupled — observes ScriptAction events)
         app.add_observer(script_extension::handle_gauge_script_actions);
-
-        #[cfg(feature = "editor")]
-        {
-            use renzora::AppEditorExt;
-            app.register_inspector(inspector::gauges_inspector_entry());
-            // Native (ember) Gauges debug panel.
-            app.add_plugins(native::NativeGauges);
-        }
     }
 }
 

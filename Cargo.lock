@@ -9408,6 +9408,7 @@ dependencies = [
  "renzora_game_ui_editor",
  "renzora_gamepad",
  "renzora_gauges",
+ "renzora_gauges_editor",
  "renzora_gizmo",
  "renzora_grid",
  "renzora_hanabi",
@@ -9420,6 +9421,7 @@ dependencies = [
  "renzora_keybindings",
  "renzora_level_presets",
  "renzora_lighting",
+ "renzora_lighting_editor",
  "renzora_lumen",
  "renzora_lumen_editor",
  "renzora_material_editor",
@@ -9692,7 +9694,16 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_gauge 0.4.5",
  "renzora",
+]
+
+[[package]]
+name = "renzora_gauges_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
  "renzora_ember",
+ "renzora_gauges",
 ]
 
 [[package]]
@@ -10051,9 +10062,18 @@ name = "renzora_lighting"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_lighting_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_lighting",
 ]
 
 [[package]]

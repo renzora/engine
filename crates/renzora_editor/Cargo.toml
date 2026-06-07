@@ -88,7 +88,7 @@ editor = [
     "dep:renzora_engine_editor",
     "renzora_physics/editor",
     "renzora_scripting/editor",
-    "renzora_lighting/editor",
+    "dep:renzora_lighting_editor",
     "renzora_hanabi/editor",
     "dep:renzora_tonemapping_editor",
     "dep:renzora_bloom_effect_editor",
@@ -114,7 +114,7 @@ editor = [
     "renzora_terrain/editor",
     "dep:renzora_game_ui_editor",
     "renzora_hui/editor",
-    "renzora_gauges/editor",
+    "dep:renzora_gauges_editor",
     "dep:renzora_navmesh_editor",
 ]
 
@@ -187,6 +187,7 @@ renzora_engine          = { path = "../renzora_engine" }
 renzora_physics         = { path = "../renzora_physics" }
 renzora_scripting       = { path = "../renzora_scripting" }
 renzora_lighting        = { path = "../renzora_lighting" }
+renzora_lighting_editor = { path = "../renzora_lighting/editor", optional = true }
 renzora_hanabi          = { path = "../renzora_hanabi" }
 renzora_tonemapping     = { path = "../renzora_tonemapping" }
 renzora_tonemapping_editor = { path = "../renzora_tonemapping/editor", optional = true }
@@ -230,6 +231,7 @@ renzora_terrain         = { path = "../renzora_terrain" }
 renzora_game_ui         = { path = "../renzora_game_ui" }
 renzora_hui             = { path = "../renzora_hui" }
 renzora_gauges          = { path = "../renzora_gauges" }
+renzora_gauges_editor   = { path = "../renzora_gauges/editor", optional = true }
 renzora_navmesh         = { path = "../renzora_navmesh" }
 renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true }
 renzora_tracy           = { path = "../renzora_tracy" }
