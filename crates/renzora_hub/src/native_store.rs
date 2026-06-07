@@ -13,7 +13,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
-use renzora_editor::SplashState;
+use renzora::SplashState;
 
 use crate::thumbs::HubThumbs;
 

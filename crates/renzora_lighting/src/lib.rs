@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular::SUN_HORIZON,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 // ============================================================================
@@ -143,13 +143,13 @@ fn inspector_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
-            renzora_editor::float_field!("Azimuth", Sun, azimuth, 1.0, 0.0, 360.0),
-            renzora_editor::float_field!("Elevation", Sun, elevation, 1.0, -90.0, 90.0),
-            renzora_editor::vec3_color_field!("Color", Sun, color),
-            renzora_editor::float_field!("Illuminance", Sun, illuminance, 100.0, 0.0, f32::MAX),
-            renzora_editor::float_field!("Angular Diameter", Sun, angular_diameter, 0.01, 0.0, 10.0),
-            renzora_editor::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
-            renzora_editor::bool_field!("Shadows", Sun, shadows_enabled),
+            renzora::float_field!("Azimuth", Sun, azimuth, 1.0, 0.0, 360.0),
+            renzora::float_field!("Elevation", Sun, elevation, 1.0, -90.0, 90.0),
+            renzora::vec3_color_field!("Color", Sun, color),
+            renzora::float_field!("Illuminance", Sun, illuminance, 100.0, 0.0, f32::MAX),
+            renzora::float_field!("Angular Diameter", Sun, angular_diameter, 0.01, 0.0, 10.0),
+            renzora::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
+            renzora::bool_field!("Shadows", Sun, shadows_enabled),
         ],
     }
 }

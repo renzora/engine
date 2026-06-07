@@ -543,7 +543,7 @@ fn gamepad_snapshot(world: &World) -> KeyedSnapshot {
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_gamepad(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora::SplashState;
     bevy::asset::embedded_asset!(app, "stick.wgsl");
     app.add_plugins(UiMaterialPlugin::<StickMaterial>::default());
     // Build once; the reactive keyed list drives the controller rows from here on.

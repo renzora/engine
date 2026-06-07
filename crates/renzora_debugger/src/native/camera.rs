@@ -15,7 +15,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{rgb, selection, text_muted, text_primary};
 use renzora_ember::widgets::checkbox;
-use renzora_editor::SplashState;
+use renzora::SplashState;
 
 use crate::state::{CameraDebugState, CameraInfo, CameraProjectionType};
 

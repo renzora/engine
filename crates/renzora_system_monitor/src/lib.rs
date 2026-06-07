@@ -8,7 +8,7 @@ use renzora::{
     RenderingMode, RenzoraShellExt, ResolvedRenderingMode, ShellStatusAlign, ShellStatusItem,
     ShellStatusSegment,
 };
-use renzora_editor::SplashState;
+use renzora::SplashState;
 
 // ============================================================================
 // State

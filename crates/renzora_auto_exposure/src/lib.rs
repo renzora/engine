@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -182,13 +182,13 @@ fn inspector_entry() -> InspectorEntry {
         }),
         // Declarative fields render natively (bevy_ui).
         fields: vec![
-            renzora_editor::float_field!("Speed Brighten", AutoExposureSettings, speed_brighten, 0.1, 0.0, 10.0),
-            renzora_editor::float_field!("Speed Darken", AutoExposureSettings, speed_darken, 0.1, 0.0, 10.0),
-            renzora_editor::float_field!("Range Min (EV)", AutoExposureSettings, range_min, 0.1, -16.0, 8.0),
-            renzora_editor::float_field!("Range Max (EV)", AutoExposureSettings, range_max, 0.1, -8.0, 16.0),
-            renzora_editor::float_field!("Filter Low (%)", AutoExposureSettings, filter_low, 0.01, 0.0, 0.5),
-            renzora_editor::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
-            renzora_editor::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
+            renzora::float_field!("Speed Brighten", AutoExposureSettings, speed_brighten, 0.1, 0.0, 10.0),
+            renzora::float_field!("Speed Darken", AutoExposureSettings, speed_darken, 0.1, 0.0, 10.0),
+            renzora::float_field!("Range Min (EV)", AutoExposureSettings, range_min, 0.1, -16.0, 8.0),
+            renzora::float_field!("Range Max (EV)", AutoExposureSettings, range_max, 0.1, -8.0, 16.0),
+            renzora::float_field!("Filter Low (%)", AutoExposureSettings, filter_low, 0.01, 0.0, 0.5),
+            renzora::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
+            renzora::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
         ],
     }
 }

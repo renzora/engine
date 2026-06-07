@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use bevy_hui::prelude::{HtmlNode, Tags};
 use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 use renzora_game_ui::UiWidget;

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-editor = ["dep:renzora_editor", "dep:renzora_ember"]
+editor = ["renzora/editor", "dep:renzora_ember"]
 
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
@@ -25,7 +25,6 @@ ron = "0.8"
 serde = "1"
 thiserror = "2"
 toml = "0.8"
-renzora_editor = { path = "../renzora_editor", optional = true }
 renzora_ember = { path = "../renzora_ember", optional = true }
 avian3d = { version = "0.6", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
 

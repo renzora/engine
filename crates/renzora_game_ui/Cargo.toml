@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 editor = [
     "dep:egui-phosphor",
-    "dep:renzora_editor",
+    "renzora/editor",
     "dep:image",
 ]
 
@@ -17,7 +17,6 @@ renzora = { path = "../renzora", default-features = false }
 
 # Editor-only dependencies
 egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
-renzora_editor = { path = "../renzora_editor", optional = true }
 image = { version = "0.25", default-features = false, optional = true }
 
 [lints]

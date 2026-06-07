@@ -24,7 +24,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 
 use renzora_audio::{ClipId, MixerState, TimelineState, TrackId};
-use renzora_editor::SplashState;
+use renzora::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{

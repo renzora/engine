@@ -9,7 +9,7 @@ mod native;
 
 use bevy::prelude::*;
 
-use renzora_editor::{bool_field, AppEditorExt, InspectorEntry};
+use renzora::{bool_field, AppEditorExt, InspectorEntry};
 use renzora_network::{NetworkTransform, Networked};
 
 // ============================================================================

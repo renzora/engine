@@ -50,7 +50,7 @@ impl Plugin for GaugesPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora::AppEditorExt;
             app.register_inspector(inspector::gauges_inspector_entry());
             // Native (ember) Gauges debug panel.
             app.add_plugins(native::NativeGauges);

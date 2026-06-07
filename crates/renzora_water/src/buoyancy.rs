@@ -341,8 +341,8 @@ mod tests {
 }
 
 #[cfg(feature = "editor")]
-pub fn buoyant_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
+pub fn buoyant_inspector_entry() -> renzora::InspectorEntry {
+    use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "buoyant",

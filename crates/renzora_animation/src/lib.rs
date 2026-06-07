@@ -61,7 +61,7 @@ impl Plugin for AnimationPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
         }
 

@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_editor = { path = "../renzora_editor" }
 # bevy_ui-native panel content (the egui → bevy_ui migration).
 renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }

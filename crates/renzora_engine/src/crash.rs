@@ -283,7 +283,7 @@ impl Plugin for CrashReportPlugin {
 
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::SplashState;
+            use renzora::SplashState;
             app.add_systems(
                 Update,
                 (

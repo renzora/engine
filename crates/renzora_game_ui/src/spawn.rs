@@ -206,10 +206,10 @@ pub fn spawn_widget(
 
     #[cfg(feature = "editor")]
     {
-        if let Some(requests) = world.get_resource::<renzora_editor::HierarchyExpandRequests>() {
+        if let Some(requests) = world.get_resource::<renzora::HierarchyExpandRequests>() {
             requests.push(parent_entity);
         }
-        if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
+        if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
             sel.set(Some(entity));
         }
     }
@@ -373,7 +373,7 @@ pub fn is_flex_child(world: &World, entity: Entity) -> bool {
 /// 3. `None` — `spawn_widget` will fall back to "any canvas, or spawn one."
 #[cfg(feature = "editor")]
 pub fn pick_spawn_parent(world: &World, active_canvas: Option<Entity>) -> Option<Entity> {
-    if let Some(sel_res) = world.get_resource::<renzora_editor::EditorSelection>() {
+    if let Some(sel_res) = world.get_resource::<renzora::EditorSelection>() {
         if let Some(sel) = sel_res.get() {
             // Container/Panel: a layout-mode parent for nested widgets.
             let is_container = world
@@ -1851,7 +1851,7 @@ pub fn spawn_image_at(
     world.entity_mut(entity).set_parent_in_place(canvas_entity);
 
     #[cfg(feature = "editor")]
-    if let Some(sel) = world.get_resource::<renzora_editor::EditorSelection>() {
+    if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
         sel.set(Some(entity));
     }
 }

@@ -20,7 +20,7 @@ use vleue_navigator::{
 };
 
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 pub mod persistence;
 pub mod script_extension;
@@ -972,7 +972,7 @@ impl Plugin for NavMeshPlugin {
             app.register_inspector(agent_inspector_entry());
 
             {
-                use renzora_editor::{EntityPreset, SpawnRegistry};
+                use renzora::{EntityPreset, SpawnRegistry};
                 let mut registry = app
                     .world_mut()
                     .get_resource_or_insert_with(SpawnRegistry::default);

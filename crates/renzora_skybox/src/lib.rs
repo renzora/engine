@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::SUN;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, InspectorEntry};
+use renzora::{AppEditorExt, InspectorEntry};
 
 // ============================================================================
 // Data types
@@ -652,7 +652,7 @@ mod native_inspector {
     use renzora_ember::reactive::bind_2way;
     use renzora_ember::widgets::{drag_value, dropdown, icon_label_button, DragRange};
     use renzora_inspector::asset_drop_field;
-    use renzora_editor::FieldValue;
+    use renzora::FieldValue;
 
     #[derive(Component)]
     pub(super) struct SkyboxRoot {
@@ -914,7 +914,7 @@ impl Plugin for SkyboxPlugin {
             app.add_systems(
                 Update,
                 (native_inspector::rebuild_skybox, native_inspector::sky_browse_click)
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora::SplashState::Editor)),
             );
         }
     }

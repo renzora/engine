@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 /// Fog falloff mode:

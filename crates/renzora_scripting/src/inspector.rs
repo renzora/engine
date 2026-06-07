@@ -7,13 +7,13 @@
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor::InspectorEntry;
+use renzora::InspectorEntry;
 
 use crate::component::ScriptComponent;
 
 /// Register the script inspector entry via `AppEditorExt`.
 pub fn register_script_inspector(app: &mut App) {
-    use renzora_editor::AppEditorExt;
+    use renzora::AppEditorExt;
     app.register_inspector(script_component_entry());
 }
 

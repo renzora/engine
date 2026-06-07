@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use egui_phosphor::regular::MOON_STARS;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, InspectorEntry};
+use renzora::{AppEditorExt, InspectorEntry};
 
 // ============================================================================
 // Data types
@@ -241,13 +241,13 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::float_field!("Density", NightStarsData, density, 0.01, 0.0, 1.0),
-            renzora_editor::float_field!("Brightness", NightStarsData, brightness, 0.05, 0.0, 10.0),
-            renzora_editor::float_field!("Star Size", NightStarsData, star_size, 0.05, 0.2, 5.0),
-            renzora_editor::float_field!("Twinkle Speed", NightStarsData, twinkle_speed, 0.05, 0.0, 10.0),
-            renzora_editor::float_field!("Twinkle Amount", NightStarsData, twinkle_amount, 0.01, 0.0, 1.0),
-            renzora_editor::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
-            renzora_editor::tuple_color_field!("Color", NightStarsData, color),
+            renzora::float_field!("Density", NightStarsData, density, 0.01, 0.0, 1.0),
+            renzora::float_field!("Brightness", NightStarsData, brightness, 0.05, 0.0, 10.0),
+            renzora::float_field!("Star Size", NightStarsData, star_size, 0.05, 0.2, 5.0),
+            renzora::float_field!("Twinkle Speed", NightStarsData, twinkle_speed, 0.05, 0.0, 10.0),
+            renzora::float_field!("Twinkle Amount", NightStarsData, twinkle_amount, 0.01, 0.0, 1.0),
+            renzora::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
+            renzora::tuple_color_field!("Color", NightStarsData, color),
         ],
     }
 }

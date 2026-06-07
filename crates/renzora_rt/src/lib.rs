@@ -21,7 +21,7 @@ use prepare::RtPipeline;
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular::LIGHTNING,
-    renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
+    renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
 };
 
 /// Output mode for the SSGI pass. Drives a uniform that the shader
@@ -208,7 +208,7 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::float_field!("Intensity", RtLighting, intensity, 0.05, 0.0, 5.0),
+            renzora::float_field!("Intensity", RtLighting, intensity, 0.05, 0.0, 5.0),
             FieldDef {
                 name: "Debug",
                 field_type: FieldType::Enum {

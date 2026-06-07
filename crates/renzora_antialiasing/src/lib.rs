@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 // ── FXAA Settings ──
@@ -294,36 +294,36 @@ fn fxaa_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::FieldDef {
+            renzora::FieldDef {
                 name: "Edge Threshold",
-                field_type: renzora_editor::FieldType::Enum { options: &SENSITIVITY_LABELS },
+                field_type: renzora::FieldType::Enum { options: &SENSITIVITY_LABELS },
                 get_fn: |w, e| {
                     w.get::<FxaaSettings>(e).map(|s| {
-                        renzora_editor::FieldValue::Enum(
+                        renzora::FieldValue::Enum(
                             SENSITIVITY_LABELS.get(s.edge_threshold as usize).copied().unwrap_or("Low").to_string(),
                         )
                     })
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
+                    if let (renzora::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
                         if let Some(i) = SENSITIVITY_LABELS.iter().position(|l| *l == label) {
                             s.edge_threshold = i as u32;
                         }
                     }
                 },
             },
-            renzora_editor::FieldDef {
+            renzora::FieldDef {
                 name: "Edge Thr. Min",
-                field_type: renzora_editor::FieldType::Enum { options: &SENSITIVITY_LABELS },
+                field_type: renzora::FieldType::Enum { options: &SENSITIVITY_LABELS },
                 get_fn: |w, e| {
                     w.get::<FxaaSettings>(e).map(|s| {
-                        renzora_editor::FieldValue::Enum(
+                        renzora::FieldValue::Enum(
                             SENSITIVITY_LABELS.get(s.edge_threshold_min as usize).copied().unwrap_or("Low").to_string(),
                         )
                     })
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
+                    if let (renzora::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<FxaaSettings>(e)) {
                         if let Some(i) = SENSITIVITY_LABELS.iter().position(|l| *l == label) {
                             s.edge_threshold_min = i as u32;
                         }
@@ -359,18 +359,18 @@ fn smaa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![renzora_editor::FieldDef {
+        fields: vec![renzora::FieldDef {
             name: "Preset",
-            field_type: renzora_editor::FieldType::Enum { options: &SMAA_LABELS },
+            field_type: renzora::FieldType::Enum { options: &SMAA_LABELS },
             get_fn: |w, e| {
                 w.get::<SmaaSettings>(e).map(|s| {
-                    renzora_editor::FieldValue::Enum(
+                    renzora::FieldValue::Enum(
                         SMAA_LABELS.get(s.preset as usize).copied().unwrap_or("Low").to_string(),
                     )
                 })
             },
             set_fn: |w, e, v| {
-                if let (renzora_editor::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<SmaaSettings>(e)) {
+                if let (renzora::FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<SmaaSettings>(e)) {
                     if let Some(i) = SMAA_LABELS.iter().position(|l| *l == label) {
                         s.preset = i as u32;
                     }
@@ -407,7 +407,7 @@ fn taa_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![renzora_editor::bool_field!("Reset", TaaSettings, reset)],
+        fields: vec![renzora::bool_field!("Reset", TaaSettings, reset)],
     }
 }
 
@@ -439,8 +439,8 @@ fn cas_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
-            renzora_editor::bool_field!("Denoise", CasSettings, denoise),
+            renzora::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
+            renzora::bool_field!("Denoise", CasSettings, denoise),
         ],
     }
 }

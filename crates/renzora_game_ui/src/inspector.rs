@@ -120,9 +120,9 @@ fn label_index(labels: &[&str], s: &str) -> u8 {
 /// Declarative `FieldDef`s for a `Node` layout — the bevy_ui-native equivalent of
 /// `render_layout_inspector`. Enums map via the `*_to_u8`/`u8_to_*` helpers; X/Y/
 /// Width/Height convert `Val` ↔ design-space pixels using the canvas reference.
-pub fn layout_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn layout_fields() -> Vec<renzora::FieldDef> {
     use bevy::ui::{Node, Val};
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+    use renzora::{FieldDef, FieldType, FieldValue};
 
     vec![
         FieldDef {
@@ -255,21 +255,21 @@ pub fn layout_fields() -> Vec<renzora_editor::FieldDef> {
 // automatically; these fns supply its declarative `FieldDef` rows.
 
 /// Declarative fields for `SliderData` (native bevy_ui inspector).
-pub fn slider_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn slider_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::float_field!("Value", components::SliderData, value, 0.01, f32::MIN, f32::MAX),
-        renzora_editor::float_field!("Min", components::SliderData, min, 0.1, f32::MIN, f32::MAX),
-        renzora_editor::float_field!("Max", components::SliderData, max, 0.1, f32::MIN, f32::MAX),
-        renzora_editor::float_field!("Step", components::SliderData, step, 0.01, 0.0, f32::MAX),
-        renzora_editor::color_rgba_field!("Track Color", components::SliderData, track_color),
-        renzora_editor::color_rgba_field!("Fill Color", components::SliderData, fill_color),
-        renzora_editor::color_rgba_field!("Thumb Color", components::SliderData, thumb_color),
+        renzora::float_field!("Value", components::SliderData, value, 0.01, f32::MIN, f32::MAX),
+        renzora::float_field!("Min", components::SliderData, min, 0.1, f32::MIN, f32::MAX),
+        renzora::float_field!("Max", components::SliderData, max, 0.1, f32::MIN, f32::MAX),
+        renzora::float_field!("Step", components::SliderData, step, 0.01, 0.0, f32::MAX),
+        renzora::color_rgba_field!("Track Color", components::SliderData, track_color),
+        renzora::color_rgba_field!("Fill Color", components::SliderData, fill_color),
+        renzora::color_rgba_field!("Thumb Color", components::SliderData, thumb_color),
     ]
 }
 
 /// Declarative fields for `UiTextStyle` (+ Content on the bevy `Text`).
-pub fn text_fields() -> Vec<renzora_editor::FieldDef> {
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+pub fn text_fields() -> Vec<renzora::FieldDef> {
+    use renzora::{FieldDef, FieldType, FieldValue};
     const ALIGN: &[&str] = &["Left", "Center", "Right"];
     vec![
         FieldDef {
@@ -282,10 +282,10 @@ pub fn text_fields() -> Vec<renzora_editor::FieldDef> {
                 }
             },
         },
-        renzora_editor::color_rgba_field!("Color", components::UiTextStyle, color),
-        renzora_editor::float_field!("Size", components::UiTextStyle, size, 0.5, 1.0, 200.0),
-        renzora_editor::bool_field!("Bold", components::UiTextStyle, bold),
-        renzora_editor::bool_field!("Italic", components::UiTextStyle, italic),
+        renzora::color_rgba_field!("Color", components::UiTextStyle, color),
+        renzora::float_field!("Size", components::UiTextStyle, size, 0.5, 1.0, 200.0),
+        renzora::bool_field!("Bold", components::UiTextStyle, bold),
+        renzora::bool_field!("Italic", components::UiTextStyle, italic),
         FieldDef {
             name: "Align",
             field_type: FieldType::Enum { options: ALIGN },
@@ -315,19 +315,19 @@ pub fn text_fields() -> Vec<renzora_editor::FieldDef> {
 }
 
 /// Declarative fields for `UiBoxShadow`.
-pub fn shadow_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn shadow_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::color_rgba_field!("Color", components::UiBoxShadow, color),
-        renzora_editor::float_field!("Offset X", components::UiBoxShadow, offset_x, 0.5, f32::MIN, f32::MAX),
-        renzora_editor::float_field!("Offset Y", components::UiBoxShadow, offset_y, 0.5, f32::MIN, f32::MAX),
-        renzora_editor::float_field!("Blur", components::UiBoxShadow, blur, 0.5, 0.0, 200.0),
-        renzora_editor::float_field!("Spread", components::UiBoxShadow, spread, 0.5, f32::MIN, f32::MAX),
+        renzora::color_rgba_field!("Color", components::UiBoxShadow, color),
+        renzora::float_field!("Offset X", components::UiBoxShadow, offset_x, 0.5, f32::MIN, f32::MAX),
+        renzora::float_field!("Offset Y", components::UiBoxShadow, offset_y, 0.5, f32::MIN, f32::MAX),
+        renzora::float_field!("Blur", components::UiBoxShadow, blur, 0.5, 0.0, 200.0),
+        renzora::float_field!("Spread", components::UiBoxShadow, spread, 0.5, f32::MIN, f32::MAX),
     ]
 }
 
 /// Declarative fields for `UiWidget` (read-only Type + Locked toggle).
-pub fn widget_fields() -> Vec<renzora_editor::FieldDef> {
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+pub fn widget_fields() -> Vec<renzora::FieldDef> {
+    use renzora::{FieldDef, FieldType, FieldValue};
     vec![
         FieldDef {
             name: "Type",
@@ -338,33 +338,33 @@ pub fn widget_fields() -> Vec<renzora_editor::FieldDef> {
             },
             set_fn: |_, _, _| {},
         },
-        renzora_editor::bool_field!("Locked", components::UiWidget, locked),
+        renzora::bool_field!("Locked", components::UiWidget, locked),
     ]
 }
 
 /// Declarative fields for `UiPadding` (Top/Right/Bottom/Left).
-pub fn padding_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn padding_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::float_field!("Top", components::UiPadding, top, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Right", components::UiPadding, right, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Bottom", components::UiPadding, bottom, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Left", components::UiPadding, left, 0.5, 0.0, 500.0),
+        renzora::float_field!("Top", components::UiPadding, top, 0.5, 0.0, 500.0),
+        renzora::float_field!("Right", components::UiPadding, right, 0.5, 0.0, 500.0),
+        renzora::float_field!("Bottom", components::UiPadding, bottom, 0.5, 0.0, 500.0),
+        renzora::float_field!("Left", components::UiPadding, left, 0.5, 0.0, 500.0),
     ]
 }
 
 /// Declarative fields for `UiBorderRadius` (per-corner).
-pub fn border_radius_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn border_radius_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::float_field!("Top Left", components::UiBorderRadius, top_left, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Top Right", components::UiBorderRadius, top_right, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Bottom Right", components::UiBorderRadius, bottom_right, 0.5, 0.0, 500.0),
-        renzora_editor::float_field!("Bottom Left", components::UiBorderRadius, bottom_left, 0.5, 0.0, 500.0),
+        renzora::float_field!("Top Left", components::UiBorderRadius, top_left, 0.5, 0.0, 500.0),
+        renzora::float_field!("Top Right", components::UiBorderRadius, top_right, 0.5, 0.0, 500.0),
+        renzora::float_field!("Bottom Right", components::UiBorderRadius, bottom_right, 0.5, 0.0, 500.0),
+        renzora::float_field!("Bottom Left", components::UiBorderRadius, bottom_left, 0.5, 0.0, 500.0),
     ]
 }
 
 /// Declarative field for `UiOpacity` (a `f32` tuple component).
-pub fn opacity_fields() -> Vec<renzora_editor::FieldDef> {
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+pub fn opacity_fields() -> Vec<renzora::FieldDef> {
+    use renzora::{FieldDef, FieldType, FieldValue};
     vec![FieldDef {
         name: "Opacity",
         field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
@@ -378,8 +378,8 @@ pub fn opacity_fields() -> Vec<renzora_editor::FieldDef> {
 }
 
 /// Declarative field for `UiClipContent` (a `bool` tuple component).
-pub fn clip_content_fields() -> Vec<renzora_editor::FieldDef> {
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+pub fn clip_content_fields() -> Vec<renzora::FieldDef> {
+    use renzora::{FieldDef, FieldType, FieldValue};
     vec![FieldDef {
         name: "Clip Content",
         field_type: FieldType::Bool,
@@ -393,8 +393,8 @@ pub fn clip_content_fields() -> Vec<renzora_editor::FieldDef> {
 }
 
 /// Declarative field for `UiCursor` (enum → dropdown).
-pub fn cursor_fields() -> Vec<renzora_editor::FieldDef> {
-    use renzora_editor::{FieldDef, FieldType, FieldValue};
+pub fn cursor_fields() -> Vec<renzora::FieldDef> {
+    use renzora::{FieldDef, FieldType, FieldValue};
     const CURSOR_LABELS: &[&str] = &[
         "Default", "Pointer", "Text", "Grab", "Grabbing", "Not Allowed", "Crosshair", "EW Resize", "NS Resize", "Move",
     ];
@@ -438,81 +438,81 @@ pub fn cursor_fields() -> Vec<renzora_editor::FieldDef> {
 }
 
 /// Declarative fields for `CheckboxData`.
-pub fn checkbox_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn checkbox_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::bool_field!("Checked", components::CheckboxData, checked),
-        renzora_editor::string_field!("Label", components::CheckboxData, label),
-        renzora_editor::color_rgba_field!("Check Color", components::CheckboxData, check_color),
-        renzora_editor::color_rgba_field!("Box Color", components::CheckboxData, box_color),
+        renzora::bool_field!("Checked", components::CheckboxData, checked),
+        renzora::string_field!("Label", components::CheckboxData, label),
+        renzora::color_rgba_field!("Check Color", components::CheckboxData, check_color),
+        renzora::color_rgba_field!("Box Color", components::CheckboxData, box_color),
     ]
 }
 
 /// Declarative fields for `ToggleData`.
-pub fn toggle_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn toggle_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::bool_field!("On", components::ToggleData, on),
-        renzora_editor::string_field!("Label", components::ToggleData, label),
-        renzora_editor::color_rgba_field!("On Color", components::ToggleData, on_color),
-        renzora_editor::color_rgba_field!("Off Color", components::ToggleData, off_color),
-        renzora_editor::color_rgba_field!("Knob Color", components::ToggleData, knob_color),
+        renzora::bool_field!("On", components::ToggleData, on),
+        renzora::string_field!("Label", components::ToggleData, label),
+        renzora::color_rgba_field!("On Color", components::ToggleData, on_color),
+        renzora::color_rgba_field!("Off Color", components::ToggleData, off_color),
+        renzora::color_rgba_field!("Knob Color", components::ToggleData, knob_color),
     ]
 }
 
 /// Declarative fields for `RadioButtonData`.
-pub fn radio_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn radio_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::string_field!("Group", components::RadioButtonData, group),
-        renzora_editor::bool_field!("Selected", components::RadioButtonData, selected),
-        renzora_editor::string_field!("Label", components::RadioButtonData, label),
-        renzora_editor::color_rgba_field!("Active Color", components::RadioButtonData, active_color),
+        renzora::string_field!("Group", components::RadioButtonData, group),
+        renzora::bool_field!("Selected", components::RadioButtonData, selected),
+        renzora::string_field!("Label", components::RadioButtonData, label),
+        renzora::color_rgba_field!("Active Color", components::RadioButtonData, active_color),
     ]
 }
 
 /// Declarative fields for `TextInputData`.
-pub fn text_input_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn text_input_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::string_field!("Text", components::TextInputData, text),
-        renzora_editor::string_field!("Placeholder", components::TextInputData, placeholder),
-        renzora_editor::int_field!("Max Length", components::TextInputData, max_length, usize, 1.0, 1.0, 10000.0),
-        renzora_editor::bool_field!("Password", components::TextInputData, password),
+        renzora::string_field!("Text", components::TextInputData, text),
+        renzora::string_field!("Placeholder", components::TextInputData, placeholder),
+        renzora::int_field!("Max Length", components::TextInputData, max_length, usize, 1.0, 1.0, 10000.0),
+        renzora::bool_field!("Password", components::TextInputData, password),
     ]
 }
 
 /// Declarative fields for `ScrollViewData`.
-pub fn scroll_view_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn scroll_view_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::float_field!("Scroll Speed", components::ScrollViewData, scroll_speed, 0.5, 1.0, 200.0),
-        renzora_editor::bool_field!("Horizontal", components::ScrollViewData, show_horizontal),
-        renzora_editor::bool_field!("Vertical", components::ScrollViewData, show_vertical),
+        renzora::float_field!("Scroll Speed", components::ScrollViewData, scroll_speed, 0.5, 1.0, 200.0),
+        renzora::bool_field!("Horizontal", components::ScrollViewData, show_horizontal),
+        renzora::bool_field!("Vertical", components::ScrollViewData, show_vertical),
     ]
 }
 
 /// Declarative fields for `TooltipData`.
-pub fn tooltip_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn tooltip_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::string_field!("Text", components::TooltipData, text),
-        renzora_editor::int_field!("Delay (ms)", components::TooltipData, delay_ms, u32, 1.0, 0.0, 5000.0),
-        renzora_editor::color_rgba_field!("Bg Color", components::TooltipData, bg_color),
-        renzora_editor::color_rgba_field!("Text Color", components::TooltipData, text_color),
+        renzora::string_field!("Text", components::TooltipData, text),
+        renzora::int_field!("Delay (ms)", components::TooltipData, delay_ms, u32, 1.0, 0.0, 5000.0),
+        renzora::color_rgba_field!("Bg Color", components::TooltipData, bg_color),
+        renzora::color_rgba_field!("Text Color", components::TooltipData, text_color),
     ]
 }
 
 /// Declarative fields for `ModalData`.
-pub fn modal_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn modal_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::string_field!("Title", components::ModalData, title),
-        renzora_editor::bool_field!("Closable", components::ModalData, closable),
-        renzora_editor::color_rgba_field!("Backdrop", components::ModalData, backdrop_color),
+        renzora::string_field!("Title", components::ModalData, title),
+        renzora::bool_field!("Closable", components::ModalData, closable),
+        renzora::color_rgba_field!("Backdrop", components::ModalData, backdrop_color),
     ]
 }
 
 /// Declarative fields for `DraggableWindowData`.
-pub fn draggable_window_fields() -> Vec<renzora_editor::FieldDef> {
+pub fn draggable_window_fields() -> Vec<renzora::FieldDef> {
     vec![
-        renzora_editor::string_field!("Title", components::DraggableWindowData, title),
-        renzora_editor::bool_field!("Closable", components::DraggableWindowData, closable),
-        renzora_editor::bool_field!("Minimizable", components::DraggableWindowData, minimizable),
-        renzora_editor::color_rgba_field!("Title Bar", components::DraggableWindowData, title_bar_color),
+        renzora::string_field!("Title", components::DraggableWindowData, title),
+        renzora::bool_field!("Closable", components::DraggableWindowData, closable),
+        renzora::bool_field!("Minimizable", components::DraggableWindowData, minimizable),
+        renzora::color_rgba_field!("Title Bar", components::DraggableWindowData, title_bar_color),
     ]
 }
 

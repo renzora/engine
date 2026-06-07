@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::ui::{RelativeCursorPosition, UiTransform, Val2};
 use bevy::window::PrimaryWindow;
 
-use renzora_editor::SplashState;
+use renzora::SplashState;
 
 use crate::overlay::CanvasHitLayer;
 use crate::NativeCanvasState;

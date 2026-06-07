@@ -440,8 +440,8 @@ impl WaterSurface {
 
 /// Build the manual inspector entry for WaterSurface with color fields.
 #[cfg(feature = "editor")]
-pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
+pub fn water_inspector_entry() -> renzora::InspectorEntry {
+    use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "water_surface",
@@ -754,8 +754,8 @@ pub fn water_inspector_entry() -> renzora_editor::InspectorEntry {
 }
 
 #[cfg(feature = "editor")]
-pub fn water_interactor_inspector_entry() -> renzora_editor::InspectorEntry {
-    use renzora_editor::{FieldDef, FieldType, FieldValue, InspectorEntry};
+pub fn water_interactor_inspector_entry() -> renzora::InspectorEntry {
+    use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
     InspectorEntry {
         type_id: "water_interactor",

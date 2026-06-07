@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use egui_phosphor::regular;
 use renzora_audio::{AudioListener, AudioPlayer, MixerState, RolloffType};
-use renzora_editor::{
+use renzora::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
 
@@ -97,7 +97,7 @@ fn audio_listener_entry() -> InspectorEntry {
 
 use bevy::ecs::world::CommandQueue;
 use renzora_audio::AudioPlayer as ApComp;
-use renzora_editor::AppEditorExt;
+use renzora::AppEditorExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_row, inspector_stripe};
 use renzora_ember::reactive::{bind_2way, bind_display};
@@ -109,7 +109,7 @@ pub fn register_audio_native(app: &mut App) {
     app.register_native_inspector_ui("audio_player", audio_player_native);
     app.add_systems(
         Update,
-        (rebuild_audio, audio_remove_clip_click).run_if(in_state(renzora_editor::SplashState::Editor)),
+        (rebuild_audio, audio_remove_clip_click).run_if(in_state(renzora::SplashState::Editor)),
     );
 }
 

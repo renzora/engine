@@ -7,13 +7,12 @@ description = "Screen-space global illumination for Renzora. Lumen's ScreenSpace
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora" }
-renzora_editor = { path = "../renzora_editor", optional = true }
 egui-phosphor = { workspace = true, optional = true }
 serde = { version = "1.0", features = ["derive"] }
 bytemuck = { version = "1.5", features = ["derive"] }
 
 [features]
-editor = ["dep:renzora_editor", "dep:egui-phosphor"]
+editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [lints]
 workspace = true

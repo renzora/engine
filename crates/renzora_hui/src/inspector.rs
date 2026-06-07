@@ -18,7 +18,7 @@ use bevy::ui::{
     AlignItems, BorderRadius, Display, FlexDirection, JustifyContent, PositionType, UiRect, Val,
 };
 use egui_phosphor::regular;
-use renzora_editor::{
+use renzora::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 

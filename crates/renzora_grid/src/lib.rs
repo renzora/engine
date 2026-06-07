@@ -114,7 +114,7 @@ impl Plugin for GridPlugin {
                     rebuild_grid_mesh,
                     update_fade_distance,
                 )
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora::SplashState::Editor)),
             );
     }
 }
@@ -257,7 +257,7 @@ fn rebuild_grid_mesh(
 /// patch of the grid, Blender-style.
 fn update_fade_distance(
     orbit: Option<Res<renzora::core::viewport_types::CameraOrbitSnapshot>>,
-    cam_q: Query<&GlobalTransform, With<renzora_editor::EditorCamera>>,
+    cam_q: Query<&GlobalTransform, With<renzora::EditorCamera>>,
     mut config: ResMut<GridConfig>,
     mut materials: ResMut<Assets<GridMaterial>>,
     grid_entities: Query<&MeshMaterial3d<GridMaterial>>,

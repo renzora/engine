@@ -14,7 +14,7 @@ use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, UiTransform};
 
-use renzora_editor::{EditorSelection, SplashState};
+use renzora::{EditorSelection, SplashState};
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 

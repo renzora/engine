@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 egui-phosphor = { workspace = true }
-renzora_editor = { path = "../renzora_editor" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_inspector = { path = "../renzora_inspector" }
 bevy = { workspace = true }

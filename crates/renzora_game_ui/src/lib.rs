@@ -161,7 +161,7 @@ impl Plugin for GameUiPlugin {
         // ── Editor panels & systems ─────────────────────────────────────
         #[cfg(feature = "editor")]
         {
-            use renzora_editor::AppEditorExt;
+            use renzora::AppEditorExt;
             info!("[editor] GameUiPlugin (editor panels)");
 
             register_ui_presets(app);
@@ -171,7 +171,7 @@ impl Plugin for GameUiPlugin {
             // decomposition). Each constituent component gets its own
             // collapsible in the main inspector. Fill/stroke/etc. are still
             // grouped under a "UI Style" lump until Phase B splits them.
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_canvas",
                 display_name: "UI Canvas",
                 icon: egui_phosphor::regular::FRAME_CORNERS,
@@ -197,29 +197,29 @@ impl Plugin for GameUiPlugin {
                 is_enabled_fn: None,
                 set_enabled_fn: None,
                 fields: vec![
-                    renzora_editor::int_field!("Sort Order", components::UiCanvas, sort_order, i32, 1.0, -100.0, 100.0),
-                    renzora_editor::FieldDef {
+                    renzora::int_field!("Sort Order", components::UiCanvas, sort_order, i32, 1.0, -100.0, 100.0),
+                    renzora::FieldDef {
                         name: "Visibility",
-                        field_type: renzora_editor::FieldType::Enum {
+                        field_type: renzora::FieldType::Enum {
                             options: &["always", "play_only", "editor_only"],
                         },
                         get_fn: |w, e| {
                             w.get::<components::UiCanvas>(e)
-                                .map(|c| renzora_editor::FieldValue::Enum(c.visibility_mode.clone()))
+                                .map(|c| renzora::FieldValue::Enum(c.visibility_mode.clone()))
                         },
                         set_fn: |w, e, v| {
-                            if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                            if let (renzora::FieldValue::Enum(s), Some(mut c)) =
                                 (v, w.get_mut::<components::UiCanvas>(e))
                             {
                                 c.visibility_mode = s;
                             }
                         },
                     },
-                    renzora_editor::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
-                    renzora_editor::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
+                    renzora::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
+                    renzora::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
                 ],
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_widget",
                 display_name: "UI Widget",
                 icon: egui_phosphor::regular::SQUARES_FOUR,
@@ -231,7 +231,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::widget_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_layout",
                 display_name: "Layout",
                 icon: egui_phosphor::regular::SQUARE_HALF,
@@ -253,7 +253,7 @@ impl Plugin for GameUiPlugin {
             // Add Component overlay and removable via the trash icon. A text
             // label that doesn't want a border can drop UiStroke; a button
             // that wants a shadow can add UiBoxShadow. (Phase B.)
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_fill",
                 display_name: "UI Fill",
                 icon: egui_phosphor::regular::DROP_HALF,
@@ -271,7 +271,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: Vec::new(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_stroke",
                 display_name: "UI Border",
                 icon: egui_phosphor::regular::BOUNDING_BOX,
@@ -290,7 +290,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: Vec::new(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_border_radius",
                 display_name: "UI Border Radius",
                 icon: egui_phosphor::regular::FRAME_CORNERS,
@@ -310,7 +310,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::border_radius_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_text",
                 display_name: "UI Text",
                 icon: egui_phosphor::regular::TEXT_AA,
@@ -328,7 +328,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::text_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_padding",
                 display_name: "UI Padding",
                 icon: egui_phosphor::regular::COLUMNS,
@@ -346,7 +346,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::padding_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_opacity",
                 display_name: "UI Opacity",
                 icon: egui_phosphor::regular::CIRCLE_HALF,
@@ -362,7 +362,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::opacity_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_shadow",
                 display_name: "UI Shadow",
                 icon: egui_phosphor::regular::SUN_DIM,
@@ -380,7 +380,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::shadow_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_clip",
                 display_name: "UI Clip Content",
                 icon: egui_phosphor::regular::CROP,
@@ -400,7 +400,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::clip_content_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_cursor",
                 display_name: "UI Cursor",
                 icon: egui_phosphor::regular::CURSOR,
@@ -418,7 +418,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::cursor_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_interaction",
                 display_name: "UI Interaction States",
                 icon: egui_phosphor::regular::CURSOR_CLICK,
@@ -445,7 +445,7 @@ impl Plugin for GameUiPlugin {
             // Per-widget-type data components — Phase C. Each is its own
             // entry; users can swap a slider's data, drop a tooltip's data,
             // etc. via the Add Component overlay.
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_slider_data",
                 display_name: "Slider",
                 icon: egui_phosphor::regular::SLIDERS_HORIZONTAL,
@@ -463,7 +463,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::slider_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_checkbox_data",
                 display_name: "Checkbox",
                 icon: egui_phosphor::regular::CHECK_SQUARE,
@@ -483,7 +483,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::checkbox_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_toggle_data",
                 display_name: "Toggle",
                 icon: egui_phosphor::regular::TOGGLE_LEFT,
@@ -501,7 +501,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::toggle_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_radio_data",
                 display_name: "Radio Button",
                 icon: egui_phosphor::regular::RADIO_BUTTON,
@@ -521,7 +521,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::radio_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_dropdown_data",
                 display_name: "Dropdown",
                 icon: egui_phosphor::regular::CARET_CIRCLE_DOWN,
@@ -541,7 +541,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: Vec::new(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_text_input_data",
                 display_name: "Text Input",
                 icon: egui_phosphor::regular::TEXTBOX,
@@ -561,7 +561,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::text_input_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_scroll_view_data",
                 display_name: "Scroll View",
                 icon: egui_phosphor::regular::SCROLL,
@@ -581,7 +581,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::scroll_view_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_tooltip_data",
                 display_name: "Tooltip",
                 icon: egui_phosphor::regular::CHAT_CIRCLE,
@@ -599,7 +599,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::tooltip_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_modal_data",
                 display_name: "Modal",
                 icon: egui_phosphor::regular::BROWSER,
@@ -617,7 +617,7 @@ impl Plugin for GameUiPlugin {
                 set_enabled_fn: None,
                 fields: inspector::modal_fields(),
             });
-            app.register_inspector(renzora_editor::InspectorEntry {
+            app.register_inspector(renzora::InspectorEntry {
                 type_id: "ui_draggable_window_data",
                 display_name: "Draggable Window",
                 icon: egui_phosphor::regular::APP_WINDOW,
@@ -643,7 +643,7 @@ impl Plugin for GameUiPlugin {
             });
 
             // Register hierarchy icons for UI entities
-            app.register_component_icon(renzora_editor::ComponentIconEntry {
+            app.register_component_icon(renzora::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiCanvas>(),
                 name: "UI Canvas",
                 icon: egui_phosphor::regular::FRAME_CORNERS,
@@ -651,7 +651,7 @@ impl Plugin for GameUiPlugin {
                 priority: 70,
                 dynamic_icon_fn: None,
             });
-            app.register_component_icon(renzora_editor::ComponentIconEntry {
+            app.register_component_icon(renzora::ComponentIconEntry {
                 type_id: std::any::TypeId::of::<components::UiWidget>(),
                 name: "UI Widget",
                 icon: egui_phosphor::regular::SQUARES_FOUR,
@@ -985,7 +985,7 @@ fn auto_switch_view_on_selection(world: &mut World) {
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 
     let current_sel = world
-        .get_resource::<renzora_editor::EditorSelection>()
+        .get_resource::<renzora::EditorSelection>()
         .and_then(|s| s.get());
     let last_sel = world
         .get_resource::<LastSelectionForViewSwitch>()
@@ -1039,7 +1039,7 @@ fn auto_switch_view_on_selection(world: &mut World) {
 /// Top of hierarchy (lowest HierarchyOrder) gets the highest sort_order → renders on top.
 #[cfg(feature = "editor")]
 fn sync_canvas_sort_order_from_hierarchy(
-    mut canvases: Query<(&mut UiCanvas, &renzora_editor::HierarchyOrder), Without<ChildOf>>,
+    mut canvases: Query<(&mut UiCanvas, &renzora::HierarchyOrder), Without<ChildOf>>,
 ) {
     let max_order = canvases.iter().map(|(_, h)| h.0).max().unwrap_or(0) as i32;
     for (mut canvas, order) in &mut canvases {
@@ -1180,7 +1180,7 @@ fn debug_ui_tree(
 /// which finds (or creates) a canvas and parents the new widget to it.
 #[cfg(feature = "editor")]
 fn register_ui_presets(app: &mut App) {
-    use renzora_editor::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
     fn spawn_ui_canvas(world: &mut World) -> Entity {
         world
@@ -1215,7 +1215,7 @@ fn register_ui_presets(app: &mut App) {
         icon: egui_phosphor::regular::FRAME_CORNERS,
         spawn_fn: |world: &mut World| {
             let canvas = spawn_ui_canvas(world);
-            if let Some(selection) = world.get_resource::<renzora_editor::EditorSelection>() {
+            if let Some(selection) = world.get_resource::<renzora::EditorSelection>() {
                 selection.set(Some(canvas));
             }
         },

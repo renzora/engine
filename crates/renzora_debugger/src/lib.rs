@@ -110,7 +110,7 @@ impl Plugin for DebuggerPlugin {
             .init_resource::<panels::scripting::ScriptingDiagState>();
 
         // Update systems
-        use renzora_editor::SplashState;
+        use renzora::SplashState;
         app.add_systems(
             Update,
             (

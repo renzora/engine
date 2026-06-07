@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use bevy::prelude::*;
 
-use renzora_editor::SplashState;
+use renzora::SplashState;
 use renzora_theme::ThemeManager;
 
 // ============================================================================

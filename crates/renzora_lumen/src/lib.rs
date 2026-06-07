@@ -32,7 +32,7 @@ pub use voxel_downsample::VoxelDownsamplePlugin;
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular::LIGHTNING,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
@@ -253,9 +253,9 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::FieldDef {
+            renzora::FieldDef {
                 name: "Quality",
-                field_type: renzora_editor::FieldType::Enum {
+                field_type: renzora::FieldType::Enum {
                     options: &[
                         "Off",
                         "Screen Space (SSGI)",
@@ -266,7 +266,7 @@ fn inspector_entry() -> InspectorEntry {
                 },
                 get_fn: |w, e| {
                     w.get::<LumenLighting>(e).map(|c| {
-                        renzora_editor::FieldValue::Enum(
+                        renzora::FieldValue::Enum(
                             match c.quality {
                                 LumenQuality::Off => "Off",
                                 LumenQuality::ScreenSpace => "Screen Space (SSGI)",
@@ -279,7 +279,7 @@ fn inspector_entry() -> InspectorEntry {
                     })
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<LumenLighting>(e))
                     {
                         c.quality = match s.as_str() {
@@ -292,15 +292,15 @@ fn inspector_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora_editor::float_field!("Intensity", LumenLighting, intensity, 0.05, 0.0, 5.0),
-            renzora_editor::FieldDef {
+            renzora::float_field!("Intensity", LumenLighting, intensity, 0.05, 0.0, 5.0),
+            renzora::FieldDef {
                 name: "Debug",
-                field_type: renzora_editor::FieldType::Enum {
+                field_type: renzora::FieldType::Enum {
                     options: &["None", "Indirect Only", "Voxel Cache"],
                 },
                 get_fn: |w, e| {
                     w.get::<LumenLighting>(e).map(|c| {
-                        renzora_editor::FieldValue::Enum(
+                        renzora::FieldValue::Enum(
                             match c.debug {
                                 LumenDebug::None => "None",
                                 LumenDebug::IndirectOnly => "Indirect Only",
@@ -311,7 +311,7 @@ fn inspector_entry() -> InspectorEntry {
                     })
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora_editor::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<LumenLighting>(e))
                     {
                         c.debug = match s.as_str() {

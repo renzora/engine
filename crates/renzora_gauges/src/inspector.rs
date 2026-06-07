@@ -6,7 +6,7 @@
 //! from the Add Component overlay.
 
 use bevy::prelude::*;
-use renzora_editor::InspectorEntry;
+use renzora::InspectorEntry;
 
 use crate::{Attributes, Gauges};
 

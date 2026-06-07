@@ -1,6 +1,6 @@
 //! Inspector registration for AnimatorComponent.
 
-use renzora_editor::InspectorEntry;
+use renzora::InspectorEntry;
 
 use crate::component::AnimatorComponent;
 
@@ -19,7 +19,7 @@ pub fn animator_inspector_entry() -> InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![renzora_editor::float_field!(
+        fields: vec![renzora::float_field!(
             "Blend Duration",
             AnimatorComponent,
             blend_duration,

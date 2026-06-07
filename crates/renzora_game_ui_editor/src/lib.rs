@@ -29,7 +29,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::SplashState;
+use renzora::SplashState;
 use renzora_ember::font::EmberFonts;
 use renzora_game_ui::UiCanvas;
 

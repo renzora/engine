@@ -69,7 +69,7 @@ impl Plugin for LevelPresetsPlugin {
         // Register World Environment and Sun spawn presets
         register_lighting_presets(app);
 
-        use renzora_editor::SplashState;
+        use renzora::SplashState;
         app.add_systems(
             Update,
             process_level_commands.run_if(in_state(SplashState::Editor)),
@@ -1413,7 +1413,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
 
 fn register_lighting_presets(app: &mut App) {
     use egui_phosphor::regular;
-    use renzora_editor::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
     app.register_entity_preset(EntityPreset {
         id: "world_environment",

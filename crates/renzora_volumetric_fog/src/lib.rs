@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -134,10 +134,10 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
-            renzora_editor::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
-            renzora_editor::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
-            renzora_editor::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
+            renzora::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
+            renzora::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
+            renzora::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
+            renzora::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
         ],
     }
 }

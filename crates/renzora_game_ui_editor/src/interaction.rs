@@ -16,7 +16,7 @@ use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::{RelativeCursorPosition, UiTransform};
 
-use renzora_editor::{EditorSelection, SplashState};
+use renzora::{EditorSelection, SplashState};
 
 use crate::geometry::topmost_at;
 use crate::overlay::{CanvasHandle, CanvasHitLayer, HandleKind, ResizeHandle};

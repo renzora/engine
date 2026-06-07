@@ -19,7 +19,7 @@ impl Plugin for GamepadPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GamepadPlugin");
         app.init_resource::<GamepadDebugState>();
-        use renzora_editor::SplashState;
+        use renzora::SplashState;
         app.add_systems(
             Update,
             update_gamepad_debug_state.run_if(in_state(SplashState::Editor)),

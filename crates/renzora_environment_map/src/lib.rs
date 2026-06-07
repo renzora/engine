@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 /// User-authored settings for sky-driven image-based lighting. Attach to
@@ -225,7 +225,7 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![renzora_editor::float_field!(
+        fields: vec![renzora::float_field!(
             "Intensity",
             EnvironmentMapComponentSettings,
             intensity,

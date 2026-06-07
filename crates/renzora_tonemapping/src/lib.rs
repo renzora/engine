@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -141,7 +141,7 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::enum_u32_field!(
+            renzora::enum_u32_field!(
                 "Mode",
                 TonemappingSettings,
                 mode,
@@ -156,7 +156,7 @@ fn inspector_entry() -> InspectorEntry {
                     "Blender Filmic"
                 ]
             ),
-            renzora_editor::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
+            renzora::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
         ],
     }
 }

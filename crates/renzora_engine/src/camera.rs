@@ -307,7 +307,7 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 
     let current_sel = world
-        .get_resource::<renzora_editor::EditorSelection>()
+        .get_resource::<renzora::EditorSelection>()
         .and_then(|s| s.get());
     let last_sel = world
         .get_resource::<LastSelectionForView2dSwitch>()

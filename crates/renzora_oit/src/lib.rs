@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora::{AppEditorExt, InspectorEntry},
 };
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -106,8 +106,8 @@ fn oit_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora_editor::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
-            renzora_editor::float_field!(
+            renzora::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
+            renzora::float_field!(
                 "Alpha Threshold",
                 OitSettings,
                 alpha_threshold,

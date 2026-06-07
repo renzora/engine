@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorSelection, SplashState};
+use renzora::{EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::theme::*;
