@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora editor SDK — RenzoraEditorPlugin + extension contracts (registries, EditorSelection, EditorCommands, inspector/spawn/toolbar registries, etc.). Shipped as renzora_editor.dll so loadable plugins dynamically share its symbols."
 
-# Ships as a desktop dylib so distribution plugins (post-process effects,
-# editor panels) link to a single compiled copy of the editor SDK rather
-# than each embedding the widget/registry code.
-# `prefer-dynamic` in `.cargo/config.toml` resolves this to the dylib
-# automatically. Mobile builds use the rlib variant (no dylib produced).
+# rlib-only (Operation Merge): the editor framework no longer ships as its own
+# dylib. The shared editor CONTRACT (the only types that cross the binary↔bundle
+# boundary) folded into renzora.dll; what's left here is framework IMPL that is
+# statically linked into whoever uses it — the editor bundle cdylib, the
+# editor-only panel crates, and (transitively, via renzora_inspector) the
+# binary. With no renzora_editor.dll emitted, removing the editor (the bundle
+# dll) can never leave the exe importing a missing renzora_editor.dll.
 [lib]
-crate-type = ["dylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }

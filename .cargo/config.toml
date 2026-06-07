@@ -41,16 +41,17 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # rustflags = ["-C", "target-feature=+crt-static"]
 
 # Workspace plugin crates are rlib-only and get statically linked into
-# the host binary. Distribution plugins (e.g. `renzora_record`) are
-# `cdylib` and get loaded at runtime by `dynamic_plugin_loader`. The
-# `prefer-dynamic` flag below applies to crates that emit BOTH rlib +
-# dylib — currently bevy (via `bevy/dynamic_linking`), `renzora`, and
-# `renzora_editor`. (The post-process framework now lives inside `renzora`
-# behind its `postprocess` feature, so `renzora_postprocess` is a plain
-# rlib shim and no longer emits its own dylib.) They each ship as a single
-# `.dll`/`.so`/`.dylib` next to the host so workspace plugins (linked
-# statically into the host) AND distribution plugins (loaded at runtime)
-# share one compiled copy of the SDK contracts and matching `TypeId`s.
+# the host binary. Distribution plugins (e.g. `renzora_record`) and the
+# editor bundle (`renzora_editor`) are `cdylib` and get loaded at runtime by
+# `dynamic_plugin_loader`. The `prefer-dynamic` flag below applies to crates
+# that emit BOTH rlib + dylib — currently bevy (via `bevy/dynamic_linking`)
+# and `renzora` (the shared SDK contract, incl. the folded-in post-process and
+# editor contracts). `renzora_editor` (the editor framework) is now rlib-only:
+# the only types crossing the binary↔bundle boundary live in `renzora.dll`, so
+# the framework needs no dylib of its own and the exe never imports a separate
+# editor dll. bevy and renzora each ship as a single `.dll`/`.so`/`.dylib` next
+# to the host so workspace crates (linked statically) AND dlopen'd plugins/the
+# bundle share one compiled copy of the SDK contracts and matching `TypeId`s.
 
 # Windows: use rust-lld. MSVC link.exe hits LNK1189 (65535-object limit) on
 # bevy_dylib with dynamic_linking enabled. `rust-lld` (no .exe) is a special
