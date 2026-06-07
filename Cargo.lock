@@ -9809,11 +9809,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_hanabi",
- "egui-phosphor",
  "renzora",
- "renzora_editor_framework",
- "renzora_ember",
- "renzora_inspector",
  "ron 0.8.1",
  "serde",
  "serde_json",
@@ -10363,10 +10359,12 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_hanabi",
+ "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_hanabi",
+ "renzora_inspector",
  "rfd",
  "ron 0.8.1",
 ]

@@ -10,6 +10,11 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 bevy_hanabi = { path = "../bevy_hanabi" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_hanabi = { path = "../renzora_hanabi" }
+# For the relocated HanabiEffect inspector entry (moved here from
+# renzora_hanabi's editor feature when it went lean): asset_drop_field +
+# the Phosphor SPARKLE icon glyph.
+renzora_inspector = { path = "../renzora_inspector" }
+egui-phosphor = { workspace = true }
 ron = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

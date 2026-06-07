@@ -2,6 +2,7 @@
 //!
 //! Full-featured editor for bevy_hanabi particle effects with live preview.
 
+mod inspector;
 mod native_editor_panel;
 mod native_graph;
 mod native_preview_panel;
@@ -15,6 +16,7 @@ pub struct ParticleEditorPlugin;
 impl Plugin for ParticleEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ParticleEditorPlugin");
+        inspector::register_inspector(app);
         app.add_plugins(preview::ParticlePreviewPlugin);
         app.add_plugins(native_preview_panel::NativeParticlePreview);
         app.add_plugins(native_editor_panel::NativeParticleEditor);

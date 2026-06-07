@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use renzora_editor_framework::{DocTabKind, InspectorEntry, InspectorRegistry};
 
-use crate::data::*;
+use renzora_hanabi::{EffectSource, HanabiEffect};
 
 fn hanabi_has(world: &World, entity: Entity) -> bool {
     world.get::<HanabiEffect>(entity).is_some()

@@ -8,9 +8,6 @@ pub mod data;
 pub mod node_graph;
 pub mod systems;
 
-#[cfg(feature = "editor")]
-mod inspector;
-
 pub use data::*;
 pub use systems::{HanabiEffectSynced, ParticleCommand, ParticleCommandQueue};
 
@@ -85,9 +82,6 @@ impl Plugin for HanabiParticlePlugin {
                     .chain(),
             );
         }
-
-        #[cfg(feature = "editor")]
-        inspector::register_inspector(app);
     }
 }
 

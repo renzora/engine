@@ -89,7 +89,6 @@ editor = [
     "renzora_physics/editor",
     "dep:renzora_scripting_editor",
     "dep:renzora_lighting_editor",
-    "renzora_hanabi/editor",
     "dep:renzora_tonemapping_editor",
     "dep:renzora_bloom_effect_editor",
     "dep:renzora_dof_editor",
