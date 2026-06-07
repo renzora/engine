@@ -270,6 +270,112 @@ mod platform {
         }
     }
 
+    /// Load exactly ONE bundle cdylib by path — the editor bundle that ships
+    /// beside the exe (not in `plugins/`). Reuses the same ABI gate + the
+    /// `plugin_install_scope` branch as `load_plugins_impl`, but does NOT
+    /// directory-scan, so the host's own SDK dylibs (`renzora`,
+    /// `renzora_editor`, `bevy_dylib`) sitting next to the exe are never
+    /// dlopened as plugins. Call AFTER `add_engine_plugins` so the runtime
+    /// foundation + Runtime/EditorAndRuntime plugins already exist; the bundle
+    /// then layers its Editor-scope plugins on top (host_scope = Editor),
+    /// reproducing the old `add_editor_plugins` ordering.
+    pub fn load_bundle(app: &mut App, bundle_path: &Path, is_editor: bool) {
+        if !bundle_path.exists() {
+            return;
+        }
+
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                add_dll_search_dir(exe_dir);
+            }
+        }
+
+        if !app.world().contains_resource::<DynamicPluginRegistry>() {
+            app.init_resource::<DynamicPluginRegistry>();
+        }
+
+        let stem = bundle_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let library = match unsafe { Library::new(bundle_path) } {
+            Ok(lib) => lib,
+            Err(e) => {
+                error!(
+                    "[dynamic-plugin] editor bundle load failed '{}': {e}",
+                    bundle_path.display()
+                );
+                return;
+            }
+        };
+
+        // Same ABI gate as the directory loader: the bundle must import the
+        // exact `bevy_dylib` the host imports (one `--workspace` build) or its
+        // `World` TypeId differs and every component/resource crossing the
+        // boundary would be a distinct type. Reject on mismatch.
+        let compatible = unsafe {
+            library
+                .get::<BevyHashFn>(b"plugin_bevy_hash")
+                .ok()
+                .map(|f| (*f)() == engine_bevy_hash())
+                .unwrap_or(false)
+        };
+        if !compatible {
+            warn!(
+                "[dynamic-plugin] editor bundle '{}' — incompatible bevy version, skipped \
+                 (rebuild the bundle in the same `--workspace` build as the host)",
+                stem
+            );
+            return;
+        }
+
+        let install_fn: InstallScopeFn =
+            match unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") } {
+                Ok(sym) => *sym,
+                Err(_) => {
+                    error!(
+                        "[dynamic-plugin] '{}' is not a bundle (no plugin_install_scope)",
+                        stem
+                    );
+                    return;
+                }
+            };
+
+        let host_scope: u8 = if is_editor {
+            PluginScope::Editor as u8
+        } else {
+            PluginScope::Runtime as u8
+        };
+        info!(
+            "[dynamic-plugin] Loading editor bundle '{}' (host_scope={})",
+            stem, host_scope
+        );
+        // The bundle catches panics per-plugin internally — nothing unwinds
+        // across this `extern "C"` boundary; it returns how many failed.
+        let failures = install_fn(app, host_scope);
+        if failures > 0 {
+            warn!(
+                "[dynamic-plugin] editor bundle '{}' — {} plugin(s) panicked during install",
+                stem, failures
+            );
+        }
+        info!("[dynamic-plugin] Registered editor bundle '{}'", stem);
+
+        let mut registry = app.world_mut().resource_mut::<DynamicPluginRegistry>();
+        registry.plugins.push(DynamicPluginInfo {
+            id: stem,
+            path: bundle_path.to_path_buf(),
+            scope: if is_editor {
+                PluginScope::Editor
+            } else {
+                PluginScope::EditorAndRuntime
+            },
+        });
+        registry._libraries.push(library);
+    }
+
     pub fn scan_plugins(plugin_dir: &Path) -> Vec<DynamicPluginInfo> {
         if !plugin_dir.exists() {
             return Vec::new();
@@ -407,6 +513,7 @@ mod platform {
 
     pub fn load_plugins(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
     pub fn load_plugins_recursive(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
+    pub fn load_bundle(_app: &mut App, _bundle_path: &Path, _is_editor: bool) {}
     pub fn scan_plugins(_plugin_dir: &Path) -> Vec<DynamicPluginInfo> {
         Vec::new()
     }
