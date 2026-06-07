@@ -113,15 +113,25 @@ impl Plugin for GameUiPlugin {
         // ── Canvas scaler & visibility-mode ──────────────────────────────
         //
         // `update_ui_scale` adjusts the global `UiScale` to fit the 3D
-        // viewport's render target. Useful in standalone runtime (UI
-        // scales with window), but in the editor it would also scale the
-        // UI rendered to our fixed 1280×720 editor render target — making
-        // a Node with `width: Px(100)` show up as some other pixel count
-        // depending on the editor window size. So in editor builds we
-        // skip it entirely; UiScale stays at the default 1.0 and our
-        // canvas tab renders 1:1 with what the user authors.
-        #[cfg(not(feature = "editor"))]
-        app.add_systems(Update, update_ui_scale);
+        // viewport's render target. Useful in the shipped game (UI scales with
+        // the window), but in the editor it would also scale the UI rendered to
+        // our fixed 1280×720 editor render target — making a Node with
+        // `width: Px(100)` show up as some other pixel count depending on the
+        // editor window size. So we skip it in an editor session; UiScale stays
+        // at the default 1.0 and the canvas tab renders 1:1 with what the user
+        // authors.
+        //
+        // Runtime-gated on `EditorSession` (NOT `#[cfg]`): under the single
+        // `--workspace` editor build the old `#[cfg(not(editor))]` compiled this
+        // OUT of the shipped game too, so exported games never scaled their UI.
+        let is_editor = app
+            .world()
+            .get_resource::<renzora::EditorSession>()
+            .map(|s| s.0)
+            .unwrap_or(false);
+        if !is_editor {
+            app.add_systems(Update, update_ui_scale);
+        }
         app.add_systems(
             Update,
             (
