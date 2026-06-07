@@ -67,18 +67,6 @@ impl Plugin for TerrainPlugin {
                     painter::sync_painter_registry_system,
                 ),
             );
-
-        #[cfg(feature = "editor")]
-        {
-            use renzora::{AppEditorExt, EntityPreset};
-            app.register_entity_preset(EntityPreset {
-                id: "terrain",
-                display_name: "Terrain",
-                icon: egui_phosphor::regular::MOUNTAINS,
-                category: "general",
-                spawn_fn: |world| mesh::spawn_terrain(world),
-            });
-        }
     }
 }
 

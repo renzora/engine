@@ -140,6 +140,14 @@ impl Plugin for TerrainEditorPlugin {
             );
 
         app.register_entity_preset(EntityPreset {
+            id: "terrain",
+            display_name: "Terrain",
+            icon: regular::MOUNTAINS,
+            category: "general",
+            spawn_fn: |world| renzora_terrain::mesh::spawn_terrain(world),
+        });
+
+        app.register_entity_preset(EntityPreset {
             id: "spline",
             display_name: "Spline",
             icon: regular::PATH,

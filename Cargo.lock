@@ -10904,7 +10904,6 @@ name = "renzora_terrain"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "png 0.17.16",
  "renzora",
  "renzora_physics",
