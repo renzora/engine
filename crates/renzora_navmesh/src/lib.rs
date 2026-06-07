@@ -19,19 +19,18 @@ use vleue_navigator::{
     NavMesh,
 };
 
-#[cfg(feature = "editor")]
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
-
 pub mod persistence;
 pub mod script_extension;
 pub use script_extension::NavScriptExtension;
 
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 
-#[cfg(feature = "editor")]
-pub mod editor_panel;
-#[cfg(feature = "editor")]
-mod native;
+/// Optional editor override for agent-path gizmo visibility. The NavMesh editor
+/// panel (in `renzora_navmesh_editor`) inits + drives this from its "Show Agent
+/// Paths" toggle; it is absent in a shipped game, where [`draw_agent_paths`]
+/// falls back to per-volume `debug_draw`.
+#[derive(Resource, Clone, Copy)]
+pub struct ShowAgentPathsOverride(pub bool);
 
 /// Defines a navigable region of the world. The volume is an axis-aligned box
 /// in local space (its center is the entity's `Transform` translation) that
@@ -148,234 +147,6 @@ fn sync_volume_changes(
     }
 }
 
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "nav_mesh_volume",
-        display_name: "NavMesh Volume",
-        icon: "polygon",
-        category: "navigation",
-        has_fn: |world, entity| world.get::<NavMeshVolume>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(NavMeshVolume::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            let mut e = world.entity_mut(entity);
-            e.remove::<NavMeshVolume>();
-            e.remove::<ManagedNavMesh>();
-            e.remove::<NavMeshSettings>();
-            e.remove::<NavMeshUpdateMode>();
-            e.remove::<NavMeshDebug>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<NavMeshVolume>(entity)
-                .map(|v| v.debug_draw)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                v.debug_draw = val;
-            }
-        }),
-        fields: vec![
-            FieldDef {
-                name: "Half Extents",
-                field_type: FieldType::Vec3 { speed: 0.25 },
-                get_fn: |world, entity| {
-                    world.get::<NavMeshVolume>(entity).map(|v| {
-                        FieldValue::Vec3([v.half_extents.x, v.half_extents.y, v.half_extents.z])
-                    })
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Vec3([x, y, z]) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.half_extents = Vec3::new(x, y, z);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Agent Radius",
-                field_type: FieldType::Float {
-                    speed: 0.05,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.agent_radius))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.agent_radius = x;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Upward Shift",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 5.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.upward_shift))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.upward_shift = x;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Simplify",
-                field_type: FieldType::Float {
-                    speed: 0.001,
-                    min: 0.0,
-                    max: 1.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.simplify))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.simplify = x;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Merge Steps",
-                field_type: FieldType::Float {
-                    speed: 1.0,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.merge_steps as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.merge_steps = x.round().clamp(0.0, 10.0) as u32;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Include Terrain",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Bool(v.include_terrain))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(b) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.include_terrain = b;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Max Slope (degrees)",
-                field_type: FieldType::Float {
-                    speed: 1.0,
-                    min: 5.0,
-                    max: 89.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.max_slope_degrees))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.max_slope_degrees = x;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Terrain Sample Step",
-                field_type: FieldType::Float {
-                    speed: 1.0,
-                    min: 1.0,
-                    max: 32.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Float(v.terrain_sample_step as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.terrain_sample_step = x.round().clamp(1.0, 32.0) as u32;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Debug Draw",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavMeshVolume>(entity)
-                        .map(|v| FieldValue::Bool(v.debug_draw))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(b) = val {
-                        if let Some(mut v) = world.get_mut::<NavMeshVolume>(entity) {
-                            v.debug_draw = b;
-                        }
-                    }
-                },
-            },
-        ],
-    }
-}
-
-#[cfg(feature = "editor")]
-fn obstacle_inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "nav_mesh_obstacle",
-        display_name: "NavMesh Obstacle",
-        icon: "cube",
-        category: "navigation",
-        has_fn: |world, entity| world.get::<NavMeshObstacle>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(NavMeshObstacle);
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<NavMeshObstacle>();
-        }),
-        is_enabled_fn: Some(|world, entity| world.get::<NavMeshObstacle>(entity).is_some()),
-        set_enabled_fn: Some(|world, entity, val| {
-            if val {
-                world.entity_mut(entity).insert(NavMeshObstacle);
-            } else {
-                world.entity_mut(entity).remove::<NavMeshObstacle>();
-            }
-        }),
-        fields: vec![],
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Phase 5: Terrain auto-obstacle
@@ -701,20 +472,16 @@ fn advance_agents(
 fn draw_agent_paths(
     agents: Query<(&NavPath, &GlobalTransform)>,
     volumes: Query<&NavMeshVolume>,
-    #[cfg(feature = "editor")] panel: Option<Res<editor_panel::NavMeshPanelState>>,
+    show_override: Option<Res<ShowAgentPathsOverride>>,
     mut gizmos: Gizmos,
 ) {
-    // In editor builds, the panel's "Show Agent Paths" toggle overrides
-    // the per-volume debug_draw flag. In runtime-only builds, fall back
-    // to the volume flag so shipped games can still opt into paths for
-    // on-screen debugging.
-    #[cfg(feature = "editor")]
-    let show = panel
-        .as_ref()
-        .map(|p| p.show_agent_paths())
+    // The editor's nav panel sets `ShowAgentPathsOverride` from its "Show Agent
+    // Paths" toggle (see renzora_navmesh_editor). In a shipped game it's absent,
+    // so fall back to the per-volume `debug_draw` flag — games can still opt into
+    // path gizmos for on-screen debugging.
+    let show = show_override
+        .map(|o| o.0)
         .unwrap_or_else(|| volumes.iter().any(|v| v.debug_draw));
-    #[cfg(not(feature = "editor"))]
-    let show = volumes.iter().any(|v| v.debug_draw);
 
     if !show {
         return;
@@ -807,126 +574,6 @@ fn handle_nav_script_actions(trigger: On<renzora::ScriptAction>, mut agents: Que
     }
 }
 
-#[cfg(feature = "editor")]
-fn agent_inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "nav_agent",
-        display_name: "NavMesh Agent",
-        icon: "person-simple-walk",
-        category: "navigation",
-        has_fn: |world, entity| world.get::<NavAgent>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(NavAgent::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            let mut e = world.entity_mut(entity);
-            e.remove::<NavAgent>();
-            e.remove::<NavPath>();
-            e.remove::<NavMeshAgentExclusion>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Has Target",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavAgent>(entity)
-                        .map(|a| FieldValue::Bool(a.target.is_some()))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(b) = val {
-                        if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.target = if b {
-                                Some(a.target.unwrap_or(Vec3::ZERO))
-                            } else {
-                                None
-                            };
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Speed",
-                field_type: FieldType::Float {
-                    speed: 0.1,
-                    min: 0.0,
-                    max: 100.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavAgent>(entity)
-                        .map(|a| FieldValue::Float(a.speed))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.speed = x.max(0.0);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Turn Speed",
-                field_type: FieldType::Float {
-                    speed: 0.1,
-                    min: 0.0,
-                    max: 50.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavAgent>(entity)
-                        .map(|a| FieldValue::Float(a.turn_speed))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.turn_speed = x.max(0.0);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Stopping Distance",
-                field_type: FieldType::Float {
-                    speed: 0.05,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<NavAgent>(entity)
-                        .map(|a| FieldValue::Float(a.stopping_distance))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(x) = val {
-                        if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.stopping_distance = x.max(0.0);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Target",
-                field_type: FieldType::Vec3 { speed: 0.25 },
-                get_fn: |world, entity| {
-                    world.get::<NavAgent>(entity).map(|a| {
-                        let t = a.target.unwrap_or(Vec3::ZERO);
-                        FieldValue::Vec3([t.x, t.y, t.z])
-                    })
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Vec3([x, y, z]) = val {
-                        if let Some(mut a) = world.get_mut::<NavAgent>(entity) {
-                            a.target = Some(Vec3::new(x, y, z));
-                        }
-                    }
-                },
-            },
-        ],
-    }
-}
 
 #[derive(Default)]
 pub struct NavMeshPlugin;
@@ -964,49 +611,12 @@ impl Plugin for NavMeshPlugin {
             );
             extensions.register(NavScriptExtension);
         }
-
-        #[cfg(feature = "editor")]
-        {
-            app.register_inspector(inspector_entry());
-            app.register_inspector(obstacle_inspector_entry());
-            app.register_inspector(agent_inspector_entry());
-
-            {
-                use renzora::{EntityPreset, SpawnRegistry};
-                let mut registry = app
-                    .world_mut()
-                    .get_resource_or_insert_with(SpawnRegistry::default);
-                registry.register(EntityPreset {
-                    id: "navmesh_volume",
-                    display_name: "NavMesh Volume",
-                    icon: "polygon",
-                    category: "Navigation",
-                    spawn_fn: |world: &mut World| {
-                        world
-                            .spawn((
-                                Name::new("NavMesh Volume"),
-                                NavMeshVolume::default(),
-                                Transform::default(),
-                            ))
-                            .id()
-                    },
-                });
-            }
-
-            app.init_resource::<editor_panel::NavMeshPanelState>();
-            app.init_resource::<editor_panel::NavMeshPanelMirror>();
-            app.init_resource::<editor_panel::NavMeshBakeRequest>();
-            // Native (ember) panel content.
-            app.add_plugins(native::NativeNavmesh);
-            app.add_systems(
-                Update,
-                (
-                    editor_panel::refresh_panel_mirror,
-                    editor_panel::drain_panel_actions,
-                    editor_panel::apply_auto_rebuild_setting,
-                ),
-            );
-            app.add_systems(Update, editor_panel::flush_bake_request);
-        }
     }
 }
+
+// Runtime-scope: the core navmesh systems run in both the editor viewport and
+// the shipped game. The editor-only panel/inspectors live in the separate
+// `renzora_navmesh_editor` crate (Editor scope). Previously NavMeshPlugin was
+// never registered at all (no `add!`), so navmesh was dormant — this activates
+// it. See [`ShowAgentPathsOverride`] for the editor↔runtime gizmo seam.
+renzora::add!(NavMeshPlugin, Runtime);

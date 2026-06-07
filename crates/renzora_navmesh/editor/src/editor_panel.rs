@@ -1,6 +1,6 @@
 //! NavMesh editor panel — lists volumes, their build status, and exposes
 //! per-volume rebuild + debug-draw controls plus a global auto-rebuild
-//! toggle. Only compiled under the `editor` feature.
+//! toggle. Editor-only (lives in renzora_navmesh_editor).
 
 use std::sync::Mutex;
 
@@ -10,7 +10,7 @@ use vleue_navigator::{
     NavMesh,
 };
 
-use crate::{NavMeshVolume, NavPath};
+use renzora_navmesh::{NavMeshVolume, NavPath};
 
 /// Actions queued from the UI closure (which has `&World` only) and
 /// drained each frame by [`drain_panel_actions`].
@@ -161,7 +161,7 @@ pub fn refresh_panel_mirror(
 pub fn drain_panel_actions(
     state: Res<NavMeshPanelState>,
     mut volumes: Query<(&mut NavMeshVolume, Option<&mut NavMeshUpdateMode>)>,
-    mut agents: Query<(&mut crate::NavAgent, &mut NavPath)>,
+    mut agents: Query<(&mut renzora_navmesh::NavAgent, &mut NavPath)>,
     mut bake_req: ResMut<NavMeshBakeRequest>,
 ) {
     let actions: Vec<PanelAction> = {

@@ -1,12 +1,12 @@
-//! Auto-generates the dylib keepalive `pub use` lists from this crate's
-//! own Cargo.toml. Each `pub use renzora_foo;` in lib.rs causes cargo to
-//! emit a real dep edge so the plugin dylib ends up in the final
-//! binary's DT_NEEDED — and therefore gets loaded at startup, which is
-//! when its `inventory::submit!` ctors run and register entries into
-//! the shared plugin registry.
+//! Auto-generates the dylib keepalive `pub use` list from this crate's own
+//! Cargo.toml. Each `pub use renzora_foo;` in lib.rs causes cargo to emit a
+//! real dep edge so the plugin dylib ends up in the final binary's DT_NEEDED —
+//! and therefore gets loaded at startup, which is when its `inventory::submit!`
+//! ctors run and register entries into the shared plugin registry.
 //!
-//! Engine plugins: every non-optional `renzora_*` dependency.
-//! Editor plugins: every `dep:renzora_*` entry under the `editor` feature.
+//! Engine (Runtime-scope) plugins only: every non-optional `renzora_*`
+//! dependency. The editor is the separate `renzora_editor` bundle dll, so there
+//! is no editor keepalive here.
 
 use std::env;
 use std::fs;
@@ -38,23 +38,6 @@ fn main() {
         .collect();
     engine.sort();
 
-    // Editor plugins: walk the `features.editor` array, pick up `dep:foo`
-    // entries that target a `renzora_*` crate.
-    let editor_feat = toml
-        .get("features")
-        .and_then(|f| f.get("editor"))
-        .and_then(|e| e.as_array())
-        .map(|a| a.as_slice())
-        .unwrap_or(&[]);
-    let mut editor: Vec<&str> = editor_feat
-        .iter()
-        .filter_map(|v| v.as_str())
-        .filter_map(|s| s.strip_prefix("dep:"))
-        .filter(|s| s.starts_with("renzora_"))
-        .collect();
-    editor.sort();
-    editor.dedup();
-
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
 
     let engine_src = engine
@@ -63,11 +46,4 @@ fn main() {
         .collect::<String>();
     fs::write(Path::new(&out_dir).join("engine_reexports.rs"), engine_src)
         .expect("write engine_reexports.rs");
-
-    let editor_src = editor
-        .iter()
-        .map(|n| format!("pub use {};\n", n))
-        .collect::<String>();
-    fs::write(Path::new(&out_dir).join("editor_reexports.rs"), editor_src)
-        .expect("write editor_reexports.rs");
 }

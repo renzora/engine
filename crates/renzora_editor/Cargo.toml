@@ -116,7 +116,7 @@ editor = [
     "dep:renzora_game_ui_editor",
     "renzora_hui/editor",
     "renzora_gauges/editor",
-    "renzora_navmesh/editor",
+    "dep:renzora_navmesh_editor",
 ]
 
 [build-dependencies]
@@ -215,6 +215,7 @@ renzora_game_ui         = { path = "../renzora_game_ui" }
 renzora_hui             = { path = "../renzora_hui" }
 renzora_gauges          = { path = "../renzora_gauges" }
 renzora_navmesh         = { path = "../renzora_navmesh" }
+renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true }
 renzora_tracy           = { path = "../renzora_tracy" }
 
 [lints]

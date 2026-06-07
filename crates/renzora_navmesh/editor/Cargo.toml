@@ -1,0 +1,16 @@
+[package]
+name = "renzora_navmesh_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_navmesh: the NavMesh inspector entries, native panel UI, spawn preset, and bake-to-disk workflow. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_navmesh = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+renzora_ui = { path = "../../renzora_ui" }
+vleue_navigator = { path = "../../vleue_navigator", features = ["avian3d", "debug-with-gizmos"] }
+
+[lints]
+workspace = true

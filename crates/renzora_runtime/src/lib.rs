@@ -34,13 +34,6 @@ mod viewport_stretch;
 // plugin only requires editing Cargo.toml, never this file.
 include!(concat!(env!("OUT_DIR"), "/engine_reexports.rs"));
 
-#[cfg(feature = "editor")]
-mod editor_reexports {
-    include!(concat!(env!("OUT_DIR"), "/editor_reexports.rs"));
-}
-#[cfg(feature = "editor")]
-pub use editor_reexports::*;
-
 // ── App setup (single source of truth for engine plugin registration) ────
 
 pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
@@ -504,28 +497,7 @@ pub fn build_runtime_app() -> App {
     app
 }
 
-// ── Editor plugin registration (only present when `editor` feature is on) ─
-
-/// Adds every editor-scope plugin to the App.
-///
-/// Foundation plugins are listed explicitly here — they initialize the
-/// editor's shared registries (`ViewportOverlayRegistry`,
-/// `ToolOptionsRegistry`, `ShortcutRegistry`, `KeyBindings`, ...) that
-/// downstream editor plugins read during their own `Plugin::build()`.
-/// The rest are auto-discovered through `inventory`.
-#[cfg(feature = "editor")]
-pub fn add_editor_plugins(app: &mut App) {
-    // ── Foundation (explicit, ordered) ─────────────────────────────────
-    info!("[editor] foundation: AssetRegistryPlugin");
-    app.add_plugins(renzora_asset_registry::AssetRegistryPlugin);
-    info!("[editor] foundation: RenzoraEditorPlugin");
-    app.add_plugins(renzora_editor_framework::RenzoraEditorPlugin);
-    info!("[editor] foundation: KeybindingsPlugin");
-    app.add_plugins(renzora_keybindings::KeybindingsPlugin);
-
-    // ── Auto-discovered (any order) ────────────────────────────────────
-    renzora::for_each_static_plugin(renzora::PluginScope::Editor, |plugin| {
-        info!("[editor] static plugin: {}", plugin.name);
-        (plugin.install)(app);
-    });
-}
+// Editor plugins are NOT installed here. They live in the separate
+// `renzora_editor` bundle dll (loaded at startup beside the exe) and are
+// installed via its `plugin_install_scope` FFI entry with `host_scope = Editor`.
+// `renzora_runtime` is purely the runtime foundation.
