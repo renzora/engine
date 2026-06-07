@@ -1474,6 +1474,23 @@ pub struct DedicatedServer;
 #[derive(Resource, Default)]
 pub struct HostServer;
 
+/// Whether this process is an EDITOR session (the `renzora_editor` bundle dll
+/// is present beside the exe) vs. a shipped game. Inserted by
+/// `add_engine_plugins(is_editor)` before the engine plugins build. Lets the
+/// dual-mode crates — compiled WITHOUT an `editor` cargo feature — still decide
+/// editor-vs-game behaviour at RUNTIME, e.g. `RuntimePlugin` only runs the
+/// rpak/project/scene game-startup when this is `false` (the editor's splash
+/// drives loading otherwise). Defaults to `false` (a plain game) when absent.
+#[derive(Resource, Clone, Copy, Default)]
+pub struct EditorSession(pub bool);
+
+impl EditorSession {
+    /// True in an editor session (bundle present), false in a shipped game.
+    pub fn is_editor(&self) -> bool {
+        self.0
+    }
+}
+
 /// Resource: request a scene load from scripts/blueprints.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]

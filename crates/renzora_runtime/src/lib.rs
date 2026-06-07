@@ -462,6 +462,11 @@ fn apply_window_icon(
 /// don't care about ordering and just self-register through
 /// `renzora::add!(MyPlugin)` in their crate.
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
+    // Runtime editor-vs-game signal for the dual-mode crates (they're compiled
+    // without an `editor` cargo feature now, so they branch on this at runtime).
+    // Must exist BEFORE the foundation plugins build — RuntimePlugin reads it.
+    app.insert_resource(renzora::EditorSession(is_editor));
+
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[runtime] foundation: RuntimePlugin");
     app.add_plugins(renzora_engine::RuntimePlugin);
