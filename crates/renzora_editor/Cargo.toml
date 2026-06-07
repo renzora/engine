@@ -112,7 +112,6 @@ editor = [
     "renzora_animation/editor",
     "renzora_water/editor",
     "renzora_terrain/editor",
-    "renzora_game_ui/editor",
     "dep:renzora_game_ui_editor",
     "renzora_hui/editor",
     "renzora_gauges/editor",

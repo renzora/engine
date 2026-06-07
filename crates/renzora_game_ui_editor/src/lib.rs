@@ -9,7 +9,7 @@
 //! editor types (`UiCanvas`, `canvas_render::UiCanvasRender`).
 //!
 //! Architecture: the game UI is *real bevy_ui* rendered to an offscreen image by
-//! `renzora_game_ui::canvas_render` (`UiCanvasRender.image_handle`). The native
+//! `crate::canvas_render` (`UiCanvasRender.image_handle`). The native
 //! panel displays that rendered image (an `ImageNode`) and overlays the editing
 //! chrome — selection box, resize/rotate handles, marquee — as bevy_ui nodes, so
 //! it never has to reimplement the egui `paint_*` widget-preview functions.
@@ -34,12 +34,17 @@ use renzora_ember::font::EmberFonts;
 use renzora_game_ui::UiCanvas;
 
 mod align;
+pub mod canvas;
+pub mod canvas_render;
 mod geometry;
 mod inspectors;
 mod interaction;
 mod nav;
 mod overlay;
+mod register;
+pub mod spawn_ext;
 mod toolbar;
+mod ui_inspector;
 mod viewport;
 
 use overlay::CanvasHitLayer;
@@ -83,6 +88,10 @@ pub struct GameUiEditorPlugin;
 impl Plugin for GameUiEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GameUiEditorPlugin");
+        // Editor inspector entries, hierarchy icons, presets, UI render target,
+        // and editor-only sync/debug systems — relocated verbatim from
+        // `renzora_game_ui`'s old `#[cfg(feature = "editor")]` block.
+        register::register_game_ui_editor(app);
         app.init_resource::<NativeCanvasState>();
         app.add_systems(Update, sync_active_canvas.run_if(in_state(SplashState::Editor)));
         // The canvas geometry snapshot only runs while the panel is actually

@@ -17,7 +17,7 @@ use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 
-use crate::components::UiCanvas;
+use renzora_game_ui::components::UiCanvas;
 
 /// Resolution of the UI editor render-target image. Matches the design
 /// resolution 1:1 — text and shapes raster at native size.

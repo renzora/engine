@@ -88,41 +88,9 @@ impl UiWidgetType {
         }
     }
 
-    #[cfg(feature = "editor")]
-    pub fn icon(&self) -> &'static str {
-        use egui_phosphor::regular::*;
-        match self {
-            Self::Container => SQUARES_FOUR,
-            Self::Panel => RECTANGLE,
-            Self::ScrollView => SCROLL,
-            Self::Text => TEXT_AA,
-            Self::Image => IMAGE,
-            Self::Button => CURSOR_CLICK,
-            Self::Slider => SLIDERS_HORIZONTAL,
-            Self::Checkbox => CHECK_SQUARE,
-            Self::Toggle => TOGGLE_RIGHT,
-            Self::RadioButton => RADIO_BUTTON,
-            Self::Dropdown => CARET_CIRCLE_DOWN,
-            Self::TextInput => TEXT_T,
-            Self::BarFill => BATTERY_MEDIUM,
-            Self::Tooltip => CHAT_CIRCLE_TEXT,
-            Self::Modal => BROWSERS,
-            Self::DraggableWindow => APP_WINDOW,
-            Self::KeybindRow => KEYBOARD,
-            Self::SettingsRow => GEAR,
-            Self::Separator => MINUS,
-            Self::NumberInput => CALCULATOR,
-            Self::Scrollbar => ARROWS_DOWN_UP,
-            Self::Circle => CIRCLE,
-            Self::Arc => CIRCLE_DASHED,
-            Self::RadialProgress => CIRCLE_NOTCH,
-            Self::Line => LINE_SEGMENT,
-            Self::Triangle => TRIANGLE,
-            Self::Polygon => HEXAGON,
-            Self::Rectangle => RECTANGLE,
-            Self::Wedge => CHART_PIE_SLICE,
-        }
-    }
+    // NOTE: the egui-phosphor `icon()` method moved to
+    // `renzora_game_ui_editor` (free fn `widget_icon`) — egui-phosphor is an
+    // editor-only dep this lean runtime crate no longer carries.
 
     /// Category for grouping in the widget palette.
     pub fn category(&self) -> &'static str {

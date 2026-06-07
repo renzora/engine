@@ -9,9 +9,8 @@ use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, DragRange};
 
-use renzora_game_ui::canvas::UiCanvasPreviewEnabled;
-
 use crate::align::{compute_align, compute_distribute_h, compute_distribute_v, AlignAction};
+use crate::canvas::UiCanvasPreviewEnabled;
 use crate::geometry::WidgetGeom;
 use crate::NativeCanvasState;
 

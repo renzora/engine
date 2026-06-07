@@ -1,6 +1,6 @@
 //! The canvas viewport: a dark area holding the zoomed "design frame" whose
 //! `ImageNode` shows the live offscreen render of the game UI
-//! (`renzora_game_ui::canvas_render::UiCanvasRender`). The frame is sized to the
+//! (`crate::canvas_render::UiCanvasRender`). The frame is sized to the
 //! active canvas's reference resolution × zoom, so it shows the UI at design
 //! scale.
 
@@ -9,9 +9,8 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_display, bind_with};
 use renzora_ember::theme::*;
-use renzora_game_ui::canvas::UiCanvasPreviewEnabled;
-use renzora_game_ui::canvas_render::UiCanvasRender;
-
+use crate::canvas::UiCanvasPreviewEnabled;
+use crate::canvas_render::UiCanvasRender;
 use crate::NativeCanvasState;
 
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {

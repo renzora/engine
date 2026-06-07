@@ -11,8 +11,14 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_game_ui = { path = "../renzora_game_ui", features = ["editor"] }
+renzora_game_ui = { path = "../renzora_game_ui" }
 renzora_ember = { path = "../renzora_ember" }
+
+# Editor-only deps relocated from renzora_game_ui (the lean runtime crate no
+# longer carries them): Phosphor icon glyphs for widget/inspector icons, and
+# the `image` crate for reading dropped-image dimensions on the canvas.
+egui-phosphor = { workspace = true }
+image = { version = "0.25", default-features = false }
 
 [lints]
 workspace = true

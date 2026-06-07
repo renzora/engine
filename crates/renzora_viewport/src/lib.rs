@@ -547,7 +547,7 @@ fn sync_viewport_camera_activation(
         (&mut Camera, &renzora::core::ViewportCamera),
         (
             Without<renzora::core::EditorCamera2d>,
-            Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+            Without<renzora_game_ui_editor::canvas_render::UiEditorRenderCamera>,
         ),
     >,
     mut cameras_2d: Query<
@@ -555,13 +555,13 @@ fn sync_viewport_camera_activation(
         (
             With<renzora::core::EditorCamera2d>,
             Without<renzora::core::ViewportCamera>,
-            Without<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+            Without<renzora_game_ui_editor::canvas_render::UiEditorRenderCamera>,
         ),
     >,
     mut cameras_ui: Query<
         &mut Camera,
         (
-            With<renzora_game_ui::canvas_render::UiEditorRenderCamera>,
+            With<renzora_game_ui_editor::canvas_render::UiEditorRenderCamera>,
             Without<renzora::core::ViewportCamera>,
             Without<renzora::core::EditorCamera2d>,
         ),

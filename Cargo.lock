@@ -9571,8 +9571,6 @@ name = "renzora_game_ui"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
- "image",
  "renzora",
  "serde",
 ]
@@ -9582,6 +9580,8 @@ name = "renzora_game_ui_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "egui-phosphor",
+ "image",
  "renzora",
  "renzora_ember",
  "renzora_game_ui",
