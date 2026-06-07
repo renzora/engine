@@ -140,9 +140,14 @@ copy_shared_libs() {
         [[ "$base" == librenzora."$EXT" ]] && continue
         [[ "$base" == renzora."$EXT" ]] && continue
         # Editor bundle (renzora_editor.*) ships beside the exe (copied above),
-        # never in plugins/.
+        # never in plugins/. Also defensively skip the pre-rename name in case a
+        # stale renzora_editor_bundle.* lingers in the cargo cache (cargo doesn't
+        # delete a renamed crate's old dylib) — otherwise it'd be shipped as 100+
+        # MB of dead weight and (now) skipped by the loader as a misplaced bundle.
         [[ "$base" == librenzora_editor."$EXT" ]] && continue
         [[ "$base" == renzora_editor."$EXT" ]] && continue
+        [[ "$base" == librenzora_editor_bundle."$EXT" ]] && continue
+        [[ "$base" == renzora_editor_bundle."$EXT" ]] && continue
         # `renzora_postprocess` is now an rlib shim and emits no dylib, but
         # keep this guard so a stale dylib left in the cargo cache (from
         # before the crate-type change) is never swept into plugins/ — it

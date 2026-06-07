@@ -157,49 +157,22 @@ mod platform {
                 continue;
             }
 
-            // ── Bundle path (preferred when present) ───────────────────────
-            // A bundle cdylib exports `plugin_install_scope` (one cdylib, N
-            // plugins) instead of the single-plugin `plugin_create` trio. If
-            // present, drive it with the host scope and skip the single-plugin
-            // flow. Community single plugins fall through to `plugin_create`.
-            if let Ok(install_sym) =
-                unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }
-            {
-                let install_fn: InstallScopeFn = *install_sym;
-                let host_scope: u8 = if is_editor {
-                    PluginScope::Editor as u8
-                } else {
-                    PluginScope::Runtime as u8
-                };
+            // ── Editor bundle found in plugins/ → SKIP ─────────────────────
+            // A bundle cdylib exports `plugin_install_scope`. The editor bundle
+            // (`renzora_editor.dll`) belongs BESIDE the exe and is loaded exactly
+            // once via `load_bundle` — it must NOT be loaded from plugins/ too.
+            // A bundle found here is a stale/misplaced artifact (e.g. an old
+            // `renzora_editor_bundle.dll` left in the cargo cache and swept in by
+            // packaging). Loading it would be a SECOND bundle install on top of
+            // the beside-exe one, double-adding every editor plugin and panicking
+            // Bevy ("plugin was already added"). Skip it. Community single
+            // plugins fall through to the `plugin_create` path below.
+            if unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }.is_ok() {
                 info!(
-                    "[dynamic-plugin] Loading bundle '{}' (host_scope={})",
-                    stem, host_scope
+                    "[dynamic-plugin] Skipping '{}' in plugins/ — editor bundles load from \
+                     beside the exe, not plugins/ (stale artifact?)",
+                    stem
                 );
-                // The bundle catches panics per-plugin internally (no unwind ever
-                // crosses this `extern "C"` boundary) and returns how many failed.
-                let failures = install_fn(app, host_scope);
-                if failures > 0 {
-                    warn!(
-                        "[dynamic-plugin] bundle '{}' — {} plugin(s) panicked during install",
-                        stem, failures
-                    );
-                }
-                info!("[dynamic-plugin] Registered bundle '{}'", stem);
-                let mut registry = app.world_mut().resource_mut::<DynamicPluginRegistry>();
-                registry.plugins.push(DynamicPluginInfo {
-                    id: stem,
-                    path: path.clone(),
-                    // Records the host scope the bundle was driven with (a bundle
-                    // spans plugins, so this is the requested scope, not one
-                    // plugin's): editor host → Editor; runtime host →
-                    // EditorAndRuntime (it installed Runtime + EditorAndRuntime).
-                    scope: if is_editor {
-                        PluginScope::Editor
-                    } else {
-                        PluginScope::EditorAndRuntime
-                    },
-                });
-                registry._libraries.push(library);
                 continue;
             }
 
