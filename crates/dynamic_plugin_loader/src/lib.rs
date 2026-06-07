@@ -43,6 +43,14 @@ mod platform {
     type CreatePluginFn = extern "C" fn() -> *mut dyn Plugin;
     type ScopePluginFn = extern "C" fn() -> u8;
     type BevyHashFn = extern "C" fn() -> [u64; 2];
+    // Bundle entry point: one cdylib, N plugins. `*mut App` is a thin pointer
+    // (FFI-safe in practice; only the address crosses — both sides agree on
+    // `App`'s layout via the shared `bevy_dylib`, enforced by `plugin_bevy_hash`).
+    // `host_scope` is the `PluginScope` discriminant as `u8`; returns the count
+    // of plugins that panicked during install (the bundle catches per-plugin, so
+    // nothing unwinds across this boundary).
+    #[allow(improper_ctypes_definitions)]
+    type InstallScopeFn = extern "C" fn(*mut App, u8) -> u32;
 
     fn engine_bevy_hash() -> [u64; 2] {
         let id = std::any::TypeId::of::<bevy::ecs::world::World>();
@@ -149,6 +157,52 @@ mod platform {
                 continue;
             }
 
+            // ── Bundle path (preferred when present) ───────────────────────
+            // A bundle cdylib exports `plugin_install_scope` (one cdylib, N
+            // plugins) instead of the single-plugin `plugin_create` trio. If
+            // present, drive it with the host scope and skip the single-plugin
+            // flow. Community single plugins fall through to `plugin_create`.
+            if let Ok(install_sym) =
+                unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }
+            {
+                let install_fn: InstallScopeFn = *install_sym;
+                let host_scope: u8 = if is_editor {
+                    PluginScope::Editor as u8
+                } else {
+                    PluginScope::Runtime as u8
+                };
+                info!(
+                    "[dynamic-plugin] Loading bundle '{}' (host_scope={})",
+                    stem, host_scope
+                );
+                // The bundle catches panics per-plugin internally (no unwind ever
+                // crosses this `extern "C"` boundary) and returns how many failed.
+                let failures = install_fn(app, host_scope);
+                if failures > 0 {
+                    warn!(
+                        "[dynamic-plugin] bundle '{}' — {} plugin(s) panicked during install",
+                        stem, failures
+                    );
+                }
+                info!("[dynamic-plugin] Registered bundle '{}'", stem);
+                let mut registry = app.world_mut().resource_mut::<DynamicPluginRegistry>();
+                registry.plugins.push(DynamicPluginInfo {
+                    id: stem,
+                    path: path.clone(),
+                    // Records the host scope the bundle was driven with (a bundle
+                    // spans plugins, so this is the requested scope, not one
+                    // plugin's): editor host → Editor; runtime host →
+                    // EditorAndRuntime (it installed Runtime + EditorAndRuntime).
+                    scope: if is_editor {
+                        PluginScope::Editor
+                    } else {
+                        PluginScope::EditorAndRuntime
+                    },
+                });
+                registry._libraries.push(library);
+                continue;
+            }
+
             let scope = unsafe {
                 library
                     .get::<ScopePluginFn>(b"plugin_scope")
@@ -234,6 +288,15 @@ mod platform {
                 Ok(lib) => lib,
                 Err(_) => continue,
             };
+
+            // Skip editor BUNDLE cdylibs (they export `plugin_install_scope`,
+            // not the single-plugin `plugin_scope`/`plugin_create` trio). A
+            // bundle is the removable editor, not a shippable game plugin —
+            // without this it'd fall through to the `EditorAndRuntime` default
+            // below and the export UI would offer to ship the editor in a game.
+            if unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }.is_ok() {
+                continue;
+            }
 
             let scope = unsafe {
                 library

@@ -9351,6 +9351,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_editor_bundle"
+version = "0.1.0"
+dependencies = [
+ "renzora",
+]
+
+[[package]]
 name = "renzora_ember"
 version = "0.1.0"
 dependencies = [

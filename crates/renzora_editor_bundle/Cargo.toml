@@ -1,0 +1,34 @@
+[package]
+name = "renzora_editor_bundle"
+version = "0.1.0"
+edition = "2021"
+
+# The editor bundle: ONE loadable cdylib that statically links every
+# editor-only plugin crate (as rlibs) and exposes them through a single
+# `extern "C"` entry point (`plugin_install_scope`) emitted by
+# `renzora::export_plugin_bundle!` under the `dlopen` feature. The
+# `dynamic_plugin_loader` dlopens it and installs its Editor-scope plugins.
+#
+# Present beside the host → the binary is the editor. Remove the dll → the
+# same binary is the exported game.
+#
+# Step A: the bundle door + skeleton (no editor crates linked yet — the
+# inventory it replays is empty until Step B adds the dep list).
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen"]
+# `dlopen` makes `export_plugin_bundle!` emit the FFI exports (resolves against
+# THIS crate, the expansion site — same discipline as `renzora::add!`).
+dlopen = []
+
+[dependencies]
+renzora = { path = "../renzora", default-features = false }
+
+# Step B will add the ~44 editor-only crate deps here (as rlibs — they do NOT
+# enable their own `dlopen`, so only their `inventory::submit!` ctors link, no
+# FFI-symbol collision), plus the dual-mode crates with their `editor` feature.
+
+[lints]
+workspace = true

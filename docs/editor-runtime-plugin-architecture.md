@@ -240,11 +240,35 @@ one feature. **That feature delta is the `bevy_dylib` hash delta.**
   different?** → diff the two `cargo build … --unit-graph` / `cargo tree -e features` for
   `bevy` to see which crate still pulls an extra bevy feature; that's the remaining gap to
   fold into the unified build. **This result decides how much of §10.2.1 is needed.**
-- **Step A — re-add the bundle door (additive, safe).** Reintroduce `export_plugin_bundle!`
-  (in `renzora` or `renzora_macros`) + a `plugin_install_scope` path in
-  `dynamic_plugin_loader` (prefer it when present; fall back to the existing `plugin_create`
-  for single-plugin community cdylibs; both still gated on `plugin_bevy_hash`). Pure addition;
-  doesn't touch the working build.
+- **Step A — re-add the bundle door (additive, safe). ✅ DONE.** `export_plugin_bundle!` in
+  `crates/renzora/src/plugin_meta.rs` (emits a single `plugin_install_scope(*mut App, u8) -> u32`
+  + `plugin_bevy_hash`, per-plugin `catch_unwind` so one bad plugin can't abort the rest and no
+  panic crosses `extern "C"`, returns a failure count; optional `foundation = [...]` ordered
+  prefix). `dynamic_plugin_loader` prefers `plugin_install_scope`, falls back to `plugin_create`,
+  same `plugin_bevy_hash` gate; `scan_plugins` now skips bundles. `crates/renzora_editor_bundle`
+  cdylib skeleton instantiates the macro. Pure addition; the working build is untouched.
+
+  **Load-bearing findings from the Step-A adversarial review (preconditions for B–E):**
+  1. **The inventory is GLOBAL.** `inventory::collect!(StaticPlugin)` lives in the *shared*
+     `renzora` dylib (one registry across the boundary). So `plugin_install_scope` replays
+     **every matching-scope plugin in that global registry**, not "the bundle's own". It works
+     only because scopes partition (editor host installs `Editor`-only; runtime host installs
+     `Runtime`+`EditorAndRuntime`).
+  2. **Deployment contract (hard).** A build either statically links + installs editor plugins
+     (`add_editor_plugins`) **OR** ships them as the bundle — *never both*, or they double-add and
+     Bevy panics. ⇒ **Step C must stop the host statically registering editor-scope plugins**, and
+     the bundle is **not runtime-testable until then** (dropping it into a current *editor* build's
+     `plugins/` would double-register).
+  3. **Foundation isn't in the inventory.** `AssetRegistryPlugin`/`RenzoraEditorPlugin`/
+     `KeybindingsPlugin` (editor) are added explicitly + ordered, not via `add!`. Step B must pass
+     them through `export_plugin_bundle!(foundation = [...])` so they install first, in order.
+  4. **Build via `--workspace` only.** `dynamic_linking` reaches the bundle's `bevy` solely via
+     resolver-2 feature unification with `renzora_app`. Built in isolation → separate static bevy →
+     `plugin_bevy_hash` mismatch → silent reject. **The user must verify the workspace-built bundle's
+     hash == the host's** (ties into Step 0).
+  5. **Step B keepalive.** Adding the ~44 editor crates as plain deps isn't enough — replicate
+     `renzora_runtime`'s `pub use renzora_<crate>;` so the linker keeps each rlib's
+     `inventory::submit!` ctor; otherwise an empty bundle loads and installs nothing.
 - **Step B — editor bundle crate.** `crates/renzora_editor_bundle` (cdylib) that depends on
   every editor-only crate (the current `renzora_runtime/editor` set) + the SDK foundation,
   and `export_plugin_bundle!`s them. Built by `--workspace`.
