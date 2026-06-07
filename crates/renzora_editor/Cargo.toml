@@ -91,7 +91,7 @@ editor = [
     "renzora_lighting/editor",
     "renzora_hanabi/editor",
     "renzora_tonemapping/editor",
-    "renzora_bloom_effect/editor",
+    "dep:renzora_bloom_effect_editor",
     "renzora_dof/editor",
     "renzora_motion_blur/editor",
     "renzora_antialiasing/editor",
@@ -190,6 +190,7 @@ renzora_lighting        = { path = "../renzora_lighting" }
 renzora_hanabi          = { path = "../renzora_hanabi" }
 renzora_tonemapping     = { path = "../renzora_tonemapping" }
 renzora_bloom_effect    = { path = "../renzora_bloom_effect" }
+renzora_bloom_effect_editor = { path = "../renzora_bloom_effect/editor", optional = true }
 renzora_dof             = { path = "../renzora_dof" }
 renzora_motion_blur     = { path = "../renzora_motion_blur" }
 renzora_antialiasing    = { path = "../renzora_antialiasing" }

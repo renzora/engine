@@ -9028,10 +9028,19 @@ name = "renzora_bloom_effect"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_macros",
  "serde",
+]
+
+[[package]]
+name = "renzora_bloom_effect_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_bloom_effect",
 ]
 
 [[package]]
@@ -9316,6 +9325,7 @@ dependencies = [
  "renzora_auth",
  "renzora_auto_exposure",
  "renzora_bloom_effect",
+ "renzora_bloom_effect_editor",
  "renzora_blueprint_editor",
  "renzora_camera",
  "renzora_clouds",
