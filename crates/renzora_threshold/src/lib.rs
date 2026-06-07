@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "threshold.wgsl", name = "Threshold", icon = "CIRCLE_HALF")]
 pub struct ThresholdSettings {

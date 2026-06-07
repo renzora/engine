@@ -117,13 +117,13 @@ copy_shared_libs() {
     # NOTE: `renzora_postprocess` is no longer here — its framework folded
     # into `renzora` (module `renzora::postprocess`), so it ships inside
     # renzora.{dll,so,dylib} and emits no dylib of its own.
-    # The editor bundle ships beside the exe too (NOT in plugins/): present →
-    # the binary is the editor; absent → it's the game. Only copied when the
-    # lane built it (the lean runtime lane has no bundle in $SRC).
+    # `renzora_editor.$EXT` is the editor BUNDLE cdylib (the removable editor):
+    # present beside the exe → the binary is the editor; delete it → the same
+    # binary is the exported game. The editor *framework* is now an rlib (folded
+    # contract lives in renzora.dll), so it emits no dylib of its own.
     for f in \
-        "$SRC/librenzora.$EXT"                "$SRC/renzora.$EXT" \
-        "$SRC/librenzora_editor.$EXT"         "$SRC/renzora_editor.$EXT" \
-        "$SRC/librenzora_editor_bundle.$EXT"  "$SRC/renzora_editor_bundle.$EXT"; do
+        "$SRC/librenzora.$EXT"         "$SRC/renzora.$EXT" \
+        "$SRC/librenzora_editor.$EXT"  "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -139,13 +139,10 @@ copy_shared_libs() {
         [[ "$base" == *renzora_macros* ]] && continue
         [[ "$base" == librenzora."$EXT" ]] && continue
         [[ "$base" == renzora."$EXT" ]] && continue
+        # Editor bundle (renzora_editor.*) ships beside the exe (copied above),
+        # never in plugins/.
         [[ "$base" == librenzora_editor."$EXT" ]] && continue
         [[ "$base" == renzora_editor."$EXT" ]] && continue
-        # Editor bundle ships beside the exe (copied above), never in plugins/.
-        # Its filename (renzora_editor_bundle.*) doesn't match the renzora_editor.*
-        # exact patterns above, so it needs its own skip here.
-        [[ "$base" == librenzora_editor_bundle."$EXT" ]] && continue
-        [[ "$base" == renzora_editor_bundle."$EXT" ]] && continue
         # `renzora_postprocess` is now an rlib shim and emits no dylib, but
         # keep this guard so a stale dylib left in the cargo cache (from
         # before the crate-type change) is never swept into plugins/ — it
@@ -166,7 +163,7 @@ copy_std() {
     local SYSROOT; SYSROOT=$(rustc --print sysroot)
     local f
     for f in "$SYSROOT"/lib/rustlib/"$TRIPLE"/lib/$GLOB; do
-        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/$PLATFORM/$FEATURE/"
+        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/$PLATFORM/"
     done
     return 0
 }
@@ -211,7 +208,7 @@ build_desktop() {
             --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     fi
 
-    local OUT="$OUTPUT_DIR/$PLATFORM/$FEATURE"
+    local OUT="$OUTPUT_DIR/$PLATFORM"
     mkdir -p "$OUT"
 
     # Binary (rename based on feature)
@@ -259,7 +256,7 @@ build_one() {
 
 # ── Wrap the Linux editor output into an AppDir + AppImage ────────────────────
 wrap_linux_appimage() {
-    local EDITOR_DIR="$OUTPUT_DIR/linux-x64/editor"
+    local EDITOR_DIR="$OUTPUT_DIR/linux-x64"
     [ -f "$EDITOR_DIR/renzora" ] || return 0
 
     local APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
@@ -342,7 +339,7 @@ build_wasm() {
 
     # Editor-on-web was removed with Operation Merge: there is no compile-time
     # `editor` feature anymore, and the editor now ships as a desktop dlopen
-    # bundle (`renzora_editor_bundle`) which has no wasm equivalent. The web
+    # bundle (`renzora_editor`) which has no wasm equivalent. The web
     # lane builds the game runtime only (above).
     return 0
 }
@@ -436,7 +433,6 @@ throttle() {
 # Desktop feature lanes — each owns its own target-dir, so they never contend.
 if [ ${#DESKTOP_PLATFORMS[@]} -gt 0 ]; then
     throttle; run_lane "editor"  required lane_desktop_feature editor
-    throttle; run_lane "runtime" required lane_desktop_feature runtime
 fi
 if should_build wasm; then
     throttle; run_lane "wasm" required build_wasm

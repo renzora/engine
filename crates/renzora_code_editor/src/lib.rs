@@ -12,7 +12,7 @@ pub use state::*;
 use bevy::prelude::*;
 
 use renzora::core::CurrentProject;
-use renzora_editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 use renzora_scripting::ScriptComponent;
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ impl Plugin for CodeEditorPlugin {
         info!("[editor] CodeEditorPlugin");
         app.insert_resource(CodeEditorState::default());
 
-        use renzora_editor::SplashState;
+        use renzora_editor_framework::SplashState;
         app.add_systems(
             Update,
             (
@@ -89,7 +89,7 @@ impl Plugin for CodeEditorPlugin {
 /// it's eventually serialised).
 fn sync_code_editor_prefs_to_settings(
     editor_state: Res<CodeEditorState>,
-    mut settings: ResMut<renzora_editor::EditorSettings>,
+    mut settings: ResMut<renzora_editor_framework::EditorSettings>,
 ) {
     if settings.code_show_minimap != editor_state.show_minimap {
         settings.code_show_minimap = editor_state.show_minimap;
@@ -126,8 +126,8 @@ fn consume_open_code_editor_file(
 /// formats (scripts, shaders, configs). Reset when leaving so other workspaces
 /// see the full asset list again.
 fn sync_asset_filter_for_scripting(
-    layout_mgr: Res<renzora_editor::LayoutManager>,
-    mut filter: ResMut<renzora_editor::AssetBrowserExtensionFilter>,
+    layout_mgr: Res<renzora_editor_framework::LayoutManager>,
+    mut filter: ResMut<renzora_editor_framework::AssetBrowserExtensionFilter>,
 ) {
     let is_scripting = layout_mgr.active_name() == "Scripting";
     let desired: Option<Vec<String>> = if is_scripting {

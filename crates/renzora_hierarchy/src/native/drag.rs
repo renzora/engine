@@ -10,7 +10,7 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor::{EditorCommands, EditorSelection, HierarchyOrder, TreeDropZone};
+use renzora_editor_framework::{EditorCommands, EditorSelection, HierarchyOrder, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_undo::{record, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, UndoCommand, UndoContext};

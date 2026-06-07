@@ -3,7 +3,7 @@
 //! Registered automatically by `MaterialEditorPlugin`.
 
 use bevy::prelude::*;
-use renzora_editor::InspectorEntry;
+use renzora_editor_framework::InspectorEntry;
 use renzora_shader::material::material_ref::MaterialRef;
 
 /// Image extensions accepted for auto-material creation.

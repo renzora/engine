@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 
 #[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]

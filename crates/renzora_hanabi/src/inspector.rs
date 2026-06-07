@@ -1,7 +1,7 @@
 //! Editor inspector registration for HanabiEffect.
 
 use bevy::prelude::*;
-use renzora_editor::{DocTabKind, InspectorEntry, InspectorRegistry};
+use renzora_editor_framework::{DocTabKind, InspectorEntry, InspectorRegistry};
 
 use crate::data::*;
 
@@ -19,7 +19,7 @@ fn hanabi_remove(world: &mut World, entity: Entity) {
 
 // ── Native (ember) drawer ────────────────────────────────────────────────────
 
-use renzora_editor::{AppEditorExt, FieldValue, SplashState};
+use renzora_editor_framework::{AppEditorExt, FieldValue, SplashState};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
 use renzora_ember::widgets::icon_label_button;
@@ -88,7 +88,7 @@ fn hanabi_edit_click(q: Query<(&Interaction, &HanabiEditBtn), Changed<Interactio
         commands.queue(move |w: &mut World| {
             let path = w.get::<HanabiEffect>(e).and_then(hanabi_source_path);
             if let Some(p) = path {
-                renzora_editor::open_asset_tab(w, std::path::Path::new(&p), DocTabKind::Particle);
+                renzora_editor_framework::open_asset_tab(w, std::path::Path::new(&p), DocTabKind::Particle);
             }
         });
     }

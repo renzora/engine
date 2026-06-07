@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use bevy::picking::Pickable;
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
+use renzora_editor_framework::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
@@ -518,7 +518,7 @@ fn asset_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut state: ResMut<NativeAssets>,
-    payload: Option<Res<renzora_editor::AssetDragPayload>>,
+    payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
     mut commands: Commands,
 ) {
     if mouse.just_released(MouseButton::Left) {
@@ -535,7 +535,7 @@ fn asset_drag(
         state.drag_press = None;
         state.dragging = false;
         if payload.is_some() {
-            commands.remove_resource::<renzora_editor::AssetDragPayload>();
+            commands.remove_resource::<renzora_editor_framework::AssetDragPayload>();
         }
         return;
     }
@@ -563,7 +563,7 @@ fn asset_drag(
                     vec![path.clone()]
                 };
                 let count = paths.len();
-                commands.insert_resource(renzora_editor::AssetDragPayload {
+                commands.insert_resource(renzora_editor_framework::AssetDragPayload {
                     name: file_name_of(&path),
                     paths,
                     icon: String::new(),
@@ -631,7 +631,7 @@ fn move_assets(world: &mut World, sources: &[PathBuf], target: &Path) {
 fn drag_ghost(
     mut commands: Commands,
     state: Res<NativeAssets>,
-    payload: Option<Res<renzora_editor::AssetDragPayload>>,
+    payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
     fonts: Option<Res<EmberFonts>>,
     windows: Query<&Window>,
     mut ghosts: Query<(Entity, &mut Node), With<DragGhost>>,
@@ -2794,15 +2794,15 @@ fn open_file(cmds: &Option<Res<EditorCommands>>, path: &Path) {
 /// Whether double-clicking the file should open it inside the editor (vs the OS
 /// default app). Mirrors the egui browser's `open_double_clicked` routing.
 fn opens_in_editor(path: &Path) -> bool {
-    renzora_editor::doc_kind_for_path(path).is_some() || is_editable_text(path)
+    renzora_editor_framework::doc_kind_for_path(path).is_some() || is_editable_text(path)
 }
 
 /// Code-editor-backed kinds: scripts, shaders, HTML templates, and plain text.
 /// These open straight into `CodeEditorState` (no layout switch).
 fn is_code_kind(path: &Path) -> bool {
-    use renzora_editor::DocTabKind;
+    use renzora_editor_framework::DocTabKind;
     matches!(
-        renzora_editor::doc_kind_for_path(path),
+        renzora_editor_framework::doc_kind_for_path(path),
         Some(DocTabKind::Script | DocTabKind::Shader)
     ) || is_editable_text(path)
 }
@@ -2818,11 +2818,11 @@ fn is_editable_text(path: &Path) -> bool {
 /// Context-menu "Open …" label + icon for an asset, or `None` if it has no
 /// in-editor opener (a folder, texture, audio clip, …).
 fn open_action(path: &Path) -> Option<(&'static str, &'static str)> {
-    use renzora_editor::DocTabKind;
+    use renzora_editor_framework::DocTabKind;
     if path.is_dir() {
         return Some(("folder-open", "Open"));
     }
-    match renzora_editor::doc_kind_for_path(path) {
+    match renzora_editor_framework::doc_kind_for_path(path) {
         Some(DocTabKind::Material) => Some(("palette", "Open in Material Editor")),
         Some(DocTabKind::Particle) => Some(("sparkle", "Open in Particle Editor")),
         Some(DocTabKind::Blueprint) => Some(("blueprint", "Open in Blueprint Editor")),
@@ -2855,14 +2855,14 @@ fn open_from_menu(world: &mut World, path: &Path) {
 fn open_in_code_editor(world: &mut World, path: PathBuf) {
     world.insert_resource(renzora::core::OpenCodeEditorFile { path });
     let switch = world
-        .get_resource::<renzora_editor::EditorSettings>()
+        .get_resource::<renzora_editor_framework::EditorSettings>()
         .map(|s| s.code_open_switch_layout)
         .unwrap_or(false);
 
     // egui dock model (legacy backend): focus/add the panel, or switch layout.
     if switch {
-        renzora_editor::switch_layout_by_name(world, "Scripting");
-    } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor::DockingState>() {
+        renzora_editor_framework::switch_layout_by_name(world, "Scripting");
+    } else if let Some(mut docking) = world.get_resource_mut::<renzora_editor_framework::DockingState>() {
         docking.tree.focus_or_add_panel("code_editor");
     }
 

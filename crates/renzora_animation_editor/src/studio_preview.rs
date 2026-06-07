@@ -11,7 +11,7 @@ use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
-use renzora_editor::DockingState;
+use renzora_editor_framework::DockingState;
 
 use crate::AnimationEditorState;
 

@@ -66,7 +66,7 @@ impl Plugin for SplashPlugin {
 
 /// Consume `renzora::RequestOpenProject` markers (inserted by the editor's
 /// File menu). Owns the file dialog + validation + AppConfig update +
-/// state transition so `renzora_editor` doesn't need to depend on splash.
+/// state transition so `renzora_editor_framework` doesn't need to depend on splash.
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_request_open_project(
     mut commands: Commands,

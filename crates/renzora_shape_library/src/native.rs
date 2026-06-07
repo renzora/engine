@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use renzora::core::ShapeRegistry;
-use renzora_editor::{EditorCommands, ShapeDragState, SplashState};
+use renzora_editor_framework::{EditorCommands, ShapeDragState, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};

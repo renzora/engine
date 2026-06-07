@@ -57,6 +57,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
 
     commands.entity(root).add_children(&[note, img]);
-    renzora_editor::mark_drop_zone(commands, root);
+    renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }

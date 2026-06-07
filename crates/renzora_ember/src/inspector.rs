@@ -1,5 +1,5 @@
 //! Helper for writing native inspector drawers
-//! (`renzora_editor::NativeInspectorDrawer`).
+//! (`renzora_editor_framework::NativeInspectorDrawer`).
 //!
 //! A drawer is `fn(&mut World, Entity) -> Entity` — it builds an arbitrary
 //! bevy_ui subtree (using ember widgets + `bind_2way`) and returns its root,

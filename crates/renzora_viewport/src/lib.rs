@@ -38,7 +38,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::ViewportRenderTarget;
-use renzora_editor::DockingState;
+use renzora_editor_framework::DockingState;
 
 pub use camera_preview::CameraPreviewState;
 // Re-export all viewport types from core (they now live in renzora::viewport_types)
@@ -145,7 +145,7 @@ impl Plugin for ViewportPlugin {
                     // ran first, it would despawn the still-being-placed entity
                     // right out from under that handler.
                     model_drop::cleanup_model_drag_ghost
-                        .after(renzora_editor::drain_editor_commands_native),
+                        .after(renzora_editor_framework::drain_editor_commands_native),
                 ).chain(),
                 shape_drop::shape_drag_ground_tracking
                     .before(shape_drop::shape_drag_raycast_system),
@@ -174,7 +174,7 @@ impl Plugin for ViewportPlugin {
                     persistence::save_on_change
                         .after(persistence::apply_prefs_on_project_load),
                 ),
-            ).run_if(in_state(renzora_editor::SplashState::Editor)));
+            ).run_if(in_state(renzora_editor_framework::SplashState::Editor)));
 
         // Always-on panel-visibility gates — toggle is_active on the offscreen
         // cameras when their panels are / are not in the current dock tree so
@@ -185,7 +185,7 @@ impl Plugin for ViewportPlugin {
                 sync_viewport_camera_activation,
                 camera_preview::sync_camera_preview_activation,
             )
-                .run_if(in_state(renzora_editor::SplashState::Editor)),
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 
         // Camera-preview spawn/update logic only when its panel is mounted.
@@ -195,7 +195,7 @@ impl Plugin for ViewportPlugin {
                 camera_preview::update_camera_preview,
                 camera_preview::resize_camera_preview,
             )
-                .run_if(in_state(renzora_editor::SplashState::Editor))
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                 .run_if(camera_preview::camera_preview_panel_mounted),
         );
 
@@ -220,12 +220,12 @@ struct BrushCursorHiddenByUs(bool);
 /// the viewport. Only acts on transitions we own — if someone else (e.g.
 /// modal transform) has hidden the cursor, we don't touch it.
 fn hide_cursor_for_brushes(
-    active_tool: Option<Res<renzora_editor::ActiveTool>>,
+    active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
     mut cursor_options: Query<&mut bevy::window::CursorOptions>,
     mut ours: ResMut<BrushCursorHiddenByUs>,
 ) {
-    use renzora_editor::ActiveTool;
+    use renzora_editor_framework::ActiveTool;
     let Ok(mut cursor) = cursor_options.single_mut() else {
         return;
     };

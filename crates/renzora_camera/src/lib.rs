@@ -19,7 +19,7 @@ use renzora::core::viewport_types::{
 };
 use renzora::core::InputFocusState;
 use renzora::core::{EditorCamera, PlayModeCamera, ViewportCamera};
-use renzora_editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 
 /// Orbit camera state for the editor viewport.
 ///
@@ -170,7 +170,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<OrbitMirror>()
             .add_systems(
                 Update,
-                toggle_pivot_lock.run_if(in_state(renzora_editor::SplashState::Editor)),
+                toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(PostStartup, apply_initial_orbit)
             // Relocate the EditorCamera marker to the focused viewport before
@@ -179,7 +179,7 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 PreUpdate,
                 relocate_editor_camera_marker
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(
                 Update,
@@ -203,7 +203,7 @@ impl Plugin for CameraPlugin {
                     apply_secondary_viewport_cameras,
                 )
                     .chain()
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             );
     }
 }
@@ -579,7 +579,7 @@ fn camera_controller(
     mut drag: ResMut<CameraDragState>,
     mut velocity: ResMut<CameraVelocityState>,
     viewport: Option<Res<ViewportState>>,
-    active_tool: Option<Res<renzora_editor::ActiveTool>>,
+    active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,

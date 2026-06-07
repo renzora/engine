@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};

@@ -12,14 +12,14 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
-use renzora_editor::AssetDragPayload;
+use renzora_editor_framework::AssetDragPayload;
 use renzora_shader::material::graph::{PinDir, PinTemplate, PinType, PinValue};
 use renzora_shader::material::nodes::node_def;
 

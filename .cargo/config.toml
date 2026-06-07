@@ -1,7 +1,7 @@
 # Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
 # Run
-# The editor experience now ships as the `renzora_editor_bundle` cdylib loaded
+# The editor experience now ships as the `renzora_editor` cdylib loaded
 # from beside the exe, so the editor run must be `--workspace` — that builds
 # the binary AND the bundle into target/dist next to each other (one bevy_dylib
 # via feature unification). `runtime` forces game mode (`--no-editor`) even if a

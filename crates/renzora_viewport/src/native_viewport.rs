@@ -29,7 +29,7 @@ const PANEL_IDS: [&str; 4] = ["viewport", "viewport-2", "viewport-3", "viewport-
 struct NativeViewport(usize);
 
 pub fn register_native_viewport(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora_editor_framework::SplashState;
     for (i, id) in PANEL_IDS.iter().enumerate() {
         // `scroll = false`: the camera image fills the panel.
         app.register_panel_content(id, false, move |commands, fonts| build_viewport(commands, fonts, i));

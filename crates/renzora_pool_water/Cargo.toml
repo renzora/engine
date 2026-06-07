@@ -18,7 +18,7 @@ editor = ["renzora/editor"]
 
 [dependencies]
 egui-phosphor = { workspace = true }
-renzora_editor = { path = "../renzora_editor" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }

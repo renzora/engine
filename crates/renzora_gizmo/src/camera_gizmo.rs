@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCamera, EditorSelection};
+use renzora_editor_framework::{EditorCamera, EditorSelection};
 
 use crate::OverlayGizmoGroup;
 

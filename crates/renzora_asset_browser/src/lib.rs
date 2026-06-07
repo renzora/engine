@@ -3,20 +3,20 @@ pub mod model_thumbnails;
 pub mod thumbnails;
 
 use bevy::prelude::*;
-use renzora_editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 
 /// Route a double-clicked asset to the right editor: scripts/shaders go to
 /// the code editor, .material / .particle / .blueprint get their dedicated
 /// layout. All recognized kinds also spawn a document tab. Unknown file
 /// types fall through to the legacy code-editor "plain text" flow.
 pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
-    use renzora_editor::DocTabKind;
+    use renzora_editor_framework::DocTabKind;
 
     if let Some(kind) = asset_doc_kind(&path) {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             let p = path.clone();
             cmds.push(move |world: &mut bevy::prelude::World| {
-                renzora_editor::open_asset_tab(world, &p, kind);
+                renzora_editor_framework::open_asset_tab(world, &p, kind);
             });
         }
         return;
@@ -39,7 +39,7 @@ pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path:
     if is_editable {
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             cmds.push(move |world: &mut bevy::prelude::World| {
-                renzora_editor::open_asset_tab(world, &path, DocTabKind::Script);
+                renzora_editor_framework::open_asset_tab(world, &path, DocTabKind::Script);
             });
         }
     }
@@ -47,8 +47,8 @@ pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path:
 
 /// Map a file path to the document tab kind it represents, or `None` if the
 /// file doesn't correspond to a known editor-opening asset type.
-fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor::DocTabKind> {
-    use renzora_editor::DocTabKind;
+fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::DocTabKind> {
+    use renzora_editor_framework::DocTabKind;
     let name = path
         .file_name()
         .and_then(|n| n.to_str())

@@ -18,7 +18,7 @@ use bevy::asset::LoadState;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use renzora::core::CurrentProject;
-use renzora_editor::thumbnail_cache_dir;
+use renzora_editor_framework::thumbnail_cache_dir;
 
 /// Width/height the cached thumbnail PNG is resized to. Asset browser
 /// renders at ~96px so 256 keeps headroom for HiDPI without bloating

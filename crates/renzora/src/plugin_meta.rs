@@ -233,7 +233,7 @@ macro_rules! add {
 /// // With an ordered foundation prefix installed before the fan-out:
 /// renzora::export_plugin_bundle!(foundation = [
 ///     renzora_asset_registry::AssetRegistryPlugin,
-///     renzora_editor::RenzoraEditorPlugin,
+///     renzora_editor_framework::RenzoraEditorPlugin,
 ///     renzora_keybindings::KeybindingsPlugin,
 /// ]);
 /// ```

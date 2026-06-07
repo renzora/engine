@@ -32,7 +32,7 @@ const PANEL_ID: &str = "hierarchy";
 pub(crate) struct HierExpanded(pub HashSet<Entity>);
 
 pub fn register_native_hierarchy(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora_editor_framework::SplashState;
     app.init_resource::<HierExpanded>();
     app.init_resource::<drag::HierDrag>();
     app.init_resource::<filter::HierFilter>();

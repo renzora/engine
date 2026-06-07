@@ -19,7 +19,7 @@ use bevy::prelude::*;
 
 use std::path::PathBuf;
 
-use renzora_editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
 use renzora_ember::reactive::bind_2way;
@@ -28,7 +28,7 @@ use renzora_ember::theme::{border, popup_bg, rgb, section_bg, text_muted, text_p
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
 pub fn register(app: &mut App) {
-    use renzora_editor::{AppEditorExt, SplashState};
+    use renzora_editor_framework::{AppEditorExt, SplashState};
     app.register_native_inspector_ui("script_component", script_component_native);
     app.add_systems(
         Update,

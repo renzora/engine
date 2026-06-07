@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{ActiveTool, EditorSelection};
+use renzora_editor_framework::{ActiveTool, EditorSelection};
 use renzora_terrain::data::TerrainData;
 
 // ── Tab state ───────────────────────────────────────────────────────────────

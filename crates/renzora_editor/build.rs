@@ -34,7 +34,7 @@ fn main() {
     let mut crates: Vec<&str> = deps
         .keys()
         .map(String::as_str)
-        .filter(|name| name.starts_with("renzora_") && *name != "renzora_editor_bundle")
+        .filter(|name| name.starts_with("renzora_") && *name != "renzora_editor")
         .collect();
     crates.sort();
     crates.dedup();

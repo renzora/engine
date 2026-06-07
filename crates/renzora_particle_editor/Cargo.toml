@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-renzora_editor = { path = "../renzora_editor" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 bevy_hanabi = { path = "../bevy_hanabi" }

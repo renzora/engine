@@ -1,0 +1,32 @@
+[package]
+name = "renzora_editor_framework"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora editor SDK — RenzoraEditorPlugin + extension contracts (registries, EditorSelection, EditorCommands, inspector/spawn/toolbar registries, etc.). Shipped as renzora_editor_framework.dll so loadable plugins dynamically share its symbols."
+
+# rlib-only (Operation Merge): the editor framework no longer ships as its own
+# dylib. The shared editor CONTRACT (the only types that cross the binary↔bundle
+# boundary) folded into renzora.dll; what's left here is framework IMPL that is
+# statically linked into whoever uses it — the editor bundle cdylib, the
+# editor-only panel crates, and (transitively, via renzora_inspector) the
+# binary. With no renzora_editor_framework.dll emitted, removing the editor (the bundle
+# dll) can never leave the exe importing a missing renzora_editor_framework.dll.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+renzora_macros = { path = "../renzora_macros" }
+bevy = { workspace = true }
+renzora_ui = { path = "../renzora_ui" }
+renzora_theme = { path = "../renzora_theme" }
+# `features = ["editor"]` so the editor CONTRACT (registries, EditorSelection,
+# field macros, AppEditorExt) that folded into `renzora` core is visible here
+# and re-exported at `renzora_editor_framework::*` for back-compat.
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_postprocess = { path = "../renzora_postprocess" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"
+
+[lints]
+workspace = true

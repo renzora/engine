@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora::core::keybindings::KeyBindings;
-use renzora_editor::{EditorCommands, ShortcutRegistry, SplashState, ToolbarRegistry};
+use renzora_editor_framework::{EditorCommands, ShortcutRegistry, SplashState, ToolbarRegistry};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::bind_bg;
 use renzora_ember::theme::{accent, border, hover_bg, popup_bg, rgb, text_muted, text_primary};

@@ -22,7 +22,7 @@ use bevy::ui::{RelativeCursorPosition, UiTransform};
 use renzora::core::viewport_types::{
     CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings,
 };
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_ember::widgets::OverlaySurface;

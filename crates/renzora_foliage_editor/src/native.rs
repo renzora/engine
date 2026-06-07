@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{

@@ -7,7 +7,7 @@ use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
@@ -101,7 +101,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(body).add_children(&[toolbar, img_box]);
     commands.entity(root).add_children(&[note, body]);
-    renzora_editor::mark_drop_zone(commands, root);
+    renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }
 

@@ -5,7 +5,7 @@ pub mod native;
 mod state;
 
 use bevy::prelude::*;
-use renzora_editor::{
+use renzora_editor_framework::{
     AppEditorExt, AutoSelectFirstHierarchyEntity, EditorSelection, SceneStarter, SpawnRegistry,
 };
 
@@ -81,7 +81,7 @@ impl Plugin for HierarchyPanelPlugin {
         );
 
         // Spawn presets are now self-registered by their owning crates:
-        // - Bevy types (Empty, lights, camera): renzora_editor::bevy_inspectors
+        // - Bevy types (Empty, lights, camera): renzora_editor_framework::bevy_inspectors
         // - Physics: renzora_physics::inspector (editor feature)
         // - Terrain: renzora_terrain (editor feature)
         // - World Environment/Sun: renzora_level_presets

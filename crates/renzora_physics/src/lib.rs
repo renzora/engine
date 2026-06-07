@@ -123,7 +123,7 @@ impl Plugin for PhysicsPlugin {
                 .chain(),
         );
 
-        // Listen for editor pause/unpause events (decoupled from renzora_editor)
+        // Listen for editor pause/unpause events (decoupled from renzora_editor_framework)
         app.add_observer(on_pause_physics)
             .add_observer(on_unpause_physics);
 

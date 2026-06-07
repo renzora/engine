@@ -29,7 +29,7 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use uuid::Uuid;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::{
+use renzora_editor_framework::{
     material_thumb_path, migrate_legacy_thumbnail_cache, MaterialThumbnailRegistry,
 };
 use renzora_shader::material::codegen::{self, CompileResult, TextureKind};

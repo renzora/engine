@@ -10,7 +10,7 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_hanabi::prelude::*;
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::DockingState;
+use renzora_editor_framework::DockingState;
 
 use renzora_hanabi::builder::build_complete_effect;
 use renzora_hanabi::data::EditorMode;

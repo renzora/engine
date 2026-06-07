@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "light_streaks.wgsl", name = "Light Streaks", icon = "SUN")]
 pub struct LightStreaksSettings {

@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color};

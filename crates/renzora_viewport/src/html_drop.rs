@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora_editor::{EditorCommands, EditorSelection};
+use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_ui::asset_drag::AssetDragPayload;
 
 const HTML_EXTENSIONS: &[&str] = &["html"];

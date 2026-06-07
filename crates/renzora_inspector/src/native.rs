@@ -20,7 +20,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
-use renzora_editor::{
+use renzora_editor_framework::{
     EditorCommands, EditorSelection, FieldType, FieldValue, InspectorRegistry,
     NativeInspectorDrawer, NativeInspectorRegistry,
 };
@@ -60,7 +60,7 @@ struct NativeInspectorState {
 }
 
 pub fn register_native_inspector(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
     // `scroll: false` — we manage scrolling ourselves so the top bar (Add
     // Component + filter) and the bottom Add Component button stay *fixed* while
@@ -1298,7 +1298,7 @@ fn open_add_component(world: &mut World) {
         fn(&mut World, Entity),
     );
     let specs: Vec<Spec> = world
-        .get_resource::<renzora_editor::InspectorRegistry>()
+        .get_resource::<renzora_editor_framework::InspectorRegistry>()
         .map(|reg| {
             reg.iter()
                 .filter_map(|e| {

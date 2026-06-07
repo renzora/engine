@@ -13,7 +13,7 @@ use renzora::{
     AspectMode, CurrentProject, RenderingMode, StretchMode, TextureFilter,
     WindowMode,
 };
-use renzora_editor::{
+use renzora_editor_framework::{
     CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -135,7 +135,7 @@ pub(crate) fn build(app: &mut App) {
             theme_save_click,
             ember_theme_save_click,
         )
-            .run_if(in_state(renzora_editor::SplashState::Editor)),
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
     app.add_systems(
         Update,
@@ -148,13 +148,13 @@ pub(crate) fn build(app: &mut App) {
             remove_binding_click,
             composite_click,
         )
-            .run_if(in_state(renzora_editor::SplashState::Editor)),
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
     // Key/mouse-rebind capture.
     app.add_systems(
         Update,
         (rebind_btn_click, rebind_capture, reset_bindings_click, input_listen_capture)
-            .run_if(in_state(renzora_editor::SplashState::Editor)),
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
 }
 

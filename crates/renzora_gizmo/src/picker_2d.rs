@@ -18,7 +18,7 @@ use bevy::sprite::Sprite;
 use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::{Node2d, PlayModeState};
-use renzora_editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 
 /// Hit threshold for handle picking, in panel pixels. Generous so users
 /// don't have to be sub-pixel accurate on a small sprite.

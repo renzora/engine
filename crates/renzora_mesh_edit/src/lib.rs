@@ -19,7 +19,7 @@
 
 use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportMode;
-use renzora_editor::sdk::conditions::in_mode;
+use renzora_editor_framework::sdk::conditions::in_mode;
 
 pub mod edit_mesh;
 pub mod operators;

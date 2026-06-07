@@ -19,7 +19,7 @@ use bevy::window::PrimaryWindow;
 
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
-use renzora_editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::glb_compat;

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::panel::RegisterPanelContent;

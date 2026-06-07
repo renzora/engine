@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "cross_hatch.wgsl", name = "Cross Hatch", icon = "HASH")]
 pub struct CrossHatchSettings {

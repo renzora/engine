@@ -13,7 +13,7 @@
 //! only when dirty, and the panel reads from the cached `Vec<EntityNode>`.
 
 use bevy::prelude::*;
-use renzora_editor::{
+use renzora_editor_framework::{
     EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
 };
 

@@ -27,7 +27,7 @@ use renzora_animation::{
     state_machine::{AnimCondition, AnimState, AnimTransition, AnimationStateMachine, StateMotion},
     AnimatorComponent,
 };
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;

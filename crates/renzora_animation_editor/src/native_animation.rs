@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 
 use renzora_animation::{AnimClip, AnimatorComponent, AnimatorState};
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;

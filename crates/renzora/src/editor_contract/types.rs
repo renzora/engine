@@ -1,5 +1,5 @@
 //! Bevy-only editor data types shared across the binary↔bundle boundary.
-//! Moved from `renzora_editor`'s lib.rs in the Operation Merge contract fold —
+//! Moved from `renzora_editor_framework`'s lib.rs in the Operation Merge contract fold —
 //! `renzora_game_ui` (a binary-linked dual-mode crate) references these, so
 //! they must live in the shared `renzora` dylib for one `TypeId`.
 

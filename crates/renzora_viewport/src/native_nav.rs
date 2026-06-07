@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::viewport_types::{NavOverlayState, ViewportSettings};
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_glyph, icon_text, EmberFonts};
 use renzora_ember::theme::{accent, hover_bg, panel_bg, rgb};
 use renzora_ember::widgets::OverlaySurface;

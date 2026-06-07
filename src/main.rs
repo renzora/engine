@@ -58,11 +58,11 @@ fn exe_dir() -> Option<std::path::PathBuf> {
 fn editor_bundle_path() -> Option<std::path::PathBuf> {
     let dir = exe_dir()?;
     #[cfg(target_os = "windows")]
-    let names: &[&str] = &["renzora_editor_bundle.dll"];
+    let names: &[&str] = &["renzora_editor.dll"];
     #[cfg(target_os = "linux")]
-    let names: &[&str] = &["librenzora_editor_bundle.so", "renzora_editor_bundle.so"];
+    let names: &[&str] = &["librenzora_editor.so", "renzora_editor.so"];
     #[cfg(target_os = "macos")]
-    let names: &[&str] = &["librenzora_editor_bundle.dylib", "renzora_editor_bundle.dylib"];
+    let names: &[&str] = &["librenzora_editor.dylib", "renzora_editor.dylib"];
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     let names: &[&str] = &[];
     names.iter().map(|n| dir.join(n)).find(|p| p.exists())

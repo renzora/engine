@@ -9,7 +9,7 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 renzora_hui = { path = "../renzora_hui" }
 renzora_import = { path = "../renzora_import" }
-renzora_editor = { path = "../renzora_editor" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
 log = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

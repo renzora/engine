@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 
 use renzora::core::ShapeRegistry;
-use renzora_editor::{InspectorRegistry, SpawnRegistry};
+use renzora_editor_framework::{InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{search_overlay, SearchEntry};
 use renzora_undo::{execute, SpawnEntityCmd, SpawnEntityKind, SpawnShapeCmd, UndoContext};

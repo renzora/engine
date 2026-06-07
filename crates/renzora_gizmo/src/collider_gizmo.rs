@@ -7,7 +7,7 @@
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use renzora_editor::EditorSelection;
+use renzora_editor_framework::EditorSelection;
 use renzora_physics::{CollisionShapeData, CollisionShapeType};
 
 use crate::OverlayGizmoGroup;

@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use egui_phosphor::regular;
 #[cfg(feature = "editor")]
-use renzora_editor::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 
 /// 8×f32 to satisfy `ShaderType` 16-byte alignment (matches `VignetteSettings`).

@@ -514,7 +514,7 @@ pub fn add_editor_plugins(app: &mut App) {
     info!("[editor] foundation: AssetRegistryPlugin");
     app.add_plugins(renzora_asset_registry::AssetRegistryPlugin);
     info!("[editor] foundation: RenzoraEditorPlugin");
-    app.add_plugins(renzora_editor::RenzoraEditorPlugin);
+    app.add_plugins(renzora_editor_framework::RenzoraEditorPlugin);
     info!("[editor] foundation: KeybindingsPlugin");
     app.add_plugins(renzora_keybindings::KeybindingsPlugin);
 

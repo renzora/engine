@@ -20,7 +20,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::prelude::*;
 
-use renzora_editor::{EditorSelection, HideInHierarchy};
+use renzora_editor_framework::{EditorSelection, HideInHierarchy};
 
 use crate::GizmoMaterial;
 

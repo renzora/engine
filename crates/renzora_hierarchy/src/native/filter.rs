@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor::ComponentIconRegistry;
+use renzora_editor_framework::ComponentIconRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;

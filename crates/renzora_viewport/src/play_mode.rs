@@ -13,8 +13,8 @@ use renzora::core::{
     DefaultCamera, EditorCamera, EditorCamera2d, PlayModeCamera, PlayModeState, PlayState,
     SceneCamera, ViewportRenderTarget,
 };
-use renzora_editor::camera::EditorUiCamera;
-use renzora_editor::EditorSettings;
+use renzora_editor_framework::camera::EditorUiCamera;
+use renzora_editor_framework::EditorSettings;
 
 use crate::external_runtime::{
     self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,

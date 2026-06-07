@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use egui_phosphor::regular as icons;
 
 use renzora::SceneCamera;
-use renzora_editor::{EditorCamera, EditorSelection};
+use renzora_editor_framework::{EditorCamera, EditorSelection};
 use renzora_lighting::Sun;
 
 use crate::OverlayGizmoGroup;

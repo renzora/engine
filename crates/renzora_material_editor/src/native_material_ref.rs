@@ -16,7 +16,7 @@ use bevy::ui::widget::ImageNode;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::CurrentProject;
-use renzora_editor::{
+use renzora_editor_framework::{
     open_asset_tab, AppEditorExt, AssetDragPayload, DocTabKind, MaterialThumbnailRegistry, SplashState,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};

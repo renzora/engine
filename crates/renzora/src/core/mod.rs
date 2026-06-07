@@ -1220,7 +1220,7 @@ pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
 
 /// Per-panel metadata for the bevy_ui editor shell, keyed by panel id.
 ///
-/// `renzora_editor` populates this from its `PanelRegistry` so the shell gets
+/// `renzora_editor_framework` populates this from its `PanelRegistry` so the shell gets
 /// each panel's real title/icon. Once panels register a bevy-native renderer
 /// directly, this becomes their primary registration.
 #[derive(Resource, Default)]

@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor::{AssetDragPayload, SplashState};
+use renzora_editor_framework::{AssetDragPayload, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};

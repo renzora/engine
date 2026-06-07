@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor::{
+use renzora_editor_framework::{
     ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter,
     HierarchyOrder,
 };

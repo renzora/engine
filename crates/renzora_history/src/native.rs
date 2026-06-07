@@ -11,7 +11,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora_editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
@@ -311,7 +311,7 @@ fn history_snapshot(world: &World) -> KeyedSnapshot {
 // ── Registration ────────────────────────────────────────────────────────────
 
 pub fn register_native_history(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora_editor_framework::SplashState;
     // Build once; the reactive keyed list drives the rows from here on.
     app.register_panel_content(PANEL_ID, true, |commands, _fonts| {
         let list = commands

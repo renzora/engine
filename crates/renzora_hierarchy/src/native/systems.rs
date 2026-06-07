@@ -5,7 +5,7 @@
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCommands, EditorSelection};
+use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_undo::{execute, LockToggleCmd, UndoContext, VisibilityToggleCmd};
 
 use crate::cache::HierarchyTreeCache;

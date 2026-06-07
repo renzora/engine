@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCommands, EditorSelection, SplashState};
+use renzora_editor_framework::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_display, keyed_list, KeyedSnapshot};

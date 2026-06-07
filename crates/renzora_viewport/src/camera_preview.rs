@@ -16,7 +16,7 @@ use renzora::core::{
     DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera,
     PrimaryViewportCamera,
 };
-use renzora_editor::{DockingState, EditorSelection};
+use renzora_editor_framework::{DockingState, EditorSelection};
 
 /// Skybox brightness for the shared atmosphere cubemap when synthesizing a
 /// `Skybox` from the primary's `GeneratedEnvironmentMapLight`. Matches

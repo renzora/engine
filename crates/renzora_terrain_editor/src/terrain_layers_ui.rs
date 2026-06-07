@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 use egui_phosphor::regular as icons;
-use renzora_editor::InspectorEntry;
+use renzora_editor_framework::InspectorEntry;
 use renzora_terrain::data::TerrainData;
 
 /// `ActiveBrushLayer` moved into the `Painter` itself (`active_layer`), but

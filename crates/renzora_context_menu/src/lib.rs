@@ -28,7 +28,7 @@ use bevy::window::PrimaryWindow;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora_editor::{
+use renzora_editor_framework::{
     ActiveTool, DockingState, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
 };

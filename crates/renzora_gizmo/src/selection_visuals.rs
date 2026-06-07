@@ -15,7 +15,7 @@ use bevy_mod_outline::{OutlineMode, OutlineStencil, OutlineVolume};
 
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
-use renzora_editor::{EditorSelection, EditorSettings, HideInHierarchy, SelectionHighlightMode};
+use renzora_editor_framework::{EditorSelection, EditorSettings, HideInHierarchy, SelectionHighlightMode};
 
 /// Marker component for entities that currently have a selection outline.
 #[derive(Component)]

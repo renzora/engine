@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorSelection, EntityLabelColor};
+use renzora_editor_framework::{EditorSelection, EntityLabelColor};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_ember::widgets::{menu_item, menu_item_styled, menu_sep, screen_menu, MenuAction};

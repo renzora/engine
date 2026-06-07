@@ -15,7 +15,7 @@ lua = []
 editor = [
     # Editor-only crates
     "dep:renzora_undo",
-    "dep:renzora_editor",
+    "dep:renzora_editor_framework",
     "dep:renzora_splash",
     "dep:renzora_asset_registry",
     "dep:renzora_viewport",
@@ -157,7 +157,7 @@ renzora_night_stars = { path = "../renzora_night_stars" }
 
 # ── Editor-only crates (only compiled when `editor` feature is on) ────────
 renzora_undo = { path = "../renzora_undo", optional = true }
-renzora_editor = { path = "../renzora_editor", optional = true }
+renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
 renzora_splash = { path = "../renzora_splash", optional = true }
 renzora_asset_registry = { path = "../renzora_asset_registry", optional = true }
 renzora_viewport = { path = "../renzora_viewport", optional = true }

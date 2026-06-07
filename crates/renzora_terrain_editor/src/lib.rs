@@ -9,7 +9,7 @@ mod terrain_layers_ui;
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
-use renzora_editor::{
+use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EditorSelection, EntityPreset, InspectorEntry, ToolEntry,
     ToolSection,
 };

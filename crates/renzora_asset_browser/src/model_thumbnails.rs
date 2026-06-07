@@ -28,7 +28,7 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::scene::SceneInstanceReady;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora_editor::{model_thumb_path, ModelThumbnailRegistry};
+use renzora_editor_framework::{model_thumb_path, ModelThumbnailRegistry};
 
 /// Render layer the offscreen capture lives on so the user's viewport
 /// camera doesn't see the spawned model. Different from the material

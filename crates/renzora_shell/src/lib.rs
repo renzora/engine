@@ -160,7 +160,7 @@ struct TopBarSettingsBtn;
 
 fn settings_btn_click(
     btns: Query<&Interaction, (Changed<Interaction>, With<TopBarSettingsBtn>)>,
-    settings: Option<ResMut<renzora_editor::EditorSettings>>,
+    settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
 ) {
     let Some(mut settings) = settings else { return };
     for interaction in &btns {
@@ -1958,10 +1958,10 @@ fn build_menu_items(
         }
         TopMenuKind::File => vec![
             menu_item(commands, fonts, "folder-plus", "New Project", |w| {
-                renzora_editor::handle_new_project(w)
+                renzora_editor_framework::handle_new_project(w)
             }),
             menu_item(commands, fonts, "folder-open", "Open Project…", |w| {
-                renzora_editor::handle_open_project(w)
+                renzora_editor_framework::handle_open_project(w)
             }),
             menu_sep(commands),
             menu_item(commands, fonts, "file-plus", "New Scene", |w| {
@@ -1983,20 +1983,20 @@ fn build_menu_items(
             }),
             menu_sep(commands),
             menu_item(commands, fonts, "gear", "Settings", |w| {
-                if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
+                if let Some(mut s) = w.get_resource_mut::<renzora_editor_framework::EditorSettings>() {
                     s.show_settings = !s.show_settings;
                 }
             }),
         ],
         TopMenuKind::Edit => vec![
             menu_item(commands, fonts, "arrow-u-up-left", "Undo", |w| {
-                let f = w.get_resource::<renzora_editor::EditorActionHooks>().and_then(|h| h.undo);
+                let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.undo);
                 if let Some(f) = f {
                     f(w);
                 }
             }),
             menu_item(commands, fonts, "arrow-u-up-right", "Redo", |w| {
-                let f = w.get_resource::<renzora_editor::EditorActionHooks>().and_then(|h| h.redo);
+                let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.redo);
                 if let Some(f) = f {
                     f(w);
                 }

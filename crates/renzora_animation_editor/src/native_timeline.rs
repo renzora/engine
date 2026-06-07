@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
 use renzora_animation::{AnimClip, AnimatorComponent};
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
-use renzora_editor::AppEditorExt;
+use renzora_editor_framework::AppEditorExt;
 
 #[renzora_macros::post_process(shader = "pixelation.wgsl", name = "Pixelation", icon = "GRID_FOUR")]
 pub struct PixelationSettings {

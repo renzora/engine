@@ -13,7 +13,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_bg, bind_display, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu};
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor_framework::{EditorCommands, SplashState};
 
 use crate::panel::{list_scenes, open_scene, paths_equal, unique_scene_path, EMPTY_SCENE_RON};
 

@@ -19,7 +19,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_animation::AnimatorState;
-use renzora_editor::{EditorCommands, SplashState};
+use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};

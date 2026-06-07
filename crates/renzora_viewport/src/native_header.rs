@@ -17,7 +17,7 @@ use renzora::core::viewport_types::{
 use bevy::ecs::world::CommandQueue;
 use std::sync::Arc;
 
-use renzora_editor::{EditorCommands, ToolSection, ToolbarRegistry};
+use renzora_editor_framework::{EditorCommands, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
@@ -200,7 +200,7 @@ fn action_btn(
 }
 
 pub(crate) fn register(app: &mut App) {
-    use renzora_editor::SplashState;
+    use renzora_editor_framework::SplashState;
     app.add_systems(
         Update,
         (
@@ -432,7 +432,7 @@ fn dropdown_option_click(
 
 /// Honor the viewport "maximize" toggle on the bevy_ui shell's ember dock: swap
 /// the dock to a viewport-only leaf while maximized and restore the saved tree
-/// when un-maximized (the egui dock handles this itself in renzora_editor).
+/// when un-maximized (the egui dock handles this itself in renzora_editor_framework).
 fn viewport_maximize_dock(
     max: Option<Res<renzora_ui::ViewportMaximized>>,
     dock: Option<ResMut<renzora_ember::dock::Dock>>,
@@ -1881,7 +1881,7 @@ fn populate_tools(world: &mut World) {
     };
 
     // Build the ordered section list: Transform, Terrain, then custom sections.
-    let mut sections: Vec<Vec<renzora_editor::ToolEntry>> = Vec::new();
+    let mut sections: Vec<Vec<renzora_editor_framework::ToolEntry>> = Vec::new();
     let by_section = |sec| {
         let mut v: Vec<_> = registry
             .entries()
@@ -1943,7 +1943,7 @@ fn tool_separator(commands: &mut Commands) -> Entity {
 fn tool_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    entry: &renzora_editor::ToolEntry,
+    entry: &renzora_editor_framework::ToolEntry,
 ) -> Entity {
     // `entry.icon` is either a kebab-case Phosphor name (resolved via `icon_glyph`)
     // or, for entries that still pass a raw glyph constant, the glyph char itself —

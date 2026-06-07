@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "editor")]
 use {
     egui_phosphor::regular,
-    renzora_editor::{AppEditorExt, InspectorEntry},
+    renzora_editor_framework::{AppEditorExt, InspectorEntry},
 };
 
 /// Wrapper settings for a forward decal entity.
@@ -135,7 +135,7 @@ fn decal_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![renzora_editor::float_field!(
+        fields: vec![renzora_editor_framework::float_field!(
             "Depth Fade",
             DecalSettings,
             depth_fade_factor,

@@ -24,7 +24,7 @@ use bevy::window::PrimaryWindow;
 use std::path::PathBuf;
 
 use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-use renzora_editor::EditorCommands;
+use renzora_editor_framework::EditorCommands;
 use renzora_ui::asset_drag::AssetDragPayload;
 
 use crate::ViewportState;

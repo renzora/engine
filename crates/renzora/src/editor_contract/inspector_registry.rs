@@ -153,7 +153,7 @@ impl InspectorRegistry {
 ///
 /// ```ignore
 /// fields: vec![
-///     renzora_editor::float_field!("Speed", MySettings, speed, 0.1, 0.0, 10.0),
+///     renzora_editor_framework::float_field!("Speed", MySettings, speed, 0.1, 0.0, 10.0),
 /// ],
 /// ```
 #[macro_export]
@@ -239,7 +239,7 @@ macro_rules! color_rgba_field {
 /// enum mode as a plain `u32` (atmosphere/dof/...).
 ///
 /// ```ignore
-/// renzora_editor::enum_u32_field!("Mode", MySettings, mode, ["Gaussian", "Bokeh"]),
+/// renzora_editor_framework::enum_u32_field!("Mode", MySettings, mode, ["Gaussian", "Bokeh"]),
 /// ```
 #[macro_export]
 macro_rules! enum_u32_field {

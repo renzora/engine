@@ -22,7 +22,7 @@ use egui_phosphor::regular::{CUBE, LINK, POLYGON};
 use renzora::core::keybindings::KeyBinding;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
-use renzora_editor::{
+use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EditorCommands, EditorSelection, ShortcutEntry, ToolEntry,
     ToolSection,
 };

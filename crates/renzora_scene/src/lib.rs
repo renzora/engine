@@ -10,7 +10,7 @@ use renzora::core::{
     TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested,
 };
 use renzora_camera::OrbitCameraState;
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_engine::scene_io;
 use renzora_ui::{DocTabKind, DocumentTabState};
 use renzora_keybindings::{EditorAction, KeyBindings};
@@ -700,7 +700,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
     // only just been queued for spawn and the hierarchy tree won't be
     // built until the next frame.
     if let Some(mut flag) =
-        world.get_resource_mut::<renzora_editor::AutoSelectFirstHierarchyEntity>()
+        world.get_resource_mut::<renzora_editor_framework::AutoSelectFirstHierarchyEntity>()
     {
         flag.0 = true;
     }
@@ -1105,7 +1105,7 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScenePlugin");
-        use renzora_editor::{AppEditorExt, ComponentIconEntry};
+        use renzora_editor_framework::{AppEditorExt, ComponentIconEntry};
 
         // Hierarchy icon for nested-scene instance roots (distinguishes them
         // from plain folder-like grouping entities).

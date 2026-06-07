@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
-use renzora_editor::SplashState;
+use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
@@ -103,7 +103,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
 
     commands.entity(root).add_children(&[bar, handle.viewport]);
-    renzora_editor::mark_drop_zone(commands, root);
+    renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }
 

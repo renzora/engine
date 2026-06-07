@@ -8,7 +8,7 @@ use bevy::window::SystemCursorIcon;
 use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
 };
-use renzora_editor::{EditorSelection, TreeDropZone};
+use renzora_editor_framework::{EditorSelection, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_text_color};
 use renzora_ember::theme::*;

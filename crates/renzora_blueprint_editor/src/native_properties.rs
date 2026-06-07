@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_blueprint::graph::{BlueprintGraph, PinDir, PinTemplate, PinType, PinValue};
 use renzora_blueprint::nodes::node_def;
-use renzora_editor::{DocTabKind, EditorContext};
+use renzora_editor_framework::{DocTabKind, EditorContext};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_stripe};
 use renzora_ember::panel::RegisterPanelContent;

@@ -12,7 +12,7 @@
 //! [dependencies]
 //! bevy = { workspace = true }
 //! renzora = { path = "..." }                 # types + events
-//! renzora_editor = { path = "..." } # editor panels, inspector
+//! renzora_editor_framework = { path = "..." } # editor panels, inspector
 //! renzora_postprocess = { path = "..." }      # post-process effect derive
 //! ```
 
@@ -80,7 +80,7 @@ pub use editor_contract::*;
 
 // Editor derive/attribute macros, re-exported from core so consumers write
 // `renzora::Inspectable` / `renzora::post_process` and the macros they generate
-// emit `renzora::FieldDef` etc. (single shared contract, no `renzora_editor`).
+// emit `renzora::FieldDef` etc. (single shared contract, no `renzora_editor_framework`).
 #[cfg(feature = "editor")]
 pub use renzora_macros::{post_process, Inspectable};
 

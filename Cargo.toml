@@ -66,7 +66,7 @@ path = "src/main.rs"
 [features]
 default = ["runtime"]
 # One binary, always runtime-shaped. The editor is no longer a compile-time
-# feature: it ships as the `renzora_editor_bundle` cdylib loaded at startup
+# feature: it ships as the `renzora_editor` cdylib loaded at startup
 # from beside the exe (Operation Merge). Present → the binary is the editor;
 # absent → the same binary is the exported game. The runtime binary is also
 # the dedicated server (launch with `--server` to boot headless) and the

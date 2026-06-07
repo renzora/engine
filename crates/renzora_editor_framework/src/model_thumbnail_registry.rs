@@ -8,7 +8,7 @@
 //! `<project>/.cache/thumbnails/models/<rel>.png`, and publishes the
 //! resulting `Handle<Image>` via [`ModelThumbnailRegistry::complete`].
 //!
-//! Lives in `renzora_editor` rather than the asset browser so other panels
+//! Lives in `renzora_editor_framework` rather than the asset browser so other panels
 //! (inspector, asset preview, drag preview) can read the registry without
 //! pulling in the renderer.
 

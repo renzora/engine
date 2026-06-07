@@ -21,7 +21,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use std::hash::{Hash, Hasher};
 
 use renzora::core::CurrentProject;
-use renzora_editor::{AssetDragPayload, SplashState};
+use renzora_editor_framework::{AssetDragPayload, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{

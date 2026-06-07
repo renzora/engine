@@ -274,7 +274,7 @@ mod platform {
     /// beside the exe (not in `plugins/`). Reuses the same ABI gate + the
     /// `plugin_install_scope` branch as `load_plugins_impl`, but does NOT
     /// directory-scan, so the host's own SDK dylibs (`renzora`,
-    /// `renzora_editor`, `bevy_dylib`) sitting next to the exe are never
+    /// `renzora_editor_framework`, `bevy_dylib`) sitting next to the exe are never
     /// dlopened as plugins. Call AFTER `add_engine_plugins` so the runtime
     /// foundation + Runtime/EditorAndRuntime plugins already exist; the bundle
     /// then layers its Editor-scope plugins on top (host_scope = Editor),

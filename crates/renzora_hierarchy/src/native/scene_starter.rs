@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor::{EditorCommands, SceneStarterRegistry, SplashState};
+use renzora_editor_framework::{EditorCommands, SceneStarterRegistry, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;

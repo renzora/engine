@@ -8923,7 +8923,6 @@ dependencies = [
  "egui-phosphor",
  "mlua",
  "renzora",
- "renzora_editor",
  "renzora_scripting",
  "ron 0.8.1",
  "serde",
@@ -8936,7 +8935,7 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_animation",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_theme",
  "ron 0.8.1",
@@ -8949,7 +8948,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -8975,7 +8973,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -8988,7 +8986,7 @@ dependencies = [
  "bevy 0.18.0",
  "image",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "zip 2.4.2",
 ]
@@ -9009,7 +9007,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -9047,7 +9044,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -9059,7 +9055,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -9072,7 +9067,7 @@ dependencies = [
  "bevy_light",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "serde",
 ]
 
@@ -9095,7 +9090,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_blueprint",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_scripting",
  "serde_json",
@@ -9107,7 +9102,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "serde",
 ]
 
@@ -9117,7 +9112,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9129,7 +9124,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9142,7 +9137,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_lighting",
  "serde",
 ]
@@ -9154,7 +9148,7 @@ dependencies = [
  "bevy 0.18.0",
  "log",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_scripting",
 ]
@@ -9165,7 +9159,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9177,7 +9171,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9189,7 +9183,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
 ]
 
@@ -9199,7 +9193,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
 ]
@@ -9210,7 +9203,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
 ]
 
 [[package]]
@@ -9219,7 +9212,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9231,7 +9224,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9245,7 +9238,6 @@ dependencies = [
  "kira",
  "renzora",
  "renzora_audio",
- "renzora_editor",
  "renzora_ember",
 ]
 
@@ -9256,7 +9248,6 @@ dependencies = [
  "bevy 0.18.0",
  "memory-stats",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_lumen",
  "renzora_macros",
@@ -9272,7 +9263,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "serde",
 ]
@@ -9283,7 +9273,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9295,7 +9285,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9308,7 +9298,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -9319,7 +9308,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9332,7 +9321,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9340,19 +9329,6 @@ dependencies = [
 
 [[package]]
 name = "renzora_editor"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "renzora",
- "renzora_macros",
- "renzora_postprocess",
- "renzora_theme",
- "renzora_ui",
- "rfd",
-]
-
-[[package]]
-name = "renzora_editor_bundle"
 version = "0.1.0"
 dependencies = [
  "renzora",
@@ -9376,7 +9352,7 @@ dependencies = [
  "renzora_debugger",
  "renzora_distance_fog",
  "renzora_dof",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_engine",
  "renzora_environment_map",
  "renzora_export",
@@ -9439,6 +9415,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_editor_framework"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_macros",
+ "renzora_postprocess",
+ "renzora_theme",
+ "renzora_ui",
+ "rfd",
+]
+
+[[package]]
 name = "renzora_ember"
 version = "0.1.0"
 dependencies = [
@@ -9455,7 +9444,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9473,7 +9462,6 @@ dependencies = [
  "renzora",
  "renzora_animation",
  "renzora_audio",
- "renzora_editor",
  "renzora_ember",
  "renzora_lighting",
  "renzora_macros",
@@ -9498,7 +9486,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_lighting",
  "serde",
 ]
@@ -9530,7 +9517,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9542,7 +9529,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9563,7 +9550,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_terrain",
@@ -9576,7 +9563,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "serde",
 ]
 
@@ -9586,7 +9573,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9600,7 +9587,6 @@ dependencies = [
  "egui-phosphor",
  "image",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -9610,7 +9596,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_game_ui",
 ]
@@ -9621,7 +9606,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
 ]
 
@@ -9632,7 +9616,6 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_gauge 0.4.5",
  "renzora",
- "renzora_editor",
  "renzora_ember",
 ]
 
@@ -9643,7 +9626,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9657,7 +9640,7 @@ dependencies = [
  "bevy_mod_outline",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_lighting",
  "renzora_physics",
  "renzora_terrain",
@@ -9670,7 +9653,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9691,7 +9674,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9703,7 +9686,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9715,7 +9698,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
 ]
 
 [[package]]
@@ -9724,7 +9706,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9738,7 +9720,7 @@ dependencies = [
  "bevy_hanabi",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_inspector",
  "ron 0.8.1",
@@ -9752,7 +9734,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9764,7 +9746,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9778,7 +9760,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_blueprint",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
  "renzora_game_ui",
@@ -9796,7 +9778,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_undo",
@@ -9811,7 +9793,6 @@ dependencies = [
  "image",
  "renzora",
  "renzora_auth",
- "renzora_editor",
  "renzora_ember",
  "ureq",
  "zip 2.4.2",
@@ -9826,7 +9807,6 @@ dependencies = [
  "bevy_vello",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_game_ui",
  "renzora_scripting",
  "skrifa 0.40.0",
@@ -9864,7 +9844,7 @@ dependencies = [
  "bevy 0.18.0",
  "log",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_import",
@@ -9887,7 +9867,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_scripting",
  "renzora_theme",
@@ -9900,7 +9880,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9912,7 +9892,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9932,7 +9912,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9944,7 +9924,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9964,7 +9944,6 @@ dependencies = [
  "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
- "renzora_editor",
  "renzora_ember",
  "renzora_environment_map",
  "renzora_lighting",
@@ -9985,7 +9964,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -9998,7 +9977,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10010,7 +9988,6 @@ dependencies = [
  "bytemuck",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_rt",
  "renzora_shader",
  "serde",
@@ -10033,7 +10010,7 @@ dependencies = [
  "bevy 0.18.0",
  "image",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_shader",
  "renzora_splash",
@@ -10049,7 +10026,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10062,7 +10039,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_undo",
 ]
 
@@ -10072,7 +10049,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_undo",
 ]
 
@@ -10084,7 +10061,6 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_audio",
- "renzora_editor",
  "renzora_ember",
  "renzora_inspector",
 ]
@@ -10095,7 +10071,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10108,7 +10084,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_macros",
  "serde",
 ]
@@ -10122,7 +10097,6 @@ dependencies = [
  "mlua",
  "polyanya",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
  "renzora_terrain",
@@ -10150,7 +10124,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_network",
 ]
@@ -10162,7 +10135,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_lighting",
  "serde",
 ]
@@ -10173,7 +10145,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10185,7 +10157,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10198,7 +10170,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10209,7 +10180,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10222,7 +10193,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10235,7 +10206,7 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_hanabi",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hanabi",
  "rfd",
@@ -10250,7 +10221,7 @@ dependencies = [
  "bevy_light",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "serde",
 ]
 
@@ -10264,7 +10235,6 @@ dependencies = [
  "egui-phosphor",
  "mlua",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_scripting",
  "serde",
@@ -10276,7 +10246,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10288,7 +10258,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10301,7 +10271,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "serde",
 ]
 
@@ -10311,7 +10281,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10353,7 +10323,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10365,7 +10335,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10379,7 +10349,7 @@ dependencies = [
  "crossbeam-channel",
  "ffmpeg-sidecar",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_ui",
 ]
@@ -10413,7 +10383,6 @@ dependencies = [
  "bytemuck",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10446,7 +10415,7 @@ dependencies = [
  "renzora_debugger",
  "renzora_distance_fog",
  "renzora_dof",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_engine",
  "renzora_environment_map",
  "renzora_export",
@@ -10520,7 +10489,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10534,7 +10503,7 @@ dependencies = [
  "egui-phosphor",
  "renzora",
  "renzora_camera",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
  "renzora_keybindings",
@@ -10552,7 +10521,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_postprocess",
  "serde",
 ]
@@ -10577,7 +10546,6 @@ dependencies = [
  "log",
  "mlua",
  "renzora",
- "renzora_editor",
  "rhai",
  "serde",
  "serde_json",
@@ -10590,7 +10558,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10602,7 +10570,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "ron 0.8.1",
  "serde",
@@ -10614,7 +10581,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_input",
@@ -10644,7 +10611,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_shader",
 ]
@@ -10655,7 +10621,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_undo",
 ]
@@ -10666,7 +10632,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10678,7 +10644,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_theme",
@@ -10691,7 +10657,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10704,7 +10670,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_ember",
  "renzora_inspector",
  "renzora_ui",
@@ -10718,7 +10683,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10759,7 +10724,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10770,7 +10734,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10780,7 +10743,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10793,7 +10756,6 @@ dependencies = [
  "bevy 0.18.0",
  "nvml-wrapper",
  "renzora",
- "renzora_editor",
  "sysinfo 0.35.2",
 ]
 
@@ -10805,7 +10767,6 @@ dependencies = [
  "egui-phosphor",
  "png 0.17.16",
  "renzora",
- "renzora_editor",
  "renzora_physics",
  "serde",
  "serde_json",
@@ -10818,7 +10779,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_hui",
  "renzora_spline",
@@ -10834,7 +10795,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "renzora_macros",
 ]
 
@@ -10855,7 +10815,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
  "renzora_theme",
 ]
 
@@ -10865,7 +10824,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10877,7 +10836,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10889,7 +10848,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10902,7 +10861,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -10912,7 +10870,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10945,7 +10903,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10958,7 +10916,7 @@ dependencies = [
  "bevy 0.18.0",
  "log",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ui",
 ]
 
@@ -10982,7 +10940,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -10997,7 +10955,7 @@ dependencies = [
  "renzora",
  "renzora_animation",
  "renzora_console",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
  "renzora_game_ui",
@@ -11020,7 +10978,7 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",
@@ -11033,7 +10991,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -11060,7 +11017,6 @@ dependencies = [
  "bevy 0.18.0",
  "egui-phosphor",
  "renzora",
- "renzora_editor",
  "serde",
 ]
 
@@ -11070,7 +11026,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "renzora",
- "renzora_editor",
+ "renzora_editor_framework",
  "renzora_macros",
  "renzora_postprocess",
  "serde",

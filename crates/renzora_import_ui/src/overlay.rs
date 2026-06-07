@@ -194,7 +194,7 @@ pub(crate) fn poll_import_task(world: &mut World) {
     // the cached PNG is already on disk.
     if !imported_models.is_empty() {
         if let Some(mut registry) =
-            world.get_resource_mut::<renzora_editor::ModelThumbnailRegistry>()
+            world.get_resource_mut::<renzora_editor_framework::ModelThumbnailRegistry>()
         {
             for path in imported_models {
                 registry.request(path);

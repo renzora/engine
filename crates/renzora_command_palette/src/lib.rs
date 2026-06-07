@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora_editor::{
+use renzora_editor_framework::{
     AppEditorExt, ShortcutEntry, ShortcutRegistry, SplashState, ToolEntry, ToolbarRegistry,
 };
 
@@ -149,7 +149,7 @@ fn collect_items(
     }
 
     // Layouts — every visible workspace layout becomes a "Switch to X" entry.
-    if let Some(manager) = world.get_resource::<renzora_editor::LayoutManager>() {
+    if let Some(manager) = world.get_resource::<renzora_editor_framework::LayoutManager>() {
         let layouts: Vec<(usize, String)> = manager
             .visible_layouts()
             .map(|(i, l)| (i, l.name.clone()))
@@ -161,9 +161,9 @@ fn collect_items(
                 label,
                 detail: None,
                 handler: Arc::new(move |w: &mut World| {
-                    w.resource_scope::<renzora_editor::LayoutManager, _>(|w, mut mgr| {
+                    w.resource_scope::<renzora_editor_framework::LayoutManager, _>(|w, mut mgr| {
                         if let Some(mut docking) =
-                            w.get_resource_mut::<renzora_editor::DockingState>()
+                            w.get_resource_mut::<renzora_editor_framework::DockingState>()
                         {
                             mgr.switch(idx, &mut docking);
                         }
@@ -176,7 +176,7 @@ fn collect_items(
     // Panels — every registered panel can be opened via "Open <Panel>".
     // Focuses the panel if already in the dock; otherwise adds it to the
     // first leaf in traversal order.
-    if let Some(registry) = world.get_resource::<renzora_editor::PanelRegistry>() {
+    if let Some(registry) = world.get_resource::<renzora_editor_framework::PanelRegistry>() {
         let panels: Vec<(String, String)> = registry
             .iter()
             .map(|p| (p.id().to_string(), p.title().to_string()))
@@ -188,7 +188,7 @@ fn collect_items(
                 label,
                 detail: None,
                 handler: Arc::new(move |w: &mut World| {
-                    if let Some(mut docking) = w.get_resource_mut::<renzora_editor::DockingState>()
+                    if let Some(mut docking) = w.get_resource_mut::<renzora_editor_framework::DockingState>()
                     {
                         docking.tree.focus_or_add_panel(&id);
                     }
@@ -198,7 +198,7 @@ fn collect_items(
     }
 
     // Settings tabs — open the settings overlay on a specific tab.
-    use renzora_editor::SettingsTab;
+    use renzora_editor_framework::SettingsTab;
     let settings_tabs: &[(SettingsTab, &str)] = &[
         (SettingsTab::Project, "Project"),
         (SettingsTab::Interface, "Interface"),
@@ -219,7 +219,7 @@ fn collect_items(
             label,
             detail: None,
             handler: Arc::new(move |w: &mut World| {
-                if let Some(mut s) = w.get_resource_mut::<renzora_editor::EditorSettings>() {
+                if let Some(mut s) = w.get_resource_mut::<renzora_editor_framework::EditorSettings>() {
                     s.show_settings = true;
                     s.settings_tab = tab;
                 }

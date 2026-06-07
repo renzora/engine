@@ -32,7 +32,7 @@ impl Plugin for ImportPlugin {
 fn collect_dropped_files(
     mut events: MessageReader<bevy::window::FileDragAndDrop>,
     mut state: Option<ResMut<overlay::ImportOverlayState>>,
-    settings: Option<Res<renzora_editor::EditorSettings>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     let Some(state) = state.as_mut() else {
         events.clear();
@@ -76,7 +76,7 @@ fn collect_dropped_files(
 #[cfg(not(target_arch = "wasm32"))]
 fn import_orchestrate_system(world: &mut World) {
     let auto_import = world
-        .get_resource::<renzora_editor::EditorSettings>()
+        .get_resource::<renzora_editor_framework::EditorSettings>()
         .map(|s| s.auto_import_on_drop)
         .unwrap_or(true);
 

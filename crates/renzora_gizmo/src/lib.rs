@@ -34,7 +34,7 @@ use renzora::core::viewport_types::{
 };
 use renzora::core::InputFocusState;
 use renzora::SelectionStop;
-use renzora_editor::{EditorCamera, EditorLocked, EditorSelection, HideInHierarchy};
+use renzora_editor_framework::{EditorCamera, EditorLocked, EditorSelection, HideInHierarchy};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ impl Material for GizmoMaterial {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
-pub use renzora_editor::GizmoMode;
+pub use renzora_editor_framework::GizmoMode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoAxis {
@@ -380,7 +380,7 @@ impl Plugin for GizmoPlugin {
             .add_systems(
                 Update,
                 (handle_selection_shortcuts, handle_file_shortcuts)
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
             )
             .add_systems(
@@ -406,7 +406,7 @@ impl Plugin for GizmoPlugin {
                     box_selection_system,
                 )
                     .chain()
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
@@ -414,27 +414,27 @@ impl Plugin for GizmoPlugin {
                 Update,
                 render_box_selection
                     .after(box_selection_system)
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
                 selection_visuals::terrain_chunk_selection_system
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::in_three_view),
             )
             .init_resource::<collider_handles::ColliderHandleState>()
             .add_systems(
                 Update,
                 collider_gizmo::draw_collider_gizmos
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
             .add_systems(
                 Update,
                 light_gizmo::draw_light_gizmos
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
@@ -442,7 +442,7 @@ impl Plugin for GizmoPlugin {
             .add_systems(
                 Update,
                 light_gizmo::update_scene_icon_cache
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
@@ -452,7 +452,7 @@ impl Plugin for GizmoPlugin {
             .add_systems(
                 Update,
                 light_gizmo::update_editor_camera_2d_cache
-                    .run_if(in_state(renzora_editor::SplashState::Editor)),
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(
                 Update,
@@ -461,7 +461,7 @@ impl Plugin for GizmoPlugin {
                     collider_handles::spawn_handle_meshes,
                 )
                     .chain()
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             )
@@ -471,7 +471,7 @@ impl Plugin for GizmoPlugin {
                 auto_switch_tool_on_selection
                     .after(entity_pick_system)
                     .after(box_selection_system)
-                    .run_if(in_state(renzora_editor::SplashState::Editor))
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
             );
@@ -490,7 +490,7 @@ impl Plugin for GizmoPlugin {
                 picker_2d::keyboard_nudge_2d,
             )
                 .chain()
-                .run_if(in_state(renzora_editor::SplashState::Editor))
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                 .run_if(renzora::core::not_in_play_mode)
                 .run_if(renzora::core::in_two_view),
         );
@@ -518,10 +518,10 @@ struct LastSelectionCount(usize);
 /// back to Select. Leaves the tool alone if the user has deliberately
 /// chosen Rotate, Scale, a brush, or a plugin tool.
 fn auto_switch_tool_on_selection(world: &mut World) {
-    use renzora_editor::ActiveTool;
+    use renzora_editor_framework::ActiveTool;
 
     let current = world
-        .resource::<renzora_editor::EditorSelection>()
+        .resource::<renzora_editor_framework::EditorSelection>()
         .get_all()
         .len();
     let prev = world.resource::<LastSelectionCount>().0;
@@ -539,7 +539,7 @@ fn auto_switch_tool_on_selection(world: &mut World) {
         ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
     );
     if is_brush {
-        if !renzora_editor::is_terrain_selected(world) {
+        if !renzora_editor_framework::is_terrain_selected(world) {
             world.insert_resource(ActiveTool::Select);
         }
         return;
@@ -1443,7 +1443,7 @@ fn switch_gizmo_mode(
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
     mut mode: ResMut<GizmoMode>,
-    mut active_tool: ResMut<renzora_editor::ActiveTool>,
+    mut active_tool: ResMut<renzora_editor_framework::ActiveTool>,
 ) {
     if keybindings.rebinding.is_some() {
         return;
@@ -1459,19 +1459,19 @@ fn switch_gizmo_mode(
     }
     if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) {
         *mode = GizmoMode::Select;
-        *active_tool = renzora_editor::ActiveTool::Select;
+        *active_tool = renzora_editor_framework::ActiveTool::Select;
     }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) {
         *mode = GizmoMode::Translate;
-        *active_tool = renzora_editor::ActiveTool::Translate;
+        *active_tool = renzora_editor_framework::ActiveTool::Translate;
     }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) {
         *mode = GizmoMode::Rotate;
-        *active_tool = renzora_editor::ActiveTool::Rotate;
+        *active_tool = renzora_editor_framework::ActiveTool::Rotate;
     }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) {
         *mode = GizmoMode::Scale;
-        *active_tool = renzora_editor::ActiveTool::Scale;
+        *active_tool = renzora_editor_framework::ActiveTool::Scale;
     }
 }
 
