@@ -56,6 +56,17 @@ pub use plugin_meta::{for_each_static_plugin, PluginScope, StaticPlugin};
 #[cfg(feature = "postprocess")]
 pub mod postprocess;
 
+// ── Runtime warning capture ──────────────────────────────────────────────
+// The `LogPlugin::custom_layer` factory + global ring buffer behind the
+// editor's Scene Diagnostics "Recent Runtime Warnings" feed. Hosted here in
+// the shared `renzora` dylib (not the editor-only `renzora_scene` rlib) so
+// the capture layer installed by the lean runtime binary and the panel that
+// reads it from the editor bundle touch ONE buffer across the dylib boundary.
+// Gated off mobile (no editor there, and the bevy_log tracing-subscriber
+// surface isn't guaranteed) — desktop + wasm-editor keep it.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod runtime_warnings;
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor

@@ -14,6 +14,15 @@
 //!
 //! Output is **separate** from the existing `console_log` buffer so the
 //! editor's console panel doesn't get spammed with every bevy log line.
+//!
+//! Lives in `renzora` (the shared SDK dylib) rather than the editor-only
+//! `renzora_scene` rlib on purpose: the capture layer is installed by the
+//! lean runtime binary (at `LogPlugin` build time, before the editor
+//! bundle loads) while the diagnostics panel that reads the buffer lives
+//! in the editor bundle — a *separate* dylib. A `static` buffer would
+//! duplicate across that boundary; hosting it in the one shared `renzora`
+//! dylib means the writer (binary) and reader (bundle) touch the SAME
+//! buffer.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};

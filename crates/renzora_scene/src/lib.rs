@@ -30,8 +30,12 @@ mod native_scenes;
 use native_diagnostics::NativeSceneDiagnostics;
 use native_scenes::NativeScenesPanel;
 
-pub mod runtime_warnings;
-pub use runtime_warnings::runtime_warnings_layer;
+// Runtime warning capture now lives in the shared `renzora` dylib so the
+// capture layer (installed by the runtime binary) and this panel (in the
+// editor bundle) share one buffer across the dylib boundary. Re-exported
+// here so existing `crate::runtime_warnings::*` paths keep resolving.
+pub use renzora::runtime_warnings;
+pub use renzora::runtime_warnings::runtime_warnings_layer;
 
 // ============================================================================
 // Tab Switch System

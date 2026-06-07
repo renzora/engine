@@ -196,7 +196,7 @@ pub fn add_default_rendering(app: &mut App) {
     // overriding the default fmt layer.
     #[cfg(feature = "editor")]
     let plugins = plugins.set(bevy::log::LogPlugin {
-        custom_layer: renzora_scene::runtime_warnings_layer,
+        custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
         ..default()
     });
     // Exported game only: replace Bevy's default ANSI formatter with a plain,
