@@ -287,7 +287,21 @@ macro_rules! export_plugin_bundle {
                 // Then the scope-matched plugins from the shared GLOBAL registry,
                 // each caught so one panic can't abort the rest and nothing
                 // unwinds across `extern "C"`.
+                //
+                // Dedup by name: an editor-only crate (e.g. `renzora_inspector`)
+                // that gets statically linked into BOTH the host binary AND this
+                // bundle — which happens when a dual-mode crate like
+                // `renzora_hanabi` depends on it — runs its `add!()` ctor twice,
+                // submitting two entries for the same plugin into the one shared
+                // inventory. Installing both would panic Bevy ("plugin was already
+                // added"). The install fn pointers differ between the two linkage
+                // copies, so we key on the stable `name`.
+                let mut __seen_plugins: ::std::collections::HashSet<&'static str> =
+                    ::std::collections::HashSet::new();
                 $crate::for_each_static_plugin(scope, |plugin| {
+                    if !__seen_plugins.insert(plugin.name) {
+                        return;
+                    }
                     if ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         (plugin.install)(app);
                     }))
