@@ -73,6 +73,35 @@ impl Platform {
         }
     }
 
+    /// The `dist/<name>/` directory `build-all.sh` writes this platform's
+    /// output to (the renzora CLI builds straight into `dist/<name>/`).
+    pub fn dist_dir_name(&self) -> &'static str {
+        match self {
+            Platform::WindowsX64 => "windows-x64",
+            Platform::LinuxX64 => "linux-x64",
+            Platform::MacOSX64 => "macos-x64",
+            Platform::MacOSArm64 => "macos-arm64",
+            Platform::AndroidArm64 => "android-arm64",
+            Platform::AndroidX86_64 => "android-x86",
+            Platform::FireTVArm64 => "firetv-arm64",
+            Platform::IOSArm64 => "ios-arm64",
+            Platform::TvOSArm64 => "tvos-arm64",
+            Platform::WebWasm32 => "web-wasm32",
+        }
+    }
+
+    /// True for the desktop platforms, whose game template is just the already-
+    /// built `renzora`/`renzora.exe` binary sitting in `dist/<name>/`.
+    pub fn is_desktop(&self) -> bool {
+        matches!(
+            self,
+            Platform::WindowsX64
+                | Platform::LinuxX64
+                | Platform::MacOSX64
+                | Platform::MacOSArm64
+        )
+    }
+
     pub fn template_filename(&self) -> &'static str {
         match self {
             Platform::WindowsX64 => "renzora-runtime-windows-x64.exe",
@@ -147,25 +176,28 @@ pub struct ExportTemplate {
     pub version: String,
 }
 
-/// Manages export templates from dist/{platform}/{target}/ directories.
+/// Locates the already-built game binary for each platform under `dist/`.
 ///
-/// One runtime template per platform; the dedicated server reuses it (launched
-/// with `--server`), so there's no separate server template.
-/// Templates are found as sibling directories to the editor's folder.
+/// Operation Merge: the editor's own binary IS the game (remove the editor
+/// bundle dll and it runs as the game), so there is no download / separate
+/// runtime template — export just copies the binary that's already in
+/// `dist/<platform>/`. The dedicated server reuses the same binary (launched
+/// with `--server`).
 #[derive(Resource)]
 pub struct TemplateManager {
-    /// Parent of the editor dir (e.g. dist/windows-x64/)
+    /// The `dist/` root — parent of the per-platform output dirs.
     pub dist_dir: PathBuf,
     pub templates: Vec<ExportTemplate>,
 }
 
 impl Default for TemplateManager {
     fn default() -> Self {
-        // Editor runs from dist/{platform}/editor/ — go up one level to dist/{platform}/
+        // The editor runs from dist/<platform>/renzora.exe (one flat folder, no
+        // editor/ subdir). The dist root is two levels up.
         let dist_dir = std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // editor/
-            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // {platform}/
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // dist/<platform>/
+            .and_then(|p| p.parent().map(|p| p.to_path_buf())) // dist/
             .unwrap_or_else(|| PathBuf::from("."));
         let mut mgr = Self {
             dist_dir,
@@ -177,24 +209,25 @@ impl Default for TemplateManager {
 }
 
 impl TemplateManager {
-    /// Scan for templates in the runtime/ sibling directory.
+    /// Scan `dist/<platform>/` for an already-built game binary per platform.
     pub fn scan(&mut self) {
         self.templates.clear();
 
-        // Check runtime/ directory. The dedicated server isn't a separate
-        // build — it's the runtime binary launched with `--server` — so the
-        // runtime template is all that's needed for both client and server.
-        let runtime_dir = self.dist_dir.join("runtime");
-        if runtime_dir.exists() {
-            for platform in Platform::ALL {
-                let path = runtime_dir.join(platform.runtime_binary_name());
-                if path.exists() {
-                    self.templates.push(ExportTemplate {
-                        platform: *platform,
-                        path,
-                        version: "local".to_string(),
-                    });
-                }
+        for platform in Platform::ALL {
+            let pdir = self.dist_dir.join(platform.dist_dir_name());
+            // Desktop: the single `renzora`/`renzora.exe` binary IS the game
+            // template. Mobile/web: their lane's packaged artifact (apk/zip).
+            let path = if platform.is_desktop() {
+                pdir.join(platform.binary_name("renzora"))
+            } else {
+                pdir.join("runtime").join(platform.template_filename())
+            };
+            if path.exists() {
+                self.templates.push(ExportTemplate {
+                    platform: *platform,
+                    path,
+                    version: "local".to_string(),
+                });
             }
         }
     }

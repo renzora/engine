@@ -601,18 +601,27 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         .collect();
     let project_name = project_name.to_string();
 
-    // Get runtime directory for shared libs
-    let runtime_dir = world.resource::<TemplateManager>().runtime_dir();
-
-    // Get template path before spawning thread
+    // The game binary is the already-built renzora(.exe) for this platform.
+    // Operation Merge: the editor's own binary IS the game — copy it (and the
+    // shared libs sitting next to it) to the export dir. No download.
     let template_path = match world.resource::<TemplateManager>().get(platform) {
         Some(t) => t.path.clone(),
         None => {
-            world.resource_mut::<ExportOverlayState>().progress =
-                ExportProgress::Error("No template installed for this platform".to_string());
+            world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Error(format!(
+                "No build found for {} — build it first (`renzora build {}`).",
+                platform.display_name(),
+                platform.dist_dir_name()
+            ));
             return;
         }
     };
+    // The shared libs (bevy_dylib, renzora.dll, std) sit next to the binary.
+    // The copy filter in the worker ships those but NOT renzora_editor.dll (the
+    // editor bundle) or the editor's *.exe tools — so the export is a clean game.
+    let runtime_dir = template_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
 
     // The dedicated server reuses the game binary (run with `--server`), so
     // there's no separate server template to resolve here.
