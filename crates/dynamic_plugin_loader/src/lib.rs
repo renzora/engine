@@ -187,11 +187,14 @@ mod platform {
                     .unwrap_or(PluginScope::Runtime)
             };
 
-            // Exclusive scopes: Editor plugins load only in the editor, Runtime
-            // plugins only in a game. A plugin that wants both ships two plugins.
+            // Runtime plugins run wherever the runtime runs — the shipped game
+            // AND the editor viewport (so e.g. post-process effects render while
+            // editing). Editor plugins are editor-only tooling. A feature needing
+            // editor tooling on top of runtime behaviour ships two plugins (one
+            // of each scope); the game export ships only the Runtime ones.
             let should_load = match scope {
                 PluginScope::Editor => is_editor,
-                PluginScope::Runtime => !is_editor,
+                PluginScope::Runtime => true,
             };
 
             if !should_load {
