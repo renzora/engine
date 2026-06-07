@@ -35,12 +35,6 @@ pub mod writeback;
 pub use provenance::MarkupSource;
 pub use template::HtmlTemplatePath;
 
-#[cfg(feature = "editor")]
-pub mod editor;
-
-#[cfg(feature = "editor")]
-pub mod inspector;
-
 #[derive(Default)]
 pub struct HuiPlugin;
 
@@ -80,11 +74,6 @@ impl Plugin for HuiPlugin {
         icons::plugin(app);
         transitions::plugin(app);
         vector::plugin(app);
-
-        // Editor-only: hierarchy preset, hierarchy icons, and the bevy_ui
-        // component inspectors with markup writeback.
-        #[cfg(feature = "editor")]
-        app.add_plugins((editor::HuiEditorPlugin, inspector::HuiInspectorPlugin));
     }
 }
 

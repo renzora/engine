@@ -9416,6 +9416,7 @@ dependencies = [
  "renzora_history",
  "renzora_hub",
  "renzora_hui",
+ "renzora_hui_editor",
  "renzora_import_ui",
  "renzora_inspector",
  "renzora_keybindings",
@@ -9895,12 +9896,23 @@ dependencies = [
  "bevy 0.18.0",
  "bevy_hui",
  "bevy_vello",
- "egui-phosphor",
  "renzora",
  "renzora_game_ui",
  "renzora_scripting",
  "skrifa 0.40.0",
  "tempfile",
+]
+
+[[package]]
+name = "renzora_hui_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_hui",
+ "egui-phosphor",
+ "renzora",
+ "renzora_game_ui",
+ "renzora_hui",
 ]
 
 [[package]]

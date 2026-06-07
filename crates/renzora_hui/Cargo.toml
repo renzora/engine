@@ -3,12 +3,6 @@ name = "renzora_hui"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-# Editor-only canvas integration: tag built template nodes as draggable widgets,
-# persist drag positions, and expose HtmlNode in the hierarchy/inspector. Off in
-# shipped games, where bevy_hui owns layout.
-editor = ["renzora/editor", "dep:egui-phosphor"]
-
 [dependencies]
 bevy = { workspace = true }
 bevy_hui = { path = "../bevy_hui" }
@@ -22,9 +16,6 @@ renzora_game_ui = { path = "../renzora_game_ui" }
 # Lets `{{ Entity.script_var }}` bindings read live script variables off an
 # entity's ScriptComponent (no cycle: scripting doesn't depend on hui/game_ui).
 renzora_scripting = { path = "../renzora_scripting" }
-
-# Editor-only deps
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
