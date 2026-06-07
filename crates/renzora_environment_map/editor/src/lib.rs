@@ -7,7 +7,6 @@
 //! and linked only by the editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_environment_map::EnvironmentMapComponentSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "environment_map",
         display_name: "Environment Map",
-        icon: regular::SUN_HORIZON,
+        icon: "sun-horizon",
         category: "rendering",
         has_fn: |world, entity| {
             world

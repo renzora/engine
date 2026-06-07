@@ -7,7 +7,6 @@
 
 use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_ssao::SsaoSettings;
 
@@ -15,7 +14,7 @@ fn ssao_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "ssao",
         display_name: "SSAO",
-        icon: regular::CIRCLE_HALF,
+        icon: "circle-half",
         category: "rendering",
         has_fn: |world, entity| world.get::<SsaoSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

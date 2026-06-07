@@ -7,8 +7,6 @@ use bevy::render::{
 };
 use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
 use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 use serde::{Deserialize, Serialize};
@@ -63,7 +61,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "gaussian_blur",
         display_name: "Gaussian Blur",
-        icon: regular::DROP_HALF_BOTTOM,
+        icon: "drop-half-bottom",
         category: "post_process",
         has_fn: |world, entity| world.get::<GaussianBlurSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -4060,15 +4060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-phosphor"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3b2838620355debaeb7fa3cc331a1d8ab77e6387d40e65686fa468c229dbf63"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8907,7 +8898,6 @@ name = "renzora_animation_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_animation",
  "renzora_editor_framework",
@@ -8930,7 +8920,6 @@ name = "renzora_antialiasing_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_antialiasing",
 ]
@@ -8998,7 +8987,6 @@ name = "renzora_atmosphere_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_atmosphere",
 ]
@@ -9045,7 +9033,6 @@ name = "renzora_auto_exposure_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_auto_exposure",
 ]
@@ -9065,7 +9052,6 @@ name = "renzora_bloom_effect_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_bloom_effect",
 ]
@@ -9076,7 +9062,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_light",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "serde",
@@ -9098,7 +9083,6 @@ name = "renzora_blueprint_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_blueprint",
  "renzora_editor_framework",
@@ -9156,7 +9140,6 @@ name = "renzora_clouds_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_clouds",
 ]
@@ -9290,7 +9273,6 @@ name = "renzora_distance_fog_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_distance_fog",
  "renzora_ember",
@@ -9335,7 +9317,6 @@ name = "renzora_dof_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_dof",
 ]
@@ -9357,7 +9338,6 @@ name = "renzora_edge_glow"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -9568,7 +9548,6 @@ name = "renzora_environment_map_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_environment_map",
 ]
@@ -9644,7 +9623,6 @@ name = "renzora_forward_decal"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "serde",
@@ -9676,7 +9654,6 @@ name = "renzora_game_ui_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "image",
  "renzora",
  "renzora_ember",
@@ -9716,7 +9693,6 @@ name = "renzora_gaussian_blur"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -9730,7 +9706,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_mod_outline",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_lighting",
@@ -9764,7 +9739,6 @@ name = "renzora_god_rays"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -9845,7 +9819,6 @@ name = "renzora_hierarchy"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_blueprint",
  "renzora_editor_framework",
@@ -9906,7 +9879,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_hui",
- "egui-phosphor",
  "renzora",
  "renzora_game_ui",
  "renzora_hui",
@@ -10034,7 +10006,6 @@ name = "renzora_level_presets"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_antialiasing",
  "renzora_atmosphere",
@@ -10083,7 +10054,6 @@ name = "renzora_lighting_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_lighting",
 ]
@@ -10105,7 +10075,6 @@ name = "renzora_lumen_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_lumen",
  "renzora_rt",
@@ -10115,7 +10084,6 @@ dependencies = [
 name = "renzora_macros"
 version = "0.1.0"
 dependencies = [
- "egui-phosphor",
  "proc-macro2",
  "quote",
  "syn",
@@ -10155,7 +10123,6 @@ name = "renzora_mesh_draw"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_undo",
@@ -10176,7 +10143,6 @@ name = "renzora_mixer"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_audio",
  "renzora_ember",
@@ -10210,7 +10176,6 @@ name = "renzora_motion_blur_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_motion_blur",
 ]
@@ -10280,7 +10245,6 @@ name = "renzora_night_stars_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_night_stars",
 ]
@@ -10323,7 +10287,6 @@ name = "renzora_oit_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_oit",
 ]
@@ -10333,7 +10296,6 @@ name = "renzora_outline"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -10346,7 +10308,6 @@ name = "renzora_palette_quantization"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -10360,7 +10321,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_hanabi",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
@@ -10376,7 +10336,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bevy_light",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "serde",
@@ -10400,7 +10359,6 @@ name = "renzora_physics_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_ember",
  "renzora_physics",
@@ -10435,7 +10393,6 @@ name = "renzora_pool_water"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "serde",
@@ -10543,7 +10500,6 @@ name = "renzora_rt_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_rt",
 ]
@@ -10615,7 +10571,6 @@ name = "renzora_scene"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_camera",
  "renzora_editor_framework",
@@ -10634,7 +10589,6 @@ name = "renzora_screen_transition"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_postprocess",
@@ -10671,7 +10625,6 @@ name = "renzora_scripting_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_scripting",
 ]
@@ -10801,7 +10754,6 @@ name = "renzora_skybox_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_ember",
  "renzora_inspector",
@@ -10863,7 +10815,6 @@ name = "renzora_ssao_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_ssao",
 ]
@@ -10882,7 +10833,6 @@ name = "renzora_ssr_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_ssr",
 ]
@@ -10926,7 +10876,6 @@ name = "renzora_terrain_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
@@ -10942,7 +10891,6 @@ name = "renzora_test_component"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_macros",
 ]
@@ -11017,7 +10965,6 @@ name = "renzora_tonemapping_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_tonemapping",
 ]
@@ -11049,7 +10996,6 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "dirs 5.0.1",
- "egui-phosphor",
  "serde",
  "toml 0.8.23",
 ]
@@ -11059,7 +11005,6 @@ name = "renzora_underwater"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -11134,7 +11079,6 @@ name = "renzora_vignette"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_editor_framework",
  "renzora_macros",
@@ -11156,7 +11100,6 @@ name = "renzora_volumetric_fog_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_volumetric_fog",
 ]
@@ -11191,7 +11134,6 @@ name = "renzora_water_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_water",
 ]

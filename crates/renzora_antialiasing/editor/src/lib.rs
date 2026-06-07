@@ -11,7 +11,6 @@ use bevy::anti_alias::fxaa::Fxaa;
 use bevy::anti_alias::smaa::Smaa;
 use bevy::anti_alias::taa::TemporalAntiAliasing;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_antialiasing::{CasSettings, FxaaSettings, SmaaSettings, TaaSettings};
 
@@ -23,7 +22,7 @@ fn fxaa_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "fxaa",
         display_name: "FXAA",
-        icon: regular::GRID_FOUR,
+        icon: "grid-four",
         category: "rendering",
         has_fn: |world, entity| world.get::<FxaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -88,7 +87,7 @@ fn smaa_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "smaa",
         display_name: "SMAA",
-        icon: regular::GRID_FOUR,
+        icon: "grid-four",
         category: "rendering",
         has_fn: |world, entity| world.get::<SmaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -133,7 +132,7 @@ fn taa_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "taa",
         display_name: "TAA",
-        icon: regular::GRID_FOUR,
+        icon: "grid-four",
         category: "rendering",
         has_fn: |world, entity| world.get::<TaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -163,7 +162,7 @@ fn cas_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "cas",
         display_name: "Sharpening (CAS)",
-        icon: regular::DIAMONDS_FOUR,
+        icon: "diamonds-four",
         category: "rendering",
         has_fn: |world, entity| world.get::<CasSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

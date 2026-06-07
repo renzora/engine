@@ -6,7 +6,6 @@ description = "Editor-only half of renzora_water: the WaterSurface / WaterIntera
 
 [dependencies]
 bevy = { workspace = true }
-egui-phosphor = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_water = { path = ".." }
 

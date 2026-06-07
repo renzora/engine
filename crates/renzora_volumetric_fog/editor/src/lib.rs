@@ -7,7 +7,6 @@
 
 use bevy::light::VolumetricFog;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_volumetric_fog::VolumetricFogSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "volumetric_fog",
         display_name: "Volumetric Fog",
-        icon: regular::CLOUD_FOG,
+        icon: "cloud-fog",
         category: "environment",
         has_fn: |world, entity| world.get::<VolumetricFogSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

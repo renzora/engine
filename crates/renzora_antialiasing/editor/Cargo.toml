@@ -8,7 +8,6 @@ description = "Editor-only inspectors for renzora_antialiasing (FXAA/SMAA/TAA/CA
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_antialiasing = { path = ".." }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

@@ -82,7 +82,7 @@ pub struct ComponentIconEntry {
     /// Human-readable type label (e.g. "Camera", "Mesh"). Surfaced by the
     /// hierarchy's "filter by type" UI.
     pub name: &'static str,
-    /// Icon string (egui-phosphor).
+    /// Phosphor icon name (kebab-case), resolved via `icon_glyph`.
     pub icon: &'static str,
     /// Icon color in the hierarchy.
     pub color: [u8; 3],

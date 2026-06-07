@@ -8,7 +8,6 @@ description = "Editor-only inspector for renzora_tonemapping. Registered via ren
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_tonemapping = { path = ".." }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

@@ -7,7 +7,6 @@
 
 use bevy::post_process::motion_blur::MotionBlur;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_motion_blur::MotionBlurSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "motion_blur",
         display_name: "Motion Blur",
-        icon: regular::WIND,
+        icon: "wind",
         category: "rendering",
         has_fn: |world, entity| world.get::<MotionBlurSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

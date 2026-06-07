@@ -6,7 +6,6 @@ description = "Editor-only half of renzora_scripting: the ScriptComponent inspec
 
 [dependencies]
 bevy = { workspace = true }
-egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_scripting = { path = ".." }
 

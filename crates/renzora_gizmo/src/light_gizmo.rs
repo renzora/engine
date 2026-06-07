@@ -10,7 +10,6 @@
 //! port.
 
 use bevy::prelude::*;
-use egui_phosphor::regular as icons;
 
 use renzora::SceneCamera;
 use renzora_editor_framework::{EditorCamera, EditorSelection};
@@ -65,18 +64,18 @@ pub fn update_scene_icon_cache(
     for gt in &suns {
         cache
             .light_icons
-            .push((gt.translation(), icons::SUN_HORIZON));
+            .push((gt.translation(), "sun-horizon"));
     }
     for gt in &dir_lights {
-        cache.light_icons.push((gt.translation(), icons::SUN));
+        cache.light_icons.push((gt.translation(), "sun"));
     }
     for gt in &point_lights {
-        cache.light_icons.push((gt.translation(), icons::LIGHTBULB));
+        cache.light_icons.push((gt.translation(), "lightbulb"));
     }
     for gt in &spot_lights {
         cache
             .light_icons
-            .push((gt.translation(), icons::FLASHLIGHT));
+            .push((gt.translation(), "flashlight"));
     }
 
     cache.camera_icons.clear();

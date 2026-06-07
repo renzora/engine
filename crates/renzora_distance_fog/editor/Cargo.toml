@@ -9,7 +9,6 @@ bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_distance_fog = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

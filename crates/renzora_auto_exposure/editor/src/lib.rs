@@ -7,7 +7,6 @@
 
 use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_auto_exposure::AutoExposureSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "auto_exposure",
         display_name: "Auto Exposure",
-        icon: regular::SUN,
+        icon: "sun",
         category: "rendering",
         has_fn: |world, entity| world.get::<AutoExposureSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

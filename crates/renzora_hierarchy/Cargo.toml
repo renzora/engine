@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
 renzora_undo = { path = "../renzora_undo" }
-egui-phosphor = { workspace = true }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_hui = { path = "../renzora_hui" }

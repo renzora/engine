@@ -7,7 +7,6 @@
 //! the editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::SUN_HORIZON;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_lighting::Sun;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "sun",
         display_name: "Sun",
-        icon: SUN_HORIZON,
+        icon: "sun-horizon",
         category: "lighting",
         has_fn: |world, entity| world.get::<Sun>(entity).is_some(),
         add_fn: Some(|world, entity| {

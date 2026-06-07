@@ -20,7 +20,7 @@ pub fn water_inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "water_surface",
         display_name: "Water Surface",
-        icon: egui_phosphor::regular::WAVES,
+        icon: "waves",
         category: "rendering",
         has_fn: |world, entity| world.get::<WaterSurface>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -335,7 +335,7 @@ pub fn water_interactor_inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "water_interactor",
         display_name: "Water Interactor",
-        icon: egui_phosphor::regular::WAVES,
+        icon: "waves",
         category: "physics",
         has_fn: |world, entity| world.get::<WaterInteractor>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -402,7 +402,7 @@ pub fn buoyant_inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "buoyant",
         display_name: "Buoyant",
-        icon: egui_phosphor::regular::LIFEBUOY,
+        icon: "lifebuoy",
         category: "physics",
         has_fn: |world, entity| world.get::<Buoyant>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -9,7 +9,6 @@
 //! bundle. The native (bevy_ui / ember) drawer lives in `renzora_inspector`.
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 
 use renzora_scripting::ScriptComponent;
@@ -22,7 +21,7 @@ fn script_component_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "script_component",
         display_name: "Scripts",
-        icon: regular::CODE,
+        icon: "code",
         category: "scripting",
         has_fn: |world, entity| world.get::<ScriptComponent>(entity).is_some(),
         add_fn: Some(|world, entity| {

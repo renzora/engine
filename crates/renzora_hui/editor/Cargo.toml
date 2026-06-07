@@ -10,7 +10,6 @@ renzora = { path = "../../renzora", default-features = false, features = ["edito
 renzora_hui = { path = ".." }
 renzora_game_ui = { path = "../../renzora_game_ui" }
 bevy_hui = { path = "../../bevy_hui" }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

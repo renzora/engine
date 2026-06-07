@@ -518,7 +518,7 @@ impl McpServerPlugin {
             "mcp_server",
             "MCP Server",
             FfiPanelLocation::Bottom,
-            Some(egui_phosphor::regular::ROBOT),
+            Some("robot"),
             [250.0, 150.0]
         );
         api.subscribe("ui.*");
@@ -587,7 +587,7 @@ impl McpServerPlugin {
         api.set_status_item(
             "mcp_server_status",
             &format!("MCP Server: {}", if self.running { "Online" } else { "Offline" }),
-            Some(egui_phosphor::regular::ROBOT),
+            Some("robot"),
             Some(&format!("Port: {}", self.port)),
             true,
             0

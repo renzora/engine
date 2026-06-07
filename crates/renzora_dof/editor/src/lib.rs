@@ -7,7 +7,6 @@
 
 use bevy::post_process::dof::DepthOfField;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_dof::DepthOfFieldSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "depth_of_field",
         display_name: "Depth of Field",
-        icon: regular::CAMERA,
+        icon: "camera",
         category: "rendering",
         has_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

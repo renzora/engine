@@ -18,7 +18,6 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use egui_phosphor::regular::{CUBE, LINK, POLYGON};
 use renzora::core::keybindings::KeyBinding;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
@@ -125,7 +124,7 @@ impl Plugin for MeshDrawPlugin {
             .register_tool(
                 ToolEntry::new(
                     "mesh_draw.box",
-                    CUBE,
+                    "cube",
                     "Draw Box (click-drag, release, move to extrude, click to commit)",
                     ToolSection::Custom("mesh_draw"),
                 )
@@ -137,7 +136,7 @@ impl Plugin for MeshDrawPlugin {
             .register_tool(
                 ToolEntry::new(
                     "mesh_draw.polyline",
-                    POLYGON,
+                    "polygon",
                     "Draw Polyline (click to drop points, click first point or Enter to close)",
                     ToolSection::Custom("mesh_draw"),
                 )
@@ -149,7 +148,7 @@ impl Plugin for MeshDrawPlugin {
             .register_tool(
                 ToolEntry::new(
                     "mesh_draw.join",
-                    LINK,
+                    "link",
                     "Join Selected Meshes — Ctrl+J (merge 2+ selected into one)",
                     ToolSection::Custom("mesh_draw"),
                 )

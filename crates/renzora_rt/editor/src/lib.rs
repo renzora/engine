@@ -6,7 +6,6 @@
 //! editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::LIGHTNING;
 use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_rt::{RtDebugMode, RtLighting};
 
@@ -14,7 +13,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "rt_lighting",
         display_name: "RT Lighting (SSGI)",
-        icon: LIGHTNING,
+        icon: "lightning",
         category: "lighting",
         has_fn: |world, entity| world.get::<RtLighting>(entity).is_some(),
         add_fn: Some(|world, entity| {

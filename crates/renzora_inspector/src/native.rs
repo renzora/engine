@@ -153,7 +153,7 @@ struct FieldSpec {
 
 struct SectionSpec {
     title: &'static str,
-    icon: &'static str, // egui_phosphor glyph
+    icon: &'static str, // phosphor icon name (resolved via icon_glyph)
     type_id: &'static str,
     custom: bool,
     /// Native (bevy_ui) drawer, if the component registered one. Takes priority

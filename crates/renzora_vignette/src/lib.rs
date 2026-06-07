@@ -9,8 +9,6 @@ use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
 use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 
@@ -64,7 +62,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "vignette",
         display_name: "Vignette",
-        icon: regular::APERTURE,
+        icon: "aperture",
         // "post_process" isn't in the theme's category color map — it
         // falls through to the "transform" color. "effects" matches the
         // theme and visually groups Vignette with the other stylistic

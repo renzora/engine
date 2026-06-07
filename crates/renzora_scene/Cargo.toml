@@ -16,7 +16,6 @@ renzora_splash = { path = "../renzora_splash" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_viewport = { path = "../renzora_viewport" }
 renzora_shader = { path = "../renzora_shader" }
-egui-phosphor = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

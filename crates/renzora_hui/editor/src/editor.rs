@@ -10,7 +10,6 @@
 
 use bevy::prelude::*;
 use bevy_hui::prelude::{HtmlNode, Tags};
-use egui_phosphor::regular;
 use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
@@ -59,7 +58,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "html_template",
         display_name: "HTML Template",
-        icon: regular::CODE,
+        icon: "code",
         category: "ui",
         spawn_fn: |world| {
             renzora_game_ui::spawn::spawn_html_template_at(
@@ -74,7 +73,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<HtmlTemplatePath>(),
         name: "HTML Template",
-        icon: regular::CODE,
+        icon: "code",
         color: [120, 170, 220],
         priority: 96,
         dynamic_icon_fn: None,
@@ -89,7 +88,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Text>(),
         name: "UI Text",
-        icon: regular::TEXT_AA,
+        icon: "text-aa",
         color: [220, 220, 220],
         priority: 80,
         dynamic_icon_fn: None,
@@ -97,7 +96,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<Button>(),
         name: "UI Button",
-        icon: regular::CURSOR_CLICK,
+        icon: "cursor-click",
         color: [180, 200, 255],
         priority: 82,
         dynamic_icon_fn: None,
@@ -105,7 +104,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<ImageNode>(),
         name: "UI Image",
-        icon: regular::IMAGE,
+        icon: "image",
         color: [180, 220, 130],
         priority: 80,
         dynamic_icon_fn: None,
@@ -116,7 +115,7 @@ fn register_editor_entries(app: &mut App) {
     app.register_inspector(InspectorEntry {
         type_id: "html_template",
         display_name: "HTML Template",
-        icon: regular::CODE,
+        icon: "code",
         category: "ui",
         has_fn: |world, entity| world.get::<HtmlTemplatePath>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -7,8 +7,6 @@ use bevy::render::{
 };
 use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
 use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 use serde::{Deserialize, Serialize};
@@ -63,7 +61,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "edge_glow",
         display_name: "Edge Glow",
-        icon: regular::SPARKLE,
+        icon: "sparkle",
         category: "post_process",
         has_fn: |world, entity| world.get::<EdgeGlowSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

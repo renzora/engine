@@ -7,7 +7,6 @@
 //! `ActiveBrushLayer` resource that the brush-layer paint path still links.
 
 use bevy::prelude::*;
-use egui_phosphor::regular as icons;
 use renzora_editor_framework::InspectorEntry;
 use renzora_terrain::data::TerrainData;
 
@@ -22,7 +21,7 @@ pub fn terrain_layers_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "terrain_layers",
         display_name: "Layers",
-        icon: icons::STACK,
+        icon: "stack",
         category: "component",
         has_fn: |world, entity| world.get::<TerrainData>(entity).is_some(),
         add_fn: None,

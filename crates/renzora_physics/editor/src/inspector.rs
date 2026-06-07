@@ -4,7 +4,6 @@
 //! editor bundle is present.
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{EditorSelection, InspectorEntry, ToolEntry, ToolSection};
 
 use renzora_physics::{
@@ -107,7 +106,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_tool(
         ToolEntry::new(
             "physics.edit_collider",
-            regular::PENCIL_SIMPLE,
+            "pencil-simple",
             "Edit Collider — drag handles to resize/move",
             ToolSection::Custom("physics"),
         )
@@ -134,7 +133,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "rigid_body",
         display_name: "Rigid Body",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -150,7 +149,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "static_body",
         display_name: "Static Body",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -166,7 +165,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "kinematic_body",
         display_name: "Kinematic Body",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -182,7 +181,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "box_collider",
         display_name: "Box Collider",
-        icon: regular::BOUNDING_BOX,
+        icon: "bounding-box",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -198,7 +197,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "sphere_collider",
         display_name: "Sphere Collider",
-        icon: regular::GLOBE_HEMISPHERE_EAST,
+        icon: "globe-hemisphere-east",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -214,7 +213,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "capsule_collider",
         display_name: "Capsule Collider",
-        icon: regular::PILL,
+        icon: "pill",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -230,7 +229,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "cylinder_collider",
         display_name: "Cylinder Collider",
-        icon: regular::CYLINDER,
+        icon: "cylinder",
         category: "physics",
         spawn_fn: |world| {
             world
@@ -287,7 +286,7 @@ fn physics_body_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "physics_body",
         display_name: "Physics Body",
-        icon: regular::CUBE,
+        icon: "cube",
         category: "physics",
         has_fn: |world, entity| world.get::<PhysicsBodyData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -487,7 +486,7 @@ fn collision_shape_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "collision_shape",
         display_name: "Collision Shape",
-        icon: regular::BOUNDING_BOX,
+        icon: "bounding-box",
         category: "physics",
         has_fn: |world, entity| world.get::<CollisionShapeData>(entity).is_some(),
         add_fn: Some(|world, entity| {

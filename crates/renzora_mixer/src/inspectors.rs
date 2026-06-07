@@ -1,7 +1,6 @@
 //! Inspector entries for audio components (AudioPlayer, AudioListener).
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora_audio::{AudioListener, AudioPlayer, MixerState, RolloffType};
 use renzora::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
@@ -33,7 +32,7 @@ fn audio_player_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "audio_player",
         display_name: "Audio Player",
-        icon: regular::SPEAKER_HIGH,
+        icon: "speaker-high",
         category: "Audio",
         has_fn: |world, entity| world.get::<AudioPlayer>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -52,7 +51,7 @@ fn audio_listener_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "audio_listener",
         display_name: "Audio Listener",
-        icon: regular::EAR,
+        icon: "ear",
         category: "Audio",
         has_fn: |world, entity| world.get::<AudioListener>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -8,7 +8,6 @@ description = "Editor-only inspector for renzora_volumetric_fog. Registered via 
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_volumetric_fog = { path = ".." }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

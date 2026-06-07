@@ -10,7 +10,7 @@
 //! Path note: `components::` → `renzora_game_ui::components::`, the moved canvas
 //! modules are now local (`crate::canvas` / `crate::canvas_render` /
 //! `crate::ui_inspector`), and `UiWidgetType::icon()` became the free fn
-//! [`widget_icon`] here (egui-phosphor is an editor-only dep).
+//! [`widget_icon`] here (icons are name-based, resolved via the phosphor map).
 
 use bevy::prelude::*;
 
@@ -20,42 +20,42 @@ use renzora_game_ui::{UiCanvas, UiWidget, UiWidgetType};
 
 use crate::{canvas, canvas_render, ui_inspector as inspector};
 
-/// Phosphor icon glyph for a widget type. Replaces the old
+/// Phosphor icon *name* (kebab-case) for a widget type. Replaces the old
 /// `UiWidgetType::icon()` inherent method (which lived in `renzora_game_ui`
-/// behind the deleted `editor` feature). Egui-phosphor is editor-only, so the
-/// mapping lives here in the editor crate.
+/// behind the deleted `editor` feature). The name is resolved to a glyph
+/// downstream via renzora_ember's phosphor map, so the mapping lives here in
+/// the editor crate.
 pub fn widget_icon(t: &UiWidgetType) -> &'static str {
-    use egui_phosphor::regular::*;
     match t {
-        UiWidgetType::Container => SQUARES_FOUR,
-        UiWidgetType::Panel => RECTANGLE,
-        UiWidgetType::ScrollView => SCROLL,
-        UiWidgetType::Text => TEXT_AA,
-        UiWidgetType::Image => IMAGE,
-        UiWidgetType::Button => CURSOR_CLICK,
-        UiWidgetType::Slider => SLIDERS_HORIZONTAL,
-        UiWidgetType::Checkbox => CHECK_SQUARE,
-        UiWidgetType::Toggle => TOGGLE_RIGHT,
-        UiWidgetType::RadioButton => RADIO_BUTTON,
-        UiWidgetType::Dropdown => CARET_CIRCLE_DOWN,
-        UiWidgetType::TextInput => TEXT_T,
-        UiWidgetType::BarFill => BATTERY_MEDIUM,
-        UiWidgetType::Tooltip => CHAT_CIRCLE_TEXT,
-        UiWidgetType::Modal => BROWSERS,
-        UiWidgetType::DraggableWindow => APP_WINDOW,
-        UiWidgetType::KeybindRow => KEYBOARD,
-        UiWidgetType::SettingsRow => GEAR,
-        UiWidgetType::Separator => MINUS,
-        UiWidgetType::NumberInput => CALCULATOR,
-        UiWidgetType::Scrollbar => ARROWS_DOWN_UP,
-        UiWidgetType::Circle => CIRCLE,
-        UiWidgetType::Arc => CIRCLE_DASHED,
-        UiWidgetType::RadialProgress => CIRCLE_NOTCH,
-        UiWidgetType::Line => LINE_SEGMENT,
-        UiWidgetType::Triangle => TRIANGLE,
-        UiWidgetType::Polygon => HEXAGON,
-        UiWidgetType::Rectangle => RECTANGLE,
-        UiWidgetType::Wedge => CHART_PIE_SLICE,
+        UiWidgetType::Container => "squares-four",
+        UiWidgetType::Panel => "rectangle",
+        UiWidgetType::ScrollView => "scroll",
+        UiWidgetType::Text => "text-aa",
+        UiWidgetType::Image => "image",
+        UiWidgetType::Button => "cursor-click",
+        UiWidgetType::Slider => "sliders-horizontal",
+        UiWidgetType::Checkbox => "check-square",
+        UiWidgetType::Toggle => "toggle-right",
+        UiWidgetType::RadioButton => "radio-button",
+        UiWidgetType::Dropdown => "caret-circle-down",
+        UiWidgetType::TextInput => "text-t",
+        UiWidgetType::BarFill => "battery-medium",
+        UiWidgetType::Tooltip => "chat-circle-text",
+        UiWidgetType::Modal => "browsers",
+        UiWidgetType::DraggableWindow => "app-window",
+        UiWidgetType::KeybindRow => "keyboard",
+        UiWidgetType::SettingsRow => "gear",
+        UiWidgetType::Separator => "minus",
+        UiWidgetType::NumberInput => "calculator",
+        UiWidgetType::Scrollbar => "arrows-down-up",
+        UiWidgetType::Circle => "circle",
+        UiWidgetType::Arc => "circle-dashed",
+        UiWidgetType::RadialProgress => "circle-notch",
+        UiWidgetType::Line => "line-segment",
+        UiWidgetType::Triangle => "triangle",
+        UiWidgetType::Polygon => "hexagon",
+        UiWidgetType::Rectangle => "rectangle",
+        UiWidgetType::Wedge => "chart-pie-slice",
     }
 }
 
@@ -74,7 +74,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_canvas",
         display_name: "UI Canvas",
-        icon: egui_phosphor::regular::FRAME_CORNERS,
+        icon: "frame-corners",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiCanvas>(entity).is_some(),
         // Addable to any entity: insert the canvas marker plus a
@@ -122,7 +122,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_widget",
         display_name: "UI Widget",
-        icon: egui_phosphor::regular::SQUARES_FOUR,
+        icon: "squares-four",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiWidget>(entity).is_some(),
         add_fn: None,
@@ -134,7 +134,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_layout",
         display_name: "Layout",
-        icon: egui_phosphor::regular::SQUARE_HALF,
+        icon: "square-half",
         category: "ui",
         has_fn: |world, entity| {
             // Restrict to UI entities so Bevy's Node component on
@@ -156,7 +156,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_fill",
         display_name: "UI Fill",
-        icon: egui_phosphor::regular::DROP_HALF,
+        icon: "drop-half",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiFill>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -174,7 +174,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_stroke",
         display_name: "UI Border",
-        icon: egui_phosphor::regular::BOUNDING_BOX,
+        icon: "bounding-box",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiStroke>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -193,7 +193,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_border_radius",
         display_name: "UI Border Radius",
-        icon: egui_phosphor::regular::FRAME_CORNERS,
+        icon: "frame-corners",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiBorderRadius>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -213,7 +213,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_text",
         display_name: "UI Text",
-        icon: egui_phosphor::regular::TEXT_AA,
+        icon: "text-aa",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiTextStyle>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -231,7 +231,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_padding",
         display_name: "UI Padding",
-        icon: egui_phosphor::regular::COLUMNS,
+        icon: "columns",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiPadding>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -249,7 +249,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_opacity",
         display_name: "UI Opacity",
-        icon: egui_phosphor::regular::CIRCLE_HALF,
+        icon: "circle-half",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiOpacity>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -265,7 +265,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_shadow",
         display_name: "UI Shadow",
-        icon: egui_phosphor::regular::SUN_DIM,
+        icon: "sun-dim",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiBoxShadow>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -283,7 +283,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_clip",
         display_name: "UI Clip Content",
-        icon: egui_phosphor::regular::CROP,
+        icon: "crop",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiClipContent>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -303,7 +303,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_cursor",
         display_name: "UI Cursor",
-        icon: egui_phosphor::regular::CURSOR,
+        icon: "cursor",
         category: "ui",
         has_fn: |world, entity| world.get::<components::UiCursor>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -321,7 +321,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_interaction",
         display_name: "UI Interaction States",
-        icon: egui_phosphor::regular::CURSOR_CLICK,
+        icon: "cursor-click",
         category: "ui",
         has_fn: |world, entity| {
             world
@@ -348,7 +348,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_slider_data",
         display_name: "Slider",
-        icon: egui_phosphor::regular::SLIDERS_HORIZONTAL,
+        icon: "sliders-horizontal",
         category: "ui",
         has_fn: |world, entity| world.get::<components::SliderData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -366,7 +366,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_checkbox_data",
         display_name: "Checkbox",
-        icon: egui_phosphor::regular::CHECK_SQUARE,
+        icon: "check-square",
         category: "ui",
         has_fn: |world, entity| world.get::<components::CheckboxData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -386,7 +386,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_toggle_data",
         display_name: "Toggle",
-        icon: egui_phosphor::regular::TOGGLE_LEFT,
+        icon: "toggle-left",
         category: "ui",
         has_fn: |world, entity| world.get::<components::ToggleData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -404,7 +404,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_radio_data",
         display_name: "Radio Button",
-        icon: egui_phosphor::regular::RADIO_BUTTON,
+        icon: "radio-button",
         category: "ui",
         has_fn: |world, entity| world.get::<components::RadioButtonData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -424,7 +424,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_dropdown_data",
         display_name: "Dropdown",
-        icon: egui_phosphor::regular::CARET_CIRCLE_DOWN,
+        icon: "caret-circle-down",
         category: "ui",
         has_fn: |world, entity| world.get::<components::DropdownData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -444,7 +444,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_text_input_data",
         display_name: "Text Input",
-        icon: egui_phosphor::regular::TEXTBOX,
+        icon: "textbox",
         category: "ui",
         has_fn: |world, entity| world.get::<components::TextInputData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -464,7 +464,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_scroll_view_data",
         display_name: "Scroll View",
-        icon: egui_phosphor::regular::SCROLL,
+        icon: "scroll",
         category: "ui",
         has_fn: |world, entity| world.get::<components::ScrollViewData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -484,7 +484,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_tooltip_data",
         display_name: "Tooltip",
-        icon: egui_phosphor::regular::CHAT_CIRCLE,
+        icon: "chat-circle",
         category: "ui",
         has_fn: |world, entity| world.get::<components::TooltipData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -502,7 +502,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_modal_data",
         display_name: "Modal",
-        icon: egui_phosphor::regular::BROWSER,
+        icon: "browser",
         category: "ui",
         has_fn: |world, entity| world.get::<components::ModalData>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -520,7 +520,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_inspector(renzora::InspectorEntry {
         type_id: "ui_draggable_window_data",
         display_name: "Draggable Window",
-        icon: egui_phosphor::regular::APP_WINDOW,
+        icon: "app-window",
         category: "ui",
         has_fn: |world, entity| {
             world
@@ -546,7 +546,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_component_icon(renzora::ComponentIconEntry {
         type_id: std::any::TypeId::of::<components::UiCanvas>(),
         name: "UI Canvas",
-        icon: egui_phosphor::regular::FRAME_CORNERS,
+        icon: "frame-corners",
         color: [130, 200, 255],
         priority: 70,
         dynamic_icon_fn: None,
@@ -554,7 +554,7 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.register_component_icon(renzora::ComponentIconEntry {
         type_id: std::any::TypeId::of::<components::UiWidget>(),
         name: "UI Widget",
-        icon: egui_phosphor::regular::SQUARES_FOUR,
+        icon: "squares-four",
         color: [130, 200, 255],
         priority: 60,
         dynamic_icon_fn: Some(|world, entity| {
@@ -848,7 +848,7 @@ fn register_ui_presets(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "ui_canvas",
         display_name: "UI Canvas",
-        icon: egui_phosphor::regular::FRAME_CORNERS,
+        icon: "frame-corners",
         category: "ui",
         spawn_fn: spawn_ui_canvas,
     });
@@ -859,7 +859,7 @@ fn register_ui_presets(app: &mut App) {
         id: "ui",
         title: "New UI",
         description: "An empty canvas, ready for widgets",
-        icon: egui_phosphor::regular::FRAME_CORNERS,
+        icon: "frame-corners",
         spawn_fn: |world: &mut World| {
             let canvas = spawn_ui_canvas(world);
             if let Some(selection) = world.get_resource::<renzora::EditorSelection>() {

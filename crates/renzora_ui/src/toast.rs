@@ -28,13 +28,14 @@ impl ToastLevel {
         }
     }
 
-    /// Phosphor icon glyph for this level.
+    /// Phosphor icon *name* (kebab-case) for this level. A name-based renderer
+    /// (e.g. `renzora_ember::font::icon_glyph`) resolves it to a glyph.
     pub fn icon(&self) -> &'static str {
         match self {
-            ToastLevel::Info => egui_phosphor::regular::INFO,
-            ToastLevel::Success => egui_phosphor::regular::CHECK_CIRCLE,
-            ToastLevel::Warning => egui_phosphor::regular::WARNING,
-            ToastLevel::Error => egui_phosphor::regular::X_CIRCLE,
+            ToastLevel::Info => "info",
+            ToastLevel::Success => "check-circle",
+            ToastLevel::Warning => "warning",
+            ToastLevel::Error => "x-circle",
         }
     }
 }

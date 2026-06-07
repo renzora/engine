@@ -7,7 +7,6 @@
 
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_bloom_effect::BloomSettings;
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "bloom",
         display_name: "Bloom",
-        icon: regular::SPARKLE,
+        icon: "sparkle",
         category: "rendering",
         has_fn: |world, entity| world.get::<BloomSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -8,7 +8,6 @@ description = "Editor-only inspector for renzora_clouds. Registered via renzora:
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_clouds = { path = ".." }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

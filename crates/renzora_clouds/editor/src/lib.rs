@@ -6,7 +6,6 @@
 //! editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::CLOUD_SUN;
 use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_clouds::CloudsData;
 
@@ -14,7 +13,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "clouds",
         display_name: "Clouds",
-        icon: CLOUD_SUN,
+        icon: "cloud-sun",
         category: "rendering",
         has_fn: |world, entity| world.get::<CloudsData>(entity).is_some(),
         add_fn: Some(|world, entity| {

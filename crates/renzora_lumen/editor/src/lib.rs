@@ -7,7 +7,6 @@
 //! editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::LIGHTNING;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_lumen::{LumenDebug, LumenLighting, LumenQuality};
 use renzora_rt::RtLighting;
@@ -16,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "lumen_lighting",
         display_name: "Lumen Global Illumination",
-        icon: LIGHTNING,
+        icon: "lightning",
         category: "lighting",
         has_fn: |world, entity| world.get::<LumenLighting>(entity).is_some(),
         add_fn: Some(|world, entity| {

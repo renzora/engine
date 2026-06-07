@@ -7,7 +7,6 @@
 
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_ssr::SsrSettings;
 
@@ -15,7 +14,7 @@ fn ssr_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "ssr",
         display_name: "SSR",
-        icon: regular::SWAP,
+        icon: "swap",
         category: "rendering",
         has_fn: |world, entity| world.get::<SsrSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

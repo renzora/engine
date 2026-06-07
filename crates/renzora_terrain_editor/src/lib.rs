@@ -8,7 +8,6 @@ mod terrain_inspector;
 mod terrain_layers_ui;
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EditorSelection, EntityPreset, InspectorEntry, ToolEntry,
     ToolSection,
@@ -38,7 +37,7 @@ impl Plugin for TerrainEditorPlugin {
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_sculpt",
-                regular::MOUNTAINS,
+                "mountains",
                 "Sculpt Terrain",
                 ToolSection::Terrain,
             )
@@ -55,7 +54,7 @@ impl Plugin for TerrainEditorPlugin {
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_paint",
-                regular::PAINT_BRUSH,
+                "paint-brush",
                 "Paint Terrain Layers",
                 ToolSection::Terrain,
             )
@@ -72,7 +71,7 @@ impl Plugin for TerrainEditorPlugin {
         app.register_tool(
             ToolEntry::new(
                 "builtin.foliage_paint",
-                regular::TREE,
+                "tree",
                 "Paint Foliage",
                 ToolSection::Terrain,
             )
@@ -142,7 +141,7 @@ impl Plugin for TerrainEditorPlugin {
         app.register_entity_preset(EntityPreset {
             id: "terrain",
             display_name: "Terrain",
-            icon: regular::MOUNTAINS,
+            icon: "mountains",
             category: "general",
             spawn_fn: |world| renzora_terrain::mesh::spawn_terrain(world),
         });
@@ -150,7 +149,7 @@ impl Plugin for TerrainEditorPlugin {
         app.register_entity_preset(EntityPreset {
             id: "spline",
             display_name: "Spline",
-            icon: regular::PATH,
+            icon: "path",
             category: "general",
             spawn_fn: |world| {
                 world
@@ -226,7 +225,7 @@ fn terrain_data_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "terrain_data",
         display_name: "Terrain",
-        icon: regular::MOUNTAINS,
+        icon: "mountains",
         category: "component",
         has_fn: |world, entity| world.get::<TerrainData>(entity).is_some(),
         add_fn: None,

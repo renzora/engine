@@ -9,7 +9,6 @@
 
 use bevy::pbr::DistanceFog;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_distance_fog::DistanceFogSettings;
 
@@ -17,7 +16,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "distance_fog",
         display_name: "Distance Fog",
-        icon: regular::CLOUD_FOG,
+        icon: "cloud-fog",
         category: "rendering",
         has_fn: |world, entity| world.get::<DistanceFogSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

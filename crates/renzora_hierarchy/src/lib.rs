@@ -94,7 +94,7 @@ impl Plugin for HierarchyPanelPlugin {
             id: "empty_scene",
             title: "Empty Scene",
             description: "Start with just a camera",
-            icon: egui_phosphor::regular::CIRCLE_DASHED,
+            icon: "circle-dashed",
             spawn_fn: |world: &mut World| {
                 use renzora::core::SceneCamera;
                 world.spawn((
@@ -121,7 +121,7 @@ impl Plugin for HierarchyPanelPlugin {
             id: "scene_2d",
             title: "2D Scene",
             description: "Start with a Camera 2D — sprites, UI, retro pixel art",
-            icon: egui_phosphor::regular::IMAGE_SQUARE,
+            icon: "image-square",
             spawn_fn: |world: &mut World| {
                 use renzora::core::viewport_types::{ViewportSettings, ViewportView};
                 use renzora::core::{DefaultCamera, SceneCamera};

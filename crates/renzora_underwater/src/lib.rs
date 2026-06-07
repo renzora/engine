@@ -7,8 +7,6 @@ use bevy::render::{
 };
 use bevy::shader::ShaderRef;
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
 use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 use serde::{Deserialize, Serialize};
@@ -77,7 +75,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "underwater",
         display_name: "Underwater",
-        icon: regular::WAVES,
+        icon: "waves",
         category: "post_process",
         has_fn: |world, entity| world.get::<UnderwaterSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

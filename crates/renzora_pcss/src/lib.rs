@@ -3,10 +3,7 @@ use bevy_light::ShadowFilteringMethod;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
-};
+use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 /// Percentage-Closer Soft Shadows settings.
 /// Wraps Bevy's `ShadowFilteringMethod::Pcss` with configurable soft shadow size
@@ -115,7 +112,7 @@ fn pcss_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "pcss",
         display_name: "PCSS Soft Shadows",
-        icon: regular::SUN_DIM,
+        icon: "sun-dim",
         category: "rendering",
         has_fn: |world, entity| world.get::<PcssSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

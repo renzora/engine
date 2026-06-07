@@ -6,7 +6,6 @@
 //! the editor bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::MOON_STARS;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_night_stars::NightStarsData;
 
@@ -14,7 +13,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "night_stars",
         display_name: "Night Stars",
-        icon: MOON_STARS,
+        icon: "moon-stars",
         category: "rendering",
         has_fn: |world, entity| world.get::<NightStarsData>(entity).is_some(),
         add_fn: Some(|world, entity| {

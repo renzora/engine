@@ -8,7 +8,7 @@ pub fn animator_inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "animator",
         display_name: "Animator",
-        icon: egui_phosphor::regular::PLAY,
+        icon: "play",
         category: "animation",
         has_fn: |world, entity| world.get::<AnimatorComponent>(entity).is_some(),
         add_fn: Some(|world, entity| {

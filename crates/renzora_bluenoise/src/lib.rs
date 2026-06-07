@@ -3,10 +3,7 @@ use bevy_light::ShadowFilteringMethod;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora_editor_framework::{AppEditorExt, InspectorEntry},
-};
+use renzora_editor_framework::{AppEditorExt, InspectorEntry};
 
 /// Blue Noise Temporal Jittered shadow filtering.
 /// Uses blue noise textures (requires `bluenoise_texture` Bevy feature) for
@@ -75,7 +72,7 @@ fn bluenoise_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "bluenoise",
         display_name: "Blue Noise Shadows",
-        icon: regular::DOTS_SIX,
+        icon: "dots-six",
         category: "rendering",
         has_fn: |world, entity| world.get::<BlueNoiseSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

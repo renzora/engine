@@ -1112,7 +1112,7 @@ impl Plugin for ScenePlugin {
         app.register_component_icon(ComponentIconEntry {
             type_id: std::any::TypeId::of::<renzora::SceneInstance>(),
             name: "Scene Instance",
-            icon: egui_phosphor::regular::FILM_STRIP,
+            icon: "film-strip",
             color: [170, 200, 255],
             priority: 75,
             dynamic_icon_fn: None,

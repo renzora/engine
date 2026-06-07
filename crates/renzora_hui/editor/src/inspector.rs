@@ -17,7 +17,6 @@ use bevy::ui::widget::NodeImageMode;
 use bevy::ui::{
     AlignItems, BorderRadius, Display, FlexDirection, JustifyContent, PositionType, UiRect, Val,
 };
-use egui_phosphor::regular;
 use renzora::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
@@ -366,7 +365,7 @@ fn node_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_node",
         display_name: "Node",
-        icon: regular::FRAME_CORNERS,
+        icon: "frame-corners",
         category: "ui",
         // Show on every HUI-built entity (they all have a Node). Don't offer
         // add/remove — Node is required infrastructure, removing it would
@@ -529,7 +528,7 @@ fn background_color_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_background_color",
         display_name: "Background",
-        icon: regular::PAINT_BUCKET,
+        icon: "paint-bucket",
         category: "ui",
         has_fn: |world, entity| {
             has_markup_source(world, entity) && world.get::<BackgroundColor>(entity).is_some()
@@ -569,7 +568,7 @@ fn border_color_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_border_color",
         display_name: "Border Color",
-        icon: regular::SQUARE,
+        icon: "square",
         category: "ui",
         has_fn: |world, entity| {
             has_markup_source(world, entity) && world.get::<BorderColor>(entity).is_some()
@@ -613,7 +612,7 @@ fn text_font_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_text_font",
         display_name: "Text Font",
-        icon: regular::TEXT_AA,
+        icon: "text-aa",
         category: "ui",
         has_fn: |world, entity| {
             has_markup_source(world, entity) && world.get::<TextFont>(entity).is_some()
@@ -654,7 +653,7 @@ fn text_color_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_text_color",
         display_name: "Text Color",
-        icon: regular::PALETTE,
+        icon: "palette",
         category: "ui",
         has_fn: |world, entity| {
             has_markup_source(world, entity) && world.get::<TextColor>(entity).is_some()
@@ -692,7 +691,7 @@ fn image_node_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "hui_image_node",
         display_name: "UI Image",
-        icon: regular::IMAGE,
+        icon: "image",
         category: "ui",
         // Key off `MarkupImage`, not `ImageNode` — that way the drag-drop slot
         // shows up on `<image>` markup entities even when their `src=""` and

@@ -6,7 +6,6 @@ description = "Editor-only half of renzora_skybox: the Skybox inspector entry + 
 
 [dependencies]
 bevy = { workspace = true }
-egui-phosphor = { version = "0.11", features = ["regular"] }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_skybox = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }

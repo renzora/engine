@@ -4,7 +4,6 @@
 //! Workspace layouts are switched independently via the layout/workspace system.
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 
 // ── Constants (matching legacy) ──────────────────────────────────────────────
 
@@ -67,16 +66,17 @@ impl DocTabKind {
         }
     }
 
-    /// Phosphor icon glyph for this tab kind.
+    /// Phosphor icon *name* (kebab-case) for this tab kind. A name-based
+    /// renderer (e.g. `renzora_ember::font::icon_glyph`) resolves it to a glyph.
     pub fn icon(self) -> &'static str {
         match self {
-            DocTabKind::Scene => regular::FILM_SCRIPT,
-            DocTabKind::Material => regular::PALETTE,
-            DocTabKind::Particle => regular::SPARKLE,
-            DocTabKind::Blueprint => regular::BLUEPRINT,
-            DocTabKind::Script => regular::CODE,
-            DocTabKind::Shader => regular::GRAPHICS_CARD,
-            DocTabKind::Other => regular::FILE,
+            DocTabKind::Scene => "film-script",
+            DocTabKind::Material => "palette",
+            DocTabKind::Particle => "sparkle",
+            DocTabKind::Blueprint => "blueprint",
+            DocTabKind::Script => "code",
+            DocTabKind::Shader => "graphics-card",
+            DocTabKind::Other => "file",
         }
     }
 }

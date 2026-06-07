@@ -5,11 +5,8 @@
 use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
-use egui_phosphor::regular::{
-    CARET_DOWN, CARET_RIGHT, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
-};
 use renzora_editor_framework::{EditorSelection, TreeDropZone};
-use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_hui::cursor_icon::HoverCursor;
@@ -26,6 +23,13 @@ const LINE_OFFSET: f32 = INDENT / 2.0 - 1.0; // 5.0
 const CENTER_Y: f32 = ROW_H / 2.0;
 /// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).
 const SUFFIX_W: f32 = 44.0;
+
+/// Resolve a Phosphor icon *name* (kebab-case) to its glyph string for direct
+/// `Text` rendering, via the ember/hui phosphor map. Falls back to a generic
+/// glyph for unknown names.
+fn glyph_str(name: &str) -> String {
+    icon_glyph(name).unwrap_or('\u{E4C6}').to_string()
+}
 
 
 /// An owned, ready-to-build row (captured into the keyed-list snapshot).
@@ -187,13 +191,13 @@ pub(crate) fn build_row(
         .id();
     if s.has_children {
         let (glyph, color) = if s.is_expanded {
-            (CARET_DOWN, renzora_ember::theme::text_muted())
+            ("caret-down", renzora_ember::theme::text_muted())
         } else {
-            (CARET_RIGHT, renzora_ember::theme::placeholder())
+            ("caret-right", renzora_ember::theme::placeholder())
         };
         let g = commands
             .spawn((
-                Text::new(glyph),
+                Text::new(glyph_str(glyph)),
                 TextFont {
                     font: fonts.phosphor.clone(),
                     font_size: 12.0,
@@ -217,7 +221,7 @@ pub(crate) fn build_row(
     // Type icon.
     let icon = commands
         .spawn((
-            Text::new(s.icon),
+            Text::new(glyph_str(s.icon)),
             TextFont {
                 font: fonts.phosphor.clone(),
                 font_size: 14.0,
@@ -272,7 +276,7 @@ pub(crate) fn build_row(
         if s.is_default_camera {
             let star = commands
                 .spawn((
-                    Text::new(STAR),
+                    Text::new(glyph_str("star")),
                     TextFont {
                         font: fonts.phosphor.clone(),
                         font_size: 10.0,
@@ -291,7 +295,7 @@ pub(crate) fn build_row(
     kids.push(suffix_toggle(
         commands,
         fonts,
-        if s.is_visible { EYE } else { EYE_SLASH },
+        if s.is_visible { "eye" } else { "eye-slash" },
         if s.is_visible {
             rgb(text_muted())
         } else {
@@ -307,9 +311,9 @@ pub(crate) fn build_row(
         commands,
         fonts,
         if s.is_locked {
-            LOCK_SIMPLE
+            "lock-simple"
         } else {
-            LOCK_SIMPLE_OPEN
+            "lock-simple-open"
         },
         if s.is_locked {
             rgb(close_red())

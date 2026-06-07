@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora_editor_framework::{
     ComponentIconRegistry, EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter,
     HierarchyOrder,
@@ -289,12 +288,12 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             }
         }
 
-        let final_icon = if !children.is_empty() && entry.icon == regular::CIRCLE {
-            regular::FOLDER
+        let final_icon = if !children.is_empty() && entry.icon == "circle" {
+            "folder"
         } else {
             entry.icon
         };
-        let final_color = if !children.is_empty() && entry.icon == regular::CIRCLE {
+        let final_color = if !children.is_empty() && entry.icon == "circle" {
             [170, 175, 190]
         } else {
             entry.color
@@ -328,7 +327,7 @@ fn entity_icon(world: &World, entity: Entity) -> (&'static str, [u8; 3]) {
             return (icon, rgb);
         }
     }
-    (regular::CIRCLE, [150, 150, 165])
+    ("circle", [150, 150, 165])
 }
 
 /// Filter the tree to only include nodes whose name matches the search.

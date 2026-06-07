@@ -1543,14 +1543,8 @@ fn doc_tab_row(
             Name::new(format!("doc:{name}")),
         ))
         .id();
-    // Kind icon — the phosphor glyph is already resolved on the DocTabKind.
-    let ic = commands
-        .spawn((
-            Text::new(icon.to_string()),
-            TextFont { font: fonts.phosphor.clone(), font_size: 13.0, ..default() },
-            TextColor(rgb(fg)),
-        ))
-        .id();
+    // Kind icon — `icon` is a phosphor *name* (kebab-case); resolve to a glyph.
+    let ic = icon_text(commands, &fonts.phosphor, icon, fg, 13.0);
     let lbl = commands
         .spawn((
             Text::new(if modified { format!("{name}*") } else { name.to_string() }),

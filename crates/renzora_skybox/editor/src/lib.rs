@@ -10,7 +10,6 @@
 //! bundle.
 
 use bevy::prelude::*;
-use egui_phosphor::regular::SUN;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_skybox::SkyboxData;
 
@@ -22,7 +21,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "skybox",
         display_name: "Skybox",
-        icon: SUN,
+        icon: "sun",
         category: "rendering",
         has_fn: |world, entity| world.get::<SkyboxData>(entity).is_some(),
         add_fn: Some(|world, entity| {

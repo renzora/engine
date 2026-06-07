@@ -98,7 +98,7 @@ fn register_inspector_system(world: &mut World) {
     let entry = InspectorEntry {
         type_id: "hanabi_effect",
         display_name: "Hanabi Effect",
-        icon: egui_phosphor::regular::SPARKLE,
+        icon: "sparkle",
         category: "effects",
         has_fn: hanabi_has,
         add_fn: Some(hanabi_add),

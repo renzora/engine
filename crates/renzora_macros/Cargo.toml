@@ -8,7 +8,6 @@ description = "Proc-macros for Renzora (Inspectable derive, post_process attribu
 proc-macro = true
 
 [dependencies]
-egui-phosphor = { workspace = true }
 # Proc-macro crates only need the syn/quote toolchain — paths emitted by
 # the macros (e.g. `renzora::FieldDef`) are resolved in
 # the user crate, so we don't depend on those crates here. That avoids a

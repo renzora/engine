@@ -4,10 +4,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora_editor_framework::{AppEditorExt, InspectorEntry},
-};
+use renzora_editor_framework::{AppEditorExt, InspectorEntry};
 
 /// Wrapper settings for a forward decal entity.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -113,7 +110,7 @@ fn decal_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "forward_decal",
         display_name: "Forward Decal",
-        icon: regular::STICKER,
+        icon: "sticker",
         category: "rendering",
         has_fn: |world, entity| world.get::<DecalSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

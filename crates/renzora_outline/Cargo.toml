@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 [features]
 default = ["editor", "dlopen"]
 dlopen = []
-editor = ["renzora/editor", "dep:egui-phosphor"]
+editor = ["renzora/editor"]
 
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
@@ -22,7 +22,6 @@ renzora_postprocess = { path = "../renzora_postprocess" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora = { path = "../renzora", default-features = false }
 
 [lints]

@@ -23,8 +23,6 @@ use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use egui_phosphor::regular;
-#[cfg(feature = "editor")]
 use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_postprocess::PostProcessEffect;
 
@@ -88,7 +86,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "screen_transition",
         display_name: "Screen Transition",
-        icon: regular::FILM_STRIP,
+        icon: "film-strip",
         category: "effects",
         has_fn: |world, entity| world.get::<ScreenTransitionSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -1412,13 +1412,12 @@ fn spawn_world_environment(world: &mut World) -> Entity {
 }
 
 fn register_lighting_presets(app: &mut App) {
-    use egui_phosphor::regular;
     use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
     app.register_entity_preset(EntityPreset {
         id: "world_environment",
         display_name: "World Environment",
-        icon: regular::GLOBE,
+        icon: "globe",
         category: "general",
         spawn_fn: spawn_world_environment,
     });
@@ -1430,7 +1429,7 @@ fn register_lighting_presets(app: &mut App) {
         id: "environment",
         title: "New Environment",
         description: "Sun, atmosphere, fog, and a fresh terrain",
-        icon: regular::TREE_EVERGREEN,
+        icon: "tree-evergreen",
         spawn_fn: |world: &mut World| {
             spawn_world_environment(world);
             renzora_terrain::mesh::spawn_terrain(world);
@@ -1451,7 +1450,7 @@ fn register_lighting_presets(app: &mut App) {
     app.register_entity_preset(EntityPreset {
         id: "sun",
         display_name: "Sun",
-        icon: regular::SUN_HORIZON,
+        icon: "sun-horizon",
         category: "lighting",
         spawn_fn: |world| {
             let data = renzora_lighting::Sun::default();

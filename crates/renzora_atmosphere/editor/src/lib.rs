@@ -7,7 +7,6 @@
 
 use bevy::pbr::{Atmosphere, AtmosphereSettings};
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_atmosphere::{AtmosphereComponentSettings, AtmosphereMediumHandle};
 
@@ -15,7 +14,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "atmosphere",
         display_name: "Atmosphere",
-        icon: regular::CLOUD_SUN,
+        icon: "cloud-sun",
         category: "rendering",
         has_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -319,7 +319,7 @@ fn pool_water_inspector_entry() -> renzora_editor_framework::InspectorEntry {
     InspectorEntry {
         type_id: "pool_water",
         display_name: "Pool Water",
-        icon: egui_phosphor::regular::SWIMMING_POOL,
+        icon: "swimming-pool",
         category: "rendering",
         has_fn: |world, entity| world.get::<PoolWater>(entity).is_some(),
         add_fn: Some(|world, entity| {

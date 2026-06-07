@@ -291,7 +291,7 @@ impl WebSocketPlugin {
             "ws_server",
             "WS Server",
             FfiPanelLocation::Bottom,
-            Some(egui_phosphor::regular::BROADCAST),
+            Some("broadcast"),
             [250.0, 150.0]
         );
         // CRITICAL: Subscribe to UI events
@@ -438,7 +438,7 @@ impl WebSocketPlugin {
         api.set_status_item(
             "ws_server_status",
             &format!("WS Server: {}", if self.running { "Online" } else { "Offline" }),
-            Some(if self.running { egui_phosphor::regular::GLOBE } else { egui_phosphor::regular::PLUGS }),
+            Some(if self.running { "globe" } else { "plugs" }),
             Some(&format!("Clients: {}", self.clients.len())),
             true,
             0

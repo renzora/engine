@@ -9,7 +9,6 @@
 use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_tonemapping::{DebandDitherSettings, TonemappingSettings};
 
@@ -30,7 +29,7 @@ fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "tonemapping",
         display_name: "Tonemapping",
-        icon: regular::SUN,
+        icon: "sun",
         category: "rendering",
         has_fn: |world, entity| world.get::<TonemappingSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
@@ -90,7 +89,7 @@ fn deband_dither_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "deband_dither",
         display_name: "Deband Dither",
-        icon: regular::GRADIENT,
+        icon: "gradient",
         category: "rendering",
         has_fn: |world, entity| world.get::<DebandDitherSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {

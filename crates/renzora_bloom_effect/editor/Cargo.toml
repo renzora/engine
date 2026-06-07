@@ -8,7 +8,6 @@ description = "Editor-only inspector for renzora_bloom_effect. Registered via re
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_bloom_effect = { path = ".." }
-egui-phosphor = { workspace = true }
 
 [lints]
 workspace = true

@@ -7,7 +7,6 @@
 
 use bevy::core_pipeline::oit::OrderIndependentTransparencySettings;
 use bevy::prelude::*;
-use egui_phosphor::regular;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_oit::OitSettings;
 
@@ -15,7 +14,7 @@ fn oit_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "oit",
         display_name: "OIT Transparency",
-        icon: regular::STACK,
+        icon: "stack",
         category: "rendering",
         has_fn: |world, entity| world.get::<OitSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
