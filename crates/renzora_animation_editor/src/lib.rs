@@ -4,6 +4,7 @@
 //! - `animation` — clip library, state machine states/transitions, parameters, layers
 //! - `timeline` — transport bar, time ruler, scrubber, track lanes, keyframe editing
 
+mod inspector;
 mod native_animation;
 mod native_params;
 mod native_state_machine;
@@ -262,6 +263,11 @@ impl Plugin for AnimationEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] AnimationEditorPlugin");
         let bridge = AnimEditorBridge::default();
+
+        {
+            use renzora::AppEditorExt;
+            app.register_inspector(inspector::animator_inspector_entry());
+        }
 
         app.init_resource::<AnimationEditorState>();
         app.init_resource::<preview::PreviewPlaybackState>();

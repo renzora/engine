@@ -8895,7 +8895,6 @@ name = "renzora_animation"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "mlua",
  "renzora",
  "renzora_scripting",
@@ -8908,6 +8907,7 @@ name = "renzora_animation_editor"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "egui-phosphor",
  "renzora",
  "renzora_animation",
  "renzora_editor_framework",

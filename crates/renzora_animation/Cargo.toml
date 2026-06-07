@@ -5,7 +5,6 @@ edition = "2021"
 
 [features]
 default = ["lua"]
-editor = ["renzora/editor", "dep:egui-phosphor"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
 
 [dependencies]
@@ -14,7 +13,6 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mlua = { version = "0.10", features = ["lua54"], optional = true }

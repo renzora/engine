@@ -16,8 +16,6 @@ pub mod clip;
 pub mod component;
 pub mod extract;
 pub mod graph_builder;
-#[cfg(feature = "editor")]
-pub mod inspector;
 pub mod layers;
 pub mod loader;
 pub mod read_state;
@@ -58,12 +56,6 @@ impl Plugin for AnimationPlugin {
             .init_asset_loader::<AnimClipLoader>()
             .init_asset_loader::<sm_loader::AnimSmLoader>()
             .init_resource::<AnimationCommandQueue>();
-
-        #[cfg(feature = "editor")]
-        {
-            use renzora::AppEditorExt;
-            app.register_inspector(inspector::animator_inspector_entry());
-        }
 
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);

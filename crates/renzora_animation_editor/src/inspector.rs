@@ -2,7 +2,7 @@
 
 use renzora::InspectorEntry;
 
-use crate::component::AnimatorComponent;
+use renzora_animation::AnimatorComponent;
 
 pub fn animator_inspector_entry() -> InspectorEntry {
     InspectorEntry {

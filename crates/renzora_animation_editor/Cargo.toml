@@ -10,6 +10,9 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = "../renzora_ember" }
 renzora_animation = { path = "../renzora_animation" }
+# Phosphor icon glyphs for the relocated AnimatorComponent inspector entry
+# (moved here from renzora_animation's editor feature when it went lean).
+egui-phosphor = { workspace = true }
 ron = "0.8"
 
 [lints]
