@@ -4332,30 +4332,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ffmpeg-sidecar"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42bc8b8df567bc8a9dcf9004a22be12c4e0766649b2116b2397dd04f25c8f2fe"
-dependencies = [
- "anyhow",
- "tar",
- "ureq",
- "xz2",
- "zip 4.6.1",
-]
-
-[[package]]
-name = "filetime"
-version = "0.2.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98844151eee8917efc50bd9e8318cb963ae8b297431495d3f758616ea5c57db"
-dependencies = [
- "cfg-if",
- "libc",
- "libredox",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4400,7 +4376,6 @@ checksum = "b375d6465b98090a5f25b1c7703f3859783755aa9a80433b36e0379a3ec2f369"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
- "zlib-rs",
 ]
 
 [[package]]
@@ -8988,7 +8963,7 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "zip 2.4.2",
+ "zip",
 ]
 
 [[package]]
@@ -9508,7 +9483,7 @@ dependencies = [
  "serde_json",
  "toml 0.8.23",
  "ureq",
- "zip 2.4.2",
+ "zip",
 ]
 
 [[package]]
@@ -9795,7 +9770,7 @@ dependencies = [
  "renzora_auth",
  "renzora_ember",
  "ureq",
- "zip 2.4.2",
+ "zip",
 ]
 
 [[package]]
@@ -9834,7 +9809,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tobj",
  "ufbx",
- "zip 2.4.2",
+ "zip",
 ]
 
 [[package]]
@@ -10339,19 +10314,6 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
-]
-
-[[package]]
-name = "renzora_record"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "crossbeam-channel",
- "ffmpeg-sidecar",
- "renzora",
- "renzora_editor_framework",
- "renzora_ember",
- "renzora_ui",
 ]
 
 [[package]]
@@ -10931,7 +10893,7 @@ dependencies = [
  "renzora_animation",
  "serde_json",
  "thiserror 2.0.18",
- "zip 2.4.2",
+ "zip",
 ]
 
 [[package]]
@@ -12088,17 +12050,6 @@ dependencies = [
  "grid",
  "serde",
  "slotmap",
-]
-
-[[package]]
-name = "tar"
-version = "0.4.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
-dependencies = [
- "filetime",
- "libc",
- "xattr",
 ]
 
 [[package]]
@@ -14263,16 +14214,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "xattr"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
-dependencies = [
- "libc",
- "rustix 1.1.3",
-]
-
-[[package]]
 name = "xcursor"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14587,26 +14528,6 @@ dependencies = [
  "zopfli",
  "zstd",
 ]
-
-[[package]]
-name = "zip"
-version = "4.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
-dependencies = [
- "arbitrary",
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
- "zopfli",
-]
-
-[[package]]
-name = "zlib-rs"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40990edd51aae2c2b6907af74ffb635029d5788228222c4bb811e9351c0caad3"
 
 [[package]]
 name = "zmij"

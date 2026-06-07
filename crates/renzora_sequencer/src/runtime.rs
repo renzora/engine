@@ -248,7 +248,7 @@ pub fn apply_bridge_actions(
                         }
                     }
                     info!(
-                        "[sequencer] Bake stub: {:.2}s..{:.2}s — wire to renzora_record next",
+                        "[sequencer] Bake stub: {:.2}s..{:.2}s — wire to a video encoder next",
                         from, to
                     );
                 }

@@ -4,14 +4,13 @@
 //! and pre-baked media) on a shared playhead. While playing, each track type
 //! has its own apply system that writes to the world (e.g. the camera track
 //! drives the editor camera transform). The result can be baked to video via
-//! the `renzora_record` plugin.
+//! a recording backend.
 //!
 //! The MVP scope is intentionally narrow:
 //! - Camera + Transform + Marker + Media tracks.
 //! - Linear/smoothstep interpolation between keyframes (no bezier handles).
 //! - Bake-to-video is wired as a stub that drops a placeholder MediaClip;
-//!   real recording is a follow-up that hooks into `renzora_record`'s
-//!   encoder pipeline.
+//!   real recording is a follow-up that hooks into a video-encoder backend.
 
 mod model;
 mod native;
