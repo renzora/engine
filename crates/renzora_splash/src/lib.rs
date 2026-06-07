@@ -49,6 +49,13 @@ impl Plugin for SplashPlugin {
             .add_systems(Update, handle_request_open_project)
             .add_systems(OnEnter(SplashState::Loading), loading::log_loading_entered);
 
+        // Dev shortcut: `--project <path>` skips the splash UI and jumps
+        // straight into the project. This moved here from the binary's `main()`
+        // when the editor became a removable bundle — the splash plugin lives
+        // in the bundle, so the lean game binary no longer references it.
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Startup, apply_project_arg);
+
         // Native (bevy_ui) splash, loading screen, background and city scene.
         native::register(app);
         native_loading::register(app);
@@ -109,6 +116,31 @@ fn handle_request_open_project(
     if request.is_some() {
         commands.remove_resource::<renzora::RequestOpenProject>();
         warn!("Open Project is not available in the browser");
+    }
+}
+
+/// Startup: honor a `--project <path>` argument by opening that project and
+/// arming the splash to jump straight to Loading (skipping the UI). Inserts
+/// `CurrentProject` + `PendingProjectReopen`; `native_reopen` picks the marker
+/// up on the first `Update` and transitions to `Loading`. No-op without the
+/// argument or on a failed open.
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_project_arg(mut commands: Commands) {
+    let Some(path) = std::env::args()
+        .skip_while(|a| a != "--project")
+        .nth(1)
+        .map(std::path::PathBuf::from)
+    else {
+        return;
+    };
+    info!("[splash] --project {}", path.display());
+    let project_toml = path.join("project.toml");
+    match project::open_project(&project_toml) {
+        Ok(project) => {
+            commands.insert_resource(project);
+            commands.insert_resource(PendingProjectReopen);
+        }
+        Err(e) => error!("[splash] Failed to open --project: {}", e),
     }
 }
 

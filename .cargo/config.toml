@@ -1,20 +1,27 @@
 # Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
 # Run
-renzora = "run --profile dist --bin renzora --no-default-features --features editor"
-runtime = "run --profile dist --bin renzora --no-default-features --features runtime"
+# The editor experience now ships as the `renzora_editor_bundle` cdylib loaded
+# from beside the exe, so the editor run must be `--workspace` — that builds
+# the binary AND the bundle into target/dist next to each other (one bevy_dylib
+# via feature unification). `runtime` forces game mode (`--no-editor`) even if a
+# bundle dll is sitting in target/dist from a prior editor build.
+renzora = "run --profile dist --workspace --bin renzora"
+runtime = "run --profile dist --bin renzora -- --no-editor"
 # Dedicated server = the runtime binary launched with `--server`.
-server = "run --profile dist --bin renzora --no-default-features --features runtime -- --server"
+server = "run --profile dist --bin renzora -- --server"
 
 # Build
-build-editor = "build --profile dist --bin renzora --no-default-features --features editor"
-build-runtime = "build --profile dist --bin renzora --no-default-features --features runtime"
+# build-editor / build-all: binary + editor bundle + distribution plugins in
+# one --workspace invocation (shared bevy_dylib). build-runtime: the lean game
+# binary only (no bundle, no editor crates — verified via `cargo tree`).
+build-editor = "build --profile dist --workspace"
+build-runtime = "build --profile dist --bin renzora"
 build-all = "build --profile dist --workspace"
-build-plugins = "build --profile dist --workspace --no-default-features --features editor,runtime"
+build-plugins = "build --profile dist --workspace"
 
-# WASM
-build-web = "build --profile dist --bin renzora --no-default-features --features wasm,runtime --target wasm32-unknown-unknown"
-build-web-editor = "build --profile dist --bin renzora --no-default-features --features editor,wasm --target wasm32-unknown-unknown"
+# WASM (game only — the editor bundle is a desktop dlopen target; no wasm editor)
+build-web = "build --profile dist --bin renzora --no-default-features --features wasm --target wasm32-unknown-unknown"
 
 # Android
 build-android = "build --profile dist --no-default-features --target aarch64-linux-android"

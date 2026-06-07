@@ -117,9 +117,13 @@ copy_shared_libs() {
     # NOTE: `renzora_postprocess` is no longer here — its framework folded
     # into `renzora` (module `renzora::postprocess`), so it ships inside
     # renzora.{dll,so,dylib} and emits no dylib of its own.
+    # The editor bundle ships beside the exe too (NOT in plugins/): present →
+    # the binary is the editor; absent → it's the game. Only copied when the
+    # lane built it (the lean runtime lane has no bundle in $SRC).
     for f in \
-        "$SRC/librenzora.$EXT"           "$SRC/renzora.$EXT" \
-        "$SRC/librenzora_editor.$EXT"    "$SRC/renzora_editor.$EXT"; do
+        "$SRC/librenzora.$EXT"                "$SRC/renzora.$EXT" \
+        "$SRC/librenzora_editor.$EXT"         "$SRC/renzora_editor.$EXT" \
+        "$SRC/librenzora_editor_bundle.$EXT"  "$SRC/renzora_editor_bundle.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 
@@ -137,6 +141,11 @@ copy_shared_libs() {
         [[ "$base" == renzora."$EXT" ]] && continue
         [[ "$base" == librenzora_editor."$EXT" ]] && continue
         [[ "$base" == renzora_editor."$EXT" ]] && continue
+        # Editor bundle ships beside the exe (copied above), never in plugins/.
+        # Its filename (renzora_editor_bundle.*) doesn't match the renzora_editor.*
+        # exact patterns above, so it needs its own skip here.
+        [[ "$base" == librenzora_editor_bundle."$EXT" ]] && continue
+        [[ "$base" == renzora_editor_bundle."$EXT" ]] && continue
         # `renzora_postprocess` is now an rlib shim and emits no dylib, but
         # keep this guard so a stale dylib left in the cargo cache (from
         # before the crate-type change) is never swept into plugins/ — it
@@ -331,33 +340,10 @@ build_wasm() {
         fi
     fi
 
-    # NOTE: Editor-on-web is incomplete — many editor deps are native-only sys
-    # crates (lzma-sys, coreaudio-sys, cpal, arboard, rfd, ...) that can't
-    # cross-compile to wasm32-unknown-unknown. Each needs a pure-rust alternative
-    # or a `cfg(not(target_arch = "wasm32"))` gate before the editor wasm bundle
-    # can succeed. Left as non-fatal so the lane still reports success.
-    echo "=== Building WASM Editor (best-effort) ==="
-    local WASM_EDITOR_LOG="$OUTPUT_DIR/wasm-editor-build.log"
-    if cargo build --profile dist -p renzora_app --no-default-features --features editor,wasm --target wasm32-unknown-unknown --target-dir target/wasm-editor >"$WASM_EDITOR_LOG" 2>&1; then
-        local WASM_EDITOR_FILE
-        WASM_EDITOR_FILE=$(find target/wasm-editor/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
-        if [ -n "$WASM_EDITOR_FILE" ]; then
-            mkdir -p "$OUTPUT_DIR/web-wasm32/editor"
-            wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/editor" --out-name renzora-editor --target web "$WASM_EDITOR_FILE"
-            if command -v wasm-opt &>/dev/null; then
-                wasm-opt -Oz \
-                    --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
-                    --enable-mutable-globals --enable-reference-types --enable-multivalue \
-                    "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm" \
-                    -o "$OUTPUT_DIR/web-wasm32/editor/renzora-editor_bg.wasm"
-            fi
-            rm -f "$WASM_EDITOR_LOG"
-        fi
-    else
-        echo "WARN: WASM editor build failed — see $WASM_EDITOR_LOG for details"
-        echo "      (most likely: native-only sys crates like lzma-sys/bzip2-sys/ufbx"
-        echo "       can't cross-compile to wasm32-unknown-unknown without a sysroot)"
-    fi
+    # Editor-on-web was removed with Operation Merge: there is no compile-time
+    # `editor` feature anymore, and the editor now ships as a desktop dlopen
+    # bundle (`renzora_editor_bundle`) which has no wasm equivalent. The web
+    # lane builds the game runtime only (above).
     return 0
 }
 

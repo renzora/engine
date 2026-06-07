@@ -20,7 +20,9 @@ use bevy::prelude::*;
 
 pub use renzora;
 
-#[cfg(not(feature = "editor"))]
+// Always compiled now. Whether it's added is decided at RUNTIME by the
+// `is_editor` arg to `add_engine_plugins` (the editor renders to its own
+// offscreen image, so viewport stretch only applies to a shipped game).
 mod viewport_stretch;
 
 // Dylib keepalive: `pub use` every plugin crate so cargo emits a real
@@ -129,7 +131,6 @@ pub fn init_app() -> App {
 /// which is the bulk of the unreadability. We turn ANSI off and use the
 /// `.compact()` formatter, which drops the leading `system{name="…"}:` span-name
 /// prefix, leaving plain `TIMESTAMP LEVEL target: message` lines.
-#[cfg(not(feature = "editor"))]
 fn runtime_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
     use bevy::log::tracing_subscriber::fmt;
     Some(Box::new(
@@ -140,7 +141,13 @@ fn runtime_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
     ))
 }
 
-pub fn add_default_rendering(app: &mut App) {
+/// Editor fmt layer: keep Bevy's default ANSI formatter (the editor runs in a
+/// real terminal). `None` tells `LogPlugin` to use its built-in formatter.
+fn editor_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
+    None
+}
+
+pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
     let plugins = DefaultPlugins
@@ -181,41 +188,42 @@ pub fn add_default_rendering(app: &mut App) {
                     // outer size, shrinking the render surface and causing
                     // sprites authored against window.width/height to clip
                     // off the right/bottom.
-                    #[cfg(feature = "editor")]
-                    decorations: false,
-                    #[cfg(not(feature = "editor"))]
-                    decorations: true,
+                    // Editor: false (it draws its own chrome). Runtime: true
+                    // (OS title bar). Decided at runtime via `is_editor`.
+                    decorations: !is_editor,
                     resizable: true,
                     ..default()
                 }),
                 ..default()
             });
-    // Editor build: install the Scene Diagnostics panel's tracing
-    // capture layer so the Recent Runtime Warnings section can show
-    // bevy's WARN/ERROR events (B0004, gltf failures, etc.) without
-    // overriding the default fmt layer.
-    #[cfg(feature = "editor")]
+    // Log layer:
+    // - Desktop ALWAYS installs the Scene Diagnostics capture layer so the
+    //   editor's "Recent Runtime Warnings" feed works. In a shipped game the
+    //   buffer is simply never read (negligible cost) — installing it
+    //   unconditionally avoids branching the `custom_layer` fn pointer on
+    //   `is_editor`. The layer lives in `renzora` core (shared dylib) so the
+    //   binary's writer and the bundle's reader touch one buffer.
+    // - The fmt layer is the editor's default ANSI formatter (real terminal)
+    //   or the exported game's plain, span-free formatter.
+    let fmt_layer: fn(&mut App) -> Option<bevy::log::BoxedFmtLayer> =
+        if is_editor { editor_fmt_layer } else { runtime_fmt_layer };
     let plugins = plugins.set(bevy::log::LogPlugin {
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
-        ..default()
-    });
-    // Exported game only: replace Bevy's default ANSI formatter with a plain,
-    // span-free one. The editor keeps the default (it runs in a real terminal).
-    #[cfg(not(feature = "editor"))]
-    let plugins = plugins.set(bevy::log::LogPlugin {
-        fmt_layer: runtime_fmt_layer,
+        fmt_layer,
         ..default()
     });
     app.add_plugins(plugins);
-    #[cfg(feature = "editor")]
-    app.add_systems(Startup, maximize_primary_window);
-    #[cfg(not(feature = "editor"))]
-    {
+    if is_editor {
+        app.add_systems(Startup, maximize_primary_window);
+    } else {
         // `apply_window_config` only touches the `Window` component, so it can
         // run on Startup. `apply_window_icon` needs `WinitWindows`, which is
         // only created after winit's `resumed` event fires — well after
         // `Startup` — so it has to live on `Update` and self-disable once
-        // it's applied.
+        // it's applied. Editor sessions skip both: the editor owns its chrome,
+        // and otherwise the open project's window config would be applied to
+        // the editor's own window.
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
     }
@@ -286,7 +294,6 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));
 }
 
-#[cfg(feature = "editor")]
 fn maximize_primary_window(
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
@@ -301,7 +308,6 @@ fn maximize_primary_window(
 /// the same hardcoded "Renzora", `decorations: false`, maximized layout. This
 /// system reads the project config (loaded from the rpak by `RuntimePlugin`
 /// before `Startup` runs) and applies the user's choices.
-#[cfg(not(feature = "editor"))]
 fn apply_window_config(
     project: Option<Res<renzora::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
@@ -386,7 +392,6 @@ pub fn attach_console() {
 /// wraps the resource in `Option`, and a `Local<bool>` flag short-circuits
 /// once the icon has been applied (or once we've decided there's nothing to
 /// apply).
-#[cfg(not(feature = "editor"))]
 fn apply_window_icon(
     mut applied: Local<bool>,
     project: Option<Res<renzora::CurrentProject>>,
@@ -456,7 +461,7 @@ fn apply_window_icon(
 /// plugins are auto-discovered via the `inventory` registry — those
 /// don't care about ordering and just self-register through
 /// `renzora::add!(MyPlugin)` in their crate.
-pub fn add_engine_plugins(app: &mut App) {
+pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[runtime] foundation: RuntimePlugin");
     app.add_plugins(renzora_engine::RuntimePlugin);
@@ -473,8 +478,7 @@ pub fn add_engine_plugins(app: &mut App) {
     // runtime builds (the editor renders to its own offscreen image
     // via `ViewportRenderTarget`, separate concern). The plugin is
     // a no-op when `project.viewport.stretch_mode == Disabled`.
-    #[cfg(not(feature = "editor"))]
-    {
+    if !is_editor {
         info!("[runtime] foundation: ViewportStretchPlugin");
         app.add_plugins(viewport_stretch::ViewportStretchPlugin);
     }
@@ -489,8 +493,9 @@ pub fn add_engine_plugins(app: &mut App) {
 /// Build the full runtime app (rendering + all engine plugins).
 pub fn build_runtime_app() -> App {
     let mut app = init_app();
-    add_default_rendering(&mut app);
-    add_engine_plugins(&mut app);
+    // mobile/wasm entry point — always a shipped game, never the editor.
+    add_default_rendering(&mut app, false);
+    add_engine_plugins(&mut app, false);
     app
 }
 
