@@ -3,11 +3,12 @@ name = "renzora_water"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-editor = ["renzora/editor"]
+# No `editor` feature: lean runtime crate. The WaterSurface / WaterInteractor /
+# Buoyant inspector entries (egui-phosphor icons, renzora editor contract) and
+# the dormant shore-particle module moved to the nested renzora_water_editor
+# crate (crates/renzora_water/editor).
 
 [dependencies]
-egui-phosphor = { workspace = true }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }

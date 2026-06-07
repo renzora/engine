@@ -1,0 +1,14 @@
+[package]
+name = "renzora_water_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_water: the WaterSurface / WaterInteractor / Buoyant inspector entries (Phosphor-iconed, renzora editor contract). Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+egui-phosphor = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_water = { path = ".." }
+
+[lints]
+workspace = true

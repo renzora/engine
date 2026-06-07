@@ -147,6 +147,9 @@ pub fn apply_buoyancy(
 }
 
 // ── Inspector entry ──────────────────────────────────────────────────────────
+// The `Buoyant` inspector entry is editor-only and lives in the
+// `renzora_water_editor` crate (crates/renzora_water/editor). The `Buoyant`
+// component above stays `pub` so that crate can read/write it.
 
 #[cfg(test)]
 mod tests {
@@ -337,128 +340,5 @@ mod tests {
         assert!(b.submerge_depth > 0.0);
         assert!(b.damping >= 0.0);
         assert!(b.drag >= 0.0);
-    }
-}
-
-#[cfg(feature = "editor")]
-pub fn buoyant_inspector_entry() -> renzora::InspectorEntry {
-    use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
-
-    InspectorEntry {
-        type_id: "buoyant",
-        display_name: "Buoyant",
-        icon: egui_phosphor::regular::LIFEBUOY,
-        category: "physics",
-        has_fn: |world, entity| world.get::<Buoyant>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(Buoyant::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<Buoyant>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Force",
-                field_type: FieldType::Float {
-                    speed: 0.5,
-                    min: 0.0,
-                    max: 200.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<Buoyant>(entity)
-                        .map(|s| FieldValue::Float(s.force))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
-                            s.force = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Damping",
-                field_type: FieldType::Float {
-                    speed: 0.1,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<Buoyant>(entity)
-                        .map(|s| FieldValue::Float(s.damping))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
-                            s.damping = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Submerge Depth",
-                field_type: FieldType::Float {
-                    speed: 0.05,
-                    min: 0.1,
-                    max: 5.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<Buoyant>(entity)
-                        .map(|s| FieldValue::Float(s.submerge_depth))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
-                            s.submerge_depth = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Wave Push",
-                field_type: FieldType::Float {
-                    speed: 0.1,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<Buoyant>(entity)
-                        .map(|s| FieldValue::Float(s.wave_push))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
-                            s.wave_push = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Drag",
-                field_type: FieldType::Float {
-                    speed: 0.1,
-                    min: 0.0,
-                    max: 10.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<Buoyant>(entity)
-                        .map(|s| FieldValue::Float(s.drag))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<Buoyant>(entity) {
-                            s.drag = v;
-                        }
-                    }
-                },
-            },
-        ],
     }
 }

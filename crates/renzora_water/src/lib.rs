@@ -33,14 +33,6 @@ impl Plugin for WaterPlugin {
                     buoyancy::apply_buoyancy,
                 ),
             );
-
-        #[cfg(feature = "editor")]
-        {
-            use renzora::AppEditorExt;
-            app.register_inspector(component::water_inspector_entry());
-            app.register_inspector(component::water_interactor_inspector_entry());
-            app.register_inspector(buoyancy::buoyant_inspector_entry());
-        }
     }
 }
 
