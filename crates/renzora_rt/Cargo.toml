@@ -4,15 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "Screen-space global illumination for Renzora. Lumen's ScreenSpace tier."
 
+# No `editor` feature: lean runtime crate. The inspector moved to the nested
+# renzora_rt_editor crate (crates/renzora_rt/editor).
+
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora" }
-egui-phosphor = { workspace = true, optional = true }
 serde = { version = "1.0", features = ["derive"] }
 bytemuck = { version = "1.5", features = ["derive"] }
-
-[features]
-editor = ["renzora/editor", "dep:egui-phosphor"]
 
 [lints]
 workspace = true

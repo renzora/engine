@@ -6,11 +6,6 @@ use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use egui_phosphor::regular::MOON_STARS;
-#[cfg(feature = "editor")]
-use renzora::{AppEditorExt, InspectorEntry};
-
 // ============================================================================
 // Data types
 // ============================================================================
@@ -212,47 +207,6 @@ fn sync_night_stars(
 }
 
 // ============================================================================
-// Inspector entry (editor only)
-// ============================================================================
-
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "night_stars",
-        display_name: "Night Stars",
-        icon: MOON_STARS,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<NightStarsData>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(NightStarsData::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<NightStarsData>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<NightStarsData>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<NightStarsData>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![
-            renzora::float_field!("Density", NightStarsData, density, 0.01, 0.0, 1.0),
-            renzora::float_field!("Brightness", NightStarsData, brightness, 0.05, 0.0, 10.0),
-            renzora::float_field!("Star Size", NightStarsData, star_size, 0.05, 0.2, 5.0),
-            renzora::float_field!("Twinkle Speed", NightStarsData, twinkle_speed, 0.05, 0.0, 10.0),
-            renzora::float_field!("Twinkle Amount", NightStarsData, twinkle_amount, 0.01, 0.0, 1.0),
-            renzora::float_field!("Horizon Fade", NightStarsData, horizon_fade, 0.01, 0.0, 1.0),
-            renzora::tuple_color_field!("Color", NightStarsData, color),
-        ],
-    }
-}
-
-// ============================================================================
 // Plugin
 // ============================================================================
 
@@ -268,9 +222,6 @@ impl Plugin for NightStarsPlugin {
             .init_resource::<NightStarsState>()
             .add_plugins(MaterialPlugin::<NightStarsMaterial>::default())
             .add_systems(Update, sync_night_stars);
-
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
     }
 }
 

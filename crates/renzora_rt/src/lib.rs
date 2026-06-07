@@ -18,12 +18,6 @@ mod prepare;
 use node::RtNode;
 use prepare::RtPipeline;
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular::LIGHTNING,
-    renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry},
-};
-
 /// Output mode for the SSGI pass. Drives a uniform that the shader
 /// branches on at composite time. Reusable for future debug views;
 /// new variants append at the end so existing serialized values stay valid.
@@ -113,9 +107,6 @@ impl Plugin for RtPlugin {
                     (Node3d::EndMainPass, RtLabel, Node3d::Tonemapping),
                 );
         }
-
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
     }
 
     fn finish(&self, app: &mut App) {
@@ -182,59 +173,6 @@ fn cleanup_rt_lighting(
                 ec.remove::<RtLighting>();
             }
         }
-    }
-}
-
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "rt_lighting",
-        display_name: "RT Lighting (SSGI)",
-        icon: LIGHTNING,
-        category: "lighting",
-        has_fn: |world, entity| world.get::<RtLighting>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(RtLighting::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<RtLighting>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world.get::<RtLighting>(entity).map(|s| s.enabled).unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<RtLighting>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![
-            renzora::float_field!("Intensity", RtLighting, intensity, 0.05, 0.0, 5.0),
-            FieldDef {
-                name: "Debug",
-                field_type: FieldType::Enum {
-                    options: &["Composite", "Indirect Only"],
-                },
-                get_fn: |w, e| {
-                    w.get::<RtLighting>(e).map(|s| {
-                        FieldValue::Enum(
-                            match s.debug {
-                                RtDebugMode::Composite => "Composite",
-                                RtDebugMode::IndirectOnly => "Indirect Only",
-                            }
-                            .to_string(),
-                        )
-                    })
-                },
-                set_fn: |w, e, v| {
-                    if let (FieldValue::Enum(label), Some(mut s)) = (v, w.get_mut::<RtLighting>(e)) {
-                        s.debug = match label.as_str() {
-                            "Indirect Only" => RtDebugMode::IndirectOnly,
-                            _ => RtDebugMode::Composite,
-                        };
-                    }
-                },
-            },
-        ],
     }
 }
 

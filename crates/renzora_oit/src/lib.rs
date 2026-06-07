@@ -2,12 +2,6 @@ use bevy::core_pipeline::oit::OrderIndependentTransparencySettings;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct OitSettings {
@@ -78,47 +72,6 @@ fn cleanup_oit(
     }
 }
 
-#[cfg(feature = "editor")]
-fn oit_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "oit",
-        display_name: "OIT Transparency",
-        icon: regular::STACK,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<OitSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(OitSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(OitSettings, OrderIndependentTransparencySettings)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<OitSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<OitSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![
-            renzora::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
-            renzora::float_field!(
-                "Alpha Threshold",
-                OitSettings,
-                alpha_threshold,
-                0.01,
-                0.0,
-                1.0
-            ),
-        ],
-    }
-}
-
 #[derive(Default)]
 pub struct OitPlugin;
 
@@ -127,8 +80,6 @@ impl Plugin for OitPlugin {
         info!("[runtime] OitPlugin");
         app.register_type::<OitSettings>();
         app.add_systems(Update, (sync_oit, cleanup_oit));
-        #[cfg(feature = "editor")]
-        app.register_inspector(oit_entry());
     }
 }
 

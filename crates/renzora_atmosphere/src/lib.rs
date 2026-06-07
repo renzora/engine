@@ -2,12 +2,6 @@ use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct AtmosphereComponentSettings {
@@ -35,7 +29,7 @@ impl Default for AtmosphereComponentSettings {
 
 /// Stores the ScatteringMedium handle so we don't recreate it every frame.
 #[derive(Component)]
-struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
+pub struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
 
 /// Sync atmosphere settings from a `WorldEnvironment`-style source entity
 /// onto every camera the routing table targets.
@@ -150,67 +144,6 @@ fn cleanup_atmosphere(
     }
 }
 
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "atmosphere",
-        display_name: "Atmosphere",
-        icon: regular::CLOUD_SUN,
-        category: "rendering",
-        has_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(AtmosphereComponentSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(
-                AtmosphereComponentSettings,
-                Atmosphere,
-                AtmosphereSettings,
-                AtmosphereMediumHandle,
-            )>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<AtmosphereComponentSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<AtmosphereComponentSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![
-            renzora::FieldDef {
-                name: "Rendering",
-                field_type: renzora::FieldType::Enum {
-                    options: &["Lookup Texture", "Raymarched"],
-                },
-                get_fn: |w, e| {
-                    w.get::<AtmosphereComponentSettings>(e).map(|s| {
-                        renzora::FieldValue::Enum(
-                            if s.mode == 1 { "Raymarched" } else { "Lookup Texture" }.to_string(),
-                        )
-                    })
-                },
-                set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(label), Some(mut s)) =
-                        (v, w.get_mut::<AtmosphereComponentSettings>(e))
-                    {
-                        s.mode = if label == "Raymarched" { 1 } else { 0 };
-                    }
-                },
-            },
-            renzora::float_field!("Bottom Radius", AtmosphereComponentSettings, bottom_radius, 1000.0, 0.0, 100_000_000.0),
-            renzora::float_field!("Top Radius", AtmosphereComponentSettings, top_radius, 1000.0, 0.0, 100_000_000.0),
-            renzora::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
-            renzora::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
-        ],
-    }
-}
-
 #[derive(Default)]
 pub struct AtmospherePlugin;
 
@@ -219,8 +152,6 @@ impl Plugin for AtmospherePlugin {
         info!("[runtime] AtmospherePlugin");
         app.register_type::<AtmosphereComponentSettings>();
         app.add_systems(Update, (sync_atmosphere, cleanup_atmosphere));
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
     }
 }
 

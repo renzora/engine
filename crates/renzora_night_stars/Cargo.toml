@@ -3,13 +3,11 @@ name = "renzora_night_stars"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-editor = ["renzora/editor", "dep:egui-phosphor"]
+# No `editor` feature: lean runtime crate. The inspector moved to the nested
+# renzora_night_stars_editor crate (crates/renzora_night_stars/editor).
 
 [dependencies]
 bevy = { workspace = true }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_lighting = { path = "../renzora_lighting" }
 serde = { version = "1", features = ["derive"] }

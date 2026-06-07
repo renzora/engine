@@ -1,0 +1,15 @@
+[package]
+name = "renzora_lumen_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only inspector for renzora_lumen. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_lumen = { path = ".." }
+renzora_rt = { path = "../../renzora_rt" }
+egui-phosphor = { workspace = true }
+
+[lints]
+workspace = true

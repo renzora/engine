@@ -8989,9 +8989,18 @@ name = "renzora_atmosphere"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_atmosphere_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_atmosphere",
 ]
 
 [[package]]
@@ -9026,10 +9035,19 @@ name = "renzora_auto_exposure"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_macros",
  "serde",
+]
+
+[[package]]
+name = "renzora_auto_exposure_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_auto_exposure",
 ]
 
 [[package]]
@@ -9128,10 +9146,19 @@ name = "renzora_clouds"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_lighting",
  "serde",
+]
+
+[[package]]
+name = "renzora_clouds_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_clouds",
 ]
 
 [[package]]
@@ -9350,13 +9377,16 @@ dependencies = [
  "renzora_asset_browser",
  "renzora_asset_registry",
  "renzora_atmosphere",
+ "renzora_atmosphere_editor",
  "renzora_auth",
  "renzora_auto_exposure",
+ "renzora_auto_exposure_editor",
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
  "renzora_blueprint_editor",
  "renzora_camera",
  "renzora_clouds",
+ "renzora_clouds_editor",
  "renzora_code_editor",
  "renzora_command_palette",
  "renzora_console",
@@ -9371,6 +9401,7 @@ dependencies = [
  "renzora_engine",
  "renzora_engine_editor",
  "renzora_environment_map",
+ "renzora_environment_map_editor",
  "renzora_export",
  "renzora_foliage_editor",
  "renzora_game_ui",
@@ -9390,6 +9421,7 @@ dependencies = [
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lumen",
+ "renzora_lumen_editor",
  "renzora_material_editor",
  "renzora_mesh_draw",
  "renzora_mesh_edit",
@@ -9401,10 +9433,13 @@ dependencies = [
  "renzora_network",
  "renzora_network_editor",
  "renzora_night_stars",
+ "renzora_night_stars_editor",
  "renzora_oit",
+ "renzora_oit_editor",
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_rt",
+ "renzora_rt_editor",
  "renzora_scene",
  "renzora_script_variables",
  "renzora_scripting",
@@ -9516,10 +9551,19 @@ name = "renzora_environment_map"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_lighting",
  "serde",
+]
+
+[[package]]
+name = "renzora_environment_map_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_environment_map",
 ]
 
 [[package]]
@@ -10018,11 +10062,21 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bytemuck",
- "egui-phosphor",
  "renzora",
  "renzora_rt",
  "renzora_shader",
  "serde",
+]
+
+[[package]]
+name = "renzora_lumen_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_lumen",
+ "renzora_rt",
 ]
 
 [[package]]
@@ -10184,10 +10238,19 @@ name = "renzora_night_stars"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "renzora_lighting",
  "serde",
+]
+
+[[package]]
+name = "renzora_night_stars_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_night_stars",
 ]
 
 [[package]]
@@ -10219,9 +10282,18 @@ name = "renzora_oit"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_oit_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_oit",
 ]
 
 [[package]]
@@ -10419,9 +10491,18 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "bytemuck",
- "egui-phosphor",
  "renzora",
  "serde",
+]
+
+[[package]]
+name = "renzora_rt_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_rt",
 ]
 
 [[package]]

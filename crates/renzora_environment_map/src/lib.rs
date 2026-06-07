@@ -25,12 +25,6 @@ use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use {
-    egui_phosphor::regular,
-    renzora::{AppEditorExt, InspectorEntry},
-};
-
 /// User-authored settings for sky-driven image-based lighting. Attach to
 /// any non-camera entity (typically a "World Environment") and the plugin
 /// routes its values onto every active camera via `EffectRouting`.
@@ -187,52 +181,6 @@ impl Plugin for EnvironmentMapPlugin {
         info!("[runtime] EnvironmentMapPlugin");
         app.register_type::<EnvironmentMapComponentSettings>();
         app.add_systems(Update, (sync_environment_map, cleanup_environment_map));
-        #[cfg(feature = "editor")]
-        app.register_inspector(inspector_entry());
-    }
-}
-
-#[cfg(feature = "editor")]
-fn inspector_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "environment_map",
-        display_name: "Environment Map",
-        icon: regular::SUN_HORIZON,
-        category: "rendering",
-        has_fn: |world, entity| {
-            world
-                .get::<EnvironmentMapComponentSettings>(entity)
-                .is_some()
-        },
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(EnvironmentMapComponentSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<EnvironmentMapComponentSettings>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<EnvironmentMapComponentSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<EnvironmentMapComponentSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![renzora::float_field!(
-            "Intensity",
-            EnvironmentMapComponentSettings,
-            intensity,
-            0.01,
-            0.0,
-            10.0
-        )],
     }
 }
 
