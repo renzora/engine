@@ -142,9 +142,6 @@ impl Plugin for ScriptingPlugin {
 
         // Auto-insert ScriptComponent on new named entities (decouples hierarchy from scripting)
         app.add_observer(auto_insert_script_component);
-
-        #[cfg(feature = "editor")]
-        crate::inspector::register_script_inspector(app);
     }
 }
 

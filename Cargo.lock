@@ -9445,6 +9445,7 @@ dependencies = [
  "renzora_scene",
  "renzora_script_variables",
  "renzora_scripting",
+ "renzora_scripting_editor",
  "renzora_sequencer",
  "renzora_settings",
  "renzora_shader_editor",
@@ -10636,7 +10637,6 @@ name = "renzora_scripting"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
- "egui-phosphor",
  "log",
  "mlua",
  "renzora",
@@ -10644,6 +10644,16 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "renzora_scripting_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_scripting",
 ]
 
 [[package]]

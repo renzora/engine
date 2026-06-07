@@ -87,7 +87,7 @@ editor = [
     # renzora_engine is fully split: its editor half is a separate dep crate.
     "dep:renzora_engine_editor",
     "renzora_physics/editor",
-    "renzora_scripting/editor",
+    "dep:renzora_scripting_editor",
     "dep:renzora_lighting_editor",
     "renzora_hanabi/editor",
     "dep:renzora_tonemapping_editor",
@@ -186,6 +186,7 @@ renzora_engine_editor      = { path = "../renzora_engine/editor", optional = tru
 renzora_engine          = { path = "../renzora_engine" }
 renzora_physics         = { path = "../renzora_physics" }
 renzora_scripting       = { path = "../renzora_scripting" }
+renzora_scripting_editor = { path = "../renzora_scripting/editor", optional = true }
 renzora_lighting        = { path = "../renzora_lighting" }
 renzora_lighting_editor = { path = "../renzora_lighting/editor", optional = true }
 renzora_hanabi          = { path = "../renzora_hanabi" }

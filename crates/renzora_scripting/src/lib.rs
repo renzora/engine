@@ -7,8 +7,6 @@ pub mod extension;
 pub mod get_handler;
 pub mod http;
 mod input;
-#[cfg(feature = "editor")]
-pub mod inspector;
 mod plugin;
 
 pub mod api;
