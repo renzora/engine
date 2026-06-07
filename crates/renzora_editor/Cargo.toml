@@ -86,7 +86,7 @@ editor = [
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.
     "dep:renzora_engine_editor",
-    "renzora_physics/editor",
+    "dep:renzora_physics_editor",
     "dep:renzora_scripting_editor",
     "dep:renzora_lighting_editor",
     "dep:renzora_tonemapping_editor",
@@ -182,6 +182,7 @@ renzora_engine_editor      = { path = "../renzora_engine/editor", optional = tru
 # and hold no Editor-scope plugins for the bundle to install.
 renzora_engine          = { path = "../renzora_engine" }
 renzora_physics         = { path = "../renzora_physics" }
+renzora_physics_editor  = { path = "../renzora_physics/editor", optional = true }
 renzora_scripting       = { path = "../renzora_scripting" }
 renzora_scripting_editor = { path = "../renzora_scripting/editor", optional = true }
 renzora_lighting        = { path = "../renzora_lighting" }

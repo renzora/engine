@@ -8,15 +8,12 @@ default = ["avian", "lua"]
 avian = ["dep:avian3d"]
 rapier = ["dep:bevy_rapier3d"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
-editor = ["renzora/editor", "dep:renzora_ember", "dep:egui-phosphor"]
 
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
-renzora_ember = { path = "../renzora_ember", optional = true }
-egui-phosphor = { version = "0.11", features = ["regular"], optional = true }
 
 [dependencies.avian3d]
 version = "0.6.1"

@@ -7,34 +7,16 @@ pub mod script_extension;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
 /// the transform gizmo is hidden and (later) collider resize/move handles take over.
+///
+/// Lives in the lean crate (it stays `pub` here) because the editor-only
+/// `renzora_gizmo` crate reads it as `renzora_physics::ColliderEditMode` to
+/// drive the collider resize/move handles. The resource is *initialised* by
+/// `renzora_physics_editor::PhysicsEditorPlugin`; the gizmo crate treats it as
+/// optional so the lean runtime (no editor) simply never inserts it.
 #[derive(Resource, Default, Debug, Clone, Copy)]
 pub struct ColliderEditMode {
     pub active: bool,
 }
-
-/// Background queue for bulk-stamping mesh colliders on a hierarchy, chunked
-/// across frames so the UI can show progress. Populated by the inspector's
-/// "Stamp Mesh Colliders" button; drained by `drain_collider_stamp_queue`.
-#[derive(Resource, Default)]
-pub struct ColliderStampQueue {
-    pub root: Option<Entity>,
-    pub remaining: Vec<Entity>,
-    pub total: usize,
-}
-
-impl ColliderStampQueue {
-    pub fn progress(&self) -> f32 {
-        if self.total == 0 {
-            return 1.0;
-        }
-        (self.total - self.remaining.len()) as f32 / self.total as f32
-    }
-    pub fn is_active(&self) -> bool {
-        !self.remaining.is_empty()
-    }
-}
-#[cfg(feature = "editor")]
-pub mod inspector;
 
 pub use data::*;
 pub use properties::*;
@@ -48,41 +30,6 @@ fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
     play_mode.is_none_or(|pm| !pm.is_editing())
 }
 
-/// Stamps up to `BATCH` entities per frame from the queue. Keeps the UI
-/// responsive on huge scenes (thousands of meshes) and lets the hierarchy
-/// panel draw a live progress bar.
-#[cfg(feature = "editor")]
-fn drain_collider_stamp_queue(
-    mut commands: Commands,
-    mut queue: ResMut<ColliderStampQueue>,
-    existing_shapes: Query<(), With<CollisionShapeData>>,
-) {
-    const BATCH: usize = 24;
-    if queue.remaining.is_empty() {
-        return;
-    }
-    for _ in 0..BATCH {
-        let Some(e) = queue.remaining.pop() else {
-            break;
-        };
-        // Skip if the entity has gained a collision shape since we queued it.
-        if existing_shapes.get(e).is_ok() {
-            continue;
-        }
-        commands
-            .entity(e)
-            .insert((PhysicsBodyData::static_body(), CollisionShapeData::mesh()));
-    }
-    if queue.remaining.is_empty() {
-        renzora::console_log::console_success(
-            "Physics",
-            format!("Stamped Mesh Colliders on {} entities", queue.total),
-        );
-        queue.root = None;
-        queue.total = 0;
-    }
-}
-
 #[cfg(not(any(feature = "avian", feature = "rapier")))]
 compile_error!("renzora_physics requires either the `avian` or `rapier` feature");
 
@@ -91,15 +38,19 @@ compile_error!("renzora_physics: enable only one of `avian` or `rapier`, not bot
 
 /// Physics plugin that delegates to the selected backend.
 ///
-/// Automatically starts paused when the `editor` feature is enabled,
-/// and runs immediately in standalone/runtime mode.
+/// Runs the simulation immediately. In the editor the companion
+/// `renzora_physics_editor::PhysicsEditorPlugin` adds a `Startup` system that
+/// pauses the simulation (via [`pause`]) so the scene doesn't simulate until
+/// the user hits play.
 #[derive(Default)]
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] PhysicsPlugin");
-        let start_paused = cfg!(feature = "editor");
+        // The simulation runs immediately; the editor crate pauses it at
+        // startup when present (see `PhysicsEditorPlugin`).
+        let start_paused = false;
 
         app.register_type::<PhysicsBodyData>()
             .register_type::<PhysicsBodyType>()
@@ -156,14 +107,6 @@ impl Plugin for PhysicsPlugin {
                 renzora_scripting::extension::ScriptExtensions::default,
             );
             extensions.register(script_extension::PhysicsScriptExtension);
-        }
-
-        #[cfg(feature = "editor")]
-        {
-            app.init_resource::<ColliderEditMode>();
-            app.init_resource::<ColliderStampQueue>();
-            app.add_systems(Update, drain_collider_stamp_queue);
-            inspector::register_physics_inspectors(app);
         }
     }
 }

@@ -1,12 +1,13 @@
 //! Inspector entries for physics components.
 //!
-//! Registered automatically when the `editor` feature is enabled.
+//! Registered by [`PhysicsEditorPlugin`](crate::PhysicsEditorPlugin) when the
+//! editor bundle is present.
 
 use bevy::prelude::*;
 use egui_phosphor::regular;
 use renzora::{EditorSelection, InspectorEntry, ToolEntry, ToolSection};
 
-use crate::{
+use renzora_physics::{
     ColliderEditMode, CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
 };
 
@@ -69,9 +70,9 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
             .entity_mut(*e)
             .remove::<PhysicsBodyData>()
             .remove::<CollisionShapeData>()
-            .remove::<crate::data::RuntimePhysics>();
+            .remove::<renzora_physics::RuntimePhysics>();
         let mut cmds = world.commands();
-        crate::despawn_physics_components(&mut cmds, *e);
+        renzora_physics::despawn_physics_components(&mut cmds, *e);
     }
     // Clear any pending stamp queue entries that reference the just-stripped root
     // so a strip immediately after a stamp doesn't keep adding components.

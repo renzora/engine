@@ -1,0 +1,15 @@
+[package]
+name = "renzora_physics_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_physics: the Physics Body + Collision Shape inspector entries, their native (ember) drawers (body type/mass/damping/locks, shape params, Edit-collider toggle, Stamp/Strip mesh-collider actions), the Edit-Collider tool, entity presets, the collider stamp queue + drain system, and the auto-collider-on-spawn observer. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+egui-phosphor = { version = "0.11", features = ["regular"] }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_physics = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+
+[lints]
+workspace = true

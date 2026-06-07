@@ -9441,6 +9441,7 @@ dependencies = [
  "renzora_oit_editor",
  "renzora_particle_editor",
  "renzora_physics",
+ "renzora_physics_editor",
  "renzora_rt",
  "renzora_rt_editor",
  "renzora_scene",
@@ -10388,12 +10389,21 @@ dependencies = [
  "avian3d 0.6.1",
  "bevy 0.18.0",
  "bevy_rapier3d",
- "egui-phosphor",
  "mlua",
  "renzora",
- "renzora_ember",
  "renzora_scripting",
  "serde",
+]
+
+[[package]]
+name = "renzora_physics_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "egui-phosphor",
+ "renzora",
+ "renzora_ember",
+ "renzora_physics",
 ]
 
 [[package]]
