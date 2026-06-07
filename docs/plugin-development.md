@@ -60,11 +60,13 @@ No `[lib]` section needed — the crate defaults to `rlib`, gets statically link
 Control when your plugin loads:
 
 ```rust
-renzora::add!(MyPlugin);                          // editor + exported games (default)
-renzora::add!(MyPlugin, Editor);                  // editor only
-renzora::add!(MyPlugin, Runtime);                 // exported games only
-renzora::add!(MyPlugin, EditorAndRuntime, priority = -100); // load earlier
+renzora::add!(MyPlugin);                          // Runtime (default)
+renzora::add!(MyPlugin, Editor);                  // editor-only tooling
+renzora::add!(MyPlugin, Runtime);                 // explicit (same as default)
+renzora::add!(MyFoundation, Runtime, priority = -100); // load earlier
 ```
+
+Scopes are **exclusive** — a plugin is either `Runtime` or `Editor`, there is no "both". `Runtime` plugins run in the game (and, for engine/statically-linked plugins, in the editor viewport that hosts the runtime); `Editor` plugins are editor-only tooling (panels, gizmos). A feature that needs editor tooling on top of runtime behaviour ships **two** plugins — one of each scope (e.g. `GameUiPlugin` + `GameUiEditorPlugin`).
 
 The macro emits an `inventory::submit!` block; the runtime iterates the registry once at startup and calls `app.add_plugins(...)` on every entry whose scope matches the host. No central enumeration, no manual `add_plugins` to keep in sync.
 

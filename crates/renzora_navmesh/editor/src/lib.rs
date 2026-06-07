@@ -74,9 +74,12 @@ impl Plugin for NavMeshEditorPlugin {
                 editor_panel::refresh_panel_mirror,
                 editor_panel::drain_panel_actions,
                 editor_panel::apply_auto_rebuild_setting,
-                sync_show_agent_paths_override,
             ),
         );
+        // Sync the gizmo override in PreUpdate so the lean `draw_agent_paths`
+        // (Update, in renzora_navmesh) always reads a fresh value — deterministic
+        // ordering across the two crates instead of a same-schedule race.
+        app.add_systems(PreUpdate, sync_show_agent_paths_override);
         app.add_systems(Update, editor_panel::flush_bake_request);
     }
 }

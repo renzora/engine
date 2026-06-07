@@ -36,10 +36,10 @@ A **plugin** = one feature (a bloom effect, the physics system, an inspector pan
 Its **scope** decides when it loads:
 
 ```rust
-renzora::add!(MyPlugin);                              // editor + games (default)
+renzora::add!(MyPlugin);                              // Runtime (default)
 renzora::add!(MyPlugin, Editor);                      // editor only
-renzora::add!(MyPlugin, Runtime);                     // games only
-renzora::add!(MyPlugin, EditorAndRuntime, priority = -100);
+renzora::add!(MyPlugin, Runtime);                     // explicit (same as default)
+renzora::add!(MyFoundation, Runtime, priority = -100);
 ```
 
 ---
@@ -208,7 +208,7 @@ Both halves are the **same `renzora` binary** (`renzora_app`), differing only by
 
 `bevy = { features = ["dynamic_linking"] }` + `prefer-dynamic` (`.cargo/config.toml`) ⇒
 `bevy_dylib` + `renzora.dll` + `renzora_editor.dll` ship as shared libs. Plugin scope
-(`add!(_, Editor|Runtime|EditorAndRuntime)`) is a **runtime** filter (`for_each_static_plugin`),
+(`add!(_, Editor|Runtime)`) is a **runtime** filter (`for_each_static_plugin`),
 NOT a compile strip — so "editor vs runtime" today is *which crates are linked*, set by that
 one feature. **That feature delta is the `bevy_dylib` hash delta.**
 
@@ -253,7 +253,7 @@ one feature. **That feature delta is the `bevy_dylib` hash delta.**
      `renzora` dylib (one registry across the boundary). So `plugin_install_scope` replays
      **every matching-scope plugin in that global registry**, not "the bundle's own". It works
      only because scopes partition (editor host installs `Editor`-only; runtime host installs
-     `Runtime`+`EditorAndRuntime`).
+     `Runtime`-only — the two scopes are exclusive).
   2. **Deployment contract (hard).** A build either statically links + installs editor plugins
      (`add_editor_plugins`) **OR** ships them as the bundle — *never both*, or they double-add and
      Bevy panics. ⇒ **Step C must stop the host statically registering editor-scope plugins**, and
