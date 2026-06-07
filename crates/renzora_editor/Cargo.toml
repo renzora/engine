@@ -17,7 +17,10 @@ renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
-renzora = { path = "../renzora", default-features = false }
+# `features = ["editor"]` so the editor CONTRACT (registries, EditorSelection,
+# field macros, AppEditorExt) that folded into `renzora` core is visible here
+# and re-exported at `renzora_editor::*` for back-compat.
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_postprocess = { path = "../renzora_postprocess" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

@@ -17,10 +17,14 @@ crate-type = ["dylib", "rlib"]
 
 [features]
 default = []
-# Enables editor-only contracts (e.g. `EditorPanel` trait, `PanelRegistry`
-# resource — landing here in a follow-up). Runtime / server builds leave
-# this off so the shipped binary carries no editor surface area.
-editor = []
+# Enables the editor CONTRACT (Operation Merge fold): the thin, boundary-
+# crossing editor types — `EditorSelection`, the inspector/spawn/toolbar/
+# shortcut registries, `AppEditorExt`, the field macros, `Inspectable`/
+# `post_process` derives — that the binary AND the editor bundle both need to
+# share one `TypeId` across the dylib boundary. Implies `postprocess` because
+# `AppEditorExt::add_post_process` uses the post-process framework. Runtime /
+# server / mobile builds leave this OFF so they carry no editor surface area.
+editor = ["postprocess", "dep:renzora_macros"]
 # Pulls in the post-process framework module (`renzora::postprocess`):
 # `PostProcessPlugin<T>`, `PostProcessEffect`, the unified render node and
 # the shared `PostProcessRegistry`. Enabled (transitively) by the
@@ -47,6 +51,10 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 ron = "0.8"
+# Editor-contract derive/attribute macros (`Inspectable`, `post_process`),
+# re-exported from core under the `editor` feature. Proc-macro crate with no
+# runtime weight and no cycle (it depends only on syn/quote, never on renzora).
+renzora_macros = { path = "../renzora_macros", optional = true }
 # `inventory` collects plugin registrations across crates at runtime via
 # init constructors (`#[ctor]`). Workspace plugins are statically linked
 # into the host binary (rlib by default), so their submissions register

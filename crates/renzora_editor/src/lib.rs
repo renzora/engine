@@ -6,25 +6,31 @@
 pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
-pub mod ext;
-pub mod inspector_registry;
 pub mod material_thumbnail_registry;
 pub mod model_thumbnail_registry;
 pub mod sdk;
-pub mod selection;
 pub mod settings;
-pub mod shortcut_registry;
-pub mod spawn_registry;
-pub mod toolbar_registry;
 
 // Re-export full UI API so downstream crates can use `renzora_editor::DockTree` etc.
 pub use renzora_ui::*;
 
 pub use commands::EditorCommands;
-pub use ext::{AppEditorExt, InspectableComponent};
-pub use inspector_registry::{
-    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry, NativeInspectorDrawer,
-    NativeInspectorRegistry,
+// Editor CONTRACT moved into `renzora` core (Operation Merge fold). Re-exported
+// here at the SAME `renzora_editor::*` paths so this crate's own framework code
+// and the bundle-side panels keep resolving `renzora_editor::FieldDef` /
+// `AppEditorExt` / the field macros etc. The field macros now expand to
+// `renzora::FieldDef` (one shared contract — no `renzora_editor` dependency).
+pub use renzora::{
+    shortcut_dispatch_system, AppEditorExt, ComponentIconEntry, ComponentIconRegistry,
+    EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, HierarchyExpandRequests,
+    HierarchyOrder, InspectableComponent, InspectorEntry, InspectorRegistry, NativeInspectorDrawer,
+    NativeInspectorRegistry, SceneStarter, SceneStarterRegistry, ShortcutEntry, ShortcutHandler,
+    ShortcutRegistry, SpawnRegistry, ToolActivator, ToolEntry, ToolPredicate, ToolSection,
+    ToolbarRegistry,
+};
+pub use renzora::{
+    bool_field, color_rgba_field, enum_u32_field, float_field, int_field, string_field,
+    tuple_color_field, vec3_color_field,
 };
 pub use material_thumbnail_registry::{
     material_thumb_path, migrate_legacy_thumbnail_cache, thumbnail_cache_dir,
@@ -32,9 +38,6 @@ pub use material_thumbnail_registry::{
 };
 pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
 pub use renzora_macros::{post_process, Inspectable};
-pub use selection::EditorSelection;
-pub use shortcut_registry::{ShortcutEntry, ShortcutRegistry};
-pub use toolbar_registry::{ToolEntry, ToolSection, ToolbarRegistry};
 
 /// Late-bound hooks for actions that live in downstream crates the editor
 /// framework can't depend on directly (avoids a cycle with `renzora_undo`).
@@ -133,10 +136,7 @@ pub use renzora::{EditorCamera, EditorLocked, HideInHierarchy};
 #[derive(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
 
-/// Sort order for root-level entities in the hierarchy panel.
-/// Lower values appear first. Entities without this component sort last.
-#[derive(Component, Clone, Copy)]
-pub struct HierarchyOrder(pub u32);
+// `HierarchyOrder` moved into `renzora` core (re-exported at top of file).
 
 /// One-shot flag set by scene loading code; read and cleared by the
 /// hierarchy crate after the tree cache is built. When `true`, the
@@ -145,23 +145,7 @@ pub struct HierarchyOrder(pub u32);
 #[derive(Resource, Default)]
 pub struct AutoSelectFirstHierarchyEntity(pub bool);
 
-/// Pending entities to expand in the hierarchy panel next time it renders.
-/// Systems that spawn entities as children can push the parent entity here so
-/// the panel reveals the newly spawned child even if the user hasn't toggled
-/// expansion manually.
-#[derive(Resource, Default)]
-pub struct HierarchyExpandRequests {
-    entries: std::sync::RwLock<Vec<Entity>>,
-}
-
-impl HierarchyExpandRequests {
-    pub fn push(&self, entity: Entity) {
-        self.entries.write().unwrap().push(entity);
-    }
-    pub fn drain(&self) -> Vec<Entity> {
-        std::mem::take(&mut *self.entries.write().unwrap())
-    }
-}
+// `HierarchyExpandRequests` moved into `renzora` core (re-exported at top).
 
 pub use renzora::EntityTag;
 
@@ -186,10 +170,7 @@ pub enum HierarchyFilter {
     ExcludeDescendantsOf(Vec<&'static str>),
 }
 
-pub use spawn_registry::{
-    ComponentIconEntry, ComponentIconRegistry, EntityPreset, SceneStarter, SceneStarterRegistry,
-    SpawnRegistry,
-};
+// (spawn-registry types re-exported from `renzora` at the top of this file)
 
 /// Gizmo transform mode — shared so both the gizmo and viewport toolbar can access it.
 #[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -362,7 +343,7 @@ impl Plugin for RenzoraEditorPlugin {
 
         app.add_systems(
             Update,
-            shortcut_registry::shortcut_dispatch_system.run_if(in_state(SplashState::Editor)),
+            shortcut_dispatch_system.run_if(in_state(SplashState::Editor)),
         );
 
         // Auto-save the dock layout whenever it changes.

@@ -8893,6 +8893,7 @@ version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
  "inventory",
+ "renzora_macros",
  "ron 0.8.1",
  "serde",
  "toml 0.8.23",

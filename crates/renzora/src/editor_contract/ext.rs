@@ -1,9 +1,9 @@
 //! Extension trait for `App` to simplify editor registrations.
 
-use crate::inspector_registry::{InspectorEntry, InspectorRegistry};
-use crate::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
-use crate::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
-use crate::toolbar_registry::{ToolEntry, ToolbarRegistry};
+use super::inspector_registry::{InspectorEntry, InspectorRegistry};
+use super::shortcut_registry::{ShortcutEntry, ShortcutRegistry};
+use super::spawn_registry::{EntityPreset, SceneStarter, SceneStarterRegistry, SpawnRegistry};
+use super::toolbar_registry::{ToolEntry, ToolbarRegistry};
 use bevy::prelude::*;
 
 /// Trait implemented by components that can auto-generate their `InspectorEntry`.
@@ -33,7 +33,7 @@ pub trait AppEditorExt {
     fn register_scene_starter(&mut self, starter: SceneStarter) -> &mut Self;
 
     /// Register a component icon for the hierarchy tree.
-    fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self;
+    fn register_component_icon(&mut self, entry: super::spawn_registry::ComponentIconEntry) -> &mut Self;
 
     /// Register a button on the viewport toolbar. See [`ToolEntry`].
     fn register_tool(&mut self, entry: ToolEntry) -> &mut Self;
@@ -44,7 +44,7 @@ pub trait AppEditorExt {
     fn register_native_inspector_ui(
         &mut self,
         type_id: &'static str,
-        drawer: crate::NativeInspectorDrawer,
+        drawer: super::inspector_registry::NativeInspectorDrawer,
     ) -> &mut Self;
 
     /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
@@ -53,7 +53,7 @@ pub trait AppEditorExt {
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
     where
-        T: renzora_postprocess::PostProcessEffect
+        T: crate::postprocess::PostProcessEffect
             + InspectableComponent
             + bevy::reflect::GetTypeRegistration;
 }
@@ -90,10 +90,10 @@ impl AppEditorExt for App {
         self
     }
 
-    fn register_component_icon(&mut self, entry: crate::ComponentIconEntry) -> &mut Self {
-        self.init_resource::<crate::ComponentIconRegistry>();
+    fn register_component_icon(&mut self, entry: super::spawn_registry::ComponentIconEntry) -> &mut Self {
+        self.init_resource::<super::spawn_registry::ComponentIconRegistry>();
         self.world_mut()
-            .resource_mut::<crate::ComponentIconRegistry>()
+            .resource_mut::<super::spawn_registry::ComponentIconRegistry>()
             .register(entry);
         self
     }
@@ -109,11 +109,11 @@ impl AppEditorExt for App {
     fn register_native_inspector_ui(
         &mut self,
         type_id: &'static str,
-        drawer: crate::NativeInspectorDrawer,
+        drawer: super::inspector_registry::NativeInspectorDrawer,
     ) -> &mut Self {
-        self.init_resource::<crate::NativeInspectorRegistry>();
+        self.init_resource::<super::inspector_registry::NativeInspectorRegistry>();
         self.world_mut()
-            .resource_mut::<crate::NativeInspectorRegistry>()
+            .resource_mut::<super::inspector_registry::NativeInspectorRegistry>()
             .register(type_id, drawer);
         self
     }
@@ -124,7 +124,7 @@ impl AppEditorExt for App {
         // has already customised this id), then store the entry so the
         // dispatcher + Settings UI can find it.
         self.world_mut()
-            .resource_mut::<renzora::keybindings::KeyBindings>()
+            .resource_mut::<crate::keybindings::KeyBindings>()
             .set_plugin_default(entry.id, entry.default_binding);
         self.world_mut()
             .resource_mut::<ShortcutRegistry>()
@@ -134,12 +134,12 @@ impl AppEditorExt for App {
 
     fn add_post_process<T>(&mut self) -> &mut Self
     where
-        T: renzora_postprocess::PostProcessEffect
+        T: crate::postprocess::PostProcessEffect
             + InspectableComponent
             + bevy::reflect::GetTypeRegistration,
     {
         self.register_type::<T>();
-        self.add_plugins(renzora_postprocess::PostProcessPlugin::<T>::default());
+        self.add_plugins(crate::postprocess::PostProcessPlugin::<T>::default());
         self.register_inspectable::<T>();
         self
     }

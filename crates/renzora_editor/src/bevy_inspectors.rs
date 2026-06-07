@@ -9,15 +9,15 @@ use bevy::light::{
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
 
-use crate::inspector_registry::{
+use crate::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
-use crate::spawn_registry::{ComponentIconEntry, ComponentIconRegistry};
+use crate::{ComponentIconEntry, ComponentIconRegistry};
 use crate::{EntityLabelColor, EntityTag};
 
 /// Register spawn presets for core Bevy entity types.
 pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
-    use crate::spawn_registry::EntityPreset;
+    use crate::EntityPreset;
 
     registry.register(EntityPreset {
         id: "empty_entity",

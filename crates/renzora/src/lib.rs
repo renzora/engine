@@ -67,6 +67,23 @@ pub mod postprocess;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod runtime_warnings;
 
+// ── Editor contract (Operation Merge fold) ───────────────────────────────
+// The thin editor types shared across the binary↔bundle boundary live here in
+// the one shared `renzora` dylib (so `EditorSelection` et al. unify to one
+// `TypeId`). Gated by `editor` so non-editor builds carry no editor surface.
+// The `#[macro_export]` field macros land at the crate root automatically; the
+// `pub use` surfaces the non-macro items (FieldDef, AppEditorExt, registries).
+#[cfg(feature = "editor")]
+mod editor_contract;
+#[cfg(feature = "editor")]
+pub use editor_contract::*;
+
+// Editor derive/attribute macros, re-exported from core so consumers write
+// `renzora::Inspectable` / `renzora::post_process` and the macros they generate
+// emit `renzora::FieldDef` etc. (single shared contract, no `renzora_editor`).
+#[cfg(feature = "editor")]
+pub use renzora_macros::{post_process, Inspectable};
+
 // ── App lifecycle state ──────────────────────────────────────────────────
 //
 // Coordination contract used by both the splash screen UI and the editor

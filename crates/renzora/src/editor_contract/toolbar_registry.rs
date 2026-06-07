@@ -88,7 +88,7 @@ impl ToolEntry {
 }
 
 /// Resource holding every registered tool. Built-in tools are populated by
-/// [`crate::RenzoraEditorPlugin`]; plugins add more via `App::register_tool()`.
+/// `RenzoraEditorPlugin`; plugins add more via `App::register_tool()`.
 #[derive(Resource, Default, Clone)]
 pub struct ToolbarRegistry {
     entries: Vec<ToolEntry>,
