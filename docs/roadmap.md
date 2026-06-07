@@ -578,7 +578,6 @@
 - Add unit tests for renzora_animation (state machine transitions, blend trees, tween easing)
 - Add unit tests for renzora_physics (Avian backend, character controller, collision shapes)
 - Add unit tests for renzora_network (protocol, messages, prediction, client/server setup)
-- Add unit tests for renzora_gauges (attribute modifiers, expression evaluation)
 
 ## Unit Tests — World Systems
 - Add unit tests for renzora_terrain (heightmap, splatmap, brush operations, undo stack)

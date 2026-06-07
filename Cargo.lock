@@ -1411,18 +1411,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_gauge"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d438d3b3064a7f798d25bdc87e7dba61e8f6b4d5edef16b2e3351dea847a7a80"
-dependencies = [
- "bevy 0.18.0",
- "bevy_gauge_macros",
- "inventory",
- "lasso",
-]
-
-[[package]]
 name = "bevy_gauge_macros"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9387,8 +9375,6 @@ dependencies = [
  "renzora_game_ui",
  "renzora_game_ui_editor",
  "renzora_gamepad",
- "renzora_gauges",
- "renzora_gauges_editor",
  "renzora_gizmo",
  "renzora_grid",
  "renzora_hanabi",
@@ -9667,25 +9653,6 @@ dependencies = [
  "bevy 0.18.0",
  "renzora",
  "renzora_ember",
-]
-
-[[package]]
-name = "renzora_gauges"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "bevy_gauge 0.4.5",
- "renzora",
-]
-
-[[package]]
-name = "renzora_gauges_editor"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "renzora",
- "renzora_ember",
- "renzora_gauges",
 ]
 
 [[package]]
@@ -10524,7 +10491,6 @@ dependencies = [
  "renzora_engine",
  "renzora_environment_map",
  "renzora_game_ui",
- "renzora_gauges",
  "renzora_globals",
  "renzora_hanabi",
  "renzora_hui",

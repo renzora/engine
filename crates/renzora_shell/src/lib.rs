@@ -322,7 +322,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("terrain_tools", "Terrain", "mountains", "Terrain"),
     ("foliage_painting", "Foliage", "tree", "Terrain"),
     ("navmesh", "Navmesh", "path", "Navigation"),
-    ("gauges", "Gauges", "gauge", "Debug"),
     // Input
     ("gamepad", "Gamepad", "game-controller", "Input"),
     // Debug / profiling
