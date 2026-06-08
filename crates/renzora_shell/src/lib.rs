@@ -76,6 +76,7 @@ fn theme_bridge(
     project: Option<Res<renzora::CurrentProject>>,
     mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
+    mut last_themes: Local<Option<Vec<String>>>,
     roots: Query<Entity, With<ShellRoot>>,
     mut dirty: ResMut<DockDirty>,
     mut commands: Commands,
@@ -87,6 +88,18 @@ fn theme_bridge(
         *last_pal = Some(pal);
     }
 
+    // The status-bar theme dropup is built once (when the chrome spawns) from a
+    // snapshot of `available_themes`. The chrome can spawn *before* the project's
+    // `themes/*.toml` are scanned (fonts may load during Splash/Loading, while the
+    // scan only runs on `OnEnter(Editor)`), so that snapshot can be the bare
+    // Dark/Light built-ins. When the list later changes, rebuild the chrome so the
+    // dropup re-spawns with the full set. (Guarded to a real change so it doesn't
+    // churn.)
+    let themes_changed = last_themes.as_deref().is_some_and(|t| t != tm.available_themes.as_slice());
+    if last_themes.as_deref() != Some(tm.available_themes.as_slice()) {
+        *last_themes = Some(tm.available_themes.clone());
+    }
+
     let first = last_name.is_none();
     let switched = last_name.as_deref().is_some_and(|n| n != tm.active_theme_name);
     if first || switched {
@@ -95,12 +108,16 @@ fn theme_bridge(
         // cascaded with the active theme file's per-widget style sections.
         let theme = build_ember_theme(project.as_deref(), &tm.active_theme_name);
         commands.insert_resource(theme);
-        if switched {
-            for e in &roots {
-                commands.entity(e).try_despawn();
-            }
-            dirty.0 = true;
+    }
+    // A theme switch rebuilds for the new palette; a theme-list change rebuilds the
+    // (already-built) chrome so the dropup re-spawns with the full set. If the
+    // chrome isn't up yet, the list change needs no rebuild — `manage_shell_root`
+    // will spawn it fresh from the current list.
+    if switched || (themes_changed && !roots.is_empty()) {
+        for e in &roots {
+            commands.entity(e).try_despawn();
         }
+        dirty.0 = true;
     }
 }
 
@@ -1692,13 +1709,22 @@ fn apply_workspace(index: usize, layouts: &mut ShellLayouts, dock: &mut Dock, di
 
 /// `+` → add an "Untitled Scene" document and focus it.
 fn doc_add_click(
+    mut commands: Commands,
     q: Query<&Interaction, (With<DocAddBtn>, Changed<Interaction>)>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
 ) {
     let Some(mut state) = state else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
         let idx = state.add_tab("Untitled Scene".into(), None);
-        state.activate_tab(idx);
+        // Cache the leaving scene + load the new (empty) tab's scene. The new
+        // tab has no buffer, so `handle_tab_switch` resets to a fresh empty
+        // scene — what "New Scene" should show, instead of the current scene.
+        if let Some((old_id, new_id)) = state.activate_tab(idx) {
+            commands.insert_resource(renzora::TabSwitchRequest {
+                old_tab_id: old_id,
+                new_tab_id: new_id,
+            });
+        }
     }
 }
 
@@ -1733,6 +1759,7 @@ fn sync_workspace_to_active_doc(
 }
 
 fn doc_tab_click(
+    mut commands: Commands,
     q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     mut layouts: ResMut<ShellLayouts>,
@@ -1747,7 +1774,17 @@ fn doc_tab_click(
         let Some(idx) = state.tabs.iter().position(|t| t.id == click.0) else {
             continue;
         };
-        state.activate_tab(idx);
+        // Activate the tab AND swap the scene/asset content it owns. Without
+        // the `TabSwitchRequest`, clicking a tab only switched the dock layout
+        // (a no-op for scene→scene) and the viewport kept the old scene —
+        // `handle_tab_switch` is what caches the leaving tab + restores this
+        // tab's buffered scene.
+        if let Some((old_id, new_id)) = state.activate_tab(idx) {
+            commands.insert_resource(renzora::TabSwitchRequest {
+                old_tab_id: old_id,
+                new_tab_id: new_id,
+            });
+        }
         if let Some(name) = state.tabs[idx].kind.layout_name() {
             if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
                 apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);

@@ -127,9 +127,11 @@ fn snap(v: f32, grid: f32) -> f32 {
 }
 
 fn set_node_pos(world: &mut World, entity: Entity, nx: f32, ny: f32, rw: f32, rh: f32) {
-    if renzora_game_ui::spawn::is_flex_child(world, entity) {
-        return;
-    }
+    // Body-drag always repositions the widget. If it was a flex child, setting
+    // `position_type = Absolute` (below) pops it out of its parent's auto-layout
+    // to the position the user dragged to — the conventional "drag to move freely
+    // overrides auto-layout" behavior. Previously this early-returned for flex
+    // children, so translate silently no-op'd while resize/rotate kept working.
     if let Ok(mut em) = world.get_entity_mut(entity) {
         if let Some(mut node) = em.get_mut::<Node>() {
             node.left = Val::Percent(nx / rw * 100.0);

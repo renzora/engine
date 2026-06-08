@@ -61,6 +61,8 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             },
             BackgroundColor(Color::srgb(0.08, 0.08, 0.10)),
             RelativeCursorPosition::default(),
+            Interaction::default(),
+            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Crosshair),
             NativeViewport(index),
             Name::new("native-viewport"),
         ))

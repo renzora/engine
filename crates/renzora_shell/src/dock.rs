@@ -229,7 +229,6 @@ pub fn scene_layout() -> DockTree {
                 "mixer",
                 "sequencer",
                 "timeline",
-                "record",
             ]),
             0.72,
         ),
