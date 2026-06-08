@@ -26,6 +26,11 @@ pub(crate) struct ChartPlugin;
 
 impl Plugin for ChartPlugin {
     fn build(&self, app: &mut App) {
+        // Idempotent — both `WidgetsPlugin` and the markup `vector::plugin` add
+        // it; re-adding the same `UiMaterialPlugin` panics (see `GaugePlugin`).
+        if app.is_plugin_added::<UiMaterialPlugin<ChartMaterial>>() {
+            return;
+        }
         bevy::asset::embedded_asset!(app, "chart.wgsl");
         app.add_plugins(UiMaterialPlugin::<ChartMaterial>::default());
         app.add_systems(Update, (chart_attach, chart_sync));
@@ -70,6 +75,23 @@ impl ChartData {
             color: rgb(accent()),
             target: None,
         }
+    }
+
+    /// A fixed-range series with a caller-chosen color — used by the markup
+    /// `vector="line"` bridge.
+    pub(crate) fn ranged(values: Vec<f32>, min: f32, max: f32, color: Color) -> Self {
+        Self {
+            values,
+            min: Some(min),
+            max: Some(max),
+            color,
+            target: None,
+        }
+    }
+
+    /// Replace the samples in place (for the live markup `vector="line"` sync).
+    pub(crate) fn set_values(&mut self, values: Vec<f32>) {
+        self.values = values;
     }
 }
 

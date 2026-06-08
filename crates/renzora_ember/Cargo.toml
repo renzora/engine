@@ -17,11 +17,6 @@ renzora = { path = "../renzora", default-features = false }
 bevy_hui = { path = "../bevy_hui" }
 renzora_game_ui = { path = "../renzora_game_ui" }
 renzora_scripting = { path = "../renzora_scripting" }
-# Vector-graphics markup widgets (gauges/charts/waveforms). TEMPORARY: being
-# replaced by ember's own WGSL widgets; dropped once the vector= markup bridge
-# lands (Stage 2 of the merge).
-bevy_vello = { version = "0.13", default-features = false, features = ["text"] }
-skrifa = "0.40"
 
 [dev-dependencies]
 tempfile = "3"

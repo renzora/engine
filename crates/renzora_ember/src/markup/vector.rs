@@ -1,69 +1,52 @@
-//! `vector="..."` — **composable** vector-graphics primitives drawn with
-//! [vello](https://docs.rs/bevy_vello) into a [`UiVelloScene`] that bevy_ui lays
-//! out and positions like any other element.
+//! `vector="..."` — vector-graphics widgets for markup, rendered with ember's
+//! own WGSL [`UiMaterial`] widgets (gauge / chart / waveform) + `bevy_text`.
 //!
-//! These are the low-level building blocks; full widgets (speedometer, gauges,
-//! charts) are assembled from them in markup component templates under
-//! `assets/ui/components/` and reused via `template="..."`. Overlay several
-//! absolutely-positioned primitives in one box to compose a dial.
+//! These were originally drawn with an external vector-graphics crate; Stage 2
+//! of the `renzora_hui` → `renzora_ember` merge re-points them onto ember's
+//! existing, proven widget shaders so that heavy dependency can be dropped.
 //!
 //! ## Primitives (`vector=`)
-//! Radial (share `start`/`sweep` in degrees, `inset` px from the edge — set a
-//! larger `inset` to nest a layer further in):
-//! - `arc`    — stroked arc track + value fill (`value`/`min`/`max`).
-//! - `ticks`  — `count`+1 radial tick marks (`len` px long).
-//! - `labels` — `count`+1 numeric labels around the arc (`min`..`max`, `size`).
-//! - `needle` — a pointer to `value`.
+//! Radial (share `start`/`sweep` in degrees, `inset` px from the edge):
+//! - `arc`    — stroked arc track + value fill (`value`/`min`/`max`), drawn with
+//!   [`ArcMaterial`]. Optional centred `readout` text.
+//! - `speedometer` — a composite dial: arc + numeric labels + needle + centre
+//!   readout, assembled from an [`ArcMaterial`] node and `bevy_text` children.
 //!
 //! Cartesian series (`data="0.2,0.5,..."`, literal or a `{{ path }}` binding to
 //! a comma string):
-//! - `bars` · `line` · `waveform`.
+//! - `bars`     — bevy_ui rectangles (one per datum).
+//! - `line`     — [`ChartMaterial`].
+//! - `waveform` — [`WaveMaterial`].
 //!
 //! Common attrs: `color`, `track`, `thickness`, `start` (deg, def 135),
-//! `sweep` (deg, def 270), `inset` (px, def 2), `len` (px), `count`, `size`,
-//! `min`/`max`. Radial widgets centre on the node; `start=135 sweep=270` is a
-//! bottom-gap dial, `sweep=360` a full ring.
+//! `sweep` (deg, def 270), `inset` (px, def 2), `count`, `min`/`max`,
+//! `readout`, `unit`.
 //!
 //! ## How it renders
-//! Drawing is in the node's **logical** pixel space (origin top-left, y-down).
-//! A managed `Camera2d` + `VelloView` renders the scenes into an offscreen image
-//! that a fullscreen `ImageNode` composites into the UI (see
-//! [`manage_vello_overlay`]) — works on any target (window or render-to-texture).
+//! The loader stamps a [`VectorSpec`] on the node. Attach systems then add the
+//! right ember material / children; sync systems re-resolve the `{{ }}`
+//! bindings each frame and update the material params / rebuilt children.
 
-use bevy::camera::visibility::RenderLayers;
-use bevy::camera::{ClearColorConfig, RenderTarget, Viewport};
+use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::widget::NodeImageMode;
-use bevy::ui::{ComputedNode, FocusPolicy, GlobalZIndex};
-use bevy_vello::prelude::*;
-use renzora_game_ui::UiCanvas;
-use bevy_vello::vello::kurbo::{Affine, Arc, BezPath, Circle, Point, Rect, Stroke};
-use bevy_vello::vello::peniko::{Blob, FontData};
-use bevy_vello::vello::{peniko, Glyph, Scene};
-use skrifa::instance::{LocationRef, Size as FontSize};
-use skrifa::{FontRef, MetadataProvider};
+use bevy::ui_render::prelude::MaterialNode;
 
-/// OpenSans, embedded for in-scene text (dial number labels).
-const FONT_BYTES: &[u8] = include_bytes!("../../embedded/OpenSans-Regular.ttf");
+use crate::font::{ui_font, EmberFonts};
+use crate::widgets::{
+    make_arc_params, ArcMaterial, ChartData, ChartPlugin, GaugePlugin, WaveData, WaveformPlugin,
+};
 
-/// Dedicated render layer for the vello canvas + UI vector scenes, isolating
-/// the vello camera so it draws only the vello canvas (not stray sprites).
-/// Engine layers in use: 0/1 (world+editor), 31 (viewport blit) — 5 is free.
-pub const VECTOR_RENDER_LAYER: usize = 5;
+/// 32-sample cap shared by the chart/wave shaders.
+const MAX_SAMPLES: usize = 32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum VectorKind {
     Arc,
-    Ticks,
-    Labels,
-    Needle,
     Bars,
     Line,
     Wave,
-    /// Full dial drawn as ONE node: arc + ticks + labels + needle + centre
-    /// readout. Composing these as separate absolutely-positioned overlay
-    /// nodes is unreliable in taffy (childless vello nodes collapse), so the
-    /// whole widget is a single sized node instead.
+    /// Full dial drawn as ONE node: arc + numeric labels + needle + centre
+    /// readout, assembled as `bevy_text`/rect children over an arc material.
     Speedometer,
 }
 
@@ -71,9 +54,6 @@ impl VectorKind {
     fn parse(s: &str) -> Option<Self> {
         Some(match s.trim().to_ascii_lowercase().as_str() {
             "arc" | "gauge" | "ring" => Self::Arc,
-            "ticks" | "scale" => Self::Ticks,
-            "labels" | "arclabels" | "numbers" => Self::Labels,
-            "needle" | "pointer" => Self::Needle,
             "bars" | "bar" => Self::Bars,
             "line" | "chart" => Self::Line,
             "wave" | "waveform" => Self::Wave,
@@ -90,14 +70,14 @@ impl VectorKind {
     }
 }
 
-/// Stamped from `vector="..."`; the [`update_vectors`] system rebuilds this
-/// element's `UiVelloScene` from it each frame.
+/// Stamped from `vector="..."`; the attach/sync systems below render this
+/// element with the matching ember material + children.
 #[derive(Component, Clone)]
 pub struct VectorSpec {
     pub kind: VectorKind,
     /// Data-source entity for `{{ }}` (the binding host).
     pub host: Entity,
-    /// Scalar value: a literal number or a `{{ path }}` binding (arc/needle).
+    /// Scalar value: a literal number or a `{{ path }}` binding (arc/dial).
     pub value: String,
     pub min: f32,
     pub max: f32,
@@ -174,49 +154,16 @@ pub fn spec_from_defs(
     })
 }
 
-/// Embedded font, parsed once for in-scene label text.
-#[derive(Resource)]
-pub struct VectorFont(FontData);
+// ── Binding / value helpers (unchanged parsing surface) ──────────────────────
 
-impl FromWorld for VectorFont {
-    fn from_world(_: &mut World) -> Self {
-        VectorFont(FontData::new(Blob::from(FONT_BYTES.to_vec()), 0))
-    }
-}
+const DEG: f32 = std::f32::consts::PI / 180.0;
 
-// ── Drawing ──────────────────────────────────────────────────────────────
-
-fn pen(c: Color) -> peniko::Color {
-    let s = c.to_srgba();
-    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    peniko::Color::from_rgba8(q(s.red), q(s.green), q(s.blue), q(s.alpha))
-}
-
-fn frac(v: f32, spec: &VectorSpec) -> f64 {
+fn frac(v: f32, spec: &VectorSpec) -> f32 {
     let d = spec.max - spec.min;
     if d.abs() < f32::EPSILON {
         return 0.0;
     }
-    (((v - spec.min) / d).clamp(0.0, 1.0)) as f64
-}
-
-const DEG: f64 = std::f64::consts::PI / 180.0;
-
-/// Resolve a length that's a fraction of the half-extent when ≤ 1, else px.
-/// Lets component templates stay size-independent (`inset="0.25"`).
-fn px_or_frac(v: f32, half: f64) -> f64 {
-    if v <= 1.0 {
-        v as f64 * half
-    } else {
-        v as f64
-    }
-}
-
-/// Shared radial geometry: centre + outer radius (after `inset`).
-fn geom(w: f64, h: f64, spec: &VectorSpec) -> (f64, f64, f64) {
-    let half = w.min(h) / 2.0;
-    let r = (half - px_or_frac(spec.inset, half)).max(1.0);
-    (w / 2.0, h / 2.0, r)
+    ((v - spec.min) / d).clamp(0.0, 1.0)
 }
 
 /// Resolve `value` (literal or `{{ path }}`) against the host's live ECS state.
@@ -229,8 +176,7 @@ fn resolve_scalar(world: &mut World, host: Entity, value: &str) -> Option<f32> {
     }
 }
 
-/// Resolve `readout` text — a literal (`FUEL`) or a `{{ path }}` binding
-/// (`{{ Car.speed }}` → `"87"`) — to the string to draw in the dial centre.
+/// Resolve `readout` text — a literal (`FUEL`) or a `{{ path }}` binding.
 fn resolve_text(world: &mut World, host: Entity, raw: &str) -> String {
     let t = raw.trim();
     if let Some(inner) = t.strip_prefix("{{").and_then(|s| s.strip_suffix("}}")) {
@@ -253,50 +199,6 @@ fn resolve_series(world: &mut World, host: Entity, raw: &str) -> Vec<f32> {
     text.split(',').filter_map(|t| t.trim().parse::<f32>().ok()).collect()
 }
 
-/// Horizontal extent of `text` at `size`, in logical px.
-fn text_width(font: &FontRef, text: &str, size: f32) -> f32 {
-    let metrics = font.glyph_metrics(FontSize::new(size), LocationRef::default());
-    let charmap = font.charmap();
-    text.chars()
-        .map(|c| charmap.map(c).and_then(|g| metrics.advance_width(g)).unwrap_or(0.0))
-        .sum()
-}
-
-/// Draw `text` with baseline-left at `(x, y)`. Maps chars → glyphs via skrifa.
-fn draw_text(scene: &mut Scene, font: &FontData, text: &str, x: f64, y: f64, size: f32, color: Color) {
-    let Ok(font_ref) = FontRef::new(FONT_BYTES) else {
-        return;
-    };
-    let metrics = font_ref.glyph_metrics(FontSize::new(size), LocationRef::default());
-    let charmap = font_ref.charmap();
-    let mut pen_x = x as f32;
-    let by = y as f32;
-    let glyphs: Vec<Glyph> = text
-        .chars()
-        .filter_map(|c| {
-            let gid = charmap.map(c)?;
-            let g = Glyph { id: gid.to_u32(), x: pen_x, y: by };
-            pen_x += metrics.advance_width(gid).unwrap_or(0.0);
-            Some(g)
-        })
-        .collect();
-    scene
-        .draw_glyphs(font)
-        .font_size(size)
-        .brush(pen(color))
-        .transform(Affine::IDENTITY)
-        .draw(peniko::Fill::NonZero, glyphs.into_iter());
-}
-
-/// Draw `text` horizontally centred on `cx`, vertically centred on `cy`.
-fn draw_text_centered(scene: &mut Scene, font: &FontData, text: &str, cx: f64, cy: f64, size: f32, color: Color) {
-    let Ok(font_ref) = FontRef::new(FONT_BYTES) else {
-        return;
-    };
-    let w = text_width(&font_ref, text, size) as f64;
-    draw_text(scene, font, text, cx - w / 2.0, cy + size as f64 * 0.34, size, color);
-}
-
 /// Format a tick value: integer when whole, else one decimal.
 fn fmt_num(v: f32) -> String {
     if (v.round() - v).abs() < 0.05 {
@@ -306,481 +208,448 @@ fn fmt_num(v: f32) -> String {
     }
 }
 
-/// Stroked arc: a `track` band over the full sweep, the `color` band up to `f`.
-/// A full sweep (≥360°) draws a clean circle for the track.
-fn draw_arc(scene: &mut Scene, w: f64, h: f64, f: f64, spec: &VectorSpec) {
-    let (cx, cy, r0) = geom(w, h, spec);
-    let r = (r0 - spec.thickness as f64 / 2.0).max(1.0);
-    // Filled dial face behind the ring (skipped when transparent).
-    if spec.fill.alpha() > 0.0 {
-        scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, pen(spec.fill), None,
-            &Circle::new((cx, cy), r0));
-    }
-    let stroke = Stroke::new(spec.thickness as f64);
-    let start = spec.start as f64 * DEG;
-    let sweep = spec.sweep as f64 * DEG;
-    if spec.sweep >= 359.5 {
-        scene.stroke(&stroke, Affine::IDENTITY, pen(spec.track), None, &Circle::new((cx, cy), r));
-    } else {
-        scene.stroke(&stroke, Affine::IDENTITY, pen(spec.track), None,
-            &Arc::new((cx, cy), (r, r), start, sweep, 0.0));
-    }
-    if f > 0.0 {
-        scene.stroke(&stroke, Affine::IDENTITY, pen(spec.color), None,
-            &Arc::new((cx, cy), (r, r), start, sweep * f, 0.0));
-    }
-}
+// ── Attach: stamp the right ember widget/children for each VectorKind ─────────
 
-/// `count`+1 radial tick marks, `len` px long, just inside the radius.
-fn draw_ticks(scene: &mut Scene, w: f64, h: f64, spec: &VectorSpec) {
-    let (cx, cy, r) = geom(w, h, spec);
-    let inner = (r - px_or_frac(spec.len, w.min(h) / 2.0)).max(0.0);
-    let stroke = Stroke::new(spec.thickness.max(1.0) as f64);
-    let start = spec.start as f64 * DEG;
-    let sweep = spec.sweep as f64 * DEG;
-    for i in 0..=spec.count {
-        let a = start + sweep * (i as f64 / spec.count as f64);
-        let (ca, sa) = (a.cos(), a.sin());
-        let mut p = BezPath::new();
-        p.move_to((cx + inner * ca, cy + inner * sa));
-        p.line_to((cx + r * ca, cy + r * sa));
-        scene.stroke(&stroke, Affine::IDENTITY, pen(spec.color), None, &p);
-    }
-}
-
-/// `count`+1 numeric labels (`min`..`max`) around the arc at the radius.
-fn draw_labels(scene: &mut Scene, font: &FontData, w: f64, h: f64, spec: &VectorSpec) {
-    let (cx, cy, r) = geom(w, h, spec);
-    let size = if spec.size > 0.0 { spec.size } else { (r as f32 * 0.13).clamp(8.0, 22.0) };
-    let start = spec.start as f64 * DEG;
-    let sweep = spec.sweep as f64 * DEG;
-    for i in 0..=spec.count {
-        let t = i as f64 / spec.count as f64;
-        let a = start + sweep * t;
-        let v = spec.min + (spec.max - spec.min) * t as f32;
-        draw_text_centered(scene, font, &fmt_num(v), cx + r * a.cos(), cy + r * a.sin(), size, spec.color);
-    }
-}
-
-/// A tapered needle from the centre to `value`, plus a hub.
-fn draw_needle(scene: &mut Scene, w: f64, h: f64, f: f64, spec: &VectorSpec) {
-    let (cx, cy, r) = geom(w, h, spec);
-    let a = spec.start as f64 * DEG + spec.sweep as f64 * DEG * f;
-    let (nc, ns) = (a.cos(), a.sin());
-    let half = std::f64::consts::FRAC_PI_2;
-    let (pc, ps) = ((a + half).cos(), (a + half).sin());
-    let base = spec.thickness as f64 * 0.6 + 3.0;
-    let mut needle = BezPath::new();
-    needle.move_to((cx + r * nc, cy + r * ns));
-    needle.line_to((cx + base * pc, cy + base * ps));
-    needle.line_to((cx - base * pc, cy - base * ps));
-    needle.close_path();
-    scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, pen(spec.color), None, &needle);
-    scene.fill(peniko::Fill::NonZero, Affine::IDENTITY,
-        pen(Color::srgb(0.92, 0.94, 0.98)), None, &Circle::new((cx, cy), base * 0.85));
-}
-
-/// Centre readout: a big value line, optional small unit line below it.
-/// `dy` nudges the block down from centre (px) so it sits in a dial's gap.
-#[allow(clippy::too_many_arguments)]
-fn draw_readout(
-    scene: &mut Scene,
-    font: &FontData,
-    w: f64,
-    h: f64,
-    value: &str,
-    unit: &str,
-    readsize: f32,
-    dy: f64,
-    spec: &VectorSpec,
-) {
-    let half = w.min(h) / 2.0;
-    let size = if readsize > 0.0 { readsize } else { (half as f32 * 0.30).clamp(12.0, 48.0) };
-    let cx = w / 2.0;
-    let cy = h / 2.0 + dy;
-    if !value.is_empty() {
-        draw_text_centered(scene, font, value, cx, cy, size, Color::WHITE);
-    }
-    if !unit.is_empty() {
-        let usize = (size * 0.34).clamp(9.0, 16.0);
-        draw_text_centered(scene, font, unit, cx, cy + size as f64 * 0.85, usize, spec.tickcolor);
-    }
-}
-
-/// Full dial composited into ONE scene: arc track + value fill, tick marks,
-/// numeric labels, needle, and the centre readout. Drawn by cloning `spec`
-/// with a per-layer `inset`/`thickness`/`color`, reusing the primitive draws.
-fn draw_speedometer(
-    scene: &mut Scene,
-    font: &FontData,
-    w: f64,
-    h: f64,
-    value: f32,
-    readout: &str,
-    spec: &VectorSpec,
-) {
-    let f = frac(value, spec);
-    // Arc track + fill (outermost).
-    {
-        let mut s = spec.clone();
-        s.inset = 0.05;
-        draw_arc(scene, w, h, f, &s);
-    }
-    // Tick marks, just inside the arc.
-    {
-        let mut s = spec.clone();
-        s.inset = 0.27;
-        s.len = 0.05;
-        s.thickness = 2.0;
-        s.color = spec.tickcolor;
-        draw_ticks(scene, w, h, &s);
-    }
-    // Numeric labels, further in.
-    {
-        let mut s = spec.clone();
-        s.inset = 0.42;
-        s.color = spec.tickcolor;
-        draw_labels(scene, font, w, h, &s);
-    }
-    // Needle from the centre.
-    {
-        let mut s = spec.clone();
-        s.inset = 0.14;
-        draw_needle(scene, w, h, f, &s);
-    }
-    // Centre readout, nudged into the lower bottom-gap of the 270° dial.
-    if !readout.is_empty() {
-        let dy = (w.min(h) / 2.0) * 0.34;
-        draw_readout(scene, font, w, h, readout, &spec.unit, spec.readsize, dy, spec);
-    }
-}
-
-/// Vertical bar chart. Each datum normalised by `min`/`max`.
-fn draw_bars(scene: &mut Scene, w: f64, h: f64, data: &[f32], spec: &VectorSpec) {
-    let n = data.len();
-    if n == 0 {
-        return;
-    }
-    let slot = w / n as f64;
-    let bw = (slot * 0.66).max(1.0);
-    for (i, &v) in data.iter().enumerate() {
-        let bh = (frac(v, spec) * (h - 2.0)).max(0.0);
-        let x = i as f64 * slot + (slot - bw) / 2.0;
-        let rect = Rect::new(x, h - bh, x + bw, h);
-        scene.fill(peniko::Fill::NonZero, Affine::IDENTITY, pen(spec.color), None, &rect);
-    }
-}
-
-/// Line chart through the normalised series.
-fn draw_line(scene: &mut Scene, w: f64, h: f64, data: &[f32], spec: &VectorSpec) {
-    let n = data.len();
-    if n < 2 {
-        return;
-    }
-    let mut path = BezPath::new();
-    let pad = spec.thickness as f64;
-    let pt = |i: usize, v: f32| -> Point {
-        Point::new(
-            i as f64 / (n - 1) as f64 * w,
-            h - pad - frac(v, spec) * (h - 2.0 * pad),
-        )
-    };
-    path.move_to(pt(0, data[0]));
-    for (i, &v) in data.iter().enumerate().skip(1) {
-        path.line_to(pt(i, v));
-    }
-    scene.stroke(&Stroke::new(spec.thickness as f64), Affine::IDENTITY, pen(spec.color), None, &path);
-}
-
-/// Symmetric waveform: a vertical line per sample, mirrored about the centre.
-fn draw_waveform(scene: &mut Scene, w: f64, h: f64, data: &[f32], spec: &VectorSpec) {
-    let n = data.len();
-    if n == 0 {
-        return;
-    }
-    let cy = h / 2.0;
-    let lw = (w / n as f64 * 0.5).clamp(1.0, spec.thickness as f64);
-    let stroke = Stroke::new(lw);
-    for (i, &v) in data.iter().enumerate() {
-        let half = (frac(v, spec) * (cy - 1.0)).max(0.5);
-        let x = (i as f64 + 0.5) / n as f64 * w;
-        let mut path = BezPath::new();
-        path.move_to(Point::new(x, cy - half));
-        path.line_to(Point::new(x, cy + half));
-        scene.stroke(&stroke, Affine::IDENTITY, pen(spec.color), None, &path);
-    }
-}
-
-fn build_scene(world: &mut World, font: &FontData, spec: &VectorSpec, size: Vec2) -> Scene {
-    let mut scene = Scene::new();
-    let (w, h) = (size.x as f64, size.y as f64);
-    if w < 1.0 || h < 1.0 {
-        return scene;
-    }
-    let scalar = |world: &mut World| resolve_scalar(world, spec.host, &spec.value).unwrap_or(spec.min);
-    match spec.kind {
-        VectorKind::Arc => {
-            let v = scalar(world);
-            draw_arc(&mut scene, w, h, frac(v, spec), spec);
-            // Optional centre readout so a gauge/ring needs no overlay node.
-            if let Some(raw) = spec.readout.clone() {
-                let text = resolve_text(world, spec.host, &raw);
-                if !text.is_empty() {
-                    draw_readout(&mut scene, font, w, h, &text, &spec.unit, spec.readsize, 0.0, spec);
-                }
-            }
-        }
-        VectorKind::Speedometer => {
-            let v = scalar(world);
-            let text = spec
-                .readout
-                .clone()
-                .map(|raw| resolve_text(world, spec.host, &raw))
-                .unwrap_or_default();
-            draw_speedometer(&mut scene, font, w, h, v, &text, spec);
-        }
-        VectorKind::Needle => {
-            let v = scalar(world);
-            draw_needle(&mut scene, w, h, frac(v, spec), spec);
-        }
-        VectorKind::Ticks => draw_ticks(&mut scene, w, h, spec),
-        VectorKind::Labels => draw_labels(&mut scene, font, w, h, spec),
-        VectorKind::Bars => {
-            let data = resolve_series(world, spec.host, &spec.data);
-            draw_bars(&mut scene, w, h, &data, spec);
-        }
-        VectorKind::Line => {
-            let data = resolve_series(world, spec.host, &spec.data);
-            draw_line(&mut scene, w, h, &data, spec);
-        }
-        VectorKind::Wave => {
-            let data = resolve_series(world, spec.host, &spec.data);
-            draw_waveform(&mut scene, w, h, &data, spec);
-        }
-    }
-    scene
-}
-
-/// Rebuild every vector element's `UiVelloScene` from its `VectorSpec` and live
-/// bindings. Exclusive so it can reflect bound `{{ }}` values via `read_path`.
-pub fn update_vectors(world: &mut World) {
-    let mut q = world.query::<(Entity, &VectorSpec, &ComputedNode)>();
-    // Draw in *logical* pixels: `ComputedNode::size()` is physical (= logical ×
-    // combined scale factor, where combined = DPI × `UiScale`), and vello's UI
-    // transform scales the scene back up by that same factor and centers using
-    // the physical size. So our scene coords must be logical, else everything
-    // renders at `1/scale` and shifts toward the origin.
-    let snap: Vec<(Entity, VectorSpec, Vec2)> = q
-        .iter(world)
-        .map(|(e, s, n)| (e, s.clone(), n.size() * n.inverse_scale_factor()))
-        .collect();
-    if snap.is_empty() {
-        return;
-    }
-    let font = world.resource::<VectorFont>().0.clone();
-    let mut built: Vec<(Entity, Scene)> = Vec::with_capacity(snap.len());
-    for (e, spec, size) in snap {
-        built.push((e, build_scene(world, &font, &spec, size)));
-    }
-    for (e, scene) in built {
-        if let Some(mut comp) = world.get_mut::<UiVelloScene>(e) {
-            *comp = UiVelloScene::from(scene);
-        }
-    }
-}
-
-// ── Overlay (render-to-image) ──────────────────────────────────────────────
-//
-// bevy_vello renders the UI scenes into its canvas, which a `Camera2d` +
-// `VelloView` then draws to that camera's target. Compositing that camera *over
-// a window* (a 2D overlay on the 3D/UI camera) does not reliably blend onto the
-// swapchain — it only worked when the target was a render-to-texture image
-// (the editor preview). So the vello camera instead renders to its **own
-// transparent image**, and a fullscreen bevy_ui `ImageNode` displays that image.
-// That composites through normal UI rendering on any target (window or image)
-// and is automatically scale-correct: bevy_ui renders the node at physical
-// resolution, 1:1 with the physical-sized overlay image.
-
-/// The managed `Camera2d` + `VelloView` that renders vector scenes into [`VelloOverlay`].
+/// Marker on a node already wired by [`vector_attach`], so it isn't re-built.
 #[derive(Component)]
-pub struct VelloUiCamera;
+struct VectorBuilt;
 
-/// The fullscreen UI image (one per `UiCanvas`) that shows the vello overlay.
+/// Tracks the last-resolved series for bars/line/wave so the sync systems only
+/// rebuild/re-pack when the data actually changes.
+#[derive(Component, Default)]
+struct VectorSeries(Vec<f32>);
+
+/// Marks the centre readout `Text` child of an `arc`/`speedometer` so its value
+/// can be updated each frame without rebuilding the dial.
 #[derive(Component)]
-pub struct VelloOverlayNode;
+struct VectorReadout;
 
-/// Shared render-target image the vello camera draws into, sized to the UI
-/// target's physical pixels.
-#[derive(Resource, Default)]
-pub struct VelloOverlay {
-    image: Handle<Image>,
-    size: UVec2,
+/// Marks the needle node of a `speedometer` (so the sync system can rotate it).
+#[derive(Component)]
+struct VectorNeedle;
+
+/// Convert the spec's `thickness` (px) into the shader's fraction-of-radius.
+/// We don't know the node's pixel radius at attach time, so approximate with a
+/// reasonable default node radius; the arc shader clamps internally.
+fn thick_fraction(spec: &VectorSpec) -> f32 {
+    // The arc shader interprets `params.w` as thickness / radius. The markup
+    // `thickness` is in logical px; assume a ~64px radius dial as the reference
+    // so a 10px ring → ~0.16, matching the original dial look closely enough.
+    (spec.thickness / 64.0).clamp(0.02, 0.95)
 }
 
-fn make_overlay_image(size: UVec2) -> Image {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
-    let mut img = Image::new_fill(
-        Extent3d { width: size.x.max(1), height: size.y.max(1), depth_or_array_layers: 1 },
-        TextureDimension::D2,
-        &[0, 0, 0, 0],
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
-    );
-    img.texture_descriptor.usage =
-        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
-    img
-}
-
-fn overlay_image_node(image: Handle<Image>) -> ImageNode {
-    ImageNode {
-        image,
-        image_mode: NodeImageMode::Stretch,
-        ..default()
-    }
-}
-
-/// Maintain the vello overlay: keep a transparent render-target image sized to
-/// the UI target, point the vello camera at it, and ensure each `UiCanvas`
-/// displays it via a fullscreen, click-through `ImageNode`.
-#[allow(clippy::too_many_arguments)]
-pub fn manage_vello_overlay(
-    mut commands: Commands,
-    specs: Query<(), With<VectorSpec>>,
-    ui_targets: Query<&bevy::ui::UiTargetCamera>,
-    cameras: Query<&Camera, Without<VelloUiCamera>>,
-    world_cams: Query<&Camera, (With<Camera3d>, Without<VelloUiCamera>)>,
-    mut overlay: ResMut<VelloOverlay>,
-    mut images: ResMut<Assets<Image>>,
-    vello_cam: Query<Entity, With<VelloUiCamera>>,
-    canvases: Query<Entity, With<UiCanvas>>,
-    overlay_nodes: Query<(Entity, &ChildOf), With<VelloOverlayNode>>,
-) {
-    if specs.is_empty() {
-        return;
-    }
-
-    // Physical size of the camera the UI renders to, so scene positions (in the
-    // UI's physical px) land 1:1 in the overlay image.
-    let size = ui_targets
-        .iter()
-        .next()
-        .and_then(|tc| cameras.get(tc.entity()).ok())
-        .and_then(|c| c.physical_target_size())
-        .or_else(|| {
-            world_cams
-                .iter()
-                .filter(|c| c.is_active)
-                .find_map(|c| c.physical_target_size())
-        });
-    let Some(size) = size else {
-        return;
-    };
-    if size.x == 0 || size.y == 0 {
-        return;
-    }
-
-    // (Re)create the image when the target size changes.
-    let resized = overlay.size != size || images.get(&overlay.image).is_none();
-    if resized {
-        overlay.image = images.add(make_overlay_image(size));
-        overlay.size = size;
-    }
-
-    let viewport = Some(Viewport {
-        physical_position: UVec2::ZERO,
-        physical_size: size,
-        ..default()
-    });
-
-    // The vello camera renders the scenes into the overlay image (transparent).
-    if let Ok(e) = vello_cam.single() {
-        if resized {
-            commands.entity(e).insert((
-                RenderTarget::Image(overlay.image.clone().into()),
-                Camera {
-                    order: -100,
-                    clear_color: ClearColorConfig::Custom(Color::NONE),
-                    viewport: viewport.clone(),
-                    ..default()
-                },
-            ));
-        }
-    } else {
-        commands.spawn((
-            Camera2d,
-            VelloView,
-            Camera {
-                order: -100,
-                clear_color: ClearColorConfig::Custom(Color::NONE),
-                viewport,
+/// Centre `readout` text child (big value, white), reused by arc + speedometer.
+fn readout_child(commands: &mut Commands, fonts: &EmberFonts, spec: &VectorSpec, text: &str) -> Entity {
+    let size = if spec.readsize > 0.0 { spec.readsize } else { 22.0 };
+    let block = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
                 ..default()
             },
-            RenderTarget::Image(overlay.image.clone().into()),
-            Msaa::Off,
-            RenderLayers::layer(VECTOR_RENDER_LAYER),
-            VelloUiCamera,
-            renzora::HideInHierarchy,
-            Name::new("Vello UI Camera"),
-        ));
+            Pickable::IGNORE,
+            Name::new("vector-readout"),
+        ))
+        .id();
+    let value = commands
+        .spawn((
+            Text::new(text.to_string()),
+            ui_font(&fonts.ui, size),
+            TextColor(Color::WHITE),
+            VectorReadout,
+        ))
+        .id();
+    commands.entity(block).add_child(value);
+    if !spec.unit.is_empty() {
+        let usize = (size * 0.45).clamp(9.0, 16.0);
+        let unit = commands
+            .spawn((
+                Text::new(spec.unit.clone()),
+                ui_font(&fonts.ui, usize),
+                TextColor(spec.tickcolor),
+            ))
+            .id();
+        commands.entity(block).add_child(unit);
     }
+    block
+}
 
-    // Ensure every canvas shows the overlay; refresh the handle on resize.
-    let mut covered = bevy::platform::collections::HashSet::new();
-    for (node, child_of) in &overlay_nodes {
-        covered.insert(child_of.parent());
-        if resized {
-            commands.entity(node).insert(overlay_image_node(overlay.image.clone()));
-        }
-    }
-    for canvas in &canvases {
-        if covered.contains(&canvas) {
-            continue;
-        }
-        let node = commands
+/// Place `count`+1 numeric labels (`min`..`max`) around the dial arc as
+/// absolutely-positioned `bevy_text` children (positions computed with cos/sin
+/// in node-local %).
+fn speedometer_labels(commands: &mut Commands, parent: Entity, fonts: &EmberFonts, spec: &VectorSpec) {
+    let size = if spec.size > 0.0 { spec.size } else { 11.0 };
+    // Labels sit on a circle of radius `rad` (fraction of half-extent) from the
+    // node centre; convert to left/top percentages.
+    let rad = 0.40_f32;
+    for i in 0..=spec.count {
+        let t = i as f32 / spec.count as f32;
+        let a = (spec.start + spec.sweep * t) * DEG;
+        let v = spec.min + (spec.max - spec.min) * t;
+        // Node-local fractional position (0..1), centre at 0.5.
+        let fx = 0.5 + rad * a.cos();
+        let fy = 0.5 + rad * a.sin();
+        let label = commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
+                    left: Val::Percent(fx * 100.0),
+                    top: Val::Percent(fy * 100.0),
+                    // Nudge so the glyph centres on the point.
+                    margin: UiRect::new(Val::Px(-8.0), Val::ZERO, Val::Px(-7.0), Val::ZERO),
                     ..default()
                 },
-                overlay_image_node(overlay.image.clone()),
-                GlobalZIndex(i32::MAX - 100),
-                FocusPolicy::Pass,
-                RenderLayers::default(),
-                VelloOverlayNode,
-                renzora::HideInHierarchy,
-                Name::new("Vello Overlay"),
+                Text::new(fmt_num(v)),
+                ui_font(&fonts.ui, size),
+                TextColor(spec.tickcolor),
+                Pickable::IGNORE,
             ))
             .id();
-        commands.entity(canvas).add_child(node);
+        commands.entity(parent).add_child(label);
     }
 }
 
-/// Hide bevy_vello's internal canvas mesh from the editor hierarchy panel.
-fn hide_vello_internals(
-    mut commands: Commands,
-    q: Query<(Entity, &Name), Without<renzora::HideInHierarchy>>,
-) {
-    for (e, name) in &q {
-        if name.as_str() == "Vello Canvas" {
-            commands.entity(e).insert(renzora::HideInHierarchy);
+/// Node-local fractional (left, top) of the value marker on the dial arc.
+/// Centre is (0.5, 0.5); the marker rides a circle of radius `NEEDLE_RAD`.
+const NEEDLE_RAD: f32 = 0.30;
+
+fn needle_pos(spec: &VectorSpec, f: f32) -> (f32, f32) {
+    let a = (spec.start + spec.sweep * f) * DEG;
+    (0.5 + NEEDLE_RAD * a.cos(), 0.5 + NEEDLE_RAD * a.sin())
+}
+
+/// A small value marker (a coloured dot) placed on the arc at `value`. Bevy
+/// `UiTransform` only rotates about a node's own centre, so a rotated needle
+/// can't pivot from the dial hub cleanly — a positioned marker is the
+/// lowest-risk, layout-safe indicator. Updated each frame via its `left`/`top`.
+fn speedometer_needle(commands: &mut Commands, parent: Entity, spec: &VectorSpec, f: f32) -> Entity {
+    let (fx, fy) = needle_pos(spec, f);
+    let needle = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(fx * 100.0),
+                top: Val::Percent(fy * 100.0),
+                width: Val::Px(8.0),
+                height: Val::Px(8.0),
+                margin: UiRect::new(Val::Px(-4.0), Val::ZERO, Val::Px(-4.0), Val::ZERO),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(spec.color),
+            VectorNeedle,
+            Pickable::IGNORE,
+            Name::new("vector-needle"),
+        ))
+        .id();
+    commands.entity(parent).add_child(needle);
+    needle
+}
+
+/// Rebuild `bars` rect children sized to the node, one per normalized datum.
+fn build_bars(commands: &mut Commands, node: Entity, spec: &VectorSpec, data: &[f32]) {
+    commands.entity(node).despawn_children();
+    if data.is_empty() {
+        return;
+    }
+    let bars: Vec<Entity> = data
+        .iter()
+        .map(|&v| {
+            let h = (frac(v, spec) * 100.0).max(0.0);
+            commands
+                .spawn((
+                    Node {
+                        flex_grow: 1.0,
+                        min_width: Val::Px(2.0),
+                        height: Val::Percent(h),
+                        ..default()
+                    },
+                    BackgroundColor(spec.color),
+                    Pickable::IGNORE,
+                    Name::new("vector-bar"),
+                ))
+                .id()
+        })
+        .collect();
+    commands.entity(node).insert(Node {
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::FlexEnd,
+        column_gap: Val::Px(2.0),
+        width: Val::Percent(100.0),
+        height: Val::Percent(100.0),
+        ..default()
+    });
+    commands.entity(node).add_children(&bars);
+}
+
+/// Map a spec's data range onto 0..1 waveform amplitudes (the wave shader
+/// expects 0..1). The default wave range is (-1, 1) so |v| maps to the envelope.
+fn wave_amps(spec: &VectorSpec, data: &[f32]) -> Vec<f32> {
+    let mut amps: Vec<f32> = data.iter().map(|&v| frac(v, spec)).collect();
+    if amps.len() > MAX_SAMPLES {
+        debug!("[vector] waveform: {} samples truncated to {MAX_SAMPLES}", amps.len());
+        amps.truncate(MAX_SAMPLES);
+    }
+    amps
+}
+
+/// Attach the matching ember widget to every freshly-stamped `VectorSpec` node.
+/// Exclusive so the initial value/data bindings can be read via `read_path`.
+fn vector_attach(world: &mut World) {
+    let pending: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, (With<VectorSpec>, Without<VectorBuilt>)>();
+        q.iter(world).collect()
+    };
+    if pending.is_empty() {
+        return;
+    }
+    let fonts = world.get_resource::<EmberFonts>().cloned();
+    for e in pending {
+        let Some(spec) = world.get::<VectorSpec>(e).cloned() else {
+            continue;
+        };
+        // Kinds that draw text need `EmberFonts`. Under `WidgetsPlugin`/the
+        // editor it loads a frame or two in; wait for it so labels/readout
+        // aren't permanently dropped. (Plain `arc` w/o readout, bars/line/wave
+        // need no font — build them immediately.)
+        let needs_font = matches!(spec.kind, VectorKind::Speedometer) || spec.readout.is_some();
+        if needs_font && fonts.is_none() {
+            continue;
+        }
+        match spec.kind {
+            VectorKind::Arc => {
+                let v = resolve_scalar(world, spec.host, &spec.value).unwrap_or(spec.min);
+                let mat = make_arc_params(
+                    frac(v, &spec),
+                    spec.start * DEG,
+                    spec.sweep * DEG,
+                    thick_fraction(&spec),
+                    spec.track,
+                    spec.fill_or_track_for_arc(),
+                );
+                let handle = world.resource_mut::<Assets<ArcMaterial>>().add(mat);
+                world.entity_mut(e).insert(MaterialNode(handle));
+                // Optional centre readout child.
+                if let (Some(raw), Some(fonts)) = (spec.readout.clone(), fonts.as_ref()) {
+                    let text = resolve_text(world, spec.host, &raw);
+                    let child = {
+                        let mut commands = world.commands();
+                        readout_child(&mut commands, fonts, &spec, &text)
+                    };
+                    world.flush();
+                    world.entity_mut(e).add_child(child);
+                }
+            }
+            VectorKind::Speedometer => {
+                let v = resolve_scalar(world, spec.host, &spec.value).unwrap_or(spec.min);
+                let f = frac(v, &spec);
+                // Arc material drives the dial face + value sweep.
+                let mat = make_arc_params(
+                    f,
+                    spec.start * DEG,
+                    spec.sweep * DEG,
+                    thick_fraction(&spec),
+                    spec.track,
+                    spec.color,
+                );
+                let handle = world.resource_mut::<Assets<ArcMaterial>>().add(mat);
+                world.entity_mut(e).insert(MaterialNode(handle));
+                if let Some(fonts) = fonts.as_ref() {
+                    let text = spec
+                        .readout
+                        .clone()
+                        .map(|raw| resolve_text(world, spec.host, &raw))
+                        .unwrap_or_default();
+                    // NOTE: not GPU-verified. The dial composite (numeric
+                    // labels + needle + centre readout) replaces the original
+                    // dial; visual is approximate, not pixel-identical.
+                    let child = {
+                        let mut commands = world.commands();
+                        speedometer_labels(&mut commands, e, fonts, &spec);
+                        speedometer_needle(&mut commands, e, &spec, f);
+                        readout_child(&mut commands, fonts, &spec, &text)
+                    };
+                    world.flush();
+                    world.entity_mut(e).add_child(child);
+                }
+            }
+            VectorKind::Bars => {
+                let data = resolve_series(world, spec.host, &spec.data);
+                {
+                    let mut commands = world.commands();
+                    build_bars(&mut commands, e, &spec, &data);
+                }
+                world.flush();
+                world.entity_mut(e).insert(VectorSeries(data));
+            }
+            VectorKind::Line => {
+                let mut data = resolve_series(world, spec.host, &spec.data);
+                if data.len() > MAX_SAMPLES {
+                    debug!("[vector] line: {} samples truncated to {MAX_SAMPLES}", data.len());
+                    data.truncate(MAX_SAMPLES);
+                }
+                world
+                    .entity_mut(e)
+                    .insert(ChartData::ranged(data.clone(), spec.min, spec.max, spec.color));
+                world.entity_mut(e).insert(VectorSeries(data));
+            }
+            VectorKind::Wave => {
+                let data = resolve_series(world, spec.host, &spec.data);
+                let amps = wave_amps(&spec, &data);
+                world.entity_mut(e).insert(WaveData::new(amps));
+                world.entity_mut(e).insert(VectorSeries(data));
+            }
+        }
+        world.entity_mut(e).insert(VectorBuilt);
+    }
+}
+
+impl VectorSpec {
+    /// An `arc` fills with its `color`; the shader's `fill` slot is the value
+    /// band. (The separate `fill` field is the disc behind the ring, which the
+    /// ember arc shader doesn't support — see the parity note in `plugin`.)
+    fn fill_or_track_for_arc(&self) -> Color {
+        self.color
+    }
+}
+
+// ── Sync: re-resolve bindings each frame & update materials / children ────────
+
+/// Update arc + speedometer dials from their live `{{ value }}` binding: re-pack
+/// the [`ArcMaterial`] value param, the centre readout text, and (dial) needle.
+fn vector_dial_sync(world: &mut World) {
+    let dials: Vec<(Entity, VectorSpec)> = {
+        let mut q = world.query_filtered::<(Entity, &VectorSpec), With<VectorBuilt>>();
+        q.iter(world)
+            .filter(|(_, s)| matches!(s.kind, VectorKind::Arc | VectorKind::Speedometer))
+            .map(|(e, s)| (e, s.clone()))
+            .collect()
+    };
+    for (e, spec) in dials {
+        let v = resolve_scalar(world, spec.host, &spec.value).unwrap_or(spec.min);
+        let f = frac(v, &spec);
+        // Material value param.
+        if let Some(node) = world.get::<MaterialNode<ArcMaterial>>(e).map(|n| n.0.clone()) {
+            if let Some(m) = world.resource_mut::<Assets<ArcMaterial>>().get_mut(&node) {
+                m.params.x = f;
+            }
+        }
+        // Centre readout text (search this dial's descendants for the marker).
+        if let Some(raw) = spec.readout.clone() {
+            let text = resolve_text(world, spec.host, &raw);
+            if let Some(child) = find_readout_child(world, e) {
+                if let Some(mut t) = world.get_mut::<Text>(child) {
+                    if t.0 != text {
+                        t.0 = text;
+                    }
+                }
+            }
+        }
+        // Needle marker position (speedometer only).
+        if matches!(spec.kind, VectorKind::Speedometer) {
+            if let Some(needle) = find_needle_child(world, e) {
+                let (fx, fy) = needle_pos(&spec, f);
+                if let Some(mut node) = world.get_mut::<Node>(needle) {
+                    node.left = Val::Percent(fx * 100.0);
+                    node.top = Val::Percent(fy * 100.0);
+                }
+            }
+        }
+    }
+}
+
+/// Find the `VectorReadout`-marked `Text` descendant of a dial node.
+fn find_readout_child(world: &mut World, root: Entity) -> Option<Entity> {
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        if world.get::<VectorReadout>(e).is_some() {
+            return Some(e);
+        }
+        if let Some(children) = world.get::<Children>(e) {
+            stack.extend(children.iter());
+        }
+    }
+    None
+}
+
+/// Find the `VectorNeedle`-marked descendant of a dial node.
+fn find_needle_child(world: &mut World, root: Entity) -> Option<Entity> {
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        if world.get::<VectorNeedle>(e).is_some() {
+            return Some(e);
+        }
+        if let Some(children) = world.get::<Children>(e) {
+            stack.extend(children.iter());
+        }
+    }
+    None
+}
+
+/// Re-resolve series-backed widgets (`bars`/`line`/`waveform`) each frame and
+/// rebuild / re-pack only when the resolved data changes.
+fn vector_series_sync(world: &mut World) {
+    let series: Vec<(Entity, VectorSpec)> = {
+        let mut q = world.query_filtered::<(Entity, &VectorSpec), With<VectorBuilt>>();
+        q.iter(world)
+            .filter(|(_, s)| matches!(s.kind, VectorKind::Bars | VectorKind::Line | VectorKind::Wave))
+            .map(|(e, s)| (e, s.clone()))
+            .collect()
+    };
+    for (e, spec) in series {
+        let data = resolve_series(world, spec.host, &spec.data);
+        let changed = world.get::<VectorSeries>(e).map(|s| s.0 != data).unwrap_or(true);
+        if !changed {
+            continue;
+        }
+        match spec.kind {
+            VectorKind::Bars => {
+                {
+                    let mut commands = world.commands();
+                    build_bars(&mut commands, e, &spec, &data);
+                }
+                world.flush();
+            }
+            VectorKind::Line => {
+                let mut clipped = data.clone();
+                if clipped.len() > MAX_SAMPLES {
+                    clipped.truncate(MAX_SAMPLES);
+                }
+                if let Some(mut cd) = world.get_mut::<ChartData>(e) {
+                    cd.set_values(clipped);
+                }
+            }
+            VectorKind::Wave => {
+                let amps = wave_amps(&spec, &data);
+                if let Some(mut wd) = world.get_mut::<WaveData>(e) {
+                    wd.set_amps(amps);
+                }
+            }
+            _ => {}
+        }
+        if let Some(mut s) = world.get_mut::<VectorSeries>(e) {
+            s.0 = data;
+        } else {
+            world.entity_mut(e).insert(VectorSeries(data));
         }
     }
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_plugins(bevy_vello::VelloPlugin {
-        canvas_render_layers: RenderLayers::layer(VECTOR_RENDER_LAYER),
-        ..default()
-    });
-    app.init_resource::<VectorFont>()
-        .init_resource::<VelloOverlay>();
+    // The markup runtime can run WITHOUT `WidgetsPlugin` (a shipped game with
+    // only `MarkupPlugin`), so register the material widgets we reuse here.
+    // Each sub-plugin is idempotent (guards on its `UiMaterialPlugin`), so this
+    // is safe even when `WidgetsPlugin` is also present (editor).
+    app.add_plugins((GaugePlugin, ChartPlugin, WaveformPlugin));
     app.add_systems(
         Update,
-        (manage_vello_overlay, hide_vello_internals, update_vectors),
+        (vector_attach, vector_dial_sync, vector_series_sync).chain(),
     );
 }

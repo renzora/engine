@@ -23,6 +23,14 @@ pub(crate) struct GaugePlugin;
 
 impl Plugin for GaugePlugin {
     fn build(&self, app: &mut App) {
+        // Idempotent: both `WidgetsPlugin` (editor) and the markup
+        // `vector::plugin` (shipped game) register this. Re-adding a
+        // `UiMaterialPlugin` for the same material panics in bevy, and we'd also
+        // double-add the attach/sync systems — so guard the whole plugin on the
+        // material-plugin's presence.
+        if app.is_plugin_added::<UiMaterialPlugin<ArcMaterial>>() {
+            return;
+        }
         bevy::asset::embedded_asset!(app, "gauge.wgsl");
         app.add_plugins(UiMaterialPlugin::<ArcMaterial>::default());
         app.add_systems(Update, (gauge_attach, arc_sync));
@@ -32,11 +40,11 @@ impl Plugin for GaugePlugin {
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub(crate) struct ArcMaterial {
     #[uniform(0)]
-    track: Vec4,
+    pub(crate) track: Vec4,
     #[uniform(0)]
-    fill: Vec4,
+    pub(crate) fill: Vec4,
     #[uniform(0)]
-    params: Vec4,
+    pub(crate) params: Vec4,
 }
 
 impl UiMaterial for ArcMaterial {
@@ -59,6 +67,30 @@ fn make_arc(value: f32) -> ArcMaterial {
         track: Vec4::new(track.red, track.green, track.blue, 1.0),
         fill: Vec4::new(fill.red, fill.green, fill.blue, 1.0),
         params: Vec4::new(value.clamp(0.0, 1.0), A0, SWEEP, THICK),
+    }
+}
+
+/// Build an [`ArcMaterial`] with caller-supplied geometry + colors. Used by the
+/// markup `vector="arc|gauge|ring"` / `speedometer` bridge to drive the dial
+/// from a `VectorSpec` (arbitrary start/sweep/thickness/track/fill).
+///
+/// - `value` is the 0..1 fill fraction.
+/// - `start`/`sweep` are in **radians**.
+/// - `thick_frac` is the band thickness as a fraction of the radius.
+pub(crate) fn make_arc_params(
+    value: f32,
+    start: f32,
+    sweep: f32,
+    thick_frac: f32,
+    track: Color,
+    fill: Color,
+) -> ArcMaterial {
+    let t = track.to_linear();
+    let f = fill.to_linear();
+    ArcMaterial {
+        track: Vec4::new(t.red, t.green, t.blue, t.alpha),
+        fill: Vec4::new(f.red, f.green, f.blue, f.alpha),
+        params: Vec4::new(value.clamp(0.0, 1.0), start, sweep, thick_frac),
     }
 }
 

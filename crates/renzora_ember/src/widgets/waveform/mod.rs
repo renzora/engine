@@ -18,9 +18,14 @@ pub(crate) struct WaveformPlugin;
 
 impl Plugin for WaveformPlugin {
     fn build(&self, app: &mut App) {
+        // Idempotent — both `WidgetsPlugin` and the markup `vector::plugin` add
+        // it; re-adding the same `UiMaterialPlugin` panics (see `GaugePlugin`).
+        if app.is_plugin_added::<UiMaterialPlugin<WaveMaterial>>() {
+            return;
+        }
         bevy::asset::embedded_asset!(app, "waveform.wgsl");
         app.add_plugins(UiMaterialPlugin::<WaveMaterial>::default());
-        app.add_systems(Update, waveform_attach);
+        app.add_systems(Update, (waveform_attach, waveform_sync));
     }
 }
 
@@ -43,6 +48,41 @@ impl UiMaterial for WaveMaterial {
 #[derive(Component)]
 pub(crate) struct WaveData {
     amps: Vec<f32>,
+}
+
+impl WaveData {
+    /// Build from amplitudes (0..1) — used by the markup `vector="wave"` bridge.
+    pub(crate) fn new(amps: Vec<f32>) -> Self {
+        Self { amps }
+    }
+
+    /// Replace the amplitudes in place (live markup `vector="wave"` sync).
+    pub(crate) fn set_amps(&mut self, amps: Vec<f32>) {
+        self.amps = amps;
+    }
+}
+
+/// Pack amplitudes (0..1) into the `WaveMaterial` uniforms, or `None` if there
+/// aren't enough samples to draw. The accent color is used.
+fn wave_material(amps: &[f32]) -> Option<WaveMaterial> {
+    if amps.len() < 2 {
+        return None;
+    }
+    let n = amps.len().min(MAX_SAMPLES);
+    let mut flat = [0.0f32; MAX_SAMPLES];
+    for (i, v) in amps.iter().take(MAX_SAMPLES).enumerate() {
+        flat[i] = v.clamp(0.0, 1.0);
+    }
+    let mut data = [Vec4::ZERO; 8];
+    for (g, slot) in data.iter_mut().enumerate() {
+        *slot = Vec4::new(flat[g * 4], flat[g * 4 + 1], flat[g * 4 + 2], flat[g * 4 + 3]);
+    }
+    let accent = rgb(accent()).to_linear();
+    Some(WaveMaterial {
+        data,
+        color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),
+        params: Vec4::new(n as f32, 0.0, 0.0, 0.0),
+    })
 }
 
 /// A waveform preview of `amps` (amplitudes 0..1).
@@ -90,27 +130,26 @@ fn waveform_attach(
     waves: Query<(Entity, &WaveData), Without<MaterialNode<WaveMaterial>>>,
 ) {
     for (e, wd) in &waves {
-        if wd.amps.len() < 2 {
-            continue;
+        if let Some(material) = wave_material(&wd.amps) {
+            // try_insert: the waveform entity may be despawned this same frame (panel teardown).
+            commands
+                .entity(e)
+                .try_insert(MaterialNode(materials.add(material)));
         }
-        let n = wd.amps.len().min(MAX_SAMPLES);
-        let mut flat = [0.0f32; MAX_SAMPLES];
-        for (i, v) in wd.amps.iter().take(MAX_SAMPLES).enumerate() {
-            flat[i] = v.clamp(0.0, 1.0);
+    }
+}
+
+/// Update an already-attached waveform's material when its `WaveData` changes
+/// (the markup `vector="wave"` bridge re-binds `{{ }}` data each frame).
+fn waveform_sync(
+    mut materials: ResMut<Assets<WaveMaterial>>,
+    waves: Query<(&WaveData, &MaterialNode<WaveMaterial>), Changed<WaveData>>,
+) {
+    for (wd, node) in &waves {
+        if let Some(material) = wave_material(&wd.amps) {
+            if let Some(slot) = materials.get_mut(&node.0) {
+                *slot = material;
+            }
         }
-        let mut data = [Vec4::ZERO; 8];
-        for (g, slot) in data.iter_mut().enumerate() {
-            *slot = Vec4::new(flat[g * 4], flat[g * 4 + 1], flat[g * 4 + 2], flat[g * 4 + 3]);
-        }
-        let accent = rgb(accent()).to_linear();
-        let material = WaveMaterial {
-            data,
-            color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),
-            params: Vec4::new(n as f32, 0.0, 0.0, 0.0),
-        };
-        // try_insert: the waveform entity may be despawned this same frame (panel teardown).
-        commands
-            .entity(e)
-            .try_insert(MaterialNode(materials.add(material)));
     }
 }

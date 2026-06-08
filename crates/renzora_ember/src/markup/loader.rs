@@ -620,16 +620,13 @@ fn apply_xnode_to(
         ec.insert(Interaction::default());
     }
 
-    // `vector="gauge|ring|bar|line|waveform"` — a vello-drawn vector graphic
-    // (see `vector.rs`). bevy_ui lays the node out; the draw system fills its
-    // `UiVelloScene` each frame from the spec + live `{{ }}` bindings.
+    // `vector="gauge|ring|bars|line|waveform|speedometer"` — a vector graphic
+    // rendered with ember's own WGSL widgets (see `vector.rs`). bevy_ui lays the
+    // node out; the `vector_attach`/`*_sync` systems then add the right material
+    // / children and drive them from the spec + live `{{ }}` bindings.
     if defs.contains_key("vector") {
         if let Some(spec) = crate::markup::vector::spec_from_defs(&defs, ctx.host) {
             ec.insert(spec);
-            ec.insert(bevy_vello::prelude::UiVelloScene::new());
-            ec.insert(bevy::camera::visibility::RenderLayers::layer(
-                crate::markup::vector::VECTOR_RENDER_LAYER,
-            ));
         }
     }
 
