@@ -58,14 +58,6 @@ impl Plugin for EngineEditorPlugin {
                     camera::update_editor_camera_matrix,
                     camera::editor_2d_camera_controller,
                     auto_switch_view_on_2d_selection,
-                    // Keep authored scene cameras inactive while editing — the
-                    // editor's own viewport cameras render the scene. Without this
-                    // an authored `SceneCamera` (with `RenderTarget::Window` from a
-                    // prior save) stays active and paints 3D over the editor UI.
-                    // The runtime registers this in its game-only branch; the
-                    // editor needs its own copy (it correctly no-ops to "deactivate
-                    // all scene cameras" whenever an EditorCamera exists).
-                    renzora_engine::scene_io::enforce_single_active_camera,
                 ),
             );
 

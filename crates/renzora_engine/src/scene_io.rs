@@ -1621,21 +1621,24 @@ pub fn rehydrate_cameras(
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
     mut mediums: Option<ResMut<Assets<ScatteringMedium>>>,
-    editor_session: Option<Res<renzora::EditorSession>>,
 ) {
     if query.is_empty() {
         return;
     }
 
     let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-    // Editor vs game is a RUNTIME decision — `renzora_engine` is lean (no `editor`
-    // cargo feature), so this reads `EditorSession` (inserted at app build). That's
-    // correct even during `SplashState::Loading`, before the `EditorCamera` spawns
-    // — using `!editor_camera.is_empty()` here would race that spawn and wrongly
-    // mark the loading scene a runtime export, activating + double-rendering the
-    // scene camera. (This system is registered game-only, so `is_editor` is false
-    // in practice; reading EditorSession keeps the branch honest regardless.)
-    let is_editor = editor_session.map(|s| s.0).unwrap_or(false) && !in_play_mode;
+    // We're in editor mode if this binary was compiled with the `editor`
+    // feature, regardless of whether the `EditorCamera` entity has been
+    // spawned yet. Previously this used `!editor_camera.is_empty()`,
+    // but rehydrate runs during `SplashState::Loading` — BEFORE the
+    // editor camera spawns at `OnEnter(SplashState::Editor)`. That race
+    // made rehydrate think the loading scene was a runtime export and
+    // set `is_active: true` on the default scene camera. By the time
+    // the editor camera actually spawned, the `Without<Camera3d>` filter
+    // skipped re-running, so the wrong value stuck — causing the scene
+    // to render twice in editor mode (once via editor camera, once via
+    // scene camera) for a ~33% frame-time regression with shadows on.
+    let is_editor = cfg!(feature = "editor") && !in_play_mode;
 
     // Find which entity should be the active camera in runtime mode
     let default_entity = query
