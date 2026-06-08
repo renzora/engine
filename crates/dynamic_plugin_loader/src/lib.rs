@@ -3,7 +3,10 @@
 //! Plugins are `dylib` crates sharing `bevy_dylib` with the host.
 //! Full `&mut App` access — same as built-in plugins.
 //!
-//! Plugins are loaded before `app.run()`. Restart to load new plugins.
+//! Plugins are loaded before `app.run()`. New plugins dropped into the
+//! `plugins/` directory mid-session are picked up by [`HotPluginPlugin`],
+//! which builds them into the live `World` so they activate on the next frame
+//! (main-world plugins) or report `NeedsReload` (render-world plugins).
 //!
 //! On platforms that don't support dynamic linking (WASM, mobile),
 //! all functions are no-ops.
@@ -24,6 +27,47 @@ pub struct DynamicPluginInfo {
 pub struct FailedPlugin {
     pub id: String,
     pub reason: String,
+}
+
+/// Watches `plugin_dir` while the app runs and hot-loads any plugin dll/so/dylib
+/// dropped in mid-session, building it into the live `World` so a main-world
+/// plugin activates on the next frame. Render-world plugins (post-process,
+/// custom render-graph nodes) can't be wired into the already-initialized
+/// renderer at runtime — they load as far as the main world allows and report
+/// `renzora::HotLoadOutcome::NeedsReload` so the editor can toast "restart to
+/// take effect". Add it once, after the startup plugin load:
+///
+/// ```rust,ignore
+/// app.add_plugins(HotPluginPlugin::new(exe_dir.join("plugins"), is_editor));
+/// ```
+///
+/// No-op on platforms without dynamic linking (WASM, mobile).
+pub struct HotPluginPlugin {
+    pub plugin_dir: PathBuf,
+    pub is_editor: bool,
+    /// Seconds between directory scans. Defaults to `1.0` via [`new`](Self::new).
+    pub scan_interval_secs: f64,
+}
+
+impl HotPluginPlugin {
+    pub fn new(plugin_dir: impl Into<PathBuf>, is_editor: bool) -> Self {
+        Self {
+            plugin_dir: plugin_dir.into(),
+            is_editor,
+            scan_interval_secs: 1.0,
+        }
+    }
+}
+
+impl Plugin for HotPluginPlugin {
+    fn build(&self, app: &mut App) {
+        platform::build_hot_plugin(
+            app,
+            self.plugin_dir.clone(),
+            self.is_editor,
+            self.scan_interval_secs,
+        );
+    }
 }
 
 // ── Desktop: full dynamic loading ────────────────────────────────────────
@@ -472,6 +516,305 @@ mod platform {
 
     #[cfg(not(target_os = "windows"))]
     fn add_dll_search_dir(_dir: &Path) {}
+
+    // ── Mid-session hot loading ──────────────────────────────────────────────
+
+    use renzora::{HotLoadOutcome, HotPluginNotice};
+
+    /// Watcher state: which plugin stems are already accounted for, and when to
+    /// scan next. Removed-and-reinserted each scan so the scan system can take
+    /// exclusive `&mut World` for the live build.
+    #[derive(Resource)]
+    struct HotPluginWatch {
+        dir: PathBuf,
+        is_editor: bool,
+        interval: f64,
+        next_scan: f64,
+        seeded: bool,
+        known: std::collections::HashSet<String>,
+    }
+
+    pub(crate) fn build_hot_plugin(app: &mut App, dir: PathBuf, is_editor: bool, interval: f64) {
+        // Ensure dlls dropped in later can resolve `bevy_dylib` / `renzora.dll`
+        // beside the exe, even if `plugins/` didn't exist at startup (in which
+        // case the startup loader returned before registering the search dir).
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                add_dll_search_dir(exe_dir);
+            }
+        }
+        if !app.world().contains_resource::<DynamicPluginRegistry>() {
+            app.init_resource::<DynamicPluginRegistry>();
+        }
+        app.insert_resource(HotPluginWatch {
+            dir,
+            is_editor,
+            interval: interval.max(0.1),
+            next_scan: 0.0,
+            seeded: false,
+            known: std::collections::HashSet::new(),
+        });
+        // `Last` so the world-swap happens at a single-threaded point after the
+        // frame's gameplay, and any systems the plugin adds to `Update`/`Startup`
+        // aren't the schedule currently executing.
+        app.add_systems(Last, hot_plugin_scan_system);
+    }
+
+    fn hot_plugin_scan_system(world: &mut World) {
+        let now = world
+            .get_resource::<Time>()
+            .map(|t| t.elapsed_secs_f64())
+            .unwrap_or(0.0);
+        let Some(mut watch) = world.remove_resource::<HotPluginWatch>() else {
+            return;
+        };
+        if watch.seeded && now < watch.next_scan {
+            world.insert_resource(watch);
+            return;
+        }
+        watch.next_scan = now + watch.interval;
+
+        let current = discover_dlls(&watch.dir);
+
+        // First scan: everything already present (cold-loaded at startup) is
+        // "known" so we never re-build it. Only files that appear LATER load.
+        if !watch.seeded {
+            for path in &current {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    watch.known.insert(stem.to_string());
+                }
+            }
+            if let Some(reg) = world.get_resource::<DynamicPluginRegistry>() {
+                for info in &reg.plugins {
+                    watch.known.insert(info.id.clone());
+                }
+            }
+            watch.seeded = true;
+            world.insert_resource(watch);
+            return;
+        }
+
+        for path in current {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            if stem.is_empty() || watch.known.contains(&stem) {
+                continue;
+            }
+            match try_hot_load(world, &path, &stem, watch.is_editor) {
+                // `None` = file not openable yet (still being copied in). Leave
+                // it un-`known` so the next scan retries once the copy finishes.
+                None => {}
+                Some((outcome, message)) => {
+                    watch.known.insert(stem.clone());
+                    match outcome {
+                        HotLoadOutcome::Loaded => {
+                            info!("[hot-plugin] '{}' loaded live (active next frame)", stem)
+                        }
+                        HotLoadOutcome::NeedsReload => {
+                            warn!("[hot-plugin] '{}' needs a restart: {}", stem, message)
+                        }
+                        HotLoadOutcome::Skipped => {
+                            info!("[hot-plugin] '{}' skipped: {}", stem, message)
+                        }
+                        HotLoadOutcome::Failed => {
+                            error!("[hot-plugin] '{}' failed: {}", stem, message)
+                        }
+                    }
+                    world.trigger(HotPluginNotice {
+                        id: stem,
+                        outcome,
+                        message,
+                    });
+                }
+            }
+        }
+
+        world.insert_resource(watch);
+    }
+
+    fn try_hot_load(
+        world: &mut World,
+        path: &Path,
+        stem: &str,
+        is_editor: bool,
+    ) -> Option<(HotLoadOutcome, String)> {
+        if let Some(reg) = world.get_resource::<DynamicPluginRegistry>() {
+            if reg.plugins.iter().any(|p| p.id == stem) {
+                return Some((
+                    HotLoadOutcome::NeedsReload,
+                    format!("'{stem}' is already loaded — restart the app to replace it"),
+                ));
+            }
+        }
+
+        let library = match unsafe { Library::new(path) } {
+            Ok(l) => l,
+            Err(_) => return None, // transient: file may still be copying in
+        };
+
+        let compatible = unsafe {
+            library
+                .get::<BevyHashFn>(b"plugin_bevy_hash")
+                .ok()
+                .map(|f| (*f)() == engine_bevy_hash())
+                .unwrap_or(false)
+        };
+        if !compatible {
+            return Some((
+                HotLoadOutcome::Skipped,
+                "incompatible engine/Bevy version — rebuild the plugin against this engine".into(),
+            ));
+        }
+
+        // Editor bundles export `plugin_install_scope` and load from beside the
+        // exe, never as a runtime drop-in (see `load_plugins_impl`).
+        if unsafe { library.get::<InstallScopeFn>(b"plugin_install_scope") }.is_ok() {
+            return Some((
+                HotLoadOutcome::Skipped,
+                "plugin bundle — bundles load from beside the exe, not at runtime".into(),
+            ));
+        }
+
+        let scope = unsafe {
+            library
+                .get::<ScopePluginFn>(b"plugin_scope")
+                .ok()
+                .map(|f| match (*f)() {
+                    0 => PluginScope::Editor,
+                    _ => PluginScope::Runtime,
+                })
+                .unwrap_or(PluginScope::Runtime)
+        };
+        let should_load = match scope {
+            PluginScope::Editor => is_editor,
+            PluginScope::Runtime => true,
+        };
+        if !should_load {
+            return Some((
+                HotLoadOutcome::Skipped,
+                format!("{scope:?}-scope plugin is not active in this session"),
+            ));
+        }
+
+        let create_fn: CreatePluginFn =
+            match unsafe { library.get::<CreatePluginFn>(b"plugin_create") } {
+                Ok(sym) => *sym,
+                Err(_) => {
+                    return Some((
+                        HotLoadOutcome::Failed,
+                        "missing `plugin_create` entry point".into(),
+                    ))
+                }
+            };
+
+        let outcome = unsafe { build_into_world(world, create_fn) };
+
+        // The plugin's code (system fn pointers, vtables) is now referenced by
+        // the live world — keep the library mapped for the rest of the session.
+        // We never unload: dropping it would dangle those pointers. (A changed
+        // build of an already-loaded plugin is caught above as NeedsReload.)
+        if let Some(mut reg) = world.get_resource_mut::<DynamicPluginRegistry>() {
+            reg.plugins.push(DynamicPluginInfo {
+                id: stem.to_string(),
+                path: path.to_path_buf(),
+                scope,
+            });
+            reg._libraries.push(library);
+        } else {
+            std::mem::forget(library);
+        }
+
+        let message = match outcome {
+            HotLoadOutcome::Loaded => format!("Plugin '{stem}' loaded"),
+            HotLoadOutcome::NeedsReload => {
+                format!("Plugin '{stem}' loaded — restart the app for it to take full effect")
+            }
+            HotLoadOutcome::Failed => format!("Plugin '{stem}' failed while loading"),
+            HotLoadOutcome::Skipped => format!("Plugin '{stem}' skipped"),
+        };
+        Some((outcome, message))
+    }
+
+    /// Build `create_fn`'s plugin into the live `world` by borrowing it into a
+    /// temporary `App` (Bevy's `Plugin::build` needs `&mut App`, which we don't
+    /// hold at runtime). A throwaway "sentinel" render sub-app absorbs any
+    /// render-world setup — which can't be wired into the already-running
+    /// renderer — so render plugins build without panicking; if the plugin
+    /// touches it, we report `NeedsReload` instead of `Loaded`.
+    ///
+    /// SAFETY: `create_fn` must be the `plugin_create` export of a library
+    /// compiled against the same `bevy_dylib` as the host (the caller checks
+    /// `plugin_bevy_hash` first), and that library must outlive the systems this
+    /// installs (the caller keeps it in `DynamicPluginRegistry`).
+    unsafe fn build_into_world(world: &mut World, create_fn: CreatePluginFn) -> HotLoadOutcome {
+        use bevy::app::SubApp;
+        use bevy::render::render_graph::RenderGraph;
+        use bevy::render::RenderApp;
+
+        let plugin: Box<dyn bevy::app::Plugin> =
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Box::from_raw(create_fn())
+            })) {
+                Ok(p) => p,
+                Err(_) => return HotLoadOutcome::Failed,
+            };
+
+        let mut temp = App::empty();
+
+        // Sentinel render sub-app: enough scaffolding that a render plugin's
+        // `build` runs without panicking — a `Schedules` for `add_systems`, and
+        // a `RenderGraph` carrying the `Core3d` sub-graph for the
+        // `add_render_graph_node` / edge calls the post-process framework makes.
+        let mut render_sub = SubApp::new();
+        render_sub
+            .world_mut()
+            .init_resource::<bevy::ecs::schedule::Schedules>();
+        {
+            let mut graph = RenderGraph::default();
+            graph.add_sub_graph(
+                bevy::core_pipeline::core_3d::graph::Core3d,
+                RenderGraph::default(),
+            );
+            render_sub.world_mut().insert_resource(graph);
+        }
+        let render_baseline = render_sub.world().components().len();
+        temp.insert_sub_app(RenderApp, render_sub);
+
+        // Borrow the live world into temp's main sub-app, build, hand it back.
+        // mem::swap moves the World *value* at the live location into `temp`; the
+        // exclusive system guarantees nothing else touches it in between, and the
+        // schedule currently running (`Last`) is held on the stack outside the
+        // world, so it survives the swap.
+        std::mem::swap(temp.world_mut(), world);
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            plugin.build(&mut temp);
+        }));
+        std::mem::swap(temp.world_mut(), world);
+
+        if built.is_err() {
+            // The build may have partially mutated the live world before
+            // panicking; the caller keeps the library mapped so any half-added
+            // system pointers stay valid.
+            return HotLoadOutcome::Failed;
+        }
+
+        // A render-targeting plugin will have registered render-world resources
+        // (pipelines, uniform buffers, the effect registry) into the sentinel,
+        // growing its component count. Main-world-only plugins leave it untouched.
+        let touched_render = temp
+            .get_sub_app(RenderApp)
+            .map(|sub| sub.world().components().len() > render_baseline)
+            .unwrap_or(false);
+
+        if touched_render {
+            HotLoadOutcome::NeedsReload
+        } else {
+            HotLoadOutcome::Loaded
+        }
+    }
 }
 
 // ── Non-desktop: no-op stubs ─────────────────────────────────────────────
@@ -489,6 +832,13 @@ mod platform {
     pub fn load_plugins(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
     pub fn load_plugins_recursive(_app: &mut App, _plugin_dir: &Path, _is_editor: bool) {}
     pub fn load_bundle(_app: &mut App, _bundle_path: &Path, _is_editor: bool) {}
+    pub(crate) fn build_hot_plugin(
+        _app: &mut App,
+        _dir: PathBuf,
+        _is_editor: bool,
+        _interval: f64,
+    ) {
+    }
     pub fn scan_plugins(_plugin_dir: &Path) -> Vec<DynamicPluginInfo> {
         Vec::new()
     }

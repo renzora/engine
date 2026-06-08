@@ -195,6 +195,18 @@ fn main() {
     // foundation. The `--project <path>` dev shortcut moved into the splash
     // plugin (it lives in the bundle now).
     load_global_plugins(&mut app, is_editor);
+
+    // Watch `plugins/` for dlls dropped in mid-session and hot-load them into
+    // the live world (main-world plugins activate next frame; render plugins
+    // toast "restart to take effect"). No-op on platforms without dynamic
+    // linking.
+    if let Some(dir) = exe_dir() {
+        app.add_plugins(dynamic_plugin_loader::HotPluginPlugin::new(
+            dir.join("plugins"),
+            is_editor,
+        ));
+    }
+
     app.run();
 }
 

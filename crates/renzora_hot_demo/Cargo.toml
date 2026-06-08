@@ -1,0 +1,23 @@
+[package]
+name = "renzora_hot_demo"
+version = "0.1.0"
+edition = "2021"
+description = "Demo distribution plugin: spawns + rotates cubes and logs a heartbeat to prove full Bevy ECS access when hot-loaded into a running session. Build it, then drop the resulting dll/so/dylib into the engine's plugins/ folder while it runs."
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that the
+# `HotPluginPlugin` watcher picks up from `plugins/` mid-session (or the startup
+# loader picks up at boot). cdylib keeps the export surface to the unmangled
+# `extern "C"` symbols emitted by `renzora::add!` under the `dlopen` feature.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen"]
+dlopen = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

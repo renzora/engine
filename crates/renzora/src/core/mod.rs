@@ -981,6 +981,44 @@ pub struct ScriptsReloaded {
     pub names: Vec<String>,
 }
 
+/// Outcome of a mid-session plugin hot-load attempt — a `.dll`/`.so`/`.dylib`
+/// dropped into the `plugins/` directory while the app is running.
+///
+/// The dynamic plugin loader builds the plugin into the live `World` via a
+/// temporary `App` that borrows the running world, so any plugin that only
+/// touches the **main** world (gameplay, components, resources, systems, UI)
+/// activates on the next frame. A plugin that also targets the **render** world
+/// (post-process effects, custom render-graph nodes) can't be wired into the
+/// already-initialized renderer at runtime and needs a restart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HotLoadOutcome {
+    /// Built fully into the live world — active next frame.
+    Loaded,
+    /// Loaded as far as the main world allows, but the plugin also targets the
+    /// render world, which can't be hot-wired. Restart to take full effect.
+    NeedsReload,
+    /// Not loaded (wrong scope for this host, incompatible ABI, or a plugin
+    /// with the same name is already loaded — restart to replace it).
+    Skipped,
+    /// The plugin's `build` panicked or its entry symbol was missing.
+    Failed,
+}
+
+/// Fired once per hot-load attempt by the dynamic plugin loader. Defined in the
+/// shared `renzora` dylib so the binary-side loader that triggers it and the
+/// editor-bundle observer that turns it into a toast resolve one `TypeId`
+/// across the dlopen boundary (mirrors [`ScriptsReloaded`]). The runtime, which
+/// has no toast UI, simply ignores it (the loader also logs every outcome).
+#[derive(bevy::prelude::Event, Clone, Debug)]
+pub struct HotPluginNotice {
+    /// The plugin's file stem (e.g. `my_cool_effect`).
+    pub id: String,
+    /// What happened.
+    pub outcome: HotLoadOutcome,
+    /// A human-readable message suitable for a toast.
+    pub message: String,
+}
+
 /// Sent by the editor to save the current scene before play mode.
 #[derive(bevy::prelude::Event)]
 pub struct SaveCurrentScene;

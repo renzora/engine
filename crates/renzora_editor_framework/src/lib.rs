@@ -381,6 +381,7 @@ impl Plugin for RenzoraEditorPlugin {
                 drain_editor_commands_native.run_if(in_state(SplashState::Editor)),
             )
             .add_observer(show_script_reload_toasts)
+            .add_observer(show_hot_plugin_toasts)
             .add_systems(OnEnter(SplashState::Editor), wire_theme_project_path)
             .add_systems(
                 Update,
@@ -501,6 +502,22 @@ fn show_script_reload_toasts(
         n => {
             toasts.success(format!("Reloaded {} scripts", n));
         }
+    }
+}
+
+/// Observer: surface the outcome of a mid-session plugin hot-load as a toast.
+/// The loader (in the runtime binary) triggers `HotPluginNotice`; this runs in
+/// the editor bundle, so the `renzora.dll`-defined event crosses the boundary.
+fn show_hot_plugin_toasts(
+    trigger: On<renzora::HotPluginNotice>,
+    mut toasts: ResMut<renzora_ui::Toasts>,
+) {
+    let notice = trigger.event();
+    match notice.outcome {
+        renzora::HotLoadOutcome::Loaded => toasts.success(notice.message.clone()),
+        renzora::HotLoadOutcome::NeedsReload => toasts.warning(notice.message.clone()),
+        renzora::HotLoadOutcome::Skipped => toasts.info(notice.message.clone()),
+        renzora::HotLoadOutcome::Failed => toasts.error(notice.message.clone()),
     }
 }
 
