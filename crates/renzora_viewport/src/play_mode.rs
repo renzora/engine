@@ -425,6 +425,11 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         let mut e = world.entity_mut(entity);
         e.remove::<PlayModeCamera>();
         e.remove::<Camera>();
+        // `enter_play_mode` pointed this camera at the primary window via
+        // `RenderTarget::default()`. Strip it so the authored SceneCamera
+        // returns to its inactive editor baseline and can never paint the
+        // window behind the editor chrome if a later system reactivates it.
+        e.remove::<RenderTarget>();
         if !is_2d {
             // Strip 3D-only components we added on entry so the authored
             // `SceneCamera` returns to its baseline. The bind group layout

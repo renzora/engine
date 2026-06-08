@@ -1655,6 +1655,7 @@ pub fn rehydrate_cameras(
     >,
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
+    editor_session: Option<Res<renzora::EditorSession>>,
     mut mediums: Option<ResMut<Assets<ScatteringMedium>>>,
 ) {
     if query.is_empty() {
@@ -1662,18 +1663,24 @@ pub fn rehydrate_cameras(
     }
 
     let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-    // We're in editor mode if this binary was compiled with the `editor`
-    // feature, regardless of whether the `EditorCamera` entity has been
-    // spawned yet. Previously this used `!editor_camera.is_empty()`,
-    // but rehydrate runs during `SplashState::Loading` — BEFORE the
-    // editor camera spawns at `OnEnter(SplashState::Editor)`. That race
-    // made rehydrate think the loading scene was a runtime export and
-    // set `is_active: true` on the default scene camera. By the time
-    // the editor camera actually spawned, the `Without<Camera3d>` filter
-    // skipped re-running, so the wrong value stuck — causing the scene
-    // to render twice in editor mode (once via editor camera, once via
-    // scene camera) for a ~33% frame-time regression with shadows on.
-    let is_editor = cfg!(feature = "editor") && !in_play_mode;
+    // We're in editor mode when the runtime `EditorSession` flag is set.
+    //
+    // This used to read `cfg!(feature = "editor")`, but after the
+    // editor/runtime crate split `renzora_engine` compiles lean (no
+    // `editor` cargo feature), so that flag is now ALWAYS false here —
+    // which made rehydrate treat the editor like a runtime export and set
+    // `is_active: true` on the default scene camera. Combined with a
+    // play→stop cycle (which strips `Camera3d`, so the `Without<Camera3d>`
+    // filter re-matches), that reactivated the scene camera to render the
+    // whole scene to the primary window BEHIND the editor chrome — a
+    // second full-scene pass on top of the editor camera, ~33% frame-time
+    // regression with shadows on.
+    //
+    // `EditorSession` is inserted at boot by `add_engine_plugins(is_editor)`
+    // (the same signal `RuntimePlugin` branches on), so it's already correct
+    // when rehydrate runs during `SplashState::Loading` — no editor-camera
+    // spawn race. Absent ⇒ game build ⇒ `false` (the safe shipping default).
+    let is_editor = editor_session.as_ref().map(|s| s.0).unwrap_or(false) && !in_play_mode;
 
     // Find which entity should be the active camera in runtime mode
     let default_entity = query
