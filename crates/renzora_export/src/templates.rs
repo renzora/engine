@@ -232,14 +232,25 @@ impl TemplateManager {
         }
     }
 
-    /// Get the runtime plugins directory for a platform.
+    /// The distribution-plugin directory the editor is running from
+    /// (`dist/<platform>/plugins`). The editor and the game it exports share one
+    /// flat per-platform folder — the old `dist/runtime/plugins` lane was
+    /// flattened away, so deriving this from the live exe keeps the export's
+    /// plugin scan pointed at the dlls that actually exist (otherwise the export
+    /// ships zero plugins and the game drops every effect's components).
     pub fn runtime_plugins_dir(&self) -> PathBuf {
-        self.dist_dir.join("runtime").join("plugins")
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("plugins")))
+            .unwrap_or_else(|| self.dist_dir.join("plugins"))
     }
 
-    /// Get the runtime shared libs directory for a platform.
+    /// The shared-lib directory the editor is running from (`dist/<platform>/`).
     pub fn runtime_dir(&self) -> PathBuf {
-        self.dist_dir.join("runtime")
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| self.dist_dir.clone())
     }
 
     /// Check if a template is available for the given platform.
