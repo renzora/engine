@@ -290,17 +290,28 @@ impl Plugin for WidgetsPlugin {
             ),
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
-        app.add_plugins(chart::ChartPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);
         app.add_plugins(section::SectionPlugin);
         app.add_plugins(timeline::TimelinePlugin);
         app.add_plugins(timeline_view::TimelineViewPlugin);
-        app.add_plugins(gauge::GaugePlugin);
         app.add_plugins(code_editor::CodeEditorPlugin);
         app.add_plugins(asset_slot::DndPlugin);
         app.add_plugins(colorpicker::ColorPickerPlugin);
         app.add_plugins(curve::CurveEditorPlugin);
         app.add_plugins(gradient::GradientEditorPlugin);
-        app.add_plugins(waveform::WaveformPlugin);
+        // gauge / chart / waveform are ALSO added by the markup runtime
+        // (`markup::vector::plugin`, via `MarkupPlugin`), which runs first.
+        // bevy panics on a duplicate plugin TYPE at the `add_plugins` call
+        // (before `build()`), so guard each here — whichever path runs first
+        // installs it, the other skips.
+        if !app.is_plugin_added::<gauge::GaugePlugin>() {
+            app.add_plugins(gauge::GaugePlugin);
+        }
+        if !app.is_plugin_added::<chart::ChartPlugin>() {
+            app.add_plugins(chart::ChartPlugin);
+        }
+        if !app.is_plugin_added::<waveform::WaveformPlugin>() {
+            app.add_plugins(waveform::WaveformPlugin);
+        }
     }
 }

@@ -645,9 +645,18 @@ fn vector_series_sync(world: &mut World) {
 pub fn plugin(app: &mut App) {
     // The markup runtime can run WITHOUT `WidgetsPlugin` (a shipped game with
     // only `MarkupPlugin`), so register the material widgets we reuse here.
-    // Each sub-plugin is idempotent (guards on its `UiMaterialPlugin`), so this
-    // is safe even when `WidgetsPlugin` is also present (editor).
-    app.add_plugins((GaugePlugin, ChartPlugin, WaveformPlugin));
+    // `WidgetsPlugin` (editor) adds the same three; bevy panics on a duplicate
+    // plugin TYPE at the `add_plugins` call (before `build()` runs), so guard
+    // each at the call site — whichever path runs first installs it.
+    if !app.is_plugin_added::<GaugePlugin>() {
+        app.add_plugins(GaugePlugin);
+    }
+    if !app.is_plugin_added::<ChartPlugin>() {
+        app.add_plugins(ChartPlugin);
+    }
+    if !app.is_plugin_added::<WaveformPlugin>() {
+        app.add_plugins(WaveformPlugin);
+    }
     app.add_systems(
         Update,
         (vector_attach, vector_dial_sync, vector_series_sync).chain(),
