@@ -335,7 +335,8 @@ pub fn graph_wire_view(commands: &mut Commands, viewport: Entity, from_node: u64
 fn ngv_cable_attach(mut commands: Commands, mut materials: ResMut<Assets<CableMaterial>>, cables: Query<Entity, (Or<(With<NgvWire>, With<NgvPreview>)>, Without<MaterialNode<CableMaterial>>)>) {
     for e in &cables {
         let handle = materials.add(CableMaterial::default());
-        commands.entity(e).insert(MaterialNode(handle));
+        // try_insert: the wire entity may be despawned this same frame (panel teardown).
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 

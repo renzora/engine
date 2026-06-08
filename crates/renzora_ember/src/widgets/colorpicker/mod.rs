@@ -181,7 +181,11 @@ fn picker_attach(
         let handle = materials.add(PickerMaterial {
             params: Vec4::new(d.mode, d.hue, 0.0, 0.0),
         });
-        commands.entity(e).insert(MaterialNode(handle));
+        // `try_insert`: the surface entity can be despawned the same frame this
+        // command is applied (e.g. an inspector/settings panel holding the
+        // picker is torn down on a play-mode transition), and a plain `insert`
+        // onto a dead entity panics under Bevy 0.18's strict command handler.
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 

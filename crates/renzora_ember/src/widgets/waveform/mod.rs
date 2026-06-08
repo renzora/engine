@@ -108,8 +108,9 @@ fn waveform_attach(
             color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),
             params: Vec4::new(n as f32, 0.0, 0.0, 0.0),
         };
+        // try_insert: the waveform entity may be despawned this same frame (panel teardown).
         commands
             .entity(e)
-            .insert(MaterialNode(materials.add(material)));
+            .try_insert(MaterialNode(materials.add(material)));
     }
 }

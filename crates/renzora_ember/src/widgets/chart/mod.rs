@@ -297,9 +297,11 @@ fn chart_attach(
 ) {
     for (e, cd) in &charts {
         if let Some(material) = chart_material(cd) {
+            // try_insert: the chart entity may be despawned this same frame
+            // (panel/dock teardown) — a plain insert on a dead entity panics.
             commands
                 .entity(e)
-                .insert(MaterialNode(materials.add(material)));
+                .try_insert(MaterialNode(materials.add(material)));
         }
     }
 }

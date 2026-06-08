@@ -186,7 +186,8 @@ fn grid_attach(
 ) {
     for e in &grids {
         let handle = materials.add(GridMaterial::default());
-        commands.entity(e).insert(MaterialNode(handle));
+        // try_insert: the graph entity may be despawned this same frame (panel teardown).
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 
@@ -511,7 +512,8 @@ fn cable_attach(
 ) {
     for e in &cables {
         let handle = materials.add(CableMaterial::default());
-        commands.entity(e).insert(MaterialNode(handle));
+        // try_insert: the graph entity may be despawned this same frame (panel teardown).
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 

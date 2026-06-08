@@ -158,7 +158,8 @@ fn gradient_attach(
     for (e, d) in &bars {
         let (colors, params) = pack(&d.stops);
         let handle = materials.add(GradientMaterial { colors, params });
-        commands.entity(e).insert(MaterialNode(handle));
+        // try_insert: the gradient entity may be despawned this same frame (panel teardown).
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 

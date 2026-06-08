@@ -68,9 +68,10 @@ pub(crate) fn gauge_attach(
     arcs: Query<(Entity, &ArcData), Without<MaterialNode<ArcMaterial>>>,
 ) {
     for (e, d) in &arcs {
+        // try_insert: the gauge entity may be despawned this same frame (panel teardown).
         commands
             .entity(e)
-            .insert(MaterialNode(materials.add(make_arc(d.value))));
+            .try_insert(MaterialNode(materials.add(make_arc(d.value))));
     }
 }
 

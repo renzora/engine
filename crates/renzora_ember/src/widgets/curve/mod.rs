@@ -116,7 +116,8 @@ fn curve_attach(
             color: Vec4::new(c.red, c.green, c.blue, 1.0),
             params: Vec4::new(2.5, 0.0, 0.0, 0.0),
         });
-        commands.entity(e).insert(MaterialNode(handle));
+        // try_insert: the curve entity may be despawned this same frame (panel teardown).
+        commands.entity(e).try_insert(MaterialNode(handle));
     }
 }
 
