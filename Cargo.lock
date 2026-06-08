@@ -9186,6 +9186,7 @@ dependencies = [
  "renzora_theme_status",
  "renzora_tonemapping",
  "renzora_tonemapping_editor",
+ "renzora_tutorial",
  "renzora_undo",
  "renzora_viewport",
  "renzora_volumetric_fog",
@@ -9562,6 +9563,14 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_undo",
+]
+
+[[package]]
+name = "renzora_hot_demo"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
 ]
 
 [[package]]
@@ -10632,6 +10641,19 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
+]
+
+[[package]]
+name = "renzora_tutorial"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "renzora",
+ "renzora_camera",
+ "renzora_code_editor",
+ "renzora_editor_framework",
+ "renzora_ember",
+ "renzora_theme",
 ]
 
 [[package]]

@@ -54,7 +54,9 @@ pub fn register_native_hierarchy(app: &mut App) {
             .id();
 
         let add = renzora_ember::widgets::icon_label_button(commands, fonts, "plus", "Add Entity");
-        commands.entity(add).insert(add_entity::HierAddEntity);
+        commands
+            .entity(add)
+            .insert((add_entity::HierAddEntity, Name::new("add-entity")));
         let search = filter::build_search_box(commands, fonts);
         let funnel = filter::build_filter_funnel(commands, fonts);
         let header = commands

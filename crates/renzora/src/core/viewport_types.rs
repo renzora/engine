@@ -622,6 +622,12 @@ fn default_grid_color_2d() -> [u8; 4] {
 #[serde(default)]
 pub struct EditorPrefs {
     pub viewport: PersistedViewportSettings,
+    /// Set once the first-run onboarding tutorial (`renzora_tutorial`) has been
+    /// completed or skipped. While `false`/absent the tutorial auto-launches the
+    /// first time the editor opens this project. Editor-only like the rest of
+    /// this section — the runtime never reads it and export strips it.
+    #[serde(default)]
+    pub tutorial_completed: bool,
 }
 
 #[cfg(test)]

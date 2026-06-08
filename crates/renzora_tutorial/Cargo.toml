@@ -1,0 +1,35 @@
+[package]
+name = "renzora_tutorial"
+version = "0.1.0"
+edition = "2021"
+description = "Interactive first-run onboarding tutorial. Editor-only plugin: teaches engine basics (orbit/zoom/fly the camera, select a mesh, move it with the gizmo) as hands-on tasks the user completes by actually performing the action, each rewarded with an ember confetti burst."
+
+# Editor-scope plugin. Ships as an rlib member of the `renzora_editor` bundle
+# (NOT a standalone cdylib): the bundle's `export_plugin_bundle!` replays every
+# Editor-scope plugin from the shared inventory, so a loose editor cdylib would
+# double-install. This mirrors how `renzora_command_palette` / `renzora_inspector`
+# are wired — `add!(TutorialPlugin, Editor)` self-registers via inventory.
+
+[dependencies]
+bevy = { workspace = true }
+# `editor` features pulled in: EditorSelection, CurrentProject, SplashState,
+# TutorialRequested, HideInHierarchy/EditorLocked markers + EditorPrefs.
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_ember = { path = "../renzora_ember" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+# OrbitCameraState — the editor camera's orbit/zoom/focus state, polled to detect
+# camera-move steps. (Gizmo-move is detected from the target mesh's own Transform
+# delta, so no renzora_gizmo dependency is needed.)
+renzora_camera = { path = "../renzora_camera" }
+# ThemeManager.active_theme_name — polled for the "change theme" step.
+renzora_theme = { path = "../renzora_theme" }
+# CodeEditorState.open_files — polled for the "create a script" step.
+renzora_code_editor = { path = "../renzora_code_editor" }
+
+# Note: LayoutManager, DockingState, ViewportSettings, KeyBindings, CurrentProject
+# and ViewportView are all reachable through the deps above
+# (renzora_editor_framework re-exports renzora_ui; renzora exposes the rest), so
+# the layout/panel/camera-speed/keybinding/import/UI steps add no further deps.
+
+[lints]
+workspace = true
