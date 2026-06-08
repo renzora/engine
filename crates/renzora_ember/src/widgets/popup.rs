@@ -8,7 +8,6 @@
 //! carry a `RelativeCursorPosition` so outside-click can tell when the cursor is
 //! over it.
 
-use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition};
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
@@ -28,16 +27,30 @@ pub struct MenuAction(pub Box<dyn Fn(&mut World) + Send + Sync>);
 /// window.
 const SCREEN_MENU_MAX_H: f32 = 420.0;
 
-/// Spawn a floating menu root at window position `(x, y)`. It's a [`ScreenMenu`]
-/// (kept on-screen + pointer-blocking), dismissed by clicking outside it. Fill it
-/// with [`menu_item`] / [`menu_item_styled`] / [`menu_sep`] children, then it
-/// runs itself. Returns the root.
+/// Spawn a floating menu at window position `(x, y)`. It's a [`ScreenMenu`] (kept
+/// on-screen + pointer-blocking), dismissed by clicking outside it. Fill the
+/// returned entity with [`menu_item`] / [`menu_item_styled`] / [`menu_sep`]
+/// children, then it runs itself.
 ///
-/// The root is capped at [`SCREEN_MENU_MAX_H`] and scrolls its items with the
-/// wheel ([`screen_menu_scroll`]) when they overflow, so a long menu never spills
-/// off-screen.
+/// Items live inside a [`scroll_area`](super::scroll_area::scroll_area) capped at
+/// [`SCREEN_MENU_MAX_H`], so a long menu scrolls (with a draggable, auto-hiding
+/// scrollbar) instead of spilling off-screen. The returned entity is that scroll
+/// content — add items to it exactly as before.
 pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
-    commands
+    // Scroll content column — callers add their menu items here.
+    let content = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            Name::new("screen-menu-items"),
+        ))
+        .id();
+    // Height-capped, scrollable viewport with an auto-hiding scrollbar thumb.
+    let scroller = super::scroll_area::scroll_area(commands, content, SCREEN_MENU_MAX_H);
+    let root = commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
@@ -45,8 +58,6 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
                 top: Val::Px(y),
                 flex_direction: FlexDirection::Column,
                 min_width: Val::Px(184.0),
-                max_height: Val::Px(SCREEN_MENU_MAX_H),
-                overflow: Overflow::scroll_y(),
                 padding: UiRect::all(Val::Px(4.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
@@ -57,7 +68,6 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
             GlobalZIndex(9000),
             ScreenMenu,
             OverlaySurface,
-            ScrollPosition::default(),
             // Block pass-through directly at spawn — inserting it later (via an
             // `Added` system) races with menus that are despawned the same frame
             // (e.g. hover-switching a menu bar), crashing on the dead entity.
@@ -65,7 +75,9 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
             RelativeCursorPosition::default(),
             Name::new("screen-menu"),
         ))
-        .id()
+        .id();
+    commands.entity(root).add_child(scroller);
+    content
 }
 
 /// Marks a floating UI surface (popup panel, dropdown list, context menu) that
@@ -254,30 +266,6 @@ pub(crate) fn screen_menu_clamp(
                 node.top = Val::Px(ny);
             }
         }
-    }
-}
-
-/// Wheel over a tall [`ScreenMenu`] (capped at [`SCREEN_MENU_MAX_H`]) → scroll its
-/// clipped items. A menu that fits doesn't overflow, so this is a no-op for it.
-/// Scoped to the hovered menu so the wheel never bleeds to panels behind it.
-pub(crate) fn screen_menu_scroll(
-    mut wheel: MessageReader<MouseWheel>,
-    mut menus: Query<(&RelativeCursorPosition, &ComputedNode, &mut ScrollPosition), With<ScreenMenu>>,
-) {
-    let mut dy = 0.0;
-    for ev in wheel.read() {
-        dy += ev.y;
-    }
-    if dy == 0.0 {
-        return;
-    }
-    for (rcp, cn, mut sp) in &mut menus {
-        if !rcp.cursor_over {
-            continue;
-        }
-        let inv = cn.inverse_scale_factor();
-        let max = (cn.content_size.y - cn.size().y).max(0.0) * inv;
-        sp.y = (sp.y - dy * 52.0).clamp(0.0, max);
     }
 }
 

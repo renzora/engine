@@ -590,7 +590,13 @@ pub(crate) fn graph_zoom(
     mut wheel: MessageReader<MouseWheel>,
     mut canvases: Query<(&mut GraphView, &mut UiTransform, &ChildOf), With<GraphPan>>,
     viewports: Query<(&RelativeCursorPosition, &ComputedNode)>,
+    over_overlay: Option<Res<crate::widgets::popup::PointerOverOverlay>>,
 ) {
+    // Don't zoom while an overlay (e.g. the add-node menu) is under the cursor —
+    // that wheel scrolls the overlay, not the graph.
+    if over_overlay.is_some_and(|o| o.0) {
+        return;
+    }
     let mut dy = 0.0;
     for ev in wheel.read() {
         dy += ev.y;

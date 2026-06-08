@@ -253,7 +253,6 @@ impl Plugin for WidgetsPlugin {
                     popover::popover_toggle,
                     modal::modal_toggle,
                     popup::screen_menu_clamp,
-                    popup::screen_menu_scroll,
                     popup::menu_action_run,
                     popup::screen_menu_dismiss,
                     popup::update_pointer_over_overlay,
