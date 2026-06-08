@@ -209,23 +209,12 @@
 ## Blueprint Nodes — Events
 - Handle remaining unhandled node types in blueprint compiler
 - Wire blueprint delay node completion through timer system
-- Implement blueprint on_timer event node
-- Implement blueprint on_message event node
-- Implement blueprint on_collision event node
+- ✅ Implement blueprint on_timer event node
+- ✅ Implement blueprint on_message event node
+- ✅ Implement blueprint on_collision event node
 
 ## Lifecycle Editor — Nodes
-- Add if/else condition branching nodes
-- Add custom event response nodes
-- Add entity spawn/despawn lifecycle nodes
-- Add animation completion wait nodes
-- Add input event nodes (key press, mouse, gamepad)
-- Add audio control nodes (play, stop, fade)
-- Add UI flow nodes (button press, screen transition)
-- Add dialogue/cutscene sequencing nodes
-- Add save/load game state nodes
-- Add persistent variables (save to disk)
-- Add struct/complex data pin types
-- Add breakpoint/step-through debugging
+- The lifecycle editor was removed — [`df653282`](https://github.com/renzora/engine/commit/df653282) (2026-04-15); its nodes were folded into the blueprint system.
 
 ## Scripting API — Queries & Physics
 - Add raycast query API
@@ -261,9 +250,9 @@
 - Add foot IK for uneven terrain
 
 ## Animation Editor — State Machine
-- Build animation state machine visual editor
-- Implement blend tree editor
-- Implement animation transition/condition editor
+- ✅ Build animation state machine visual editor — [`8c90d75`](https://github.com/renzora/engine/commit/8c90d75)
+- ✅ Implement blend tree editor — [`8c90d75`](https://github.com/renzora/engine/commit/8c90d75)
+- ✅ Implement animation transition/condition editor — [`8c90d75`](https://github.com/renzora/engine/commit/8c90d75)
 
 ## Animation Editor — Quality
 - Add animation LOD quality variants
@@ -425,7 +414,7 @@
 - Fix VR grab release not applying throw velocity
 
 ## Audio
-- Build DAW audio arrangement timeline
+- ✅ Build DAW audio arrangement timeline — [`8c90d75`](https://github.com/renzora/engine/commit/8c90d75)
 - Integrate 3D spatial audio with HRTF and distance attenuation
 
 ## AI Systems

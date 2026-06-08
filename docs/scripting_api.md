@@ -31,14 +31,17 @@ bind them (`{{ Entity.varname }}`).
 ```lua
 function props()
     return {
-        speed   = { type = "float",  value = 5.0,  hint = "Move speed" },
-        enabled = { type = "bool",   value = true },
-        label   = { type = "string", value = "hi" },
-        _t      = { type = "float",  value = 0.0,  hint = "Internal (underscore = hidden-ish)" },
+        speed   = { value = 5.0,  hint = "Move speed" },
+        enabled = { value = true },
+        label   = { value = "hi" },
+        _t      = { value = 0.0,  hint = "Internal (underscore = hidden-ish)" },
     }
 end
 ```
-Types: `float`, `int`, `bool`, `string`, `vec2`, `vec3`, `color`.
+The parser reads `value` (or `default`), plus optional `hint` and `tab`. The
+type is **inferred from the value**, so a `type` field is ignored (cosmetic /
+self-documentation only). Inferred types: `float`, `int`, `bool`, `string`,
+`vec2`, `vec3`, `color`.
 
 ---
 
@@ -189,6 +192,13 @@ stop_timer(name)
 lock_cursor()     unlock_cursor()
 screen_shake(...)
 ```
+
+### Debug / visualization
+```lua
+draw_line(start_x, start_y, start_z, end_x, end_y, end_z [, duration])
+```
+Draws a debug line between two world-space points (currently red). `duration`
+is seconds; omit (or `0`) for a single-frame line.
 
 ### Networking (see also on_rpc / on_player_*)
 ```lua

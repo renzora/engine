@@ -12,7 +12,7 @@ HUD. Everything here uses **only shipped primitives**; nothing is hardcoded.
 
 ## 1. Build the runtime
 ```bash
-renzora build              # → dist/<platform>/runtime/renzora-runtime(.exe)
+renzora build              # → dist/<platform>/renzora(.exe)
 ```
 The runtime is your client/server (one binary, mode chosen by flag).
 
@@ -45,16 +45,21 @@ share one entity):
 ## 4. Launch
 **Option A — dedicated server + 2 clients (most realistic):**
 ```bash
-renzora-runtime --server          # console 1: headless server, port 7636
-renzora-runtime                   # window 2: client A
-renzora-runtime                   # window 3: client B
+./dist/windows-x64/renzora --server   # console 1: headless server, port 7636
+./dist/windows-x64/renzora            # window 2: client A
+./dist/windows-x64/renzora            # window 3: client B
 ```
 **Option B — host + 1 client (quick):**
 ```bash
-renzora-runtime --host            # window 1: you're server + a player
-renzora-runtime                   # window 2: another player
+./dist/windows-x64/renzora --host     # window 1: you're server + a player
+./dist/windows-x64/renzora            # window 2: another player
 ```
 Always start the server/host **first**. Default port **7636** (`--port N`).
+
+> Paths are platform-specific: the binary is `renzora.exe` on Windows and a
+> bare `renzora` on Linux/macOS (under `dist/<platform>/`). The
+> `renzora-runtime` name only applies to **exported/distributed** templates,
+> not the locally-built binary you launch here.
 
 ---
 

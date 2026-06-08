@@ -2,6 +2,11 @@
 
 Status: planning · Current engine target: **Bevy 0.18** · Target: **Bevy 0.19**
 
+> **Update (2026-06-07):** the egui→bevy_ui editor migration is complete, which
+> clears the Section 0.1 primary gate — there is no longer any `bevy_egui` in the
+> active workspace. The remaining 0.19 blockers (forced render-graph→systems port,
+> Tier-1 work) are still outstanding.
+
 This plan covers (1) the forced mechanical work to compile on 0.19 and (2) the
 feature-driven payoffs that justify the migration, prioritized by leverage.
 Findings are grounded in the current `crates/` layout (158 `renzora_*` crates +
@@ -14,13 +19,16 @@ vendored bevy-ecosystem crates).
 Two things gate everything below.
 
 ### 0.1 Dependency chain (the long pole)
-The editor is entirely egui-driven, so nothing moves until the UI stack has a
-0.19-compatible release:
+The editor was entirely egui-driven, so nothing could move until the UI stack had
+a 0.19-compatible release. **That primary gate is now CLEARED:** the egui→bevy_ui
+migration (completed 2026-06-07) removed `bevy_egui` from the active workspace, so
+the long pole below is no longer `bevy_egui` but the vendored-crate bumps. The
+table is kept as historical context.
 
 | Dependency | Current | Blocker |
 | --- | --- | --- |
 | `bevy` | 0.18 | target 0.19 |
-| `bevy_egui` / `egui` | 0.39 / 0.33 | **needs a 0.19-compatible bevy_egui** — primary gate |
+| `bevy_egui` / `egui` | 0.39 / 0.33 | ~~needs a 0.19-compatible bevy_egui — primary gate~~ **CLEARED** (no longer in the active workspace) |
 | `bevy_hanabi` (vendored) | — | bump to 0.19 |
 | `bevy_silk` (vendored) | — | bump to 0.19 |
 | `bevy_oxr` (vendored) | — | bump to 0.19 |
@@ -168,10 +176,11 @@ handling — a compositor reset / headset disconnect crashes the app.
 
 ## Suggested sequencing
 
-1. **Unblock** — confirm/secure 0.19-compatible `bevy_egui` and vendored crates
-   (or plan to bump them yourself). This is the gate.
-2. **Forced port** — convert render-graph nodes → systems; migrate
-   `Text`/`TextFont` call sites to Parley APIs.
+1. ~~**Unblock** — confirm/secure 0.19-compatible `bevy_egui`.~~ **Done** — the
+   egui→bevy_ui migration removed `bevy_egui` from the active workspace
+   (2026-06-07). Vendored crates still need to be secured/bumped (see §0.1 table).
+2. **Forced port (immediate next task)** — convert render-graph nodes → systems;
+   migrate `Text`/`TextFont` call sites to Parley APIs.
 3. **Tier-1 payoffs** — serializable handles (delete path workaround) → delayed
    commands (finish blueprint delay) → XR render recovery → evaluate transform
    gizmo swap.

@@ -45,6 +45,11 @@ Use a component by path:
 - `<text>` — text content (supports `{{ bindings }}`).
 - `<image>` — texture via `src`.
 - `<button>` — like `<node>` but emits interaction events.
+- `<input>` — a focusable text field. `bind="Entity.var"` (target it edits),
+  `placeholder="..."`, `password="true"` (mask the text). Styled like a `<node>`
+  (its box/border/padding apply).
+- `<icon>` — a Phosphor glyph. `name="check"` picks the glyph; size from
+  `font_size` (or `size`), color from `font_color`.
 - `<slot/>` — in a component, where the caller's children are placed.
 - `<for tag="...">` — repeat children per matching entity (see Control flow).
 - `<node template="path.html">` — expand another template here.
@@ -117,13 +122,24 @@ Re-evaluated every frame against live ECS / script state.
 | `{{ _scriptVar }}` / `{{ EntityName._scriptVar }}` | a Lua `props()` variable |
 | `{{ Name }}` / `{{ EntityName.Name }}` | an entity's `Name` |
 
-Works in text content **and** attribute values:
+Works in **text content** and in a handful of **specific attributes** — *not*
+arbitrary style attributes:
+- `show="{{ cond }}"` — conditional visibility (any element)
+- `data=` / `value=` / `readout=` on `vector` / `gauge` / `chart` elements
+  (the dial/series sources)
+
+A `{{ }}` in e.g. `background=` / `padding=` / `width=` does **not** re-evaluate
+— style attributes are computed once at build time. Drive dynamic styling with
+a script (`set_on`) or a `show=` toggle instead.
+
 ```html
 <text>HP: {{ Player.Health.current }}/{{ Player.Health.max }}</text>
 <text>{{ Name }}</text>
+<node vector="arc" value="{{ Car.speed }}" readout="{{ Car.speed }}" />
 ```
-> `{single_brace}` is **build-time** property substitution (component props),
-> evaluated once. `{{ double_brace }}` is **runtime** reactive binding.
+> `{single_brace}` is **load-time** (build-time) property substitution
+> (component props), evaluated once as the tree is built. `{{ double_brace }}`
+> is a **runtime** binding re-evaluated every frame.
 
 ---
 
@@ -157,19 +173,32 @@ Works in text content **and** attribute values:
 
 ---
 
+## Transitions — `hover:` / `pressed:` (applied)
+Prefix `background` or `border_color` with `hover:` / `pressed:` to swap the
+color on interaction. With a `duration` (or `delay`) the swap eases; otherwise
+it snaps.
+```html
+<button background="#1B2330" hover:background="#26303F"
+        pressed:background="#0F1620" duration="0.12">Play</button>
+```
+- Covers `background` and `border_color` today.
+- `active:` styling and the `ease` / `direction` / `iterations` timing knobs are
+  parsed but not yet applied (see below).
+
+---
+
 ## Parsed but NOT yet applied by renzora_hui
 bevy_hui's parser accepts these, but the renzora loader doesn't act on them
 yet (planned). They won't error — they're just ignored:
-- **Transitions**: `hover:` / `pressed:` / `active:` prefixes, `delay`,
-  `duration`, `ease`, `direction`, `iterations`
+- **`active:` state styling**: `active:` prefixes (`hover:` / `pressed:` *are*
+  applied — see Transitions below)
+- **Transition timing**: `ease`, `direction`, `iterations` (only `delay` /
+  `duration` feed the tween)
 - **Sprite animation**: `atlas`, `fps`, `frames`, `image_region`, `image_mode`
 - **Effects**: `shadow_color`/`shadow_blur`/`shadow_offset`/`shadow_spread`,
   `outline`, `text_shadow`
 - **Misc**: `overflow`, `overflow_clip_margin`, `zindex`, `global_zindex`,
   `font` (custom font asset), `pickable`, `id`, `target`, `watch`
-
-(So e.g. `hover:background="#222"` parses but the hover color won't change yet
-— use a script-driven binding for state styling until transitions land.)
 
 ---
 

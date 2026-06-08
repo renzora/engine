@@ -1,4 +1,4 @@
-# Renzora Markup — Architecture Plan
+# Renzora Markup — Architecture & Status
 
 The next-gen markup system: **markup is just a serialization format for a
 `bevy_ui` entity tree.** Edit the markup, edit the tree — both round-trip
@@ -8,6 +8,15 @@ re-assertion" model.
 This doc supersedes §6 of [`ui_plan.md`](./ui_plan.md). The rest of that doc
 (scripting bridge, editor wiring, Cinder, shader effects) still stands; this is
 the runtime/loader layer underneath.
+
+> **Actual implementation status.** The new model is the live model: the
+> `renzora_hui` loader spawns real `bevy_ui` entity trees and powers the
+> editor's HUI panels. Phases A, B, and D are **complete**; Phase C is
+> **partial** (inspector→`.html` writeback works via `writeback.rs`, but there
+> is *no* hot-reload-on-`Modified` respawn, so the round-trip loop isn't
+> closed); Phase E (**cleanup**) is **not started** — the vendored `bevy_hui`
+> fork is still full and `renzora_hui` is not yet renamed to `renzora_markup`.
+> The rest of this doc is the design rationale; §5 carries the per-phase status.
 
 ---
 
@@ -80,13 +89,28 @@ crates/renzora_hui/
 ├── src/
 │   ├── lib.rs            – HuiPlugin (registers loader + watcher)
 │   ├── loader.rs         – AST → entity tree (the new core)
-│   ├── saver.rs          – entity tree → markup file (drag-write-back)
-│   ├── hot_reload.rs     – file-change → despawn + reload
+│   ├── writeback.rs      – span-tracked attribute writeback to .html (inspector edits)
 │   ├── transitions.rs    – small hover/pressed transition system
 │   ├── lua_bridge.rs     – on_ui Lua hook (kept as-is)
-│   ├── editor.rs         – inspector/preset/icon registrations
-│   └── template.rs       – HtmlTemplatePath observer (now triggers the loader)
+│   ├── template.rs       – HtmlTemplatePath observer (now triggers the loader)
+│   ├── binding.rs        – reactive data bindings
+│   ├── interactions.rs   – Interaction → MarkupOnPress/etc. dispatch
+│   ├── input_field.rs    – text input widget
+│   ├── widgets.rs        – built-in widget components
+│   ├── foreach.rs        – list/repeat (`<for>`) expansion
+│   ├── drag.rs           – element drag handling
+│   ├── dnd.rs            – drag-and-drop
+│   ├── cursor.rs / cursor_icon.rs – cursor state + icon
+│   ├── icons.rs / phosphor_map.rs – icon tags + phosphor glyph map
+│   ├── vector.rs         – vector graphics
+│   ├── decor.rs          – decorative styling helpers
+│   └── provenance.rs     – MarkupSource span provenance (powers writeback)
 ```
+
+There is no `saver.rs` — attribute writeback lives in `writeback.rs`, and
+hot-reload is not yet its own module (see §5 Phase C). The editor-only
+registrations (`editor.rs`) live in a separate `crates/renzora_hui/editor/`
+subcrate rather than under `src/`.
 
 ### Loader (`loader.rs`) — the core
 Walks the parsed AST and spawns one entity per markup node:
@@ -104,16 +128,21 @@ Property substitution (`{label}`) and slot insertion happen at load time, not
 runtime — the substitution result is just baked into the attribute values
 before they become component fields.
 
-### Saver (`saver.rs`)
-The dual of the loader: walk children of the template root, read components,
-surgical-edit the original `.html` to update attribute values. Preserves
-comments, formatting, and attribute order. The Phase-2 surgical text-edit code
-we already wrote (`update_root_attrs`/`upsert_attr`) generalizes to this.
+### Writeback (`writeback.rs`)
+The dual of the loader: when the inspector edits an attribute on a
+markup-built entity, `write_attr_to_markup` looks up the entity's
+`MarkupSource` (from `provenance.rs`), finds the recorded byte span for that
+attribute in the cached `HtmlTemplate::source`, patches the bytes, and
+rewrites the `.html` on disk. Preserves comments, formatting, and attribute
+order; downstream spans are delta-shifted so subsequent edits in the same
+session keep targeting the right ranges.
 
-### Hot-reload (`hot_reload.rs`)
-File change → despawn the old subtree under the template entity → re-run the
-loader. Simple because there's no "in-place state to preserve" — every rebuild
-just walks the new file.
+### Hot-reload (not yet implemented)
+The intended design: file change → despawn the old subtree under the template
+entity → re-run the loader. Simple because there's no "in-place state to
+preserve" — every rebuild just walks the new file. Not wired up yet (see §5
+Phase C); writing the file via `writeback.rs` does *not* currently trigger a
+respawn.
 
 ### Transitions (`transitions.rs`) — small replacement for `HtmlStyle.hover`
 For `hover:background="#X"` etc. we add a small `Transitions` component on the
@@ -157,56 +186,68 @@ These all fall out of the new model "for free" — no per-feature workarounds:
 
 ---
 
-## 5. Phased implementation
+## 5. Phased implementation — status
 
-### Phase A — vertical slice (proves the model)
-1. New `loader.rs` handles `<node>`, `<text>` only. Subset of attrs:
-   width/height/position/left/top/right/bottom, padding/margin,
-   flex_direction/justify_content/align_items, background, font_size/font_color.
-2. Replace `template::on_template_path_inserted` so it calls the new loader
-   instead of bevy_hui's runtime.
+### Phase A — vertical slice (proves the model) — COMPLETE
+1. `loader.rs` now handles far more than `<node>`/`<text>`: full `<node>` /
+   `<text>` / `<image>` / `<button>` styling (flex + grid layout, box model,
+   colors, borders, font size/color, text content), plus icons, input fields,
+   and widget tags.
+2. `template::on_template_path_inserted` calls the new loader instead of
+   bevy_hui's runtime.
 3. Existing demo templates (`health_bar`, `speedometer`, `scoreboard`,
    `inventory`, `hud`) render through it.
 4. Bevy_hui's `BuildPlugin`/`TransitionPlugin` are no longer added to the app.
 5. Compile-clean. The renzora_hui crate still depends on bevy_hui *just for
    the parser+data types*.
 
-### Phase B — composition
-1. Property substitution (`{label}` → attribute value before component build).
+### Phase B — composition — COMPLETE
+1. Property substitution (`{label}` → attribute value, via `AttrTokens::compile`,
+   in both attribute values and text content).
 2. Slot insertion (`<slot/>` → caller's children get reparented here at load
    time).
-3. Custom component registry (`<menu_button>` → load and instantiate
-   `menu_button.html` as a sub-tree).
+3. Custom component registry (`<menu_button>`, `<stat_bar>`, … → looked up in
+   `ComponentRegistry` and instantiated as a sub-tree with merged overrides).
 
-### Phase C — round-trip + hot-reload
-1. Hot-reload system: `AssetEvent<HtmlTemplate>::Modified` → despawn subtree,
-   re-run loader.
-2. Saver: editor drag/resize → write attribute updates to `.html`.
-3. Bidirectional in practice: file watcher picks up the editor's writes → the
-   loader re-spawns with those values → no fight.
+### Phase C — round-trip + hot-reload — PARTIAL
+1. **Not implemented.** No hot-reload system on
+   `AssetEvent<HtmlTemplate>::Modified` → despawn subtree, re-run loader.
+   Writing the file does not currently trigger a respawn (see the NOT-here note
+   in `writeback.rs`).
+2. **Done.** Writeback: inspector attribute edits → span-tracked patch written
+   to `.html` (`writeback.rs` + `provenance.rs`).
+3. The bidirectional file-watcher loop depends on (1) and is therefore not yet
+   closed.
 
-### Phase D — interaction
-1. `Transitions` component + per-state lerp system (`hover:`/`pressed:`).
-2. `Interaction` → `MarkupOnPress`/`MarkupOnEnter`/etc. → the existing Lua
-   `on_ui` hook (this layer barely changes).
+### Phase D — interaction — COMPLETE
+1. `transitions.rs`: hover/pressed background + border overrides resolve
+   `pressed → hover → base` against `Interaction` (no per-frame `HtmlStyle`
+   re-assertion).
+2. `interactions.rs`: `Interaction` → `MarkupOnPress`/etc. → the existing Lua
+   `on_ui` hook.
 
-### Phase E — cleanup
-1. Strip the bevy_hui fork down to `parse.rs`/`data.rs`/`error.rs`/`util.rs`
-   (and any deps they pull in).
-2. Rename `crates/bevy_hui/` → `crates/renzora_markup/` (or similar).
-3. Remove `renzora_hui` crate's name confusion: the runtime that uses the
-   parser is renzora_*-named end-to-end.
+### Phase E — cleanup — NOT STARTED
+1. The vendored bevy_hui fork is still full (`build.rs`, `styles.rs`,
+   `compile.rs`, `animation.rs`, `bindings.rs`, `auto.rs`, … all present); it
+   has not been stripped down to `parse.rs`/`data.rs`/`error.rs`/`util.rs`.
+2. `crates/bevy_hui/` has not been renamed to `crates/renzora_markup/`.
+3. The `renzora_hui` / `bevy_hui` name split therefore still stands.
 
 ---
 
 ## 6. What's committed now
 
-This doc + the vendored `bevy_hui` fork at pristine 0.6.0. The workspace points
-at `crates/bevy_hui/` via a `path = "../bevy_hui"` dep on `renzora_hui`.
+The `renzora_hui` loader (`loader.rs`) is the live runtime: it walks the parsed
+`HtmlTemplate` and spawns real `bevy_ui` entity trees, and bevy_hui's
+`BuildPlugin`/`TransitionPlugin` are no longer added to the app. Composition
+(property substitution, slots, custom components), transitions, interaction
+dispatch, and inspector→`.html` writeback are all in place.
 
-The renzora_hui runtime currently still uses bevy_hui's `BuildPlugin` etc.
-(Phase 1 state, last commit was `4022ad83`). Phase A will be the first chunk
-that replaces that with the new loader.
+The vendored `bevy_hui` fork is still present (full, not yet stripped) and the
+workspace points at `crates/bevy_hui/` via a `path = "../bevy_hui"` dep on
+`renzora_hui` — `renzora_hui` consumes it only for the parser + data types
+(`parse.rs`/`data.rs`/`error.rs`/`util.rs`). Remaining work: close the
+hot-reload round-trip (Phase C) and the bevy_hui strip-down + rename (Phase E).
 
 ---
 

@@ -6,7 +6,7 @@ How to extend Renzora with plugins, components, and scripting. This is for peopl
 
 Plugins are Rust crates that get full Bevy ECS access — `Commands`, `Query`, `Res`, `ResMut`, `Assets`, everything. No FFI wrappers or translation layers.
 
-The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` macro, editor framework traits (`EditorPanel`, `ThemeManager`), and shared types. It does not re-export engine internals — plugins interact with engine systems through the ECS.
+The SDK (`renzora` crate) connects plugins to Bevy. It provides the `add!()` macro plus the shared editor contracts and types (e.g. `FieldDef`, the inspectable registries, and — under the `editor` feature — the `AppEditorExt` trait that adds `register_inspectable()`). It does not re-export engine internals: editor-framework traits live in their own crates a plugin can depend on directly (`EditorPanel` in `renzora_ui`, `ThemeManager` in `renzora_theme`). Otherwise plugins interact with engine systems through the ECS.
 
 ### Scaffolding
 
@@ -122,14 +122,18 @@ Field types are inferred: `f32` renders as a drag slider, `bool` as a checkbox, 
 The engine supports Rhai (all platforms) and Lua (native only) scripting. Components registered with `register_inspectable()` are automatically available to scripts — no extra setup needed. The component is added to Bevy's ECS and reflection system, so scripts can read and write any field.
 
 ```lua
--- get a component field
-local hp = get(entity, "Health", "current")
+-- get a component field on self
+local hp = get("Health.current")
 
--- set a component field
-set(entity, "Health", "current", 50.0)
+-- set a component field on self
+set("Health.current", 50.0)
+
+-- read/write a field on a named entity
+local boss_hp = get_on("Boss", "Health.current")
+set_on("Boss", "Health.current", 50.0)
 ```
 
-This works for any component from any plugin. If someone publishes a `Sun` plugin with a `SunLight` component, scripts can immediately do `set(entity, "SunLight", "intensity", 2.0)` without the plugin author writing any scripting glue.
+This works for any component from any plugin. If someone publishes a `Sun` plugin with a `SunLight` component, scripts can immediately do `set("SunLight.intensity", 2.0)` (or `set_on("World Environment", "SunLight.intensity", 2.0)`) without the plugin author writing any scripting glue.
 
 ## Workspaces and Stable ABI
 

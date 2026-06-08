@@ -1,5 +1,7 @@
 # renzora_hui — component catalog & roadmap
 
+*Status as of 2026-05-30.*
+
 The goal: a toolbox to build any UI. The trick is that **most widgets are
 markup compositions** over a handful of engine-side *behaviors*. Build the
 behavior kernel once; everything else is `.html`.
@@ -22,23 +24,28 @@ behavior kernel piece · ⬜ not started
 - `{{ Component.field }}` / `{{ Entity.Component.field }}` / `{{ _scriptVar }}`
   / `{{ Name }}` — reactive bindings (read).
 
-## 3. Behavior kernel (🔧 — build these once, reuse everywhere)
-These are the only truly new engine systems needed. Each is a markup attribute
-or marker + a small system.
+## 3. Behavior kernel (✅ — built; reuse everywhere)
+These are the truly new engine systems. Each is a markup attribute or marker +
+a small system. The kernel now exists: see `input_field.rs`, `widgets.rs`,
+`binding.rs`, and `writeback.rs`; exercised by `assets/ui/login_form.html` and
+`assets/ui/controls_demo.html`.
 
-| Kernel | Markup | Powers |
-|---|---|---|
-| **Focus** | `focusable`, click-to-focus, Tab order | input, dropdown, anything keyboard |
-| **Text input** | `<input bind="...">` | input, textarea, search, password, number, chat |
-| **Drag-value** | `<node drag_value="..." min max>` | slider, scrollbar, progress-drag, color picker |
-| **Toggle** | `toggle="Path.field"` | checkbox, switch, radio |
-| **Disclosure** | `toggles="#id"` (show/hide a target) | dropdown, accordion, modal, tooltip, popover, tabs |
-| **Two-way write** | `bind="Entity.Component.field"` | the write path all inputs share |
-
-Build order: **Focus + Text input first** (unlocks forms/login), then
-Toggle, then Drag-value, then Disclosure.
+| Kernel | Markup | Powers | Status |
+|---|---|---|---|
+| **Focus** | `focusable`, click-to-focus, Tab order | input, dropdown, anything keyboard | ✅ |
+| **Text input** | `<input bind="...">` | input, textarea, search, password, number, chat | ✅ |
+| **Drag-value** | `<node drag_value="..." min max>` | slider, scrollbar, progress-drag, color picker | ✅ |
+| **Toggle** | `toggle="Path.field"` | checkbox, switch, radio | ✅ |
+| **Disclosure** | `toggles="#id"` (show/hide a target) | dropdown, accordion, modal, tooltip, popover, tabs | ✅ |
+| **Two-way write** | `bind="Entity.Component.field"` | the write path all inputs share | ✅ |
 
 ## 4. Widget catalog (🟡 markup once the kernel exists; some 🟡 today)
+
+> **Note:** these markers track *dedicated, reusable `.html` widget components*
+> (still mostly unauthored). The behavior kernel they'd build on is done — the
+> base `<input>` / `<node drag_value=...>` kernels work directly in markup today
+> (see `controls_demo.html`); these rows are about packaging them as drop-in,
+> reusable component templates.
 
 ### Inputs
 - Button ✅
@@ -136,8 +143,10 @@ site set `value="{{ Car.speed }}"`).
   `scripts/vector_anim.lua`); `assets/ui/vector_demo.html` (raw primitives).
 
 ## 5. Polish layer (⬜ later)
-- **Transitions/tweens** — smooth hover/show, slide-in drawers, spinners.
-  bevy_hui already parses `hover:` / `delay=` / `ease=`; needs a tween system.
+- **Transitions/tweens** ✅ — smooth hover/show. `transitions.rs` collects an
+  element's base + `hover:` / `pressed:` background and border colors into an
+  `Interactive` component and eases toward the active target with `delay=` /
+  `ease=` (see `assets/ui/main_menu.html`). Slide-in drawers / spinners still TODO.
 - **Theme tokens** — project `theme.html` with `{accent}` etc.; one file
   re-themes everything.
 - **`json_stringify`** — symmetric with `json_parse` for clean request bodies.
@@ -145,7 +154,7 @@ site set `value="{{ Car.speed }}"`).
 ---
 
 ## The point
-Sections 1–2 are done. Section 3 is ~5 small systems. Once the kernel exists,
-the entire Section 4 catalog is authored as `.html` files in a `widgets/`
+Sections 1–3 are done — the behavior kernel exists. What remains is authoring
+the Section 4 catalog as reusable `.html` component files in a `widgets/`
 folder — no further Rust. That's how you "build anything": a small behavior
 kernel + a growing markup widget library.

@@ -3,14 +3,24 @@
 Status of the markup-driven UI system and the road to **Cinder** — the first
 UI-layer particle system in the Bevy ecosystem.
 
-> 🚧 **§6 (entity model) is being rewritten.** The runtime layer is moving from
+> ✅ **§6 (entity model) — COMPLETED.** The runtime layer has moved from
 > bevy_hui's "opaque builder + per-frame style re-assertion" to a
 > markup-is-an-entity-tree model where every `<node>`/`<text>`/`<image>` is a
-> real entity with bevy_ui components. See [`renzora_markup.md`](./renzora_markup.md)
-> for the new architecture and phased plan. The rest of this doc (Cinder,
-> shader effects, scripting bridge, editor wiring) still stands as written.
+> real entity with bevy_ui components. The new `renzora_hui` loader
+> (`crates/renzora_hui/src/loader.rs`) spawns real bevy_ui entities directly;
+> bevy_hui's `BuildPlugin`/`TransitionPlugin` are **not** registered (only its
+> parser-side `LoaderPlugin` is). See [`renzora_markup.md`](./renzora_markup.md)
+> for the architecture. The rest of this doc (Cinder, shader effects, scripting
+> bridge, editor wiring) still stands as written.
 
 **Legend:** ✅ shipped · 🔜 planned · ❓ open decision · 🧪 needs live-editor verification
+
+> **Status as of 2026-06.** Shipped: the markup runtime (own entity-tree loader),
+> the scripting bridge, editor integration, the entity/positioning model (§6), and
+> markup write-back (§6 Phase 2). On the roadmap (not yet shipped): the custom-tag
+> bridge (§7), shader UI effects (§8 — note the SDF shape widgets in
+> `renzora_game_ui::shapes` already ship), and **Cinder**, the UI particle system
+> (§9), which is unstarted future work.
 
 ---
 
@@ -62,8 +72,7 @@ Render:  bevy_ui pass  +  UiMaterial shaders (shapes today, effects 🔜)  +  Ci
 - Demo templates: `health_bar`, `speedometer`, `scoreboard`, `inventory`, `hud`
   + reusable `stat_bar`, `item_slot` components.
 - A CI parse test (`crates/renzora_hui/tests/parse_templates.rs`) parses every
-  `assets/ui/**/*.html` so markup errors fail CI (runs on Linux; can't link
-  locally on Windows due to the `renzora` dylib symbol cap).
+  `assets/ui/**/*.html` so markup errors fail CI.
 
 ### bevy_hui capability reference (it's a CSS *subset*, not an engine)
 - **Has:** flexbox + CSS grid, box model (size/min/max, margin, padding, border,
@@ -111,7 +120,7 @@ editor cascade). Everything compiles; the *visual* behavior needs in-editor chec
 
 ---
 
-## 6. Entity model & positioning ✅ ✏️
+## 6. Entity model & positioning ✅
 
 **Decision (locked):** markup is the **single source of truth**. The editor
 visually positions/resizes by writing `left/top/width/height` back into the
@@ -141,11 +150,11 @@ per-instance overrides — same model Unity and Godot use (prefabs + LayoutGroup
   `width/height` on the root, so drag/resize have a real target.
 
 **Phases:**
-- **Phase 1 ✅** — selection model (above). Drag doesn't persist yet; that's Phase 2.
-- **Phase 2 🔜** — **markup write-back.** Drag/resize edits `left/top/width/height`
-  in the `.html` file via surgical string edits (preserves comments + formatting).
-  bevy_hui's hot-reload picks the change up; rendered state stays in sync with
-  the file.
+- **Phase 1 ✅** — selection model (above).
+- **Phase 2 ✅** — **markup write-back** (`crates/renzora_hui/src/writeback.rs`).
+  Inspector edits (and drag/resize of `left/top/width/height`) patch the `.html`
+  file via span-tracked surgical string edits (preserves comments + formatting).
+  rendered state stays in sync with the file.
 - **Phase 3 🔜** — **drop-onto-container.** Dropping a `.html` on an existing
   container widget parents the instance under it; parent-aware `Node` defaults so
   a container child becomes a flex item, a canvas child a 100% overlay. Plus a
@@ -210,6 +219,9 @@ the "immersive" feel before particles even enter the picture.
 
 ## 9. `renzora_cinder` — UI particle system 🔜 (flagship)
 
+> **Status: unstarted future work.** There is no `renzora_cinder` crate yet; this
+> section is a design sketch, not shipped code.
+
 **The gap:** every Bevy particle crate (`bevy_hanabi`, `bevy_enoki`,
 `bevy_particle_systems`, Sprinkles) renders in world/camera space. **None**
 composite with the `bevy_ui` layer. Cinder is the first UI-space particle system
@@ -267,11 +279,9 @@ recycled. Chosen over render-to-texture / overlay-camera because it:
 
 ## 11. Verification & constraints
 
-- **No GPU editor on the Windows dev box** → editor/visual behavior is verified by
-  the user; agent work is compile-checked (`cargo check`) + CI.
-- **Local linking cap:** the `renzora` dylib exceeds Windows' 64k export limit, so
-  full builds/tests don't link locally; use `cargo check`. CI (ubuntu,
-  `cargo test --workspace`) runs the parse test and others.
+- Editor/visual behavior is verified by running the editor; agent work is
+  compile-checked (`cargo check`) and gated by CI (ubuntu, `cargo test --workspace`,
+  which runs the parse test and others).
 - New visual features ship as **compile-clean vertical slices** the user runs and
   tunes from screenshots, rather than large unverified drops.
 
