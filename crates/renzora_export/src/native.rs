@@ -104,12 +104,84 @@ fn scan_plugins(world: &mut World) {
     }
     let dir = world.resource::<TemplateManager>().runtime_plugins_dir();
     let plugins = dynamic_plugin_loader::scan_plugins(&dir);
+
+    // Pre-select only the plugins a scene actually references, so the export
+    // ships just the effects it uses instead of all 50+. A plugin id is the dll
+    // stem (e.g. `renzora_matrix`); scenes name components by their defining
+    // crate (`renzora_matrix::MatrixSettings`), so we match `<id>::` in the
+    // project's `.ron` files. Effects added purely from scripts won't be
+    // detected — the user can still tick those manually. If there's no open
+    // project / no scenes to scan, fall back to selecting everything.
+    let project_root = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|p| p.path.clone());
+    let used = project_root
+        .as_deref()
+        .and_then(|root| scene_used_plugin_ids(root, &plugins));
+
     let mut s = world.resource_mut::<ExportOverlayState>();
     for p in &plugins {
-        s.selected_plugins.insert(p.id.clone());
+        let select = used.as_ref().map_or(true, |set| set.contains(&p.id));
+        if select {
+            s.selected_plugins.insert(p.id.clone());
+        }
     }
     s.available_plugins = plugins;
     s.plugins_scanned = true;
+}
+
+/// The plugin ids referenced by any `.ron` scene/prefab under `root`. Matches
+/// each plugin's crate prefix (`<id>::`, with a leading `lib` stripped for unix
+/// dll names) against the serialized component type paths. Returns `None` if no
+/// `.ron` could be read, so the caller falls back to selecting all plugins.
+fn scene_used_plugin_ids(
+    root: &std::path::Path,
+    available: &[dynamic_plugin_loader::DynamicPluginInfo],
+) -> Option<std::collections::HashSet<String>> {
+    let needles: Vec<(String, String)> = available
+        .iter()
+        .map(|p| {
+            let crate_name = p.id.strip_prefix("lib").unwrap_or(p.id.as_str());
+            (p.id.clone(), format!("{crate_name}::"))
+        })
+        .collect();
+
+    let mut ron_files = Vec::new();
+    collect_ron_files(root, &mut ron_files);
+    if ron_files.is_empty() {
+        return None;
+    }
+
+    let mut used = std::collections::HashSet::new();
+    for file in &ron_files {
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        for (id, needle) in &needles {
+            if !used.contains(id) && text.contains(needle.as_str()) {
+                used.insert(id.clone());
+            }
+        }
+    }
+    Some(used)
+}
+
+/// Recursively collect `.ron` files under `dir`, skipping dot-directories
+/// (`.editor`, `.cache`, `.git`, …).
+fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let is_dot = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map_or(false, |n| n.starts_with('.'));
+            if !is_dot {
+                collect_ron_files(&path, out);
+            }
+        } else if path.extension().and_then(|x| x.to_str()) == Some("ron") {
+            out.push(path);
+        }
+    }
 }
 
 struct Init {
