@@ -73,6 +73,23 @@ pub struct SceneLoadedWithSkippedTypes {
 // Save
 // ============================================================================
 
+/// Whether any ancestor of `e` carries [`HideInHierarchy`]. The bevy_ui editor
+/// chrome lives under such a root (renzora_shell tags its `ShellRoot`; gizmos and
+/// previews tag theirs), but the marker sits ONLY on the root — its named child
+/// widgets (dock tabs, hierarchy rows, inspector fields, glyph icons) otherwise
+/// pass the direct `Without<HideInHierarchy>` save filter and get serialized into
+/// the scene, where on reload they paint full-window over the editor (blank) and
+/// the game (black). Mirrors the ancestor walk the scene-clear despawn path uses.
+fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
+    while let Some(parent) = world.get::<ChildOf>(e).map(|c| c.parent()) {
+        if world.get::<HideInHierarchy>(parent).is_some() {
+            return true;
+        }
+        e = parent;
+    }
+    false
+}
+
 /// Save specific entities to a RON file.
 pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
@@ -86,6 +103,21 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     )>();
     for entity in query.iter(world) {
         entities.push(entity);
+    }
+
+    // Exclude editor-chrome descendants (see `has_hidden_ancestor`): the shell
+    // tags only its root with `HideInHierarchy`, so its named child widgets would
+    // otherwise be baked into the scene and overlay the window on reload.
+    {
+        let before = entities.len();
+        entities.retain(|&entity| !has_hidden_ancestor(world, entity));
+        let excluded = before - entities.len();
+        if excluded > 0 {
+            console_info(
+                "Scene",
+                format!("Excluded {} editor-chrome entities from save", excluded),
+            );
+        }
     }
 
     // Exclude descendants of SceneInstance entities — those come from the
@@ -286,6 +318,9 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
     for entity in query.iter(world) {
         entities.push(entity);
     }
+
+    // Exclude editor-chrome descendants (see `has_hidden_ancestor`).
+    entities.retain(|&entity| !has_hidden_ancestor(world, entity));
 
     // Exclude descendants of MeshInstanceData entities
     {
