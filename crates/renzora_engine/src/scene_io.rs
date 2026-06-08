@@ -440,7 +440,7 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
         return;
     }
 
-    let (scene, skipped_types) = match deserialize_scene_lossy(world, ron) {
+    let (mut scene, skipped_types) = match deserialize_scene_lossy(world, ron) {
         Ok(pair) => pair,
         Err(e) => {
             error!("Failed to deserialize scene from string: {}", e);
@@ -459,6 +459,14 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
             path: String::new(),
             skipped: skipped_types.clone(),
         });
+    }
+
+    let pruned = prune_orphaned_entities(&mut scene);
+    if pruned > 0 {
+        warn!(
+            "[scene] pruned {} orphaned entities (leaked editor-chrome / missing parent) from string scene",
+            pruned
+        );
     }
 
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
@@ -669,6 +677,81 @@ fn strip_component_entry(ron: &str, type_path: &str) -> Option<String> {
     Some(out)
 }
 
+/// The `ChildOf` parent recorded on a serialized scene entity, if any. Read
+/// straight out of the reflected components — the scene isn't in the World yet,
+/// so we can't query it.
+fn scene_entity_parent(dyn_ent: &bevy::scene::DynamicEntity) -> Option<Entity> {
+    for comp in &dyn_ent.components {
+        let is_child_of = comp
+            .get_represented_type_info()
+            .map(|ti| ti.type_path() == <ChildOf as bevy::reflect::TypePath>::type_path())
+            .unwrap_or(false);
+        if !is_child_of {
+            continue;
+        }
+        if let bevy::reflect::ReflectRef::TupleStruct(ts) = comp.reflect_ref() {
+            if let Some(parent) = ts.field(0).and_then(|f| f.try_downcast_ref::<Entity>()) {
+                return Some(*parent);
+            }
+        }
+    }
+    None
+}
+
+/// Drop entities whose `ChildOf` ancestor chain leads to a parent that ISN'T in
+/// the scene. Such an entity is an orphan of a root that was excluded at save
+/// time — almost always leaked editor-chrome widgets: the `HideInHierarchy`
+/// shell root is correctly filtered out of saves, but older scenes baked in its
+/// named children (dock tabs, glyph icons, inspector rows). On load those would
+/// reparent to the window root and paint full-window over the editor (blank).
+///
+/// Cascades for free: a child of a pruned entity is pruned too, because its own
+/// chain still climbs to the same missing root. A well-formed scene has complete
+/// hierarchies, so nothing is dropped. Returns how many were pruned.
+fn prune_orphaned_entities(scene: &mut bevy::scene::DynamicScene) -> usize {
+    use std::collections::{HashMap, HashSet};
+    let ids: HashSet<Entity> = scene.entities.iter().map(|e| e.entity).collect();
+    if ids.is_empty() {
+        return 0;
+    }
+    let parent_of: HashMap<Entity, Entity> = scene
+        .entities
+        .iter()
+        .filter_map(|e| scene_entity_parent(e).map(|p| (e.entity, p)))
+        .collect();
+
+    let orphaned = |start: Entity| -> bool {
+        let mut cur = start;
+        let mut seen = HashSet::new();
+        loop {
+            if !seen.insert(cur) {
+                return false; // cycle — keep rather than loop forever
+            }
+            match parent_of.get(&cur) {
+                None => return false,                   // a root → valid
+                Some(p) if ids.contains(p) => cur = *p, // climb toward the root
+                Some(_) => return true,                 // parent absent → orphan
+            }
+        }
+    };
+
+    let before = scene.entities.len();
+    // Restrict to UI entities: leaked chrome is always `bevy_ui` nodes, so this
+    // can never drop legit 3D scene data even if some non-UI entity were
+    // orphaned for an unrelated reason.
+    scene.entities.retain(|e| !(orphaned(e.entity) && scene_entity_is_ui(e)));
+    before - scene.entities.len()
+}
+
+/// Whether a serialized scene entity is a `bevy_ui` node (carries `Node`).
+fn scene_entity_is_ui(dyn_ent: &bevy::scene::DynamicEntity) -> bool {
+    dyn_ent.components.iter().any(|c| {
+        c.get_represented_type_info()
+            .map(|ti| ti.type_path() == "bevy_ui::ui_node::Node")
+            .unwrap_or(false)
+    })
+}
+
 /// Load a scene from a RON file into the world.
 ///
 /// Tries the Vfs (rpak archive) first, then falls back to disk.
@@ -749,7 +832,7 @@ pub fn load_scene(world: &mut World, path: &Path) {
         return;
     }
 
-    let (scene, skipped_types) = match deserialize_scene_lossy(world, &content) {
+    let (mut scene, skipped_types) = match deserialize_scene_lossy(world, &content) {
         Ok(pair) => pair,
         Err(e) => {
             error!("Failed to deserialize scene {}: {}", path.display(), e);
@@ -768,6 +851,19 @@ pub fn load_scene(world: &mut World, path: &Path) {
             path: path_str.clone(),
             skipped: skipped_types.clone(),
         });
+    }
+
+    let pruned = prune_orphaned_entities(&mut scene);
+    if pruned > 0 {
+        console_info(
+            "Scene",
+            format!("Pruned {pruned} orphaned editor-chrome entities on load"),
+        );
+        warn!(
+            "[scene] {} pruned {} orphaned entities (leaked editor-chrome / missing parent)",
+            path.display(),
+            pruned
+        );
     }
 
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
