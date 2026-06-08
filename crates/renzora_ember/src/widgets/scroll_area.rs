@@ -110,7 +110,7 @@ fn build_scroll(
             BackgroundColor(rgb(text_muted())),
             Interaction::default(),
             ScrollThumb { viewport, track },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("scroll-thumb"),
         ))
         .id();

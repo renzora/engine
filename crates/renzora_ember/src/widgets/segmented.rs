@@ -58,7 +58,7 @@ pub fn segmented(
                         WidgetState::Normal
                     },
                 ),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("segment"),
             ))
             .with_children(|p| {

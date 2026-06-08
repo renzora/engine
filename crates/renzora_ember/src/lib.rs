@@ -13,15 +13,21 @@
 //! - [`dock`] — the dockable panel layout component.
 //! - [`widgets`] — reusable UI components (buttons, toggles, …).
 //!
-//! Add [`EmberPlugin`] to register the theme + dock + widget systems. Migrating
-//! in next: `markup` (folds in `renzora_hui`) and `cinder` (particle UI).
+//! Add [`EmberPlugin`] to register the theme + dock + widget systems. The
+//! [`markup`] runtime (folded in from the former `renzora_hui`) installs itself
+//! via `renzora::add!` so it runs in games and the editor alike. Migrating in
+//! next: `cinder` (particle UI).
 
 use bevy::prelude::*;
 
+pub mod cursor_icon;
 pub mod dock;
 pub mod font;
+pub mod icons;
 pub mod inspector;
+pub mod markup;
 pub mod panel;
+pub mod phosphor_map;
 pub mod reactive;
 pub mod style;
 pub mod theme;

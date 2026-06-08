@@ -48,7 +48,7 @@ pub fn dropdown(
             },
             BackgroundColor(rgb(tab_active())),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("dropdown"),
         ))
         .id();
@@ -103,7 +103,7 @@ pub fn dropdown(
                     dropdown: box_e,
                     value: i,
                 },
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("dropdown-option"),
             ))
             .with_children(|p| {

@@ -32,7 +32,7 @@ pub fn asset_tile(
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("asset-tile"),
         ))
         .id();

@@ -1216,7 +1216,7 @@ fn build_tree(
                 hit.left = Val::Px(0.0);
                 hit.width = Val::Percent(100.0);
             }
-            let cursor = renzora_hui::cursor_icon::parse_cursor(if row {
+            let cursor = crate::cursor_icon::parse_cursor(if row {
                 "ew-resize"
             } else {
                 "ns-resize"
@@ -1226,7 +1226,7 @@ fn build_tree(
                 .spawn((
                     hit,
                     Interaction::default(),
-                    renzora_hui::cursor_icon::HoverCursor(cursor),
+                    crate::cursor_icon::HoverCursor(cursor),
                     Divider {
                         container,
                         first_wrap: wrap_a,
@@ -1272,7 +1272,7 @@ fn build_tree(
                     BackgroundColor(rgb(tab_active())),
                     BorderColor::all(rgb(border())),
                     Interaction::default(),
-                    renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                    crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     // No leaf yet — picking sets the tree's root leaf.
                     AddPanelButton {
                         leaf: Entity::PLACEHOLDER,
@@ -1544,7 +1544,7 @@ fn populate_leaf(
                 Interaction::default(),
                 bevy::ui::RelativeCursorPosition::default(),
                 DockPart::Tab,
-                renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new(format!("tab:{id}")),
             ))
             .id();
@@ -1596,7 +1596,7 @@ fn populate_leaf(
     let add_btn = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
     commands.entity(add_btn).insert((
         Interaction::default(),
-        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         AddPanelButton { leaf },
         Name::new("dock-add-panel"),
     ));
@@ -1612,7 +1612,7 @@ fn populate_leaf(
         ))
         .id();
     if let Some(p) = parent.filter(|p| p.aligned()) {
-        let cursor = renzora_hui::cursor_icon::parse_cursor(if p.horizontal {
+        let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
             "ew-resize"
         } else {
             "ns-resize"
@@ -1620,7 +1620,7 @@ fn populate_leaf(
         .unwrap();
         commands.entity(filler).insert((
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(cursor),
+            crate::cursor_icon::HoverCursor(cursor),
             Divider {
                 container: p.container,
                 first_wrap: p.first_wrap,

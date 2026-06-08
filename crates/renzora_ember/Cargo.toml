@@ -12,9 +12,19 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 # HideInHierarchy + core types.
 renzora = { path = "../renzora", default-features = false }
-# Phosphor icon font + glyph lookup + CSS-style cursor icons (folding HUI into
-# ember over time; for now ember reuses HUI's icon font + helpers).
-renzora_hui = { path = "../renzora_hui" }
+# Markup runtime (folded in from the former renzora_hui crate): the vendored
+# bevy_hui parser, the game-UI canvas primitives, and the scripting bridge.
+bevy_hui = { path = "../bevy_hui" }
+renzora_game_ui = { path = "../renzora_game_ui" }
+renzora_scripting = { path = "../renzora_scripting" }
+# Vector-graphics markup widgets (gauges/charts/waveforms). TEMPORARY: being
+# replaced by ember's own WGSL widgets; dropped once the vector= markup bridge
+# lands (Stage 2 of the merge).
+bevy_vello = { version = "0.13", default-features = false, features = ["text"] }
+skrifa = "0.40"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

@@ -95,7 +95,7 @@ fn build_input(
             BorderColor::all(rgb(border())),
             Interaction::default(),
             Styled::new(Role::Input),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("text-input"),
         ))
         .id();

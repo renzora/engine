@@ -95,7 +95,7 @@ pub fn section_with_header(
                 body,
                 caret,
             },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("section-header"),
         ))
         .id();

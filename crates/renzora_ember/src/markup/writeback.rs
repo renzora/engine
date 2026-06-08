@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy_hui::prelude::{AttrSpan, HtmlTemplate, Span, XNode};
 
-use crate::provenance::MarkupSource;
+use crate::markup::provenance::MarkupSource;
 
 /// Rewrite (or insert) an attribute on the entity's source markup.
 ///

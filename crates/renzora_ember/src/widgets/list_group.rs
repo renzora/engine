@@ -56,7 +56,7 @@ pub fn list_group(
                         WidgetState::Normal
                     },
                 ),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("list-item"),
             ))
             .with_children(|p| {

@@ -51,7 +51,7 @@ pub fn pagination(commands: &mut Commands, font: &Handle<Font>, pages: usize, ac
                         WidgetState::Normal
                     },
                 ),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("page"),
             ))
             .with_children(|p| {

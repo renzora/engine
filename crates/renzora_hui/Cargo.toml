@@ -2,23 +2,10 @@
 name = "renzora_hui"
 version = "0.1.0"
 edition = "2021"
+description = "Transitional facade — the HUI markup runtime + icon/cursor helpers were folded into renzora_ember; this crate re-exports them so renzora_hui::* paths keep compiling until callers migrate."
 
 [dependencies]
-bevy = { workspace = true }
-bevy_hui = { path = "../bevy_hui" }
-# Vector graphics (gauges, charts, waveforms) drawn into a VelloScene pinned to
-# a markup element's computed rect. Native-only (vello needs WebGPU compute).
-bevy_vello = { version = "0.13", default-features = false, features = ["text"] }
-# Map digit chars → glyph IDs/advances for in-scene speedometer dial numbers.
-skrifa = "0.40"
-renzora = { path = "../renzora", default-features = false }
-renzora_game_ui = { path = "../renzora_game_ui" }
-# Lets `{{ Entity.script_var }}` bindings read live script variables off an
-# entity's ScriptComponent (no cycle: scripting doesn't depend on hui/game_ui).
-renzora_scripting = { path = "../renzora_scripting" }
-
-[dev-dependencies]
-tempfile = "3"
+renzora_ember = { path = "../renzora_ember" }
 
 [lints]
 workspace = true

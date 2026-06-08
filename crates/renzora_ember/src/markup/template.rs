@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy_hui::prelude::HtmlTemplate;
 pub use renzora_game_ui::HtmlTemplatePath;
 
-use crate::loader::{build_template_onto, template_deps_ready, TemplateHandles};
+use crate::markup::loader::{build_template_onto, template_deps_ready, TemplateHandles};
 
 /// When `HtmlTemplatePath` is set, kick off async loading of the `.html` and
 /// queue a one-shot system that builds it onto the entity once the asset is

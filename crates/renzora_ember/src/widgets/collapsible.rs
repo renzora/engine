@@ -51,7 +51,7 @@ pub fn collapsible(
                 ..default()
             },
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("collapsible-header"),
         ))
         .id();

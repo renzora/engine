@@ -21,7 +21,7 @@ fn html_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 
 #[test]
 fn all_ui_templates_parse() {
-    // crates/renzora_hui → repo root → assets/ui
+    // crates/renzora_ember → repo root → assets/ui
     let ui_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../assets/ui");
     assert!(ui_dir.is_dir(), "assets/ui not found at {ui_dir:?}");

@@ -73,7 +73,7 @@ fn handle(commands: &mut Commands, root: Entity, idx: u8, p: Vec2) -> Entity {
             BorderColor::all(rgb(accent())),
             Interaction::default(),
             CurveHandle { root, idx },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
             Name::new("curve-handle"),
         ))
         .id()

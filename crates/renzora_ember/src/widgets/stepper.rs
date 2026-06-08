@@ -81,7 +81,7 @@ fn step_button(
             EmberButton,
             Styled::new(Role::IconButton),
             EmberStepButton { stepper, dir },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("step-button"),
         ))
         .with_children(|p| {

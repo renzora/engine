@@ -82,7 +82,7 @@ fn drag_value_impl(
             },
             BackgroundColor(if flat { Color::NONE } else { rgb(popup_bg()) }),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("drag-value"),
         ))
         .id();

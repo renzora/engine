@@ -139,7 +139,7 @@ pub fn gradient_editor(commands: &mut Commands, stops: &[(f32, (u8, u8, u8))]) -
                     strip,
                     idx,
                 },
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
                 Name::new("gradient-stop"),
             ))
             .id();

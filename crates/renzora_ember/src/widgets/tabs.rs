@@ -72,7 +72,7 @@ pub fn tabs(
                         WidgetState::Normal
                     },
                 ),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("tab"),
             ))
             .with_children(|p| {

@@ -44,7 +44,7 @@ use skrifa::instance::{LocationRef, Size as FontSize};
 use skrifa::{FontRef, MetadataProvider};
 
 /// OpenSans, embedded for in-scene text (dial number labels).
-const FONT_BYTES: &[u8] = include_bytes!("../embedded/OpenSans-Regular.ttf");
+const FONT_BYTES: &[u8] = include_bytes!("../../embedded/OpenSans-Regular.ttf");
 
 /// Dedicated render layer for the vello canvas + UI vector scenes, isolating
 /// the vello camera so it draws only the vello canvas (not stray sprites).
@@ -141,7 +141,7 @@ pub fn spec_from_defs(
     let (dmin, dmax) = kind.default_range();
     let hex = |k: &str, fallback: Color| {
         defs.get(k)
-            .and_then(|v| crate::decor::parse_hex_color(v))
+            .and_then(|v| crate::markup::decor::parse_hex_color(v))
             .unwrap_or(fallback)
     };
     let f = |k: &str, d: f32| defs.get(k).and_then(|s| s.trim().parse::<f32>().ok()).unwrap_or(d);
@@ -223,7 +223,7 @@ fn geom(w: f64, h: f64, spec: &VectorSpec) -> (f64, f64, f64) {
 fn resolve_scalar(world: &mut World, host: Entity, value: &str) -> Option<f32> {
     let t = value.trim();
     if let Some(inner) = t.strip_prefix("{{").and_then(|s| s.strip_suffix("}}")) {
-        crate::binding::read_path(world, host, inner.trim())?.trim().parse::<f32>().ok()
+        crate::markup::binding::read_path(world, host, inner.trim())?.trim().parse::<f32>().ok()
     } else {
         t.parse::<f32>().ok()
     }
@@ -234,7 +234,7 @@ fn resolve_scalar(world: &mut World, host: Entity, value: &str) -> Option<f32> {
 fn resolve_text(world: &mut World, host: Entity, raw: &str) -> String {
     let t = raw.trim();
     if let Some(inner) = t.strip_prefix("{{").and_then(|s| s.strip_suffix("}}")) {
-        crate::binding::read_path(world, host, inner.trim())
+        crate::markup::binding::read_path(world, host, inner.trim())
             .map(|s| s.trim().to_string())
             .unwrap_or_default()
     } else {
@@ -246,7 +246,7 @@ fn resolve_text(world: &mut World, host: Entity, raw: &str) -> String {
 fn resolve_series(world: &mut World, host: Entity, raw: &str) -> Vec<f32> {
     let s = raw.trim();
     let text = if let Some(inner) = s.strip_prefix("{{").and_then(|x| x.strip_suffix("}}")) {
-        crate::binding::read_path(world, host, inner.trim()).unwrap_or_default()
+        crate::markup::binding::read_path(world, host, inner.trim()).unwrap_or_default()
     } else {
         s.to_string()
     };

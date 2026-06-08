@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora_hui::phosphor_map::icon_glyph;
+use crate::phosphor_map::icon_glyph;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::theme::*;
@@ -54,7 +54,7 @@ pub fn tree_node(
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("tree-row"),
         ))
         .id();

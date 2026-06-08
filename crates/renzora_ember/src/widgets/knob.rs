@@ -27,7 +27,7 @@ pub fn knob(commands: &mut Commands, value: f32) -> Entity {
             Bound::<f32>(v),
             Interaction::default(),
             RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
             Name::new("knob"),
         ))
         .id()

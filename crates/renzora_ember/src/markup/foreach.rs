@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy_hui::prelude::HtmlTemplate;
 use renzora::EntityTag;
 
-use crate::loader::build_for_children;
+use crate::markup::loader::build_for_children;
 
 /// Stamped on a `<for>` container. Remembers where its loop body lives in the
 /// source template (handle + node path) and which tag to match.

@@ -50,7 +50,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
             },
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("range"),
         ))
         .id();

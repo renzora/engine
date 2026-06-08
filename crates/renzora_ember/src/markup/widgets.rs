@@ -18,7 +18,7 @@ use renzora_scripting::systems::execution::ReflectionSet;
 use renzora_scripting::systems::ScriptReflectionQueue;
 use renzora_scripting::{ScriptComponent, ScriptValue};
 
-use crate::binding::read_path;
+use crate::markup::binding::read_path;
 
 // ── Components (stamped by the loader from markup attributes) ────────────────
 

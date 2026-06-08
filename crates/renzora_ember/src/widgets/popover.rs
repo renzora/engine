@@ -113,7 +113,7 @@ pub fn icon_popover(commands: &mut Commands, fonts: &EmberFonts, icon: &str, siz
     let trigger = icon_text(commands, &fonts.phosphor, icon, text_muted(), size);
     commands.entity(trigger).insert((
         Interaction::default(),
-        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     let panel = commands
         .spawn((

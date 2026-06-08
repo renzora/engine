@@ -153,7 +153,7 @@ where
             BackgroundColor(Color::NONE),
             Interaction::default(),
             MenuAction(Box::new(on_click)),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("menu-item"),
         ))
         .id();

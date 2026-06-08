@@ -56,7 +56,7 @@ pub fn draggable_file(commands: &mut Commands, fonts: &EmberFonts, name: &str) -
             Draggable {
                 payload: name.to_string(),
             },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
             Name::new("draggable-file"),
         ))
         .id();

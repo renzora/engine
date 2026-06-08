@@ -1,80 +1,20 @@
-//! Renzora HUI — author UI as hot-reloadable markup (`.html`) compiled into a
-//! `bevy_ui` entity tree.
+//! `renzora_hui` — transitional facade.
 //!
-//! Uses **only the parser** half of the vendored `bevy_hui` fork (under
-//! `crates/bevy_hui/`) to read `.html` files into a typed AST
-//! (`HtmlTemplate`/`XNode`/`StyleAttr`). Renzora's own [`loader`] then walks
-//! that AST and spawns one entity per markup node with standard bevy_ui
-//! components (`Node`, `BackgroundColor`, `Text`, `TextFont`, …) attached
-//! directly. **No bevy_hui runtime** — no `HtmlNode`, no per-frame style
-//! re-assertion, no `retain::<KeepComps>()` strip. See
-//! `docs/renzora_markup.md` for the architecture.
+//! The HUI markup runtime and the icon/cursor-icon helpers were folded into
+//! [`renzora_ember`] (ember is now the single UI crate). This crate re-exports
+//! them so existing `renzora_hui::...` paths keep compiling while callers
+//! migrate to `renzora_ember::...`. The markup runtime plugin is registered by
+//! ember (`renzora::add!(renzora_ember::markup::MarkupPlugin)`); this facade
+//! installs nothing itself.
 
-use bevy::prelude::*;
+// Shared, vello-free helpers (live at the ember crate root).
+pub use renzora_ember::{cursor_icon, icons, phosphor_map};
 
-pub mod binding;
-pub mod cursor;
-pub mod decor;
-pub mod cursor_icon;
-pub mod dnd;
-pub mod drag;
-pub mod foreach;
-pub mod icons;
-pub mod input_field;
-pub mod interactions;
-pub mod loader;
-pub mod phosphor_map;
-pub mod lua_bridge;
-pub mod provenance;
-pub mod template;
-pub mod transitions;
-pub mod vector;
-pub mod widgets;
-pub mod writeback;
+// Markup runtime modules.
+pub use renzora_ember::markup::{
+    binding, cursor, decor, dnd, drag, foreach, input_field, interactions, loader, lua_bridge,
+    provenance, template, transitions, vector, widgets, writeback,
+};
 
-pub use provenance::MarkupSource;
-pub use template::HtmlTemplatePath;
-
-#[derive(Default)]
-pub struct HuiPlugin;
-
-impl Plugin for HuiPlugin {
-    fn build(&self, app: &mut App) {
-        // Parser-side only: registers `HtmlTemplate` as an asset and its loader
-        // so `.html` files load into a typed AST. We do **not** add
-        // bevy_hui's `BuildPlugin`/`TransitionPlugin`/`BindingPlugin`/etc. —
-        // those are the runtime we're replacing.
-        app.add_plugins(bevy_hui::prelude::LoaderPlugin);
-
-        // Markup callbacks (`on_press="start_game"`, etc.) get attached as
-        // bevy_hui's `OnUiPress`/`OnUiEnter`/... components by the loader, and
-        // `interactions::forward_ui_interactions` watches `Changed<Interaction>`
-        // to push them into `ScriptUiInbox` for every script's `on_ui` hook.
-        app.init_resource::<renzora::ScriptUiInbox>()
-            .add_observer(lua_bridge::handle_hui_spawn)
-            .add_observer(lua_bridge::handle_hui_despawn)
-            .add_observer(lua_bridge::handle_hui_hide)
-            .add_observer(lua_bridge::handle_hui_show)
-            .add_observer(lua_bridge::handle_quit);
-
-        // The path → entity-tree loader and the markup → script interaction
-        // bridge. Components used to be auto-registered by file stem; now
-        // every reuse is via `<node template="path">`, so there's no separate
-        // registry — paths resolve through `AssetServer` like any other asset.
-        template::plugin(app);
-        interactions::plugin(app);
-        cursor::plugin(app);
-        cursor_icon::plugin(app);
-        drag::plugin(app);
-        dnd::plugin(app);
-        binding::plugin(app);
-        foreach::plugin(app);
-        input_field::plugin(app);
-        widgets::plugin(app);
-        icons::plugin(app);
-        transitions::plugin(app);
-        vector::plugin(app);
-    }
-}
-
-renzora::add!(HuiPlugin);
+// Convenience re-exports that lived at the old crate root.
+pub use renzora_ember::markup::{HtmlTemplatePath, MarkupSource};

@@ -76,7 +76,7 @@ pub(crate) fn build_menu(
                 BackgroundColor(Color::NONE),
                 Interaction::default(),
                 EmberMenuRow,
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("menu-item"),
             ))
             .id();
@@ -128,7 +128,7 @@ pub(crate) fn build_menu(
                             Interaction::default(),
                             EmberMenuRow,
                             EmberMenuClose { root: menu },
-                            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                             Name::new("submenu-item"),
                         ))
                         .with_children(|p| {

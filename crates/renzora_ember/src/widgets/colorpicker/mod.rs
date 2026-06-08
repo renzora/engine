@@ -88,7 +88,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             PickerSquare { root },
             Interaction::default(),
             RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("sv-square"),
         ))
         .id();
@@ -124,7 +124,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             PickerHue { root },
             Interaction::default(),
             RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("hue-strip"),
         ))
         .id();

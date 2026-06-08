@@ -39,7 +39,7 @@ pub fn chip(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
             },
             Interaction::default(),
             EmberChipClose { chip: c },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("chip-close"),
         ))
         .id();

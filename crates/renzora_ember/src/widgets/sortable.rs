@@ -46,7 +46,7 @@ pub fn sortable_list(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]
                     BackgroundColor(rgb(tab_active())),
                     Interaction::default(),
                     EmberSortItem { list },
-                    renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
+                    crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                     Name::new("sort-item"),
                 ))
                 .id();

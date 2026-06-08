@@ -201,7 +201,7 @@ pub fn graph_node_view(
             Interaction::default(),
             RelativeCursorPosition::default(),
             GlobalZIndex(5),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Move),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("ngv-node"),
         ))
         .id();
@@ -281,7 +281,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
             },
             NgvPort { node_id, pin: pin.to_string(), is_output, color, viewport },
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("ngv-port-slot"),
         ))
         .id();

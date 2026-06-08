@@ -41,7 +41,7 @@ pub fn checkbox(commands: &mut Commands, checked: bool) -> Entity {
                     WidgetState::Normal
                 },
             ),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("checkbox"),
         ))
         .id();

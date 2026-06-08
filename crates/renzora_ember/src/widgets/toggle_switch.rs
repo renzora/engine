@@ -64,7 +64,7 @@ pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
             Interaction::default(),
             EmberSwitch { knob },
             Bound::<bool>(on),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("toggle-switch"),
         ))
         .id();

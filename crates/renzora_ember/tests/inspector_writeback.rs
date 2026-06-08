@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy_hui::prelude::{HtmlTemplate, LoaderPlugin};
-use renzora_hui::provenance::MarkupSource;
-use renzora_hui::writeback::write_attr_to_markup;
+use renzora_ember::markup::provenance::MarkupSource;
+use renzora_ember::markup::writeback::write_attr_to_markup;
 
 /// Drive the app until the asset finishes loading (or we time out). Bevy's
 /// AssetServer is async; without ticking the app the load future never

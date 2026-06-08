@@ -44,7 +44,7 @@ pub fn radio_group(
                     ..default()
                 },
                 Interaction::default(),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("radio"),
             ))
             .id();

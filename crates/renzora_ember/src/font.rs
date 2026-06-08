@@ -31,7 +31,7 @@ pub(crate) fn load_fonts(
     mut commands: Commands,
     existing: Option<Res<EmberFonts>>,
     mut fonts: ResMut<Assets<Font>>,
-    phosphor: Option<Res<renzora_hui::icons::PhosphorFont>>,
+    phosphor: Option<Res<crate::icons::PhosphorFont>>,
 ) {
     if existing.is_some() {
         return;
@@ -71,7 +71,7 @@ pub fn ui_font(font: &Handle<Font>, size: f32) -> TextFont {
 
 /// Resolve a Phosphor icon name (e.g. `"caret-down"`) to its glyph char, for
 /// binding an icon that changes at runtime. Returns `None` for unknown names.
-pub use renzora_hui::phosphor_map::icon_glyph;
+pub use crate::phosphor_map::icon_glyph;
 
 /// An inline Phosphor glyph resolved immediately (real glyph + Phosphor font),
 /// so rebuilding the entity doesn't flash a blank frame like the deferred
@@ -83,7 +83,7 @@ pub fn icon_text(
     color: (u8, u8, u8),
     size: f32,
 ) -> Entity {
-    let ch = renzora_hui::phosphor_map::icon_glyph(name).unwrap_or('\u{E4C6}');
+    let ch = crate::phosphor_map::icon_glyph(name).unwrap_or('\u{E4C6}');
     commands
         .spawn((
             Node {
@@ -111,7 +111,7 @@ pub fn glyph(commands: &mut Commands, name: &str, color: (u8, u8, u8), size: f32
                 align_items: AlignItems::Center,
                 ..default()
             },
-            renzora_hui::icons::Icon::new(name.to_string(), size, Some(rgb(color))),
+            crate::icons::Icon::new(name.to_string(), size, Some(rgb(color))),
             Name::new(format!("glyph:{name}")),
         ))
         .id()
@@ -126,7 +126,7 @@ pub fn icon_item(commands: &mut Commands, name: &str, color: (u8, u8, u8), size:
                 align_items: AlignItems::Center,
                 ..default()
             },
-            renzora_hui::icons::Icon::new(name.to_string(), size, Some(rgb(color))),
+            crate::icons::Icon::new(name.to_string(), size, Some(rgb(color))),
             Name::new(format!("icon:{name}")),
         ))
         .id()

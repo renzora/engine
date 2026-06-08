@@ -41,7 +41,7 @@ pub fn hamburger(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]) ->
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("hamburger-btn"),
         ))
         .id();

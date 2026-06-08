@@ -27,7 +27,7 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
             },
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
             Name::new("fader"),
         ))
         .id();

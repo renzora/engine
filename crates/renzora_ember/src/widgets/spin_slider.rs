@@ -43,7 +43,7 @@ pub fn spin_slider(commands: &mut Commands, font: &Handle<Font>, label: &str, va
             BorderColor::all(rgb(border())),
             Styled::new(Role::Input),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("spin-slider"),
         ))
         .id();

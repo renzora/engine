@@ -45,7 +45,7 @@ pub fn link(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity 
             ui_font(font, 12.0),
             TextColor(rgb(accent())),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("link"),
         ))
         .id()

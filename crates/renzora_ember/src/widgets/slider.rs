@@ -29,7 +29,7 @@ pub fn slider(commands: &mut Commands, value: f32) -> Entity {
             },
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("slider"),
         ))
         .id();

@@ -9358,9 +9358,14 @@ name = "renzora_ember"
 version = "0.1.0"
 dependencies = [
  "bevy 0.18.0",
+ "bevy_hui",
+ "bevy_vello",
  "renzora",
- "renzora_hui",
+ "renzora_game_ui",
+ "renzora_scripting",
  "serde",
+ "skrifa 0.40.0",
+ "tempfile",
  "toml 0.8.23",
 ]
 
@@ -9717,14 +9722,7 @@ dependencies = [
 name = "renzora_hui"
 version = "0.1.0"
 dependencies = [
- "bevy 0.18.0",
- "bevy_hui",
- "bevy_vello",
- "renzora",
- "renzora_game_ui",
- "renzora_scripting",
- "skrifa 0.40.0",
- "tempfile",
+ "renzora_ember",
 ]
 
 [[package]]

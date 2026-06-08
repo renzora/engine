@@ -27,7 +27,7 @@ pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Enti
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("button"),
         ))
         .id();
@@ -64,7 +64,7 @@ pub fn icon_label_button(
             Interaction::default(),
             EmberButton,
             Styled::new(Role::Button),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("icon-button"),
         ))
         .id();
@@ -97,7 +97,7 @@ pub fn icon_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> E
             Interaction::default(),
             EmberButton,
             Styled::new(Role::IconButton),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("icon-button"),
         ))
         .id();

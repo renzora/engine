@@ -373,7 +373,7 @@ fn graph_node(
             Interaction::default(),
             GraphNode { canvas },
             GlobalZIndex(5),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Move),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("graph-node"),
         ))
         .id();
@@ -477,7 +477,7 @@ fn port_dot(commands: &mut Commands, viewport: Entity, offset: Vec2, is_output: 
                 viewport,
                 is_output,
             },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("graph-port"),
         ))
         .id()

@@ -140,7 +140,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             Interaction::default(),
             RelativeCursorPosition::default(),
             CodeViewport { editor: root },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("code-viewport"),
         ))
         .id();

@@ -50,7 +50,7 @@ pub fn multi_select(commands: &mut Commands, font: &Handle<Font>, items: &[&str]
                         WidgetState::Normal
                     },
                 ),
-                renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+                crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("multi-item"),
             ))
             .id();

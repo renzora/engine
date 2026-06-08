@@ -294,7 +294,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             Interaction::default(),
             RelativeCursorPosition::default(),
             TlRuler { root },
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("tl-ruler"),
         ))
         .id();
@@ -355,7 +355,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                             Interaction::default(),
                             RelativeCursorPosition::default(),
                             TlClip { root, start, len },
-                            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
+                            crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                             Name::new("tl-clip"),
                         ))
                         .with_children(|p| {
@@ -385,7 +385,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                             UiTransform::from_rotation(Rot2::degrees(45.0)),
                             Interaction::default(),
                             TlKey { root, time },
-                            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
+                            crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                             Name::new("tl-key"),
                         ))
                         .id();

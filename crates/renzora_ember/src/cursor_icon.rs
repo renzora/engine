@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
-use crate::dnd::DragState;
+use crate::markup::dnd::DragState;
 
 /// Stamped from `cursor="..."`; the OS cursor shown while this node is hovered.
 #[derive(Component)]

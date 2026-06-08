@@ -28,7 +28,7 @@ pub fn textarea(commands: &mut Commands, font: &Handle<Font>, placeholder: &str,
             BorderColor::all(rgb(border())),
             Styled::new(Role::Input),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Text),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("textarea"),
         ))
         .id();

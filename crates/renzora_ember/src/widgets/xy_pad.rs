@@ -28,7 +28,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
             BorderColor::all(rgb(border())),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(SystemCursorIcon::Move),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("xy-pad"),
         ))
         .id();

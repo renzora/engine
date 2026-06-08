@@ -31,8 +31,8 @@ use bevy_hui::prelude::{
     OnUiEnter, OnUiExit, OnUiPress, OnUiSpawn, StyleAttr, TemplateProperties, XNode,
 };
 
-use crate::drag::Draggable;
-use crate::provenance::{MarkupImage, MarkupSource};
+use crate::markup::drag::Draggable;
+use crate::markup::provenance::{MarkupImage, MarkupSource};
 
 /// Spawn the template's root node onto `entity` (and its subtree as children).
 ///
@@ -339,7 +339,7 @@ fn apply_xnode_to(
     // system fills it with one copy of its children per matching entity.
     if is_for_node(node) {
         let tag = node.defs.get("tag").cloned().unwrap_or_default();
-        commands.entity(entity).insert(crate::foreach::ForEach::new(
+        commands.entity(entity).insert(crate::markup::foreach::ForEach::new(
             ctx.template_handle.clone(),
             node_path.to_vec(),
             tag,
@@ -358,7 +358,7 @@ fn apply_xnode_to(
             .unwrap_or(false);
         commands
             .entity(entity)
-            .insert(crate::input_field::TextInput::new(
+            .insert(crate::markup::input_field::TextInput::new(
                 bind,
                 placeholder,
                 password,
@@ -455,7 +455,7 @@ fn apply_xnode_to(
     // `show="{{ cond }}"` — conditional visibility. Stamp a `ShowBinding` the
     // binding system evaluates each frame (Display::None when falsy).
     if let Some(expr) = node.tags.get("show") {
-        ec.insert(crate::binding::ShowBinding::new(
+        ec.insert(crate::markup::binding::ShowBinding::new(
             expr.clone(),
             ctx.host,
             display_when_shown,
@@ -465,7 +465,7 @@ fn apply_xnode_to(
     // Interactive widget behaviors (see `widgets.rs`). Each needs `Button` so
     // bevy_ui delivers `Interaction`. Targets are plain paths (not `{{ }}`).
     if let Some(target) = defs.get("toggle") {
-        ec.insert(crate::widgets::Toggle {
+        ec.insert(crate::markup::widgets::Toggle {
             target: target.clone(),
             host: ctx.host,
         });
@@ -474,7 +474,7 @@ fn apply_xnode_to(
     if let Some(target) = defs.get("drag_value") {
         let min = defs.get("drag_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
         let max = defs.get("drag_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
-        ec.insert(crate::widgets::DragValue {
+        ec.insert(crate::markup::widgets::DragValue {
             target: target.clone(),
             min,
             max,
@@ -488,7 +488,7 @@ fn apply_xnode_to(
     if let Some(target) = defs.get("fill") {
         let min = defs.get("fill_min").and_then(|s| s.parse().ok()).unwrap_or(0.0);
         let max = defs.get("fill_max").and_then(|s| s.parse().ok()).unwrap_or(1.0);
-        ec.insert(crate::widgets::ValueFill {
+        ec.insert(crate::markup::widgets::ValueFill {
             target: target.clone(),
             min,
             max,
@@ -499,7 +499,7 @@ fn apply_xnode_to(
         ec.insert(bevy::ui::FocusPolicy::Pass);
     }
     if let Some(target) = defs.get("toggles") {
-        ec.insert(crate::widgets::Disclose {
+        ec.insert(crate::markup::widgets::Disclose {
             target: target.clone(),
         });
         ec.insert(Button);
@@ -573,7 +573,7 @@ fn apply_xnode_to(
             // Interaction must be present to detect hover/press. Buttons already
             // require it; insert for plain hover nodes too (harmless on buttons).
             ec.insert(Interaction::default());
-            ec.insert(crate::transitions::Interactive {
+            ec.insert(crate::markup::transitions::Interactive {
                 base_bg: background,
                 hover_bg,
                 pressed_bg,
@@ -597,7 +597,7 @@ fn apply_xnode_to(
     // `drag_item` — a drag-and-drop source. Payload is the binding host (the
     // item entity inside a `<for>`). Needs Button for Interaction.
     if defs.contains_key("drag_item") || node.tags.contains_key("drag_item") {
-        ec.insert(crate::dnd::DragItem { payload: ctx.host });
+        ec.insert(crate::markup::dnd::DragItem { payload: ctx.host });
         ec.insert(Button);
         // Pass so the item still receives Interaction (for pickup) but doesn't
         // block the drop zone beneath it from detecting the cursor.
@@ -612,7 +612,7 @@ fn apply_xnode_to(
     }
     // `dropzone drop_tag="basket" on_drop="..."` — a drop target.
     if defs.contains_key("dropzone") || node.tags.contains_key("dropzone") {
-        ec.insert(crate::dnd::DropZone {
+        ec.insert(crate::markup::dnd::DropZone {
             drop_tag: defs.get("drop_tag").cloned(),
             on_drop: defs.get("on_drop").cloned(),
         });
@@ -624,21 +624,21 @@ fn apply_xnode_to(
     // (see `vector.rs`). bevy_ui lays the node out; the draw system fills its
     // `UiVelloScene` each frame from the spec + live `{{ }}` bindings.
     if defs.contains_key("vector") {
-        if let Some(spec) = crate::vector::spec_from_defs(&defs, ctx.host) {
+        if let Some(spec) = crate::markup::vector::spec_from_defs(&defs, ctx.host) {
             ec.insert(spec);
             ec.insert(bevy_vello::prelude::UiVelloScene::new());
             ec.insert(bevy::camera::visibility::RenderLayers::layer(
-                crate::vector::VECTOR_RENDER_LAYER,
+                crate::markup::vector::VECTOR_RENDER_LAYER,
             ));
         }
     }
 
     // `gradient="linear 180deg #A #B"` / `shadow="0px 6px 16px #00000088"` —
     // native bevy_ui decoration (see `decor.rs`). Static; no per-frame system.
-    if let Some(g) = defs.get("gradient").and_then(|v| crate::decor::parse_gradient(v)) {
+    if let Some(g) = defs.get("gradient").and_then(|v| crate::markup::decor::parse_gradient(v)) {
         ec.insert(g);
     }
-    if let Some(s) = defs.get("shadow").and_then(|v| crate::decor::parse_shadow(v)) {
+    if let Some(s) = defs.get("shadow").and_then(|v| crate::markup::decor::parse_shadow(v)) {
         ec.insert(s);
     }
 
@@ -724,7 +724,7 @@ fn apply_xnode_to(
                 // initial `Text` is the raw token; the system overwrites it
                 // on the first tick.
                 if has_binding(&content) {
-                    ec.insert(crate::binding::TextBinding::new(content.clone(), ctx.host));
+                    ec.insert(crate::markup::binding::TextBinding::new(content.clone(), ctx.host));
                 }
                 ec.insert(Text::new(content));
                 if let Some(s) = font_size {
