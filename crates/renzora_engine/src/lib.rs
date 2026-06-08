@@ -96,66 +96,6 @@ fn ensure_deferred_prepass_on_cameras(
     }
 }
 
-/// Diagnostic (always on; logs only when the camera set changes): lists every
-/// camera with its active state, identity markers, render target and IBL
-/// intensity. Lets a black exported game be inspected straight from its log —
-/// confirms whether the `SceneCamera` is the active camera, where it renders,
-/// and whether it has environment lighting. Runs in both editor and game so the
-/// two can be compared.
-#[allow(clippy::type_complexity)]
-pub fn log_active_cameras(
-    cameras: Query<(
-        Entity,
-        &Camera,
-        Option<&Name>,
-        Has<Camera3d>,
-        Has<SceneCamera>,
-        Has<EditorCamera>,
-        Has<DefaultCamera>,
-        Has<ViewportCamera>,
-        Has<DeferredPrepass>,
-        Has<bevy::light::EnvironmentMapLight>,
-        Option<&bevy::light::AtmosphereEnvironmentMapLight>,
-        Option<&bevy::camera::RenderTarget>,
-    )>,
-    editor_session: Option<Res<renzora::EditorSession>>,
-    mut sig: Local<u64>,
-) {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    let (mut count, mut active) = (0usize, 0usize);
-    for (e, cam, ..) in &cameras {
-        e.hash(&mut hasher);
-        cam.is_active.hash(&mut hasher);
-        count += 1;
-        active += cam.is_active as usize;
-    }
-    count.hash(&mut hasher);
-    let now = hasher.finish();
-    if *sig == now {
-        return;
-    }
-    *sig = now;
-
-    let is_editor = editor_session.map(|s| s.0).unwrap_or(false);
-    info!("[cameras] EditorSession={is_editor}: {count} cameras, {active} active");
-    for (e, cam, name, is3d, scene, editor, default, viewport, deferred, envmap, atmo, target) in
-        &cameras
-    {
-        let n = name.map(|n| n.to_string()).unwrap_or_else(|| "unnamed".into());
-        let ibl = atmo
-            .map(|a| format!("atmIbl={:.2}", a.intensity))
-            .unwrap_or_else(|| "atmIbl=none".into());
-        let tgt = target
-            .map(|t| format!("{t:?}"))
-            .unwrap_or_else(|| "window(default)".into());
-        info!(
-            "[cameras]   {e:?} \"{n}\" active={} 3d={is3d} scene={scene} editor={editor} default={default} viewport={viewport} deferred={deferred} envmap={envmap} {ibl} target={tgt}",
-            cam.is_active
-        );
-    }
-}
-
 /// Pull the rendering mode from the just-loaded project and propagate
 /// it to `ResolvedRenderingMode` + `DefaultOpaqueRendererMethod`
 /// **before** the editor camera spawns. Runs as the first step of
@@ -398,7 +338,6 @@ impl Plugin for RuntimePlugin {
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
         // always resolves from the correct project directory.
         app.add_systems(Update, sync_project_asset_path);
-        app.add_systems(Update, log_active_cameras);
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, install_audio_asset_loader);
 
