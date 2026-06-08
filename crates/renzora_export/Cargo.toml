@@ -7,7 +7,6 @@ edition = "2021"
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = "../renzora_ember" }
-renzora_hui = { path = "../renzora_hui" }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_import = { path = "../renzora_import" }
 dynamic_plugin_loader = { path = "../dynamic_plugin_loader" }

@@ -8,7 +8,6 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_ember = { path = "../renzora_ember" }
 renzora_ui = { path = "../renzora_ui" }
-renzora_hui = { path = "../renzora_hui" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

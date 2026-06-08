@@ -8,7 +8,6 @@ renzora_macros = { path = "../renzora_macros" }
 renzora_undo = { path = "../renzora_undo" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ember = { path = "../renzora_ember" }
-renzora_hui = { path = "../renzora_hui" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_blueprint = { path = "../renzora_blueprint" }

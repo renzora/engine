@@ -721,8 +721,8 @@ fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
 }
 
-fn cursor() -> renzora_hui::cursor_icon::HoverCursor {
-    renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer)
+fn cursor() -> renzora_ember::cursor_icon::HoverCursor {
+    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer)
 }
 
 fn txt(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: (u8, u8, u8)) -> Entity {

@@ -36,7 +36,7 @@ renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water" }
 renzora_animation = { path = "../renzora_animation" }
 renzora_game_ui = { path = "../renzora_game_ui" }
-renzora_hui = { path = "../renzora_hui" }
+renzora_ember = { path = "../renzora_ember" }
 renzora_hanabi = { path = "../renzora_hanabi" }
 renzora_network = { path = "../renzora_network" }
 renzora_audio = { path = "../renzora_audio" }

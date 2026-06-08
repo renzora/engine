@@ -88,7 +88,7 @@ pub fn title_case(s: &str) -> String {
 
 /// Convert a Phosphor icon constant name (SCREAMING_SNAKE_CASE, e.g. `CUBE`,
 /// `ARROWS_OUT_CARDINAL`) into the kebab-case name string the native (bevy_ui)
-/// icon renderer resolves via `renzora_hui::phosphor_map::icon_glyph` (e.g.
+/// icon renderer resolves via `renzora_ember::phosphor_map::icon_glyph` (e.g.
 /// "cube", "arrows-out-cardinal").
 pub fn icon_kebab(name: &str) -> String {
     name.to_ascii_lowercase().replace('_', "-")

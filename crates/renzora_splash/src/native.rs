@@ -15,7 +15,7 @@ use bevy::window::SystemCursorIcon;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_display, bind_text, keyed_list, react, KeyedSnapshot};
 use renzora_ember::widgets::{bind_text_input, text_input};
-use renzora_hui::cursor_icon::HoverCursor;
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 
 use crate::config::AppConfig;

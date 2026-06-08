@@ -15,7 +15,7 @@ use renzora::{
 };
 use renzora_game_ui::UiWidget;
 
-use renzora_hui::HtmlTemplatePath;
+use renzora_ember::markup::HtmlTemplatePath;
 
 /// Default template a freshly-created HTML entity points at, so it shows
 /// something immediately instead of an empty node.

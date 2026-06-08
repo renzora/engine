@@ -206,7 +206,7 @@ fn history_row(
         Name::new("history-row"),
     ));
     if !current {
-        row.insert(renzora_hui::cursor_icon::HoverCursor(
+        row.insert(renzora_ember::cursor_icon::HoverCursor(
             bevy::window::SystemCursorIcon::Pointer,
         ));
     }

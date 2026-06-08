@@ -9,7 +9,7 @@ use renzora_editor_framework::{EditorSelection, TreeDropZone};
 use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_text_color};
 use renzora_ember::theme::*;
-use renzora_hui::cursor_icon::HoverCursor;
+use renzora_ember::cursor_icon::HoverCursor;
 
 use super::components::{
     HierCaretToggle, HierDropEdge, HierLockToggle, HierRowClick, HierVisToggle,

@@ -9124,6 +9124,7 @@ dependencies = [
  "renzora_dof",
  "renzora_dof_editor",
  "renzora_editor_framework",
+ "renzora_ember_editor",
  "renzora_engine",
  "renzora_engine_editor",
  "renzora_environment_map",
@@ -9139,8 +9140,6 @@ dependencies = [
  "renzora_hierarchy",
  "renzora_history",
  "renzora_hub",
- "renzora_hui",
- "renzora_hui_editor",
  "renzora_import_ui",
  "renzora_inspector",
  "renzora_keybindings",
@@ -9224,6 +9223,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_ember_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy 0.18.0",
+ "bevy_hui",
+ "renzora",
+ "renzora_ember",
+ "renzora_game_ui",
+]
+
+[[package]]
 name = "renzora_emboss"
 version = "0.1.0"
 dependencies = [
@@ -9302,7 +9312,6 @@ dependencies = [
  "rcgen",
  "renzora",
  "renzora_ember",
- "renzora_hui",
  "renzora_import",
  "renzora_rpak",
  "rfd",
@@ -9346,7 +9355,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_terrain",
 ]
 
@@ -9538,7 +9546,6 @@ dependencies = [
  "renzora_ember",
  "renzora_engine",
  "renzora_game_ui",
- "renzora_hui",
  "renzora_macros",
  "renzora_physics",
  "renzora_ui",
@@ -9554,7 +9561,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_undo",
 ]
 
@@ -9570,24 +9576,6 @@ dependencies = [
  "renzora_ember",
  "ureq",
  "zip",
-]
-
-[[package]]
-name = "renzora_hui"
-version = "0.1.0"
-dependencies = [
- "renzora_ember",
-]
-
-[[package]]
-name = "renzora_hui_editor"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "bevy_hui",
- "renzora",
- "renzora_game_ui",
- "renzora_hui",
 ]
 
 [[package]]
@@ -9623,7 +9611,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_import",
  "rfd",
 ]
@@ -10195,12 +10182,12 @@ dependencies = [
  "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
+ "renzora_ember",
  "renzora_engine",
  "renzora_environment_map",
  "renzora_game_ui",
  "renzora_globals",
  "renzora_hanabi",
- "renzora_hui",
  "renzora_input",
  "renzora_lighting",
  "renzora_motion_blur",
@@ -10330,7 +10317,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_input",
  "renzora_keybindings",
  "renzora_splash",
@@ -10393,7 +10379,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_theme",
  "renzora_ui",
 ]
@@ -10451,7 +10436,6 @@ dependencies = [
  "dirs 6.0.0",
  "renzora",
  "renzora_ember",
- "renzora_hui",
  "renzora_ui",
  "rfd",
  "serde",
@@ -10549,7 +10533,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_hui",
  "renzora_spline",
  "renzora_terrain",
  "rfd",
@@ -10710,7 +10693,6 @@ dependencies = [
  "renzora_engine",
  "renzora_game_ui",
  "renzora_game_ui_editor",
- "renzora_hui",
  "renzora_import",
  "renzora_keybindings",
  "renzora_shader",

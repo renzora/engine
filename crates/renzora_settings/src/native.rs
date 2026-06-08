@@ -24,7 +24,7 @@ use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, scroll_view_bar, section, text_input, toggle_switch,
     DragRange,
 };
-use renzora_hui::cursor_icon::HoverCursor;
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};

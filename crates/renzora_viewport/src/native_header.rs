@@ -24,7 +24,7 @@ use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
 use renzora_ember::theme::{
     border, hover_bg, panel_bg, popup_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
-use renzora_hui::cursor_icon::HoverCursor;
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
 /// Height of the viewport header bar (matches the egui `HEADER_HEIGHT`).

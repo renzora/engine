@@ -31,7 +31,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     collapsible, drag_value, menu_item, screen_menu, slider, DragRange,
 };
-use renzora_hui::cursor_icon::HoverCursor;
+use renzora_ember::cursor_icon::HoverCursor;
 
 use renzora_terrain::data::{
     BrushFalloffType, BrushShape, FlattenMode, NoiseMode, TerrainBrushType, TerrainSettings,

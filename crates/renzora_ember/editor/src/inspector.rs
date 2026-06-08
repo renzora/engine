@@ -4,7 +4,7 @@
 //!
 //! 1. Update the live bevy component (so the entity in the viewport reflects
 //!    the change immediately).
-//! 2. Patch the source `.html` via [`renzora_hui::writeback::write_attr_to_markup`]
+//! 2. Patch the source `.html` via [`renzora_ember::markup::writeback::write_attr_to_markup`]
 //!    so the markup-as-source-of-truth invariant holds.
 //!
 //! Field coverage is currently a focused subset of the `StyleAttr` variants
@@ -21,8 +21,8 @@ use renzora::{
     AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
 
-use renzora_hui::provenance::{MarkupImage, MarkupSource};
-use renzora_hui::writeback::write_attr_to_markup;
+use renzora_ember::markup::provenance::{MarkupImage, MarkupSource};
+use renzora_ember::markup::writeback::write_attr_to_markup;
 
 /// Build a `FieldDef` for a `Val`-typed `Node` field. Macro instead of a
 /// helper fn because `FieldDef::set_fn` is a `fn` pointer and so cannot

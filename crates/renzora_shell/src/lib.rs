@@ -747,7 +747,7 @@ struct MaximizeIcon;
 /// Keep the maximize button's glyph in sync with the window's maximized state.
 fn update_maximize_icon(
     queue: Option<Res<WindowActionQueue>>,
-    mut q: Query<&mut renzora_hui::icons::Icon, With<MaximizeIcon>>,
+    mut q: Query<&mut renzora_ember::icons::Icon, With<MaximizeIcon>>,
 ) {
     let maximized = queue.is_some_and(|q| q.maximized);
     let want = if maximized { "arrows-in-simple" } else { "square" };
@@ -855,7 +855,7 @@ fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
                     GlobalZIndex(60),
                     Interaction::default(),
                     WindowResizeZone(octant),
-                    renzora_hui::cursor_icon::HoverCursor(cursor),
+                    renzora_ember::cursor_icon::HoverCursor(cursor),
                     Name::new("resize-zone"),
                 ))
                 .id();
@@ -1129,7 +1129,7 @@ fn theme_dropup(
             BackgroundColor(Color::NONE),
             Interaction::default(),
             Popup::new(panel),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("theme-dropup"),
         ))
         .id();
@@ -1292,7 +1292,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         },
         Interaction::default(),
         CommandPaletteBtn,
-        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     // Reactive ribbon — one button per workspace in `ShellLayouts`.
     let ribbon = commands
@@ -1319,7 +1319,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             },
             Interaction::default(),
             WorkspaceAddBtn,
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("workspace-add"),
         ))
         .id();
@@ -1336,7 +1336,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
     commands.entity(settings).insert((
         Interaction::default(),
         TopBarSettingsBtn,
-        renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
 
     let window = commands
@@ -1371,7 +1371,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             BackgroundColor(Color::NONE),
             Interaction::default(),
             WindowBtn(action),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ));
         // Hover highlight — close goes red, like the original chrome.
         renzora_ember::reactive::bind_bg(commands, e, move |w| match w.get::<Interaction>(e) {
@@ -1417,7 +1417,7 @@ fn ribbon_item(
             },
             Interaction::default(),
             RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
         ))
         .id();
@@ -1573,7 +1573,7 @@ fn build_doc_tabs(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
             BackgroundColor(Color::NONE),
             Interaction::default(),
             DocAddBtn,
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("doc-add"),
         ))
         .id();
@@ -1656,7 +1656,7 @@ fn doc_tab_row(
             BorderColor::all(if active { rgb(accent()) } else { Color::NONE }),
             Interaction::default(),
             DocTabClick(id),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("doc:{name}")),
         ))
         .id();
@@ -1680,7 +1680,7 @@ fn doc_tab_row(
                 },
                 Interaction::default(),
                 DocTabClose(id),
-                renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
             .id();
         let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 11.0);
@@ -1879,7 +1879,7 @@ fn top_menu_item(
             BackgroundColor(Color::NONE),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TopMenu(kind),
             Name::new(format!("menu:{label}")),
         ))
@@ -1913,7 +1913,7 @@ fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
             BackgroundColor(Color::NONE),
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TopMenu(TopMenuKind::Account),
             Name::new("menu:account"),
         ))

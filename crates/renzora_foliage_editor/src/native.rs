@@ -241,7 +241,7 @@ fn type_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &st
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TypeRow { index },
             Name::new(format!("foliage-type:{index}")),
         ))
@@ -327,7 +327,7 @@ fn brush_mode_button(
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             BrushModeBtn { mode },
             Name::new("foliage-brush-mode"),
         ))
@@ -543,7 +543,7 @@ fn action_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
             Interaction::default(),
-            renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("foliage-action:{label}")),
         ))
         .id();

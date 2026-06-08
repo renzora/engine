@@ -545,8 +545,8 @@ fn do_dest_browse(world: &mut World) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn hover_cursor() -> renzora_hui::cursor_icon::HoverCursor {
-    renzora_hui::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer)
+fn hover_cursor() -> renzora_ember::cursor_icon::HoverCursor {
+    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer)
 }
 
 fn txt(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: (u8, u8, u8)) -> Entity {
