@@ -56,7 +56,6 @@ editor = [
     "dep:renzora_context_menu",
     "dep:renzora_daw",
     "dep:renzora_debugger",
-    "renzora_tracy/editor",
     "dep:renzora_export",
     "dep:renzora_foliage_editor",
     "dep:renzora_gamepad",
@@ -81,7 +80,6 @@ editor = [
     "dep:renzora_terrain_editor",
     "dep:renzora_test_component",
     "dep:renzora_theme_status",
-    "dep:renzora_vst",
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.
@@ -100,8 +98,6 @@ editor = [
     "dep:renzora_environment_map_editor",
     "dep:renzora_ssao_editor",
     "dep:renzora_ssr_editor",
-    "dep:renzora_rt_editor",
-    "dep:renzora_lumen_editor",
     "dep:renzora_auto_exposure_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
@@ -166,7 +162,6 @@ renzora_system_monitor     = { path = "../renzora_system_monitor", optional = tr
 renzora_terrain_editor     = { path = "../renzora_terrain_editor", optional = true }
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
-renzora_vst                = { path = "../renzora_vst", optional = true }
 renzora_game_ui_editor     = { path = "../renzora_game_ui_editor", optional = true }
 renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
@@ -209,10 +204,6 @@ renzora_ssao            = { path = "../renzora_ssao" }
 renzora_ssao_editor     = { path = "../renzora_ssao/editor", optional = true }
 renzora_ssr             = { path = "../renzora_ssr" }
 renzora_ssr_editor      = { path = "../renzora_ssr/editor", optional = true }
-renzora_rt              = { path = "../renzora_rt" }
-renzora_rt_editor       = { path = "../renzora_rt/editor", optional = true }
-renzora_lumen           = { path = "../renzora_lumen" }
-renzora_lumen_editor    = { path = "../renzora_lumen/editor", optional = true }
 renzora_auto_exposure   = { path = "../renzora_auto_exposure" }
 renzora_auto_exposure_editor = { path = "../renzora_auto_exposure/editor", optional = true }
 renzora_oit             = { path = "../renzora_oit" }
@@ -233,7 +224,6 @@ renzora_hui             = { path = "../renzora_hui" }
 renzora_hui_editor      = { path = "../renzora_hui/editor", optional = true }
 renzora_navmesh         = { path = "../renzora_navmesh" }
 renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true }
-renzora_tracy           = { path = "../renzora_tracy" }
 
 [lints]
 workspace = true

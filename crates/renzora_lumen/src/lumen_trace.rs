@@ -36,7 +36,7 @@ use crate::screen_reflection::ScreenReflectionResources;
 use crate::voxel_cache::{
     VoxelCacheResources, VoxelCacheView, VoxelGridUniform, VoxelResolveLabel,
 };
-use crate::LumenLighting;
+use renzora::LumenLighting;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
 #[repr(C)]
@@ -316,11 +316,11 @@ pub fn prepare_lumen_trace_uniforms(
     let frame = pipeline.frame_count.fetch_add(1, Ordering::Relaxed);
     for (entity, lighting, view_target, prepass, sky, existing) in &views {
         let debug_mode = match lighting.debug {
-            crate::LumenDebug::IndirectOnly => 1,
+            renzora::LumenDebug::IndirectOnly => 1,
             _ => 0,
         };
         let quality_tier = match lighting.quality {
-            crate::LumenQuality::SdfHigh => 1,
+            renzora::LumenQuality::SdfHigh => 1,
             _ => 0,
         };
         // Sky intensity rides along with whatever the camera's

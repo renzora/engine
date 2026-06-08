@@ -4,8 +4,8 @@
 //! Stats, Camera Debug, Culling Debug, Material Resolver, Lumen, Scripting.
 //! All panels are bevy-native (ember); their content lives in [`native`] and
 //! reads the per-frame snapshot resources kept current by the backend-agnostic
-//! `update_*` systems in [`state`] (plus the lumen/scripting diag updaters
-//! below). For Tracy profiler integration see the `renzora_tracy` crate.
+//! `update_*` systems in [`state`] (plus the scripting diag updater below).
+//! The Lumen panel reads `renzora::LumenDiagState`, produced by the GI plugin.
 
 pub mod native;
 pub mod panels;
@@ -19,33 +19,13 @@ use bevy::prelude::*;
 use state::*;
 
 // ============================================================================
-// Diagnostic snapshot updaters (lumen + scripting)
+// Diagnostic snapshot updaters (scripting)
 // ============================================================================
-
-fn update_lumen_diag_state(
-    mut state: ResMut<panels::lumen::LumenDiagState>,
-    bake_stats: Option<Res<renzora_lumen::LumenBakeStats>>,
-    cameras: Query<(Option<&Name>, &renzora_lumen::VoxelCacheView)>,
-    sample_entities: Query<(), With<renzora_lumen::MeshVoxelSamples>>,
-    // LumenSkyCubemap is a Component on the editor camera (extracted to
-    // the render world each frame). Any entity with it = at least one
-    // camera has an IBL/sky source bound.
-    sky_cubemaps: Query<(), With<renzora_lumen::LumenSkyCubemap>>,
-) {
-    state.cameras.clear();
-    state.cameras.extend(cameras.iter().map(|(name, view)| {
-        panels::lumen::LumenCameraEntry {
-            camera_name: name
-                .map(|n| n.as_str().to_string())
-                .unwrap_or_else(|| "<unnamed>".into()),
-            inject_active: view.inject_active,
-            debug_active: view.debug_active,
-        }
-    }));
-    state.mesh_voxel_samples_entities = sample_entities.iter().count();
-    state.has_sky_cubemap = !sky_cubemaps.is_empty();
-    state.bake = bake_stats.map(|s| (*s).clone()).unwrap_or_default();
-}
+//
+// The Lumen diagnostics snapshot (`renzora::LumenDiagState`) is produced by the
+// GI plugin (`renzora_lumen`) under its `editor` feature, not here — the plugin
+// is a cdylib and owns the internal voxel/bake types it reads. The native Lumen
+// panel just reads the contract resource.
 
 fn update_scripting_diag_state(
     mut state: ResMut<panels::scripting::ScriptingDiagState>,
@@ -106,7 +86,6 @@ impl Plugin for DebuggerPlugin {
             .init_resource::<CameraDebugState>()
             .init_resource::<CullingDebugState>()
             .init_resource::<EcsStatsState>()
-            .init_resource::<panels::lumen::LumenDiagState>()
             .init_resource::<panels::scripting::ScriptingDiagState>();
 
         // Update systems
@@ -129,8 +108,7 @@ impl Plugin for DebuggerPlugin {
         );
         app.add_systems(
             Update,
-            (update_lumen_diag_state, update_scripting_diag_state)
-                .run_if(in_state(SplashState::Editor)),
+            update_scripting_diag_state.run_if(in_state(SplashState::Editor)),
         );
 
         // bevy-native (ember) content for every debug panel.

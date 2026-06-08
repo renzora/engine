@@ -38,7 +38,7 @@ use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::utils::default;
 use bytemuck::{Pod, Zeroable};
 
-use crate::{LumenDebug, LumenLighting, LumenQuality};
+use renzora::{LumenDebug, LumenLighting, LumenQuality};
 
 pub const VOXEL_RES: u32 = 64;
 pub const VOXEL_SIZE_BASE: f32 = 0.5;

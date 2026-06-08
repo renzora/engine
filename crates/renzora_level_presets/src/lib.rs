@@ -1309,20 +1309,20 @@ fn spawn_world_environment(world: &mut World) -> Entity {
 
     // SDF Low + intensity 0.4 is the night-scene-friendly default tuned
     // alongside Phase 7 cone trace + distance falloff in renzora_lumen.
-    let lumen = renzora_lumen::LumenLighting {
-        quality: renzora_lumen::LumenQuality::SdfLow,
+    let lumen = renzora::LumenLighting {
+        quality: renzora::LumenQuality::SdfLow,
         intensity: 0.4,
         specular_intensity: 1.0,
-        debug: renzora_lumen::LumenDebug::None,
+        debug: renzora::LumenDebug::None,
     };
 
     // RT (SSGI) — disabled by default; Lumen owns the GI channel when
     // both are present, but the inspector entry should still appear so
     // users can experiment with screen-space-only GI.
-    let rt = renzora_rt::RtLighting {
+    let rt = renzora::RtLighting {
         enabled: false,
         intensity: 1.0,
-        debug: renzora_rt::RtDebugMode::Composite,
+        debug: renzora::RtDebugMode::Composite,
     };
 
     // SSR disabled — requires DeferredPrepass which we don't currently

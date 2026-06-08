@@ -267,9 +267,9 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
                 ..default()
             })
             // Silence the noise that's expected with no render world: Bevy's
-            // render plugins log loudly when the `RenderApp` is absent, and the
-            // compiled-in Tracy layer warns it's active. None of it matters on a
-            // headless server. Keeps the rest of the default INFO logging.
+            // render plugins log loudly when the `RenderApp` is absent. None of
+            // it matters on a headless server. Keeps the rest of the default
+            // INFO logging.
             .set(LogPlugin {
                 filter: "wgpu=error,naga=warn,\
                          bevy_log=error,\

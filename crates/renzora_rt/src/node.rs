@@ -8,7 +8,7 @@ use bevy::render::view::{ViewTarget, ViewUniformOffset, ViewUniforms};
 use std::sync::atomic::Ordering;
 
 use crate::prepare::{RtPipeline, RtViewResources};
-use crate::RtLighting;
+use renzora::RtLighting;
 
 #[derive(Default)]
 pub struct RtNode;

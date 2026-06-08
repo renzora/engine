@@ -32,6 +32,16 @@ pub use inventory;
 pub mod core;
 pub use core::*;
 
+// ── Global illumination contract ─────────────────────────────────────────
+// GI settings components (`RtLighting`, `LumenLighting`) + the Lumen
+// diagnostics snapshot. Shared here so the GI distribution plugin
+// (`renzora_lumen`), the editor inspectors, `renzora_level_presets`, and the
+// debugger's Lumen panel all resolve one `TypeId` across the dlopen boundary —
+// the plugin can't be statically linked by those consumers (it's a cdylib), so
+// the boundary-crossing types must live in this shared dylib instead.
+pub mod gi;
+pub use gi::*;
+
 // ── Dynamic plugin FFI macro ────────────────────────────────────────────
 // `renzora::add!(MyPlugin)` exports the FFI symbols a Renzora editor /
 // runtime loader needs to instantiate the plugin from a `.dll` / `.so` /

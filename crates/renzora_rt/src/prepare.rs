@@ -9,7 +9,7 @@ use bevy::utils::default;
 use bytemuck::{Pod, Zeroable};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::RtLighting;
+use renzora::RtLighting;
 
 /// Per-view uniform fed to the SSGI shader. Padded to 16-byte alignment.
 #[derive(Clone, Copy, Debug, Pod, Zeroable, ShaderType)]
@@ -22,7 +22,7 @@ pub struct RtConfig {
     /// knows which history target it's reading vs writing.
     pub frame_count: u32,
     /// Debug output mode: 0 = composite, 1 = indirect only.
-    /// See `RtDebugMode` in `lib.rs`.
+    /// See `RtDebugMode` in the `renzora` contract.
     pub debug_mode: u32,
     pub _pad0: f32,
 }

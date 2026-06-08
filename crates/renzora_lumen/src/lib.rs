@@ -1,18 +1,25 @@
-//! Renzora Lumen — Phase 1 scaffold.
+//! Renzora Lumen — the GI distribution plugin.
 //!
-//! Authors a `LumenLighting` component on a non-camera entity (typically
-//! "World Environment"). The sync system routes the chosen quality tier
-//! onto the active cameras. Mutually exclusive with a hand-attached
-//! `RtLighting` — Lumen *owns* the screen-space tier when present.
+//! Ships as a `cdylib` dlopen plugin (in `plugins/`) like the postprocess
+//! effects. `LumenPlugin` installs the Lumen voxel/trace passes AND its
+//! screen-space backend `renzora_rt::RtPlugin` (Lumen's `ScreenSpace` tier) —
+//! both must live in one dll so `RtLighting` has a single definition across the
+//! main/render worlds. Under the `editor` feature it also registers the Lumen +
+//! RT inspectors and the diagnostics snapshot the debugger's Lumen panel reads.
+//!
+//! The settings components (`LumenLighting`, `RtLighting`, …) live in the shared
+//! `renzora` contract so the editor inspectors, `renzora_level_presets`, and the
+//! debugger all share one `TypeId` across the dlopen boundary.
 //!
 //! Phase 1 implements only `Off` and `ScreenSpace`. Higher tiers
-//! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as
-//! `Off`; Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
+//! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as `Off`;
+//! Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
 
 use bevy::prelude::*;
-use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
-use renzora_rt::{RtDebugMode, RtLighting, RtLightingExternallyManaged};
-use serde::{Deserialize, Serialize};
+use bevy::render::extract_component::ExtractComponentPlugin;
+use renzora::{
+    LumenDebug, LumenLighting, LumenQuality, RtDebugMode, RtLighting, RtLightingExternallyManaged,
+};
 
 mod geometry_voxelize;
 mod lumen_trace;
@@ -29,83 +36,22 @@ pub use screen_reflection_resolve::ScreenReflectionResolvePlugin;
 pub use voxel_cache::{VoxelCachePlugin, VoxelCacheView};
 pub use voxel_downsample::VoxelDownsamplePlugin;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
-pub enum LumenQuality {
-    Off,
-    #[default]
-    ScreenSpace,
-    /// Reserved — Phase 5+: SDF tracing, low-res voxel cache.
-    SdfLow,
-    /// Reserved — Phase 5+: SDF tracing, full-res voxel cache.
-    SdfHigh,
-    /// Reserved — Phase 10: hardware ray tracing backend.
-    Hwrt,
-}
-
-/// Debug visualization mode. Currently routes to `RtLighting.debug` when
-/// the active quality tier is `ScreenSpace`. Future Lumen-specific
-/// variants (`VoxelCache`, `GlobalSdf`, etc.) will get their own paths
-/// in Phases 2-4.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Reflect, Serialize, Deserialize, Default)]
-pub enum LumenDebug {
-    #[default]
-    None,
-    /// Show only the indirect-light contribution, without the scene
-    /// composite. Available in `ScreenSpace` tier today.
-    IndirectOnly,
-    /// Visualize the voxel radiance cache — each on-screen surface
-    /// shows the color stored in its containing voxel. Available
-    /// independent of quality (Phase 2+).
-    VoxelCache,
-}
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct LumenLighting {
-    pub quality: LumenQuality,
-    pub intensity: f32,
-    /// Multiplier on the specular voxel-cone trace contribution.
-    /// Voxel-cone specular fills the off-screen and behind-camera
-    /// reflection gaps that screen-space SSR can't reach. Layered
-    /// additively over Bevy's IBL specular and any SSR; tune low to
-    /// avoid double-counting if SSR is also active. 0.0 disables
-    /// specular tracing entirely.
-    pub specular_intensity: f32,
-    pub debug: LumenDebug,
-}
-
-impl Default for LumenLighting {
-    fn default() -> Self {
-        Self {
-            quality: LumenQuality::ScreenSpace,
-            intensity: 0.4,
-            // 1.0 means "voxel-cone specular contributes at full
-            // intensity, attenuated only by Fresnel + roughness via
-            // cone width." If SSR is also enabled this will
-            // double-count on-screen reflections; dial to ~0.3 in
-            // that case. With SSR off (voxel-only path), 1.0 is the
-            // natural setting.
-            specular_intensity: 1.0,
-            debug: LumenDebug::None,
-        }
-    }
-}
-
-impl ExtractComponent for LumenLighting {
-    type QueryData = &'static LumenLighting;
-    type QueryFilter = ();
-    type Out = LumenLighting;
-
-    fn extract_component(item: bevy::ecs::query::QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
-        Some(item.clone())
-    }
-}
+#[cfg(feature = "editor")]
+mod editor;
 
 #[derive(Default)]
 pub struct LumenPlugin;
 
 impl Plugin for LumenPlugin {
     fn build(&self, app: &mut App) {
+        info!("[runtime] LumenPlugin (GI: Lumen + RT backend)");
+
+        // The screen-space backend (Lumen's ScreenSpace tier) ships inside this
+        // GI plugin, so `RtLighting` is defined once on both sides of the dlopen
+        // boundary. RtPlugin owns its own render-graph node (`RtLabel`),
+        // independent of the Lumen labels below.
+        app.add_plugins(renzora_rt::RtPlugin);
+
         app.register_type::<LumenLighting>();
         app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
         app.add_plugins(ExtractComponentPlugin::<LumenLighting>::default());
@@ -132,6 +78,17 @@ impl Plugin for LumenPlugin {
         // pyramid, resolve bilateral-upsamples it to full res, trace
         // reads the resolved buffer.
         app.add_plugins(ScreenReflectionResolvePlugin);
+
+        // Editor-only: the inspectors (Lumen + RT) and the diagnostics snapshot
+        // the debugger's Lumen panel reads. This plugin loads at Runtime scope
+        // (so it runs in the editor viewport too); these registrations are
+        // harmless no-ops in a shipped game with no editor present.
+        #[cfg(feature = "editor")]
+        {
+            app.init_resource::<renzora::LumenDiagState>();
+            app.add_systems(Update, editor::update_lumen_diag_state);
+            editor::register_inspectors(app);
+        }
     }
 }
 

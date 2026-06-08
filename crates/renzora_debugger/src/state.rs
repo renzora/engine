@@ -151,9 +151,9 @@ impl Default for SystemTimingState {
             schedule_timings: Vec::new(),
             update_interval: 0.5,
             time_since_update: 0.0,
-            limitation_note: "Per-system timing comes from Tracy. Launch Tracy GUI \
-                0.11.x and connect to localhost — Tracy is compiled into every build \
-                and stays dormant until a GUI attaches."
+            limitation_note: "Per-system timing is not collected in-process. \
+                For detailed profiling, build with `cargo run --features \
+                bevy/trace_chrome` and open the capture in chrome://tracing."
                 .to_string(),
         }
     }

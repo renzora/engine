@@ -2,14 +2,26 @@
 name = "renzora_lumen"
 version = "0.1.0"
 edition = "2021"
-description = "Lumen-inspired global illumination for Renzora. Phase 1 scaffold; ScreenSpace tier delegates to renzora_rt."
+description = "Lumen-inspired global illumination — the GI distribution plugin. Ships as a cdylib dlopen plugin and bundles its renzora_rt ScreenSpace backend."
 
-# No `editor` feature: lean runtime crate. The inspector moved to the nested
-# renzora_lumen_editor crate (crates/renzora_lumen/editor).
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
+# startup. The GI settings types live in the shared `renzora` contract, so this
+# crate must NOT be statically linked by any host/editor crate (that would
+# double-register via `add!`); consumers read the contract types instead.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["editor", "dlopen"]
+dlopen = []
+# Compiles the Lumen + RT inspectors and the debugger diagnostics producer.
+editor = ["renzora/editor"]
 
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora" }
+# Lumen's ScreenSpace backend, linked as a library into this plugin dll.
 renzora_rt = { path = "../renzora_rt" }
 renzora_shader = { path = "../renzora_shader" }
 serde = { version = "1.0", features = ["derive"] }

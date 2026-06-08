@@ -308,13 +308,6 @@ fn external_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bx = faint_box(commands);
     let mut kids: Vec<Entity> = Vec::new();
 
-    let tracy_head = labelled_icon(commands, fonts, "magnifying-glass", "Tracy Profiler");
-    kids.push(tracy_head);
-    kids.push(muted(commands, fonts, "Best for per-system timing and GPU profiling", 9.0, text_muted()));
-    kids.push(muted(commands, fonts, "Launch Tracy GUI 0.11.x and connect to localhost", 9.0, (180, 180, 180)));
-
-    kids.push(spacer(commands, 8.0));
-
     let chrome_head = labelled_icon(commands, fonts, "chart-bar", "Chrome Tracing");
     kids.push(chrome_head);
     kids.push(muted(commands, fonts, "Export traces to chrome://tracing", 9.0, text_muted()));
@@ -351,15 +344,6 @@ fn labelled_icon(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
 fn muted(commands: &mut Commands, fonts: &EmberFonts, text: &str, size: f32, color: (u8, u8, u8)) -> Entity {
     commands
         .spawn((Text::new(text), ui_font(&fonts.ui, size), TextColor(rgb(color))))
-        .id()
-}
-
-fn spacer(commands: &mut Commands, h: f32) -> Entity {
-    commands
-        .spawn(Node {
-            height: Val::Px(h),
-            ..default()
-        })
         .id()
 }
 

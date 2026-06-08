@@ -8,11 +8,6 @@ renzora_macros = { path = "../renzora_macros" }
 renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-# GI-related component types we want to show values for in the camera
-# debug panel (LumenLighting, VoxelCacheView). Editor-only crate so this
-# isn't a runtime cost.
-renzora_lumen = { path = "../renzora_lumen" }
-renzora_rt = { path = "../renzora_rt" }
 # Editor-only deps for the diagnostic panels — counts of compiled
 # materials, loaded scripts, etc. These crates are already in the
 # editor build's dependency closure.
