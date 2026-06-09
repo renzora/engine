@@ -1,6 +1,6 @@
 # Renzora Engine
 
-A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/).
+A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/). It's fully compatible with the Bevy plugin ecosystem and is itself modular — every system is a plugin you can add, remove, or replace. Use it as a standalone engine to build games out of the box, or treat it as a customizable foundation you can modify into your own bespoke engine.
 
 ![Renzora Editor](assets/previews/interface.png)
 
