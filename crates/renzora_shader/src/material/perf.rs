@@ -111,7 +111,7 @@ impl MaterialPerfStats {
     pub fn snapshot(&self) -> Vec<(String, MaterialPerf)> {
         let mut out: Vec<(String, MaterialPerf)> =
             self.per_path.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        out.sort_by(|a, b| b.1.last_compile.cmp(&a.1.last_compile));
+        out.sort_by_key(|b| std::cmp::Reverse(b.1.last_compile));
         out
     }
 }
