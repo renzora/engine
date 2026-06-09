@@ -34,13 +34,9 @@ jobs:
       # breaks on every API drift — noise, not signal. They're still built as
       # dependencies; we just don't run their tests. New first-party crates stay
       # covered automatically via --workspace.
-      #
-      # renzora_shader is first-party but has pre-existing test failures from the
-      # material-graph rework (see commit 5370748); excluded until cleaned up.
       - name: Run tests
         run: |
           cargo test --workspace \
-            --exclude renzora_shader \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
             --exclude bevy_mod_outline \
@@ -74,7 +70,6 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy --workspace --no-deps \
-            --exclude renzora_shader \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
             --exclude bevy_mod_outline \

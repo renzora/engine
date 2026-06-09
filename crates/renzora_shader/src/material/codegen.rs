@@ -3198,7 +3198,7 @@ mod tests {
         let graph = MaterialGraph::new("Test", MaterialDomain::Surface);
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
-        assert!(result.fragment_shader.contains("pbr_input_new"));
+        assert!(result.fragment_shader.contains("pbr_input_from_standard_material"));
         assert!(result.fragment_shader.contains("apply_pbr_lighting"));
     }
 
@@ -3237,7 +3237,7 @@ mod tests {
         let graph = MaterialGraph::new("Glow", MaterialDomain::Unlit);
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
-        assert!(!result.fragment_shader.contains("pbr_input_new"));
+        assert!(!result.fragment_shader.contains("pbr_input_from_standard_material"));
     }
 
     #[test]
