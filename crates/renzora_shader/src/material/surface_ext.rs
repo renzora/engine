@@ -17,8 +17,9 @@
 //! (non-Copy) and can't be stored in the pipeline-key struct; `Uuid` is `Copy`
 //! and its derived `Clone` works inside a packed struct.
 //!
-//! Texture slots for procedural graphs live on this extension at bindings 100–107
-//! (StandardMaterial reserves 0–99, per Bevy convention).
+//! Texture slots for procedural graphs live on this extension at bindings 100–117
+//! (StandardMaterial reserves 0–99, per Bevy convention). All slots share one
+//! sampler at binding 101 to stay under Metal's 16-samplers-per-stage limit.
 
 use std::marker::PhantomData;
 
@@ -77,9 +78,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
 /// a UUID identifying the compiled shader (the actual `Handle<Shader>` is
 /// reconstructed at specialize-time as `Handle::Uuid(shader_uuid, PhantomData)`).
 ///
-/// Bindings 100–107 reserve 4 slots of (texture, sampler) alongside
-/// StandardMaterial's own bindings (0–~30). Bevy merges both sets into
-/// `@group(3)`, filtering duplicates.
+/// Texture slots live at bindings 100–117 alongside StandardMaterial's own
+/// bindings (0–~30). Bevy merges both sets into `@group(3)`, filtering
+/// duplicates.
+///
+/// All slots share ONE sampler (binding 101, taken from `texture_0`'s image,
+/// or the fallback image's linear sampler when `texture_0` is `None`). Metal
+/// caps sampler states at 16 per shader stage; per-slot samplers pushed the
+/// fragment stage to 23 (6 mesh-view + 2 mesh + 6 StandardMaterial + 9 here)
+/// and the pipeline failed to build on macOS. Sharing brings it to 15.
 ///
 /// The derives mirror Bevy's own `extended_material.rs` example:
 /// `Asset + AsBindGroup + Reflect + Debug + Clone + Default` is the full set
@@ -87,54 +94,50 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
 #[bind_group_data(SurfaceGraphExtKey)]
 pub struct SurfaceGraphExt {
+    /// Slot 0 also owns the shared sampler (binding 101) used by every other
+    /// slot — see the struct docs for the Metal sampler-limit rationale.
+    /// Codegen fills slots in order, so any graph that samples a 2D texture
+    /// populates this one first.
     #[texture(100)]
     #[sampler(101)]
     pub texture_0: Option<Handle<Image>>,
 
     #[texture(102)]
-    #[sampler(103)]
     pub texture_1: Option<Handle<Image>>,
 
     #[texture(104)]
-    #[sampler(105)]
     pub texture_2: Option<Handle<Image>>,
 
     #[texture(106)]
-    #[sampler(107)]
     pub texture_3: Option<Handle<Image>>,
 
     /// Extra D2 slots so a fully-extracted PBR material (base color +
     /// metallic-roughness + normal + emissive + occlusion = 5 maps) can fit
-    /// without trimming. Bindings 114/115 and 116/117.
+    /// without trimming. Bindings 114 and 116.
     #[texture(114)]
-    #[sampler(115)]
     pub texture_4: Option<Handle<Image>>,
 
     #[texture(116)]
-    #[sampler(117)]
     pub texture_5: Option<Handle<Image>>,
 
-    /// User cubemap slot (bindings 108/109). Lets a material sample a
+    /// User cubemap slot (binding 108). Lets a material sample a
     /// user-supplied skybox/IBL-style cube beyond Bevy's built-in env map —
     /// e.g., a baked local reflection cube, a stylized sky, a custom
     /// irradiance probe. `None` falls back to Bevy's `FallbackImage::cube`
     /// (a neutral white cube), so the pipeline layout stays valid.
     #[texture(108, dimension = "cube")]
-    #[sampler(109)]
     pub cube_0: Option<Handle<Image>>,
 
-    /// User 2D array slot (bindings 110/111). Layered texture lookup —
+    /// User 2D array slot (binding 110). Layered texture lookup —
     /// terrain layer stacks, asset variants keyed by layer index, character
     /// body-paint masks. `None` falls back to `FallbackImage::d2_array`.
     #[texture(110, dimension = "2d_array")]
-    #[sampler(111)]
     pub array_0: Option<Handle<Image>>,
 
-    /// User 3D texture slot (bindings 112/113). Volumetric data — volume
+    /// User 3D texture slot (binding 112). Volumetric data — volume
     /// fog density, caustics LUT, precomputed scattering tables, 3D noise
     /// bakes. `None` falls back to `FallbackImage::d3`.
     #[texture(112, dimension = "3d")]
-    #[sampler(113)]
     pub volume_0: Option<Handle<Image>>,
 
     /// Named-parameter uniform buffer. The codegen rewrites every `param/*`

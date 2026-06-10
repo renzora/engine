@@ -660,7 +660,6 @@ impl<'a> Ctx<'a> {
 
                 let slot = self.next_texture_binding;
                 let tex_name = format!("texture_{slot}");
-                let samp_name = format!("texture_{slot}_sampler");
                 self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
@@ -673,7 +672,7 @@ impl<'a> Ctx<'a> {
                 let uv_expr = uv;
                 let v = self.next_var("tex");
                 self.emit(format!(
-                    "    let {v} = textureSample({tex_name}, {samp_name}, {uv_expr});"
+                    "    let {v} = textureSample({tex_name}, texture_sampler, {uv_expr});"
                 ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -704,7 +703,6 @@ impl<'a> Ctx<'a> {
 
                 let slot = self.next_texture_binding;
                 let tex_name = format!("texture_{slot}");
-                let samp_name = format!("texture_{slot}_sampler");
                 self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
@@ -717,7 +715,7 @@ impl<'a> Ctx<'a> {
                 let raw = self.next_var("nraw");
                 let n = self.next_var("nmap");
                 self.emit(format!(
-                    "    let {raw} = textureSample({tex_name}, {samp_name}, {uv}).rgb * 2.0 - 1.0;"
+                    "    let {raw} = textureSample({tex_name}, texture_sampler, {uv}).rgb * 2.0 - 1.0;"
                 ));
                 self.emit(format!(
                     "    let {n} = normalize(vec3<f32>({raw}.xy * {strength}, {raw}.z));"
@@ -746,7 +744,6 @@ impl<'a> Ctx<'a> {
 
                 let slot = self.next_texture_binding;
                 let tex_name = format!("texture_{slot}");
-                let samp_name = format!("texture_{slot}_sampler");
                 self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
@@ -758,7 +755,7 @@ impl<'a> Ctx<'a> {
 
                 let v = self.next_var("texl");
                 self.emit(format!(
-                    "    let {v} = textureSampleLevel({tex_name}, {samp_name}, {uv}, {lod});"
+                    "    let {v} = textureSampleLevel({tex_name}, texture_sampler, {uv}, {lod});"
                 ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -790,7 +787,6 @@ impl<'a> Ctx<'a> {
 
                 let slot = self.next_texture_binding;
                 let tex_name = format!("texture_{slot}");
-                let samp_name = format!("texture_{slot}_sampler");
                 self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
@@ -802,7 +798,7 @@ impl<'a> Ctx<'a> {
 
                 let v = self.next_var("texg");
                 self.emit(format!(
-                    "    let {v} = textureSampleGrad({tex_name}, {samp_name}, {uv}, {ddx}, {ddy});"
+                    "    let {v} = textureSampleGrad({tex_name}, texture_sampler, {uv}, {ddx}, {ddy});"
                 ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -836,7 +832,7 @@ impl<'a> Ctx<'a> {
                     });
                 }
                 let v = self.next_var("cubes");
-                self.emit(format!("    let {v} = textureSampleLevel(cube_0, cube_0_sampler, normalize({dir}), {lod});"));
+                self.emit(format!("    let {v} = textureSampleLevel(cube_0, texture_sampler, normalize({dir}), {lod});"));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "a", format!("{v}.a"));
@@ -870,7 +866,7 @@ impl<'a> Ctx<'a> {
                     });
                 }
                 let v = self.next_var("tarr");
-                self.emit(format!("    let {v} = textureSample(array_0, array_0_sampler, {uv}, i32(round({layer})));"));
+                self.emit(format!("    let {v} = textureSample(array_0, texture_sampler, {uv}, i32(round({layer})));"));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "r", format!("{v}.r"));
@@ -903,7 +899,7 @@ impl<'a> Ctx<'a> {
                 }
                 let v = self.next_var("t3d");
                 self.emit(format!(
-                    "    let {v} = textureSample(volume_0, volume_0_sampler, {uvw});"
+                    "    let {v} = textureSample(volume_0, texture_sampler, {uvw});"
                 ));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
@@ -930,7 +926,6 @@ impl<'a> Ctx<'a> {
 
                 let slot = self.next_texture_binding;
                 let tex_name = format!("texture_{slot}");
-                let samp_name = format!("texture_{slot}_sampler");
                 self.next_texture_binding += 1;
 
                 self.texture_bindings.push(TextureBinding {
@@ -947,7 +942,7 @@ impl<'a> Ctx<'a> {
                 ));
                 self.emit(format!("    let {w} = {w} / ({w}.x + {w}.y + {w}.z);"));
                 let p = format!("in.world_position.xyz * {scale}");
-                self.emit(format!("    let {v} = textureSample({tex_name}, {samp_name}, {p}.yz) * {w}.x + textureSample({tex_name}, {samp_name}, {p}.xz) * {w}.y + textureSample({tex_name}, {samp_name}, {p}.xy) * {w}.z;"));
+                self.emit(format!("    let {v} = textureSample({tex_name}, texture_sampler, {p}.yz) * {w}.x + textureSample({tex_name}, texture_sampler, {p}.xz) * {w}.y + textureSample({tex_name}, texture_sampler, {p}.xy) * {w}.z;"));
                 self.set_out(id, "color", v.clone());
                 self.set_out(id, "rgb", format!("{v}.rgb"));
             }
@@ -2806,23 +2801,19 @@ fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // group 3 (`MATERIAL_BIND_GROUP_INDEX`), filtering duplicates. As long as
     // our bindings don't collide with StandardMaterial's, they coexist fine.
     let mut s = String::new();
-    // Slots 0..3 live on bindings 100/101..106/107. Slots 4..5 live on 114/115
-    // and 116/117 — the cubemap/array/3D slots sit between them at 108-113, so
-    // we can't keep the linear `100 + slot*2` formula past slot 3.
-    const D2_BINDINGS: [(u32, u32); 6] = [
-        (100, 101),
-        (102, 103),
-        (104, 105),
-        (106, 107),
-        (114, 115),
-        (116, 117),
-    ];
-    for (slot, (tex_binding, samp_binding)) in D2_BINDINGS.iter().enumerate() {
+    // One sampler (binding 101) is shared by every slot — 2D, cube, array and
+    // 3D alike. Metal allows only 16 sampler states per stage, and the mesh
+    // view + StandardMaterial bindings already use 14; per-slot samplers made
+    // the pipeline unbuildable on macOS. The CPU side mirrors this: only
+    // `texture_0` carries a `#[sampler]` attribute in `SurfaceGraphExt`.
+    s.push_str("@group(3) @binding(101) var texture_sampler: sampler;\n");
+    // Slots 0..3 live on bindings 100..106 (even). Slots 4..5 live on 114 and
+    // 116 — the cubemap/array/3D slots sit between them at 108-112, so we
+    // can't keep the linear `100 + slot*2` formula past slot 3.
+    const D2_BINDINGS: [u32; 6] = [100, 102, 104, 106, 114, 116];
+    for (slot, tex_binding) in D2_BINDINGS.iter().enumerate() {
         s.push_str(&format!(
             "@group(3) @binding({tex_binding}) var texture_{slot}: texture_2d<f32>;\n",
-        ));
-        s.push_str(&format!(
-            "@group(3) @binding({samp_binding}) var texture_{slot}_sampler: sampler;\n",
         ));
     }
     // Cubemap / 2D-array / 3D bindings are only declared when the graph
@@ -2831,15 +2822,12 @@ fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // would add harmless-but-noisy lines to every shader.
     if ctx.uses_cube_0 {
         s.push_str("@group(3) @binding(108) var cube_0: texture_cube<f32>;\n");
-        s.push_str("@group(3) @binding(109) var cube_0_sampler: sampler;\n");
     }
     if ctx.uses_array_0 {
         s.push_str("@group(3) @binding(110) var array_0: texture_2d_array<f32>;\n");
-        s.push_str("@group(3) @binding(111) var array_0_sampler: sampler;\n");
     }
     if ctx.uses_volume_0 {
         s.push_str("@group(3) @binding(112) var volume_0: texture_3d<f32>;\n");
-        s.push_str("@group(3) @binding(113) var volume_0_sampler: sampler;\n");
     }
     // Always declare the parameter UBO at @binding(118) — the
     // `AsBindGroup` derive on `SurfaceGraphExt` requires this slot to be
