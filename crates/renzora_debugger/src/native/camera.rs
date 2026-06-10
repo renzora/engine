@@ -61,7 +61,7 @@ fn vec3(v: Vec3) -> String {
     format!("({:.2}, {:.2}, {:.2})", v.x, v.y, v.z)
 }
 
-fn faint_box(commands: &mut Commands) -> Entity {
+pub(super) fn faint_box(commands: &mut Commands) -> Entity {
     commands
         .spawn((
             Node {
@@ -170,7 +170,7 @@ where
     row
 }
 
-fn checkbox_row<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: G, set_fn: S) -> Entity
+pub(super) fn checkbox_row<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: G, set_fn: S) -> Entity
 where
     G: Fn(&World) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, bool) + Send + Sync + 'static,

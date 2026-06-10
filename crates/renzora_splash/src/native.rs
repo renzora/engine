@@ -9,11 +9,12 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
+use bevy::time::Real;
 use bevy::ui::FocusPolicy;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_bg, bind_display, bind_text, keyed_list, react, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list, react, KeyedSnapshot};
 use renzora_ember::widgets::{bind_text_input, text_input};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
@@ -106,12 +107,19 @@ struct SplashUrl(String);
 #[derive(Resource, Default)]
 struct SplashFilter(String);
 
+/// Smoothed real-time FPS shown in the splash corner. The splash is
+/// GPU-light, so this is a baseline for "is the app/window itself smooth?"
+/// to compare against the editor's much heavier per-frame render cost.
+#[derive(Resource, Default)]
+struct SplashFps(f32);
+
 pub(crate) fn register(app: &mut App) {
-    app.init_resource::<SplashFilter>().add_systems(
+    app.init_resource::<SplashFilter>().init_resource::<SplashFps>().add_systems(
         Update,
         (
             native_reopen,
             native_splash_poll.run_if(in_state(SplashState::Splash)),
+            update_fps.run_if(in_state(SplashState::Splash)),
             manage_splash,
             window_btn_click,
             drag_handle,
@@ -138,6 +146,15 @@ fn native_reopen(
 
 fn native_splash_poll(mut stats: ResMut<GithubStats>) {
     stats.poll();
+}
+
+/// Exponentially-smoothed real FPS, updated only while the splash is shown.
+fn update_fps(time: Res<Time<Real>>, mut fps: ResMut<SplashFps>) {
+    let dt = time.delta_secs();
+    if dt > 0.0 {
+        let instant = 1.0 / dt;
+        fps.0 = if fps.0 <= 0.0 { instant } else { fps.0 * 0.9 + instant * 0.1 };
+    }
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -203,9 +220,8 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
 
     let layout = build_layout(commands, fonts);
     let controls = build_window_controls(commands, fonts);
-    let footer = build_footer(commands, fonts);
 
-    commands.entity(root).add_children(&[backdrop, city, layout, controls, footer]);
+    commands.entity(root).add_children(&[backdrop, city, layout, controls]);
     build_resize_zones(commands, root);
 }
 
@@ -325,30 +341,56 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let star = social_button(commands, fonts, "star", "Star us on GitHub", GITHUB_URL, true);
     commands.entity(socials).add_children(&[website, youtube, discord, star]);
 
-    commands.entity(bottom).add_child(socials);
+    // Status line (FPS · version) centred under the social buttons.
+    let status = commands
+        .spawn((
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() },
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let fps = build_fps(commands, fonts);
+    let dot = commands
+        .spawn((Text::new("·".to_string()), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    let version = commands
+        .spawn((Text::new(format!("Renzora Engine · version {VERSION}")), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    commands.entity(status).add_children(&[fps, dot, version]);
+
+    commands.entity(bottom).add_children(&[socials, status]);
 
     commands.entity(col).add_children(&[top, middle, bottom]);
     col
 }
 
-/// Small version label tucked into the bottom-right corner.
-fn build_footer(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    commands
+
+/// FPS readout for the centred status line — a quick render-health baseline.
+/// Color-coded green/amber/red.
+fn build_fps(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let label = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                right: Val::Px(14.0),
-                bottom: Val::Px(8.0),
-                ..default()
-            },
-            Text::new(format!("Renzora Engine · version {VERSION}")),
-            ui_font(&fonts.ui, 11.0),
+            Text::new(String::new()),
+            ui_font(&fonts.mono, 11.0),
             TextColor(text_muted()),
-            GlobalZIndex(600),
             FocusPolicy::Pass,
-            Name::new("splash-footer"),
+            Name::new("splash-fps"),
         ))
-        .id()
+        .id();
+    bind_text(commands, label, |w| {
+        let fps = w.get_resource::<SplashFps>().map(|f| f.0).unwrap_or(0.0);
+        format!("{fps:.0} FPS")
+    });
+    bind_text_color(commands, label, |w| {
+        let fps = w.get_resource::<SplashFps>().map(|f| f.0).unwrap_or(0.0);
+        if fps >= 58.0 {
+            c(100, 200, 100)
+        } else if fps >= 30.0 {
+            c(200, 200, 100)
+        } else {
+            c(200, 100, 100)
+        }
+    });
+    label
 }
 
 fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {

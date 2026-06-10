@@ -8999,6 +8999,7 @@ dependencies = [
  "bevy 0.18.0",
  "memory-stats",
  "renzora",
+ "renzora_auto_exposure",
  "renzora_ember",
  "renzora_macros",
  "renzora_scripting",

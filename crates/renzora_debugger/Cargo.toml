@@ -13,6 +13,8 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 # editor build's dependency closure.
 renzora_shader = { path = "../renzora_shader" }
 renzora_scripting = { path = "../renzora_scripting" }
+# Reached by the Render Toggles debug panel to flip AutoExposureSettings.
+renzora_auto_exposure = { path = "../renzora_auto_exposure" }
 memory-stats = "1"
 
 [lints]
