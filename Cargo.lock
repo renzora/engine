@@ -9567,14 +9567,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_hot_demo"
-version = "0.1.0"
-dependencies = [
- "bevy 0.18.0",
- "renzora",
-]
-
-[[package]]
 name = "renzora_hub"
 version = "0.1.0"
 dependencies = [
