@@ -10,6 +10,7 @@ mod ecs;
 mod lumen;
 mod material;
 mod memory;
+mod reactivity;
 mod render_toggles;
 mod scripting;
 mod system;
@@ -36,6 +37,7 @@ pub fn register_native_debug(app: &mut App) {
     material::register_material_resolver(app);
     culling::register_culling(app);
     camera::register_camera(app);
+    reactivity::register(app);
     render_toggles::register(app);
 }
 
