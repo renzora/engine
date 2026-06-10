@@ -1,27 +1,24 @@
-# Docs
+# Engine Docs
 
-Guides, plans, and migration notes for the engine.
+Plans, roadmaps, and migration notes for the Renzora engine repo — not user documentation.
 
-## Architecture
+This folder holds **internal design docs only**: forward-looking plans, phased roadmaps, and upgrade notes that live alongside the code. They describe intent and direction, so parts may be **aspirational, in-progress, or abandoned** — always check the doc against the current source before relying on it.
 
-- [editor-runtime-plugin-architecture.md](editor-runtime-plugin-architecture.md) — editor/runtime/plugin ABI and the "one build, editor-as-removable-bundle" plan.
-- [renzora_markup.md](renzora_markup.md) — markup as a serialization format for a `bevy_ui` entity tree (round-tripping loader/runtime layer).
+> Full **user and developer documentation** (scripting, markup/UI templates, plugin development, the widget catalog) lives at **<https://renzora.com/docs>**. The API-reference pages that used to sit here have moved there.
 
-## API Reference
+## Plans & Roadmaps
 
-- [scripting_api.md](scripting_api.md) — Lua scripting API: lifecycle hooks, context globals, and world-acting functions.
-- [template_api.md](template_api.md) — HUI `.html` markup template elements, attributes, bindings, and control flow.
-- [hui_components.md](hui_components.md) — UI component catalog and roadmap (markup-composed widgets over engine behaviors).
+| Doc | What it covers |
+|---|---|
+| [roadmap.md](roadmap.md) | Overall feature roadmap (linked from the splash screen). |
+| [renzora_network_plan.md](renzora_network_plan.md) | Phased plan for full Lightyear 0.26 multiplayer coverage. Only Phase 0, the RPC core, host mode, and basic `Transform` replication/interpolation are shipped today; the rest is aspirational or stub-only. |
+| [networking-test-plan.md](networking-test-plan.md) | Hands-on in-engine checklist and HUD-driven test scripts for the multiplayer that exists now. |
+| [renzora_lumen_plan.md](renzora_lumen_plan.md) | Original design for the `renzora_lumen` GI plugin. Note: the SDF architecture was abandoned in favour of CPU geometry voxelization, and the `Hwrt` tier is not yet wired. |
+| [ui_plan.md](ui_plan.md) | Historical plan for the game-facing markup UI system. Predates the `renzora_hui` → `renzora_ember` merge; the live runtime is now `renzora_ember::markup` (`MarkupPlugin`). |
 
-## Roadmaps & Plans
+## Architecture & Migration
 
-- [roadmap.md](roadmap.md) — feature roadmap (linked from the splash screen).
-- [ui_plan.md](ui_plan.md) — game-facing markup UI system and the road to the Cinder UI particle system.
-- [renzora_network_plan.md](renzora_network_plan.md) — phased plan for full Lightyear networking coverage.
-- [networking-test-plan.md](networking-test-plan.md) — hands-on in-engine checklist + scripts to test multiplayer (HUD-driven).
-- [renzora_lumen_plan.md](renzora_lumen_plan.md) — Lumen-inspired GI plugin plan.
-- [BEVY_0.19_MIGRATION.md](BEVY_0.19_MIGRATION.md) — Bevy 0.19 upgrade notes.
-
-## Guides
-
-- [plugin-development.md](plugin-development.md) — building plugins, components, and scripting against the engine's API.
+| Doc | What it covers |
+|---|---|
+| [editor-runtime-plugin-architecture.md](editor-runtime-plugin-architecture.md) | The "one binary, editor-as-removable-cdylib" model (Operation Merge) and the plugin ABI. The merge is now fully shipped; the document's older sections are kept for history. |
+| [BEVY_0.19_MIGRATION.md](BEVY_0.19_MIGRATION.md) | Upgrade notes for the planned Bevy 0.19 bump. The engine currently runs on **Bevy 0.18**. |

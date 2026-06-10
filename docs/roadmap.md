@@ -1,5 +1,7 @@
 # Renzora Engine Roadmap
 
+Planned and completed work across the Renzora engine; completed items link to the commit that shipped them.
+
 ---
 
 ## Hierarchy — Selection & Editing
@@ -229,7 +231,7 @@
 - Add async/await patterns
 - Add script-to-script message passing
 - Add event system integration for scripts
-- Add networking API for scripts
+- ✅ Networking API for scripts — `rpc(name, args)`, `net_is_server`/`net_is_client`/`net_is_connected`/`net_player_count`, and the `on_rpc`/`on_player_joined`/`on_player_left` hooks (Lua only; Rhai has no networking surface). `net_send`/`net_spawn` remain stubs
 
 ## Scripting API — Utilities
 - Add file I/O (read/write)
@@ -325,9 +327,10 @@
 - Add material LOD variants for terrain layers
 
 ## Physics — Backends
-- Implement Rapier physics pause/unpause
-- Remove Rapier backend if Avian is the chosen backend
-- Complete Rapier physics backend
+> Avian (`avian3d`) is the chosen, default, and only working backend (`renzora_physics`, `default = ["avian", ...]`). The Rapier backend (`backend/rapier.rs`) is a placeholder that `unimplemented!()`s on build — `bevy_rapier3d` has not released for Bevy 0.18, so all Rapier work below is blocked on that.
+- Complete the Rapier backend once `bevy_rapier3d` ships Bevy 0.18 support (currently a stub)
+- Implement Rapier physics pause/unpause (blocked on `bevy_rapier3d` 0.18)
+- Decide whether to drop the Rapier backend entirely now that Avian is the chosen backend
 - Add collision layer/group editor UI
 
 ## Camera System
@@ -345,11 +348,12 @@
 - Add light linking/culling per object
 
 ## Lighting — Baked & Advanced
+- ✅ Real-time global illumination — `renzora_lumen` ships voxel-cone GI (`LumenQuality::SdfLow`/`SdfHigh`, CPU geometry voxelization) plus a screen-space SSGI tier (`ScreenSpace`, via the bundled `renzora_rt`) and a half-res screen-space reflection pyramid; `LumenQuality::Hwrt` parses but renders nothing (wgpu ray tracing is not enabled)
 - Add light probes (baked)
-- Add reflection probes (baked/real-time)
+- Add reflection probes (baked) — real-time screen-space reflections already ship as part of `renzora_lumen`
 - Add light baking interface
 - Add volumetric lighting
-- Implement lightmapping / baked global illumination
+- Implement lightmapping / baked global illumination (baked GI is still open; only real-time GI ships)
 
 ## Water — Visual Effects
 - Add caustics rendering
@@ -389,17 +393,21 @@
 - Implement destruction/fracture system
 - Build unified weather system
 
-## Networking — Script Commands
-- Wire NetworkScriptCommand::SendEvent to actually send via Lightyear connection
-- Wire NetworkScriptCommand::SpawnRequest to send message to server
-- Wire NetworkScriptCommand::Rpc to send as GameEvent message
-- Wire lifecycle send_message to Lightyear message API
-- Wire lifecycle spawn_entity to send SpawnRequest to server
+## Networking — Run Modes & Script Commands
+> One binary, flag-selected (`src/main.rs`): a plain windowed launch is a client; `--server` is a headless dedicated server; `--host` is a windowed listen server (client + server in one process), and `--host` wins over `--server`. Server flags `--port` / `--addr` (`--address`) / `--tick-rate` / `--max-clients` overlay `project.toml [network]` (defaults: port 7636, tick 64, 32 clients). Script networking is dispatched through `action()` `ScriptAction` verbs — there is no `NetworkScriptCommand` type. Only native UDP is wired (Lightyear is built with just `udp` + `netcode`).
+- ✅ Send RPCs over the wire — `rpc(name, args)` / `action("net_rpc", ...)` serialize to a `GameEvent` on the Reliable channel; the server relays to every other client
+- ✅ Connect / disconnect — `action("net_connect", { address, port })` / `action("net_disconnect")`
+- Wire `action("net_send")` / `net_send_message` to actually send over the Lightyear connection (currently a TODO stub that never reaches the wire)
+- Wire `action("net_spawn")` to send a `SpawnRequest` to the server (currently a TODO stub)
+- Preserve the origin peer id through server relay (relayed RPCs currently arrive with `from = 0`; only the server sees the true sender)
 
 ## Networking — Events & Multiplayer
-- Implement lifecycle on_player_joined event handler
-- Implement lifecycle on_player_left event handler
-- Implement lifecycle on_message event handler
+- ✅ `on_player_joined(id)` / `on_player_left(id)` script hooks — server-authoritative; fire on the server/host when a Lightyear peer connects or disconnects
+- ✅ `on_rpc(name, args, from)` script hook for incoming messages
+- Implement client input replication (`PlayerInput` is defined but unregistered — Phase 5)
+- Implement prediction / rollback (`prediction.rs` is currently inert — Phase 6)
+- Spawn networked player avatars on join (nothing reacts to `Added<NetworkPlayer>` yet — Phase 4)
+- Populate the Network Monitor (RTT / jitter / packet-loss / client id are never written from Lightyear)
 - Implement multiplayer lobby/matchmaking layer
 
 ## Navigation — Navmesh
@@ -408,6 +416,7 @@
 - Add navmesh baking UI
 
 ## VR/XR
+> Parked. `bevy_oxr` is vendored and `renzora_xr` exists, but the editor integration `renzora_vr_editor` is parked under `disabled/` (outside the workspace) and still references `renzora_xr` APIs that were removed (`VrControllerState`, `VrHand`, `reexports::*`). The items below are blocked until XR is un-parked.
 - Implement parabolic arc raycast for VR teleport
 - Implement XR teleport parabolic arc raycast
 - Add throw velocity on VR grab release (physics impulse)

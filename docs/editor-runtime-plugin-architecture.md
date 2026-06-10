@@ -1,304 +1,269 @@
-# Editor / Runtime / Plugin Architecture — Plan
+# Editor / Runtime / Plugin Architecture
 
-Status: **prerequisite DONE — now executing ("Operation Merge").** The egui → bevy_ui
-migration landed (2026-06; `bevy_egui` removed from every workspace crate, bevy_ui/ember
-is the sole editor UI, the F10/`EditorUiBackend` dual-backend switch is deleted). The
-heavy/special thing the editor carried (egui + its bevy-feature pull) is gone, so the
-"one build + lean game" corner of the trilemma (§4) is now reachable. Sections 5/6/9 below
-are kept for history but their egui-specific premises are **resolved** — see §10 for the
-current, concrete plan.
+Renzora is **one** Bevy 0.18 binary that becomes the editor, the shipped game, or a network server depending on how it launches and what sits beside it.
 
----
+> **Status: AS-BUILT.** This describes shipped behaviour ("Operation Merge", now complete). The planning narrative that produced it is condensed into the [History appendix](#history-operation-merge).
 
-## 1. The goal (the actual problem)
+## One binary, three run modes
 
-A **community plugin, built once, must load in BOTH the shipped editor and the shipped
-runtime.** That is only possible if the editor and the runtime share an **identical
-`bevy_dylib`** — same compiled Bevy, same SVH hash (the `bevy_dylib-<hash>.dll` suffix).
-`bevy/dynamic_linking` + `prefer-dynamic` (`.cargo/config.toml`) is opted in for exactly
-this. If a plugin links one `bevy_dylib` and the host ships another, the plugin won't
-load.
+The workspace has exactly **one** binary: `renzora_app` (root `Cargo.toml`, `[[bin]] name = "renzora"`, path `src/main.rs`, `default-run = "renzora"`). It is the engine — editor + runtime + server in one — not a project orchestrator.
 
-Everything below exists to serve that one requirement.
+The binary is **always runtime-shaped**. The root `Cargo.toml` has `default = ["runtime"]`; the only build features are `runtime` and `wasm`. There is **no `editor` compile-time feature and no separate editor binary**. The editor experience is layered on at runtime by a removable cdylib bundle (`renzora_editor`) that sits beside the exe.
 
----
+> Present the bundle dll beside the exe and the binary *is* the editor. Delete that one file and the same binary is the shipped game.
 
-## 2. Current shipped files (what each is)
+Which mode runs is decided at runtime in `src/main.rs`:
+
+| Mode | How it's selected | What it does |
+|---|---|---|
+| **Editor** | Default windowed launch, bundle dll present beside the exe | Boots the runtime, then dlopens the editor bundle on top |
+| **Game** | Default windowed launch, no bundle (or `--no-editor`) | The same binary as the exported game — windowed client |
+| **Dedicated server** | `--server` | Headless, no GPU/window; `NetworkServerPlugin` |
+| **Listen server (host)** | `--host` | Windowed client + server in one process |
+
+```bash
+renzora                 # editor if renzora_editor.dll is beside it, else the game
+renzora --no-editor     # force game mode even with the bundle present
+renzora --server        # headless dedicated server (no window)
+renzora --host          # windowed listen server (client + server)
+```
+
+> `--host` wins over `--server` if both are passed. A server **or** host launch is **never** an editor session, even if the bundle dll happens to sit beside the exe. The dedicated server is this same `renzora` binary — there is no separate server executable.
+
+### Deciding editor vs game
+
+Two small functions in `src/main.rs` do the whole decision:
+
+- **`editor_bundle_path()`** — looks beside the exe for the bundle cdylib: `renzora_editor.dll` (Windows), `librenzora_editor.so` / `renzora_editor.so` (Linux), or `librenzora_editor.dylib` / `renzora_editor.dylib` (macOS). Returns the first that exists.
+- **`editor_session()`** — returns `true` iff the bundle is present **and** neither `--no-editor` nor the `RENZORA_NO_EDITOR` env var is set. The caller additionally excludes server/host launches:
+
+```rust
+let host_mode = std::env::args().any(|a| a == "--host");
+let server_mode = !host_mode && std::env::args().any(|a| a == "--server");
+let is_editor = !server_mode && !host_mode && editor_session();
+```
+
+`is_editor` then flows through the whole boot: it selects the crash-file location, decides whether to grab a console on Windows, is handed to `add_engine_plugins`, and gates whether the editor bundle is loaded.
+
+### Server flags
+
+When `--server` or `--host` is present, `load_server_config()` builds a `NetworkConfig` from CLI flags overlaid on `project.toml [network]`:
+
+| Flag | Overrides |
+|---|---|
+| `--port <u16>` | `[network].port` (default **7636**) |
+| `--addr` / `--address <ip>` | `[network].server_addr` |
+| `--tick-rate <u16>` | `[network].tick_rate` (default **64**) |
+| `--max-clients <u16>` | `[network].max_clients` (default **32**) |
+
+The headless runner and `NetworkServerPlugin` share the resolved tick rate. (`--project <path>` is handled later by the splash plugin, which lives in the editor bundle.)
+
+## Core crate layers
+
+| Crate | Crate type | Role |
+|---|---|---|
+| `renzora` | `dylib` + `rlib` → **`renzora.dll`** | The SDK / contracts crate: `add!`/`export_plugin_bundle!` macros, `PluginScope`/`StaticPlugin`, GI contract types, the post-process framework, the `runtime_warnings` ring buffer, and (under the `editor` feature) the editor contract registries |
+| `renzora_runtime` | rlib | Shared engine library every binary links: `init_app`, `add_default_rendering`, `add_headless_rendering`, `add_engine_plugins` |
+| `renzora_engine` | rlib | Editor-free game core: VFS, asset reader, scene IO, autoload, crash reporting |
+| `renzora_editor` | `cdylib` → **`renzora_editor.dll`** | The editor **bundle**: statically links ~50 editor-only crates + the dual-mode `/editor` subcrates as rlibs and exposes them through one FFI entry point |
+| `renzora_editor_framework` | **rlib only** | The editor SDK *implementation*. Baked into both the binary and the bundle — emits no dll of its own |
+| `dynamic_plugin_loader` | rlib | dlopens the bundle + community plugins at startup and hot-reloads new ones dropped into `plugins/` mid-session |
+
+### Shipped files
+
+A desktop editor build ships these files next to the exe:
 
 | File | What it is | Needed by |
 |---|---|---|
-| `bevy_dylib` | The Bevy engine (render, ECS, math). | editor + runtime |
-| `renzora.dll` | Core Renzora SDK: `add!`, plugin scopes, shared types, the post-process framework. | editor + runtime |
-| `renzora_editor.dll` | **Editor SDK**: `EditorPanel`, the inspector registry, `egui` re-exports. | editor (+ any plugin with an inspector) |
-| `plugins/*.dll` | `dlopen`'d distribution plugins. Some post-process effects already ship this way. | whoever installs them |
+| `renzora(.exe)` | The engine binary (always runtime-shaped) | always |
+| `bevy_dylib-<hash>.{dll,so,dylib}` | The shared Bevy build (render, ECS, math) | editor + game |
+| `renzora.{dll,so,dylib}` | The shared Renzora SDK / contracts | editor + game |
+| `renzora_editor.{dll,so,dylib}` | The editor **bundle** cdylib (the removable editor) | editor only |
+| `plugins/*.{dll,so,dylib}` | dlopen'd distribution plugins | whoever installs them |
 
-A **plugin** = one feature (a bloom effect, the physics system, an inspector panel).
-Its **scope** decides when it loads:
+A **game export is the same set minus `renzora_editor.*`**. There is no separate "editor SDK" dll: the editor framework is the `renzora_editor_framework` rlib, and the only types that cross the binary ↔ bundle boundary live in `renzora.dll`.
+
+> The old `renzora_editor.dll = "Editor SDK / EditorPanel / egui re-exports"` description is obsolete. `egui`/`bevy_egui` are fully removed (the editor is bevy_ui-native via `renzora_shell` + `renzora_ember`), and `renzora_editor.dll` is the editor *bundle*, not an SDK dll.
+
+## The shared ABI: one `bevy_dylib` + one `renzora.dll`
+
+The whole architecture serves one requirement: **a community plugin built once must load in both the editor and the shipped game.** That only works if the host, the dlopen'd bundle, and dynamic plugins all link an *identical* `bevy_dylib` and `renzora.dll` — same compiled copy, matching `TypeId`s.
+
+That is why `bevy` is built with `dynamic_linking` and `.cargo/config.toml` sets `-C prefer-dynamic`. `prefer-dynamic` applies to crates that emit both rlib + dylib — currently `bevy` (via `dynamic_linking`) and `renzora`. Each ships as a single shared library so statically-linked workspace crates *and* dlopen'd plugins share one compiled copy of the contracts.
+
+The runtime guard is `plugin_bevy_hash()`, emitted by every plugin and the bundle:
 
 ```rust
-renzora::add!(MyPlugin);                              // Runtime (default)
-renzora::add!(MyPlugin, Editor);                      // editor only
-renzora::add!(MyPlugin, Runtime);                     // explicit (same as default)
-renzora::add!(MyFoundation, Runtime, priority = -100);
+#[no_mangle]
+pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
+    let id = std::any::TypeId::of::<bevy::ecs::world::World>();
+    unsafe { std::mem::transmute(id) }
+}
 ```
 
----
+The loader computes its own `TypeId::of::<World>()` and **rejects any plugin or bundle whose hash differs** ("incompatible bevy version"). If a plugin linked a different `bevy_dylib`, its `World` would be a distinct type and every component crossing the boundary would mismatch — so the loader refuses to install it.
 
-## 3. Root cause of the ABI break
+> `build.rs` also emits `RENZORA_ENGINE_VERSION` and an FNV-1a `RENZORA_BUILD_HASH` (`version + rustc + bevy0.18`) for version reporting, but the *actual* dlopen reject decision is the `plugin_bevy_hash` `World` `TypeId` above.
 
-`docker/build-all.sh` builds the two halves **in isolation and with different scope**:
+## Registering a plugin: the `add!` macro
 
-- editor  = `cargo build --workspace`
-- runtime = `cargo build --bin renzora --no-default-features --features runtime`
+Every Renzora plugin declares itself with `renzora::add!`. The plugin type must implement `Default`.
 
-Cargo unifies features across whatever is in the build. The `--workspace` editor build
-pulls features from *every* crate (egui, asset tooling, XR, vendored forks…); the lean
-`--bin` runtime build pulls a subset. `bevy_dylib`'s hash = a function of its own +
-its internal deps' features, so **any feature delta shifts the hash**. → two different
-`bevy_dylib`s → plugins can't be built once.
+```rust
+use bevy::prelude::*;
 
-**The durable fix is structural: one build, one feature set, for both.** Feature-by-feature
-alignment (forcing the runtime to match the editor's feature requests) was tried and is
-**fragile whack-a-mole** — every new workspace crate that pulls a bevy feature re-diverges
-it. Abandoned in favour of "one build."
+#[derive(Default)]
+struct MyPlugin;
+impl Plugin for MyPlugin {
+    fn build(&self, app: &mut App) { /* ... */ }
+}
 
----
+renzora::add!(MyPlugin);                          // Runtime (default)
+renzora::add!(MyEditorTool, Editor);              // editor only
+renzora::add!(MyGameplay, Runtime);               // explicit (same as default)
+renzora::add!(MyFoundation, Runtime, priority = -100); // lower = installed earlier
+```
 
-## 4. The trilemma (the core tension)
+> Import from `renzora::*` — there is **no** `renzora::prelude` module.
 
-You can pick **any two**:
+`add!` expands to two parallel registration paths (`crates/renzora/src/plugin_meta.rs`):
 
-| Approach | One build (ABI fixed) | Lean game (no egui) | No big refactor |
-|---|:--:|:--:|:--:|
-| Editor code compiled into one binary | ✅ | ❌ ships egui | ✅ |
-| Separate editor/runtime builds (today) | ❌ hash diverges | ✅ | ✅ |
-| Split dual-mode crates / drop egui | ✅ | ✅ | ❌ |
+1. **Always, on every platform** — an `inventory::submit!{ StaticPlugin { name, scope, priority, install } }` entry. The shared `renzora.dll` owns the single `inventory::collect!(StaticPlugin)` registry, so every plugin compiled into the binary (or dlopen'd later) self-registers with no manual enumeration.
+2. **Only under `#[cfg(feature = "dlopen")]`** (evaluated on the *calling* crate, desktop only) — three `#[no_mangle] extern "C"` exports: `plugin_create() -> *mut dyn Plugin`, `plugin_scope() -> u8`, and `plugin_bevy_hash() -> [u64; 2]`.
 
-The only way to get **one build + lean game** is to remove the thing that makes the editor
-"heavy and special" — **egui** — from anything a game links. That is what the chosen
-direction (Section 6) does.
+### Plugin scopes
 
----
+```rust
+#[repr(u8)]
+pub enum PluginScope { Editor = 0, Runtime = 1 }
+```
 
-## 5. The wall: dual-mode crates
+`PluginScope::matches` is **exact equality** — there is **no "both" scope**. `Runtime` plugins run wherever the runtime runs (the editor viewport *and* the shipped game); `Editor` plugins run only in the editor pass (the bundle). A feature that needs editor tooling on top of runtime behaviour ships **two** plugins — e.g. `GameUiPlugin` (Runtime) + `GameUiEditorPlugin` (Editor).
 
-"The editor" is **two** kinds of crate:
+`for_each_static_plugin(host_scope, f)` filters the global inventory by scope and invokes `f` in ascending `priority` order.
 
-1. **~50 editor-only crates** (`renzora_inspector`, `renzora_hierarchy`, `renzora_viewport`,
-   `renzora_gizmo`, `renzora_console`, …). Optional (`dep:`) — these **can** move into a
-   loadable editor DLL cleanly.
-2. **~30 dual-mode crates** (`renzora_physics`, `renzora_lighting`, `renzora_ssr`,
-   `renzora_engine`, …). **Non-optional runtime deps** — in every game. Their editor UI is
-   compiled **into the same crate** by a feature flag:
+### Workspace plugins vs distribution plugins
 
-   ```toml
-   # crates/renzora_physics/Cargo.toml
-   editor = ["dep:renzora_editor", "dep:bevy_egui", "dep:egui-phosphor", "dep:renzora_theme"]
-   renzora_physics = { path = "../renzora_physics" }   # non-optional; ships in games
-   ```
+| Kind | Crate type | `dlopen` feature | Registration |
+|---|---|---|---|
+| **Workspace plugin** | rlib | off | Statically linked into the host; registers via its `inventory` ctor at process start |
+| **Distribution plugin** | cdylib | `dlopen = []`, default-on | dlopen'd from `plugins/` at startup or hot-reload |
 
-   The inspector (`crates/renzora_physics/src/inspector.rs`) uses `bevy_egui::egui`
-   **directly** (custom `egui::DragValue`, `egui::ComboBox`, …). So `renzora_physics` is one
-   crate holding *both* simulation and an egui inspector. You cannot relocate "the editor
-   half" into a DLL because it is not a separate compilation unit.
+The FFI exports are unmangled, so a distribution cdylib may contain **exactly one** `add!` — two would collide on `plugin_create`/`plugin_scope`. Engine crates with multiple plugins (e.g. `renzora_shader::{ShaderPlugin, MaterialPlugin}`) live in the host as rlibs and never enable `dlopen`. Shipping *many* plugins from one cdylib is what the bundle door below is for.
 
-### Key facts learned (don't re-discover these)
+## The editor bundle: `export_plugin_bundle!`
 
-- **Scope is a runtime switch, not a compile-time strip.** `add!(_, Editor)` only decides
-  whether a plugin *wakes up* at startup (`for_each_static_plugin` checks scope). It does
-  **not** remove the code from the file. Two scoped plugins in one crate → the whole crate
-  (egui and all) is still compiled → egui still ships. To *physically* remove editor code
-  from a game, it must be a **separate crate** that the game's link graph excludes.
-- **The editor SDK registry must be shared (same `TypeId`)** between a dual-mode inspector
-  (which registers "how to edit a RigidBody") and the inspector *panel* (which reads the
-  registry to draw it). If those live in different DLLs, the crate defining the registry
-  (`renzora_editor`) **must be a shared DLL** — an rlib baked into both gives two separate
-  registries and nothing shows up. (This is why `renzora_editor` is a `dylib` today.)
-- **One-plugin-per-cdylib FFI limit.** `add!`'s `plugin_create`/`plugin_scope` exports are
-  unmangled, so a dlopen cdylib may contain exactly one. Crates exporting multiple plugins
-  need the bundle door (Section 7).
+`renzora_editor` is the cdylib that links ~50 editor-only crates as rlibs (with `dlopen` *off*, so none emit the colliding trio) and calls the bundle macro exactly once (`crates/renzora_editor/src/lib.rs`):
 
----
+```rust
+renzora::export_plugin_bundle!(foundation = [
+    renzora_asset_registry::AssetRegistryPlugin,
+    renzora_editor_framework::RenzoraEditorPlugin,
+    renzora_keybindings::KeybindingsPlugin,
+]);
+```
 
-## 6. Chosen direction: migrate egui → bevy_ui FIRST
+This emits a single collision-free entry point plus the same ABI guard:
 
-`bevy_ui` is already inside `bevy_dylib` and already used by the runtime. If the editor
-draws with `bevy_ui`/HUI instead of egui:
+```rust
+extern "C" fn plugin_install_scope(app: *mut App, host_scope: u8) -> u32;
+extern "C" fn plugin_bevy_hash() -> [u64; 2];
+```
 
-- **Nothing to strip.** Editor/inspector code becomes the same UI system the game already
-  ships — no 21 MB egui dependency riding along. A dual-mode crate's inspector can stay
-  put and cost ~nothing in a game.
-- **The egui-driven `bevy_dylib` divergence disappears** (a big chunk of the hash delta was
-  egui pulling `bevy_winit/default` etc.).
-- **The ~30-crate split becomes unnecessary** — there's no egui left to isolate.
-- Aligns with the in-progress HUI / markup migration (it's finishing a path already taken).
+`plugin_install_scope`:
 
-### Honest caveats
+1. Installs the ordered `foundation` first (each in `catch_unwind`) — these init the shared registries later plugins read in their own `build()`. The foundation plugins are *not* in the inventory; they're added explicitly and in order.
+2. Replays `for_each_static_plugin(scope)` from the **one global inventory**, deduplicated by plugin `name` (a dual-mode editor crate can be linked into both the host and the bundle and submit twice), each install caught individually.
+3. Returns the **count of plugins that panicked** (0 = all good). **Nothing unwinds across the `extern "C"` frame.**
 
-- **Largest effort of all options** — every panel/inspector/widget rewritten on
-  `bevy_ui`/HUI. Months, incremental.
-- **The code editor is the hard case** — syntax-highlighted text editing is where the prior
-  egui→bevy_ui attempt was reverted. That panel may stay egui (or a custom widget) longest.
-- **bevy_ui alone does NOT fix the hash.** The root is *two builds* (Section 3); egui is one
-  contributor. You still need **one build**. bevy_ui just makes that one build produce a
-  *lean* game for free instead of one carrying egui.
+> **Global-inventory consequence (load-bearing).** Because the inventory is one shared registry, `plugin_install_scope` replays *every* matching-scope plugin in it, not just the bundle's own. This works only because scopes partition: an editor host drives the bundle with `host_scope = Editor` and installs Editor-scope plugins; the runtime-shaped host installs Runtime-scope plugins itself. A build either statically registers editor plugins **or** ships the bundle — never both, or they double-add and Bevy panics. The shipped runtime host registers **no** editor plugins, so the bundle is the only source of them.
 
----
+## Engine install order
 
-## 7. The plugin-DLL mechanism (prototyped, reverted — re-add when needed)
+`renzora_runtime::add_engine_plugins(app, is_editor)` builds the runtime foundation, in this exact order (`crates/renzora_runtime/src/lib.rs`):
 
-To ship many editor-only plugins as **one** loadable DLL (working around the
-one-plugin-per-cdylib limit), a `export_plugin_bundle!` macro was prototyped:
+```text
+EditorSession(is_editor)        // runtime editor-vs-game signal for dual-mode crates
+RuntimePlugin                   // renzora_engine
+GlobalsPlugin                   // renzora_globals
+InputPlugin                     // renzora_input
+ScriptingPlugin                 // renzora_scripting (Lua + Rhai)
+PhysicsPlugin                   // renzora_physics
+ViewportStretchPlugin           // only when !is_editor
+for_each_static_plugin(Runtime) // fan out every Runtime-scope plugin in the inventory
+```
 
-- A cdylib that statically links N `add!` plugins (as rlibs) exports a single
-  `plugin_install_scope(&mut App, host_scope)` that replays every registered plugin of the
-  matching scope into the `App`.
-- The `dynamic_plugin_loader` prefers `plugin_install_scope` when present (bundle), and
-  falls back to `plugin_create` for single-plugin community cdylibs. Both check
-  `plugin_bevy_hash` before installing.
+It installs **no** editor plugins. Editor plugins arrive *only* through the bundle's `plugin_install_scope` with `host_scope = Editor`, loaded *after* this foundation so they layer on top — reproducing the ordering the old (removed) `add_editor_plugins` had.
 
-This was reverted along with the rest of the refactor (see Section 9). Re-introduce it if/
-when the editor panels become a loadable bundle. It is **purely additive** — the existing
-single-plugin community path is untouched.
+`src/main.rs` wires the load after `add_engine_plugins`:
 
----
+```rust
+fn load_global_plugins(app: &mut App, is_editor: bool) {
+    if is_editor {
+        if let Some(bundle) = editor_bundle_path() {
+            dynamic_plugin_loader::load_bundle(app, &bundle, true);
+        }
+    }
+    if let Some(dir) = exe_dir() {
+        let plugins = dir.join("plugins");
+        if plugins.exists() {
+            dynamic_plugin_loader::load_plugins(app, &plugins, is_editor);
+        }
+    }
+}
+```
 
-## 8. Sequencing (the actual roadmap)
+## Dynamic loading & hot-reload
 
-1. **NOW — egui → bevy_ui/HUI migration** (in progress, done first). Panel by panel; the
-   game gets leaner on its own as each lands. Code editor last / special-cased.
-2. **THEN — one build for both.** Build editor and runtime from **one `--workspace`
-   invocation / one feature set** → identical `bevy_dylib` → community plugins build once
-   and load in both. This is the ABI fix.
-3. **THEN (optional) — leaner games via loadable editor.** Move editor-only panels into a
-   loadable bundle (`renzora_editor.dll` via `export_plugin_bundle!`, or `plugins/` with
-   `Editor` scope) so a shipped game simply omits the file. With egui gone, whether a
-   dual-mode crate's (now-`bevy_ui`) inspector rides along or is split is a cheap, local
-   decision rather than a forced 30-crate refactor.
+`dynamic_plugin_loader` handles the three desktop OSes (no-op on wasm/mobile):
 
-Each step is independent and shippable; don't block one on the next.
+- **`load_bundle(app, path, is_editor)`** — loads exactly one bundle cdylib *by path* (the editor bundle beside the exe). It does **not** directory-scan, so the host's own SDK dylibs (`renzora`, `bevy_dylib`) are never dlopened as plugins. ABI-gated on `plugin_bevy_hash`, then calls `plugin_install_scope(app, Editor)`.
+- **`load_plugins(app, dir, is_editor)`** — scans `<exe>/plugins/`, rejects hash mismatches, **skips any cdylib exporting `plugin_install_scope`** (bundles load only beside the exe), reads `plugin_scope`, applies `should_load` (`Editor → is_editor`, `Runtime → always`), then `plugin_create()` + `plugin.build(app)`. The `Library` is kept alive in `DynamicPluginRegistry`. `load_plugins_recursive` is the same but walks the tree.
+- **`scan_plugins(dir)`** (export UI) — lists **only Runtime-scope single-plugin cdylibs**, skipping bundles, so the editor is never offered for shipping inside a game.
+- **`HotPluginPlugin`** — watches `plugins/` (~1s, on the `Last` schedule) and live-builds newly dropped dlls by swapping the live `World` into a temporary `App`. Main-world plugins activate next frame; render-world plugins can't be wired into the already-running renderer, so they report `HotLoadOutcome::NeedsReload` ("restart to take effect").
 
----
+## Building & packaging
 
-## 9. Dead ends (tried and reverted — do not repeat)
+Local builds use the `.cargo/config.toml` aliases (all on the `dist` profile for consistent plugin hashes):
 
-- **Rename `renzora_editor` → `renzora_editor_api` + a thin `renzora_editor` facade DLL**
-  (to collapse the editor into "one DLL"). Reverted. Reasons: (a) "one editor DLL" is
-  impossible while dual-mode inspectors live in the binary and must share the SDK registry
-  — that forces the SDK to stay a shared DLL, so it's **two DLLs minimum** regardless; and
-  (b) the rename touched **131 crates / 466 usages / 226 files**. The bevy_ui migration
-  removes the motivation entirely.
-- **Per-feature alignment** in root `Cargo.toml` (`bevy_winit`, `ahash`, `gltf`,
-  `bevy_state`, image formats, `webgpu`) to force the runtime build to match the editor's
-  feature requests. Fragile — re-diverges on every new workspace crate. Replaced by the
-  structural "one build" fix.
+| Alias | Expands to | Result |
+|---|---|---|
+| `cargo renzora` | `run --profile dist --workspace --bin renzora` | Editor (builds binary **+** bundle, one `bevy_dylib`) |
+| `cargo runtime` | `run --profile dist --bin renzora -- --no-editor` | Game (forces game mode) |
+| `cargo server` | `run --profile dist --bin renzora -- --server` | Dedicated server |
+| `cargo build-editor` / `build-all` | `build --profile dist --workspace` | Binary + bundle + distribution plugins |
+| `cargo build-runtime` | `build --profile dist --bin renzora` | **Lean game binary only** (no bundle, no editor crates — note: *not* `--workspace`) |
+| `cargo build-web` | `build … --no-default-features --features wasm --target wasm32-unknown-unknown` | Game-runtime wasm (no wasm editor) |
+
+> The editor build **must** be `--workspace`: that is how Cargo's resolver-2 feature unification gives the binary and the bundle one shared `bevy_dylib`. Build the bundle in isolation (`cargo build -p renzora_editor`) and it links a *separate* static Bevy → a different `World` `TypeId` → `plugin_bevy_hash` mismatch → the loader silently rejects it.
+
+Cross-platform release artifacts are produced by `docker/build-all.sh` inside the `ghcr.io/renzora/engine` image (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`, the single source of the Rust version — there is no `rust-toolchain.toml`). It writes arch-suffixed dirs (`dist/windows-x64`, `dist/linux-x64`, `dist/macos-x64`, `dist/macos-arm64`; wasm/mobile nest under `runtime/`).
+
+Packaging is the file split made literal:
+
+- **Editor dist** = `renzora(.exe)` + the *exact* `bevy_dylib-<hash>` the host binary imports + `renzora.{dll,so,dylib}` + `renzora_editor.{dll,so,dylib}` (the bundle) + `plugins/`.
+- **Game export** = the same, minus the `renzora_editor` bundle dll.
+
+`build-all.sh` copies the bundle beside the exe, and deliberately skips any `renzora_editor.*` (or stale `renzora_editor_bundle.*`) found in `plugins/` so a misplaced bundle can never be loaded twice.
 
 ---
 
-## 10. Operation Merge — current state (post-egui, completed architecture)
+## History (Operation Merge)
 
-**End state the user wanted (now shipped):** one game binary; the editor ships as a
-*removable* dylib (`renzora_editor.dll` — the editor bundle cdylib). With the dll present
-beside the exe it's the editor; delete it and the same binary is the exported game. A
-community plugin built once loads in both.
+The current shape is the end state of a refactor internally called **Operation Merge**. The condensed story (kept for context; all steps are shipped):
 
-### 10.1 Old build (historical — what we changed away from)
-The two halves *used to be* the **same `renzora` binary** (`renzora_app`), differing only by
-a feature on the binary:
-- editor  = `--bin renzora --no-default-features --features editor` → turned on
-  `renzora_runtime/editor`, which **statically linked ~50 editor crates**
-  (`editor_reexports.rs` generated in `renzora_runtime/build.rs`) + called
-  `add_editor_plugins()` (`for_each_static_plugin(Editor)`).
-- runtime = `--features runtime` → no editor crates compiled in.
+**The goal.** A community plugin built once must load in both the shipped editor and the shipped runtime — which requires an *identical* `bevy_dylib` for both.
 
-That **editor feature on the binary is gone.** The `renzora` binary is now **always
-runtime-shaped** (no editor crates statically linked); editor functionality arrives only via
-the loadable bundle. The aliases reflect this: `build-editor` and `build-all` are both
-`build --profile dist --workspace` (binary + editor bundle + distribution plugins in one
-invocation, one shared `bevy_dylib`), while `build-runtime` is the lean `build --profile
-dist --bin renzora` (no bundle, no editor crates).
+**The trilemma.** You could historically pick two of: one build (ABI fixed), a lean game (no egui riding along), and no big refactor. The blocker was egui: the editor's `bevy_egui` pull diverged the `bevy_dylib` feature set, and ~30 dual-mode crates compiled their egui inspectors *into* the runtime crate, so you couldn't simply strip "the editor half".
 
-`bevy = { features = ["dynamic_linking"] }` + `prefer-dynamic` (`.cargo/config.toml`) ⇒
-`bevy_dylib` + `renzora.dll` ship as shared libs (the editor framework rlib
-`renzora_editor_framework` is baked in; the only types crossing the binary↔bundle boundary
-live in `renzora.dll`). Plugin scope (`add!(_, Editor|Runtime)`) is a **runtime** filter
-(`for_each_static_plugin`), NOT a compile strip — "editor vs runtime" is now *whether the
-bundle dll is present beside the exe*, not a binary feature.
+**The fixes that landed, in order:**
 
-### 10.2 Shipped architecture
-1. **One `cargo build --workspace`** builds the `renzora` binary AND the **editor bundle
-   cdylib** together. Cargo unifies features across the workspace, so there is exactly **one
-   `bevy_dylib`** (its feature set = the union editor∪runtime; with egui gone the editor's
-   extra pull is small). The game ships that same `bevy_dylib` → identical hash → plugins
-   built once load in both. *(This is the ABI fix; §8 step 2.)*
-2. **Editor = a loadable bundle**, not a statically-linked feature. The cdylib
-   **`renzora_editor`** (`crates/renzora_editor`) statically links the ~50 editor-only crates
-   as rlibs and exports one `plugin_install_scope(&mut App, host_scope)` (the
-   `export_plugin_bundle!` door, §7). At startup the binary dlopens it from `<exe_dir>` if
-   present and installs its `Editor`-scope plugins. Absent ⇒ game. *(§8 step 3.)*
-3. **Dual-mode crates stay in the binary** (`renzora_physics`, `renzora_lighting`, … — they
-   run in every game). Their now-`bevy_ui` inspectors register into the editor registries
-   whose **contract types live in `renzora.dll`** (the shared SDK dll, so TypeIds match
-   across the bundle boundary — §5). With no editor bundle, those registrations are harmless
-   (nothing reads them); with the bundle, the editor panels draw them. The editor framework
-   itself (`renzora_editor_framework`) is now an **rlib**, baked into both the binary and the
-   bundle — no separate editor dll is needed because the only types crossing the boundary
-   live in `renzora.dll`.
+1. **egui → bevy_ui/ember migration** (done first). With egui gone, the editor draws with the same `bevy_ui`/`renzora_ember` system the game already ships, so a dual-mode crate's inspector costs ~nothing in a game and the `bevy_dylib` divergence shrinks.
+2. **The bundle door** (`export_plugin_bundle!`) — additive; lets one cdylib ship many plugins past the one-`add!`-per-cdylib FFI limit.
+3. **One build** — the binary became runtime-shaped (editor crates no longer statically linked into it); editor functionality moved entirely into the `renzora_editor` bundle. `build-editor`/`build-all` collapsed to `--workspace`.
+4. **Startup load + packaging** — the binary dlopens the bundle from beside the exe when present; the export templates and `docker/build-all.sh` ship the bundle for the editor and omit it for the game.
 
-### 10.3 Sequenced steps (all completed)
-- **Step 0 — MEASURE the gap (done first; only a full build showed it).** Built both halves
-  and compared the dylib the host links: `cargo build-editor` then `cargo build-runtime`,
-  then looked at `target/dist/` (or `deps/`) for `bevy_dylib-<hash>.{dll,so,dylib}`. With the
-  build now unified under `--workspace` (binary + bundle from one invocation), there is one
-  `bevy_dylib` and the hash matches, so plugins built once load in both.
-- **Step A — re-add the bundle door (additive, safe). ✅ DONE.** `export_plugin_bundle!` in
-  `crates/renzora/src/plugin_meta.rs` (emits a single `plugin_install_scope(*mut App, u8) -> u32`
-  + `plugin_bevy_hash`, per-plugin `catch_unwind` so one bad plugin can't abort the rest and no
-  panic crosses `extern "C"`, returns a failure count; optional `foundation = [...]` ordered
-  prefix). `dynamic_plugin_loader` prefers `plugin_install_scope`, falls back to `plugin_create`,
-  same `plugin_bevy_hash` gate; `scan_plugins` now skips bundles. The `crates/renzora_editor`
-  cdylib instantiates the macro. Pure addition; the working build is untouched.
+**Dead ends (do not repeat):**
 
-  **Load-bearing findings from the Step-A adversarial review (preconditions for B–E):**
-  1. **The inventory is GLOBAL.** `inventory::collect!(StaticPlugin)` lives in the *shared*
-     `renzora` dylib (one registry across the boundary). So `plugin_install_scope` replays
-     **every matching-scope plugin in that global registry**, not "the bundle's own". It works
-     only because scopes partition (editor host installs `Editor`-only; runtime host installs
-     `Runtime`-only — the two scopes are exclusive).
-  2. **Deployment contract (hard).** A build either statically links + installs editor plugins
-     (`add_editor_plugins`) **OR** ships them as the bundle — *never both*, or they double-add and
-     Bevy panics. ⇒ **Step C must stop the host statically registering editor-scope plugins**, and
-     the bundle is **not runtime-testable until then** (dropping it into a current *editor* build's
-     `plugins/` would double-register).
-  3. **Foundation isn't in the inventory.** `AssetRegistryPlugin`/`RenzoraEditorPlugin`/
-     `KeybindingsPlugin` (editor) are added explicitly + ordered, not via `add!`. Step B must pass
-     them through `export_plugin_bundle!(foundation = [...])` so they install first, in order.
-  4. **Build via `--workspace` only.** `dynamic_linking` reaches the bundle's `bevy` solely via
-     resolver-2 feature unification with `renzora_app`. Built in isolation → separate static bevy →
-     `plugin_bevy_hash` mismatch → silent reject. **The user must verify the workspace-built bundle's
-     hash == the host's** (ties into Step 0).
-  5. **Step B keepalive.** Adding the ~44 editor crates as plain deps isn't enough — replicate
-     `renzora_runtime`'s `pub use renzora_<crate>;` so the linker keeps each rlib's
-     `inventory::submit!` ctor; otherwise an empty bundle loads and installs nothing.
-- **Step B — editor bundle crate. ✅ DONE.** `crates/renzora_editor` (cdylib) depends on
-  every editor-only crate (the former `renzora_runtime/editor` set) + the SDK foundation, and
-  `export_plugin_bundle!`s them. Built by `--workspace`.
-- **Step C — one build. ✅ DONE.** `renzora` builds runtime-shaped (editor crates no longer
-  statically linked into it); editor functionality comes only via the bundle. The aliases are
-  collapsed: `build-editor`/`build-all` = `build --profile dist --workspace` (binary + bundle
-  + one `bevy_dylib`), `build-runtime` = `build --profile dist --bin renzora`. The editor
-  framework is the `renzora_editor_framework` rlib; contract types stay shared in `renzora.dll`.
-- **Step D — startup load. ✅ DONE.** Binary dlopens the `renzora_editor` bundle from
-  `<exe_dir>` when present (editor), skips when absent (game). Wired into `src/main.rs`'s
-  `load_global_plugins` (it also looks beside the exe, not only `plugins/`).
-- **Step E — packaging. ✅ DONE.** Editor dist = binary + `bevy_dylib` + `renzora.dll` +
-  `renzora_editor.dll` (the bundle). Game export = same minus the bundle dll. `renzora_export`
-  templates + `docker/build-all.sh` updated.
-
-### 10.4 Constraints / risks (as resolved)
-- I (assistant) **cannot full-build/link locally** (Windows dylib 64k-symbol cap; `cargo
-  check` only) — the **user ran the real builds + tests**. Step 0's measurement and every
-  build-shape change were validated by the user.
-- The one-plugin-per-cdylib FFI limit (§5) is why the bundle door (Step A) was mandatory.
-- The working editor build stayed intact throughout: Steps A/B were additive; only Step C
-  changed the binary's link shape — staged behind the bundle being proven first.
+- Renaming `renzora_editor` → `renzora_editor_api` with a thin facade dll — reverted; "one editor dll" is impossible while contract types must be shared, so the contract simply moved into `renzora.dll` and the framework became an rlib.
+- Per-feature alignment of the runtime build to match the editor's `bevy` features — fragile whack-a-mole; replaced by the structural "one build".

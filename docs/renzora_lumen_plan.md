@@ -1,245 +1,234 @@
-# renzora_lumen — Lumen-inspired global illumination plugin
+# Lumen GI Plan
+
+As-built reference for `renzora_lumen`, the global-illumination distribution plugin — a voxel radiance clipmap, a voxel-cone diffuse tracer, and a screen-space reflection pyramid that ship today, plus the screen-space SSGI tier it bundles from `renzora_rt`.
+
+> This file started life as a phased "Lumen-inspired" *plan*. Most of it shipped, but the **SDF architecture was abandoned** during implementation (no mesh `.msdf` bake, no global SDF clipmap) and replaced by **CPU geometry voxelization**. The sections below describe what is actually in the code. The historical phase plan is preserved in the [Appendix: abandoned designs](#appendix-abandoned-designs).
+
+## What ships today
 
-## Context
+Two crates make up the GI stack:
 
-The engine currently has two tiers of indirect lighting:
+- **`renzora_lumen`** — the GI distribution plugin. It ships as a `cdylib` dlopen plugin (dropped in the engine's `plugins/` directory and loaded at startup by `dynamic_plugin_loader`), self-registered with `renzora::add!(LumenPlugin)`. It is **not** statically linked into the host or editor — that would double-register through `add!`.
+- **`renzora_rt`** — a **single-pass**, depth+normal-aware SSGI node. Despite the "rt" name there is no ray tracing here; it is the `ScreenSpace` GI tier. It is a **library linked into `renzora_lumen`** (never a standalone plugin and never statically linked into the host), so `RtLighting` has exactly one definition on both sides of the dlopen boundary.
 
-- **`renzora_rt`** — despite its name, is a pure screen-space pipeline (Hi-Z + SSGI trace + screen-space radiance cache + SSR + SS shadows + A-Trous denoise, 9 compute passes between `Node3d::EndMainPass` and `Node3d::Tonemapping`).
-- **`renzora_ssr`, `renzora_ssao`** — standard screen-space effects.
+`LumenPlugin` bundles `renzora_rt::RtPlugin` plus all of the Lumen passes in one dll:
 
-Bevy upstream has `bevy_solari` (hardware ray tracing, NVIDIA RTX in practice) but it is not wired into this codebase. wgpu ray tracing is not enabled — `platform_wgpu_settings()` in `crates/renzora_runtime/src/lib.rs:47-65` only sets `POLYGON_MODE_LINE`.
+```rust
+// crates/renzora_lumen/src/lib.rs (abridged)
+impl Plugin for LumenPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(renzora_rt::RtPlugin); // the ScreenSpace tier
 
-Screen-space alone hits the classic Lumen-era failure modes: off-screen geometry is invisible to GI (green couch behind you doesn't bleed onto the wall you're facing), no sky bounce at scale, reflections can't show anything behind the camera, disocclusion ghosting. Shipping a modern-looking renderer needs a world-space data structure.
+        app.register_type::<LumenLighting>();
+        app.add_systems(Update, (sync_lumen_lighting, cleanup_lumen_lighting));
+        app.add_plugins(ExtractComponentPlugin::<LumenLighting>::default());
 
-The goal is a new standalone crate `renzora_lumen` that implements a **Lumen-inspired** pipeline — SDF-based, works on every GPU today, with an optional HWRT backend reserved for when wgpu ray tracing lands. `renzora_rt` stays as the cheap tier (mobile / low-end / perf mode). `renzora_lumen` becomes the default mid/high tier.
+        app.add_plugins(VoxelCachePlugin);       // 4-cascade voxel radiance clipmap
+        app.add_plugins(VoxelDownsamplePlugin);   // mip pyramid for the clipmap
+        app.add_plugins(GeometryVoxelizePlugin);  // runtime CPU voxelization
+        app.add_plugins(LumenTracePlugin);        // voxel-cone diffuse + inlined temporal
+        app.add_plugins(ScreenReflectionPlugin);  // half-res SSR trace
+        app.add_plugins(ScreenReflectionBlurPlugin);
+        app.add_plugins(ScreenReflectionResolvePlugin);
 
-No Nanite equivalent exists; Lumen's surface-card system is out of scope. We replace cards with a **voxel radiance cache**, which is lower quality on thin geometry but tractable for a single implementer.
+        #[cfg(feature = "editor")]
+        {
+            app.init_resource::<renzora::LumenDiagState>();
+            app.add_systems(Update, editor::update_lumen_diag_state);
+            editor::register_inspectors(app);
+        }
+    }
+}
 
-> **Status (as shipped):** The SDF architecture described below was **abandoned during implementation**. The actual `renzora_lumen` is **voxel-only**: a 4-cascade voxel radiance clipmap (`voxel_cache.rs`) populated by runtime **CPU voxelization** of scene geometry (`geometry_voxelize.rs`), cone-traced for diffuse GI (`lumen_trace.rs` / `lumen_trace.wgsl`), with a sky-cubemap fallback on cone miss and a separate screen-space reflection pyramid (`screen_reflection*.rs`). There is **no mesh-SDF bake, no `.msdf` loader, and no global SDF clipmap**. Phase headings below are kept for history; abandoned phases are marked inline.
+renzora::add!(LumenPlugin); // Runtime scope — runs in the editor viewport and shipped games
+```
 
----
+> The plugin registers at **Runtime** scope, so it runs in the editor viewport *and* in exported games. The `editor` cargo feature (default-on) only adds the inspectors and the diagnostics producer; those registrations are harmless no-ops in a shipped game.
 
----
+## Quality tiers
 
-## Architecture overview
+`LumenLighting.quality` selects a tier. The sync system (`sync_lumen_lighting` → `apply_quality`) translates the tier into the engine-level components on each active camera.
 
-Per-camera `LumenLighting` component with a `LumenQuality` enum: `Off / ScreenSpace / SdfLow / SdfHigh / Hwrt`. The render node slots into `Core3d` at the same position as `renzora_rt`'s node. `renzora_rt` and `renzora_lumen` are mutually exclusive on a camera (sync system enforces it).
+| Tier | What runs | Notes |
+|---|---|---|
+| `Off` | nothing | Strips `RtLighting`; voxel injection/trace inactive. |
+| `ScreenSpace` (default) | `renzora_rt` SSGI | Inserts `RtLighting` + `RtLightingExternallyManaged` on the camera so `renzora_rt`'s own sync leaves it alone. |
+| `SdfLow` | voxel-cone diffuse trace (2 cones, 20 steps) | Strips `RtLighting`; runs the voxel pipeline (`LumenTracePlugin`) at `quality_tier = 0`. |
+| `SdfHigh` | voxel-cone diffuse trace (4 cones, 32 steps) | Same pipeline at `quality_tier = 1`. |
+| `Hwrt` | **placeholder** — see below | Strips `RtLighting`. No hardware-RT backend exists. |
 
-Pipeline:
+> ⚠️ **`Hwrt` is not implemented.** wgpu ray tracing is not enabled — `platform_wgpu_settings()` in `crates/renzora_runtime/src/lib.rs` only requests `POLYGON_MODE_LINE`, and `bevy_solari` is not wired in. There is no BVH/ray-gen path. As currently wired, selecting `Hwrt` does **not** give ray tracing: it is grouped with `SdfLow`/`SdfHigh` in the voxel-injection predicate and falls through the trace at `quality_tier = 0`, i.e. it behaves like `SdfLow`. Treat it as reserved.
 
-1. Mesh SDFs baked at import time as `.msdf` sidecars next to `.glb` files
-2. Global SDF clipmap (4 cascades around camera) composed per-frame from mesh SDF instances
-3. Voxel radiance cache (4-cascade 64³ RGBA16F clipmap) injected with direct light (and emissive) each frame
-4. Lumen trace: try screen-space first, fall back to SDF march, sample voxel cache at hit
-5. Diffuse integrator (probe-style) + temporal + A-Trous spatial denoise
-6. Reflections via same trace infra
-7. Composite into HDR before tonemapping
+> ℹ️ The in-source doc comments at `crates/renzora/src/gi.rs:79` and `crates/renzora_lumen/src/lib.rs:14` still say *"Phase 1 implements only Off and ScreenSpace; higher tiers render the same as Off."* That comment is **stale** — `SdfLow`/`SdfHigh` drive the voxel-cone trace today.
 
-Follows `renzora_rt` conventions exactly: `Cargo.toml` shape, `lib.rs`/`extract.rs`/`prepare.rs`/`node.rs`/`settings.rs`/`shaders/` layout, `sync_lumen_lighting` using `renzora::EffectRouting`, `editor` feature gate with `inline_property` + `InspectorEntry` + phosphor icon.
+## Settings
 
----
+All GI settings live in the **shared contract** `crates/renzora/src/gi.rs`, so the GI plugin's render systems, the editor inspectors, `renzora_level_presets`, and the debugger's Lumen panel share one `TypeId` across the dlopen boundary.
 
-## Phases
+```rust
+// crates/renzora/src/gi.rs
+pub enum LumenQuality { Off, ScreenSpace, SdfLow, SdfHigh, Hwrt } // default: ScreenSpace
+pub enum LumenDebug   { None, IndirectOnly, VoxelCache }          // default: None
 
-Each phase is independently shippable and produces a visible improvement.
+pub struct LumenLighting {
+    pub quality: LumenQuality,
+    pub intensity: f32,
+    /// Multiplier on the specular voxel-cone trace contribution.
+    pub specular_intensity: f32,
+    pub debug: LumenDebug,
+}
+// Default: quality = ScreenSpace, intensity = 0.4, specular_intensity = 1.0, debug = None
 
-### Phase 1 — Scaffold + Off/ScreenSpace delegation
+pub enum RtDebugMode { Composite, IndirectOnly }
+pub struct RtLighting { pub enabled: bool, pub intensity: f32, pub debug: RtDebugMode }
+// Default: enabled = true, intensity = 1.0, debug = Composite
+```
 
-**Goal:** Crate compiles, registers in runtime, inspector entry appears, `ScreenSpace` quality delegates to `renzora_rt` with zero regression.
+| Field | Type | Meaning |
+|---|---|---|
+| `quality` | `LumenQuality` | Tier selector (see table above). |
+| `intensity` | `f32` | Indirect-diffuse multiplier (feeds SSGI intensity *or* the voxel-cone `TraceConfig.intensity`). |
+| `specular_intensity` | `f32` | Multiplier on the voxel-cone **specular** trace (`TraceConfig.specular_intensity`); `0` disables specular. Forced to `0` in the `IndirectOnly` debug view. |
+| `debug` | `LumenDebug` | `None` / `IndirectOnly` (show indirect only) / `VoxelCache` (splat the voxel cache to screen, independent of quality). |
 
-**Deliverables:**
-- `crates/renzora_lumen/Cargo.toml` (shape of `crates/renzora_rt/Cargo.toml`, add `renzora_rt` dep)
-- `crates/renzora_lumen/src/lib.rs` — `LumenPlugin`, `sync_lumen_lighting`, `cleanup_lumen_lighting`, inspector entry
-- `crates/renzora_lumen/src/settings.rs` — `LumenLighting` component, `LumenQuality` enum, `LumenPushConstants`
-- `crates/renzora_lumen/src/{extract,prepare,node}.rs` — stubs
-- `crates/renzora_lumen/src/shaders/{common,passthrough}.wgsl`
-- Register in `Cargo.toml` workspace members (root) and `crates/renzora_runtime/src/lib.rs:112`
+`LumenLighting` is authored on a **non-camera** entity (typically the "World Environment" entity), not on the camera directly. `EffectRouting` (`crates/renzora/src/core/mod.rs:777`) maps source entities onto the active cameras; `sync_lumen_lighting` mirrors the chosen settings onto each routed camera every frame.
 
-**Sync rule:** inserting `LumenLighting` removes `RtLighting` from target camera; reverse also true.
+```rust
+// Author GI on the World Environment entity; routing pushes it to the cameras.
+commands.entity(world_env).insert(LumenLighting {
+    quality: LumenQuality::SdfHigh,
+    intensity: 0.6,
+    specular_intensity: 1.0,
+    debug: LumenDebug::None,
+});
+```
 
-**User sees:** "Lumen GI" inspector entry with quality dropdown. `ScreenSpace` mode identical output to old `renzora_rt`. Zero perf regression.
+There is **no** `settings.rs`/`extract.rs`/`prepare.rs`/`node.rs` quartet in `renzora_lumen` (the old plan called for that). Settings come from `gi.rs`; per-pass GPU config is `TraceConfig` inside `lumen_trace.rs`.
 
-### Phase 2 — Voxel radiance clipmap + direct-light injection
+## Pipeline
 
-**Goal:** World-space voxel cache populated with direct light. No sampling yet — verified via debug view.
+Per active camera, with `SdfLow`/`SdfHigh`:
 
-**Deliverables:**
-- `crates/renzora_lumen/src/voxel_cache.rs` — `VoxelClipmap` render-world resource: 4 cascades × 64³ RGBA16F + R8 opacity + R8 age, camera-centered, voxel-snapped
-- `shaders/voxel_clear.wgsl` — recycles voxels crossing cascade boundary
-- `shaders/voxel_inject.wgsl` — loops clustered lights, accumulates with EMA decay
-- `shaders/sdf_common.wgsl` (library) — voxel addressing, trilinear sample, cascade selection
-- Debug view mode `VoxelCache` (splat voxels to screen)
+1. **Voxel radiance clipmap** is cleared/scrolled and injected with direct light.
+2. **CPU geometry voxelization** contributes scene-surface samples into the clipmap.
+3. **Mip downsample** builds the clipmap pyramid.
+4. **Voxel-cone diffuse trace** gathers indirect light, with inlined temporal accumulation and a sky-cubemap fallback on cone miss.
+5. **Screen-space reflection pyramid** supplies specular, which the trace pass reads back when compositing.
 
-**Budget:** ~10 MB VRAM, ~0.8 ms inject.
+`renzora_rt`'s SSGI node (`ScreenSpace` tier) is a separate render-graph node (`RtLabel`) slotted between `Node3d::EndMainPass` and `Node3d::Tonemapping`, independent of the Lumen labels.
 
-**User sees:** debug view shows voxelized direct lighting following the camera. No lighting change in final output yet.
+### Voxel radiance clipmap — `voxel_cache.rs`
 
-### Phase 3 — Mesh SDF bake + `.msdf` asset loader — **ABANDONED**
+A camera-centered, voxel-snapped clipmap stored as a single 3D texture with cascades stacked along Z:
 
-> **Abandoned.** No `sdf/`, `mesh_sdf.rs`, `bake.rs`, or `.msdf` loader (`loader.rs`) was ever built. Instead of baking per-mesh SDFs offline, geometry is contributed at runtime via **CPU voxelization** of `Assets<Mesh>` directly into the voxel clipmap (`crates/renzora_lumen/src/geometry_voxelize.rs`). The remainder of this section is kept for historical context only.
+- `CASCADE_COUNT = 4`, `VOXEL_RES = 64` → a 64³ `Rgba16Float` grid per cascade.
+- Cascade world extents are `32 m / 64 m / 128 m / 256 m` (≈128 m of reach around the camera). The cone trace tests cascades inner-out and takes the first hit.
+- A separate `u32` accumulation buffer backs the temporal EMA blend (≈8 MB radiance + ≈20 MB accumulation).
+- Shaders: `voxel_clear.wgsl`, `voxel_inject.wgsl`, `voxel_resolve.wgsl`, `voxel_debug.wgsl`.
 
-**Goal:** Per-mesh SDFs generated offline/on-import, loaded via the 5-tier asset reader.
+### CPU geometry voxelization — `geometry_voxelize.rs`
 
-**Deliverables:**
-- `crates/renzora_lumen/src/sdf/mesh_sdf.rs` — CPU jump-flood generator reading `Assets<Mesh>` (pattern from `crates/renzora_mesh_edit/src/systems.rs:28,59`)
-- `crates/renzora_lumen/src/sdf/bake.rs` — async background bake via `Task<_>` when sidecar missing
-- `crates/renzora_lumen/src/loader.rs` — `MeshSdfLoader` implementing `AssetLoader` (mirrors `crates/renzora_animation/src/loader.rs:50-135`), extension `"msdf"`
-- `crates/renzora_lumen/src/sdf/format.rs` — header + R8_snorm 32³ (Low) / 64³ (High) volume + object AABB + world↔SDF matrix
-- Optional `crates/renzora_lumen/src/bin/bake_sdf.rs` CLI for batch bake
+Instead of an offline mesh-SDF bake, scene geometry is contributed at runtime by sampling `Assets<Mesh>` on the CPU:
 
-**Budget:** 32 KB per mesh Low / 256 KB High. ~500 unique meshes ≈ 16–128 MB disk.
+- `MeshVoxelSamples` holds a per-instance `Vec<Vec3>` of local-space surface sample points, baked from triangle data (per-instance so albedo overrides work cleanly), re-baked when the mesh/instance changes.
+- A per-frame **bake throttle** caps how many meshes are voxelized per frame; samples are re-flattened into a fresh GPU buffer each frame and injected via `voxel_geo_inject.wgsl`.
+- `LumenBakeStats` surface in the debugger's Lumen panel (bakes-this-frame, last/avg/max bake duration, totals).
 
-**User sees:** "Baking SDFs…" progress on first load; cached on disk after.
+### Mip downsample — `voxel_downsample.rs`
 
-**Risks:** thin-mesh quality (fall back to brute force ≤ 100k tris). Static meshes only this phase.
+Builds the clipmap mip pyramid (`voxel_downsample.wgsl`). Each cascade keeps 64/32/16/8 voxels along Z across mips 0..3 (powers of two), so the 2× box filter never reads across a cascade boundary. Registers after the voxel resolve so mip 0 is ready before mips 1..N are generated. Coarser mips are what the diffuse cones sample as they widen with distance.
 
-### Phase 4 — Global SDF clipmap composition on GPU — **ABANDONED**
+### Voxel-cone diffuse trace — `lumen_trace.rs` / `lumen_trace.wgsl`
 
-> **Abandoned.** No `sdf/global_sdf.rs`, `global_sdf_compose.wgsl`, `sdf_instance_hash.wgsl`, or `sdf_trace.wgsl` exists. There is no global SDF volume; the voxel clipmap (`voxel_cache.rs`) is the only world-space structure, fed by CPU voxelization (`geometry_voxelize.rs`). The remainder of this section is kept for historical context only.
+The visible GI pass. Inputs: depth, normals, the voxel clipmap pyramid, the (optional) deferred G-buffer, and the resolved reflection buffer.
 
-**Goal:** Mesh SDFs composed into a 4-cascade global SDF volume that can be ray-marched.
+- **Voxel-cone diffuse**: per pixel, traces a set of cones through the clipmap. Cone count / step budget come from `quality_tier` (`SdfLow` = 2 cones / 20 steps, `SdfHigh` = 4 cones / 32 steps).
+- **Inlined temporal**: motion-vector reprojection + EMA blend are done **inside this shader** — there are no separate `temporal_denoise.wgsl`/`spatial_denoise.wgsl` files (the old plan's "shared denoise library" was never built).
+- **Sky-cubemap fallback**: a cone that leaves the clipmap or exhausts its step budget with remaining alpha samples the camera's prefiltered sky cubemap in the cone direction. `LumenSkyCubemap` is (re)attached from the camera's `EnvironmentMapLight` by `sync_lumen_sky_cubemap`; `TraceConfig.sky_intensity` rides along with `EnvironmentMapLight.intensity` (so it tapers to zero at night). This gives upward-facing surfaces ambient sky bounce when no voxel content is available.
+- **Specular**: a voxel-cone specular trace, scaled by `specular_intensity`, reads the resolved screen-space reflection buffer.
+- Output is `Rgba16Float`; `TraceConfig` is the per-frame uniform (`intensity`, `frame_count`, `debug_mode`, `quality_tier`, `sky_intensity`, `use_albedo_modulation`, `specular_intensity`).
 
-**Deliverables:**
-- `crates/renzora_lumen/src/sdf/global_sdf.rs` — `GlobalSdfClipmap`: 4 × 256³ R8_snorm (High) / 128³ (Low)
-- `shaders/sdf_instance_hash.wgsl` — scatter SDF instances into a 3D hash grid per cascade
-- `shaders/global_sdf_compose.wgsl` — per cell: min-blend nearby instance SDFs
-- `shaders/sdf_trace.wgsl` (library) — sphere-trace utilities
-- Extract: `ExtractedSdfInstances` (Vec<(transform, sdf_handle, aabb)>)
-- Scroll strategy: only recompose cells that crossed the camera snap boundary
+### Screen-space reflection pyramid — `screen_reflection{,_blur,_resolve}.rs`
 
-**Budget:** 64 MB High / 16 MB Low. ~1.5 ms compose when moving, <0.3 ms stationary.
+A dedicated half-resolution SSR pipeline (three stages):
 
-**User sees:** debug view `GlobalSdf` shows screen-space slice. No lighting change yet.
+1. **`screen_reflection.rs`** — half-res world-space ray march → reflection color + validity (`screen_reflection.wgsl`).
+2. **`screen_reflection_blur.rs`** — promotes the half-res result into a mip pyramid (5 levels; coarser mips ≈ rougher reflections) (`screen_reflection_blur.wgsl`).
+3. **`screen_reflection_resolve.rs`** — bilateral-upsamples the pyramid; `lumen_trace` reads this buffer and picks the mip from each pixel's roughness-derived `mip_level` (`screen_reflection_resolve.wgsl`).
 
-**Deferred:** dynamic-mesh updates, terrain heightfield SDF (analytic plane fallback for now), skinned SDFs.
+> Reflections are screen-space, not a voxel/SDF reflection trace. The original plan's `lumen_reflections.wgsl` (SDF/voxel-cone reflections) was superseded by this pyramid.
 
-### Phase 5 — Voxel-cache cone-trace GI → first visible GI improvement
+## Tier → component sync
 
-**Goal:** Cone-trace the voxel radiance clipmap from each surface to gather off-screen indirect light. **First phase where Lumen output visibly beats `renzora_rt`.**
+```rust
+// crates/renzora_lumen/src/lib.rs::apply_quality (abridged)
+commands.entity(target).try_insert((settings.clone(), RtLightingExternallyManaged));
+match settings.quality {
+    LumenQuality::ScreenSpace => {
+        // delegate to renzora_rt SSGI
+        commands.entity(target).try_insert(RtLighting {
+            enabled: true,
+            intensity: settings.intensity,
+            debug: match settings.debug {
+                LumenDebug::IndirectOnly => RtDebugMode::IndirectOnly,
+                _ => RtDebugMode::Composite,
+            },
+        });
+    }
+    // SdfLow / SdfHigh handled by the voxel-cone trace (reads quality off the
+    // mirrored LumenLighting). Off / Hwrt strip SSGI too.
+    LumenQuality::Off | LumenQuality::SdfLow | LumenQuality::SdfHigh | LumenQuality::Hwrt => {
+        commands.entity(target).remove::<RtLighting>();
+    }
+}
+```
 
-**Deliverables:**
-- `lumen_trace.wgsl` / `lumen_trace.rs` — voxel-cone tracer. Inputs: depth, normals, `VoxelCache`. (No SDF march and no Hi-Z screen-space fallback — the trace is voxel-cone only.)
-- `LumenTraceResources` in `lumen_trace.rs` — output `Rgba16Float` at quarter/half/full-res by quality
+`RtLightingExternallyManaged` is the handshake between the two crates: when Lumen owns a camera it sets this marker, and `renzora_rt`'s `sync_rt_lighting` skips any camera that carries it (otherwise RT would clobber what Lumen writes every frame). `cleanup_lumen_lighting` removes `LumenLighting`/`RtLighting`/`RtLightingExternallyManaged` together when the source component goes away.
 
-**Budget:** half-res ~2.5 ms at 1080p on Steam Deck class. Full-res ~5 ms.
+## Diagnostics
 
-**User sees:** GI now extends past screen edges. Caves stay dark, rooms pick up off-screen color bleed, sky bounce works outdoors.
+Under the `editor` feature, `LumenPlugin` produces `renzora::LumenDiagState` (a plain-primitive snapshot, so it crosses the dlopen boundary cleanly) for the debugger's **Lumen** panel:
 
-**Risks:** cascade-boundary light leaks (mitigate with cone angle that widens with hit distance); disocclusion halos (need Phase 6's temporal).
+- `cameras: Vec<LumenCameraEntry>` — per-camera `inject_active` / `debug_active` flags.
+- `mesh_voxel_samples_entities` — how many entities currently have baked `MeshVoxelSamples`.
+- `has_sky_cubemap` — whether the sky-cubemap fallback is bound.
+- `bake: LumenBakeSnapshot` — CPU voxelization throttle stats (last/avg/max bake duration, bakes last frame, totals, per-frame budget).
 
-### Phase 6 — Diffuse integrator + temporal, ship-ready quality
-
-**Goal:** Smooth, stable diffuse GI at shippable quality. First shippable tier.
-
-**Deliverables:**
-- `shaders/diffuse_integrator.wgsl` — probe-to-pixel resolve (depth/normal weighted gather)
-- Duplicate `renzora_rt`'s `temporal_denoise.wgsl` and `spatial_denoise.wgsl` into `renzora_lumen/shaders/` (refactor to shared lib deferred to Phase 9)
-- Motion-vector reprojection using `MotionVectorPrepass`, `DepthPrepassDoubleBuffer`, `PreviousViewUniforms`
-- `reset: bool` flag on component (mirrors `RtLighting.reset`)
-- `shaders/composite.wgsl` — Lumen-specific composite into HDR
-
-**Budget:** +2 ms. Total Lumen path Medium ≈ 6–7 ms at 1080p.
-
-**User sees:** GI stable in cutscenes, cuts snap cleanly. **This is the first ship-quality state.**
-
-**Decision:** probe resolution 16 px Low/Med, 8 px High/Ultra.
-
-### Phase 7 — Emissive injection + area lights — **ABANDONED**
-
-> **Abandoned.** No `voxel_emissive_inject.wgsl` (or any emissive-injection path) was built. The remainder of this section is kept for historical context only.
-
-**Goal:** Emissive materials light the environment (neon, lava, forge).
-
-**Deliverables:**
-- `shaders/voxel_emissive_inject.wgsl` — rasterize scene emissive into voxel grid at low res
-- Alternative primary: screen-projected emissive from deferred GBuffer (cheap, visible-only)
-- Recommend both: screen-space default, rasterized as `High+` opt-in
-
-**Budget:** +0.4 ms.
-
-**User sees:** TV glow on walls, bioluminescent plants, forge lighting the anvil.
-
-### Phase 8 — Sky-cubemap fallback on cone miss
-
-> **As shipped (commit `e72b7908`, "Lumen Phase 8: sky cubemap on cone miss").** Phase 8 did not become the planned reflection path. When a diffuse cone leaves the clipmap or exhausts its step budget with remaining alpha, `lumen_trace.wgsl` fills the unfilled portion by sampling the prefiltered **sky cubemap** in the cone direction (per-channel luminance clamp). This is what gives upward-facing surfaces ambient sky bounce when no voxel-cache content is available.
->
-> **Reflections shipped later** as **Phase 10d** — a dedicated half-res **screen-space reflection pyramid** (`screen_reflection.rs`/`.wgsl`, `screen_reflection_blur.rs`/`.wgsl`, `screen_reflection_resolve.rs`/`.wgsl`; commit `f9515ee2`), not the SDF/voxel-cone reflection path described below.
-
-**Goal (original plan, superseded):** Replace `renzora_ssr` and `renzora_rt`'s `ss_reflections` for Lumen cameras. Sharp → single combined trace; glossy → wider cone sampling voxel cache.
-
-**Deliverables (original plan):**
-- `shaders/lumen_reflections.wgsl` — roughness-dependent path, GGX importance sampling with blue noise from `renzora_bluenoise`
-- Reuse A-Trous + temporal on the reflection slice
-- Sync system disables `renzora_ssr` on Lumen-active cameras
-
-**Budget:** ~1.5 ms Medium, ~3 ms Ultra.
-
-**User sees:** reflections show off-screen geometry correctly (wet floor reflecting off-screen ceiling fan).
-
-### Phase 9 — Presets, debug views, profiling HUD
-
-**Goal:** Artist-facing polish.
-
-**Deliverables:**
-- `LumenQuality::apply_quality` sweeps all knobs
-- `LumenDebug` enum: `None / VoxelCache / GlobalSdf / ProbeResolve / TraceMask`
-- Inline egui pass-timing histogram (match `renzora_rt` inspector style)
-- Sample scene + docs
-
-> **Note:** The "refactor shared denoise shaders into a proper library" item was never done — there are no separate denoise shaders. Temporal accumulation (motion-vector reprojection + EMA blend) is **inlined directly in `lumen_trace.wgsl`**, so there is nothing to extract.
-
-### Phase 10 (future) — HWRT backend
-
-**Goal:** When wgpu RT is stable, `LumenQuality::Hwrt` replaces SDF tracer with real BVH rays; voxel cache + integrator + denoiser unchanged.
-
-**Deliverables:**
-- `hwrt` cargo feature enabling wgpu RT features in `platform_wgpu_settings()`
-- `crates/renzora_lumen/src/hwrt/` — BLAS/TLAS build, ray-gen shader
-- Runtime fallback to SDF if adapter doesn't support RT
-
----
-
-## Cross-cutting decisions
-
-- **Coexistence:** `LumenLighting` on a camera removes `RtLighting` (and disables `renzora_ssr`); reverse also true. Enforced in `sync_lumen_lighting`.
-- **Required prepass components** inserted by sync (same as `renzora_rt`): `DepthPrepass`, `MotionVectorPrepass`, `DepthPrepassDoubleBuffer`, `CameraMainTextureUsages` with storage binding. Add `DeferredPrepass` for emissive/roughness access.
-- **Skinned meshes:** excluded from SDF occlusion until post-Phase 10. They still receive GI.
-- **Terrain:** analytic plane SDF fallback in Phase 4; heightfield-texture SDF path as Phase 4b if needed.
-- **Async bake UX:** missing-SDF meshes contribute voxel-only occlusion (blurrier) until bake finishes — never block scene load.
-- **Shader reuse:** *(as shipped)* no separate denoise shaders were duplicated or refactored into a library — temporal accumulation is inlined in `lumen_trace.wgsl`.
-
----
+`LumenDebug::VoxelCache` splats the voxel cache to screen (works at any quality so you can preview the cache); `LumenDebug::IndirectOnly` shows only the indirect contribution.
 
 ## Critical files
 
 | Purpose | Path |
 |---|---|
-| Plugin pattern (lib.rs, sync, inspector) | `crates/renzora_rt/src/lib.rs` |
-| Multi-pass compute node template | `crates/renzora_rt/src/node.rs` |
-| Component + quality + push constants template | `crates/renzora_rt/src/settings.rs` |
-| Voxel radiance clipmap (4-cascade cache) | `crates/renzora_lumen/src/voxel_cache.rs` |
-| Runtime CPU voxelization of scene geometry | `crates/renzora_lumen/src/geometry_voxelize.rs` |
-| Voxel-cone GI tracer (+ inlined temporal) | `crates/renzora_lumen/src/lumen_trace.rs`, `lumen_trace.wgsl` |
-| Screen-space reflection pyramid (Phase 10d) | `crates/renzora_lumen/src/screen_reflection{,_blur,_resolve}.rs` |
-| EffectRouting definition | `crates/renzora/src/core/mod.rs:276-293` |
-| Plugin registration site | `crates/renzora_runtime/src/lib.rs:112` |
-| wgpu features (for future HWRT gate) | `crates/renzora_runtime/src/lib.rs:47-65` |
-| Workspace members (add crate here) | `Cargo.toml:2-49` |
+| GI settings contract (`LumenLighting`, `RtLighting`, enums, `LumenDiagState`) | `crates/renzora/src/gi.rs` |
+| Plugin entry + tier sync + `add!` | `crates/renzora_lumen/src/lib.rs` |
+| Voxel radiance clipmap (4 cascades) | `crates/renzora_lumen/src/voxel_cache.rs` (`voxel_clear/inject/resolve/debug.wgsl`) |
+| Runtime CPU geometry voxelization | `crates/renzora_lumen/src/geometry_voxelize.rs` (`voxel_geo_inject.wgsl`) |
+| Voxel mip downsample | `crates/renzora_lumen/src/voxel_downsample.rs` (`voxel_downsample.wgsl`) |
+| Voxel-cone diffuse trace (+ inlined temporal, sky fallback) | `crates/renzora_lumen/src/lumen_trace.rs`, `lumen_trace.wgsl` |
+| Screen-space reflection pyramid | `crates/renzora_lumen/src/screen_reflection{,_blur,_resolve}.rs` (+ `.wgsl`) |
+| `ScreenSpace` SSGI tier | `crates/renzora_rt/src/{lib,node,prepare}.rs`, `ssgi.wgsl` |
+| Editor inspectors + diagnostics producer | `crates/renzora_lumen/src/editor.rs` |
+| `EffectRouting` (source → camera) | `crates/renzora/src/core/mod.rs:777` |
+| wgpu features (HWRT gate; only `POLYGON_MODE_LINE`) | `crates/renzora_runtime/src/lib.rs` (`platform_wgpu_settings`) |
+| Engine bootstrap (note: Lumen is **not** registered here) | `crates/renzora_runtime/src/lib.rs:112` (`init_app`) |
 
----
+## Outstanding work
 
-## Verification
+- **HWRT backend.** The only genuinely unbuilt tier. Requires enabling wgpu ray-tracing features in `platform_wgpu_settings()` (or wiring `bevy_solari`), a BLAS/TLAS build, and a ray-gen path, with runtime fallback to the voxel-cone trace when the adapter lacks RT support. Until then `LumenQuality::Hwrt` is a placeholder.
 
-Each phase has its own check:
+Everything else from the original plan that is still relevant (voxel cache, CPU voxelization, downsample, voxel-cone diffuse + temporal, sky fallback, screen-space reflections, debug views, diagnostics) is implemented.
 
-- **Phase 1:** `cargo check -p renzora_lumen` passes; running the editor shows a "Lumen GI" entry; `ScreenSpace` quality = visually identical to old `RtLighting`.
-- **Phase 2:** enable `VoxelCache` debug view; rotate camera — voxel colors track direct lighting from sun + point lights.
-- **Phase 3:** *(abandoned — no SDF bake)* instead: enable the `VoxelCache` debug view and confirm scene geometry appears voxelized in the clipmap cascades (CPU voxelization in `geometry_voxelize.rs`).
-- **Phase 4:** *(abandoned — no global SDF)* instead: move the camera and confirm the voxel clipmap cascades scroll/snap correctly and recycle voxels crossing cascade boundaries.
-- **Phase 5:** place a brightly-colored object off-screen above the camera; nearby on-screen surfaces should pick up its color via voxel-cone trace (SSGI fails this test, Lumen passes).
-- **Phase 6:** quick camera cut (`reset = true`) — GI should snap clean instead of ghosting; continuous motion should be stable under the inlined temporal accumulation.
-- **Phase 7:** *(abandoned — no emissive injection)*.
-- **Phase 8:** point an upward-facing surface at open sky with no nearby voxel content — it should pick up ambient sky bounce (sky-cubemap cone-miss fallback). Reflections (Phase 10d) verify separately: wet-floor scene shows the screen-space reflection pyramid.
-- **Phase 9:** quality dropdown sweeps end-to-end; debug views all functional; pass timings plausible.
+## Appendix: abandoned designs
 
-Acceptance for "ship default": Phase 6 complete, running on at least one integrated GPU at 60 FPS 1080p Medium, no crashes / validation errors in 10-minute playthrough of a representative scene.
+The original plan was a **Lumen-inspired, SDF-based** pipeline. These pieces were designed but **never built** (or were superseded); none of the files below exist:
+
+| Abandoned design | What replaced it |
+|---|---|
+| Mesh-SDF bake at import time, `.msdf` sidecars, `MeshSdfLoader`, `sdf/` module, `bake.rs`, `loader.rs`, `bin/bake_sdf.rs` | Runtime **CPU geometry voxelization** (`geometry_voxelize.rs`) directly into the voxel clipmap. |
+| Global SDF clipmap (`global_sdf.rs`, `global_sdf_compose.wgsl`, `sdf_instance_hash.wgsl`, `sdf_trace.wgsl`, `sdf_common.wgsl`) — a ray-marchable world-space SDF volume | The **voxel radiance clipmap** (`voxel_cache.rs`) is the only world-space structure; cones march voxels, not an SDF. |
+| Emissive injection (`voxel_emissive_inject.wgsl`, screen-projected emissive) | Not built — there is no emissive-injection path in the crate. |
+| SDF/voxel-cone reflection path (`lumen_reflections.wgsl`) | The half-res **screen-space reflection pyramid** (`screen_reflection*.rs`). |
+| Separate denoise library (`temporal_denoise.wgsl`, `spatial_denoise.wgsl`, A-Trous) | Temporal accumulation is **inlined** in `lumen_trace.wgsl`; there is no separate denoise stage. |
+
+> Historical naming note: the SSGI tier (`renzora_rt`) was once a 9-pass screen-space pipeline. That is gone — it is now a single-pass SSGI node. The "rt" name is historical and does not imply ray tracing.

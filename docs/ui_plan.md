@@ -1,189 +1,170 @@
 # Renzora UI Plan
 
-Status of the markup-driven UI system and the road to **Cinder** — the first
-UI-layer particle system in the Bevy ecosystem.
+Status of the markup-driven UI system — now living in `renzora_ember` — and the road to **Cinder**, the first UI-layer particle system in the Bevy ecosystem.
 
-> ✅ **§6 (entity model) — COMPLETED.** The runtime layer has moved from
-> bevy_hui's "opaque builder + per-frame style re-assertion" to a
-> markup-is-an-entity-tree model where every `<node>`/`<text>`/`<image>` is a
-> real entity with bevy_ui components. The new `renzora_hui` loader
-> (`crates/renzora_hui/src/loader.rs`) spawns real bevy_ui entities directly;
-> bevy_hui's `BuildPlugin`/`TransitionPlugin` are **not** registered (only its
-> parser-side `LoaderPlugin` is). See [`renzora_markup.md`](./renzora_markup.md)
-> for the architecture. The rest of this doc (Cinder, shader effects, scripting
-> bridge, editor wiring) still stands as written.
+> **Status as of 2026-06.** Shipped: the markup runtime (ember's own entity-tree
+> loader on the `bevy_hui` parser), the scripting bridge, vector widgets on WGSL
+> `UiMaterial`s, editor integration, and inspector → `.html` write-back. On the
+> roadmap (not yet shipped): closing the write-back hot-reload round-trip, a
+> small animated-shader UI library, and **Cinder**, the UI particle system, which
+> is unstarted future work.
 
-**Legend:** ✅ shipped · 🔜 planned · ❓ open decision · 🧪 needs live-editor verification
+**Legend:** ✅ shipped · 🔜 planned · ❓ open decision · 🧪 needs in-editor verification
 
-> **Status as of 2026-06.** Shipped: the markup runtime (own entity-tree loader),
-> the scripting bridge, editor integration, the entity/positioning model (§6), and
-> markup write-back (§6 Phase 2). On the roadmap (not yet shipped): the custom-tag
-> bridge (§7), shader UI effects (§8 — note the SDF shape widgets in
-> `renzora_game_ui::shapes` already ship), and **Cinder**, the UI particle system
-> (§9), which is unstarted future work.
+> ⚠️ **Naming note.** The old `renzora_hui` crate no longer exists. It was merged
+> into `renzora_ember` in three stages and **deleted**. The planned rename to
+> `renzora_markup` never happened — everything folded into `renzora_ember`
+> instead. Wherever you see `renzora_hui` / `HuiPlugin` in older docs, read
+> `renzora_ember::markup` / `MarkupPlugin`. (The still-vendored parser fork at
+> `crates/bevy_hui` is a different thing and is unaffected.)
 
 ---
 
 ## 1. Vision
 
 Author game UI as **hot-reloadable markup** (à la Unity's UI Toolkit), drive it
-from **Lua**, position it in the **editor** like any other object, and make it
-**immersive** with shaders and particles — a combination no engine cleanly
+from **scripts**, position it in the **editor** like any other object, and make
+it **immersive** with shaders and particles — a combination no engine cleanly
 offers. Unity has markup (UXML/USS); Godot has visual node UI; neither blends
 "author in markup" with "drag the result on a canvas," and none put particles in
 the UI layer. Renzora does all of it.
 
-Building blocks:
-- **`bevy_hui` 0.6** (matches workspace Bevy 0.18) — pseudo-HTML/XML templates.
-- **`renzora_hui`** — engine wrapper: Lua bridge, editor integration, template binding.
-- **`renzora_game_ui`** — bevy_ui widgets, the canvas editor, `UiMaterial` SDF shapes.
-- **`renzora_cinder`** 🔜 — UI-space particle system (new, flagship).
+The engine is **Bevy 0.18**, and the entire UI stack is **`bevy_ui`-native** —
+`egui`/`bevy_egui` and `vello`/`bevy_vello` have both been fully removed.
 
 ---
 
-## 2. Architecture at a glance
+## 2. Crate & plugin map ✅
 
-```
-assets/ui/*.html  ──author──▶  bevy_hui templates
-        │                          │ build
-        ▼                          ▼
-HtmlTemplatePath (renzora_game_ui)  HtmlNode (child) ──▶ bevy_ui node tree
-        │ observer (renzora_hui)                         (flex/grid layout)
-        ▼
-   markup callbacks (on_press=…) ──▶ Lua on_ui(name,args,entity)   [renzora_hui → renzora core → renzora_scripting]
+The whole UI layer is two crates plus a vendored parser:
 
-Editor:  + Add Entity / drag-drop / canvas drop  ──▶ spawn_html_template_at  ──▶ draggable instance
-Render:  bevy_ui pass  +  UiMaterial shaders (shapes today, effects 🔜)  +  Cinder UI particles 🔜
-```
-
-**Dependency rule that shapes everything:** `renzora_hui` depends on
-`renzora_game_ui`, so `game_ui` (and `renzora_viewport`) can **not** depend on
-`renzora_hui`. Shared data types (e.g. `HtmlTemplatePath`) therefore live in
-`game_ui`; `renzora_hui` owns only the bevy_hui-specific behavior.
-
----
-
-## 3. Markup UI — `bevy_hui` integration ✅
-
-- `HuiPlugin` registers `bevy_hui::HuiPlugin` + `HuiAutoLoadPlugin(["ui/components"])`.
-  Templates live in `assets/ui/*.html`; files under `assets/ui/components/`
-  auto-register as custom tags by file stem (`menu_button.html` → `<menu_button>`).
-- Self-registers via `renzora::add!(HuiPlugin)` and is linked into `renzora_runtime`.
-- Demo templates: `health_bar`, `speedometer`, `scoreboard`, `inventory`, `hud`
-  + reusable `stat_bar`, `item_slot` components.
-- A CI parse test (`crates/renzora_hui/tests/parse_templates.rs`) parses every
-  `assets/ui/**/*.html` so markup errors fail CI.
-
-### bevy_hui capability reference (it's a CSS *subset*, not an engine)
-- **Has:** flexbox + CSS grid, box model (size/min/max, margin, padding, border,
-  `border_radius`, outline), colors w/ alpha, box-shadow + text-shadow,
-  9-slice/tiled images, `hover:`/`pressed:`/`active:` states, eased transitions
-  (`delay` + `ease`) = CSS `transition`, sprite-atlas flipbook animation,
-  `<property>` + `{var}` substitution.
-- **Lacks:** `transform`/rotate/scale, `@keyframes`, `::before`/`::after`,
-  gradients, filters/blur, `calc()`/media queries, an `opacity` property.
-- **Implication:** layout/structure/hover come from markup; motion, gauges,
-  rotation, gradients, and FX come from renzora (`UiMaterial` shaders, shape
-  widgets, Cinder, or script-driven uniforms).
-
----
-
-## 4. Scripting bridge ✅
-
-- Markup callbacks (`on_press`/`on_change`/`on_spawn`) with no Rust binding fall
-  through to every script's `on_ui(name, args, entity)` hook — broadcast, like
-  `on_rpc`. `tag:`-prefixed attributes arrive as `args`.
-- Implementation mirrors the RPC path: `renzora::ScriptUiInbox` + `UiCallback`
-  (core) → `ScriptBackend::call_on_ui` drained in `execution.rs` → Lua `on_ui`.
-- Fallback forwarders are registered into bevy_hui's `FunctionBindings` so Rust
-  bindings keep precedence and there are no "function not bound" warnings.
-- `action("hui_spawn", { template = "ui/x.html" })` spawns a template from script.
-
----
-
-## 5. Editor integration ✅ 🧪
-
-All editor-only, behind `renzora_hui`'s `editor` feature (wired into the runtime
-editor cascade). Everything compiles; the *visual* behavior needs in-editor checks.
-
-- **Create:** "+ Add Entity → UI → HTML Template" (`EntityPreset`); right-click
-  asset panel → "Create → HTML Template" (starter file); inspector "Add Component".
-- **Edit:** double-click a `.html` → opens in the code editor; inspector
-  **Template** field is a `.html` asset slot (drag-drop or pick); changing it
-  rebuilds the markup live.
-- **Place:** drag a `.html` from the asset panel onto the viewport (3D/2D →
-  `renzora_viewport::html_drop`) or onto the canvas in UI mode
-  (`renzora_game_ui::canvas`). Both route through `spawn_html_template_at`.
-- **Export:** `.html` added to the rpak reference scanner, and `ui/**/*.html`
-  force-included (component templates are referenced by tag, not path, and the
-  archive reader's `read_directory` serves bevy_hui's folder autoload in exports).
-
----
-
-## 6. Entity model & positioning ✅
-
-**Decision (locked):** markup is the **single source of truth**. The editor
-visually positions/resizes by writing `left/top/width/height` back into the
-`.html` file. Game devs stop having to keep markup and code in sync — what you
-see in the editor is what's in the file. Trade-off: a reused component (e.g.
-`stat_bar` used 4× in a HUD) has one markup file, so its *intrinsic* size/style
-is shared; placement comes from the parent template's layout, not from
-per-instance overrides — same model Unity and Godot use (prefabs + LayoutGroup).
-
-**Authoring split:**
-| You author this | Position lives in | Editor's role |
+| Crate | Role | Key plugins / types |
 |---|---|---|
-| Top-level template (`hud.html`) | Root's `left/top/width/height` | Drag/resize rewrites |
-| Reused component (`stat_bar.html`) | (nothing — sized only) | Parent template's flex |
+| `renzora_ember` | The unified UI framework: markup runtime, ~80 native widgets, docking, theming, reactive bindings. Used by editor and games alike. | `EmberPlugin`, `markup::MarkupPlugin` |
+| `renzora_ember/editor` (package `renzora_ember_editor`) | Editor-only markup integration: entity preset, hierarchy icons, template-path inspector, bevy_ui style-component inspectors with write-back. | `HuiEditorBundlePlugin`, `HuiEditorPlugin`, `HuiInspectorPlugin` |
+| `renzora_game_ui` | `bevy_ui` widgets, the game-UI canvas, the SDF shape widgets, and the shared data types markup roots use. | `UiCanvas`, `UiWidget`, `HtmlTemplatePath`, `UiTheme`, `shapes::*` |
+| `crates/bevy_hui` (vendored fork) | **Parser only** — `.html` → typed AST + the `.html` asset loader. None of its runtime is used. | `LoaderPlugin`, `HtmlTemplate` |
 
-**Entity model (Phase 1 ✅):**
-- `spawn_html_template_at` creates a **transparent layout-host instance** with
-  `HtmlTemplatePath` + an absolute 100%×100% `Node`. **Not** a `UiWidget` — it
-  doesn't catch clicks; it only provides a sizing reference for markup roots
-  that use `100%`.
-- `renzora_hui`'s observer builds the markup under a child `HtmlNode` (hot-reload
-  safe; bevy_hui never disturbs the instance entity).
-- A `tag_built_nodes` system in renzora_hui's editor module inserts `UiWidget`
-  on every bevy_hui-built node (`Added<Tags>`). The canvas selects/drags those —
-  click lands on visible markup, transparent gaps fall through, sticky drag.
-- Templates default to `position="absolute"` with explicit `left/top` + explicit
-  `width/height` on the root, so drag/resize have a real target.
+Two ember plugins matter:
 
-**Phases:**
-- **Phase 1 ✅** — selection model (above).
-- **Phase 2 ✅** — **markup write-back** (`crates/renzora_hui/src/writeback.rs`).
-  Inspector edits (and drag/resize of `left/top/width/height`) patch the `.html`
-  file via span-tracked surgical string edits (preserves comments + formatting).
-  rendered state stays in sync with the file.
-- **Phase 3 🔜** — **drop-onto-container.** Dropping a `.html` on an existing
-  container widget parents the instance under it; parent-aware `Node` defaults so
-  a container child becomes a flex item, a canvas child a 100% overlay. Plus a
-  `<slot>` demo template — bevy_hui supports React-style children composition
-  (see §7).
+- **`renzora_ember::markup::MarkupPlugin`** (formerly `HuiPlugin`) — the markup
+  runtime. It self-registers via `renzora::add!(MarkupPlugin)` at **Runtime**
+  scope, so it runs in the editor viewport **and** in exported games.
+- **`renzora_ember::EmberPlugin`** — the general widget/theme/dock framework. It
+  bundles `style::ThemePlugin` + `dock::DockPlugin` + `widgets::WidgetsPlugin` +
+  `reactive::ReactivePlugin`.
+
+The editor half registers via `renzora::add!(HuiEditorBundlePlugin, Editor)` and
+is linked only by the editor bundle.
+
+> The editor subcrate's **package** was renamed `renzora_hui_editor` →
+> `renzora_ember_editor`, but its **plugin type names** are still
+> `HuiEditorPlugin` / `HuiInspectorPlugin` / `HuiEditorBundlePlugin`. That is
+> intentional; don't "fix" them in docs.
+
+**Dependency rule that shapes everything:** `renzora_ember` depends on
+`renzora_game_ui` (directly — there is no longer a `renzora_hui` link in
+between), so `renzora_game_ui` can **not** depend back on ember. The shared data
+types markup roots need — `HtmlTemplatePath`, `UiCanvas`, `UiWidget` — therefore
+live in `renzora_game_ui`; `renzora_ember::markup` owns only the loader/runtime
+behavior.
 
 ---
 
-## 7. Custom-tag bridge — renzora widgets in markup 🔜
+## 3. Architecture at a glance
 
-`bevy_hui`'s `HtmlComponents::register` maps a custom tag → an arbitrary spawn
-function. Use it to expose renzora's own widgets in markup:
-- `<radial_gauge value="0.58">`, `<arc>`, `<wedge>` → spawn the existing
-  `renzora_game_ui` `UiMaterial` SDF shape widgets (real dials/arcs that flat CSS
-  can't draw).
-- Later: `<emitter>` → a **Cinder** emitter (see §9).
+```text
+assets/ui/*.html
+      │ author
+      ▼
+bevy_hui LoaderPlugin ── parse ──▶ HtmlTemplate (asset, typed AST)
+      │
+      │ HtmlTemplatePath inserted on an entity (UiCanvas, viewport drop, hui_spawn)
+      ▼
+renzora_ember::markup::loader ── walk AST ──▶ one real bevy_ui entity per node
+      │                                        (Node / Text / TextFont / TextColor /
+      │                                         BackgroundColor / BorderColor, …)
+      ▼
+  events (on_press=…) ─▶ bevy_hui OnUiPress family ─▶ renzora::ScriptUiInbox
+                                                       ─▶ Lua on_ui(name, args, entity)
+  vector="…"          ─▶ ember WGSL UiMaterial (ArcMaterial / ChartMaterial / WaveMaterial)
+```
 
-This is the highest-leverage way to get "rich, intricate" UI into markup without
-waiting on bevy_hui to grow CSS features. Small effort; big expressive payoff.
+The defining change from the original plan: **markup is an entity tree, not an
+opaque builder.** Every `<node>`/`<text>`/`<image>`/`<button>` becomes a real
+`bevy_ui` entity with standard components attached directly. There is **no
+`HtmlNode`, no `HtmlStyle`, no per-frame style re-assertion, and no scope-root
+wrapper** — the components hold the truth and `bevy_ui` lays out and renders them
+like any other UI.
 
-### React-style children with `<slot/>` (already works) ✅
+---
 
-bevy_hui has `NodeType::Slot` built in — a component template can declare a
-`<slot/>` placeholder, and whatever children the caller nests inside the
-component tag get re-parented into the slot at build time. Same model as React
-`children`, Vue/Svelte slots, Web Components:
+## 4. Markup runtime — `bevy_hui` parser + ember loader ✅
+
+`MarkupPlugin` adds **only** `bevy_hui::prelude::LoaderPlugin`, which registers
+`HtmlTemplate` as an asset and the `.html` `AssetLoader`. None of bevy_hui's own
+runtime — `BuildPlugin`, `TransitionPlugin`, `CompilePlugin`,
+`HtmlAutoLoadPlugin`, `FunctionBindings`, `HtmlComponents` — is registered.
+Everything downstream of the AST is ember's `loader.rs`.
+
+### Authoring format
+
+UI is authored as hot-reloadable **`.html`** files under `assets/ui/`.
+
+- `{single-brace}` = **build-time** property substitution (resolved once, from
+  `<property>` defaults and `template="..."` overrides).
+- `{{ double-brace }}` = **per-frame reactive binding**, re-resolved every frame
+  by reflection against live ECS components.
 
 ```html
-<!-- panel.html -->
+<!-- assets/ui/hud.html -->
+<template>
+    <property name="accent">#39C5FF</property>
+    <node position="absolute" left="24px" top="24px" width="280px"
+          flex_direction="column" row_gap="8px" padding="12px"
+          background="#11151Cdd" border_radius="10px">
+        <text font_size="14" font_color="{accent}">HP {{ Health.Health.current }}</text>
+        <node height="10px" background="#222" border_radius="5px">
+            <node fill="Health.Health.current" fill_min="0" fill_max="100"
+                  height="100%" background="{accent}" border_radius="5px" />
+        </node>
+        <button on_press="open_menu" padding="8px 14px" background="#1d2530"
+                hover:background="#26303d">Menu</button>
+    </node>
+</template>
+```
+
+### Element set
+
+The parser exposes seven built-in `NodeType`s; everything else is `Custom(name)`.
+
+| Tag | Meaning |
+|---|---|
+| `<node>` | Generic flex/grid box. |
+| `<text>` | Text content (`{prop}` and `{{ binding }}` allowed). |
+| `<image>` | `src=` image; always gets a `MarkupImage` marker for the editor slot. |
+| `<button>` | A `<node>` that also carries `bevy_ui::Button` for `Interaction`. |
+| `<slot/>` | Re-parents the caller's children into a component template (React/Vue-style). |
+| `<template>` | The file's root wrapper. |
+| `<property>` | Declares a build-time `{prop}` default. |
+
+The loader additionally recognizes four custom tags:
+
+| Tag | Attributes | Behavior |
+|---|---|---|
+| `<input>` | `bind`, `placeholder`, `password` | Focusable text field (`TextInput` + `Button`). |
+| `<icon>` | `name`, `size`/`font_size`, `font_color` | Phosphor glyph rendered in the icon font. |
+| `<for tag="...">` | `tag` | Repeats its children once per entity carrying that `EntityTag`. |
+| `<node template="path.html">` | unknown attrs become `{prop}` overrides | Expands another template onto this entity (component composition). |
+
+> ⚠️ **The file-stem custom-tag registry is gone.** A bare `<custom_tag>` with no
+> `template=` no longer resolves to `assets/ui/components/custom_tag.html`. It now
+> emits a warning (`<custom_tag> is not a built-in element — use <node
+> template="path/to/custom_tag.html"> instead`) and renders nothing. Components
+> must be referenced by **explicit path** via `<node template="...">`.
+
+```html
+<!-- panel.html — a reusable component with a slot -->
 <template>
     <property name="title">Panel</property>
     <node padding="16px" background="#11151C" border_radius="10px">
@@ -192,46 +173,222 @@ component tag get re-parented into the slot at build time. Same model as React
     </node>
 </template>
 
-<!-- using it -->
-<panel title="Vitals">
-    <stat_bar label="HP" fill="72%"/>
-    <stat_bar label="MP" fill="40%"/>
-</panel>
+<!-- using it: explicit path, not <panel ...> -->
+<node template="ui/panel.html" title="Vitals">
+    <node template="ui/stat_bar.html" label="HP" fill="72%"/>
+    <node template="ui/stat_bar.html" label="MP" fill="40%"/>
+</node>
 ```
 
-A `<slot>` demo template lands with Phase 3 (§6).
+### Layout attributes
+
+Statically-applied styles map straight onto `bevy_ui::Node` and its color
+slots: `display`, `position`, `left`/`right`/`top`/`bottom`,
+`width`/`height`, `min_width`/`max_width`/`min_height`/`max_height`,
+`aspect_ratio`, `margin`, `padding`, `border`/`border_color`/`border_radius`,
+`background`, `flex_direction`/`flex_wrap`/`flex_grow`/`flex_shrink`/`flex_basis`,
+`row_gap`/`column_gap`,
+`align_items`/`justify_items`/`align_self`/`justify_self`/`align_content`/`justify_content`,
+the `grid_*` family, `font_size`, and `font_color`. `hover:` / `pressed:`
+background/border overrides plus `delay`/`duration` become an `Interactive`
+transition.
+
+> `{{ }}` runtime bindings work **only** in text content and in `show=`, plus the
+> vector `value=`/`data=`/`readout=` attributes. Ordinary style attributes are
+> computed **once** at build time — there is no `{{ }}` in arbitrary style
+> attributes.
+
+### Bindings & control flow
+
+| Form | Resolves to |
+|---|---|
+| `{{ Component.field }}` | a field on the host entity's component (walks up `ChildOf`). |
+| `{{ Entity.Component.field }}` | a field on the entity with that `Name`. |
+| `{{ _scriptVar }}` | a script variable read back from the host's `ScriptComponent`. |
+| `{{ Name }}` | the host entity's `Name`. |
+| `show="{{ cond }}"` | conditional `Display::None`; supports `and`/`or`/`not`, `< > <= >= == !=`, parentheses, quoted strings. |
+
+### Interaction kernel
+
+The markup widget **kernel** (`markup/widgets.rs`) is a small set of
+attribute-driven behaviors. Targets are **plain reflection paths**, not `{{ }}`.
+Writes route through `renzora_scripting`'s tested paths — component fields go to
+`ScriptReflectionQueue`, script vars are written on the entity's
+`ScriptComponent`.
+
+| Attribute | Component | Effect |
+|---|---|---|
+| `toggle="Path.bool"` | `Toggle` | Click flips a bound boolean (checkbox/switch). |
+| `drag_value="Path.num" drag_min drag_max` | `DragValue` | Drag horizontally to set a number (slider/scrollbar). |
+| `fill="Path.num" fill_min fill_max` | `ValueFill` | Node width tracks the value's fraction of the range (progress/bar fill). |
+| `toggles="name"` | `Disclose` | Click shows/hides the entity with that `Name` (dropdown/accordion/modal/tabs). |
+
+Plus drag-and-drop and decoration attributes the loader stamps directly:
+`draggable`, `drag_item`, `dropzone`/`drop_tag`/`on_drop`, `cursor=`,
+`gradient=` and `shadow=` (native `bevy_ui` decoration), and the special
+`name="cursor_follow"` for cursor tracking.
+
+### Events → `on_ui` ✅
+
+`on_press` / `on_enter` / `on_exit` / `on_spawn` / `on_change` are parsed into
+bevy_hui's **`OnUiPress` / `OnUiEnter` / `OnUiExit` / `OnUiSpawn` / `OnUiChange`**
+components. `interactions.rs` watches `Changed<Interaction>` on those entities and
+pushes a `renzora::UiCallback` into `renzora::ScriptUiInbox`; `renzora_scripting`
+drains it each frame and calls every script's `on_ui` hook.
+
+```html
+<button on_press="start_game">Play</button>
+```
+
+> There is **no `MarkupOnPress` component**, and no `MarkupId` / `MarkupClass` /
+> `class=` handling. `id=`/`name=` simply set the entity `Name` (an `id` is shown
+> as `#id` in the hierarchy). The callback's third argument is the firing node's
+> `Entity::to_bits()` as a **u64 integer**, not an entity handle.
 
 ---
 
-## 8. Shader UI effects 🔜
+## 5. Vector widgets — WGSL `UiMaterial`s ✅
 
-Renzora **already** renders custom WGSL in the UI pass — `renzora_game_ui::shapes`
-implements `UiMaterial` (Circle/Arc/RadialProgress/Wedge/…) via `UiMaterialPlugin`.
-So shader-driven UI is a *working pattern*, not new tech.
+`vector="..."` widgets used to be drawn with an external vector-graphics crate
+(`vello`). **`vello` was dropped.** They now render with ember's own WGSL
+`UiMaterial`s as ordinary `bevy_ui` `MaterialNode`s, with `bevy_text` children for
+labels and readouts — no `Camera2d`, no `VelloView`, no `UiVelloScene`, no
+`RenderLayers` plumbing.
 
-Planned: a small library of animated `UiMaterial`s — glow, pulse, gradient fill,
-dissolve, scanline/holographic panels — fed a `time` uniform (animates) and a
-`value` uniform (reacts to data, e.g. health). Exposed as markup tags via §7 and
-drivable from Lua. A glowing/pulsing shader health bar likely delivers most of
-the "immersive" feel before particles even enter the picture.
+| `vector=` value (aliases) | Material / shader | Notes |
+|---|---|---|
+| `arc` (`gauge`, `ring`) | `ArcMaterial` (`gauge.wgsl`) | Stroked track + value fill; optional centred `readout`. |
+| `bars` (`bar`) | plain `bevy_ui` rects | One rectangle per datum. |
+| `line` (`chart`) | `ChartMaterial` (`chart.wgsl`) | Cartesian series (≤32 samples). |
+| `wave` (`waveform`) | `WaveMaterial` (`waveform.wgsl`) | Cartesian series (≤32 samples). |
+| `speedometer` (`dial`) | `ArcMaterial` + `bevy_text` | Composite: arc + numeric labels + needle + centre readout. |
+
+```html
+<node vector="speedometer" value="{{ Vehicle.speed }}" min="0" max="240"
+      color="#39C5FF" unit="km/h" readout="{{ Vehicle.speed }}"
+      width="180px" height="180px" />
+```
+
+Common attributes: `value` (literal or `{{ path }}`), `data` (comma string,
+literal or `{{ path }}`, for `bars`/`line`/`wave`), `min`/`max`, `color`,
+`track`, `fill`, `thickness`, `count`, `start` (deg), `sweep` (deg), `inset`
+(px), `len`, `size`, `readout`, `unit`, `readsize`.
+
+> The standalone `ticks` / `labels` / `needle` primitives no longer exist — they
+> are baked into the `speedometer` composite. The `renzora_gauges` crate was
+> removed entirely; gauge drawing is now ember's `arc`/`gauge` widget
+> (`ArcMaterial`).
+
+`renzora_game_ui::shapes` also still ships its own SDF `UiMaterial` shape widgets
+(`circle`, `arc`, `radial_progress`, `wedge`, `polygon`, `triangle`,
+`rectangle`, `line`) — proof that shader-driven UI is a working pattern, not new
+tech.
+
+> The gauge/chart/waveform material plugins are `is_plugin_added`-guarded because
+> both `WidgetsPlugin` and `markup::vector::plugin` register them.
 
 ---
 
-## 9. `renzora_cinder` — UI particle system 🔜 (flagship)
+## 6. Scripting bridge ✅
 
-> **Status: unstarted future work.** There is no `renzora_cinder` crate yet; this
-> section is a design sketch, not shipped code.
+Markup events broadcast to **every script's `on_ui`** hook, the same way
+`on_rpc` broadcasts network RPCs:
+
+```lua
+-- attached to any entity in the scene
+function on_ui(name, args, entity)
+    if name == "start_game" then
+        action("hui_spawn", { template = "ui/hud.html" })
+    elseif name == "open_menu" then
+        action("hui_show", { name = "main_menu_root" })
+    end
+end
+```
+
+> `on_ui` is **Lua-only**. The Rhai backend supports only `props`, `on_ready`, and
+> `on_update`; it never receives `on_ui` (nor `on_rpc`/`on_http`/`on_player_*`).
+> Use `.lua` for any script that reacts to UI events.
+
+Scripts also spawn and toggle markup through the `action()` escape hatch
+(handled by `markup/lua_bridge.rs`). The handler verbs are still named `hui_*`:
+
+| Action | Effect |
+|---|---|
+| `action("hui_spawn", { template = "ui/x.html" })` | Spawns a `UiCanvas` root carrying `HtmlTemplatePath`; the loader builds the tree under it. |
+| `action("hui_despawn", { template = "ui/x.html" })` / `{ name = "..." }` | Despawns matching template roots, or the named entity. |
+| `action("hui_hide", { name = "..." })` / `action("hui_show", { name = "..." })` | Toggles `Visibility` on the named entity. |
+
+---
+
+## 7. Editor integration & write-back ✅ 🧪
+
+All editor-only, in the `renzora_ember_editor` subcrate (the
+`HuiEditorBundlePlugin`, linked by the editor bundle). It compiles and registers;
+the *visual* behavior still wants in-editor verification.
+
+- **Create:** "+ Add Entity → UI" presets, asset-panel "Create → HTML Template",
+  and an inspector **Template** field that is a `.html` asset slot.
+- **Place:** drag a `.html` from the asset panel onto the viewport or onto the
+  game-UI canvas; both insert `HtmlTemplatePath` on a host entity and let the
+  loader build the tree.
+- **Select:** the loader stamps `renzora_game_ui::UiWidget` on **every** built
+  node, so the canvas hit-tests down to the deepest visible markup element —
+  clicking a `<text>` inside a `<panel>` selects the text.
+- **Write-back:** each built node carries a `MarkupSource { template_handle,
+  node_path }` (`markup/provenance.rs`). Inspector edits (and drag/resize of
+  `left/top/width/height`) patch the `.html` file via span-tracked surgical
+  string edits (`markup/writeback.rs::write_attr_to_markup`), preserving comments
+  and formatting.
+
+> ⚠️ **The round-trip is not closed yet.** Write-back patches the file, but
+> hot-reload-on-`Modified` respawn of the rendered tree is **not implemented** —
+> editing the `.html` on disk does not yet automatically rebuild the live nodes.
+> Closing this loop is the next editor task.
+>
+> Note also that `renzora_game_ui_editor`'s native `ui_canvas` panel is WIP and
+> **not yet registered**; the legacy canvas panel is still the active one.
+
+---
+
+## 8. Theming ✅
+
+Two theme layers, both data-driven and repaint-on-change:
+
+| Layer | Type | Source | Applies to |
+|---|---|---|---|
+| Editor / ember widgets | `renzora_ember::style::Theme` (per-`Role` `StyleToken`s, built on `theme::Palette`) | project `themes/*.toml` | `Styled` components via `apply_theme` |
+| Game UI | `renzora_game_ui::UiTheme` (semantic tokens) | project config | `UiThemed`-marked entities |
+
+The standalone `renzora_theme` (`ThemeColor`, `ThemeManager`, TOML loader) and
+`renzora_theme_status` crates still exist; their egui pieces were removed in the
+egui → bevy_ui migration.
+
+> Because the markup loader spawns plain `bevy_ui` entities, themed colors and
+> per-node markup colors coexist — markup sets explicit colors, `apply_theme`
+> repaints `Styled` widgets.
+
+---
+
+## 9. Cinder — UI particle system 🔜 (flagship, unstarted)
+
+> **Status: unstarted future work.** No `cinder` module exists yet. The intent
+> (recorded in `renzora_ember`'s crate docs and `Cargo.toml`) is to migrate it in
+> **as part of `renzora_ember`** — i.e. `renzora_ember::cinder`, not a separate
+> `renzora_cinder` crate. This section is a design sketch, not shipped code.
 
 **The gap:** every Bevy particle crate (`bevy_hanabi`, `bevy_enoki`,
-`bevy_particle_systems`, Sprinkles) renders in world/camera space. **None**
-composite with the `bevy_ui` layer. Cinder is the first UI-space particle system
-for Bevy — sparks off a health bar, embers behind a menu, a burst on level-up,
+`bevy_particle_systems`) renders in world/camera space. **None** composite with
+the `bevy_ui` layer. Cinder would be the first UI-space particle system for
+Bevy — sparks off a health bar, embers behind a menu, a burst on level-up,
 correctly layered with UI and shipping in exports.
 
 ### Architecture: pooled CPU particles **as UI nodes**
-An **emitter** is a UI node; each **particle** is a small child UI node (colored
-quad → later `UiMaterial`-shaded/sprite) advanced each frame by a system, then
-recycled. Chosen over render-to-texture / overlay-camera because it:
+
+Fits the entity-tree model exactly. An **emitter** is a UI node; each
+**particle** is a small child UI node (colored quad → later `UiMaterial`-shaded
+or sprite) advanced each frame and recycled. Chosen over render-to-texture /
+overlay-camera because it:
+
 - **composes natively** — real UI nodes layer with other UI, respect the canvas,
   scale with `UiScale`, and ship in exports with zero pipeline work;
 - is **right-sized** — UI FX want tens–hundreds of particles, not GPU millions;
@@ -239,57 +396,47 @@ recycled. Chosen over render-to-texture / overlay-camera because it:
 - **upgrades cleanly** — swap quads for `UiMaterial`/sprites or a GPU-instanced
   fast path later without changing the authoring API.
 
-### Components (sketch)
-- `CinderEmitter { rate, burst, shape (point/line/rect/circle), lifetime,
-  speed/velocity, spread, gravity, max_particles, looping, world/local }`
-- Over-life curves: `color_over_life`, `size_over_life`, `rotation_over_life`,
-  `opacity_over_life`, `velocity_damping`.
+### Sketch
+
+- `CinderEmitter { rate, burst, shape, lifetime, speed, spread, gravity,
+  max_particles, looping }` + over-life curves (`color`/`size`/`opacity`/
+  `rotation`/`velocity_damping`).
 - `CinderParticle { age, lifetime, velocity, seed }` (pooled; hidden when dead).
-- Optional `CinderMaterial` (UiMaterial) for additive glow / textured sparks.
-
-### Authoring & control
-- **Markup:** `<emitter rate="20" lifetime="0.8s" gravity="0 400" color="#FF9..">`
-  via the §7 bridge.
-- **Editor:** an emitter widget in the game_ui palette/canvas; RON-configurable,
-  hot-reloadable (mirrors `bevy_enoki`'s config approach — notably by Lommix, the
-  `bevy_hui` author, so the ecosystem story is coherent).
-- **Lua:** `burst("HealthBar", 30)` / `emit_on("X")` via the scripting bridge —
-  e.g. spray cinders when health drops.
-
-### Phasing
-1. Crate scaffold + `CinderEmitter`/`CinderParticle` + sim system + a demo
-   (continuous + burst). Compile-clean **vertical slice** to verify visually.
-2. Over-life curves + emitter shapes + pooling/perf pass.
-3. `<emitter>` markup tag + game_ui widget + Lua `burst`/`emit` API.
-4. `UiMaterial`-shaded particles (additive glow, sprites); optional GPU-instanced
-   fast path.
+- **Markup:** `<emitter rate="20" lifetime="0.8s" gravity="0 400" color="#FF9...">`
+  via the `<node template>` / custom-attribute path.
+- **Script:** `burst("HealthBar", 30)` / `emit_on("X")` through the `action()`
+  bridge.
 
 ---
 
 ## 10. Roadmap (suggested order)
 
-1. **Custom-tag bridge** (§7) — quick win; unlocks gauges/shapes in markup.
-2. **One animated shader UI material** (§8) — a glowing/pulsing health bar,
-   end-to-end, exposed as a tag. Visible "immersive UI."
-3. **Cinder vertical slice** (§9 phase 1) — de-risk the novel piece early.
-4. **Flex-vs-drag override** (§6) — orthogonal; settle and implement once signed off.
-5. Iterate Cinder (phases 2–4) + grow the shader-effect library.
+1. **Close the write-back round-trip** (§7) — hot-reload the rendered tree on
+   `.html` `Modified`, so editor edits and disk edits both rebuild live.
+2. **One animated shader UI material** — a glowing/pulsing health bar fed `time`
+   + `value` uniforms, exposed as a `vector=`-style widget. Visible "immersive UI"
+   on the existing `UiMaterial` plumbing.
+3. **Cinder vertical slice** (§9) — crate-internal `cinder` module + emitter +
+   particle + sim + a demo. De-risk the novel piece early.
+4. Iterate Cinder (curves/shapes/pooling → shaded particles) and grow the
+   shader-effect library.
 
 ---
 
 ## 11. Verification & constraints
 
-- Editor/visual behavior is verified by running the editor; agent work is
-  compile-checked (`cargo check`) and gated by CI (ubuntu, `cargo test --workspace`,
-  which runs the parse test and others).
-- New visual features ship as **compile-clean vertical slices** the user runs and
-  tunes from screenshots, rather than large unverified drops.
+- Agent work is compile-checked (`cargo check`) and gated by CI
+  (`cargo test --workspace`, which runs the markup parse tests).
+- Editor/visual behavior is verified by running the editor; new visual features
+  ship as **compile-clean vertical slices** the user runs and tunes from
+  screenshots, rather than large unverified drops.
 
 ---
 
 ## 12. Naming / lore
 
-- `bevy_hanabi` = fireworks · `bevy_enoki` = mushroom · `bevy_hui` = markup …
-  **`cinder`** = the glowing bits that fly off fire. `hui` builds the bar;
-  `cinder` throws sparks off it. One-word identity for "the first UI particle
-  system for Bevy."
+`bevy_hanabi` = fireworks · `bevy_enoki` = mushroom · `bevy_hui` = markup …
+**`cinder`** = the glowing bits that fly off fire. Markup builds the bar; cinder
+throws sparks off it — a one-word identity for "the first UI particle system for
+Bevy." It will live inside `renzora_ember`, alongside the markup runtime and the
+widget library, so the whole UI story ships from one crate.
