@@ -5,6 +5,11 @@ name: Toolchain Image
 # instead of building osxcross/NDK/xwin/etc. locally (a few-minute pull vs a
 # 10-25 min build). Only rebuilds when the Dockerfile changes — the image is
 # toolchain-only (no engine source; that's bind-mounted at run time).
+#
+# Multi-arch: amd64 and arm64 (Apple Silicon) build natively on their own
+# runners — no QEMU, which would turn the osxcross/LLVM layers into a
+# multi-hour build — then a merge job stitches the per-arch digests into one
+# manifest list per tag.
 
 on:
   push:
@@ -15,13 +20,74 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push by digest only — tags are assembled in the merge job below so
+      # each tag is a single manifest list covering both arches.
+      - name: Build and push (by digest)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/renzora/engine,push-by-digest=true,push=true
+          # Per-arch registry cache so unchanged layers (osxcross, SDKs, xwin)
+          # aren't rebuilt every run.
+          cache-from: type=registry,ref=ghcr.io/renzora/engine:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/renzora/engine:buildcache-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@v3
 
@@ -40,18 +106,15 @@ jobs:
         id: dftag
         run: echo "tag=$(tr -d '\r' < docker/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ghcr.io/renzora/engine:latest
-            ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }}
-            ghcr.io/renzora/engine:${{ github.sha }}
-          # Reuse the previously published image as a layer cache so unchanged
-          # layers (osxcross, NDK, SDKs) aren't rebuilt every run.
-          cache-from: type=registry,ref=ghcr.io/renzora/engine:latest
-          cache-to: type=inline
+      - name: Create multi-arch manifests
+        working-directory: /tmp/digests
+        run: |
+          digests=$(printf 'ghcr.io/renzora/engine@sha256:%s ' *)
+          docker buildx imagetools create \
+            -t ghcr.io/renzora/engine:latest \
+            -t ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }} \
+            -t ghcr.io/renzora/engine:${{ github.sha }} \
+            $digests
+
+      - name: Inspect
+        run: docker buildx imagetools inspect ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }}

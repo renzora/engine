@@ -11,7 +11,7 @@
 # with `--server`.
 #
 # Platforms (positional args after <output-dir>; pass none to build all):
-#   linux        Linux x86_64 (native in container)
+#   linux        Linux, native container arch (x86_64 or arm64)
 #   windows      Windows x86_64 MSVC (xwin)
 #   macos        macOS x86_64 + arm64 (osxcross)
 #   macos-x64    macOS x86_64 only
@@ -51,6 +51,18 @@ fi
 OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir> [platform ...]}"
 shift
 mkdir -p "$OUTPUT_DIR"
+
+# The linux lane builds the container's native arch (no cross-libc sysroot in
+# the image), so its platform name / Rust triple / AppImage arch follow uname.
+if [ "$(uname -m)" = "aarch64" ]; then
+    LINUX_PLATFORM="linux-arm64"
+    LINUX_TRIPLE="aarch64-unknown-linux-gnu"
+    LINUX_APPIMAGE_ARCH="aarch64"
+else
+    LINUX_PLATFORM="linux-x64"
+    LINUX_TRIPLE="x86_64-unknown-linux-gnu"
+    LINUX_APPIMAGE_ARCH="x86_64"
+fi
 
 # Platform filter: empty array = build everything; non-empty = filter set.
 # `macos` expands to macos-x64+macos-arm64; `android` expands to both Android
@@ -239,9 +251,9 @@ build_desktop() {
 build_one() {
     local PLATFORM="$1" FEATURE="$2"
     case "$PLATFORM" in
-        linux-x64)
-            build_desktop "$FEATURE" native               "linux-x64"   "so"    || return 1
-            copy_std "linux-x64"   "$FEATURE" "x86_64-unknown-linux-gnu" "libstd-*.so" ;;
+        "$LINUX_PLATFORM")
+            build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
+            copy_std "$LINUX_PLATFORM" "$FEATURE" "$LINUX_TRIPLE"        "libstd-*.so" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
@@ -261,7 +273,7 @@ build_one() {
 
 # ── Wrap the Linux editor output into an AppDir + AppImage ────────────────────
 wrap_linux_appimage() {
-    local EDITOR_DIR="$OUTPUT_DIR/linux-x64"
+    local EDITOR_DIR="$OUTPUT_DIR/$LINUX_PLATFORM"
     [ -f "$EDITOR_DIR/renzora" ] || return 0
 
     local APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
@@ -299,8 +311,8 @@ DESKTOP
     fi
 
     if command -v appimagetool >/dev/null 2>&1; then
-        ARCH=x86_64 appimagetool "$APPDIR" "$EDITOR_DIR/Renzora Engine-x86_64.AppImage" \
-            && echo "Built $EDITOR_DIR/Renzora Engine-x86_64.AppImage" \
+        ARCH="$LINUX_APPIMAGE_ARCH" appimagetool "$APPDIR" "$EDITOR_DIR/Renzora Engine-$LINUX_APPIMAGE_ARCH.AppImage" \
+            && echo "Built $EDITOR_DIR/Renzora Engine-$LINUX_APPIMAGE_ARCH.AppImage" \
             || echo "WARN: appimagetool failed"
     else
         echo "WARN: appimagetool not found; AppDir left at $APPDIR"
@@ -315,7 +327,7 @@ lane_desktop_feature() {
         build_one "$p" "$FEATURE" || return 1
     done
     # AppImage wrapping only applies to the editor on Linux.
-    if [ "$FEATURE" = "editor" ] && array_contains "linux-x64" "${DESKTOP_PLATFORMS[@]}"; then
+    if [ "$FEATURE" = "editor" ] && array_contains "$LINUX_PLATFORM" "${DESKTOP_PLATFORMS[@]}"; then
         wrap_linux_appimage || return 1
     fi
     return 0
@@ -352,6 +364,10 @@ build_wasm() {
 # ── Lane: Android (runtime only) ─────────────────────────────────────────────
 # Both archs share target/android (sequential within this lane); best-effort.
 build_android() {
+    if [ ! -d "${ANDROID_NDK_HOME:-/opt/android-ndk}" ]; then
+        echo "WARN: Android NDK not present in this image (no arm64-Linux NDK from Google) — skipping Android builds"
+        return 0
+    fi
     if should_build android-arm64; then
         echo "=== Building Android ARM64 Runtime ==="
         cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
@@ -395,7 +411,8 @@ build_ios() {
 # Which desktop platforms are in scope (filter + osxcross availability).
 OSXCROSS_CLANG=$(ls /opt/osxcross/target/bin/x86_64-apple-darwin*-clang 2>/dev/null | head -1 || true)
 DESKTOP_PLATFORMS=()
-if should_build linux;   then DESKTOP_PLATFORMS+=("linux-x64"); fi
+# `linux` means the container's native arch; the explicit name also works.
+if should_build linux || should_build "$LINUX_PLATFORM"; then DESKTOP_PLATFORMS+=("$LINUX_PLATFORM"); fi
 if should_build windows; then DESKTOP_PLATFORMS+=("windows-x64"); fi
 if [ -n "$OSXCROSS_CLANG" ]; then
     if should_build macos-x64;   then DESKTOP_PLATFORMS+=("macos-x64"); fi

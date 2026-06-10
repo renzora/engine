@@ -37,6 +37,8 @@ Run `renzora --help` for the rest (`init`, `check`, `upx`, `clean`, `destroy`).
 
 Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Builds land in `dist/<platform>/` — the runtime build doubles as a dedicated server (run it with `--server`).
 
+The toolchain image is multi-arch (amd64 + arm64), so Apple Silicon Macs run it natively. Two arch caveats: `linux` builds the container's native arch (`linux-x64` or `linux-arm64`), and `android` needs the amd64 image (Google publishes no arm64-Linux NDK) — on arm64 that lane is skipped with a warning.
+
 ## Documentation
 
 | Guide | What's inside |

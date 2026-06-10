@@ -16,7 +16,12 @@
 # rust-toolchain.toml. Everything builds in this image, so the compiler is
 # whatever this base provides. Bumping the version = editing this line (which
 # also changes the image's content hash, so the CLI auto-pulls the new image).
-FROM --platform=linux/amd64 rust:1.93.0-bookworm
+#
+# Multi-arch: builds natively as linux/amd64 and linux/arm64 (Apple Silicon).
+# Arch-specific steps key off `uname -m` (x86_64 / aarch64). One arm64 gap:
+# Google ships no arm64-Linux NDK, so Android cross-compile is amd64-only
+# (the android lane in build-all.sh is best-effort and degrades gracefully).
+FROM rust:1.93.0-bookworm
 
 # ── System dependencies ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -47,7 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── AppImage tooling ─────────────────────────────────────────────────────────
-RUN curl -sL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+# appimagetool release assets are named by `uname -m` (x86_64 / aarch64).
+RUN curl -sL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(uname -m).AppImage" \
     -o /usr/local/bin/appimagetool && \
     chmod +x /usr/local/bin/appimagetool && \
     cd /usr/local/bin && ./appimagetool --appimage-extract >/dev/null && \
@@ -55,8 +61,12 @@ RUN curl -sL https://github.com/AppImage/appimagetool/releases/download/continuo
     ln -sf /opt/appimagetool/AppRun /usr/local/bin/appimagetool
 
 # ── All Rust targets ─────────────────────────────────────────────────────────
+# Both Linux triples are listed so the native one is present on either arch
+# (adding the host triple is a no-op). The non-host Linux triple has no cross
+# sysroot in this image — the linux lane builds native-only (see build-all.sh).
 RUN rustup target add \
     x86_64-unknown-linux-gnu \
+    aarch64-unknown-linux-gnu \
     x86_64-pc-windows-msvc \
     wasm32-unknown-unknown \
     aarch64-linux-android \
@@ -70,15 +80,21 @@ RUN rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 # ── WASM tooling ─────────────────────────────────────────────────────────────
 RUN cargo install wasm-bindgen-cli --version 0.2.108 --locked
 
-# ── Android NDK ──────────────────────────────────────────────────────────────
+# ── Android NDK (amd64 only) ─────────────────────────────────────────────────
+# Google ships no arm64-Linux NDK host binaries; on aarch64 we skip the install
+# and build-all.sh skips the android lane when $ANDROID_NDK_HOME is absent.
 ENV ANDROID_NDK_VERSION=r27c
 ENV ANDROID_NDK_HOME=/opt/android-ndk
 
-RUN curl -sL https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip \
-    -o /tmp/ndk.zip && \
-    unzip -q /tmp/ndk.zip -d /opt && \
-    mv /opt/android-ndk-${ANDROID_NDK_VERSION} ${ANDROID_NDK_HOME} && \
-    rm /tmp/ndk.zip
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        curl -sL https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip \
+            -o /tmp/ndk.zip && \
+        unzip -q /tmp/ndk.zip -d /opt && \
+        mv /opt/android-ndk-${ANDROID_NDK_VERSION} ${ANDROID_NDK_HOME} && \
+        rm /tmp/ndk.zip; \
+    else \
+        echo "Skipping Android NDK: no arm64-Linux host binaries published by Google"; \
+    fi
 
 # ── osxcross for macOS / iOS cross-compilation ──────────────────────────────
 ENV OSXCROSS_SDK=MacOSX26.1.sdk
@@ -124,9 +140,11 @@ RUN wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
 ENV XWIN_VERSION=0.6.5
 ENV XWIN_PREFIX=/xwin
 
-RUN curl -sL "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+# xwin's release triple matches `uname -m` (x86_64 / aarch64). The splat
+# `--arch x86_64` below is the *Windows target* arch, independent of host.
+RUN curl -sL "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-$(uname -m)-unknown-linux-musl.tar.gz" \
     | tar xzf - -C /tmp \
-    && mv /tmp/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl/xwin /usr/local/bin/ \
+    && mv /tmp/xwin-${XWIN_VERSION}-$(uname -m)-unknown-linux-musl/xwin /usr/local/bin/ \
     && rm -rf /tmp/xwin-* \
     && xwin --accept-license --arch x86_64 splat --output ${XWIN_PREFIX} \
     && rm -rf /root/.cache/xwin
@@ -203,12 +221,6 @@ export AR_aarch64_apple_ios=aarch64-apple-darwin${DARWIN_VER}-ar
 export CC_aarch64_apple_ios_sim=aarch64-apple-ios-clang
 export CXX_aarch64_apple_ios_sim=aarch64-apple-ios-clang++
 export AR_aarch64_apple_ios_sim=aarch64-apple-darwin${DARWIN_VER}-ar
-export CC_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang
-export CXX_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++
-export AR_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
-export CC_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang
-export CXX_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang++
-export AR_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
 # Windows MSVC cross-compile via clang-cl + xwin sysroot.
 # /imsvc <path> tells clang-cl to treat the path as a system include
 # (suppresses warnings from MSVC headers themselves).
@@ -218,6 +230,18 @@ export AR_x86_64_pc_windows_msvc=llvm-lib
 export CFLAGS_x86_64_pc_windows_msvc="/imsvc /xwin/crt/include /imsvc /xwin/sdk/include/ucrt /imsvc /xwin/sdk/include/um /imsvc /xwin/sdk/include/shared /imsvc /xwin/sdk/include/winrt"
 export CXXFLAGS_x86_64_pc_windows_msvc="\$CFLAGS_x86_64_pc_windows_msvc"
 EOF
+# Android NDK env vars live in their own file, sourced only where the NDK
+# exists (amd64 — see the NDK layer above), so the arm64 image never exports
+# paths into a toolchain it doesn't have.
+RUN cat > /etc/android-env.sh <<'EOF'
+export CC_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang
+export CXX_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang++
+export AR_aarch64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+export CC_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang
+export CXX_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android33-clang++
+export AR_x86_64_linux_android=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+EOF
+RUN echo 'if [ -d "$ANDROID_NDK_HOME" ]; then . /etc/android-env.sh; fi' >> /etc/osxcross-env.sh
 
 # BASH_ENV is sourced by bash before every RUN command
 ENV BASH_ENV=/etc/osxcross-env.sh
@@ -230,18 +254,25 @@ SHELL ["/bin/bash", "-c"]
 # PE/ELF/Mach-O regardless of host OS, so the Linux container can compress
 # Windows/macOS binaries too.
 ENV UPX_VERSION=5.1.1
-RUN curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz" \
+RUN UPX_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo arm64_linux || echo amd64_linux) \
+    && curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${UPX_ARCH}.tar.xz" \
     -o /tmp/upx.tar.xz \
     && tar -xJf /tmp/upx.tar.xz -C /tmp \
-    && mv /tmp/upx-${UPX_VERSION}-amd64_linux/upx /usr/local/bin/upx \
+    && mv /tmp/upx-${UPX_VERSION}-${UPX_ARCH}/upx /usr/local/bin/upx \
     && chmod +x /usr/local/bin/upx \
-    && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-amd64_linux
+    && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-${UPX_ARCH}
 
 # ── Cargo linker config ─────────────────────────────────────────────────────
 WORKDIR /app
 RUN DARWIN_VER=$(cat /tmp/darwin_ver) && \
     mkdir -p .cargo && cat > .cargo/config.toml <<TOML
+# Both Linux sections exist on both arches; only the native one is ever built
+# (the image carries no cross-libc sysroot for the other).
 [target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-C", "prefer-dynamic"]
+
+[target.aarch64-unknown-linux-gnu]
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-C", "prefer-dynamic"]
 
