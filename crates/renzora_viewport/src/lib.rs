@@ -183,6 +183,7 @@ impl Plugin for ViewportPlugin {
             Update,
             (
                 sync_viewport_camera_activation,
+                gate_scene_visibility,
                 camera_preview::sync_camera_preview_activation,
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
@@ -348,18 +349,19 @@ fn resolve_viewport_slots(
     #[allow(clippy::needless_range_loop)] // `i` indexes several parallel arrays
     for i in 0..VIEWPORT_COUNT {
         let req = &resize_req.slots[i];
-        // "Docked" = the slot's panel is present in whichever dock is live. The
-        // egui `DockingState` only knows about the egui dock, so when the
-        // bevy_ui dock is active it reports the viewport as absent — which would
-        // kill `hovered` (and with it camera nav + picking). OR in the ember
-        // dock so the native viewport stays interactive.
-        let egui_docked = docking
-            .as_ref()
-            .is_none_or(|d| d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]));
-        let ember_docked = ember_dock
-            .as_ref()
-            .is_some_and(|d| d.tree.is_active_tab(VIEWPORT_PANEL_IDS[i]));
-        let docked = egui_docked || ember_docked;
+        // "Docked" = the slot's panel is visible in the live dock. The native
+        // (ember) dock is authoritative when it exists: a slot counts only
+        // while its panel is some leaf's *active tab*, so hidden tabs and
+        // viewport-less workspaces release their slot. The egui `DockingState`
+        // is only a fallback — it's seeded with the boot layout's tree and
+        // goes stale once the ember shell drives the UI, permanently
+        // reporting the viewport as docked (which kept the always-on slot-0
+        // camera rendering the full scene behind empty workspaces).
+        let docked = match (ember_dock.as_ref(), docking.as_ref()) {
+            (Some(d), _) => d.tree.is_active_tab(VIEWPORT_PANEL_IDS[i]),
+            (None, Some(d)) => d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]),
+            (None, None) => true,
+        };
         let hovered = req.hovered.load(Ordering::Relaxed) && docked && !modal_open;
         let screen_position = Vec2::new(
             f32::from_bits(req.screen_x.load(Ordering::Relaxed)),
@@ -377,12 +379,21 @@ fn resolve_viewport_slots(
             newly_hovered = Some(i);
         }
 
-        let requested = UVec2::new(w, h);
+        // While undocked the slot still owns a live render target — and slot
+        // 0's camera stays active regardless (it hosts the atmosphere/IBL
+        // probe; see `sync_viewport_camera_activation`). Shrink the target to
+        // a token size so that always-on pass rasterizes almost nothing; the
+        // panel's resize request restores the real size on re-dock.
+        let requested = if docked {
+            UVec2::new(w, h)
+        } else {
+            UVec2::splat(UNDOCKED_TARGET_SIZE)
+        };
         if slot.current_size != requested {
             if let Some(image) = slot.image.as_ref().and_then(|h| images.get_mut(h)) {
                 image.resize(Extent3d {
-                    width: w,
-                    height: h,
+                    width: requested.x,
+                    height: requested.y,
                     depth_or_array_layers: 1,
                 });
                 slot.current_size = requested;
@@ -406,6 +417,10 @@ fn resolve_viewport_slots(
     viewport_state.screen_position = slot.screen_position;
     viewport_state.screen_size = slot.screen_size;
 }
+
+/// Render-target edge length for undocked slots. Slot 0 keeps rendering while
+/// undocked (atmosphere/IBL probe), so this is what bounds its per-pixel cost.
+const UNDOCKED_TARGET_SIZE: u32 = 64;
 
 /// Dock panel id for each viewport slot. Slot 0 keeps the historical `"viewport"`
 /// id so existing saved layouts and `contains_panel("viewport")` checks keep working.
@@ -604,8 +619,9 @@ fn sync_viewport_camera_activation(
             // rendering (the external-runtime case already returned above), the
             // primary stays active as the atmosphere/IBL source — it renders to
             // its own offscreen image regardless of whether its panel is
-            // docked or the 2D view is selected. Keeping it on is cheap next to
-            // the crash it prevents.
+            // docked or the 2D view is selected. While undocked that image is
+            // shrunk to `UNDOCKED_TARGET_SIZE` (see `resolve_viewport_slots`),
+            // so the always-on pass costs almost nothing per-pixel.
             true
         } else {
             docked
@@ -625,6 +641,94 @@ fn sync_viewport_camera_activation(
     for mut camera in cameras_ui.iter_mut() {
         if camera.is_active != want_ui {
             camera.is_active = want_ui;
+        }
+    }
+}
+
+/// While NO viewport panel is visible anywhere (e.g. a viewport-less
+/// workspace), hide every scene entity — remembering its authored visibility
+/// on a [`renzora::core::ViewportGateHidden`] marker — and restore the moment
+/// any viewport docks again.
+///
+/// Rationale: the slot-0 camera can't be deactivated (atmosphere/IBL probe,
+/// see `sync_viewport_camera_activation`) and its render-target shrink only
+/// removes per-pixel cost. Shadow-map passes, GI voxel work and per-view mesh
+/// extraction are resolution-independent — they only go away when nothing is
+/// visible to render.
+///
+/// Scope: named scene entities only. UI nodes, editor chrome
+/// (`HideInHierarchy` + descendants) and editor cameras are never touched,
+/// and authored-`Hidden` entities are left alone so user intent survives.
+///
+/// Self-healing while gated: scene saves restore authored visibility so the
+/// real value serializes (see `scene_io`), and the user can still toggle
+/// visibility from a hierarchy panel — so any marked entity found visible
+/// again has its marker refreshed from the current value and is re-hidden.
+fn gate_scene_visibility(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    mut commands: Commands,
+    mut candidates: Query<
+        (Entity, &mut Visibility),
+        (
+            With<Name>,
+            Without<renzora::core::ViewportGateHidden>,
+            Without<bevy::ui::Node>,
+            Without<renzora::core::HideInHierarchy>,
+            Without<renzora::core::EditorCamera>,
+        ),
+    >,
+    mut gated: Query<(
+        Entity,
+        &mut Visibility,
+        &mut renzora::core::ViewportGateHidden,
+    )>,
+    parents: Query<&ChildOf>,
+    chrome: Query<(), With<renzora::core::HideInHierarchy>>,
+) {
+    let any_docked = viewports.slots.iter().any(|s| s.docked);
+
+    if any_docked {
+        for (entity, mut vis, gate) in &mut gated {
+            *vis = gate.0;
+            commands
+                .entity(entity)
+                .remove::<renzora::core::ViewportGateHidden>();
+        }
+        return;
+    }
+
+    // Hide newly-eligible entities. Editor chrome tags only its root with
+    // `HideInHierarchy`, so named descendants need the ancestor walk (same
+    // shape as scene_io's `has_hidden_ancestor`).
+    for (entity, mut vis) in &mut candidates {
+        if *vis == Visibility::Hidden {
+            continue;
+        }
+        let mut cursor = entity;
+        let mut is_chrome = false;
+        while let Ok(child_of) = parents.get(cursor) {
+            let parent = child_of.parent();
+            if chrome.get(parent).is_ok() {
+                is_chrome = true;
+                break;
+            }
+            cursor = parent;
+        }
+        if is_chrome {
+            continue;
+        }
+        commands
+            .entity(entity)
+            .insert(renzora::core::ViewportGateHidden(*vis));
+        *vis = Visibility::Hidden;
+    }
+
+    // Re-hide marked entities a save or hierarchy toggle made visible again,
+    // adopting the current value as the new authored state.
+    for (_, mut vis, mut gate) in &mut gated {
+        if *vis != Visibility::Hidden {
+            gate.0 = *vis;
+            *vis = Visibility::Hidden;
         }
     }
 }

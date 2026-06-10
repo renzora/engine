@@ -392,11 +392,19 @@ pub fn extract_geometry_samples(
     // culled → cache empty. Symptom: SDF GI silently broken until the
     // user toggled some other camera, which shifted archetype order
     // and accidentally selected a useful pivot.
-    let camera_pos = cameras
+    //
+    // No inject-active camera at all (GI off, or every viewport hidden) →
+    // skip the flatten + upload entirely. Baked `MeshVoxelSamples` persist
+    // on entities, so without this gate the editor kept re-uploading up to
+    // 6.4 MB of samples every frame even when nothing consumed them.
+    let Some(camera_pos) = cameras
         .iter()
         .find(|(_, v)| v.inject_active)
         .map(|(t, _)| t.translation())
-        .unwrap_or(Vec3::ZERO);
+    else {
+        commands.insert_resource(ExtractedGeometrySamples(Vec::new()));
+        return;
+    };
     let cull_sq = CULL_RADIUS * CULL_RADIUS;
 
     // Preallocate so push doesn't reallocate. Worst case it's a bit

@@ -93,11 +93,31 @@ impl ExtractComponent for VoxelCacheView {
 /// even when GI is otherwise off).
 pub fn sync_voxel_cache_views(
     mut commands: Commands,
-    cameras: Query<(Entity, Option<&LumenLighting>), With<Camera3d>>,
+    cameras: Query<
+        (
+            Entity,
+            Option<&LumenLighting>,
+            Option<&renzora::core::ViewportCamera>,
+        ),
+        With<Camera3d>,
+    >,
+    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
 ) {
-    for (entity, settings) in &cameras {
+    for (entity, settings, viewport) in &cameras {
+        // Editor viewport cameras only feed the voxel cache while their panel
+        // is actually visible. The slot-0 camera stays active even when its
+        // panel isn't docked (it hosts the atmosphere/IBL probe and only gets
+        // a token-size target — see renzora_viewport); without this gate it
+        // kept the full resolution-independent voxel pipeline (clear + inject
+        // + downsample + per-frame CPU sample upload) running behind
+        // viewport-less workspaces. Non-viewport cameras (game runtime) have
+        // no `ViewportCamera` and are unaffected.
+        let visible = match (viewport, viewports.as_ref()) {
+            (Some(vc), Some(vp)) => vp.slots.get(vc.0).is_some_and(|s| s.docked),
+            _ => true,
+        };
         let (inject_active, debug_active) = match settings {
-            Some(s) => {
+            Some(s) if visible => {
                 let inject = matches!(
                     s.quality,
                     LumenQuality::SdfLow | LumenQuality::SdfHigh | LumenQuality::Hwrt
@@ -105,7 +125,7 @@ pub fn sync_voxel_cache_views(
                 let debug = matches!(s.debug, LumenDebug::VoxelCache);
                 (inject, debug)
             }
-            None => (false, false),
+            _ => (false, false),
         };
         // `try_insert` (not `insert`): this command is applied at end-of-
         // schedule, and a camera can be despawned in between — e.g. opening a

@@ -159,9 +159,17 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 .and_then(|reg| reg.entity_type_name(world, entity));
             let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
             let label_color = world.get::<EntityLabelColor>(entity).map(|c| c.0);
+            // While the viewport gate has the scene force-hidden (no viewport
+            // panel visible), the eye icon shows the *authored* visibility the
+            // gate stashed, not the temporary `Hidden` override.
             let is_visible = world
-                .get::<Visibility>(entity)
-                .map(|v| *v != Visibility::Hidden)
+                .get::<renzora::core::ViewportGateHidden>(entity)
+                .map(|g| g.0 != Visibility::Hidden)
+                .or_else(|| {
+                    world
+                        .get::<Visibility>(entity)
+                        .map(|v| *v != Visibility::Hidden)
+                })
                 .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
             let is_default_camera = world.get::<renzora::core::DefaultCamera>(entity).is_some();
