@@ -185,6 +185,49 @@ copy_std() {
     return 0
 }
 
+# ── Helper: make a macOS dist folder relocatable ─────────────────────────────
+# rustc records each dylib's absolute build path (/app/src/target/...) as its
+# install name, so the exe and plugins would ask dyld for those container
+# paths at runtime. Rewrite every id and build-path reference to
+# @rpath/<name>: the exe already carries an @loader_path rpath (so deps
+# resolve next to it), and plugins get @loader_path/.. so their deps resolve
+# in the exe dir one level up. libstd already ships as @rpath (its id is
+# rewritten to the same value).
+#
+# install_name_tool invalidates the linker's ad-hoc code signature, and arm64
+# macOS kills binaries with invalid signatures — so every touched file is
+# re-signed ad-hoc with rcodesign afterwards.
+fixup_macos() {
+    local OUT="$1"
+    local INT OTOOL RCS
+    INT=$(ls /opt/osxcross/target/bin/*-install_name_tool 2>/dev/null | head -1 || true)
+    OTOOL=$(ls /opt/osxcross/target/bin/*-otool 2>/dev/null | head -1 || true)
+    RCS=$(command -v rcodesign || true)
+    if [ -z "$INT" ] || [ -z "$OTOOL" ]; then
+        echo "WARN: cctools not found; macOS dist keeps build-path install names"
+        return 0
+    fi
+    [ -z "$RCS" ] && echo "WARN: rcodesign not found; macOS arm64 binaries will have invalid signatures"
+
+    local f dep
+    for f in "$OUT/renzora" "$OUT/renzora-runtime" "$OUT"/*.dylib "$OUT"/plugins/*.dylib; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            *.dylib) "$INT" -id "@rpath/$(basename "$f")" "$f" ;;
+        esac
+        for dep in $("$OTOOL" -L "$f" | awk 'NR>1 {print $1}' | grep -E '^/.*/target/' || true); do
+            "$INT" -change "$dep" "@rpath/$(basename "$dep")" "$f"
+        done
+        case "$f" in
+            "$OUT"/plugins/*.dylib) "$INT" -add_rpath "@loader_path/.." "$f" 2>/dev/null || true ;;
+        esac
+        if [ -n "$RCS" ]; then
+            "$RCS" sign "$f" >/dev/null 2>&1 || echo "WARN: rcodesign failed on $f"
+        fi
+    done
+    return 0
+}
+
 # ── Build a desktop target ───────────────────────────────────────────────────
 # Usage: build_desktop <feature> <rust-target|native> <platform-name> <ext>
 # Returns non-zero if the cargo compile fails.
@@ -261,10 +304,12 @@ build_one() {
             copy_std "windows-x64" "$FEATURE" "x86_64-pc-windows-msvc"    "std-*.dll" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
-            copy_std "macos-x64"   "$FEATURE" "x86_64-apple-darwin"       "libstd-*.dylib" ;;
+            copy_std "macos-x64"   "$FEATURE" "x86_64-apple-darwin"       "libstd-*.dylib"
+            fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
-            copy_std "macos-arm64" "$FEATURE" "aarch64-apple-darwin"      "libstd-*.dylib" ;;
+            copy_std "macos-arm64" "$FEATURE" "aarch64-apple-darwin"      "libstd-*.dylib"
+            fixup_macos "$OUTPUT_DIR/macos-arm64" ;;
         *)
             echo "WARN: unknown desktop platform '$PLATFORM'"; return 1 ;;
     esac
@@ -320,15 +365,95 @@ DESKTOP
     return 0
 }
 
+# ── Wrap a macOS editor output into a .app bundle ────────────────────────────
+# Mirrors the Linux AppImage wrap: the flat dist files move INTO the bundle
+# (exe + SDK dylibs + plugins/ under Contents/MacOS, so the @rpath /
+# @loader_path layout from fixup_macos keeps working unchanged), plus an
+# Info.plist and an icns built from icon.png. Runs after fixup_macos — the
+# files are already signed, and moving them preserves signatures.
+wrap_macos_app() {
+    local OUT="$OUTPUT_DIR/$1"
+    [ -f "$OUT/renzora" ] || return 0
+
+    local APP="$OUT/Renzora Engine.app"
+    local MACOS_DIR="$APP/Contents/MacOS"
+    local RES_DIR="$APP/Contents/Resources"
+    rm -rf "$APP"
+    mkdir -p "$MACOS_DIR/plugins" "$RES_DIR"
+
+    mv "$OUT/renzora" "$MACOS_DIR/renzora"
+    local f
+    for f in "$OUT"/*.dylib; do [ -f "$f" ] && mv "$f" "$MACOS_DIR/"; done
+    if [ -d "$OUT/plugins" ]; then
+        for f in "$OUT/plugins"/*.dylib; do [ -f "$f" ] && mv "$f" "$MACOS_DIR/plugins/"; done
+        rmdir "$OUT/plugins" 2>/dev/null || true
+    fi
+
+    # icns from icon.png: an icns is just a header plus typed PNG chunks, so a
+    # single-size icon needs no Apple tooling. Chunk type is keyed off the
+    # PNG's pixel width (256 -> ic08 today; the map covers other sizes).
+    if [ -f icon.png ] && command -v python3 >/dev/null 2>&1; then
+        python3 - icon.png "$RES_DIR/renzora.icns" <<'PY' || echo "WARN: icns generation failed"
+import struct, sys
+png = open(sys.argv[1], 'rb').read()
+w = struct.unpack('>I', png[16:20])[0]
+typ = {16:'icp4',32:'icp5',64:'icp6',128:'ic07',256:'ic08',512:'ic09',1024:'ic10'}.get(w)
+if not typ:
+    sys.exit(f'unsupported icon size {w}')
+chunk = typ.encode() + struct.pack('>I', len(png) + 8) + png
+open(sys.argv[2], 'wb').write(b'icns' + struct.pack('>I', len(chunk) + 8) + chunk)
+PY
+    fi
+
+    cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>            <string>Renzora Engine</string>
+    <key>CFBundleDisplayName</key>     <string>Renzora Engine</string>
+    <key>CFBundleIdentifier</key>      <string>org.renzora.engine</string>
+    <key>CFBundleExecutable</key>      <string>renzora</string>
+    <key>CFBundleIconFile</key>        <string>renzora</string>
+    <key>CFBundlePackageType</key>     <string>APPL</string>
+    <key>CFBundleVersion</key>         <string>0.2.0</string>
+    <key>CFBundleShortVersionString</key> <string>0.2.0</string>
+    <key>LSMinimumSystemVersion</key>  <string>11.0</string>
+    <key>NSHighResolutionCapable</key> <true/>
+</dict>
+</plist>
+PLIST
+
+    # Sign the assembled bundle: inside a .app, codesign verifies the main
+    # executable under bundle rules (sealed _CodeResources), so the per-file
+    # ad-hoc signatures from fixup_macos aren't sufficient for it.
+    if command -v rcodesign >/dev/null 2>&1; then
+        rcodesign sign "$APP" >/dev/null 2>&1 || echo "WARN: bundle signing failed for $APP"
+    else
+        echo "WARN: rcodesign not found; $APP is unsigned and arm64 macOS will refuse to launch it"
+    fi
+
+    echo "Built $APP"
+    return 0
+}
+
 # ── Lane: build one feature across every requested desktop platform ──────────
 lane_desktop_feature() {
     local FEATURE="$1" p
     for p in "${DESKTOP_PLATFORMS[@]}"; do
         build_one "$p" "$FEATURE" || return 1
     done
-    # AppImage wrapping only applies to the editor on Linux.
-    if [ "$FEATURE" = "editor" ] && array_contains "$LINUX_PLATFORM" "${DESKTOP_PLATFORMS[@]}"; then
-        wrap_linux_appimage || return 1
+    # Bundle wrapping only applies to the editor (AppImage / .app).
+    if [ "$FEATURE" = "editor" ]; then
+        if array_contains "$LINUX_PLATFORM" "${DESKTOP_PLATFORMS[@]}"; then
+            wrap_linux_appimage || return 1
+        fi
+        if array_contains "macos-x64" "${DESKTOP_PLATFORMS[@]}"; then
+            wrap_macos_app macos-x64 || return 1
+        fi
+        if array_contains "macos-arm64" "${DESKTOP_PLATFORMS[@]}"; then
+            wrap_macos_app macos-arm64 || return 1
+        fi
     fi
     return 0
 }

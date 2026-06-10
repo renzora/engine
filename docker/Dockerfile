@@ -262,6 +262,12 @@ RUN UPX_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo arm64_linux || echo amd64_l
     && chmod +x /usr/local/bin/upx \
     && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-${UPX_ARCH}
 
+# ── rcodesign: ad-hoc signing for macOS arm64 binaries ──────────────────────
+# build-all.sh rewrites dylib install names after the build, which invalidates
+# the linker's ad-hoc signature; arm64 macOS refuses to run such binaries, so
+# the fixup re-signs with rcodesign. Pure Rust, runs on any host arch.
+RUN cargo install apple-codesign --locked
+
 # ── Cargo linker config ─────────────────────────────────────────────────────
 WORKDIR /app
 RUN DARWIN_VER=$(cat /tmp/darwin_ver) && \
