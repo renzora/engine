@@ -255,7 +255,36 @@ impl DockTree {
             false
         }
     }
+
+    /// Split the WHOLE tree against one edge: the new panel gets a full-height
+    /// column (`Left`/`Right`) or full-width row (`Top`/`Bottom`) spanning the
+    /// entire dock, regardless of the existing split structure. This is the
+    /// edge/corner-drop gesture; `Center` (not a root gesture) just adds the
+    /// panel as a tab in the first leaf.
+    pub fn split_root(&mut self, new_panel: String, zone: DropZone) {
+        if self.is_empty() {
+            *self = DockTree::leaf(new_panel);
+            return;
+        }
+        if matches!(zone, DropZone::Center) {
+            self.focus_or_add_panel(&new_panel);
+            return;
+        }
+        let old = std::mem::replace(self, DockTree::Empty);
+        let new_leaf = DockTree::leaf(new_panel);
+        *self = match zone {
+            DropZone::Left => DockTree::horizontal(new_leaf, old, ROOT_DOCK_RATIO),
+            DropZone::Right => DockTree::horizontal(old, new_leaf, 1.0 - ROOT_DOCK_RATIO),
+            DropZone::Top => DockTree::vertical(new_leaf, old, ROOT_DOCK_RATIO),
+            DropZone::Bottom => DockTree::vertical(old, new_leaf, 1.0 - ROOT_DOCK_RATIO),
+            DropZone::Center => unreachable!(),
+        };
+    }
 }
+
+/// Share of the dock a root-edge drop claims for the new panel — a side rail,
+/// not a half split, since the gesture targets toolbars/inspectors.
+const ROOT_DOCK_RATIO: f32 = 0.2;
 
 /// Where a dragged panel will land on a leaf.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,6 +468,12 @@ struct TabClose;
 #[derive(Component)]
 struct DropOverlay;
 
+/// The dock-wide drop preview for root edge/corner docking — a single overlay
+/// child of the [`DockArea`] node, shown while a drag targets a full-height /
+/// full-width root split. Recreated on every dock rebuild.
+#[derive(Component)]
+struct RootDropOverlay;
+
 #[derive(Component)]
 struct TabBarOf(Entity);
 
@@ -496,6 +531,8 @@ struct TabDragState {
 
 enum DropAction {
     Split { rep: String, zone: DropZone },
+    /// Full-height / full-width split against the whole dock (edge/corner drop).
+    RootSplit { zone: DropZone },
     Tab { rep: String, before: Option<String> },
 }
 
@@ -639,6 +676,11 @@ fn tab_drag(
     tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
     tabbars: Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
     mut leaves: Query<(Entity, &mut DockLeaf, &bevy::ui::RelativeCursorPosition)>,
+    area: Query<
+        (&bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode),
+        With<DockArea>,
+    >,
+    root_overlay: Query<Entity, With<RootDropOverlay>>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
 ) {
@@ -744,14 +786,31 @@ fn tab_drag(
     }
 
     let mut action: Option<DropAction> = None;
-    let mut new_overlay: Option<(Entity, DropZone)> = None;
+    // (overlay entity, zone, is_root) — root hits use the dock-wide overlay
+    // with `set_root_zone_rect`, leaf hits the leaf overlay with `set_zone_rect`.
+    let mut new_overlay: Option<(Entity, DropZone, bool)> = None;
     let mut new_marker: Option<(Entity, bool)> = None;
+
+    // Root edge/corner hit, in dock-local logical px. Corners outrank tab
+    // bars (the top edge is lined with them); plain edge bands don't.
+    let root_hit = area.single().ok().and_then(|(rcp, computed)| {
+        if !rcp.cursor_over {
+            return None;
+        }
+        let norm = rcp.normalized?;
+        let size = computed.size() * computed.inverse_scale_factor();
+        pick_root_zone((norm.x + 0.5) * size.x, (norm.y + 0.5) * size.y, size)
+    });
+    let root_overlay_e = root_overlay.iter().next();
 
     let over_bar = tabbars
         .iter()
         .find(|(_, _, rcp)| rcp.cursor_over)
         .map(|(_, bar, _)| bar.0);
-    if let Some(leaf_ent) = over_bar {
+    if let (Some((zone, true)), Some(overlay)) = (root_hit, root_overlay_e) {
+        action = Some(DropAction::RootSplit { zone });
+        new_overlay = Some((overlay, zone, true));
+    } else if let Some(leaf_ent) = over_bar {
         if let Some((_, ld, _)) = leaves.iter().find(|(e, _, _)| *e == leaf_ent) {
             let mut before: Option<String> = None;
             let mut marker: Option<(Entity, bool)> = None;
@@ -779,6 +838,9 @@ fn tab_drag(
                 new_marker = marker;
             }
         }
+    } else if let (Some((zone, false)), Some(overlay)) = (root_hit, root_overlay_e) {
+        action = Some(DropAction::RootSplit { zone });
+        new_overlay = Some((overlay, zone, true));
     } else {
         for (_, ld, rcp) in &leaves {
             if rcp.cursor_over {
@@ -791,7 +853,7 @@ fn tab_drag(
                         } else {
                             DropAction::Split { rep, zone }
                         });
-                        new_overlay = Some((ld.overlay, zone));
+                        new_overlay = Some((ld.overlay, zone, false));
                     }
                 }
                 break;
@@ -800,7 +862,7 @@ fn tab_drag(
     }
     state.action = action;
 
-    let new_overlay_e = new_overlay.map(|(e, _)| e);
+    let new_overlay_e = new_overlay.map(|(e, _, _)| e);
     if state.shown_overlay != new_overlay_e {
         if let Some(old) = state.shown_overlay {
             if let Ok(mut n) = nodes.get_mut(old) {
@@ -809,10 +871,14 @@ fn tab_drag(
         }
         state.shown_overlay = new_overlay_e;
     }
-    if let Some((e, zone)) = new_overlay {
+    if let Some((e, zone, is_root)) = new_overlay {
         if let Ok(mut n) = nodes.get_mut(e) {
             n.display = Display::Flex;
-            set_zone_rect(&mut n, zone);
+            if is_root {
+                set_root_zone_rect(&mut n, zone);
+            } else {
+                set_zone_rect(&mut n, zone);
+            }
         }
     }
 
@@ -873,6 +939,60 @@ fn spawn_ghost(commands: &mut Commands, font: &Handle<Font>, id: &str, cursor: V
     ghost
 }
 
+/// Corner squares this big (logical px) at the dock's four corners always
+/// root-dock — even over a tab bar, so the gesture stays reachable along the
+/// top edge. Inside a corner, the nearer edge wins: closer to the side →
+/// full-height column, closer to the top/bottom → full-width row.
+const ROOT_CORNER_PX: f32 = 48.0;
+/// Thin bands along the dock's left/right/bottom edges that also root-dock
+/// (lower priority than tab bars). No top band: the topmost tab bars line
+/// that edge and tab drops there are far more common — the top corners still
+/// give access to a full-width top dock.
+const ROOT_EDGE_BAND_PX: f32 = 16.0;
+
+/// Root edge/corner hit-test over the whole dock area. `(x, y)` is the cursor
+/// in dock-local logical px, `size` the dock's logical size. Returns the root
+/// zone and whether it was a corner hit (corners outrank tab bars).
+fn pick_root_zone(x: f32, y: f32, size: Vec2) -> Option<(DropZone, bool)> {
+    if x < 0.0 || y < 0.0 || x > size.x || y > size.y {
+        return None;
+    }
+    let (dl, dr) = (x, size.x - x);
+    let (dt, db) = (y, size.y - y);
+    let dx = dl.min(dr);
+    let dy = dt.min(db);
+    let zone_x = if dl <= dr { DropZone::Left } else { DropZone::Right };
+    let zone_y = if dt <= db { DropZone::Top } else { DropZone::Bottom };
+    if dx <= ROOT_CORNER_PX && dy <= ROOT_CORNER_PX {
+        // Corner: the diagonal decides between the column and the row.
+        return Some((if dx <= dy { zone_x } else { zone_y }, true));
+    }
+    if dx <= ROOT_EDGE_BAND_PX {
+        return Some((zone_x, false));
+    }
+    if dy <= ROOT_EDGE_BAND_PX && matches!(zone_y, DropZone::Bottom) {
+        return Some((zone_y, false));
+    }
+    None
+}
+
+/// Preview rect for a root edge drop — mirrors the `ROOT_DOCK_RATIO` the split
+/// will actually use, so the highlight shows the real resulting area.
+fn set_root_zone_rect(n: &mut Node, zone: DropZone) {
+    let r = ROOT_DOCK_RATIO * 100.0;
+    let (l, t, w, h) = match zone {
+        DropZone::Center => (0.0, 0.0, 100.0, 100.0),
+        DropZone::Left => (0.0, 0.0, r, 100.0),
+        DropZone::Right => (100.0 - r, 0.0, r, 100.0),
+        DropZone::Top => (0.0, 0.0, 100.0, r),
+        DropZone::Bottom => (0.0, 100.0 - r, 100.0, r),
+    };
+    n.left = Val::Percent(l);
+    n.top = Val::Percent(t);
+    n.width = Val::Percent(w);
+    n.height = Val::Percent(h);
+}
+
 fn pick_zone(x: f32, y: f32) -> DropZone {
     const EDGE: f32 = 0.25;
     if x < EDGE {
@@ -921,6 +1041,10 @@ fn apply_action(tree: &mut DockTree, dragged: &str, action: DropAction) {
             }
             tree.remove_panel(dragged);
             tree.split_at(&rep, dragged.to_string(), zone);
+        }
+        DropAction::RootSplit { zone } => {
+            tree.remove_panel(dragged);
+            tree.split_root(dragged.to_string(), zone);
         }
         DropAction::Tab { rep, before } => {
             tree.remove_panel(dragged);
@@ -975,6 +1099,33 @@ fn rebuild_dock(
         &mut preserved,
     );
     commands.entity(area_entity).add_child(tree_root);
+
+    // Root drop overlay + cursor tracking for edge/corner docking. Added after
+    // the tree so the overlay draws on top; recreated with every rebuild (the
+    // child-despawn above took the previous one).
+    commands
+        .entity(area_entity)
+        .insert(bevy::ui::RelativeCursorPosition::default());
+    let root_overlay = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                border: UiRect::all(Val::Px(2.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(rgb(accent())),
+            bevy::ui::FocusPolicy::Pass,
+            RootDropOverlay,
+            Name::new("root-drop-overlay"),
+        ))
+        .id();
+    commands.entity(area_entity).add_child(root_overlay);
 
     // Any preserved content not reused (its panel no longer exists) → despawn.
     for (_, content) in preserved.drain() {
