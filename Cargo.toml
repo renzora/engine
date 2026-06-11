@@ -130,3 +130,13 @@ strip = "symbols"
 
 [lints]
 workspace = true
+
+# Replace lightyear's (never-enabled) optional Steam transport with an empty
+# stub so the vulnerable `steamworks 0.12` chain (RUSTSEC-2026-0121) drops out
+# of Cargo.lock — there is no semver-compatible upgrade path while
+# aeronet_steam 0.19 pins `steamworks ^0.12`. Cargo locks every optional dep
+# of every resolved crate, enabled or not, so without the patch the alert
+# sticks around despite the code never being compiled. Details + revert
+# instructions in crates/stubs/lightyear_steam.
+[patch.crates-io]
+lightyear_steam = { path = "crates/stubs/lightyear_steam" }
