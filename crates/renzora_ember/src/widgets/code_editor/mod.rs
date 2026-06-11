@@ -17,7 +17,7 @@ use crate::theme::*;
 
 mod binding;
 mod edit;
-mod highlight;
+pub(crate) mod highlight;
 mod systems;
 
 pub use binding::{bind_code, CodeBindingSpec};
