@@ -1,0 +1,174 @@
+{
+  "version": "r1-alpha5",
+  "label": "Renzora Documentation",
+  "description": "Start with the basics for making games. Flip on Advanced for engine internals and the full API.",
+  "groups": [
+    {
+      "group": "Using the Engine",
+      "level": "basic",
+      "categories": [
+        {
+          "category": "Getting Started",
+          "pages": [
+            { "slug": "getting-started/installation", "title": "Installation" },
+            { "slug": "getting-started/editor-overview", "title": "Editor Tour" },
+            { "slug": "getting-started/first-project", "title": "Your First Project" },
+            { "slug": "getting-started/concepts", "title": "Core Concepts" }
+          ]
+        },
+        {
+          "category": "The Editor",
+          "pages": [
+            { "slug": "editor/scenes", "title": "Scenes & Hierarchy" },
+            { "slug": "editor/inspector", "title": "Inspector" },
+            { "slug": "editor/viewport", "title": "Viewport & Camera" },
+            { "slug": "editor/materials", "title": "Material Editor" },
+            { "slug": "editor/terrain", "title": "Terrain" },
+            { "slug": "editor/animation", "title": "Animation" },
+            { "slug": "editor/audio", "title": "Audio" },
+            { "slug": "editor/shortcuts", "title": "Keyboard Shortcuts" }
+          ]
+        },
+        {
+          "category": "Adding Behavior",
+          "pages": [
+            { "slug": "scripting/overview", "title": "Scripting Overview" },
+            { "slug": "scripting/blueprints", "title": "Visual Blueprints" },
+            { "slug": "scripting/input", "title": "Input Handling" },
+            { "slug": "scripting/physics", "title": "Physics" },
+            { "slug": "scripting/game-ui", "title": "Game UI" }
+          ]
+        },
+        {
+          "category": "Multiplayer",
+          "pages": [
+            { "slug": "multiplayer/overview", "title": "Overview" },
+            { "slug": "multiplayer/server-setup", "title": "Server Setup" },
+            { "slug": "multiplayer/replication", "title": "State Replication" }
+          ]
+        },
+        {
+          "category": "Publishing Your Game",
+          "pages": [
+            { "slug": "exporting/overview", "title": "Export Overview" },
+            { "slug": "exporting/windows", "title": "Windows" },
+            { "slug": "exporting/linux", "title": "Linux" },
+            { "slug": "exporting/macos", "title": "macOS" },
+            { "slug": "exporting/android", "title": "Android" },
+            { "slug": "exporting/ios", "title": "iOS" }
+          ]
+        },
+        {
+          "category": "Marketplace",
+          "pages": [
+            { "slug": "marketplace/browsing", "title": "Browsing & Installing" },
+            { "slug": "marketplace/publishing", "title": "Publishing Assets" },
+            { "slug": "marketplace/credits", "title": "Credits System" }
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Scripting Reference",
+      "level": "advanced",
+      "categories": [
+        {
+          "category": "Languages & API",
+          "pages": [
+            { "slug": "scripting/lua", "title": "Lua" },
+            { "slug": "scripting/rhai", "title": "Rhai" },
+            { "slug": "api/scripting", "title": "Scripting API" },
+            { "slug": "api/blueprint-nodes", "title": "Blueprint Node API" },
+            { "slug": "api/material", "title": "Material API" }
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Engine Internals",
+      "level": "advanced",
+      "categories": [
+        {
+          "category": "Setup",
+          "pages": [
+            { "slug": "setup/building-from-source", "title": "Building from Source" },
+            { "slug": "setup/project-structure", "title": "Project Structure" },
+            { "slug": "setup/architecture", "title": "Architecture" }
+          ]
+        },
+        {
+          "category": "Engine Core",
+          "pages": [
+            { "slug": "engine-core/ecs", "title": "ECS & Bevy" },
+            { "slug": "engine-core/components", "title": "Creating Components" },
+            { "slug": "engine-core/systems", "title": "Writing Systems" },
+            { "slug": "engine-core/resources", "title": "Resources & State" },
+            { "slug": "engine-core/asset-pipeline", "title": "Asset Pipeline" }
+          ]
+        },
+        {
+          "category": "Editor Development",
+          "pages": [
+            { "slug": "editor-dev/panels", "title": "Building Editor Panels" },
+            { "slug": "editor-dev/widgets", "title": "Custom Widgets" },
+            { "slug": "editor-dev/theming", "title": "Theming System" },
+            { "slug": "editor-dev/inspector-fields", "title": "Custom Inspector Fields" }
+          ]
+        },
+        {
+          "category": "Extending",
+          "pages": [
+            { "slug": "extending/plugins", "title": "Building Plugins" },
+            { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
+            { "slug": "extending/script-bindings", "title": "Script API Bindings" },
+            { "slug": "extending/post-processing", "title": "Post-Processing Effects" },
+            { "slug": "extending/material-nodes", "title": "Custom Material Nodes" }
+          ]
+        },
+        {
+          "category": "Rendering",
+          "pages": [
+            { "slug": "rendering/pipeline", "title": "Render Pipeline" },
+            { "slug": "rendering/shaders", "title": "WGSL Shaders" },
+            { "slug": "rendering/camera", "title": "Camera System" }
+          ]
+        },
+        {
+          "category": "Export & Packaging",
+          "pages": [
+            { "slug": "packaging/export-templates", "title": "Building Export Templates" },
+            { "slug": "packaging/cross-compilation", "title": "Cross-Compilation" },
+            { "slug": "packaging/asset-packing", "title": "Asset Packing (rpak)" }
+          ]
+        },
+        {
+          "category": "Contributing",
+          "pages": [
+            { "slug": "contributing/guide", "title": "Contributing Guide" },
+            { "slug": "contributing/code-style", "title": "Code Style" },
+            { "slug": "contributing/testing", "title": "Testing" }
+          ]
+        }
+      ]
+    },
+    {
+      "group": "Platform API",
+      "level": "advanced",
+      "categories": [
+        {
+          "category": "REST & WebSocket API",
+          "pages": [
+            { "slug": "platform-api/authentication", "title": "Authentication" },
+            { "slug": "platform-api/rate-limits", "title": "Rate Limits" },
+            { "slug": "platform-api/marketplace", "title": "Marketplace API" },
+            { "slug": "platform-api/game-services", "title": "Game Services API" },
+            { "slug": "platform-api/credits", "title": "Credits API" },
+            { "slug": "platform-api/websocket", "title": "WebSocket API" },
+            { "slug": "platform-api/messaging", "title": "Messaging API" },
+            { "slug": "platform-api/feed", "title": "Feed API" }
+          ]
+        }
+      ]
+    }
+  ]
+}

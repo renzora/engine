@@ -1,0 +1,228 @@
+# Building Editor Panels
+
+Add panels to the Renzora editor with three small `App` extension methods — no egui, no traits to implement, just bevy_ui.
+
+## The model: native bevy_ui, not a panel trait
+
+The editor shell is **bevy_ui-native** (`renzora_shell::ShellPlugin`). The reusable dock model — `DockTree`, splits, tabs, drag-docking, drop zones — lives in `renzora_ember::dock`; the shell supplies the per-workspace layouts and chrome (menu bar, ribbon, document-tab strip, status bar). A panel is therefore just a tree of ordinary `bevy_ui` entities (`Node`, `Text`, `BackgroundColor`, …) built into a dock leaf, plus a little metadata so the dock and the Add-Panel picker know about it.
+
+Panels are contributed by **editor-scope plugins**. The editor itself is the removable `renzora_editor` cdylib bundle that loads beside the engine binary; an editor plugin registers itself with `renzora::add!(MyPlugin, Editor)` and is replayed into the app when the bundle is installed. (See *Plugins & ABI* for how scopes and the bundle work.)
+
+> ⚠️ There is **no `EditorPanel` trait, no `register_panel`/`register_panel_with_persistence`, and no `EditorCommands`.** egui and `bevy_egui` were removed from the engine entirely. Any doc or example showing `impl EditorPanel`, `egui::Window`, or a `&egui::Context` is from a dead API — ignore it. Panels are plain bevy_ui, and you mutate the world from systems and reactive closures with normal `&mut World` / `Commands` access.
+
+## The three registration APIs
+
+| Method | Trait | What it does |
+|---|---|---|
+| `register_shell_panel(id, title, icon, category)` | `renzora::RenzoraShellExt` | Registers panel **metadata** in `renzora::ShellPanelRegistry`, populating the dock tab label/icon and the Add-Panel `+` picker. |
+| `register_panel_content(id, scroll, build_fn)` | `renzora_ember::panel::RegisterPanelContent` | Registers the **content builder** (real bevy_ui entities) and marks the id in `renzora::NativePanelIds` so the shell skips its placeholder. |
+| `register_shell_status_item(item)` | `renzora::RenzoraShellExt` | Adds a per-frame **status-bar segment** to `renzora::ShellStatusRegistry`. |
+
+A normal panel uses the first two together: one call for metadata, one for content. Status items are independent of panels.
+
+> The shell pre-seeds metadata for ~55 built-in panels from its internal `PANEL_META` table, so most engine panels only call `register_panel_content`. A plugin that calls `register_shell_panel` for an id **wins** over the seeded default — that is how you contribute a brand-new panel.
+
+### `register_shell_panel` — metadata
+
+```rust
+fn register_shell_panel(
+    &mut self,
+    id: impl Into<String>,
+    title: impl Into<String>,   // shown on the dock tab + picker
+    icon: impl Into<String>,    // kebab-case Phosphor icon name (e.g. "sparkle")
+    category: impl Into<String>,// groups the entry in the Add-Panel picker
+) -> &mut Self;
+```
+
+`icon` is a Phosphor glyph **name** (resolved via `renzora_ember::font::icon_glyph`), not a glyph or a path. `category` is a free-form string ("Scene", "Editing", "Debug", "Tutorial", …) used only to group the picker.
+
+### `register_panel_content` — content
+
+```rust
+fn register_panel_content<F>(&mut self, id: &str, scroll: bool, build: F) -> &mut Self
+where
+    F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static;
+```
+
+- `scroll` — `true` wraps your content in a scroll view; pass `false` if the panel scrolls itself.
+- `build` — returns the **root entity** of your content. It runs **once**, the first time the panel's tab is activated. Everything after that is driven by the reactive layer (next section), so you do *not* rebuild every frame.
+- `EmberFonts` carries the three editor fonts: `fonts.ui`, `fonts.phosphor`, `fonts.mono`.
+
+Calling this also registers the id with `NativePanelIds`, so the shell stops drawing its generic placeholder for that id and lets your build own the dock leaf's `content` entity.
+
+### `register_shell_status_item` — status bar
+
+```rust
+pub struct ShellStatusItem {
+    pub id: &'static str,
+    pub align: ShellStatusAlign,            // Left | Right
+    pub order: i32,                         // sort within the side
+    pub render: fn(&World) -> Vec<ShellStatusSegment>,
+}
+
+impl ShellStatusSegment {
+    pub fn new(icon: impl Into<String>, text: impl Into<String>, color: [u8; 3]) -> Self;
+}
+```
+
+`render` runs **every frame** with `&World`, so live metrics update without re-registering. Each `ShellStatusSegment` is an optional Phosphor icon name + text + an RGB color.
+
+## A complete panel
+
+A custom panel is one editor-scope plugin that makes both calls in `build()`. This example shows an "Entity Count" panel that displays a live count, kept in sync with `bind_text`.
+
+```rust
+use bevy::prelude::*;
+use renzora::RenzoraShellExt;                       // register_shell_panel
+use renzora_ember::panel::RegisterPanelContent;     // register_panel_content
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::reactive::bind_text;
+use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
+
+const PANEL_ID: &str = "entity_count";
+
+#[derive(Default)]
+pub struct EntityCountPanelPlugin;
+
+impl Plugin for EntityCountPanelPlugin {
+    fn build(&self, app: &mut App) {
+        // 1. Metadata → dock tab + Add-Panel picker.
+        app.register_shell_panel(PANEL_ID, "Entity Count", "list-numbers", "Debug");
+        // 2. Content → built once when first shown.
+        app.register_panel_content(PANEL_ID, true, build_content);
+    }
+}
+
+fn build_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let root = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            padding: UiRect::all(Val::Px(16.0)),
+            ..default()
+        })
+        .id();
+
+    let icon = icon_text(commands, &fonts.phosphor, "list-numbers", accent(), 18.0);
+
+    let label = commands
+        .spawn((
+            Text::new("Entities:"),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+
+    // This Text entity is rebound every frame by bind_text below.
+    let value = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.mono, 13.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+
+    bind_text(commands, value, |world: &World| {
+        format!("{}", world.entities().len())
+    });
+
+    commands.entity(root).add_children(&[icon, label, value]);
+    root
+}
+
+// Editor-scope: this plugin is replayed into the app by the renzora_editor bundle.
+renzora::add!(EntityCountPanelPlugin, Editor);
+```
+
+Note `use renzora::RenzoraShellExt;` — import the trait directly. There is **no `renzora::prelude`**; use `use renzora::*;` or import individual items.
+
+## Reactive content
+
+Because `build_content` runs only once, you wire dynamic parts with helpers from `renzora_ember::reactive`. Each takes the target entity and a `Fn(&World) -> _` closure that the reactive layer evaluates each frame and applies only on change:
+
+| Helper | Closure returns | Effect |
+|---|---|---|
+| `bind_text(commands, entity, f)` | `String` | Updates the entity's `Text` |
+| `bind_text_color(commands, entity, f)` | `Color` | Updates its `TextColor` |
+| `bind_display(commands, entity, f)` | `bool` | Shows/hides the entity (`Node` display) |
+| `keyed_list(commands, container, f)` | `KeyedSnapshot` | Diff-rebuilds a dynamic child list |
+
+For variable-length content (a list of items), return a `KeyedSnapshot`: a stable key + content hash per row plus a per-index `build` closure. The reactive layer only respawns rows whose key/hash changed.
+
+```rust
+use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+
+// `list` is a column Node spawned in build_content.
+keyed_list(commands, list, |world: &World| {
+    let names: Vec<String> = collect_entity_names(world);
+    let items = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(name, &mut h);
+            (i as u64, std::hash::Hasher::finish(&h)) // (stable key, content hash)
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, fonts, i| {
+            c.spawn((
+                Text::new(names[i].clone()),
+                renzora_ember::font::ui_font(&fonts.ui, 12.0),
+            ))
+            .id()
+        }),
+    }
+});
+```
+
+> To **mutate** the world from a panel (spawn, despawn, change a selection), do it from your plugin's own systems or from an interaction callback that receives `&mut World` — not from the build closure, which only constructs UI. Bindings read the world; systems write it.
+
+## A status-bar item
+
+Status items don't need a panel. Register one `ShellStatusItem` whose `render` returns the current segments:
+
+```rust
+use bevy::prelude::*;
+use renzora::{RenzoraShellExt, ShellStatusAlign, ShellStatusItem, ShellStatusSegment};
+
+#[derive(Default)]
+pub struct FpsStatusPlugin;
+
+impl Plugin for FpsStatusPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_shell_status_item(ShellStatusItem {
+            id: "fps_status",
+            align: ShellStatusAlign::Right,
+            order: 0,
+            render: fps_segments,
+        });
+    }
+}
+
+fn fps_segments(world: &World) -> Vec<ShellStatusSegment> {
+    let fps = world
+        .get_resource::<bevy::diagnostic::DiagnosticsStore>()
+        .and_then(|d| d.get(&bevy::diagnostic::FrameTimeDiagnosticsPlugin::FPS))
+        .and_then(|f| f.average())
+        .unwrap_or(0.0);
+
+    let color = if fps >= 55.0 { [100, 200, 100] }
+        else if fps >= 30.0 { [220, 180, 50] }
+        else { [220, 80, 80] };
+
+    vec![ShellStatusSegment::new("speedometer", format!("{fps:.0} FPS"), color)]
+}
+
+renzora::add!(FpsStatusPlugin, Editor);
+```
+
+## Where panels appear
+
+Registering a panel does **not** force it into a layout. The metadata makes it available in the dock tab strip's **+** (Add-Panel) picker, grouped by `category`; the user docks it where they like. Built-in workspaces (Scene, Blueprints, Scripting, Animation, Materials, Particles, Debug, Gallery) are eight separate `DockTree`s the shell ships and the user can reorder, rename, and add to. The live layout persists per workspace.
+
+If you want a panel docked by default, add it to a workspace layout rather than relying on the picker; otherwise the **+** picker is how users bring it in (this is exactly what the tutorial's throwaway "Demo Panel" does — registered but deliberately not pre-docked).
+
+> Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
