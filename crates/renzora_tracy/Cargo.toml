@@ -1,0 +1,25 @@
+[package]
+name = "renzora_tracy"
+version = "0.1.0"
+edition = "2021"
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/`
+# directory at startup. Delete the dylib and the engine carries no
+# profiler code at all.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen"]
+dlopen = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# Direct Tracy protocol client (no tracing layer needed). The protocol
+# version must match the Tracy server build you connect with.
+tracy-client = "0.18"
+
+[lints]
+workspace = true
