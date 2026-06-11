@@ -1,0 +1,29 @@
+[package]
+name = "renzora_ai_chat"
+version = "0.1.0"
+edition = "2021"
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# dynamic_plugin_loader picks up from the engine's plugins/ directory at
+# startup. Adds an "AI Chat" panel that streams from a local Ollama
+# server — delete the dylib and the editor carries no AI code at all.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen"]
+dlopen = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_ember = { path = "../renzora_ember" }
+# Blocking HTTP on a worker thread (same client the auth/hub crates use).
+ureq = "3"
+# Native folder picker for the docs-folder setting.
+rfd = "0.15"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true
