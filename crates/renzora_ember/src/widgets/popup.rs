@@ -105,9 +105,15 @@ pub(crate) fn update_pointer_over_overlay(
 
 /// Tag every [`Popup`]'s panel as an [`OverlaySurface`] (and give it a
 /// `RelativeCursorPosition` if it lacks one) so it blocks pass-through.
+/// `try_insert`: a popup spawned inside a UI subtree that is torn down the
+/// same frame (keyed-list/inspector rebuilds) has a dead panel by the time
+/// this command applies — same race the `screen_menu` spawn-time tagging
+/// avoids.
 pub(crate) fn tag_popup_panels(q: Query<&Popup, Added<Popup>>, mut commands: Commands) {
     for p in &q {
-        commands.entity(p.panel).insert((OverlaySurface, RelativeCursorPosition::default()));
+        commands
+            .entity(p.panel)
+            .try_insert((OverlaySurface, RelativeCursorPosition::default()));
     }
 }
 
