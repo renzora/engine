@@ -12,6 +12,8 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 # Editor settings + undo/redo hooks + project handlers for the top-bar menus.
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+# Native file picker for "File → Install Plugin…".
+rfd = "0.15"
 # Document-tab + workspace-layout model (DocumentTabState etc.), shared with the
 # egui editor so both render the same open documents.
 renzora_ui = { path = "../renzora_ui" }

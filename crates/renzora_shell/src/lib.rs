@@ -19,6 +19,7 @@ use renzora_ember::theme::{
 use renzora_ember::EmberPlugin;
 
 pub mod dock;
+mod plugin_install;
 
 use dock::DockTree;
 
@@ -53,6 +54,7 @@ impl Plugin for ShellPlugin {
                 content_dispatch,
                 (top_menu_open, top_menu_hover, top_menu_sync),
                 settings_btn_click,
+                plugin_install::install_buttons,
                 palette_btn_click,
                 theme_bridge,
                 apply_chrome_style,
@@ -2112,6 +2114,10 @@ fn build_menu_items(
             menu_sep(commands),
             menu_item(commands, fonts, "package", "Export Project…", |w| {
                 w.insert_resource(renzora::core::ExportRequested);
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "plug", "Install Plugin…", |w| {
+                crate::plugin_install::open_install_dialog(w)
             }),
             menu_sep(commands),
             menu_item(commands, fonts, "gear", "Settings", |w| {
