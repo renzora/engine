@@ -165,20 +165,41 @@ pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntim
     }
 }
 
-/// Reap any running child when the editor decides to exit. Without this
-/// the runtime would be orphaned: on Windows a child isn't tied to its
-/// parent's lifetime by default, and on Linux/macOS the same is true
-/// without an explicit job/process group.
+/// Reap any running child when the editor decides to exit, then leave the
+/// process immediately. Without the reap the runtime would be orphaned: on
+/// Windows a child isn't tied to its parent's lifetime by default, and on
+/// Linux/macOS the same is true without an explicit job/process group.
 ///
 /// Reads `AppExit` events rather than firing on `Drop` because by the
 /// time the `App` is being torn down, ECS resources are already gone.
+///
+/// The `std::process::exit` is deliberate: letting the editor unwind
+/// normally tears down the whole World on the main thread — FreeLibrary of
+/// the editor bundle + plugin dlls, wgpu device destruction, worker-thread
+/// cleanup — which stalls for tens of seconds ("Not Responding" on Windows,
+/// "didn't close properly" on macOS). None of that teardown does anything
+/// the OS doesn't already do at process exit, and nothing in the engine
+/// saves state from a `Drop` impl (saves happen on user action; the one
+/// AppExit consumer is this system). Runs in `Last`, after every system in
+/// the final frame. Set `RENZORA_FULL_TEARDOWN=1` to get the old unwinding
+/// exit back when debugging teardown itself.
 pub fn kill_on_app_exit(
     mut exits: MessageReader<bevy::app::AppExit>,
     mut runtime: ResMut<ExternalRuntime>,
 ) {
-    if exits.read().next().is_some() {
-        kill_runtime(&mut runtime);
+    let Some(exit) = exits.read().last().cloned() else {
+        return;
+    };
+    kill_runtime(&mut runtime);
+    if std::env::var_os("RENZORA_FULL_TEARDOWN").is_some() {
+        return;
     }
+    let code = match exit {
+        bevy::app::AppExit::Success => 0,
+        bevy::app::AppExit::Error(n) => i32::from(n.get()),
+    };
+    info!("[exit] fast exit (code {code})");
+    std::process::exit(code);
 }
 
 /// How long winit waits between forced wakeups while the editor is paused.
