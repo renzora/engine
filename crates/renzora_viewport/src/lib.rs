@@ -692,7 +692,7 @@ fn gate_scene_visibility(
             *vis = gate.0;
             commands
                 .entity(entity)
-                .remove::<renzora::core::ViewportGateHidden>();
+                .try_remove::<renzora::core::ViewportGateHidden>();
         }
         return;
     }
@@ -719,7 +719,7 @@ fn gate_scene_visibility(
         }
         commands
             .entity(entity)
-            .insert(renzora::core::ViewportGateHidden(*vis));
+            .try_insert(renzora::core::ViewportGateHidden(*vis));
         *vis = Visibility::Hidden;
     }
 
