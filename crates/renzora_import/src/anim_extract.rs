@@ -149,11 +149,12 @@ pub fn extract_animations_from_glb(
             continue;
         }
 
-        let clip = AnimClip {
+        let mut clip = AnimClip {
             name: clip_name.clone(),
             duration,
             tracks,
         };
+        crate::anim_decimate::decimate_clip(&mut clip);
 
         // Sanitize filename
         let safe_name: String = clip_name

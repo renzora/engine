@@ -470,7 +470,29 @@ fn import_worker(
                         label: format!("Extracting animations from {}", file_name),
                     });
                     let anim_dir = model_dir.join("animations");
-                    match renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir) {
+                    // Where the keyframes live depends on the source format:
+                    // glTF/GLB conversion is passthrough, so its animations are
+                    // still embedded in the GLB we just built — but the FBX/USD
+                    // converters only emit geometry, skins and materials, so
+                    // their animations exist *only* in the source file and must
+                    // be sampled from there.
+                    let src_ext = source_path
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    let anim_result = match src_ext.as_str() {
+                        "fbx" => renzora_import::extract_animations_from_fbx(
+                            source_path,
+                            &anim_dir,
+                            &settings,
+                        ),
+                        "usd" | "usda" | "usdc" | "usdz" => {
+                            renzora_import::extract_animations_from_usd(source_path, &anim_dir)
+                        }
+                        _ => renzora_import::extract_animations_from_glb(&glb_bytes, &anim_dir),
+                    };
+                    match anim_result {
                         Ok(anim_result) => {
                             for anim_path in &anim_result.written_files {
                                 let _ = tx.send(ImportMsg::Log(ImportLogEntry {

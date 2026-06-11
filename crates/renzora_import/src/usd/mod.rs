@@ -327,7 +327,8 @@ pub fn extract_animations_from_usd(
     let mut warnings = stage.warnings.clone();
 
     for anim in &stage.animations {
-        let clip = animation::to_anim_clip(anim);
+        let mut clip = animation::to_anim_clip(anim);
+        crate::anim_decimate::decimate_clip(&mut clip);
 
         if clip.tracks.is_empty() {
             warnings.push(format!("Animation '{}' has no tracks, skipping", clip.name));

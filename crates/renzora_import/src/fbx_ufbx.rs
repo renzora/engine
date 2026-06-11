@@ -492,11 +492,19 @@ pub fn extract_animations(
             continue;
         }
 
-        let clip = AnimClip {
+        let mut clip = AnimClip {
             name: clip_name.clone(),
             duration: duration_f as f32,
             tracks,
         };
+        let dropped = crate::anim_decimate::decimate_clip(&mut clip);
+        if dropped > 0 {
+            log::info!(
+                "[import] decimated {} redundant keys from '{}'",
+                dropped,
+                clip_name
+            );
+        }
 
         let safe_name: String = clip_name
             .chars()

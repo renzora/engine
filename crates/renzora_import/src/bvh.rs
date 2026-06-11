@@ -46,7 +46,8 @@ pub fn extract_animations_from_bvh(
     std::fs::create_dir_all(output_dir)
         .map_err(|e| format!("Failed to create output dir: {}", e))?;
 
-    let clip = bvh_to_clip(&bvh);
+    let mut clip = bvh_to_clip(&bvh);
+    crate::anim_decimate::decimate_clip(&mut clip);
     let file_name = path
         .file_stem()
         .and_then(|s| s.to_str())

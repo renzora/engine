@@ -389,11 +389,12 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
             continue;
         }
 
-        let clip = AnimClip {
+        let mut clip = AnimClip {
             name: clip_name.clone(),
             duration,
             tracks,
         };
+        crate::anim_decimate::decimate_clip(&mut clip);
 
         let safe_name: String = clip_name
             .chars()

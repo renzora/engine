@@ -3,6 +3,7 @@
 //! Supports GLTF/GLB (passthrough), OBJ, STL, PLY, FBX, and USD/USDZ formats.
 //! All formats are converted to GLB for use in Bevy.
 
+pub mod anim_decimate;
 pub mod anim_extract;
 pub mod compact;
 mod convert;
