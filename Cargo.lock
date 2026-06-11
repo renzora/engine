@@ -8682,6 +8682,7 @@ dependencies = [
  "renzora_animation",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_inspector",
  "renzora_theme",
  "ron 0.8.1",
 ]

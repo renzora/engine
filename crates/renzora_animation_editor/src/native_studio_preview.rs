@@ -12,7 +12,7 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text_color, bind_with};
+use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::theme::*;
 
 use crate::studio_preview::{
@@ -151,7 +151,66 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    commands.entity(img_box).add_child(img);
+
+    // Hint overlay: the studio backdrop always renders, so when no model is
+    // cloned into it, float a guidance chip over the empty set instead of
+    // leaving the user staring at bare floor.
+    let hint = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    let chip = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    let chip_ic = icon_text(commands, &fonts.phosphor, "cursor-click", text_muted(), 18.0);
+    commands.entity(chip_ic).insert(bevy::picking::Pickable::IGNORE);
+    let chip_lbl = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    bind_text(commands, chip_lbl, |w| {
+        let selected = w
+            .get_resource::<crate::AnimationEditorState>()
+            .and_then(|s| s.selected_entity);
+        match selected {
+            None => "Select an animated entity in the Hierarchy\nto preview it here".into(),
+            Some(_) => "No model found for this entity —\nselect a model entity to preview it here".into(),
+        }
+    });
+    commands.entity(chip).add_children(&[chip_ic, chip_lbl]);
+    commands.entity(hint).add_child(chip);
+    bind_display(commands, hint, |w| {
+        w.get_resource::<StudioPreviewTracker>().is_some_and(|t| !t.has_model)
+    });
+
+    commands.entity(img_box).add_children(&[img, hint]);
 
     commands.entity(body).add_children(&[toolbar, img_box]);
     commands.entity(root).add_children(&[empty, body]);

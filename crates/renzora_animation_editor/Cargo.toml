@@ -10,6 +10,7 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = "../renzora_ember" }
 renzora_animation = { path = "../renzora_animation" }
+renzora_inspector = { path = "../renzora_inspector" }
 ron = "0.8"
 
 [lints]

@@ -18,7 +18,7 @@ use bevy::scene::{SceneInstanceReady, SceneRoot};
 use bevy::window::PrimaryWindow;
 
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
-use renzora_animation::{AnimClipSlot, AnimatorComponent};
+use renzora_animation::AnimatorComponent;
 use renzora_editor_framework::EditorSelection;
 use renzora_ui::asset_drag::AssetDragPayload;
 
@@ -589,67 +589,7 @@ fn discover_animation_clips(
     asset_path: &str,
     project: Option<&CurrentProject>,
 ) -> Option<AnimatorComponent> {
-    let project = project?;
-    // Model is e.g. "models/Man.glb" → look in "models/animations/"
-    let model_dir = std::path::Path::new(asset_path)
-        .parent()
-        .unwrap_or(std::path::Path::new(""));
-    let anim_dir_abs = project.path.join(model_dir).join("animations");
-
-    if !anim_dir_abs.is_dir() {
-        return None;
-    }
-
-    let mut clips = Vec::new();
-    let mut entries: Vec<_> = std::fs::read_dir(&anim_dir_abs)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "anim"))
-        .collect();
-    entries.sort_by_key(|e| e.file_name());
-
-    for entry in entries {
-        let file_path = entry.path();
-        let stem = file_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("clip")
-            .to_string();
-
-        // Asset-relative path: e.g. "models/animations/HumanArmature_Man_Idle.anim"
-        let anim_asset_path = model_dir
-            .join("animations")
-            .join(entry.file_name())
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        clips.push(AnimClipSlot {
-            name: stem,
-            path: anim_asset_path,
-            looping: true,
-            speed: 1.0,
-            blend_in: None,
-            blend_out: None,
-        });
-    }
-
-    if clips.is_empty() {
-        return None;
-    }
-
-    let default_clip = clips
-        .iter()
-        .find(|c| c.name.to_lowercase().contains("idle"))
-        .or(clips.first())
-        .map(|c| c.name.clone());
-
-    Some(AnimatorComponent {
-        clips,
-        default_clip,
-        blend_duration: 0.2,
-        state_machine: None,
-        layers: Vec::new(),
-    })
+    renzora_animation::discover_animation_clips(asset_path, &project?.path)
 }
 
 /// System: once child meshes have AABBs, offset the parent so its bottom sits on the ground.

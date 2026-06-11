@@ -104,14 +104,38 @@ fn ready(w: &World) -> bool {
     animator(w).is_some_and(|a| !a.clips.is_empty())
 }
 
-fn empty_msg(w: &World) -> String {
+fn empty_headline(w: &World) -> String {
+    let Some(e) = selected_entity(w) else {
+        return "No entity selected".into();
+    };
+    let has_model = w
+        .get::<renzora::core::MeshInstanceData>(e)
+        .is_some_and(|m| m.model_path.is_some());
+    let clip_count = w
+        .get::<AnimatorComponent>(e)
+        .map(|a| a.clips.len())
+        .unwrap_or(0);
+    if clip_count == 0 && !has_model {
+        "This entity has no model".into()
+    } else if clip_count == 0 {
+        "No animation clips yet".into()
+    } else {
+        String::new()
+    }
+}
+
+fn empty_hint(w: &World) -> String {
     match selected_entity(w) {
-        None => "Select an entity with AnimatorComponent".into(),
-        Some(e) => match w.get::<AnimatorComponent>(e) {
-            None => "No AnimatorComponent".into(),
-            Some(a) if a.clips.is_empty() => "No animation clips".into(),
-            Some(_) => String::new(),
-        },
+        None if crate::setup::scene_has_candidates(w) => {
+            "Pick an entity below, or select one in the Hierarchy.".into()
+        }
+        None => {
+            "Import an animated model (FBX or GLB) — its animations are\nextracted to .anim files and picked up automatically.".into()
+        }
+        Some(_) if crate::setup::can_scan_clips(w) => {
+            "Scan the model's folder for extracted .anim clips.".into()
+        }
+        Some(_) => "Animations play on model entities. Pick one below.".into(),
     }
 }
 
@@ -131,14 +155,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Empty state (no entity / no component / no clips).
+    // Empty state (no entity / no component / no clips) — a guided setup
+    // block: contextual headline + hint, a "Scan for clips" action when the
+    // selected entity has a model, and a clickable list of animation
+    // candidates in the scene when nothing (useful) is selected.
     let note = commands
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
-            row_gap: Val::Px(4.0),
-            padding: UiRect::vertical(Val::Px(28.0)),
+            row_gap: Val::Px(8.0),
+            padding: UiRect::axes(Val::Px(10.0), Val::Px(24.0)),
             ..default()
         })
         .id();
@@ -146,13 +173,41 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let note_lbl = commands
         .spawn((
             Text::new(""),
-            ui_font(&fonts.ui, 12.0),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+        ))
+        .id();
+    bind_text(commands, note_lbl, empty_headline);
+    let hint_lbl = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
         ))
         .id();
-    bind_text(commands, note_lbl, empty_msg);
-    commands.entity(note).add_children(&[note_ic, note_lbl]);
+    bind_text(commands, hint_lbl, empty_hint);
+
+    let scan_btn = crate::setup::action_button(
+        commands,
+        fonts,
+        "magnifying-glass",
+        "Scan for clips",
+        crate::setup::ScanClipsBtn,
+    );
+    bind_display(commands, scan_btn, crate::setup::can_scan_clips);
+
+    let feedback = crate::setup::feedback_label(commands, fonts);
+
+    let candidates = crate::setup::candidates_list(commands);
+    bind_display(commands, candidates, |w| {
+        !ready(w) && !crate::setup::can_scan_clips(w)
+    });
+
+    commands
+        .entity(note)
+        .add_children(&[note_ic, note_lbl, hint_lbl, scan_btn, feedback, candidates]);
     bind_display(commands, note, |w| !ready(w));
 
     // Body: collapsible sections.

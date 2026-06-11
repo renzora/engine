@@ -11,6 +11,7 @@
 
 use std::hash::{Hash, Hasher};
 
+use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
@@ -34,6 +35,7 @@ pub struct NativeAnimTimeline;
 impl Plugin for NativeAnimTimeline {
     fn build(&self, app: &mut App) {
         app.init_resource::<NativeAnimClip>();
+        app.init_resource::<KeyDragState>();
         app.register_panel_content("timeline", false, build);
         app.add_systems(
             Update,
@@ -42,20 +44,116 @@ impl Plugin for NativeAnimTimeline {
                 anim_btn_click,
                 speed_btn_click,
                 clip_combo_open,
+                // key_drag must run before anim_sync so a freshly-started key
+                // drag suppresses the scrub layer the same frame.
+                key_drag,
                 anim_sync,
                 update_anim_play_icon,
+                key_context_menu,
+                save_clip_click,
+                timeline_wheel_zoom,
             )
+                .chain()
                 .run_if(in_state(SplashState::Editor)),
         );
     }
 }
 
 /// Disk-loaded copy of the currently selected clip, reloaded when the
-/// `(entity, clip)` selection changes. Drives the header + keyframe snapshots.
+/// `(entity, clip)` selection changes. Drives the header + keyframe snapshots,
+/// and doubles as the edit buffer: keyframe drags/deletes mutate `clip` in
+/// place and set `dirty` until the Save button flushes it back to `path`.
 #[derive(Resource, Default)]
 struct NativeAnimClip {
     key: Option<(Entity, String)>,
     clip: Option<AnimClip>,
+    /// Absolute path of the loaded `.anim` (save target).
+    path: Option<std::path::PathBuf>,
+    /// Unsaved keyframe edits pending.
+    dirty: bool,
+}
+
+impl NativeAnimClip {
+    /// Mutable access to one channel's `(time, value-len)` key vector, erased
+    /// over the channel value types via the times-only view the editor needs.
+    fn channel_times(&mut self, ti: usize, ch: u8) -> Option<ChannelTimes<'_>> {
+        let track = self.clip.as_mut()?.tracks.get_mut(ti)?;
+        Some(match ch {
+            0 => ChannelTimes::T(&mut track.translations),
+            1 => ChannelTimes::R(&mut track.rotations),
+            _ => ChannelTimes::S(&mut track.scales),
+        })
+    }
+}
+
+/// Borrowed view over a single keyframe channel — lets the drag/delete systems
+/// edit times without caring about the per-channel value payload type.
+enum ChannelTimes<'a> {
+    T(&'a mut Vec<(f32, [f32; 3])>),
+    R(&'a mut Vec<(f32, [f32; 4])>),
+    S(&'a mut Vec<(f32, [f32; 3])>),
+}
+
+impl ChannelTimes<'_> {
+    fn time(&self, idx: usize) -> Option<f32> {
+        match self {
+            ChannelTimes::T(v) | ChannelTimes::S(v) => v.get(idx).map(|k| k.0),
+            ChannelTimes::R(v) => v.get(idx).map(|k| k.0),
+        }
+    }
+    fn set_time(&mut self, idx: usize, t: f32) {
+        match self {
+            ChannelTimes::T(v) | ChannelTimes::S(v) => {
+                if let Some(k) = v.get_mut(idx) {
+                    k.0 = t;
+                }
+            }
+            ChannelTimes::R(v) => {
+                if let Some(k) = v.get_mut(idx) {
+                    k.0 = t;
+                }
+            }
+        }
+    }
+    fn remove(&mut self, idx: usize) {
+        match self {
+            ChannelTimes::T(v) | ChannelTimes::S(v) => {
+                if idx < v.len() {
+                    v.remove(idx);
+                }
+            }
+            ChannelTimes::R(v) => {
+                if idx < v.len() {
+                    v.remove(idx);
+                }
+            }
+        }
+    }
+    fn sort(&mut self) {
+        match self {
+            ChannelTimes::T(v) | ChannelTimes::S(v) => {
+                v.sort_by(|a, b| a.0.total_cmp(&b.0));
+            }
+            ChannelTimes::R(v) => v.sort_by(|a, b| a.0.total_cmp(&b.0)),
+        }
+    }
+}
+
+/// In-flight keyframe drag. Survives the keyed-list rebuilding the dragged
+/// node mid-drag (the rebuild drops `Interaction` state, so the drag is
+/// tracked against the raw mouse button instead).
+#[derive(Resource, Default)]
+struct KeyDragState {
+    active: Option<KeyDrag>,
+}
+
+struct KeyDrag {
+    track: usize,
+    channel: u8,
+    index: usize,
+    start_cursor_x: f32,
+    orig_time: f32,
+    moved: bool,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -79,6 +177,14 @@ struct ClipCombo;
 struct AnimPlayIcon;
 #[derive(Component)]
 struct AnimTimeline;
+#[derive(Component)]
+struct SaveClipBtn;
+/// Marker + cursor tracking on the timeline's absolute clips layer. Keyframe
+/// picking is done by math against the clip data (cursor → time/track), NOT
+/// via per-diamond `Interaction` — the widget's scrub overlay sits above the
+/// clips layer and would swallow per-node hits.
+#[derive(Component)]
+struct KeyLane;
 
 // ── Accessors ──────────────────────────────────────────────────────────────────
 
@@ -97,13 +203,15 @@ fn ready(w: &World) -> bool {
 fn empty_msg(w: &World) -> String {
     let Some(s) = state(w) else { return String::new() };
     if s.selected_entity.is_none() {
-        "Select an entity with animations".into()
-    } else if s.selected_entity.and_then(|e| w.get::<AnimatorComponent>(e)).is_none() {
-        "No AnimatorComponent on selected entity".into()
-    } else if s.selected_entity.and_then(|e| w.get::<AnimatorComponent>(e)).is_some_and(|a| a.clips.is_empty()) {
-        "No animation clips assigned".into()
+        "Select an animated entity in the Hierarchy".into()
+    } else if s
+        .selected_entity
+        .and_then(|e| w.get::<AnimatorComponent>(e))
+        .is_none_or(|a| a.clips.is_empty())
+    {
+        "No clips on this entity — use \"Scan for clips\" in the Animation panel".into()
     } else if s.selected_clip.is_none() {
-        "Select a clip to edit".into()
+        "Choose a clip from the toolbar's clip menu above".into()
     } else {
         "Loading clip…".into()
     }
@@ -139,7 +247,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Shared timeline shell.
     let tl = timeline_view(commands, fonts);
-    commands.entity(tl.root).insert(AnimTimeline);
+    commands
+        .entity(tl.root)
+        .insert((AnimTimeline, RelativeCursorPosition::default()));
+    // The clips layer doubles as the keyframe hit-test surface.
+    commands
+        .entity(tl.clips)
+        .insert((KeyLane, RelativeCursorPosition::default()));
     bind_display(commands, tl.root, ready);
 
     let htitle = commands.spawn((Text::new("Bones"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
@@ -223,6 +337,13 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         rgb(if on { accent() } else { text_muted() })
     });
 
+    // Save — accent-colored while there are unsaved keyframe edits.
+    let (save_b, save_ic) = icon_btn(commands, fonts, "floppy-disk", text_muted(), SaveClipBtn);
+    bind_text_color(commands, save_ic, |w| {
+        let dirty = w.get_resource::<NativeAnimClip>().is_some_and(|c| c.dirty);
+        rgb(if dirty { accent() } else { text_muted() })
+    });
+
     let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
 
     let time = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary())))).id();
@@ -240,7 +361,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, sep1, loop_b, sep2, combo, sep3, speed_lbl];
     kids.extend(speed_btns);
-    kids.extend([sep4, snap_b, gap, time, zoom_out, zoom_lbl, zoom_in]);
+    kids.extend([sep4, snap_b, save_b, gap, time, zoom_out, zoom_lbl, zoom_in]);
     commands.entity(bar).add_children(&kids);
     bar
 }
@@ -309,59 +430,168 @@ fn channel_letter(commands: &mut Commands, fonts: &EmberFonts, ch: &str, active:
     commands.spawn((Text::new(ch.to_string()), ui_font(&fonts.ui, 9.0), TextColor(rgb(col)))).id()
 }
 
+/// One renderable timeline element after clustering.
+#[derive(Clone, Copy)]
+enum KeyElem {
+    /// A lone (editable) keyframe: (track, channel, key index, time).
+    Key(usize, u8, usize, f32),
+    /// A run of keys denser than the cluster threshold, drawn as one bar:
+    /// (track, channel, first time, last time, count).
+    Bar(usize, u8, f32, f32, usize),
+}
+
+/// Keys closer together than this many pixels merge into a bar. Baked 30 Hz
+/// captures render as clean per-channel range bars instead of a wall of
+/// overlapping diamonds; zooming in past the threshold reveals (editable)
+/// individual keys.
+const CLUSTER_PX: f32 = 9.0;
+/// How far past the visible window keys are still spawned, in pixels.
+const CULL_MARGIN_PX: f32 = 64.0;
+/// Upper bound on the lane width used for culling — the actual panel is
+/// narrower, so this only ever over-includes slightly.
+const MAX_LANE_PX: f32 = 4096.0;
+
+/// Cluster one channel's sorted key list into renderable elements, culled to
+/// the visible window.
+fn cluster_channel(
+    out: &mut Vec<KeyElem>,
+    ti: usize,
+    ch: u8,
+    times: impl Iterator<Item = f32>,
+    zoom: f32,
+    t_min: f32,
+    t_max: f32,
+) {
+    let gap = CLUSTER_PX / zoom;
+    // (first index, first time, last time, count) of the open cluster.
+    let mut run: Option<(usize, f32, f32, usize)> = None;
+    let flush = |out: &mut Vec<KeyElem>, run: (usize, f32, f32, usize)| {
+        let (i0, t0, t1, n) = run;
+        if n >= 3 {
+            out.push(KeyElem::Bar(ti, ch, t0, t1, n));
+        } else {
+            for k in 0..n {
+                // 1–2 keys: emit individually.
+                let t = if k == 0 { t0 } else { t1 };
+                out.push(KeyElem::Key(ti, ch, i0 + k, t));
+            }
+        }
+    };
+    for (idx, t) in times.enumerate() {
+        if t < t_min - gap || t > t_max + gap {
+            // Outside the window — close any open run that ended in view.
+            if let Some(r) = run.take() {
+                flush(out, r);
+            }
+            continue;
+        }
+        match run.as_mut() {
+            Some((_, _, last, n)) if t - *last <= gap => {
+                *last = t;
+                *n += 1;
+            }
+            Some(_) => {
+                let r = run.take().unwrap();
+                flush(out, r);
+                run = Some((idx, t, t, 1));
+            }
+            None => run = Some((idx, t, t, 1)),
+        }
+    }
+    if let Some(r) = run.take() {
+        flush(out, r);
+    }
+}
+
 fn keyframe_snapshot(world: &World) -> KeyedSnapshot {
     let Some(clip) = cur_clip(world) else { return empty() };
     let Some(s) = state(world) else { return empty() };
     let (zoom, scroll, th) = (s.timeline_zoom, s.timeline_scroll, s.track_height);
-    // (track_idx, channel, time): channel 0=T, 1=R, 2=S
-    let mut keys: Vec<(usize, u8, f32)> = Vec::new();
+    let t_min = scroll - CULL_MARGIN_PX / zoom;
+    let t_max = scroll + (MAX_LANE_PX + CULL_MARGIN_PX) / zoom;
+
+    let mut elems: Vec<KeyElem> = Vec::new();
     for (ti, track) in clip.tracks.iter().enumerate() {
-        for &(time, _) in &track.translations {
-            keys.push((ti, 0, time));
-        }
-        for &(time, _) in &track.rotations {
-            keys.push((ti, 1, time));
-        }
-        for &(time, _) in &track.scales {
-            keys.push((ti, 2, time));
-        }
+        cluster_channel(&mut elems, ti, 0, track.translations.iter().map(|k| k.0), zoom, t_min, t_max);
+        cluster_channel(&mut elems, ti, 1, track.rotations.iter().map(|k| k.0), zoom, t_min, t_max);
+        cluster_channel(&mut elems, ti, 2, track.scales.iter().map(|k| k.0), zoom, t_min, t_max);
     }
-    let items: Vec<(u64, u64)> = keys
+
+    let items: Vec<(u64, u64)> = elems
         .iter()
         .enumerate()
-        .map(|(i, (ti, ch, time))| {
+        .map(|(i, e)| {
             let mut k = hasher();
-            (i, ti, ch).hash(&mut k);
+            i.hash(&mut k);
             let mut h = hasher();
-            (time.to_bits(), zoom.to_bits(), scroll.to_bits(), th.to_bits()).hash(&mut h);
+            match e {
+                KeyElem::Key(ti, ch, idx, time) => {
+                    (0u8, ti, ch, idx, time.to_bits()).hash(&mut h)
+                }
+                KeyElem::Bar(ti, ch, t0, t1, n) => {
+                    (1u8, ti, ch, t0.to_bits(), t1.to_bits(), n).hash(&mut h)
+                }
+            }
+            (zoom.to_bits(), scroll.to_bits(), th.to_bits()).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, _f, i| {
-            let (ti, ch, time) = keys[i];
-            diamond(c, ti, ch, time, zoom, scroll, th)
+        build: Box::new(move |c, _f, i| match elems[i] {
+            KeyElem::Key(ti, ch, idx, time) => diamond(c, ti, ch, idx, time, zoom, scroll, th),
+            KeyElem::Bar(ti, ch, t0, t1, _) => key_bar(c, ti, ch, t0, t1, zoom, scroll, th),
         }),
     }
 }
 
-fn diamond(commands: &mut Commands, ti: usize, ch: u8, time: f32, zoom: f32, scroll: f32, th: f32) -> Entity {
-    let kf = (th * 0.38).clamp(4.0, 14.0);
-    let half = kf * 0.5;
+/// Per-channel vertical placement within a track lane.
+fn channel_y(ti: usize, ch: u8, th: f32) -> (f32, (u8, u8, u8)) {
     let off = (th * 0.26).min(14.0);
     let center = ti as f32 * th + th * 0.5;
-    let (color, y) = match ch {
-        0 => (TRANSLATION, center - off),
-        1 => (ROTATION, center),
-        _ => (SCALE, center + off),
-    };
+    match ch {
+        0 => (center - off, TRANSLATION),
+        1 => (center, ROTATION),
+        _ => (center + off, SCALE),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn diamond(commands: &mut Commands, ti: usize, ch: u8, idx: usize, time: f32, zoom: f32, scroll: f32, th: f32) -> Entity {
+    let kf = (th * 0.38).clamp(4.0, 14.0);
+    let half = kf * 0.5;
+    let (y, color) = channel_y(ti, ch, th);
     let x = (time - scroll) * zoom;
+    let _ = idx;
     commands
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(x - half), top: Val::Px(y - half), width: Val::Px(kf), height: Val::Px(kf), ..default() },
             BackgroundColor(rgb(color)),
             UiTransform::from_rotation(Rot2::degrees(45.0)),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id()
+}
+
+/// A dense run of keys drawn as one slim rounded bar in the channel color.
+#[allow(clippy::too_many_arguments)]
+fn key_bar(commands: &mut Commands, ti: usize, ch: u8, t0: f32, t1: f32, zoom: f32, scroll: f32, th: f32) -> Entity {
+    let h = (th * 0.22).clamp(3.0, 8.0);
+    let (y, color) = channel_y(ti, ch, th);
+    let x0 = (t0 - scroll) * zoom;
+    let w = ((t1 - t0) * zoom).max(h);
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x0 - h * 0.5),
+                top: Val::Px(y - h * 0.5),
+                width: Val::Px(w + h),
+                height: Val::Px(h),
+                border_radius: BorderRadius::all(Val::Px(h * 0.5)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba_u8(color.0, color.1, color.2, 200)),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id()
@@ -389,14 +619,20 @@ fn cache_native_clip(
     if key == cache.key {
         return;
     }
+    if cache.dirty {
+        warn!("[timeline] discarding unsaved keyframe edits (clip selection changed)");
+    }
     cache.key = key.clone();
     cache.clip = None;
+    cache.path = None;
+    cache.dirty = false;
     let (Some((entity, clip_name)), Some(project)) = (key, project) else { return };
     let Ok(animator) = animators.get(entity) else { return };
     let Some(slot) = animator.clips.iter().find(|s| s.name == clip_name) else { return };
     let path = project.path.join(&slot.path);
     if let Ok(content) = std::fs::read_to_string(&path) {
         cache.clip = ron::from_str::<AnimClip>(&content).ok();
+        cache.path = Some(path);
     }
 }
 
@@ -448,6 +684,7 @@ fn anim_sync(
     state: Option<Res<AnimationEditorState>>,
     cache: Option<Res<NativeAnimClip>>,
     bridge: Option<Res<AnimEditorBridge>>,
+    drag: Res<KeyDragState>,
 ) {
     let Some(state) = state else { return };
     let clip = cache.as_ref().and_then(|c| c.clip.as_ref());
@@ -455,9 +692,13 @@ fn anim_sync(
     let tracks = clip.map(|c| c.tracks.len()).unwrap_or(0);
     for mut v in &mut q {
         v.set_geom(state.timeline_zoom, state.timeline_scroll, state.scrub_time, dur, state.track_height, tracks);
+        // A keyframe drag owns the pointer — discard the scrub the overlay
+        // reports for the same gesture so the playhead doesn't chase the key.
         if let Some(t) = v.take_scrub() {
-            if let Some(bridge) = &bridge {
-                push(bridge, AnimEditorAction::SetScrubTime(t.clamp(0.0, dur)));
+            if drag.active.is_none() {
+                if let Some(bridge) = &bridge {
+                    push(bridge, AnimEditorAction::SetScrubTime(t.clamp(0.0, dur)));
+                }
             }
         }
     }
@@ -474,6 +715,237 @@ fn update_anim_play_icon(state: Option<Res<AnimationEditorState>>, mut q: Query<
             }
         }
     }
+}
+
+// ── Keyframe editing ───────────────────────────────────────────────────────────
+
+/// Cursor position in the clips-layer's pixel space, or `None` when outside.
+fn lane_cursor(
+    lane: &Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+) -> Option<Vec2> {
+    let (rcp, cn) = lane.iter().next()?;
+    if !rcp.cursor_over {
+        return None;
+    }
+    let n = rcp.normalized?;
+    let size = cn.size() * cn.inverse_scale_factor();
+    Some((n + Vec2::splat(0.5)) * size)
+}
+
+struct PickedKey {
+    track: usize,
+    channel: u8,
+    index: usize,
+    time: f32,
+}
+
+/// Find the editable keyframe nearest to a lane-space point. Keys rendered as
+/// cluster bars (runs of 3+ within the cluster gap) are not pickable — zoom in
+/// until they split into diamonds.
+fn pick_key(clip: &AnimClip, zoom: f32, scroll: f32, th: f32, p: Vec2) -> Option<PickedKey> {
+    let radius = (th * 0.30).clamp(5.0, 10.0);
+    let gap = CLUSTER_PX / zoom.max(1.0);
+    let mut best: Option<(f32, PickedKey)> = None;
+
+    let mut scan = |ti: usize, ch: u8, times: &[f32]| {
+        let (y, _) = channel_y(ti, ch, th);
+        let dy = (p.y - y).abs();
+        if dy > radius {
+            return;
+        }
+        for (idx, &t) in times.iter().enumerate() {
+            let dx = ((t - scroll) * zoom - p.x).abs();
+            if dx > radius {
+                continue;
+            }
+            // Cluster membership: runs of 3+ render as bars, not diamonds.
+            let mut lo = idx;
+            while lo > 0 && times[lo] - times[lo - 1] <= gap && idx - lo < 3 {
+                lo -= 1;
+            }
+            let mut hi = idx;
+            while hi + 1 < times.len() && times[hi + 1] - times[hi] <= gap && hi - lo < 3 {
+                hi += 1;
+            }
+            if hi - lo + 1 > 2 {
+                continue;
+            }
+            let score = dx.max(dy);
+            if best.as_ref().is_none_or(|(s, _)| score < *s) {
+                best = Some((score, PickedKey { track: ti, channel: ch, index: idx, time: t }));
+            }
+        }
+    };
+
+    for (ti, track) in clip.tracks.iter().enumerate() {
+        let lane_top = ti as f32 * th;
+        if p.y < lane_top - radius || p.y > lane_top + th + radius {
+            continue;
+        }
+        let t_times: Vec<f32> = track.translations.iter().map(|k| k.0).collect();
+        let r_times: Vec<f32> = track.rotations.iter().map(|k| k.0).collect();
+        let s_times: Vec<f32> = track.scales.iter().map(|k| k.0).collect();
+        scan(ti, 0, &t_times);
+        scan(ti, 1, &r_times);
+        scan(ti, 2, &s_times);
+    }
+    best.map(|(_, k)| k)
+}
+
+/// Drag a keyframe diamond horizontally to retime it (snap-aware). The drag is
+/// tracked against the raw mouse button, not node `Interaction`, because the
+/// keyed list rebuilds the diamond while its time changes.
+fn key_drag(
+    mut drag: ResMut<KeyDragState>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    state: Option<Res<AnimationEditorState>>,
+    mut cache: ResMut<NativeAnimClip>,
+) {
+    let Some(state) = state else { return };
+
+    if drag.active.is_some() {
+        if !buttons.pressed(MouseButton::Left) {
+            // Drag ended — restore sorted key order for playback.
+            if let Some(d) = drag.active.take() {
+                if d.moved {
+                    if let Some(mut chan) = cache.channel_times(d.track, d.channel) {
+                        chan.sort();
+                    }
+                }
+            }
+            return;
+        }
+        let Some(p) = lane_cursor(&lane) else { return };
+        let Some(d) = drag.active.as_mut() else { return };
+        let dt = (p.x - d.start_cursor_x) / state.timeline_zoom.max(1.0);
+        let mut t = (d.orig_time + dt).max(0.0);
+        if state.snap_enabled && state.snap_interval > 0.0 {
+            t = (t / state.snap_interval).round() * state.snap_interval;
+        }
+        let (ti, ch, idx) = (d.track, d.channel, d.index);
+        if let Some(dur) = cache.clip.as_ref().map(|c| c.duration) {
+            t = t.min(dur);
+        }
+        let mut changed = false;
+        if let Some(mut chan) = cache.channel_times(ti, ch) {
+            if chan.time(idx).is_some_and(|cur| (cur - t).abs() > 1e-6) {
+                chan.set_time(idx, t);
+                changed = true;
+            }
+        }
+        if changed {
+            if let Some(d) = drag.active.as_mut() {
+                d.moved = true;
+            }
+            cache.dirty = true;
+        }
+        return;
+    }
+
+    // Begin a drag when the press lands on an editable key.
+    if !buttons.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let Some(p) = lane_cursor(&lane) else { return };
+    let Some(clip) = cache.clip.as_ref() else { return };
+    let Some(pick) = pick_key(clip, state.timeline_zoom, state.timeline_scroll, state.track_height, p)
+    else {
+        return;
+    };
+    drag.active = Some(KeyDrag {
+        track: pick.track,
+        channel: pick.channel,
+        index: pick.index,
+        start_cursor_x: p.x,
+        orig_time: pick.time,
+        moved: false,
+    });
+}
+
+/// Right-click an editable keyframe → context menu with Delete.
+fn key_context_menu(
+    buttons: Res<ButtonInput<MouseButton>>,
+    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    state: Option<Res<AnimationEditorState>>,
+    cache: Res<NativeAnimClip>,
+    mut commands: Commands,
+) {
+    if !buttons.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let (Some(fonts), Some(state)) = (fonts, state) else { return };
+    let Some(p) = lane_cursor(&lane) else { return };
+    let Some(clip) = cache.clip.as_ref() else { return };
+    let Some(pick) = pick_key(clip, state.timeline_zoom, state.timeline_scroll, state.track_height, p)
+    else {
+        return;
+    };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    let (ti, ch, idx) = (pick.track, pick.channel, pick.index);
+    let del = menu_item(&mut commands, &fonts, "trash", "Delete keyframe", move |w| {
+        if let Some(mut cache) = w.get_resource_mut::<NativeAnimClip>() {
+            if let Some(mut chan) = cache.channel_times(ti, ch) {
+                chan.remove(idx);
+            }
+            cache.dirty = true;
+        }
+    });
+    commands.entity(menu).add_children(&[del]);
+}
+
+/// Save button → flush the edit buffer back to the `.anim` file on disk.
+fn save_clip_click(
+    q: Query<&Interaction, (With<SaveClipBtn>, Changed<Interaction>)>,
+    mut cache: ResMut<NativeAnimClip>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    if !cache.dirty {
+        return;
+    }
+    let result = match (cache.clip.as_ref(), cache.path.as_ref()) {
+        (Some(clip), Some(path)) => renzora::core::write_anim_file(clip, path),
+        _ => return,
+    };
+    match result {
+        Ok(()) => {
+            cache.dirty = false;
+            info!("[timeline] saved keyframe edits");
+        }
+        Err(e) => warn!("[timeline] save failed: {}", e),
+    }
+}
+
+/// Mouse wheel over the timeline → zoom (matches the toolbar zoom buttons).
+fn timeline_wheel_zoom(
+    mut wheel: MessageReader<MouseWheel>,
+    root: Query<&RelativeCursorPosition, With<AnimTimeline>>,
+    state: Option<Res<AnimationEditorState>>,
+    bridge: Option<Res<AnimEditorBridge>>,
+) {
+    let mut dy = 0.0;
+    for ev in wheel.read() {
+        dy += ev.y;
+    }
+    if dy == 0.0 {
+        return;
+    }
+    if !root.iter().any(|r| r.cursor_over) {
+        return;
+    }
+    let (Some(state), Some(bridge)) = (state, bridge) else { return };
+    let factor = 1.15f32.powf(dy);
+    push(
+        &bridge,
+        AnimEditorAction::SetTimelineZoom((state.timeline_zoom * factor).clamp(20.0, 500.0)),
+    );
 }
 
 fn clip_combo_open(

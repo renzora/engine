@@ -48,6 +48,7 @@ pub fn sync_studio_preview_activation(
         if tracker.source_entity.is_some() {
             tracker.source_entity = None;
             tracker.auto_fitted = false;
+            tracker.has_model = false;
         }
     }
 }
@@ -119,6 +120,10 @@ pub struct StudioPreviewTracker {
     pub source_entity: Option<Entity>,
     /// Whether the orbit has been auto-fitted to the model bounds.
     pub auto_fitted: bool,
+    /// Whether a model clone is actually spawned in the studio (false when
+    /// nothing is selected or the selection has no model) — drives the
+    /// panel's hint overlay.
+    pub has_model: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +378,10 @@ pub fn sync_preview_model(
     mut tracker: ResMut<StudioPreviewTracker>,
     asset_server: Res<AssetServer>,
     mesh_query: Query<&MeshInstanceData>,
+    animator_query: Query<&renzora_animation::AnimatorComponent>,
+    parent_query: Query<&ChildOf>,
+    children_query: Query<&Children>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     existing_preview: Query<Entity, With<StudioPreviewModel>>,
 ) {
     let selected = editor_state.selected_entity;
@@ -383,6 +392,7 @@ pub fn sync_preview_model(
     }
     tracker.source_entity = selected;
     tracker.auto_fitted = false;
+    tracker.has_model = false;
 
     // Despawn old preview model
     for entity in existing_preview.iter() {
@@ -395,23 +405,19 @@ pub fn sync_preview_model(
         return;
     };
 
-    // Get the model path from the selected entity
-    let model_path = {
-        let Ok(mesh_data) = mesh_query.get(source) else {
-            warn!(
-                "[studio_preview] Selected entity {:?} has no MeshInstanceData",
-                source
-            );
-            return;
-        };
-        let Some(ref path) = mesh_data.model_path else {
-            warn!(
-                "[studio_preview] Selected entity {:?} has no model_path",
-                source
-            );
-            return;
-        };
-        path.clone()
+    let Some(model_path) = resolve_model_path(
+        source,
+        &mesh_query,
+        &animator_query,
+        &parent_query,
+        &children_query,
+        project.as_deref(),
+    ) else {
+        warn!(
+            "[studio_preview] No model path resolvable for selected entity {:?}",
+            source
+        );
+        return;
     };
 
     // Load the default scene directly from the GLB file
@@ -445,10 +451,89 @@ pub fn sync_preview_model(
         ChildOf(root),
     ));
 
+    tracker.has_model = true;
     info!(
         "[studio_preview] Loaded model '{}' into preview",
         model_path
     );
+}
+
+/// Find the GLB to preview for an arbitrary selected entity. The path is not
+/// always on the selection itself — users pick mesh children or bones, group
+/// roots hold the `MeshInstanceData`, and some animator-bearing entities have
+/// no model reference at all. Resolution order:
+/// 1. `MeshInstanceData.model_path` on the entity or any ancestor,
+/// 2. on any descendant,
+/// 3. inferred from the animator's clip paths — clips live in
+///    `<model_dir>/animations/`, so scan `<model_dir>` for a `.glb`/`.gltf`.
+fn resolve_model_path(
+    source: Entity,
+    mesh_query: &Query<&MeshInstanceData>,
+    animator_query: &Query<&renzora_animation::AnimatorComponent>,
+    parent_query: &Query<&ChildOf>,
+    children_query: &Query<&Children>,
+    project: Option<&renzora::core::CurrentProject>,
+) -> Option<String> {
+    let model_of = |e: Entity| mesh_query.get(e).ok().and_then(|m| m.model_path.clone());
+    let ancestry = |start: Entity| {
+        std::iter::successors(Some(start), |&e| parent_query.get(e).ok().map(|c| c.parent()))
+    };
+
+    // 1. Self + ancestors.
+    if let Some(path) = ancestry(source).find_map(model_of) {
+        return Some(path);
+    }
+
+    // 2. Descendants (group parents whose model lives on a child).
+    let mut stack: Vec<Entity> = children_query
+        .get(source)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
+    while let Some(e) = stack.pop() {
+        if let Some(path) = model_of(e) {
+            return Some(path);
+        }
+        if let Ok(children) = children_query.get(e) {
+            stack.extend(children.iter());
+        }
+    }
+
+    // 3. Infer from the animator's clip paths.
+    let project = project?;
+    let animator = ancestry(source).find_map(|e| animator_query.get(e).ok())?;
+    let clip_path = animator.clips.first().map(|c| c.path.clone())?;
+    let clip_dir = std::path::Path::new(&clip_path).parent()?;
+    let model_dir = if clip_dir.file_name().is_some_and(|n| n == "animations") {
+        clip_dir.parent()?
+    } else {
+        clip_dir
+    };
+    let abs_dir = project.path.join(model_dir);
+    let dir_name = model_dir.file_name().and_then(|n| n.to_str());
+    let mut fallback: Option<String> = None;
+    for entry in std::fs::read_dir(&abs_dir).ok()?.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase());
+        if !matches!(ext.as_deref(), Some("glb") | Some("gltf")) {
+            continue;
+        }
+        let rel = model_dir
+            .join(entry.file_name())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let stem_matches = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| Some(s) == dir_name);
+        if stem_matches {
+            return Some(rel);
+        }
+        fallback.get_or_insert(rel);
+    }
+    fallback
 }
 
 /// Observer: the moment any entity is parented into the studio-preview subtree

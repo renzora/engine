@@ -108,8 +108,8 @@ fn ready(w: &World) -> bool {
 
 fn empty_msg(w: &World) -> String {
     match state(w).and_then(|s| s.selected_entity) {
-        None => "Select an entity with an animator".into(),
-        Some(_) => "No AnimatorState on selected entity".into(),
+        None => "Select an animated entity in the Hierarchy".into(),
+        Some(_) => "No Animator on this entity — set one up in the Animation panel".into(),
     }
 }
 

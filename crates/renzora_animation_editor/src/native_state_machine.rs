@@ -157,11 +157,14 @@ fn project_root(w: &World) -> Option<PathBuf> {
 
 fn empty_msg(w: &World) -> String {
     match selected_entity(w) {
-        None => "Select an entity with an animator".into(),
+        None => "Select an animated entity in the Hierarchy".into(),
         Some(e) => match w.get::<AnimatorComponent>(e) {
-            None => "No AnimatorComponent on selected entity".into(),
+            None => "No Animator on this entity — set one up in the Animation panel".into(),
+            Some(a) if a.clips.is_empty() => {
+                "No clips yet — scan for clips in the Animation panel first".into()
+            }
             Some(a) if a.state_machine.is_none() => {
-                "Assign a state_machine path on the AnimatorComponent to edit.".into()
+                "A state machine drives clips with states, transitions and parameters.".into()
             }
             Some(_) if project_root(w).is_none() => "No project open".into(),
             Some(_) => String::new(),
@@ -206,7 +209,20 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_text(commands, note_lbl, empty_msg);
-    commands.entity(note).add_children(&[note_ic, note_lbl]);
+    // One-click starter: writes a `.animsm` (one state per clip) next to the
+    // clips and assigns it on the animator; `load_state_machine` then opens it.
+    let create_btn = crate::setup::action_button(
+        commands,
+        fonts,
+        "plus-circle",
+        "Create State Machine",
+        crate::setup::CreateSmBtn,
+    );
+    bind_display(commands, create_btn, crate::setup::can_create_sm);
+    let feedback = crate::setup::feedback_label(commands, fonts);
+    commands
+        .entity(note)
+        .add_children(&[note_ic, note_lbl, create_btn, feedback]);
     bind_display(commands, note, |w| !ready(w));
 
     // Editor body.

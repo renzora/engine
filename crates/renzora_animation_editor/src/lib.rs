@@ -6,11 +6,13 @@
 
 mod inspector;
 mod native_animation;
+mod native_inspector;
 mod native_params;
 mod native_state_machine;
 mod native_studio_preview;
 mod native_timeline;
 mod preview;
+mod setup;
 pub mod studio_preview;
 
 use bevy::prelude::*;
@@ -232,14 +234,44 @@ fn cache_clip_duration(
     }
 }
 
+/// Resolve a raw selection to the entity the animation editor should operate
+/// on. Users click whatever is in front of them — a mesh child, a bone, the
+/// flattened GLB root — while the `AnimatorComponent` / `MeshInstanceData`
+/// live on an ancestor. Walk self → ancestors for an animator first, then for
+/// a model root, so every panel works no matter which part of the model was
+/// picked.
+fn resolve_animation_entity(
+    raw: Entity,
+    animators: &Query<&renzora_animation::AnimatorComponent>,
+    models: &Query<&renzora::core::MeshInstanceData>,
+    parents: &Query<&ChildOf>,
+) -> Entity {
+    let ancestry = |start: Entity| {
+        std::iter::successors(Some(start), |&e| parents.get(e).ok().map(|c| c.parent()))
+    };
+    if let Some(e) = ancestry(raw).find(|&e| animators.contains(e)) {
+        return e;
+    }
+    if let Some(e) =
+        ancestry(raw).find(|&e| models.get(e).is_ok_and(|m| m.model_path.is_some()))
+    {
+        return e;
+    }
+    raw
+}
+
 /// Sync EditorSelection into AnimationEditorState so the animation panels
 /// automatically follow the entity selected in the hierarchy/inspector.
 fn sync_selection(
     selection: Res<renzora_editor_framework::EditorSelection>,
     mut editor_state: ResMut<AnimationEditorState>,
     animators: Query<&renzora_animation::AnimatorComponent>,
+    models: Query<&renzora::core::MeshInstanceData>,
+    parents: Query<&ChildOf>,
 ) {
-    let selected = selection.get();
+    let selected = selection
+        .get()
+        .map(|raw| resolve_animation_entity(raw, &animators, &models, &parents));
     if editor_state.selected_entity != selected {
         editor_state.selected_entity = selected;
         editor_state.scrub_time = 0.0;
@@ -268,6 +300,7 @@ impl Plugin for AnimationEditorPlugin {
             use renzora::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
         }
+        native_inspector::register_animator_native(app);
 
         app.init_resource::<AnimationEditorState>();
         app.init_resource::<preview::PreviewPlaybackState>();
@@ -315,6 +348,7 @@ impl Plugin for AnimationEditorPlugin {
                 .run_if(studio_preview::studio_preview_panel_mounted),
         );
 
+        app.add_plugins(setup::AnimSetupPlugin);
         app.add_plugins(native_animation::NativeAnimationPanel);
         app.add_plugins(native_timeline::NativeAnimTimeline);
         app.add_plugins(native_params::NativeAnimParams);
