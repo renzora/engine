@@ -19,6 +19,7 @@ use renzora_editor_framework::{
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, scroll_view_bar, section, text_input, toggle_switch,
@@ -239,6 +240,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
 
     let mut queue = bevy::ecs::world::CommandQueue::default();
     let root = {
+        let sections = world.get_resource::<SettingsSectionRegistry>();
         let mut commands = Commands::new(&mut queue, world);
         spawn_overlay(
             &mut commands,
@@ -251,6 +253,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
             &scenes,
             has_project,
             &input,
+            sections,
         )
     };
     queue.apply(world);
@@ -291,6 +294,7 @@ fn spawn_overlay(
     scenes: &[String],
     has_project: bool,
     input: &InputTabData,
+    sections: Option<&SettingsSectionRegistry>,
 ) -> Entity {
     // Full-screen scrim: blocks clicks behind the modal + dims slightly.
     let root = commands
@@ -342,6 +346,7 @@ fn spawn_overlay(
     let title = build_title_bar(commands, fonts);
     let body = build_body(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
+        sections,
     );
     commands.entity(panel).add_children(&[title, body]);
     root
@@ -397,11 +402,13 @@ fn build_body(
     scenes: &[String],
     has_project: bool,
     input: &InputTabData,
+    sections: Option<&SettingsSectionRegistry>,
 ) -> Entity {
     let sidebar = build_sidebar(commands, fonts, tab);
 
     let content_col = build_tab_content(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
+        sections,
     );
     let scroller = scroll_view_bar(commands, content_col);
 
@@ -446,6 +453,7 @@ const TABS: &[(SettingsTab, &str, &str)] = &[
     (SettingsTab::Input, "game-controller", "Input"),
     (SettingsTab::Shortcuts, "keyboard", "Shortcuts"),
     (SettingsTab::Theme, "palette", "Theme"),
+    (SettingsTab::Plugins, "plug", "Plugins"),
 ];
 
 fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts, active: SettingsTab) -> Entity {
@@ -634,6 +642,7 @@ fn build_tab_content(
     scenes: &[String],
     has_project: bool,
     input: &InputTabData,
+    sections: Option<&SettingsSectionRegistry>,
 ) -> Entity {
     let col = commands
         .spawn((
@@ -656,24 +665,51 @@ fn build_tab_content(
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
         SettingsTab::Shortcuts => tab_shortcuts(commands, fonts, col),
         SettingsTab::Input => tab_input(commands, fonts, col, input),
-        SettingsTab::Plugins => placeholder(commands, fonts, col),
+        SettingsTab::Plugins => tab_plugins(commands, fonts, col, sections),
     }
     col
 }
 
-fn placeholder(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
-    let lbl = commands
-        .spawn((
-            Text::new("This tab is being migrated to bevy_ui."),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::all(Val::Px(12.0)),
-                ..default()
-            },
-        ))
-        .id();
-    commands.entity(col).add_child(lbl);
+/// The Plugins tab: every section plugins registered via
+/// `register_settings_section`, each wrapped in the standard section chrome.
+fn tab_plugins(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    col: Entity,
+    sections: Option<&SettingsSectionRegistry>,
+) {
+    let entries = sections.map(|s| s.0.as_slice()).unwrap_or_default();
+    if entries.is_empty() {
+        let lbl = commands
+            .spawn((
+                Text::new(
+                    "No plugin settings registered. Plugins add sections here \
+                     via `register_settings_section`.",
+                ),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_muted())),
+                Node {
+                    margin: UiRect::all(Val::Px(12.0)),
+                    ..default()
+                },
+            ))
+            .id();
+        commands.entity(col).add_child(lbl);
+        return;
+    }
+    for (i, entry) in entries.iter().enumerate() {
+        let (sec, body) = section(commands, fonts, &entry.icon, &entry.title, A_TEAL);
+        if i > 0 {
+            commands.entity(sec).queue(|mut e: EntityWorldMut| {
+                if let Some(mut n) = e.get_mut::<Node>() {
+                    n.margin.top = Val::Px(12.0);
+                }
+            });
+        }
+        commands.entity(col).add_child(sec);
+        let content = (entry.build)(commands, fonts);
+        commands.entity(body).add_child(content);
+    }
 }
 
 // ── Project ──────────────────────────────────────────────────────────────────

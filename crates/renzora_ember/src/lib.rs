@@ -29,6 +29,7 @@ pub mod markup;
 pub mod panel;
 pub mod phosphor_map;
 pub mod reactive;
+pub mod settings_sections;
 pub mod style;
 pub mod theme;
 pub mod widgets;
