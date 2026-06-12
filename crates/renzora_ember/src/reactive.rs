@@ -436,7 +436,7 @@ pub(crate) fn run_reactions(world: &mut World) {
             // ~1s change-rate windows, advanced by wall-clock delta.
             roll_rate_windows(&mut stats, &mut reg, dt);
 
-            if stats.frame % 30 == 0 {
+            if stats.frame.is_multiple_of(30) {
                 build_reports(world, &reg, &mut stats);
             }
         });
@@ -629,7 +629,7 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
             }
             stats.history_us.push(frame_total);
 
-            if stats.frame % 30 == 0 {
+            if stats.frame.is_multiple_of(30) {
                 let mut reports: Vec<ListReport> = reg
                     .0
                     .iter()

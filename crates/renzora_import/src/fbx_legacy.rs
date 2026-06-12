@@ -223,7 +223,7 @@ fn parse_node(
     } else {
         (
             read_u32_le(r)? as u64,
-            read_u32_le(r)? as u32,
+            read_u32_le(r)?,
             read_u32_le(r)? as u64,
         )
     };

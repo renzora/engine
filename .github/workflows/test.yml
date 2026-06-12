@@ -39,6 +39,7 @@ jobs:
           cargo test --workspace \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
+            --exclude bevy_hui \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
             --exclude vleue_navigator \
@@ -72,6 +73,7 @@ jobs:
           cargo clippy --workspace --no-deps \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
+            --exclude bevy_hui \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
             --exclude vleue_navigator \

@@ -195,7 +195,7 @@ pub fn compact_glb(glb_bytes: &[u8], drop_animations: bool) -> Result<Vec<u8>, S
         // Align each view to 4 bytes. Accessor component alignment is relative
         // to the buffer start; a 4-byte boundary satisfies every glTF
         // component type (1/2/4-byte) given accessors keep their own offsets.
-        while new_bin.len() % 4 != 0 {
+        while !new_bin.len().is_multiple_of(4) {
             new_bin.push(0);
         }
         let new_off = new_bin.len();

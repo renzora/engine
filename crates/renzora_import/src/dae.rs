@@ -316,66 +316,60 @@ fn parse_collada(
                     "mesh" => {
                         in_mesh = false;
                     }
-                    "float_array" => {
-                        if in_float_array {
-                            let floats: Vec<f32> = current_text
-                                .split_whitespace()
-                                .filter_map(|s| s.parse().ok())
-                                .collect();
-                            float_sources.push((current_source_id.clone(), floats));
-                            in_float_array = false;
-                        }
+                    "float_array" if in_float_array => {
+                        let floats: Vec<f32> = current_text
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        float_sources.push((current_source_id.clone(), floats));
+                        in_float_array = false;
                     }
-                    "vcount" => {
-                        if in_vcount {
-                            vcount_data = current_text
-                                .split_whitespace()
-                                .filter_map(|s| s.parse().ok())
-                                .collect();
-                            in_vcount = false;
-                        }
+                    "vcount" if in_vcount => {
+                        vcount_data = current_text
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        in_vcount = false;
                     }
-                    "p" => {
-                        if in_p {
-                            let p_data: Vec<i32> = current_text
-                                .split_whitespace()
-                                .filter_map(|s| s.parse().ok())
-                                .collect();
+                    "p" if in_p => {
+                        let p_data: Vec<i32> = current_text
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
 
-                            // Find source arrays
-                            let pos_data = find_source(&float_sources, &position_source_id);
-                            let norm_data = find_source(&float_sources, &normal_source_id);
-                            let tc_data = find_source(&float_sources, &texcoord_source_id);
+                        // Find source arrays
+                        let pos_data = find_source(&float_sources, &position_source_id);
+                        let norm_data = find_source(&float_sources, &normal_source_id);
+                        let tc_data = find_source(&float_sources, &texcoord_source_id);
 
-                            if let Some(pos) = pos_data {
-                                let geom = if in_polylist {
-                                    build_geometry_polylist(
-                                        pos,
-                                        norm_data,
-                                        tc_data,
-                                        &p_data,
-                                        &vcount_data,
-                                        vertex_offset,
-                                        normal_offset,
-                                        texcoord_offset,
-                                        input_count,
-                                    )
-                                } else {
-                                    build_geometry_triangles(
-                                        pos,
-                                        norm_data,
-                                        tc_data,
-                                        &p_data,
-                                        vertex_offset,
-                                        normal_offset,
-                                        texcoord_offset,
-                                        input_count,
-                                    )
-                                };
-                                geometries.push(geom);
-                            }
-                            in_p = false;
+                        if let Some(pos) = pos_data {
+                            let geom = if in_polylist {
+                                build_geometry_polylist(
+                                    pos,
+                                    norm_data,
+                                    tc_data,
+                                    &p_data,
+                                    &vcount_data,
+                                    vertex_offset,
+                                    normal_offset,
+                                    texcoord_offset,
+                                    input_count,
+                                )
+                            } else {
+                                build_geometry_triangles(
+                                    pos,
+                                    norm_data,
+                                    tc_data,
+                                    &p_data,
+                                    vertex_offset,
+                                    normal_offset,
+                                    texcoord_offset,
+                                    input_count,
+                                )
+                            };
+                            geometries.push(geom);
                         }
+                        in_p = false;
                     }
                     "triangles" => {
                         in_triangles = false;
@@ -386,11 +380,9 @@ fn parse_collada(
                     _ => {}
                 }
             }
-            Ok(Event::Text(ref e)) => {
-                if in_float_array || in_p || in_vcount {
-                    if let Ok(text) = e.unescape() {
-                        current_text.push_str(&text);
-                    }
+            Ok(Event::Text(ref e)) if in_float_array || in_p || in_vcount => {
+                if let Ok(text) = e.unescape() {
+                    current_text.push_str(&text);
                 }
             }
             Ok(Event::Eof) => break,

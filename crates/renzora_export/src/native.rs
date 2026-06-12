@@ -121,7 +121,7 @@ fn scan_plugins(world: &mut World) {
 
     let mut s = world.resource_mut::<ExportOverlayState>();
     for p in &plugins {
-        let select = used.as_ref().map_or(true, |set| set.contains(&p.id));
+        let select = used.as_ref().is_none_or(|set| set.contains(&p.id));
         if select {
             s.selected_plugins.insert(p.id.clone());
         }
@@ -174,7 +174,7 @@ fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
             let is_dot = path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| n.starts_with('.'));
+                .is_some_and(|n| n.starts_with('.'));
             if !is_dot {
                 collect_ron_files(&path, out);
             }

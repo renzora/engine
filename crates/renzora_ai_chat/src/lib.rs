@@ -1501,7 +1501,7 @@ fn related_links(html: &str, base: &str, query: &str, max: usize) -> Vec<String>
             scored.push((score, url));
         }
     }
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
     scored.into_iter().take(max).map(|(_, u)| u).collect()
 }
 

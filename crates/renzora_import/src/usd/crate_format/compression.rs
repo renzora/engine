@@ -161,37 +161,26 @@ fn decode_integers_i32(encoded: &[u8], num_ints: usize) -> UsdResult<Vec<u32>> {
 
         let delta: i32 = match code {
             0 => common_delta, // Common
-            1 => {
-                // Small: i8
-                if vint_pos < vints.len() {
-                    let v = vints[vint_pos] as i8 as i32;
-                    vint_pos += 1;
-                    v
-                } else {
-                    0
-                }
+            // Small: i8
+            1 if vint_pos < vints.len() => {
+                let v = vints[vint_pos] as i8 as i32;
+                vint_pos += 1;
+                v
             }
-            2 => {
-                // Medium: i16
-                if vint_pos + 2 <= vints.len() {
-                    let v = i16::from_le_bytes(vints[vint_pos..vint_pos + 2].try_into().unwrap())
-                        as i32;
-                    vint_pos += 2;
-                    v
-                } else {
-                    0
-                }
+            // Medium: i16
+            2 if vint_pos + 2 <= vints.len() => {
+                let v =
+                    i16::from_le_bytes(vints[vint_pos..vint_pos + 2].try_into().unwrap()) as i32;
+                vint_pos += 2;
+                v
             }
-            3 => {
-                // Large: i32
-                if vint_pos + 4 <= vints.len() {
-                    let v = i32::from_le_bytes(vints[vint_pos..vint_pos + 4].try_into().unwrap());
-                    vint_pos += 4;
-                    v
-                } else {
-                    0
-                }
+            // Large: i32
+            3 if vint_pos + 4 <= vints.len() => {
+                let v = i32::from_le_bytes(vints[vint_pos..vint_pos + 4].try_into().unwrap());
+                vint_pos += 4;
+                v
             }
+            // Out-of-range codes and truncated payloads decode as no delta.
             _ => 0,
         };
 
