@@ -384,10 +384,19 @@ mod tests {
     use super::*;
     use crate::material::graph::*;
 
+    /// `try_build_standard_material` turns texture paths into handles via a
+    /// real `AssetServer`; a bare `App::new()` doesn't have one.
+    fn asset_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_asset::<Image>();
+        app
+    }
+
     #[test]
     fn empty_graph_yields_default_material() {
         let graph = MaterialGraph::new("Empty", MaterialDomain::Surface);
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         let mat = try_build_standard_material(&graph, asset_server);
         assert!(mat.is_some());
@@ -396,7 +405,7 @@ mod tests {
     #[test]
     fn rejects_non_surface_domains() {
         let graph = MaterialGraph::new("Veg", MaterialDomain::Vegetation);
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         assert!(try_build_standard_material(&graph, asset_server).is_none());
     }
@@ -407,7 +416,7 @@ mod tests {
         let output_id = graph.output_node().unwrap().id;
         let noise = graph.add_node("procedural/noise_perlin", [-200.0, 0.0]);
         graph.connect(noise, "value", output_id, "base_color");
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         assert!(try_build_standard_material(&graph, asset_server).is_none());
     }
@@ -418,7 +427,7 @@ mod tests {
         let output_id = graph.output_node().unwrap().id;
         let m = graph.add_node("math/multiply", [-200.0, 0.0]);
         graph.connect(m, "result", output_id, "roughness");
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         assert!(try_build_standard_material(&graph, asset_server).is_none());
     }
@@ -439,7 +448,7 @@ mod tests {
         }
         graph.connect(tex_m, "b", output_id, "metallic");
         graph.connect(tex_r, "g", output_id, "roughness");
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         assert!(try_build_standard_material(&graph, asset_server).is_none());
     }
@@ -489,7 +498,7 @@ mod tests {
                 .insert("alpha".into(), PinValue::Float(1.0));
         }
 
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
         assert!(mat.base_color_texture.is_some());
@@ -515,7 +524,7 @@ mod tests {
         }
         graph.connect(p, "value", output_id, "base_color");
 
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
         let bc = mat.base_color.to_linear();
@@ -537,7 +546,7 @@ mod tests {
         }
         graph.connect(p, "value", output_id, "metallic");
 
-        let app = App::new();
+        let app = asset_app();
         let asset_server = app.world().resource::<AssetServer>();
         let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
         assert!((mat.metallic - 0.7).abs() < 1e-4);

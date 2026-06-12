@@ -3225,7 +3225,11 @@ mod tests {
         let graph = MaterialGraph::new("Glow", MaterialDomain::Unlit);
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
-        assert!(!result.fragment_shader.contains("pbr_input_from_standard_material"));
+        // Unlit uses the same extension-hook skeleton as Surface — the
+        // resolver's `unlit = true` on the base material is what makes
+        // `apply_pbr_lighting` pass base_color through unlit.
+        assert!(result.fragment_shader.contains("pbr_input_from_standard_material"));
+        assert!(result.fragment_shader.contains("apply_pbr_lighting"));
     }
 
     #[test]
