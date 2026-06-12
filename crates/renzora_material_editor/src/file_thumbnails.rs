@@ -62,6 +62,11 @@ struct CaptureJob {
     /// domain — we still render a fallback grey sphere in that case so the
     /// asset browser gets *some* thumbnail rather than the default pink icon.
     compile: Option<CompileResult>,
+    /// Whether the captured PNG may be written to the disk cache. False when
+    /// the `.material` failed to *parse* — that's usually a transient state
+    /// (the importer is still writing the file), and persisting the fallback
+    /// sphere would poison the cache until the material is next re-saved.
+    cache_to_disk: bool,
     texture_handles: Vec<Handle<Image>>,
     waited_frames: u32,
 }
@@ -144,6 +149,8 @@ struct ArmedCapture {
     capture_entities: Vec<Entity>,
     cell_idx: usize,
     frames_remaining: u32,
+    /// See [`CaptureJob::cache_to_disk`].
+    cache_to_disk: bool,
 }
 
 #[derive(Resource, Default)]
@@ -202,8 +209,9 @@ fn intake_thumbnail_requests(
 
         let thumb_path = material_thumb_path(&material_path, project);
 
-        // Disk cache hit: kick off an async load; register with egui when ready.
-        if thumb_path.exists() {
+        // Disk cache hit (and newer than the `.material` that produced it):
+        // kick off an async load; published to the registry once decoded.
+        if cached_thumb_is_fresh(&thumb_path, &material_path) {
             if let Some(handle) = try_load_cached_thumb(&thumb_path, &asset_server, project) {
                 disk_loads.entries.push(PendingDiskLoad {
                     material_path,
@@ -217,6 +225,7 @@ fn intake_thumbnail_requests(
         // compile errors, non-Surface domain), we still push a job with
         // `compile: None`; the render path falls back to a plain default
         // material sphere so every `.material` gets *some* thumbnail.
+        let mut cache_to_disk = true;
         let compile_opt: Option<CompileResult> = match std::fs::read_to_string(&material_path) {
             Ok(content) => match serde_json::from_str::<MaterialGraph>(&content) {
                 Ok(graph) if graph.domain == MaterialDomain::Surface => {
@@ -248,6 +257,10 @@ fn intake_thumbnail_requests(
                         material_path.display(),
                         e
                     );
+                    // A parse failure is usually the importer still writing
+                    // the file — show the fallback this session, but don't
+                    // let it poison the disk cache.
+                    cache_to_disk = false;
                     None
                 }
             },
@@ -290,10 +303,29 @@ fn intake_thumbnail_requests(
             material_path,
             thumb_path,
             compile: compile_opt,
+            cache_to_disk,
             texture_handles,
             waited_frames: 0,
         });
     }
+}
+
+/// True iff the cached thumbnail file is fresh — exists and its mtime is at
+/// least as new as the `.material` that produced it. Mirrors the model and
+/// texture caches' freshness checks; duplicated to keep this renderer
+/// self-contained.
+fn cached_thumb_is_fresh(cache_path: &std::path::Path, source_path: &std::path::Path) -> bool {
+    let Ok(cache_meta) = std::fs::metadata(cache_path) else {
+        return false;
+    };
+    let Ok(source_meta) = std::fs::metadata(source_path) else {
+        return false;
+    };
+    let (Ok(cache_mtime), Ok(source_mtime)) = (cache_meta.modified(), source_meta.modified())
+    else {
+        return false;
+    };
+    cache_mtime >= source_mtime
 }
 
 fn try_load_cached_thumb(
@@ -535,6 +567,7 @@ fn arm_one_capture(
         capture_entities: vec![sphere, camera],
         cell_idx,
         frames_remaining: CAPTURE_WARMUP_FRAMES,
+        cache_to_disk: job.cache_to_disk,
     });
 }
 
@@ -556,6 +589,7 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
         let material_path = entry.material_path;
         let thumb_path = entry.thumb_path;
         let cell_idx = entry.cell_idx;
+        let cache_to_disk = entry.cache_to_disk;
 
         info!(
             "[material_thumbnails] Triggering screenshot for '{}' (cell {})",
@@ -588,25 +622,27 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
 
                     let captured = trigger.image.clone();
 
-                    if let Some(parent) = thumb_path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    match captured.clone().try_into_dynamic() {
-                        Ok(dyn_img) => {
-                            let rgba = dyn_img.to_rgba8();
-                            if let Err(e) = rgba.save(&thumb_path) {
+                    if cache_to_disk {
+                        if let Some(parent) = thumb_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        match captured.clone().try_into_dynamic() {
+                            Ok(dyn_img) => {
+                                let rgba = dyn_img.to_rgba8();
+                                if let Err(e) = rgba.save(&thumb_path) {
+                                    warn!(
+                                        "[material_thumbnails] Failed to write {}: {}",
+                                        thumb_path.display(),
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
                                 warn!(
-                                    "[material_thumbnails] Failed to write {}: {}",
-                                    thumb_path.display(),
+                                    "[material_thumbnails] Captured image has unsupported format: {}",
                                     e
                                 );
                             }
-                        }
-                        Err(e) => {
-                            warn!(
-                                "[material_thumbnails] Captured image has unsupported format: {}",
-                                e
-                            );
                         }
                     }
 
