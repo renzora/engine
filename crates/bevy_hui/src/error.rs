@@ -107,17 +107,29 @@ impl<'a> nom::error::ContextError<&'a [u8]> for VerboseHtmlError<'a> {
     }
 }
 
+/// Byte offset of `slice` within `source`, or `None` when `slice` doesn't
+/// actually point into `source`. The pointer arithmetic below is only valid
+/// for sub-slices; callers like the `Debug` impl pass an empty source (they
+/// have no buffer to resolve against), which used to panic with a garbage
+/// index here.
+fn offset_in(source: &[u8], slice: &[u8]) -> Option<usize> {
+    let off = (slice.as_ptr() as usize).checked_sub(source.as_ptr() as usize)?;
+    (off <= source.len()).then_some(off)
+}
+
 fn get_line_num(source: &[u8], slice: &[u8]) -> u32 {
-    let start = (slice.as_ptr() as usize) - (source.as_ptr() as usize);
-    let start_index = start / std::mem::size_of::<u8>();
+    let Some(start_index) = offset_in(source, slice) else {
+        return 0;
+    };
     let preceding_source = &source[..start_index];
     preceding_source.iter().filter(|&&c| c == b'\n').count() as u32 + 1
 }
 
 //dirty af
 fn get_line_parts_and_num<'a>(source: &'a [u8], slice: &'a [u8]) -> (&'a [u8], &'a [u8], u32) {
-    let start = (slice.as_ptr() as usize) - (source.as_ptr() as usize);
-    let start_index = start / std::mem::size_of::<u8>();
+    let Some(start_index) = offset_in(source, slice) else {
+        return (b"", b"", 0);
+    };
 
     let line_start = source[..start_index]
         .iter()
@@ -132,7 +144,9 @@ fn get_line_parts_and_num<'a>(source: &'a [u8], slice: &'a [u8]) -> (&'a [u8], &
     let line = &source[line_start..line_end];
 
     let slice_start_in_line = start_index - line_start;
-    let slice_end_in_line = slice_start_in_line + slice.len();
+    // The error slice usually runs to end-of-input (nom remainder), which can
+    // extend far past this line — clamp so the highlight stops at the line.
+    let slice_end_in_line = (slice_start_in_line + slice.len()).min(line.len());
 
     let first = &line[..slice_start_in_line];
     let second = &line[slice_end_in_line..];

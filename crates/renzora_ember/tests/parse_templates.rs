@@ -53,7 +53,18 @@ fn all_ui_templates_parse() {
                     ));
                 }
             }
-            Err(e) => failures.push(format!("{}: {e:?}", path.display())),
+            Err(e) => {
+                // `format` resolves error spans against the real source buffer
+                // (file + line + snippet). The `Debug` impl has no source to
+                // resolve against, so it can't point at the failing line.
+                let msg = match &e {
+                    nom::Err::Error(v) | nom::Err::Failure(v) => {
+                        v.format(&bytes, &path.display().to_string())
+                    }
+                    nom::Err::Incomplete(_) => "incomplete input".to_string(),
+                };
+                failures.push(format!("{}: {msg}", path.display()));
+            }
         }
     }
 
