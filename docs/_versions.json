@@ -1,0 +1,7 @@
+{
+  "default": "r1-alpha5",
+  "versions": [
+    { "id": "r1-alpha6", "label": "r1-alpha6", "status": "next" },
+    { "id": "r1-alpha5", "label": "r1-alpha5", "status": "current" }
+  ]
+}

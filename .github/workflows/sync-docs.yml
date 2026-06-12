@@ -1,11 +1,13 @@
 name: Sync docs to website
 
-# Mirrors the versioned doc trees (docs/r1-alpha*) into the renzora/website
-# repo whenever they change on main. The website's own Deploy workflow then
-# rebuilds and ships the site, so a docs edit here goes live with no manual
-# copying. Website-owned files (docs/_versions.json, the top-level
-# _sidebar.json, legacy unversioned doc dirs) are never touched — only the
-# r1-alpha* directories are mirrored, with deletions propagated.
+# Mirrors the versioned doc trees (docs/r1-alpha*) and the version manifest
+# (docs/_versions.json) into the renzora/website repo whenever they change on
+# main. The website's own Deploy workflow then rebuilds and ships the site,
+# so a docs edit here goes live with no manual copying. Website-owned files
+# (the top-level _sidebar.json, legacy unversioned doc dirs) are never
+# touched — only the r1-alpha* directories (with deletions propagated) and
+# _versions.json are mirrored. The manifest lives here because the AI chat's
+# local docs retrieval reads it to pick the current manual version.
 #
 # Requires a `WEBSITE_SYNC_TOKEN` repository secret: a fine-grained PAT
 # scoped to renzora/website with Contents read/write.
@@ -15,6 +17,7 @@ on:
     branches: [main]
     paths:
       - 'docs/r1-alpha*/**'
+      - 'docs/_versions.json'
   workflow_dispatch:
 
 jobs:
@@ -38,6 +41,7 @@ jobs:
             echo "Syncing $v"
             rsync -a --delete "$dir" "website/docs/$v/"
           done
+          cp docs/_versions.json website/docs/_versions.json
 
       - name: Commit and push
         run: |
