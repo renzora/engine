@@ -1,0 +1,53 @@
+name: Sync docs to website
+
+# Mirrors the versioned doc trees (docs/r1-alpha*) into the renzora/website
+# repo whenever they change on main. The website's own Deploy workflow then
+# rebuilds and ships the site, so a docs edit here goes live with no manual
+# copying. Website-owned files (docs/_versions.json, the top-level
+# _sidebar.json, legacy unversioned doc dirs) are never touched — only the
+# r1-alpha* directories are mirrored, with deletions propagated.
+#
+# Requires a `WEBSITE_SYNC_TOKEN` repository secret: a fine-grained PAT
+# scoped to renzora/website with Contents read/write.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/r1-alpha*/**'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout engine
+        uses: actions/checkout@v4
+
+      - name: Checkout website
+        uses: actions/checkout@v4
+        with:
+          repository: renzora/website
+          token: ${{ secrets.WEBSITE_SYNC_TOKEN }}
+          path: website
+
+      - name: Mirror versioned doc trees
+        run: |
+          for dir in docs/r1-alpha*/; do
+            v=$(basename "$dir")
+            echo "Syncing $v"
+            rsync -a --delete "$dir" "website/docs/$v/"
+          done
+
+      - name: Commit and push
+        run: |
+          cd website
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "Docs already in sync — nothing to push"
+            exit 0
+          fi
+          git commit -m "docs: sync from engine@${GITHUB_SHA::8}"
+          git push origin main
