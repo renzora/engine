@@ -144,7 +144,9 @@ All Input nodes are pure data — sample them from a flow driven by `event/on_up
 | Is Key Just Pressed | `input/is_key_just_pressed` | `key` `String` = `"Space"` | `pressed` `Bool` (this frame only) |
 | Get Mouse Position | `input/get_mouse_position` | — | `position` `Vec2`, `delta` `Vec2` |
 | Is Mouse Pressed | `input/is_mouse_pressed` | `button` `Int` = `0` (0=left, 1=right, 2=middle) | `pressed` `Bool` |
-| Get Gamepad | `input/get_gamepad` | — | `left_stick` `Vec2`, `right_stick` `Vec2`, `left_trigger` `Float`, `right_trigger` `Float` |
+| Get Gamepad | `input/get_gamepad` | `index` `Int` = `0` (pad slot id, 0 = first pad) | `left_stick` `Vec2`, `right_stick` `Vec2`, `left_trigger` `Float`, `right_trigger` `Float`, `connected` `Bool` |
+| Is Gamepad Button Pressed | `input/is_gamepad_button` | `index` `Int` = `0`, `button` `String` = `"south"` (south/east/west/north, l1/r1/l2/r2, select/start, l3/r3, dpad_up/down/left/right) | `pressed` `Bool`, `just_pressed` `Bool` |
+| Get Gamepad Count | `input/get_gamepad_count` | — | `count` `Int` |
 | Is Action Pressed | `input/is_action_pressed` | `action` `String` = `"jump"` | `pressed` `Bool` |
 | Is Action Just Pressed | `input/is_action_just_pressed` | `action` `String` = `"jump"` | `pressed` `Bool` |
 | Get Action Axis | `input/get_action_axis` | `action` `String` = `"move"` | `value` `Float` (-1 to 1) |

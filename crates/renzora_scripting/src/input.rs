@@ -5,6 +5,26 @@ use std::collections::HashMap;
 // Re-export ScriptInput from renzora
 pub use renzora::ScriptInput;
 
+/// All buttons mirrored into [`ScriptInput`], in the order scripts index them.
+pub const SCRIPT_GAMEPAD_BUTTONS: [GamepadButton; 16] = [
+    GamepadButton::South,
+    GamepadButton::East,
+    GamepadButton::West,
+    GamepadButton::North,
+    GamepadButton::LeftTrigger,
+    GamepadButton::RightTrigger,
+    GamepadButton::LeftTrigger2,
+    GamepadButton::RightTrigger2,
+    GamepadButton::Select,
+    GamepadButton::Start,
+    GamepadButton::LeftThumb,
+    GamepadButton::RightThumb,
+    GamepadButton::DPadUp,
+    GamepadButton::DPadDown,
+    GamepadButton::DPadLeft,
+    GamepadButton::DPadRight,
+];
+
 /// System to update ScriptInput from Bevy input resources
 pub fn update_script_input(
     mut script_input: ResMut<ScriptInput>,
@@ -14,6 +34,7 @@ pub fn update_script_input(
     mouse_motion: Option<MessageReader<bevy::input::mouse::MouseMotion>>,
     scroll: Option<MessageReader<bevy::input::mouse::MouseWheel>>,
     gamepads: Query<(Entity, &Gamepad)>,
+    mut gamepad_slots: Local<HashMap<Entity, u32>>,
 ) {
     script_input.keys_just_pressed.clear();
     script_input.keys_just_released.clear();
@@ -66,9 +87,31 @@ pub fn update_script_input(
 
     script_input.gamepad_axes.clear();
     script_input.gamepad_buttons.clear();
+    script_input.gamepad_buttons_just_pressed.clear();
+    script_input.connected_gamepads.clear();
 
-    for (gamepad_idx, (_entity, gamepad)) in gamepads.iter().enumerate() {
-        let id = gamepad_idx as u32;
+    // Stable slot assignment: a pad keeps its slot for as long as it stays
+    // connected; a new pad takes the lowest free slot. Query iteration order
+    // is not stable, so without this pads could swap ids between frames.
+    gamepad_slots.retain(|entity, _| gamepads.contains(*entity));
+    let mut new_pads: Vec<Entity> = gamepads
+        .iter()
+        .map(|(entity, _)| entity)
+        .filter(|e| !gamepad_slots.contains_key(e))
+        .collect();
+    new_pads.sort();
+    for entity in new_pads {
+        let mut slot = 0u32;
+        while gamepad_slots.values().any(|&s| s == slot) {
+            slot += 1;
+        }
+        gamepad_slots.insert(entity, slot);
+    }
+
+    for (entity, gamepad) in gamepads.iter() {
+        let id = gamepad_slots[&entity];
+        script_input.connected_gamepads.push(id);
+
         let mut axes = HashMap::new();
         let ls = gamepad.left_stick();
         let rs = gamepad.right_stick();
@@ -76,37 +119,35 @@ pub fn update_script_input(
         axes.insert(GamepadAxis::LeftStickY, ls.y);
         axes.insert(GamepadAxis::RightStickX, rs.x);
         axes.insert(GamepadAxis::RightStickY, rs.y);
+        // Analog triggers: the Z axes on some controllers, the
+        // LeftTrigger2/RightTrigger2 analog buttons on others (e.g. Windows
+        // XInput). Take whichever reports a value.
         axes.insert(
             GamepadAxis::LeftZ,
-            gamepad.get(GamepadAxis::LeftZ).unwrap_or(0.0),
+            gamepad
+                .get(GamepadAxis::LeftZ)
+                .unwrap_or(0.0)
+                .max(gamepad.get(GamepadButton::LeftTrigger2).unwrap_or(0.0)),
         );
         axes.insert(
             GamepadAxis::RightZ,
-            gamepad.get(GamepadAxis::RightZ).unwrap_or(0.0),
+            gamepad
+                .get(GamepadAxis::RightZ)
+                .unwrap_or(0.0)
+                .max(gamepad.get(GamepadButton::RightTrigger2).unwrap_or(0.0)),
         );
         script_input.gamepad_axes.insert(id, axes);
 
         let mut buttons = HashMap::new();
-        for btn in [
-            GamepadButton::South,
-            GamepadButton::East,
-            GamepadButton::West,
-            GamepadButton::North,
-            GamepadButton::LeftTrigger,
-            GamepadButton::RightTrigger,
-            GamepadButton::LeftTrigger2,
-            GamepadButton::RightTrigger2,
-            GamepadButton::Select,
-            GamepadButton::Start,
-            GamepadButton::LeftThumb,
-            GamepadButton::RightThumb,
-            GamepadButton::DPadUp,
-            GamepadButton::DPadDown,
-            GamepadButton::DPadLeft,
-            GamepadButton::DPadRight,
-        ] {
+        let mut just_pressed = HashMap::new();
+        for btn in SCRIPT_GAMEPAD_BUTTONS {
             buttons.insert(btn, gamepad.pressed(btn));
+            just_pressed.insert(btn, gamepad.just_pressed(btn));
         }
         script_input.gamepad_buttons.insert(id, buttons);
+        script_input
+            .gamepad_buttons_just_pressed
+            .insert(id, just_pressed);
     }
+    script_input.connected_gamepads.sort_unstable();
 }

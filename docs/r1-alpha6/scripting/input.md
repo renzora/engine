@@ -70,7 +70,7 @@ end
 
 ## Gamepad
 
-The first connected gamepad is exposed through read-only globals. Sticks and triggers are analog; buttons are booleans.
+The first connected gamepad is exposed through read-only globals. Sticks and triggers are analog; buttons are booleans. For more than one controller, see [Multiple gamepads](#multiple-gamepads) below.
 
 | Global | Type | Description |
 |---|---|---|
@@ -94,6 +94,59 @@ function on_update()
     if gamepad_right_trigger > 0.5 then print("fire") end
 end
 ```
+
+## Multiple gamepads
+
+Every connected controller is addressable by a **pad id**, starting at `0`. Ids are stable for the whole session: a pad keeps its id until it disconnects, and a newly plugged-in pad takes the lowest free id — so player 2 doesn't become player 1 when the first controller unplugs. (The single-pad `gamepad_*` globals above always mirror the lowest connected id.)
+
+Axis names are `"left_x"`, `"left_y"`, `"right_x"`, `"right_y"`, `"left_trigger"`, `"right_trigger"`; button names are `"south"`, `"east"`, `"west"`, `"north"`, `"l1"`, `"r1"`, `"l2"`, `"r2"`, `"select"`, `"start"`, `"l3"`, `"r3"`, `"dpad_up"`, `"dpad_down"`, `"dpad_left"`, `"dpad_right"` — the same names as the global suffixes.
+
+In Lua, query by pad id:
+
+| Function | Returns | Description |
+|---|---|---|
+| `gamepad_count()` | number | How many pads are connected |
+| `gamepad_connected(pad)` | bool | True if a pad with this id is connected |
+| `gamepad_axis(pad, axis)` | number | One axis value by name |
+| `gamepad_left_stick(pad)` / `gamepad_right_stick(pad)` | number, number | Two return values — `local x, y = gamepad_left_stick(1)` |
+| `gamepad_button(pad, button)` | bool | True while the button is held |
+| `gamepad_button_just_pressed(pad, button)` | bool | True only on the frame the button goes down |
+
+```lua
+function on_update()
+    -- Two-player co-op: pad 0 drives this entity, pad 1 steers the turret.
+    local x, y = gamepad_left_stick(0)
+    translate(x * 5 * delta, 0, y * 5 * delta)
+
+    if gamepad_connected(1) then
+        local tx = gamepad_axis(1, "right_x")
+        child_translate("Turret", tx * 2 * delta, 0, 0)
+        if gamepad_button_just_pressed(1, "south") then
+            print("player 2 fired")
+        end
+    end
+end
+```
+
+In Rhai the scope receives `gamepad_count` and a `gamepads` array (one map per pad, ordered by id, each with an `id` field plus the axis values and `buttons` / `just_pressed` maps). The query functions take the array as the first argument, like the `is_key_*` family:
+
+```rhai
+fn on_update() {
+    let x = gamepad_axis(gamepads, 0, "left_x");
+    translate(x * 5.0 * delta, 0.0, 0.0);
+
+    if gamepad_connected(gamepads, 1) && gamepad_button(gamepads, 1, "south") {
+        print("player 2 jumped");
+    }
+
+    // Or iterate the pads directly:
+    for pad in gamepads {
+        if pad.buttons.start { print(`pad ${pad.id} paused`); }
+    }
+}
+```
+
+> Named **actions** (below) are deliberately not per-pad: every connected gamepad drives the same action map, so menus and single-player gameplay respond to whichever controller the player picks up. For split-screen input, read pads directly with the functions above.
 
 ## Raw keyboard
 

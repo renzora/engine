@@ -76,6 +76,42 @@ pub struct ChildChange {
     pub translation: Option<Vec3>,
 }
 
+/// Per-frame snapshot of one connected gamepad, exposed to scripts by slot id.
+/// Button arrays are indexed in [`crate::input::SCRIPT_GAMEPAD_BUTTONS`] order:
+/// South, East, West, North, L1, R1, L2, R2, Select, Start, L3, R3,
+/// DPadUp, DPadDown, DPadLeft, DPadRight.
+/// Script-facing names for the 16 buttons in [`GamepadSnapshot::buttons`],
+/// matching the legacy `gamepad_*` global suffixes.
+pub const GAMEPAD_BUTTON_NAMES: [&str; 16] = [
+    "south",
+    "east",
+    "west",
+    "north",
+    "l1",
+    "r1",
+    "l2",
+    "r2",
+    "select",
+    "start",
+    "l3",
+    "r3",
+    "dpad_up",
+    "dpad_down",
+    "dpad_left",
+    "dpad_right",
+];
+
+#[derive(Clone, Default)]
+pub struct GamepadSnapshot {
+    pub id: u32,
+    pub left_stick: Vec2,
+    pub right_stick: Vec2,
+    pub left_trigger: f32,
+    pub right_trigger: f32,
+    pub buttons: [bool; 16],
+    pub buttons_just_pressed: [bool; 16],
+}
+
 /// Raycast hit result
 #[derive(Clone, Debug, Default)]
 pub struct RaycastHit {
@@ -118,13 +154,16 @@ pub struct ScriptContext {
     pub net_is_connected: bool,
     pub net_player_count: i32,
 
-    // Gamepad
+    // Gamepad. The flat fields mirror the first connected pad (legacy
+    // single-gamepad globals); `gamepads` carries every connected pad keyed
+    // by stable slot id for the multi-gamepad API.
     pub gamepad_left_stick: Vec2,
     pub gamepad_right_stick: Vec2,
     pub gamepad_left_trigger: f32,
     pub gamepad_right_trigger: f32,
     pub gamepad_buttons: [bool; 16],
     pub gamepad_buttons_just_pressed: [bool; 16],
+    pub gamepads: Vec<GamepadSnapshot>,
 
     // Action-based input (unified keyboard + mouse + gamepad via InputMap).
     pub action_pressed: HashMap<String, bool>,
@@ -230,6 +269,7 @@ impl ScriptContext {
             gamepad_right_trigger: 0.0,
             gamepad_buttons: [false; 16],
             gamepad_buttons_just_pressed: [false; 16],
+            gamepads: Vec::new(),
             action_pressed: HashMap::new(),
             action_just_pressed: HashMap::new(),
             action_just_released: HashMap::new(),

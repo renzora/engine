@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use rhai::{Dynamic, Engine, ImmutableString, Map, Scope, AST};
+use rhai::{Array, Dynamic, Engine, ImmutableString, Map, Scope, AST};
 
 use crate::backend::{FileReader, ScriptBackend};
 use crate::command::{PropertyValue, ScriptCommand};
@@ -422,6 +422,52 @@ fn register_api(engine: &mut Engine) {
         },
     );
 
+    // Multi-gamepad. Like the is_key_* family these take the live `gamepads`
+    // array (pushed into scope each frame) as the first argument:
+    // `gamepad_button(gamepads, 1, "south")`. Pads are addressed by stable
+    // slot id (the `id` field), not array position — slots can have gaps
+    // when a middle pad disconnects.
+    fn find_pad(pads: &Array, pad: i64) -> Option<Map> {
+        pads.iter().filter_map(|p| p.clone().try_cast::<Map>()).find(|m| {
+            m.get("id")
+                .and_then(|v| v.clone().try_cast::<i64>())
+                .is_some_and(|id| id == pad)
+        })
+    }
+    engine.register_fn("gamepad_connected", |pads: Array, pad: i64| -> bool {
+        find_pad(&pads, pad).is_some()
+    });
+    engine.register_fn(
+        "gamepad_axis",
+        |pads: Array, pad: i64, name: ImmutableString| -> f64 {
+            find_pad(&pads, pad)
+                .and_then(|m| m.get(name.as_str()).and_then(|v| v.as_float().ok()))
+                .unwrap_or(0.0)
+        },
+    );
+    engine.register_fn(
+        "gamepad_button",
+        |pads: Array, pad: i64, name: ImmutableString| -> bool {
+            find_pad(&pads, pad)
+                .and_then(|m| m.get("buttons").cloned().and_then(|v| v.try_cast::<Map>()))
+                .and_then(|b| b.get(name.as_str()).and_then(|v| v.clone().try_cast::<bool>()))
+                .unwrap_or(false)
+        },
+    );
+    engine.register_fn(
+        "gamepad_button_just_pressed",
+        |pads: Array, pad: i64, name: ImmutableString| -> bool {
+            find_pad(&pads, pad)
+                .and_then(|m| {
+                    m.get("just_pressed")
+                        .cloned()
+                        .and_then(|v| v.try_cast::<Map>())
+                })
+                .and_then(|b| b.get(name.as_str()).and_then(|v| v.clone().try_cast::<bool>()))
+                .unwrap_or(false)
+        },
+    );
+
     // Audio
     engine.register_fn("play_sound", |path: ImmutableString| {
         push_command(ScriptCommand::PlaySound {
@@ -802,6 +848,41 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     scope.push("gamepad_dpad_down", ctx.gamepad_buttons[13]);
     scope.push("gamepad_dpad_left", ctx.gamepad_buttons[14]);
     scope.push("gamepad_dpad_right", ctx.gamepad_buttons[15]);
+
+    // Multi-gamepad: an array of pad maps (ordered by stable slot id, with an
+    // `id` field since slots can have gaps). Query with the map-passing
+    // helpers — `gamepad_button(gamepads, 1, "south")` — or iterate directly.
+    scope.push("gamepad_count", ctx.gamepads.len() as i64);
+    let pads: Array = ctx
+        .gamepads
+        .iter()
+        .map(|pad| {
+            let mut m = Map::new();
+            m.insert("id".into(), Dynamic::from(pad.id as i64));
+            m.insert("left_x".into(), Dynamic::from(pad.left_stick.x as f64));
+            m.insert("left_y".into(), Dynamic::from(pad.left_stick.y as f64));
+            m.insert("right_x".into(), Dynamic::from(pad.right_stick.x as f64));
+            m.insert("right_y".into(), Dynamic::from(pad.right_stick.y as f64));
+            m.insert(
+                "left_trigger".into(),
+                Dynamic::from(pad.left_trigger as f64),
+            );
+            m.insert(
+                "right_trigger".into(),
+                Dynamic::from(pad.right_trigger as f64),
+            );
+            let mut buttons = Map::new();
+            let mut just = Map::new();
+            for (i, name) in crate::context::GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+                buttons.insert((*name).into(), Dynamic::from(pad.buttons[i]));
+                just.insert((*name).into(), Dynamic::from(pad.buttons_just_pressed[i]));
+            }
+            m.insert("buttons".into(), Dynamic::from(buttons));
+            m.insert("just_pressed".into(), Dynamic::from(just));
+            Dynamic::from(m)
+        })
+        .collect();
+    scope.push("gamepads", pads);
 
     // Mouse
     scope.push("mouse_left", ctx.mouse_buttons_pressed[0]);

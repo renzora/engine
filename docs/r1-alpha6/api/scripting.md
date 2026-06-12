@@ -105,7 +105,20 @@ Written fresh before each hook. Read them — do not assign.
 | `gamepad_select`, `gamepad_start` | bool | Menu buttons |
 | `gamepad_dpad_up` / `down` / `left` / `right` | bool | D-pad |
 
-> All of the globals above are available in **both** backends except the gamepad and mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
+The flat `gamepad_*` globals mirror the **first connected pad**. Every pad is addressable by stable slot id (0 = first) through the multi-gamepad query functions, available in **both** backends:
+
+| Function | Lua | Rhai | Description |
+|----------|-----|------|-------------|
+| Pad count | `gamepad_count()` | `gamepad_count` global | Connected pads |
+| Connected | `gamepad_connected(pad)` | `gamepad_connected(gamepads, pad)` | Pad id present |
+| Axis | `gamepad_axis(pad, axis)` | `gamepad_axis(gamepads, pad, axis)` | `"left_x"`, `"right_y"`, `"left_trigger"`, … |
+| Sticks | `gamepad_left_stick(pad)` / `gamepad_right_stick(pad)` → `x, y` | index `gamepads` directly | Two return values in Lua |
+| Button held | `gamepad_button(pad, button)` | `gamepad_button(gamepads, pad, button)` | `"south"`, `"l1"`, `"dpad_up"`, … |
+| Button just pressed | `gamepad_button_just_pressed(pad, button)` | `gamepad_button_just_pressed(gamepads, pad, button)` | Down this frame |
+
+Rhai also receives a `gamepads` array in scope (one map per pad with `id`, the axis fields, and `buttons` / `just_pressed` maps) which can be indexed or iterated directly. See [Input Handling — Multiple gamepads](/docs/r1-alpha6/scripting/input#multiple-gamepads).
+
+> All of the globals above are available in **both** backends except the mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
 
 ## Transform
 
@@ -180,7 +193,7 @@ end
 | `input_axis_1d(action)` | 1D axis value for a mapped action |
 | `input_axis_2d(action)` | 2D axis — returns `x, y` |
 
-> Rhai registers `is_key_pressed`/`is_key_just_pressed`/`is_key_just_released`, but they take the key map as the first argument and there are no axis, action-map, or gamepad helpers. Treat input as a Lua-only feature.
+> Rhai registers `is_key_pressed`/`is_key_just_pressed`/`is_key_just_released` (taking the key map as the first argument) and the multi-gamepad helpers above (taking the `gamepads` array), but has no axis or action-map helpers. Treat action-mapped input as a Lua-only feature.
 
 ## Audio
 
@@ -380,7 +393,7 @@ Visual [Blueprints](/docs/r1-alpha5/scripting/blueprints) (`.blueprint` / `.bp`,
 
 Rhai (`.rhai`) is a first-class backend for the web build, but a **subset** of the Lua surface (roughly 45 vs Lua's ~70 functions) supporting only the `props`, `on_ready`, and `on_update` hooks. Compared to Lua, Rhai has **no**:
 
-- Action-map / axis / gamepad input helpers (only raw `is_key_*` taking a key-map argument)
+- Action-map / axis input helpers (only raw `is_key_*` taking a key-map argument, and the `gamepad_*` multi-pad queries taking the `gamepads` array)
 - Networking (`rpc`, `net_*`) or HTTP (`http_*`, `json_parse`)
 - `action` / `action_on`
 - Bulk reflection (`get_component*`, `has_component*`) — `get`/`set`/`get_on`/`set_on` are present

@@ -1028,15 +1028,43 @@ pub static GET_GAMEPAD: BlueprintNodeDef = BlueprintNodeDef {
     node_type: "input/get_gamepad",
     display_name: "Get Gamepad",
     category: CAT_INPUT,
-    description: "Gamepad stick and trigger values",
+    description: "Stick and trigger values for one gamepad (0 = first pad)",
     pins: || {
         vec![
+            PinTemplate::input("index", "Index", PinType::Int).with_default(PinValue::Int(0)),
             PinTemplate::output("left_stick", "Left Stick", PinType::Vec2),
             PinTemplate::output("right_stick", "Right Stick", PinType::Vec2),
             PinTemplate::output("left_trigger", "Left Trigger", PinType::Float),
             PinTemplate::output("right_trigger", "Right Trigger", PinType::Float),
+            PinTemplate::output("connected", "Connected", PinType::Bool),
         ]
     },
+    color: CLR_INPUT,
+};
+
+pub static IS_GAMEPAD_BUTTON_PRESSED: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/is_gamepad_button",
+    display_name: "Is Gamepad Button Pressed",
+    category: CAT_INPUT,
+    description: "Check a button on one gamepad (south/east/west/north, l1/r1/l2/r2, select/start, l3/r3, dpad_up/down/left/right)",
+    pins: || {
+        vec![
+            PinTemplate::input("index", "Index", PinType::Int).with_default(PinValue::Int(0)),
+            PinTemplate::input("button", "Button", PinType::String)
+                .with_default(PinValue::String("south".into())),
+            PinTemplate::output("pressed", "Pressed", PinType::Bool),
+            PinTemplate::output("just_pressed", "Just Pressed", PinType::Bool),
+        ]
+    },
+    color: CLR_INPUT,
+};
+
+pub static GET_GAMEPAD_COUNT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "input/get_gamepad_count",
+    display_name: "Get Gamepad Count",
+    category: CAT_INPUT,
+    description: "Number of connected gamepads",
+    pins: || vec![PinTemplate::output("count", "Count", PinType::Int)],
     color: CLR_INPUT,
 };
 
@@ -2279,6 +2307,8 @@ pub static ALL_NODES: &[&BlueprintNodeDef] = &[
     &GET_MOUSE_POSITION,
     &IS_MOUSE_PRESSED,
     &GET_GAMEPAD,
+    &IS_GAMEPAD_BUTTON_PRESSED,
+    &GET_GAMEPAD_COUNT,
     &IS_ACTION_PRESSED,
     &IS_ACTION_JUST_PRESSED,
     &GET_ACTION_AXIS,

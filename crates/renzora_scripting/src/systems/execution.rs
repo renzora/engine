@@ -271,32 +271,31 @@ pub fn run_scripts(world: &mut World) {
         false,
     ];
 
-    let gamepad_left = input.get_gamepad_left_stick(0);
-    let gamepad_right = input.get_gamepad_right_stick(0);
-
-    use bevy::input::gamepad::GamepadButton;
-    let gamepad_button_list = [
-        GamepadButton::South,
-        GamepadButton::East,
-        GamepadButton::West,
-        GamepadButton::North,
-        GamepadButton::LeftTrigger,
-        GamepadButton::RightTrigger,
-        GamepadButton::LeftTrigger2,
-        GamepadButton::RightTrigger2,
-        GamepadButton::Select,
-        GamepadButton::Start,
-        GamepadButton::LeftThumb,
-        GamepadButton::RightThumb,
-        GamepadButton::DPadUp,
-        GamepadButton::DPadDown,
-        GamepadButton::DPadLeft,
-        GamepadButton::DPadRight,
-    ];
-    let mut gamepad_buttons = [false; 16];
-    for (i, btn) in gamepad_button_list.iter().enumerate() {
-        gamepad_buttons[i] = input.is_gamepad_button_pressed(0, *btn);
-    }
+    // Snapshot every connected gamepad (slot ids are stable across the
+    // session). The legacy single-pad context fields mirror the first
+    // connected pad so existing scripts keep working when pad 0 unplugs.
+    let gamepads: Vec<crate::context::GamepadSnapshot> = input
+        .connected_gamepads
+        .iter()
+        .map(|&id| {
+            let mut buttons = [false; 16];
+            let mut buttons_just_pressed = [false; 16];
+            for (i, btn) in crate::input::SCRIPT_GAMEPAD_BUTTONS.iter().enumerate() {
+                buttons[i] = input.is_gamepad_button_pressed(id, *btn);
+                buttons_just_pressed[i] = input.is_gamepad_button_just_pressed(id, *btn);
+            }
+            crate::context::GamepadSnapshot {
+                id,
+                left_stick: input.get_gamepad_left_stick(id),
+                right_stick: input.get_gamepad_right_stick(id),
+                left_trigger: input.get_gamepad_trigger(id, true),
+                right_trigger: input.get_gamepad_trigger(id, false),
+                buttons,
+                buttons_just_pressed,
+            }
+        })
+        .collect();
+    let first_pad = gamepads.first().cloned().unwrap_or_default();
 
     // Collect all script entities and their data
     struct ScriptEntityData {
@@ -417,12 +416,14 @@ pub fn run_scripts(world: &mut World) {
             ctx.action_axis_1d = action_axis_1d.clone();
             ctx.action_axis_2d = action_axis_2d.clone();
 
-            // Gamepad
-            ctx.gamepad_left_stick = gamepad_left;
-            ctx.gamepad_right_stick = gamepad_right;
-            ctx.gamepad_left_trigger = input.get_gamepad_trigger(0, true);
-            ctx.gamepad_right_trigger = input.get_gamepad_trigger(0, false);
-            ctx.gamepad_buttons = gamepad_buttons;
+            // Gamepad (legacy flat fields = first connected pad)
+            ctx.gamepad_left_stick = first_pad.left_stick;
+            ctx.gamepad_right_stick = first_pad.right_stick;
+            ctx.gamepad_left_trigger = first_pad.left_trigger;
+            ctx.gamepad_right_trigger = first_pad.right_trigger;
+            ctx.gamepad_buttons = first_pad.buttons;
+            ctx.gamepad_buttons_just_pressed = first_pad.buttons_just_pressed;
+            ctx.gamepads = gamepads.clone();
 
             // Timers
             ctx.timers_just_finished = timers_finished.clone();

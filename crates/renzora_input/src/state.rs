@@ -17,9 +17,6 @@ pub fn update_action_state(
 ) {
     action_state.actions.clear();
 
-    // Grab first gamepad if any
-    let gamepad = gamepads.iter().next();
-
     for action in &input_map.actions {
         let mut data = ActionData::default();
 
@@ -42,8 +39,9 @@ pub fn update_action_state(
                             }
                         }
                         InputBinding::GamepadButton(btn_str) => {
-                            if let Some(gp) = gamepad {
-                                if let Some(btn) = InputBinding::resolve_gamepad_button(btn_str) {
+                            // Any connected gamepad can drive the action.
+                            if let Some(btn) = InputBinding::resolve_gamepad_button(btn_str) {
+                                for gp in gamepads.iter() {
                                     data.pressed |= gp.pressed(btn);
                                     data.just_pressed |= gp.just_pressed(btn);
                                     data.just_released |= gp.just_released(btn);
@@ -68,18 +66,16 @@ pub fn update_action_state(
                         InputBinding::GamepadButton(btn_str) => {
                             // Gamepad buttons (incl. RightTrigger2 / LeftTrigger2
                             // when the pad exposes triggers as digital) contribute
-                            // a full 1.0 to the axis when pressed.
-                            if let Some(gp) = gamepad {
-                                if let Some(btn) = InputBinding::resolve_gamepad_button(btn_str) {
-                                    if gp.pressed(btn) {
-                                        value = value.max(1.0);
-                                    }
+                            // a full 1.0 to the axis when pressed, on any pad.
+                            if let Some(btn) = InputBinding::resolve_gamepad_button(btn_str) {
+                                if gamepads.iter().any(|gp| gp.pressed(btn)) {
+                                    value = value.max(1.0);
                                 }
                             }
                         }
                         InputBinding::GamepadAxis(axis_str) => {
-                            if let Some(gp) = gamepad {
-                                if let Some(axis) = InputBinding::resolve_gamepad_axis(axis_str) {
+                            if let Some(axis) = InputBinding::resolve_gamepad_axis(axis_str) {
+                                for gp in gamepads.iter() {
                                     let v = gp.get(axis).unwrap_or(0.0);
                                     if v.abs() > action.dead_zone {
                                         value += v;
@@ -129,8 +125,8 @@ pub fn update_action_state(
                             }
                         }
                         InputBinding::GamepadAxis(axis_str) => {
-                            if let Some(gp) = gamepad {
-                                if let Some(axis) = InputBinding::resolve_gamepad_axis(axis_str) {
+                            if let Some(axis) = InputBinding::resolve_gamepad_axis(axis_str) {
+                                for gp in gamepads.iter() {
                                     let stick = match axis {
                                         GamepadAxis::LeftStickX | GamepadAxis::LeftStickY => {
                                             gp.left_stick()

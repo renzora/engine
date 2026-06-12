@@ -675,6 +675,99 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+    // Multi-gamepad — reads the per-execution `_gamepads` table, keyed by
+    // stable pad slot id (0 = first pad). The legacy `gamepad_*` globals keep
+    // mirroring the first connected pad.
+    let _ = globals.set(
+        "gamepad_count",
+        lua.create_function(|lua, ()| {
+            let n: i64 = lua.globals().get("_gamepad_count").unwrap_or(0);
+            Ok(n)
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "gamepad_connected",
+        lua.create_function(|lua, pad: i64| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            Ok(t.get::<LuaTable>(pad).is_ok())
+        })
+        .unwrap(),
+    );
+    // Axis names: "left_x", "left_y", "right_x", "right_y",
+    //             "left_trigger", "right_trigger".
+    let _ = globals.set(
+        "gamepad_axis",
+        lua.create_function(|lua, (pad, name): (i64, String)| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            let Ok(pad_t) = t.get::<LuaTable>(pad) else {
+                return Ok(0.0f64);
+            };
+            Ok(pad_t.get::<f64>(name).unwrap_or(0.0))
+        })
+        .unwrap(),
+    );
+    // Returns two values (x, y): `local x, y = gamepad_left_stick(1)`.
+    let _ = globals.set(
+        "gamepad_left_stick",
+        lua.create_function(|lua, pad: i64| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            let Ok(pad_t) = t.get::<LuaTable>(pad) else {
+                return Ok((0.0f64, 0.0f64));
+            };
+            Ok((
+                pad_t.get::<f64>("left_x").unwrap_or(0.0),
+                pad_t.get::<f64>("left_y").unwrap_or(0.0),
+            ))
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "gamepad_right_stick",
+        lua.create_function(|lua, pad: i64| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            let Ok(pad_t) = t.get::<LuaTable>(pad) else {
+                return Ok((0.0f64, 0.0f64));
+            };
+            Ok((
+                pad_t.get::<f64>("right_x").unwrap_or(0.0),
+                pad_t.get::<f64>("right_y").unwrap_or(0.0),
+            ))
+        })
+        .unwrap(),
+    );
+    // Button names: "south", "east", "west", "north", "l1", "r1", "l2", "r2",
+    //               "select", "start", "l3", "r3", "dpad_up", "dpad_down",
+    //               "dpad_left", "dpad_right".
+    let _ = globals.set(
+        "gamepad_button",
+        lua.create_function(|lua, (pad, name): (i64, String)| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            let Ok(pad_t) = t.get::<LuaTable>(pad) else {
+                return Ok(false);
+            };
+            let Ok(buttons) = pad_t.get::<LuaTable>("buttons") else {
+                return Ok(false);
+            };
+            Ok(buttons.get::<bool>(name).unwrap_or(false))
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "gamepad_button_just_pressed",
+        lua.create_function(|lua, (pad, name): (i64, String)| {
+            let t: LuaTable = lua.globals().get("_gamepads")?;
+            let Ok(pad_t) = t.get::<LuaTable>(pad) else {
+                return Ok(false);
+            };
+            let Ok(buttons) = pad_t.get::<LuaTable>("just_pressed") else {
+                return Ok(false);
+            };
+            Ok(buttons.get::<bool>(name).unwrap_or(false))
+        })
+        .unwrap(),
+    );
+
     // -- Audio --
     let _ = globals.set(
         "play_sound",
@@ -1637,6 +1730,37 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     let _ = g.set("gamepad_dpad_down", ctx.gamepad_buttons[13]);
     let _ = g.set("gamepad_dpad_left", ctx.gamepad_buttons[14]);
     let _ = g.set("gamepad_dpad_right", ctx.gamepad_buttons[15]);
+
+    // Multi-gamepad: `_gamepads` keyed by stable pad slot id, read through
+    // gamepad_count() / gamepad_axis() / gamepad_button() etc.
+    let _ = g.set("_gamepad_count", ctx.gamepads.len() as i64);
+    if let Ok(pads) = lua.create_table() {
+        for pad in &ctx.gamepads {
+            let Ok(pad_t) = lua.create_table() else {
+                continue;
+            };
+            let _ = pad_t.set("left_x", pad.left_stick.x as f64);
+            let _ = pad_t.set("left_y", pad.left_stick.y as f64);
+            let _ = pad_t.set("right_x", pad.right_stick.x as f64);
+            let _ = pad_t.set("right_y", pad.right_stick.y as f64);
+            let _ = pad_t.set("left_trigger", pad.left_trigger as f64);
+            let _ = pad_t.set("right_trigger", pad.right_trigger as f64);
+            if let Ok(buttons) = lua.create_table() {
+                for (i, name) in crate::context::GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+                    let _ = buttons.set(*name, pad.buttons[i]);
+                }
+                let _ = pad_t.set("buttons", buttons);
+            }
+            if let Ok(just) = lua.create_table() {
+                for (i, name) in crate::context::GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+                    let _ = just.set(*name, pad.buttons_just_pressed[i]);
+                }
+                let _ = pad_t.set("just_pressed", just);
+            }
+            let _ = pads.set(pad.id as i64, pad_t);
+        }
+        let _ = g.set("_gamepads", pads);
+    }
 
     // Entity
     let _ = g.set("self_entity_id", ctx.self_entity_id as i64);

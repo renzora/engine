@@ -353,19 +353,40 @@ impl<'a> EvalContext<'a> {
                     .unwrap_or(false);
                 PinValue::Bool(pressed)
             }
-            "input/get_gamepad" => match pin_name {
-                "left_stick" => {
-                    let v = self.input.get_gamepad_left_stick(0);
-                    PinValue::Vec2([v.x, v.y])
+            "input/get_gamepad" => {
+                let pad = self.resolve_input(node_id, "index").as_int().max(0) as u32;
+                match pin_name {
+                    "left_stick" => {
+                        let v = self.input.get_gamepad_left_stick(pad);
+                        PinValue::Vec2([v.x, v.y])
+                    }
+                    "right_stick" => {
+                        let v = self.input.get_gamepad_right_stick(pad);
+                        PinValue::Vec2([v.x, v.y])
+                    }
+                    "left_trigger" => PinValue::Float(self.input.get_gamepad_trigger(pad, true)),
+                    "right_trigger" => PinValue::Float(self.input.get_gamepad_trigger(pad, false)),
+                    "connected" => PinValue::Bool(self.input.is_gamepad_connected(pad)),
+                    _ => PinValue::None,
                 }
-                "right_stick" => {
-                    let v = self.input.get_gamepad_right_stick(0);
-                    PinValue::Vec2([v.x, v.y])
+            }
+            "input/is_gamepad_button" => {
+                let pad = self.resolve_input(node_id, "index").as_int().max(0) as u32;
+                let name = self.resolve_input(node_id, "button").as_string();
+                match gamepad_button_from_name(&name) {
+                    Some(btn) => match pin_name {
+                        "pressed" => {
+                            PinValue::Bool(self.input.is_gamepad_button_pressed(pad, btn))
+                        }
+                        "just_pressed" => {
+                            PinValue::Bool(self.input.is_gamepad_button_just_pressed(pad, btn))
+                        }
+                        _ => PinValue::None,
+                    },
+                    None => PinValue::Bool(false),
                 }
-                "left_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, true)),
-                "right_trigger" => PinValue::Float(self.input.get_gamepad_trigger(0, false)),
-                _ => PinValue::None,
-            },
+            }
+            "input/get_gamepad_count" => PinValue::Int(self.input.gamepad_count() as i32),
 
             // ── Action-mapped input reads ─────────────────────────────
             "input/is_action_pressed" => {
@@ -1548,10 +1569,8 @@ pub fn run_blueprints(world: &mut World) {
 
             for (node_id, node_type) in &event_nodes {
                 match node_type.as_str() {
-                    "event/on_ready" => {
-                        if !was_initialized {
-                            ctx.follow_exec(*node_id, "exec");
-                        }
+                    "event/on_ready" if !was_initialized => {
+                        ctx.follow_exec(*node_id, "exec");
                     }
                     "event/on_update" => {
                         ctx.follow_exec(*node_id, "exec");
@@ -1649,4 +1668,29 @@ pub fn run_blueprints(world: &mut World) {
         world.entity_mut(bpe.entity).insert(graph);
         world.entity_mut(bpe.entity).insert(runtime);
     }
+}
+
+/// Map a script-facing button name ("south", "l1", "dpad_up", ...) to the
+/// Bevy `GamepadButton`. Bevy debug names ("South", "LeftTrigger", ...) are
+/// accepted too, case-insensitively.
+fn gamepad_button_from_name(name: &str) -> Option<GamepadButton> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "south" => GamepadButton::South,
+        "east" => GamepadButton::East,
+        "west" => GamepadButton::West,
+        "north" => GamepadButton::North,
+        "l1" | "lefttrigger" => GamepadButton::LeftTrigger,
+        "r1" | "righttrigger" => GamepadButton::RightTrigger,
+        "l2" | "lefttrigger2" => GamepadButton::LeftTrigger2,
+        "r2" | "righttrigger2" => GamepadButton::RightTrigger2,
+        "select" => GamepadButton::Select,
+        "start" => GamepadButton::Start,
+        "l3" | "leftthumb" => GamepadButton::LeftThumb,
+        "r3" | "rightthumb" => GamepadButton::RightThumb,
+        "dpad_up" | "dpadup" => GamepadButton::DPadUp,
+        "dpad_down" | "dpaddown" => GamepadButton::DPadDown,
+        "dpad_left" | "dpadleft" => GamepadButton::DPadLeft,
+        "dpad_right" | "dpadright" => GamepadButton::DPadRight,
+        _ => return None,
+    })
 }
