@@ -59,6 +59,8 @@ pub enum EditorAction {
     ToggleWireframe,
     ToggleLighting,
     ToggleGrid,
+    /// Reset the editor UI scale (DPI) back to 100%.
+    ResetUiScale,
 
     // Play mode
     PlayStop,
@@ -153,6 +155,7 @@ impl EditorAction {
             EditorAction::ToggleWireframe => "Toggle Wireframe",
             EditorAction::ToggleLighting => "Toggle Lighting",
             EditorAction::ToggleGrid => "Toggle Grid",
+            EditorAction::ResetUiScale => "Reset UI Scale",
             EditorAction::PlayStop => "Play/Stop",
             EditorAction::PlayScriptsOnly => "Run Scripts Only",
             EditorAction::ViewFront => "View Front",
@@ -255,6 +258,7 @@ impl EditorAction {
             | EditorAction::ToggleWireframe
             | EditorAction::ToggleLighting
             | EditorAction::ToggleGrid
+            | EditorAction::ResetUiScale
             | EditorAction::ViewFront
             | EditorAction::ViewBack
             | EditorAction::ViewLeft
@@ -333,6 +337,7 @@ impl EditorAction {
             EditorAction::ToggleWireframe,
             EditorAction::ToggleLighting,
             EditorAction::ToggleGrid,
+            EditorAction::ResetUiScale,
             EditorAction::ViewFront,
             EditorAction::ViewBack,
             EditorAction::ViewLeft,
@@ -561,6 +566,10 @@ impl Default for KeyBindings {
         bindings.insert(
             EditorAction::ToggleGrid,
             KeyBinding::new(KeyCode::KeyG).ctrl(),
+        );
+        bindings.insert(
+            EditorAction::ResetUiScale,
+            KeyBinding::new(KeyCode::Digit0).ctrl(),
         );
 
         // Play mode

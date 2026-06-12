@@ -388,6 +388,7 @@ impl Plugin for RenzoraEditorPlugin {
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
             .add_systems(Update, apply_vsync_setting)
+            .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
                 Update,
                 apply_isolation_mode.run_if(in_state(SplashState::Editor)),
@@ -418,6 +419,89 @@ fn apply_vsync_setting(
     };
     if window.present_mode != desired {
         window.present_mode = desired;
+    }
+}
+
+/// Apply `EditorSettings.ui_scale` by scaling the primary window's reported
+/// DPI factor to `os_scale * ui_scale`. Everything downstream reads that one
+/// factor — winit's cursor-position conversion, the UI cameras, egui — so
+/// logical px and UI design px remain the same space and no widget math has
+/// to know the setting exists.
+///
+/// Deliberately NOT:
+/// - `set_scale_factor_override`: bevy_winit reacts to an override change by
+///   resizing the physical window to preserve the logical size (a 1920px
+///   window grows to 2880px at 150%) instead of zooming the content in place.
+/// - `bevy::ui::UiScale`: global to all UI layout, so it would also scale the
+///   UI-canvas tab's render-to-texture game UI (breaking its 1:1 authoring
+///   guarantee) — and the canvas systems already own that resource for
+///   reference-resolution mapping.
+///
+/// bevy_winit only writes the base factor back on a real OS DPI change
+/// (`react_to_scale_factor_change`), which it announces via
+/// `WindowBackendScaleFactorChanged`; we track the true OS factor from those
+/// messages (seeded from the window before our first write) and re-apply the
+/// multiplier on top. Writing the base factor requests no window resize:
+/// bevy_winit's `changed_windows` reconstructs the cached logical size using
+/// the *current* base factor, so the physical size round-trips unchanged.
+fn apply_ui_scale_setting(
+    settings: Res<EditorSettings>,
+    mut backend_scale: bevy::ecs::message::MessageReader<
+        bevy::window::WindowBackendScaleFactorChanged,
+    >,
+    mut scale_changed: bevy::ecs::message::MessageWriter<
+        bevy::window::WindowScaleFactorChanged,
+    >,
+    mut os_scale: Local<Option<f32>>,
+    mut windows: Query<
+        (Entity, &mut bevy::window::Window),
+        With<bevy::window::PrimaryWindow>,
+    >,
+) {
+    let Ok((entity, mut window)) = windows.single_mut() else {
+        return;
+    };
+    for msg in backend_scale.read() {
+        if msg.window == entity {
+            *os_scale = Some(msg.scale_factor as f32);
+        }
+    }
+    let base = *os_scale.get_or_insert_with(|| window.resolution.base_scale_factor());
+    let desired = base * settings.ui_scale.clamp(0.5, 3.0);
+    if (window.resolution.base_scale_factor() - desired).abs() > 1e-4 {
+        window.resolution.set_scale_factor(desired);
+        // Writing the factor directly doesn't notify anyone — `camera_system`
+        // only recomputes `Camera::computed.target_info` when it sees a
+        // window created/resized/scale-changed message, so without this the
+        // new scale only shows up after a restart (or a real resize).
+        scale_changed.write(bevy::window::WindowScaleFactorChanged {
+            window: entity,
+            scale_factor: desired as f64,
+        });
+    }
+}
+
+/// `Ctrl+0` (rebindable: [`EditorAction::ResetUiScale`]) snaps the editor UI
+/// scale back to 100% — the escape hatch if a scale choice makes the settings
+/// panel itself hard to operate.
+fn reset_ui_scale_shortcut(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Res<renzora::core::keybindings::KeyBindings>,
+    input_focus: Res<renzora::core::InputFocusState>,
+    mut settings: ResMut<EditorSettings>,
+) {
+    if keybindings.rebinding.is_some() || input_focus.egui_wants_keyboard {
+        return;
+    }
+    if !keybindings.just_pressed(
+        renzora::core::keybindings::EditorAction::ResetUiScale,
+        &keyboard,
+    ) {
+        return;
+    }
+    if settings.ui_scale != 1.0 {
+        settings.ui_scale = 1.0;
+        let _ = renzora::save_ui_scale(1.0);
     }
 }
 

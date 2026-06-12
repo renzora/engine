@@ -1074,6 +1074,28 @@ fn tab_interface(
     );
     settings_row(commands, fonts, body, 2, "Font Size", dv);
 
+    let (sec, body) = section(commands, fonts, "monitor", "Display", A_PURPLE);
+    commands.entity(col).add_child(sec);
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        UI_SCALE_LABELS,
+        ui_scale_index(settings.ui_scale),
+        |w| ui_scale_index(w.resource::<EditorSettings>().ui_scale),
+        |w, &i| {
+            let v = UI_SCALE_STEPS.get(i).copied().unwrap_or(1.0);
+            w.resource_mut::<EditorSettings>().ui_scale = v;
+            let _ = renzora::save_ui_scale(v);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "UI Scale", dd);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "Scales the editor UI on top of the OS DPI setting. 100% follows the OS.",
+    );
+
     let (sec, body) = section(commands, fonts, "list-bullets", "Hierarchy", A_BLUE);
     commands.entity(col).add_child(sec);
     let t = ctl_toggle(
@@ -1083,6 +1105,21 @@ fn tab_interface(
         |w, &v| w.resource_mut::<EditorSettings>().hierarchy_parent_stacking = v,
     );
     settings_row(commands, fonts, body, 0, "Parent Stacking", t);
+}
+
+/// Fixed UI-scale steps. Discrete choices instead of a drag value: the UI
+/// relayouts under the cursor as the scale changes, which makes continuous
+/// dragging feel like the control is fighting back.
+const UI_SCALE_STEPS: &[f32] = &[0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+const UI_SCALE_LABELS: &[&str] = &["75%", "100%", "125%", "150%", "175%", "200%", "250%", "300%"];
+
+fn ui_scale_index(v: f32) -> usize {
+    UI_SCALE_STEPS
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| (*a - v).abs().total_cmp(&(*b - v).abs()))
+        .map(|(i, _)| i)
+        .unwrap_or(1)
 }
 
 fn ui_font_index(f: &UiFont, custom: &[String]) -> usize {

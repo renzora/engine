@@ -113,6 +113,10 @@ pub struct EditorSettings {
     pub selection_boundary_on_top: bool,
     /// Base font size in points
     pub font_size: f32,
+    /// Editor UI scale multiplier applied on top of the OS DPI scale
+    /// (1.0 follows the system). Persisted per-user in `~/.renzora/editor.toml`
+    /// because it's a property of the user's display, not the project.
+    pub ui_scale: f32,
     /// Selected UI (proportional) font family
     pub ui_font: UiFont,
     /// Selected monospace (code) font family
@@ -168,6 +172,7 @@ impl Default for EditorSettings {
             selection_highlight_mode: SelectionHighlightMode::default(),
             selection_boundary_on_top: false,
             font_size: 14.0,
+            ui_scale: renzora::load_ui_scale(),
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
             dev_mode: false,

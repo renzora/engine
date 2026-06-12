@@ -214,6 +214,79 @@ pub fn save_renderer_backend(backend: RendererBackend) -> std::io::Result<()> {
     std::fs::write(&path, text)
 }
 
+/// On-disk wrapper for per-user editor preferences (`~/.renzora/editor.toml`).
+/// These are machine-local — UI scale depends on the user's monitor, not the
+/// project — so they live next to the renderer preference rather than in
+/// `project.toml`.
+#[derive(Serialize, Deserialize)]
+struct EditorPrefFile {
+    #[serde(default = "default_ui_scale")]
+    ui_scale: f32,
+}
+
+fn default_ui_scale() -> f32 {
+    1.0
+}
+
+impl Default for EditorPrefFile {
+    fn default() -> Self {
+        Self { ui_scale: 1.0 }
+    }
+}
+
+/// Path to the persisted editor preferences: `~/.renzora/editor.toml`.
+#[cfg(not(target_arch = "wasm32"))]
+fn editor_pref_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)?;
+    Some(home.join(".renzora").join("editor.toml"))
+}
+
+/// Load the persisted editor UI scale multiplier (1.0 = system DPI),
+/// defaulting to 1.0 when the file is absent or unreadable.
+pub fn load_ui_scale() -> f32 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        1.0
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return 1.0;
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return 1.0;
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.ui_scale)
+            .unwrap_or(1.0)
+            .clamp(0.5, 3.0)
+    }
+}
+
+/// Persist the editor UI scale multiplier.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_ui_scale(ui_scale: f32) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Read-modify-write so future fields in the file survive a scale edit.
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.ui_scale = ui_scale;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
 /// How the game's render viewport scales to fill the OS window.
 ///
 /// Mirrors Godot's stretch modes — the *render resolution* (what the
@@ -1768,6 +1841,12 @@ pub struct ScriptInput {
     pub scroll_delta: Vec2,
     pub gamepad_axes: HashMap<u32, HashMap<GamepadAxis, f32>>,
     pub gamepad_buttons: HashMap<u32, HashMap<GamepadButton, bool>>,
+    pub gamepad_buttons_just_pressed: HashMap<u32, HashMap<GamepadButton, bool>>,
+    /// Slot ids of currently connected gamepads, sorted ascending. Slots are
+    /// stable across the session: a pad keeps its id until it disconnects, and
+    /// a newly connected pad takes the lowest free id — so unplugging pad 0
+    /// doesn't shift pad 1 down.
+    pub connected_gamepads: Vec<u32>,
 }
 
 impl ScriptInput {
@@ -1843,6 +1922,28 @@ impl ScriptInput {
             .and_then(|b| b.get(&button))
             .copied()
             .unwrap_or(false)
+    }
+
+    pub fn is_gamepad_button_just_pressed(&self, id: u32, button: GamepadButton) -> bool {
+        self.gamepad_buttons_just_pressed
+            .get(&id)
+            .and_then(|b| b.get(&button))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    pub fn gamepad_count(&self) -> usize {
+        self.connected_gamepads.len()
+    }
+
+    pub fn is_gamepad_connected(&self, id: u32) -> bool {
+        self.connected_gamepads.contains(&id)
+    }
+
+    /// Lowest connected gamepad slot, if any. Used to back the legacy
+    /// single-gamepad script globals.
+    pub fn first_gamepad(&self) -> Option<u32> {
+        self.connected_gamepads.first().copied()
     }
 }
 
