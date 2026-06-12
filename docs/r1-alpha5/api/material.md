@@ -210,6 +210,8 @@ Named graph-boundary inputs that material instances and `MaterialOverrides` can 
 | `texture/sample_2d_array` | Sample 2D Array | Layered array; `layer` picks the slice |
 | `texture/sample_3d` | Sample 3D Texture | Volumetric (UVW) sampling |
 
+> **All texture slots in a graph material share one sampler.** Every slot — 2D, cubemap, array, and 3D — samples with the first 2D texture's sampler settings (or a default linear sampler when there is none). Per-image filter and wrap modes on the other textures are not honored. This keeps the fragment stage under the 16-samplers-per-stage limit that Metal and baseline WebGPU/Vulkan impose; per-slot samplers made graph materials fail pipeline creation on macOS.
+
 ### Math
 
 All operate component-wise on the inferred type. Each has a `result` output.

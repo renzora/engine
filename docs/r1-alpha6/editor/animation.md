@@ -50,6 +50,16 @@ Each `AnimClipSlot` is a named reference to one `.anim` file:
 | `blend_in` | `Option<f32>` | Crossfade time when transitioning *into* this clip. |
 | `blend_out` | `Option<f32>` | Crossfade time when transitioning *out of* this clip. |
 
+### Editing in the Inspector
+
+The Animator component has a full native Inspector drawer, so the common workflow never leaves the Inspector panel:
+
+- **Clip library** — every slot with play, rename, speed, loop toggle, and remove controls.
+- **Drop field** — drag an `.anim` file from the asset panel to add it as a new slot.
+- **Default clip** — a dropdown over the slot names; picking one also plays it for instant feedback.
+- **Blend time** — the animator's global crossfade duration.
+- **State machine** — assign or clear the `.animsm` file.
+
 ### The `.anim` file format
 
 An `.anim` file is RON-serialized `AnimClip`: a name, a duration in seconds, and one `BoneTrack` per animated bone. Each track holds time-stamped translation, rotation (quaternion XYZW), and scale keyframes. A channel needs at least two keyframes to produce a curve.
@@ -97,6 +107,26 @@ Open the **Animation** workspace from the ribbon. It hosts five dockable panels 
 | `studio_preview` | Studio Preview | Isolated offscreen render of the selected model with an orbit camera and skeleton overlay. |
 
 The panels share an `AnimationEditorState` (selected clip, scrub time, preview speed/looping, snap interval, timeline zoom). Editing a parameter in the **Parameters** panel pushes a live command into the running animator so you can preview transitions without playing the game.
+
+Selection is forgiving: clicking a mesh child or an individual bone resolves to the ancestor that carries the animator/model, so every panel follows along. The studio preview also searches the selection's descendants and can infer the model's GLB from the animator's clip paths; when nothing previewable is selected it overlays a hint chip on the studio backdrop instead of going blank.
+
+### Guided setup
+
+The panels are never a dead end — when the current selection has nothing to show, they offer the next step instead of sitting empty:
+
+- **Animation candidates** — with nothing selected, the Animation panel lists every entity in the scene that looks animatable (models with skeletons, clips, or an existing animator). Click one to select it and continue.
+- **Scan for clips** — re-runs `.anim` discovery on the model's folder and registers what it finds as clip slots. This rescues models that were placed in the scene before their animations finished importing (or that ship animations as separate files).
+- **Create State Machine** — writes a starter `.animsm` next to the model with one state per clip slot and assigns it to the animator, ready to add transitions.
+
+### Editing keyframes in the timeline
+
+The Timeline panel edits the selected clip directly:
+
+- **Drag** a keyframe horizontally to retime it — dragging respects the snap interval.
+- **Right-click** a keyframe to delete it.
+- **Save** writes the modified clip back to its `.anim` file; the button tracks dirty state so you can see when there are unsaved changes.
+- **Mouse wheel** zooms the time axis.
+- Dense keyframe runs draw as per-channel **range bars** rather than thousands of individual diamonds; zoom in and they split back into editable keys.
 
 ## State machines
 
