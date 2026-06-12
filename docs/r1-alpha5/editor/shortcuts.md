@@ -135,6 +135,7 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 | `T` | Toggle snap |
 | `Shift+T` | Toggle edge snap |
 | `Alt+T` | Toggle scale-from-bottom |
+| `Ctrl+0` | Reset UI scale to 100% |
 
 > Wireframe is `Alt+Z` (not bare `Z`) and lighting is `Alt+Shift+Z`. Plain `Z` was dropped because it clashed with `Ctrl+Z` and the gizmo tool keys.
 

@@ -89,6 +89,10 @@ The **Console** is where the engine talks to you. Messages stream in as you work
 
 Use the filter buttons to show only warnings or errors, search to find a message, and the box at the bottom to type **slash commands** (start with `/help` to see what's available).
 
+## Scaling the UI
+
+If the editor looks too small (or too large) on your monitor, open **Settings → Interface** (`Ctrl+,`) and pick a **UI Scale** under *Display* — from 75% to 300%, applied instantly on top of your OS DPI setting. The choice is saved per user, so it sticks across projects and restarts. If you ever pick a scale that makes things awkward, press `Ctrl+0` to snap back to 100%.
+
 ## Handy shortcuts
 
 A couple of shortcuts you'll use constantly:
