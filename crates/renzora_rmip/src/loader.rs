@@ -93,7 +93,16 @@ impl AssetLoader for RmipAssetLoader {
             return Err(RmipLoadError::Truncated { expected, actual });
         }
 
-        let pixels = bytes[HEADER_LEN..HEADER_LEN + expected].to_vec();
+        // Block-compressed textures must be uploaded with block-aligned base
+        // dimensions or wgpu rejects the texture ("Width N is not a multiple of
+        // <fmt>'s block width"). `aligned_upload` rounds the descriptor up to
+        // the block size and caps the mip chain at the levels that still line up
+        // with the stored data (see its doc comment). For files baked after the
+        // bake-side alignment fix — and all uncompressed files — it's a no-op.
+        let (aligned_w, aligned_h, usable_mips, used_bytes) =
+            aligned_upload(rmip_format, width, height, mip_count);
+
+        let pixels = bytes[HEADER_LEN..HEADER_LEN + used_bytes].to_vec();
 
         let image = Image {
             data: Some(pixels),
@@ -103,11 +112,11 @@ impl AssetLoader for RmipAssetLoader {
             texture_descriptor: TextureDescriptor {
                 label: None,
                 size: Extent3d {
-                    width,
-                    height,
+                    width: aligned_w,
+                    height: aligned_h,
                     depth_or_array_layers: 1,
                 },
-                mip_level_count: mip_count,
+                mip_level_count: usable_mips,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
                 format,
@@ -157,4 +166,100 @@ fn u32_le(bytes: &[u8], offset: usize) -> u32 {
         bytes[offset + 2],
         bytes[offset + 3],
     ])
+}
+
+/// Decide how to upload a stored `.rmip` of logical `width × height` with
+/// `mip_count` levels in `format`, given that wgpu requires block-compressed
+/// textures to have block-aligned base dimensions.
+///
+/// Returns `(aligned_width, aligned_height, usable_mips, used_bytes)`:
+/// - the base dimensions rounded up to the format's block size (a no-op for
+///   uncompressed formats and for already-aligned bakes);
+/// - how many leading mip levels still line up between the stored layout
+///   (`logical >> level`) and the layout wgpu derives from the aligned base
+///   (`aligned >> level`) — they can diverge deep in the chain for legacy
+///   non-aligned files, and those trailing levels must be dropped;
+/// - the payload byte count for exactly those usable levels.
+///
+/// Level 0 always matches by construction, so `usable_mips >= 1`.
+pub(crate) fn aligned_upload(
+    format: RmipFormat,
+    width: u32,
+    height: u32,
+    mip_count: u32,
+) -> (u32, u32, u32, usize) {
+    let (bw, bh) = format.block_dim();
+    let aligned_w = width.div_ceil(bw) * bw;
+    let aligned_h = height.div_ceil(bh) * bh;
+    let mut usable_mips = 0u32;
+    let mut used_bytes = 0usize;
+    for level in 0..mip_count {
+        let lw = (width >> level).max(1);
+        let lh = (height >> level).max(1);
+        let stored = (lw.div_ceil(bw), lh.div_ceil(bh));
+        let aligned = (
+            (aligned_w >> level).max(1).div_ceil(bw),
+            (aligned_h >> level).max(1).div_ceil(bh),
+        );
+        if stored != aligned {
+            break;
+        }
+        usable_mips += 1;
+        used_bytes += format.level_byte_size(lw, lh);
+    }
+    (aligned_w, aligned_h, usable_mips, used_bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::aligned_upload;
+    use crate::{mip_count, RmipFormat};
+
+    #[test]
+    fn aligned_bc_file_is_unchanged() {
+        // 256×256 BC5 is already block-aligned: full mip chain, full payload.
+        let mips = mip_count(256, 256);
+        let (aw, ah, usable, bytes) = aligned_upload(RmipFormat::Bc5RgUnorm, 256, 256, mips);
+        assert_eq!((aw, ah), (256, 256));
+        assert_eq!(usable, mips);
+        assert_eq!(bytes, RmipFormat::Bc5RgUnorm.payload_size(256, 256, mips));
+    }
+
+    #[test]
+    fn uncompressed_is_never_aligned_or_capped() {
+        // Uncompressed has 1×1 blocks: any size is valid, nothing is dropped.
+        let mips = mip_count(517, 300);
+        let (aw, ah, usable, bytes) = aligned_upload(RmipFormat::Rgba8Unorm, 517, 300, mips);
+        assert_eq!((aw, ah), (517, 300));
+        assert_eq!(usable, mips);
+        assert_eq!(bytes, RmipFormat::Rgba8Unorm.payload_size(517, 300, mips));
+    }
+
+    #[test]
+    fn legacy_non_aligned_bc_rounds_up_and_caps_chain() {
+        // The crash case: a 517-wide BC5 normal map. The base rounds 517→520;
+        // the chain diverges at the first level where 520>>l and 517>>l round to
+        // different block counts (level 3: 17 vs 16 blocks wide), so the deepest
+        // mips are dropped — but the texture now uploads instead of crashing.
+        let mips = mip_count(517, 300); // height 300 is already block-aligned
+        let (aw, ah, usable, bytes) = aligned_upload(RmipFormat::Bc5RgUnorm, 517, 300, mips);
+        assert_eq!((aw, ah), (520, 300));
+        assert_eq!(aw % 4, 0);
+        assert_eq!(ah % 4, 0);
+        assert_eq!(usable, 3);
+        // used_bytes covers exactly the usable leading levels, by logical dims.
+        let expect: usize = (0..usable)
+            .map(|l| RmipFormat::Bc5RgUnorm.level_byte_size((517 >> l).max(1), (300 >> l).max(1)))
+            .sum();
+        assert_eq!(bytes, expect);
+    }
+
+    #[test]
+    fn usable_mips_at_least_one_for_tiny_odd_bc() {
+        // A 1×1 BC texture: rounds up to 4×4, single usable level, never panics.
+        let (aw, ah, usable, bytes) = aligned_upload(RmipFormat::Bc7RgbaUnorm, 1, 1, 1);
+        assert_eq!((aw, ah), (4, 4));
+        assert_eq!(usable, 1);
+        assert_eq!(bytes, RmipFormat::Bc7RgbaUnorm.level_byte_size(1, 1));
+    }
 }

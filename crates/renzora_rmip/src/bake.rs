@@ -147,6 +147,31 @@ pub fn bake_rgba8(
     let has_alpha = !renormalize && base.pixels().any(|p| p.0[3] != 255);
     let format = params.select_format(has_alpha);
 
+    // ── Block alignment ─────────────────────────────────────────────────
+    // GPU block-compressed formats (BC1/3/5/7) require the texture's *base*
+    // dimensions to be a multiple of the 4×4 block size. wgpu rejects a
+    // non-aligned base outright at upload (e.g. a 517-wide BC5 normal map →
+    // "Width 517 is not a multiple of Bc5RgUnorm's block width (4)"), which
+    // crashes the renderer on project load. Round the base up to the next
+    // multiple of 4 *before* building the mip chain, so the stored base, every
+    // halved level, and the per-level sizes wgpu derives by shifting the base
+    // all stay block-consistent (`floor(x/2)` iterated equals `x >> level`, so
+    // an aligned base keeps the whole chain aligned to the loader's view).
+    // We resize rather than edge-pad so UV 0..1 keeps mapping to the full image.
+    // Uncompressed RGBA8 has no block constraint, so leave it untouched.
+    let (width, height, base) = if format.is_block_compressed() {
+        let aw = width.div_ceil(4) * 4;
+        let ah = height.div_ceil(4) * 4;
+        if (aw, ah) != (width, height) {
+            let resized = image::imageops::resize(&base, aw, ah, FilterType::Lanczos3);
+            (aw, ah, resized)
+        } else {
+            (width, height, base)
+        }
+    } else {
+        (width, height, base)
+    };
+
     // ── Mip chain (Lanczos3, renormalized for normal maps) ──────────────
     let mips = mip_count(width, height);
     let mut levels: Vec<ImageBuffer<Rgba<u8>, Vec<u8>>> = Vec::with_capacity(mips as usize);
@@ -447,6 +472,51 @@ mod tests {
         .unwrap();
         let (_, _, _, _, fmt) = header(&out);
         assert_eq!(fmt, RmipFormat::Rgba8UnormSrgb);
+        assert_payload_matches(&out);
+    }
+
+    #[test]
+    fn non_aligned_bc_base_is_rounded_to_block_size() {
+        // A 5×5 normal map (not a multiple of 4) must be stored at block-aligned
+        // dimensions, or wgpu rejects the BC5 texture on upload (the project-load
+        // crash). The base rounds 5→8 and the payload stays self-consistent.
+        let px = solid(5, 5, [128, 128, 255, 255]);
+        let out = bake_rgba8(
+            &px,
+            5,
+            5,
+            BakeParams {
+                role: TextureRole::NormalMap,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (_, w, h, _, fmt) = header(&out);
+        assert_eq!(fmt, RmipFormat::Bc5RgUnorm);
+        assert_eq!((w, h), (8, 8), "BC base rounded up to a multiple of 4");
+        assert_eq!((w % 4, h % 4), (0, 0));
+        assert_payload_matches(&out);
+    }
+
+    #[test]
+    fn non_aligned_uncompressed_keeps_exact_dimensions() {
+        // Uncompressed RGBA8 has no block constraint, so a 5×5 image is stored
+        // as-is (not resized).
+        let px = solid(5, 5, [1, 2, 3, 255]);
+        let out = bake_rgba8(
+            &px,
+            5,
+            5,
+            BakeParams {
+                role: TextureRole::Color,
+                compress: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (_, w, h, _, fmt) = header(&out);
+        assert_eq!(fmt, RmipFormat::Rgba8UnormSrgb);
+        assert_eq!((w, h), (5, 5), "uncompressed needs no block alignment");
         assert_payload_matches(&out);
     }
 
