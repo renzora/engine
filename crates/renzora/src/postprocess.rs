@@ -596,13 +596,25 @@ pub struct PostProcessPlugin<T: PostProcessEffect> {
 
 /// Copies a post-process settings component from source entities to target
 /// cameras based on the EffectRouting table.
+///
+/// Change-gated: a full re-proxy only runs when something relevant changed —
+/// the routing table was rebuilt, this effect's settings changed on a source,
+/// or a source's component was removed. In steady state it early-outs instead
+/// of re-scanning routes × sources every frame. (`sources` uses `Ref<T>` so we
+/// can see per-source change ticks; the query already only matches the few
+/// entities that carry `T`, so the change scan is cheap.)
 fn proxy_effect_to_camera<T: PostProcessEffect>(
     mut commands: Commands,
-    sources: Query<(Entity, &T)>,
+    sources: Query<(Entity, Ref<T>)>,
     routing: Res<crate::EffectRouting>,
     mut removed: RemovedComponents<T>,
 ) {
     let any_removed = removed.read().next().is_some();
+    let routing_changed = routing.is_changed();
+    let any_changed = sources.iter().any(|(_, s)| s.is_changed());
+    if !routing_changed && !any_changed && !any_removed {
+        return;
+    }
     for (target, source_list) in routing.iter() {
         let mut found = false;
         for &src in source_list {
@@ -619,7 +631,7 @@ fn proxy_effect_to_camera<T: PostProcessEffect>(
                 break;
             }
         }
-        if !found && (routing.is_changed() || any_removed) {
+        if !found && (routing_changed || any_removed) {
             // try_remove (deferred-safe, like try_insert above) — the target
             // may be despawned by the time this command flushes.
             commands.entity(*target).try_remove::<T>();
