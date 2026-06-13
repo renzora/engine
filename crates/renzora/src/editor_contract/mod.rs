@@ -14,6 +14,7 @@
 //! runtime / server / mobile builds carry zero editor surface.
 
 mod ext;
+mod gpu_pass_registry;
 mod inspector_registry;
 mod selection;
 mod shortcut_registry;
@@ -25,6 +26,7 @@ mod types;
 // `renzora` crate root automatically; these re-exports surface the non-macro
 // items (FieldDef, AppEditorExt, the registries, …) at the crate root too.
 pub use ext::*;
+pub use gpu_pass_registry::*;
 pub use inspector_registry::*;
 pub use selection::*;
 pub use shortcut_registry::*;

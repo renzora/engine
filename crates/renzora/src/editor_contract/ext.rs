@@ -50,6 +50,17 @@ pub trait AppEditorExt {
     /// Register a plugin keyboard shortcut. See [`ShortcutEntry`].
     fn register_shortcut(&mut self, entry: ShortcutEntry) -> &mut Self;
 
+    /// Attribute GPU render passes whose name starts with `pass_prefix` to the
+    /// live entities carrying component `C` (shown, labelled `noun`, in the
+    /// editor's GPU Pass Breakdown). Lets a plugin that adds its own GPU render
+    /// pass surface *what* drives it without the debugger hardcoding the mapping.
+    /// See [`GpuPassSourceRegistry`].
+    fn register_gpu_pass_source<C: Component>(
+        &mut self,
+        pass_prefix: impl Into<std::borrow::Cow<'static, str>>,
+        noun: impl Into<std::borrow::Cow<'static, str>>,
+    ) -> &mut Self;
+
     /// Convenience: register a post-process effect's type, plugin, and inspector entry.
     fn add_post_process<T>(&mut self) -> &mut Self
     where
@@ -129,6 +140,25 @@ impl AppEditorExt for App {
         self.world_mut()
             .resource_mut::<ShortcutRegistry>()
             .register(entry);
+        self
+    }
+
+    fn register_gpu_pass_source<C: Component>(
+        &mut self,
+        pass_prefix: impl Into<std::borrow::Cow<'static, str>>,
+        noun: impl Into<std::borrow::Cow<'static, str>>,
+    ) -> &mut Self {
+        // Resolve (and register, if new) the component's stable ComponentId now,
+        // at plugin-build time, so the breakdown can count its entities later.
+        let component = self.world_mut().register_component::<C>();
+        self.init_resource::<super::gpu_pass_registry::GpuPassSourceRegistry>();
+        self.world_mut()
+            .resource_mut::<super::gpu_pass_registry::GpuPassSourceRegistry>()
+            .register(super::gpu_pass_registry::GpuPassSource {
+                prefix: pass_prefix.into(),
+                component,
+                noun: noun.into(),
+            });
         self
     }
 

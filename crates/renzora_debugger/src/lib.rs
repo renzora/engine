@@ -91,6 +91,23 @@ impl Plugin for DebuggerPlugin {
             app.add_plugins(RenderDiagnosticsPlugin);
         }
 
+        // Attribute the engine's built-in GPU passes to the components that drive
+        // them, so the GPU Pass Breakdown shows *what* is paying for each pass.
+        // Plugins that add their own render passes register the same way (via
+        // `App::register_gpu_pass_source`) — nothing here is special-cased in the
+        // panel. NOTE: the atmosphere environment map becomes a
+        // `GeneratedEnvironmentMapLight` on the camera, so counting that catches
+        // the realtime atmosphere IBL that drives the `lightprobe_*` passes.
+        use bevy::light::{DirectionalLight, GeneratedEnvironmentMapLight, PointLight, SpotLight};
+        use renzora::AppEditorExt;
+        app.register_gpu_pass_source::<GeneratedEnvironmentMapLight>("lightprobe", "environment map")
+            .register_gpu_pass_source::<DirectionalLight>(
+                "shadow_directional_light",
+                "directional light",
+            )
+            .register_gpu_pass_source::<PointLight>("shadow_point", "point light")
+            .register_gpu_pass_source::<SpotLight>("shadow_spot", "spot light");
+
         // Init resources
         app.init_resource::<DiagnosticsState>()
             .init_resource::<RenderStats>()
@@ -109,15 +126,20 @@ impl Plugin for DebuggerPlugin {
                 update_diagnostics_state,
                 update_render_stats,
                 update_memory_profiler,
-                update_system_timing,
                 update_camera_debug_state,
                 update_culling_debug_state,
             )
                 .run_if(in_state(SplashState::Editor)),
         );
+        // Exclusive systems (need `&mut World`): ECS archetype stats, and the GPU
+        // pass breakdown (scans archetypes to count the entities driving passes).
         app.add_systems(
             Update,
             update_ecs_stats.run_if(in_state(SplashState::Editor)),
+        );
+        app.add_systems(
+            Update,
+            update_system_timing.run_if(in_state(SplashState::Editor)),
         );
         app.add_systems(
             Update,

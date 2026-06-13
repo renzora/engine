@@ -3,8 +3,12 @@
 use bevy::diagnostic::{
     DiagnosticsStore, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
 };
+use bevy::ecs::component::ComponentId;
+use bevy::platform::time::Instant;
 use bevy::prelude::*;
+use renzora::GpuPassSourceRegistry;
 use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 
 const MAX_SAMPLES: usize = 120;
 
@@ -142,6 +146,9 @@ pub struct ScheduleTiming {
     pub name: String,
     pub time_ms: f32,
     pub percentage: f32,
+    /// Human-readable attribution: which ECS entities / cameras drive this pass
+    /// (e.g. "2 environment maps — realtime atmosphere IBL"). Empty if unknown.
+    pub source: String,
 }
 
 #[derive(Resource, Clone)]
@@ -451,36 +458,68 @@ pub fn update_diagnostics_state(
 }
 
 /// Top-level (shallowest) GPU render-pass spans recorded by
-/// `RenderDiagnosticsPlugin`, as `(pass_name, elapsed_ms)`.
+/// `RenderDiagnosticsPlugin`, as `(pass_path, elapsed_ms)`.
 ///
 /// The plugin emits one `render/<pass…>/elapsed_gpu` diagnostic per span, already
-/// in milliseconds. Spans nest — a parent pass's time includes its children — so
-/// summing every span would double-count. We keep only the shallowest depth (the
-/// outermost passes); every deeper span is an descendant of one of those, so the
-/// shallowest set both sums to the true frame total and gives a clean breakdown.
+/// in milliseconds. Two details matter:
+///
+/// - **Nesting.** Spans nest — a parent pass's time includes its children — so
+///   summing every span would double-count. We keep only the shallowest depth
+///   (the outermost passes); every deeper span descends from one of those, so the
+///   shallowest set both sums to the true frame total and gives a clean breakdown.
+///
+/// - **Staleness.** A Bevy `Diagnostic` keeps its last `smoothed()` value forever
+///   once measurements stop. So a pass that was switched off (shadows disabled, a
+///   camera deactivated, …) would otherwise linger here with a frozen value,
+///   making the breakdown lie about what the GPU is actually doing. Each span
+///   carries the time of its latest measurement; passes that ran this frame
+///   cluster at the newest time while a stopped pass falls behind, so we drop any
+///   span measured more than `STALE_AFTER` before the freshest one.
+///
+/// The pass name is the full render-graph path (minus the constant `render/`
+/// prefix) so two passes that share a leaf name — e.g. one radiance map per light
+/// probe — stay distinguishable.
 ///
 /// Returns an empty vec when no GPU timestamps exist (timestamp queries
 /// unsupported), which callers treat as "GPU timing unavailable".
 pub(crate) fn top_level_gpu_spans(diagnostics: &DiagnosticsStore) -> Vec<(String, f32)> {
-    let mut spans: Vec<(usize, String, f32)> = Vec::new();
-    let mut min_depth = usize::MAX;
+    const STALE_AFTER: Duration = Duration::from_millis(500);
+
+    let mut spans: Vec<(usize, String, f32, Instant)> = Vec::new();
+    let mut newest: Option<Instant> = None;
     for diagnostic in diagnostics.iter() {
         let path = diagnostic.path().as_str();
         let Some(stripped) = path.strip_suffix("/elapsed_gpu") else {
             continue;
         };
-        let Some(value) = diagnostic.smoothed() else {
+        let Some(measurement) = diagnostic.measurement() else {
             continue;
         };
+        let value = diagnostic.smoothed().unwrap_or(measurement.value) as f32;
         let depth = stripped.split('/').count();
-        min_depth = min_depth.min(depth);
-        let name = stripped.rsplit('/').next().unwrap_or(stripped).to_string();
-        spans.push((depth, name, value as f32));
+        let name = stripped.strip_prefix("render/").unwrap_or(stripped).to_string();
+        newest = Some(newest.map_or(measurement.time, |n| n.max(measurement.time)));
+        spans.push((depth, name, value, measurement.time));
     }
+    let Some(newest) = newest else {
+        return Vec::new();
+    };
+
+    let fresh = |time: &Instant| newest.saturating_duration_since(*time) < STALE_AFTER;
+    // Depth is taken over the *fresh* spans only, so a lingering stale shallow
+    // span can't shadow the real top-level passes still running this frame.
+    let Some(min_depth) = spans
+        .iter()
+        .filter(|(_, _, _, time)| fresh(time))
+        .map(|(depth, _, _, _)| *depth)
+        .min()
+    else {
+        return Vec::new();
+    };
     spans
         .into_iter()
-        .filter(|(depth, _, _)| *depth == min_depth)
-        .map(|(_, name, ms)| (name, ms))
+        .filter(|(depth, _, _, time)| *depth == min_depth && fresh(time))
+        .map(|(_, name, ms, _)| (name, ms))
         .collect()
 }
 
@@ -609,33 +648,67 @@ pub fn update_memory_profiler(
     };
 }
 
-pub fn update_system_timing(
-    mut state: ResMut<SystemTimingState>,
-    time: Res<Time>,
-    diagnostics: Res<DiagnosticsStore>,
-) {
-    state.time_since_update += time.delta_secs();
-    if state.time_since_update < state.update_interval {
-        return;
+pub fn update_system_timing(world: &mut World) {
+    let dt = world.resource::<Time>().delta_secs();
+    {
+        let mut state = world.resource_mut::<SystemTimingState>();
+        state.time_since_update += dt;
+        if state.time_since_update < state.update_interval {
+            return;
+        }
+        state.time_since_update = 0.0;
     }
-    state.time_since_update = 0.0;
 
     // Real per-pass GPU timings from `RenderDiagnosticsPlugin` (top-level spans,
     // in ms). Replaces the old fabricated PreUpdate/Update/PostUpdate/Render split
     // that was just fixed fractions of frame time. Empty when GPU timestamps are
     // unavailable, in which case the panel shows "No timing data available".
-    let mut spans = top_level_gpu_spans(&diagnostics);
+    let mut spans = top_level_gpu_spans(world.resource::<DiagnosticsStore>());
     spans.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let total: f32 = spans.iter().map(|(_, ms)| *ms).sum();
 
-    state.schedule_timings = spans
+    // Attribution rules (pass-prefix → driving component), registered by the
+    // engine AND any plugin that adds its own GPU passes. Cloned so the resource
+    // borrow is released before we scan archetypes to count entities.
+    let sources = world
+        .get_resource::<GpuPassSourceRegistry>()
+        .map(|r| r.entries.clone())
+        .unwrap_or_default();
+
+    let timings: Vec<ScheduleTiming> = spans
         .into_iter()
-        .map(|(name, time_ms)| ScheduleTiming {
-            name,
-            time_ms,
-            percentage: if total > 0.0 { time_ms / total * 100.0 } else { 0.0 },
+        .map(|(name, time_ms)| {
+            let source = sources
+                .iter()
+                .find(|rule| name.starts_with(rule.prefix.as_ref()))
+                .map(|rule| {
+                    let count = count_entities_with_component(world, rule.component);
+                    let plural = if count == 1 { "" } else { "s" };
+                    format!("{count} {}{plural}", rule.noun)
+                })
+                .unwrap_or_default();
+            ScheduleTiming {
+                name,
+                time_ms,
+                percentage: if total > 0.0 { time_ms / total * 100.0 } else { 0.0 },
+                source,
+            }
         })
         .collect();
+
+    world.resource_mut::<SystemTimingState>().schedule_timings = timings;
+}
+
+/// Count live entities carrying `component`, by scanning archetypes — the only
+/// way to count by a runtime [`ComponentId`] (registered attribution rules are
+/// type-erased, so a static query isn't possible).
+fn count_entities_with_component(world: &World, component: ComponentId) -> usize {
+    world
+        .archetypes()
+        .iter()
+        .filter(|archetype| archetype.contains(component))
+        .map(|archetype| archetype.len() as usize)
+        .sum()
 }
 
 pub fn update_camera_debug_state(

@@ -369,6 +369,7 @@ struct SchedRow {
     ms: String,
     ratio: f32,
     color: Color,
+    source: String,
 }
 
 fn schedule_snapshot(world: &World) -> KeyedSnapshot {
@@ -388,6 +389,7 @@ fn schedule_snapshot(world: &World) -> KeyedSnapshot {
             ms: format!("{:.2}ms", s.time_ms),
             ratio: if total > 0.0 { s.time_ms / total } else { 0.0 },
             color: schedule_color(&s.name),
+            source: s.source.clone(),
         })
         .collect();
     let items: Vec<(u64, u64)> = timings
@@ -395,6 +397,7 @@ fn schedule_snapshot(world: &World) -> KeyedSnapshot {
         .map(|s| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             s.name.hash(&mut h);
+            s.source.hash(&mut h);
             (h.finish(), s.time_ms.to_bits() as u64 ^ s.percentage.to_bits() as u64)
         })
         .collect();
@@ -466,5 +469,18 @@ fn sched_row(commands: &mut Commands, fonts: &EmberFonts, r: &SchedRow) -> Entit
         .id();
     commands.entity(track).add_child(fill);
     commands.entity(col).add_children(&[head, track]);
+
+    // Attribution sub-line: which entities drive this pass (e.g. "2 environment
+    // maps"). Omitted when the pass has no registered source.
+    if !r.source.is_empty() {
+        let src = commands
+            .spawn((
+                Text::new(r.source.clone()),
+                ui_font(&fonts.ui, 9.0),
+                TextColor(rgb(text_muted())),
+            ))
+            .id();
+        commands.entity(col).add_child(src);
+    }
     col
 }
