@@ -64,6 +64,7 @@ impl Plugin for ShellPlugin {
                 sync_workspace_to_active_doc,
                 workspace_add_click,
                 (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
+                (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
             ),
         );
     }
@@ -765,13 +766,207 @@ fn update_maximize_icon(
 fn window_btn_click(
     q: Query<(&Interaction, &WindowBtn), Changed<Interaction>>,
     queue: Option<ResMut<WindowActionQueue>>,
+    mut commands: Commands,
 ) {
     let Some(mut queue) = queue else { return };
     for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        // Close is routed through the exit flow (which may prompt to save
+        // unsaved changes first); everything else applies immediately.
+        if matches!(btn.0, WindowAction::Close) {
+            commands.insert_resource(ExitRequest);
+        } else {
             queue.push(btn.0);
         }
     }
+}
+
+// ── Save-before-exit flow ────────────────────────────────────────────────────
+
+/// Set when the user asks to close the window (the × button). Consumed by
+/// [`process_exit_request`], which either exits straight away or — if any
+/// document has unsaved changes — opens the [`ExitPromptRoot`] overlay.
+#[derive(Resource)]
+struct ExitRequest;
+
+/// Set while we've asked the scene-save system to run and are waiting for it to
+/// finish before exiting (see [`pending_exit_after_save`]).
+#[derive(Resource)]
+struct PendingExitAfterSave;
+
+/// The backdrop root of the "unsaved changes" overlay.
+#[derive(Component)]
+struct ExitPromptRoot;
+
+/// The overlay's three actions.
+#[derive(Component)]
+struct ExitPromptSave;
+#[derive(Component)]
+struct ExitPromptDiscard;
+#[derive(Component)]
+struct ExitPromptCancel;
+
+/// Are there any documents with unsaved edits?
+fn any_unsaved(tabs: &renzora_ui::DocumentTabState) -> bool {
+    tabs.tabs.iter().any(|t| t.is_modified)
+}
+
+/// Handle a pending [`ExitRequest`]: exit immediately when nothing is dirty,
+/// otherwise open the save-confirmation overlay.
+fn process_exit_request(
+    req: Option<Res<ExitRequest>>,
+    tabs: Option<Res<renzora_ui::DocumentTabState>>,
+    fonts: Option<Res<EmberFonts>>,
+    queue: Option<ResMut<WindowActionQueue>>,
+    open: Query<(), With<ExitPromptRoot>>,
+    mut commands: Commands,
+) {
+    if req.is_none() {
+        return;
+    }
+    commands.remove_resource::<ExitRequest>();
+    // A prompt is already up — ignore repeat clicks.
+    if !open.is_empty() {
+        return;
+    }
+
+    let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
+    // Nothing unsaved (or we can't render the prompt) → exit straight away.
+    if !dirty || fonts.is_none() {
+        if let Some(mut queue) = queue {
+            queue.push(WindowAction::Close);
+        }
+        return;
+    }
+    let fonts = fonts.unwrap();
+    let count = tabs
+        .map(|t| t.tabs.iter().filter(|x| x.is_modified).count())
+        .unwrap_or(0);
+    spawn_exit_prompt(&mut commands, &fonts, count);
+}
+
+/// Build the centered "unsaved changes" confirmation overlay.
+fn spawn_exit_prompt(commands: &mut Commands, fonts: &EmberFonts, count: usize) {
+    let (root, content) =
+        renzora_ember::widgets::overlay_sized(commands, fonts, "Unsaved Changes", 440.0, 188.0, true);
+    commands.entity(root).insert(ExitPromptRoot);
+
+    let body = if count == 1 {
+        "You have unsaved changes. Save before closing?".to_string()
+    } else {
+        format!("You have unsaved changes in {count} documents. Save before closing?")
+    };
+
+    // Pad the content and lay out the message above a right-aligned button row.
+    commands.entity(content).insert(Node {
+        width: Val::Percent(100.0),
+        flex_grow: 1.0,
+        min_height: Val::Px(0.0),
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::SpaceBetween,
+        padding: UiRect::all(Val::Px(16.0)),
+        ..default()
+    });
+
+    let message = commands
+        .spawn((
+            Text::new(body),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+
+    let row = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::FlexEnd,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+
+    let cancel = renzora_ember::widgets::button(commands, &fonts.ui, "Cancel");
+    commands.entity(cancel).insert(ExitPromptCancel);
+    let discard = renzora_ember::widgets::button(commands, &fonts.ui, "Don't Save");
+    commands.entity(discard).insert(ExitPromptDiscard);
+    let save = renzora_ember::widgets::button(commands, &fonts.ui, "Save & Close");
+    // Tag it as the accent (primary) action so `apply_theme` paints it the
+    // highlight color instead of the plain button color.
+    commands.entity(save).insert((
+        ExitPromptSave,
+        renzora_ember::style::Styled::new(renzora_ember::style::Role::ButtonAccent),
+    ));
+
+    commands.entity(row).add_children(&[cancel, discard, save]);
+    commands.entity(content).add_children(&[message, row]);
+}
+
+/// Drive the overlay's buttons. (Escape / backdrop click / the title × are
+/// handled by ember's generic `overlay_dismiss`, which despawns the root — i.e.
+/// the same as Cancel.)
+fn exit_prompt_buttons(
+    save: Query<&Interaction, (Changed<Interaction>, With<ExitPromptSave>)>,
+    discard: Query<&Interaction, (Changed<Interaction>, With<ExitPromptDiscard>)>,
+    cancel: Query<&Interaction, (Changed<Interaction>, With<ExitPromptCancel>)>,
+    roots: Query<Entity, With<ExitPromptRoot>>,
+    queue: Option<ResMut<WindowActionQueue>>,
+    mut commands: Commands,
+) {
+    let save = save.iter().any(|i| *i == Interaction::Pressed);
+    let discard = discard.iter().any(|i| *i == Interaction::Pressed);
+    let cancel = cancel.iter().any(|i| *i == Interaction::Pressed);
+
+    if !(save || discard || cancel) {
+        return;
+    }
+
+    // Either way the prompt goes away.
+    for r in &roots {
+        commands.entity(r).despawn();
+    }
+
+    if save {
+        // Run the same Save the title bar uses, then exit once it lands.
+        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(PendingExitAfterSave);
+    } else if discard {
+        if let Some(mut queue) = queue {
+            queue.push(WindowAction::Close);
+        }
+    }
+    // cancel → nothing else; the close is abandoned.
+}
+
+/// After "Save & Close", wait for the scene-save to complete, then exit. If the
+/// save was redirected to a Save-As dialog the user cancelled (changes remain
+/// unsaved), abort the exit instead of losing work.
+fn pending_exit_after_save(
+    pending: Option<Res<PendingExitAfterSave>>,
+    save_req: Option<Res<renzora::core::SaveSceneRequested>>,
+    save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
+    tabs: Option<Res<renzora_ui::DocumentTabState>>,
+    queue: Option<ResMut<WindowActionQueue>>,
+    mut commands: Commands,
+) {
+    if pending.is_none() {
+        return;
+    }
+    // Still saving (or prompting for a path) — keep waiting.
+    if save_req.is_some() || save_as_req.is_some() {
+        return;
+    }
+    commands.remove_resource::<PendingExitAfterSave>();
+
+    let still_dirty = tabs.is_some_and(|t| any_unsaved(&t));
+    if !still_dirty {
+        if let Some(mut queue) = queue {
+            queue.push(WindowAction::Close);
+        }
+    }
+    // else: save failed or Save-As was cancelled → stay open, don't lose work.
 }
 
 /// Click-timing for the drag handle: distinguishes a single press (window move)
@@ -1342,55 +1537,84 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
 
+    // Window controls: a fixed-size button with the glyph as a *child* so
+    // `align_items`/`justify_content: Center` truly center it (text placed
+    // directly on a node is NOT vertically centered by Bevy — it rides the top
+    // of the box). The buttons are shorter than the bar and centered in it, so
+    // their glyphs line up with the play/code/gear icons to their left.
     let window = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                margin: UiRect::left(Val::Px(14.0)),
+                column_gap: Val::Px(2.0),
+                margin: UiRect::left(Val::Px(6.0)),
                 ..default()
             },
             Name::new("window-buttons"),
         ))
         .id();
-    let min = icon_item(commands, "minus", text_muted(), 14.0);
-    let max = icon_item(commands, "square", text_muted(), 13.0);
-    let close = icon_item(commands, "x", text_muted(), 14.0);
-    for (e, action, is_close) in [
-        (min, WindowAction::Minimize, false),
-        (max, WindowAction::ToggleMaximize, false),
-        (close, WindowAction::Close, true),
+    let mut kids: Vec<Entity> = Vec::new();
+    for (name, action, is_close) in [
+        ("minus", WindowAction::Minimize, false),
+        ("square", WindowAction::ToggleMaximize, false),
+        ("x", WindowAction::Close, true),
     ] {
-        commands.entity(e).insert((
-            Node {
-                width: Val::Px(28.0),
-                height: Val::Px(22.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            WindowBtn(action),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-        ));
-        // Hover highlight — close goes red, like the original chrome.
-        renzora_ember::reactive::bind_bg(commands, e, move |w| match w.get::<Interaction>(e) {
+        let btn = commands
+            .spawn((
+                Node {
+                    width: Val::Px(32.0),
+                    height: Val::Px(24.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                WindowBtn(action),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ))
+            .id();
+        // The glyph is a child; `FocusPolicy::Pass` lets the hover/click land on
+        // the button (so the bindings below see the parent's `Interaction`).
+        let g = glyph(commands, name, text_muted(), 14.0);
+        commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+        if matches!(action, WindowAction::ToggleMaximize) {
+            // The maximize glyph reflects window state (square ↔ restore).
+            commands.entity(g).insert(MaximizeIcon);
+        }
+        commands.entity(btn).add_child(g);
+
+        // Hover fill on the button: minimize/maximize get a faint wash; close
+        // goes the standard Windows close-red.
+        renzora_ember::reactive::bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
             Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
                 if is_close {
-                    Color::srgb(0.86, 0.24, 0.24)
+                    Color::srgb_u8(232, 17, 35)
                 } else {
-                    rgb(renzora_ember::theme::hover_bg())
+                    Color::srgba(1.0, 1.0, 1.0, 0.09)
                 }
             }
             _ => Color::NONE,
         });
+        // Glyph color tracks the parent button's hover: the close × turns white
+        // on its red fill; the other two brighten from muted to primary.
+        renzora_ember::reactive::bind_text_color(commands, g, move |w| {
+            match w.get::<Interaction>(btn) {
+                Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                    if is_close {
+                        Color::WHITE
+                    } else {
+                        rgb(text_primary())
+                    }
+                }
+                _ => rgb(text_muted()),
+            }
+        });
+        kids.push(btn);
     }
-    // The maximize button's glyph reflects the state (square ↔ restore).
-    commands.entity(max).insert(MaximizeIcon);
-    commands.entity(window).add_children(&[min, max, close]);
+    commands.entity(window).add_children(&kids);
 
     commands
         .entity(right)
