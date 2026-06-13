@@ -204,6 +204,10 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
+                    // In "selected camera" mode, snap the editor view to a scene
+                    // camera the frame it's selected — before the orbit mirror so
+                    // the change lands this frame.
+                    goto_selected_camera,
                     // Load the focused slot's angle into the singleton orbit…
                     mirror_focused_orbit_in,
                     sync_viewport_settings,
@@ -976,18 +980,55 @@ fn apply_projection(
     }
 }
 
+/// Perspective FOV of the scene camera the editor should mirror, per the
+/// `EditorCameraSource` setting:
+/// - `Selected`: the selected scene camera's FOV, falling back to default/first.
+/// - `Default`: the `DefaultCamera`'s FOV, falling back to the first scene camera.
+fn source_scene_fov(
+    source: renzora::core::viewport_types::EditorCameraSource,
+    selected: Option<Entity>,
+    scene_cams: &Query<
+        (Entity, &Projection, Has<renzora::DefaultCamera>),
+        With<renzora::SceneCamera>,
+    >,
+) -> Option<f32> {
+    use renzora::core::viewport_types::EditorCameraSource;
+    // In Selected mode, prefer the selected scene camera if it's perspective.
+    if source == EditorCameraSource::Selected {
+        if let Some(sel) = selected {
+            if let Ok((_, Projection::Perspective(p), _)) = scene_cams.get(sel) {
+                return Some(p.fov);
+            }
+        }
+    }
+    // Fall back to DefaultCamera, then first SceneCamera.
+    let mut first = None;
+    for (_, proj, is_default) in scene_cams {
+        if let Projection::Perspective(p) = proj {
+            if is_default {
+                return Some(p.fov);
+            }
+            if first.is_none() {
+                first = Some(p.fov);
+            }
+        }
+    }
+    first
+}
+
 /// Mirror the active scene camera's perspective FOV onto the editor viewport
 /// cameras, so the viewport previews the game camera's field of view.
 ///
 /// The editor renders through the `EditorCamera`/`ViewportCamera`s, not the
 /// scene camera, so without this the viewport stays at its spawn-default FOV
-/// (45°) and the inspector's FOV field has no visible effect. Uses the
-/// `DefaultCamera`, falling back to the first `SceneCamera` — the same
-/// "active camera" convention the post-process settings routing uses. Only
-/// touches perspective projections (leaves orthographic-mode viewports alone).
+/// (45°) and the inspector's FOV field has no visible effect. The source camera
+/// follows the `EditorCameraSource` setting. Only touches perspective
+/// projections (leaves orthographic-mode viewports alone).
 fn sync_scene_camera_fov(
+    vp_settings: Option<Res<ViewportSettings>>,
+    selection: Option<Res<EditorSelection>>,
     scene_cams: Query<
-        (&Projection, Has<renzora::DefaultCamera>),
+        (Entity, &Projection, Has<renzora::DefaultCamera>),
         With<renzora::SceneCamera>,
     >,
     mut viewport_cams: Query<
@@ -995,20 +1036,12 @@ fn sync_scene_camera_fov(
         (With<ViewportCamera>, Without<renzora::SceneCamera>),
     >,
 ) {
-    let mut chosen: Option<f32> = None;
-    let mut first: Option<f32> = None;
-    for (proj, is_default) in &scene_cams {
-        if let Projection::Perspective(p) = proj {
-            if is_default {
-                chosen = Some(p.fov);
-                break;
-            }
-            if first.is_none() {
-                first = Some(p.fov);
-            }
-        }
-    }
-    let Some(fov) = chosen.or(first) else {
+    let source = vp_settings
+        .as_ref()
+        .map(|s| s.camera.editor_camera_source)
+        .unwrap_or_default();
+    let selected = selection.as_ref().and_then(|s| s.get());
+    let Some(fov) = source_scene_fov(source, selected, &scene_cams) else {
         return;
     };
     for mut proj in &mut viewport_cams {
@@ -1016,6 +1049,40 @@ fn sync_scene_camera_fov(
             if (p.fov - fov).abs() > f32::EPSILON {
                 p.fov = fov;
             }
+        }
+    }
+}
+
+/// In `EditorCameraSource::Selected` mode, jump the editor fly-camera to a scene
+/// camera's pose the moment it's selected (a one-shot per selection change, so
+/// the user can still fly afterward). Tracks the previously-handled selection in
+/// a `Local` because `EditorSelection` uses interior mutability and doesn't trip
+/// Bevy change detection.
+fn goto_selected_camera(
+    vp_settings: Option<Res<ViewportSettings>>,
+    selection: Option<Res<EditorSelection>>,
+    scene_cams: Query<&GlobalTransform, With<renzora::SceneCamera>>,
+    mut orbit: ResMut<OrbitCameraState>,
+    mut last: Local<Option<Entity>>,
+) {
+    let source = vp_settings
+        .as_ref()
+        .map(|s| s.camera.editor_camera_source)
+        .unwrap_or_default();
+    if source != renzora::core::viewport_types::EditorCameraSource::Selected {
+        // Forget the tracked selection so re-entering Selected mode re-snaps.
+        *last = None;
+        return;
+    }
+    let selected = selection.as_ref().and_then(|s| s.get());
+    if selected == *last {
+        return;
+    }
+    *last = selected;
+    if let Some(e) = selected {
+        if let Ok(gt) = scene_cams.get(e) {
+            let t = gt.compute_transform();
+            orbit.set_from_view(t.translation, t.rotation);
         }
     }
 }
