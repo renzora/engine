@@ -11,17 +11,46 @@
 
 use bevy::prelude::*;
 use renzora::core::{
-    DefaultCamera, EffectRouting, PlayModeCamera, PlayModeState, SceneCamera, ViewportCamera,
+    DefaultCamera, EffectRouting, HideInHierarchy, PlayModeCamera, PlayModeState, SceneCamera,
+    ViewportCamera,
 };
 
 use crate::camera_preview::{CameraPreviewMarker, CameraPreviewState};
 
-/// Collects all non-camera entities that might hold Settings components.
-/// These are "global" effect sources (e.g. World Environment entity).
-fn collect_global_sources(
-    non_camera_entities: &Query<Entity, (Without<Camera>, With<Name>)>,
-) -> Vec<Entity> {
-    non_camera_entities.iter().collect()
+/// Query alias for entities that can act as "global" effect sources — 3D scene
+/// entities that might carry a `*Settings` component (e.g. the World
+/// Environment entity).
+///
+/// Exclusions, all of which are things that never hold effect settings but DO
+/// churn every frame (which rebuilt the routing table — and re-ran every
+/// effect's sync — each frame, and even fed back on itself):
+/// - `Without<Node>` — `bevy_ui` entities. Editor panels spawn named UI nodes
+///   constantly; notably each **console log row** is a named `Node`, so logging
+///   the routing rebuild spawned a row, which bumped the source count, which
+///   rebuilt the routing, which logged again…
+/// - `Without<HideInHierarchy>` — non-UI editor chrome (gizmos, preview rigs).
+type GlobalSourceQuery<'w, 's> = Query<
+    'w,
+    's,
+    Entity,
+    (
+        Without<Camera>,
+        With<Name>,
+        Without<HideInHierarchy>,
+        Without<Node>,
+    ),
+>;
+
+/// Collects the global effect-source entities, sorted by a stable key.
+///
+/// Sorting makes the comparison in [`update_effect_routing`] order-independent
+/// (a query's iteration order shuffles when any matched entity changes
+/// archetype), so the routing table only rebuilds when the source *set* changes
+/// rather than every frame.
+fn collect_global_sources(non_camera_entities: &GlobalSourceQuery) -> Vec<Entity> {
+    let mut sources: Vec<Entity> = non_camera_entities.iter().collect();
+    sources.sort_unstable_by_key(|e| e.to_bits());
+    sources
 }
 
 /// Populates [`EffectRouting`] based on current editor/play mode state.
@@ -33,7 +62,7 @@ pub fn update_effect_routing(
     preview_cameras: Query<Entity, With<CameraPreviewMarker>>,
     preview_state: Option<Res<CameraPreviewState>>,
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
-    non_camera_entities: Query<Entity, (Without<Camera>, With<Name>)>,
+    non_camera_entities: GlobalSourceQuery,
 ) {
     let mut routes: Vec<(Entity, Vec<Entity>)> = Vec::new();
     let global_sources = collect_global_sources(&non_camera_entities);
@@ -74,7 +103,13 @@ pub fn update_effect_routing(
         }
         sources.extend(&global_sources);
 
-        for (cam, _) in viewport_cameras.iter() {
+        // Sort the target cameras too: the viewport-camera query order shuffles
+        // when the env-probe gating toggles a component on the editor camera,
+        // which would otherwise reorder `routes` and trip `is_changed()` every
+        // frame even though the routing is unchanged.
+        let mut cams: Vec<Entity> = viewport_cameras.iter().map(|(e, _)| e).collect();
+        cams.sort_unstable_by_key(|e| e.to_bits());
+        for cam in cams {
             routes.push((cam, sources.clone()));
         }
     }
