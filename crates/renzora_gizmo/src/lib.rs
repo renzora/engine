@@ -2542,8 +2542,11 @@ mod tests {
 
     #[test]
     fn ray_segment_distance_at_closest_approach() {
-        // Ray along +X at y=1 passes 1 unit above a segment on the X axis.
-        let r = ray(Vec3::new(-5.0, 1.0, 0.0), Vec3::X);
+        // Ray crossing 1 unit above the midpoint of a segment on the X axis.
+        // The ray runs along +Z so it isn't parallel to the segment (a parallel
+        // ray collapses the denominator and returns None — see the degenerate
+        // test below).
+        let r = ray(Vec3::new(0.0, 1.0, -5.0), Vec3::Z);
         let d = closest_distance_ray_segment(&r, Vec3::new(-1.0, 0.0, 0.0), Vec3::X).unwrap();
         assert!((d - 1.0).abs() < 1e-4, "expected 1.0, got {d}");
 

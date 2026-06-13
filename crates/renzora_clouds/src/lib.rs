@@ -147,11 +147,12 @@ fn sync_clouds(
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
-    // Find first active clouds component
-    let active_clouds = clouds_query.iter().next();
+    // First *enabled* clouds component. Honors the inspector toggle — without
+    // the `enabled` check, switching clouds off left the dome rendering.
+    let active_clouds = clouds_query.iter().find(|c| c.enabled);
 
     let Some(clouds_data) = active_clouds else {
-        // No clouds — despawn dome if it exists
+        // No active clouds — despawn dome if it exists.
         if let Some(dome_entity) = clouds_state.entity.take() {
             commands.entity(dome_entity).despawn();
             clouds_state.material_handle = None;
