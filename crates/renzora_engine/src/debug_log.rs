@@ -123,66 +123,6 @@ pub fn debug_log_cameras(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Effect routing logging
-// ---------------------------------------------------------------------------
-
-/// Logs whenever the EffectRouting resource changes.
-pub fn debug_log_effect_routing(
-    routing: Res<EffectRouting>,
-    cameras: Query<(
-        Option<&Name>,
-        Option<&EditorCamera>,
-        Option<&SceneCamera>,
-        Option<&PlayModeCamera>,
-    )>,
-    mut prev_len: Local<usize>,
-    debug: Option<Res<RenderingDebugLog>>,
-) {
-    if !is_enabled(&debug) {
-        return;
-    }
-    if !routing.is_changed() {
-        return;
-    }
-
-    let describe = |entity: Entity| -> String {
-        if let Ok((name, editor, scene, play)) = cameras.get(entity) {
-            let role = if editor.is_some() {
-                "Editor"
-            } else if play.is_some() {
-                "PlayMode"
-            } else if scene.is_some() {
-                "Scene"
-            } else {
-                "Other"
-            };
-            let n = name
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "unnamed".into());
-            format!("{:?} \"{}\" ({})", entity, n, role)
-        } else {
-            format!("{:?}", entity)
-        }
-    };
-
-    console_info(
-        "EffectRouting",
-        format!("--- Routing updated ({} routes) ---", routing.routes.len()),
-    );
-    for (target, sources) in routing.iter() {
-        console_info(
-            "EffectRouting",
-            format!(
-                "  target {} <- {} sources",
-                describe(*target),
-                sources.len()
-            ),
-        );
-    }
-
-    *prev_len = routing.routes.len();
-}
 
 // ---------------------------------------------------------------------------
 // Play mode logging
@@ -754,7 +694,6 @@ impl Plugin for DebugLogPlugin {
             Update,
             (
                 debug_log_cameras,
-                debug_log_effect_routing,
                 debug_log_play_mode,
                 debug_log_viewport_render_target,
                 debug_log_rehydrate_meshes,

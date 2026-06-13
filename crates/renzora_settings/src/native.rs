@@ -29,7 +29,7 @@ use renzora_ember::cursor_icon::HoverCursor;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
-use renzora_viewport::settings::{CollisionGizmoVisibility, ViewportSettings};
+use renzora_viewport::settings::{CollisionGizmoVisibility, EditorCameraSource, ViewportSettings};
 
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
@@ -1316,6 +1316,23 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
         |w, &v| w.resource_mut::<ViewportSettings>().camera.distance_relative_speed = v,
     );
     settings_row(commands, fonts, body, 6, "Distance Speed", t);
+    let src_labels: Vec<&str> = EditorCameraSource::ALL.iter().map(|s| s.label()).collect();
+    let dd = ctl_dropdown(
+        commands, fonts, &src_labels,
+        EditorCameraSource::ALL
+            .iter()
+            .position(|s| *s == cam.editor_camera_source)
+            .unwrap_or(0),
+        |w| {
+            let cur = w.resource::<ViewportSettings>().camera.editor_camera_source;
+            EditorCameraSource::ALL.iter().position(|s| *s == cur).unwrap_or(0)
+        },
+        |w, &i| {
+            let src = EditorCameraSource::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<ViewportSettings>().camera.editor_camera_source = src;
+        },
+    );
+    settings_row(commands, fonts, body, 7, "Editor Camera", dd);
 
     let (sec, body) = section(commands, fonts, "gauge", "Gizmos", A_TEAL);
     commands.entity(col).add_child(sec);

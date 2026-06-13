@@ -209,6 +209,38 @@ pub enum ProjectionMode {
     Orthographic,
 }
 
+/// Which scene camera drives the editor viewport's FOV (and, in `Selected`
+/// mode, its pose when the selection changes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EditorCameraSource {
+    /// Always mirror the `DefaultCamera` (or first scene camera). The editor
+    /// fly-camera keeps its own position; only the FOV follows.
+    #[default]
+    Default,
+    /// Follow whichever scene camera is selected: the editor view jumps to that
+    /// camera's pose when you select it, and its FOV tracks the selection.
+    Selected,
+}
+
+impl EditorCameraSource {
+    pub const ALL: &'static [EditorCameraSource] = &[Self::Default, Self::Selected];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Default => "Always Use Default",
+            Self::Selected => "Change Camera to Selected",
+        }
+    }
+
+    /// Parse a label (as produced by [`Self::label`]) back into a variant.
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "Change Camera to Selected" => Self::Selected,
+            _ => Self::Default,
+        }
+    }
+}
+
 /// Render-resolution scale for a camera. The camera's render target is sized at
 /// this fraction of the on-screen panel size; the displayed image is upscaled to
 /// fill the panel. Lower resolutions trade sharpness for a large fill-rate win on
@@ -429,6 +461,9 @@ pub struct CameraSettingsState {
     pub zoom_sensitivity: f32,
     pub invert_y: bool,
     pub distance_relative_speed: bool,
+    /// Which scene camera the editor viewport mirrors (FOV always; pose on
+    /// selection in `Selected` mode).
+    pub editor_camera_source: EditorCameraSource,
 }
 
 impl Default for CameraSettingsState {
@@ -441,6 +476,7 @@ impl Default for CameraSettingsState {
             zoom_sensitivity: 1.0,
             invert_y: false,
             distance_relative_speed: true,
+            editor_camera_source: EditorCameraSource::default(),
         }
     }
 }
@@ -540,6 +576,9 @@ pub struct PersistedViewportSettings {
     pub zoom_sensitivity: f32,
     pub invert_y: bool,
     pub distance_relative_speed: bool,
+    /// `"Default"` or `"Selected"` — which scene camera drives the editor view.
+    #[serde(default)]
+    pub editor_camera_source: String,
     pub translate_enabled: bool,
     pub translate_snap: f32,
     pub translate_edge_snap: bool,
@@ -585,6 +624,7 @@ impl PersistedViewportSettings {
             zoom_sensitivity: c.zoom_sensitivity,
             invert_y: c.invert_y,
             distance_relative_speed: c.distance_relative_speed,
+            editor_camera_source: format!("{:?}", c.editor_camera_source),
             translate_enabled: sn.translate_enabled,
             translate_snap: sn.translate_snap,
             translate_edge_snap: sn.translate_edge_snap,
@@ -640,6 +680,10 @@ impl PersistedViewportSettings {
             zoom_sensitivity: self.zoom_sensitivity,
             invert_y: self.invert_y,
             distance_relative_speed: self.distance_relative_speed,
+            editor_camera_source: match self.editor_camera_source.as_str() {
+                "Selected" => EditorCameraSource::Selected,
+                _ => EditorCameraSource::Default,
+            },
         };
         s.snap = SnapSettings {
             translate_enabled: self.translate_enabled,
@@ -716,6 +760,7 @@ mod tests {
                 zoom_sensitivity: 2.3,
                 invert_y: true,
                 distance_relative_speed: false,
+                editor_camera_source: EditorCameraSource::Selected,
             },
             snap: SnapSettings {
                 translate_enabled: true,
