@@ -221,10 +221,6 @@ impl Plugin for CameraPlugin {
                     // drive the other views from their own stored angles.
                     mirror_focused_orbit_out,
                     apply_secondary_viewport_cameras,
-                    // Mirror the active scene camera's FOV onto the viewport so
-                    // the editor view reflects the game camera's field of view.
-                    // Runs last so it isn't clobbered by projection rebuilds.
-                    sync_scene_camera_fov,
                 )
                     .chain()
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
@@ -971,50 +967,6 @@ fn apply_projection(
             } else if let Projection::Orthographic(ref mut ortho) = *projection {
                 ortho.scaling_mode = bevy::camera::ScalingMode::FixedVertical { viewport_height };
                 ortho.scale = 1.0;
-            }
-        }
-    }
-}
-
-/// Mirror the active scene camera's perspective FOV onto the editor viewport
-/// cameras, so the viewport previews the game camera's field of view.
-///
-/// The editor renders through the `EditorCamera`/`ViewportCamera`s, not the
-/// scene camera, so without this the viewport stays at its spawn-default FOV
-/// (45°) and the inspector's FOV field has no visible effect. Uses the
-/// `DefaultCamera`, falling back to the first `SceneCamera` — the same
-/// "active camera" convention the post-process settings routing uses. Only
-/// touches perspective projections (leaves orthographic-mode viewports alone).
-fn sync_scene_camera_fov(
-    scene_cams: Query<
-        (&Projection, Has<renzora::DefaultCamera>),
-        With<renzora::SceneCamera>,
-    >,
-    mut viewport_cams: Query<
-        &mut Projection,
-        (With<ViewportCamera>, Without<renzora::SceneCamera>),
-    >,
-) {
-    let mut chosen: Option<f32> = None;
-    let mut first: Option<f32> = None;
-    for (proj, is_default) in &scene_cams {
-        if let Projection::Perspective(p) = proj {
-            if is_default {
-                chosen = Some(p.fov);
-                break;
-            }
-            if first.is_none() {
-                first = Some(p.fov);
-            }
-        }
-    }
-    let Some(fov) = chosen.or(first) else {
-        return;
-    };
-    for mut proj in &mut viewport_cams {
-        if let Projection::Perspective(ref mut p) = *proj {
-            if (p.fov - fov).abs() > f32::EPSILON {
-                p.fov = fov;
             }
         }
     }
