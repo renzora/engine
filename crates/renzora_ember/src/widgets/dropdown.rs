@@ -17,6 +17,21 @@ pub(crate) struct EmberDropdown {
     menu: Entity,
     label: Entity,
     options: Vec<String>,
+    /// Per-option phosphor icon names (empty when the dropdown has no icons).
+    icons: Vec<String>,
+    /// The box's leading icon glyph, kept in sync with the selection.
+    box_icon: Option<Entity>,
+}
+
+/// Phosphor glyph used when an icon name doesn't resolve (matches `icon_text`).
+const ICON_FALLBACK: char = '\u{E4C6}';
+
+/// Repoint an existing icon glyph entity to a new phosphor icon by name.
+fn set_icon_glyph(texts: &mut Query<&mut Text>, e: Entity, name: &str) {
+    let ch = crate::phosphor_map::icon_glyph(name).unwrap_or(ICON_FALLBACK);
+    if let Ok(mut t) = texts.get_mut(e) {
+        *t = Text::new(ch.to_string());
+    }
 }
 
 #[derive(Component)]
@@ -33,7 +48,33 @@ pub fn dropdown(
     options: &[&str],
     selected: usize,
 ) -> Entity {
+    build_dropdown(commands, fonts, options, &[], selected)
+}
+
+/// A dropdown whose options (and the selected box) carry a leading Phosphor
+/// icon. `options` is `(icon_name, label)` pairs.
+pub fn dropdown_with_icons(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    options: &[(&str, &str)],
+    selected: usize,
+) -> Entity {
+    let labels: Vec<&str> = options.iter().map(|(_, l)| *l).collect();
+    let icons: Vec<&str> = options.iter().map(|(i, _)| *i).collect();
+    build_dropdown(commands, fonts, &labels, &icons, selected)
+}
+
+/// Shared builder for [`dropdown`] / [`dropdown_with_icons`]. `icons` is either
+/// empty (no icons) or one Phosphor name per option.
+fn build_dropdown(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    options: &[&str],
+    icons: &[&str],
+    selected: usize,
+) -> Entity {
     let sel = selected.min(options.len().saturating_sub(1));
+    let with_icons = !icons.is_empty();
     let box_e = commands
         .spawn((
             Node {
@@ -52,18 +93,42 @@ pub fn dropdown(
             Name::new("dropdown"),
         ))
         .id();
+    // Optional leading icon for the current selection.
+    let box_icon = with_icons.then(|| {
+        let e = icon_text(
+            commands,
+            &fonts.phosphor,
+            icons.get(sel).copied().unwrap_or(""),
+            text_muted(),
+            13.0,
+        );
+        commands.entity(e).insert(Node {
+            flex_shrink: 0.0,
+            ..default()
+        });
+        e
+    });
     let label = commands
         .spawn((
             Text::new(options.get(sel).copied().unwrap_or("")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
+            // Clip + truncate a too-long selection instead of wrapping it or
+            // pushing the caret off the box.
+            bevy::text::TextLayout::new_with_no_wrap(),
             Node {
                 flex_grow: 1.0,
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
                 ..default()
             },
         ))
         .id();
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 12.0);
+    commands.entity(caret).insert(Node {
+        flex_shrink: 0.0,
+        ..default()
+    });
     let menu = commands
         .spawn((
             Node {
@@ -94,6 +159,7 @@ pub fn dropdown(
                     width: Val::Percent(100.0),
                     padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
                     align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0),
                     border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..default()
                 },
@@ -106,14 +172,25 @@ pub fn dropdown(
                 crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("dropdown-option"),
             ))
-            .with_children(|p| {
-                p.spawn((
-                    Text::new(*opt),
-                    ui_font(&fonts.ui, 12.0),
-                    TextColor(rgb(text_primary())),
-                ));
-            })
             .id();
+        if with_icons {
+            let glyph = icon_text(
+                commands,
+                &fonts.phosphor,
+                icons.get(i).copied().unwrap_or(""),
+                text_muted(),
+                13.0,
+            );
+            commands.entity(row).add_child(glyph);
+        }
+        let txt = commands
+            .spawn((
+                Text::new(*opt),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_primary())),
+            ))
+            .id();
+        commands.entity(row).add_child(txt);
         rows.push(row);
     }
     // Wrap the options in a height-capped scroll area so long lists scroll
@@ -131,11 +208,17 @@ pub fn dropdown(
             menu,
             label,
             options: options.iter().map(|s| s.to_string()).collect(),
+            icons: icons.iter().map(|s| s.to_string()).collect(),
+            box_icon,
         },
         // Carry the selection as `Bound<usize>` so `bind_2way` can drive it both
         // ways (read the model on select, push external changes to the label).
         Bound::<usize>(sel),
     ));
+    // [optional icon] · label · caret · menu
+    if let Some(bi) = box_icon {
+        commands.entity(box_e).add_child(bi);
+    }
     commands.entity(box_e).add_children(&[label, caret, menu]);
     box_e
 }
@@ -177,11 +260,16 @@ pub(crate) fn dropdown_select(
             }
             let (menu, label) = (dd.menu, dd.label);
             let text = dd.options.get(opt.value).cloned().unwrap_or_default();
+            let box_icon = dd.box_icon;
+            let icon = dd.icons.get(opt.value).cloned();
             if let Ok(mut n) = nodes.get_mut(menu) {
                 n.display = Display::None;
             }
             if let Ok(mut t) = texts.get_mut(label) {
                 *t = Text::new(text);
+            }
+            if let (Some(bi), Some(name)) = (box_icon, icon) {
+                set_icon_glyph(&mut texts, bi, &name);
             }
         }
     }
@@ -200,8 +288,13 @@ pub(crate) fn dropdown_apply(
         }
         dd.selected = bound.0;
         let (label, text) = (dd.label, dd.options.get(bound.0).cloned().unwrap_or_default());
+        let box_icon = dd.box_icon;
+        let icon = dd.icons.get(bound.0).cloned();
         if let Ok(mut t) = texts.get_mut(label) {
             *t = Text::new(text);
+        }
+        if let (Some(bi), Some(name)) = (box_icon, icon) {
+            set_icon_glyph(&mut texts, bi, &name);
         }
     }
 }

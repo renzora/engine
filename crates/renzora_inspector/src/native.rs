@@ -28,7 +28,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, icon_label_button, scroll_view, text_input, toggle_switch,
+    bind_text_input, drag_value, dropdown_with_icons, scroll_view, text_input, toggle_switch,
     DragRange, EmberTextInput, Popup,
 };
 use renzora_theme::ThemeManager;
@@ -57,7 +57,19 @@ struct NativeInspectorState {
     locked: Option<Entity>,
     /// Lowercased component-name filter (empty = show all).
     filter: String,
+    /// Exact component display-name picked from the filter dropdown
+    /// (`None` = show all components). ANDed with `filter`.
+    selected: Option<String>,
 }
+
+/// Stable host for the component-filter dropdown. The ember `dropdown` widget
+/// bakes its options in at build time, so `rebuild_inspector` despawns this
+/// host's child and rebuilds the dropdown whenever the component set changes.
+#[derive(Component)]
+struct FilterDropdownHost;
+
+/// The "show everything" entry, shown as index 0 in the filter dropdown.
+const FILTER_ALL: &str = "All components";
 
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
@@ -202,21 +214,39 @@ fn inspected_entity(w: &World) -> Option<Entity> {
     locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
 }
 
-/// The fixed top bar: an Add Component button + the component-filter input to
-/// its right (funnel glyph + text). Hidden when nothing is selected.
+/// `(display_name, icon)` for every registered component currently on `entity`,
+/// in registry order — the source list for the filter dropdown (matches the set
+/// of sections `collect_sections` would show with no filter).
+fn present_components(world: &World, entity: Entity) -> Vec<(&'static str, &'static str)> {
+    let Some(reg) = world.get_resource::<InspectorRegistry>() else {
+        return Vec::new();
+    };
+    reg.iter()
+        .filter(|e| (e.has_fn)(world, entity))
+        .map(|e| (e.display_name, e.icon))
+        .collect()
+}
+
+/// The fixed top bar: a component-filter dropdown on the left + the
+/// component-filter text input to its right. (The Add Component button lives in
+/// the bottom bar.) Hidden when nothing is selected.
 fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let add = icon_label_button(commands, fonts, "puzzle-piece", "Add");
-    commands.entity(add).insert((
-        AddButton,
-        Node {
-            flex_shrink: 0.0,
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(5.0),
-            ..default()
-        },
-        Name::new("add-component-top"),
-    ));
+    // A stable host for the component-filter dropdown. The dropdown itself is
+    // (re)built by `rebuild_inspector` from the components currently on the
+    // entity; picking one filters the inspector to it ("All components" clears
+    // it).
+    let dropdown_host = commands
+        .spawn((
+            // Hug the dropdown (which sizes to its content, capped) so a short
+            // selection like "TAA" gives a short box.
+            Node {
+                flex_shrink: 0.0,
+                ..default()
+            },
+            FilterDropdownHost,
+            Name::new("filter-dropdown-host"),
+        ))
+        .id();
     let input = text_input(commands, &fonts.ui, "Filter components...", "");
     commands.entity(input).insert((
         InspectorFilter,
@@ -244,9 +274,71 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("inspector-top-bar"),
         ))
         .id();
-    commands.entity(bar).add_children(&[add, input]);
+    commands.entity(bar).add_children(&[dropdown_host, input]);
     bind_display(commands, bar, |w| inspected_entity(w).is_some());
     bar
+}
+
+/// Build the ember `dropdown` filtering the inspector by component, from the
+/// `present` components (display names). Index 0 is "All components"; selecting
+/// it clears the filter. Two-way bound to `NativeInspectorState::selected`.
+fn build_filter_dropdown(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    present: &[(&'static str, &'static str)],
+    selected: &Option<String>,
+) -> Entity {
+    // Options: "All components" + one per present component, each with its icon.
+    let names: Vec<&str> = present.iter().map(|(n, _)| *n).collect();
+    let mut options: Vec<(&str, &str)> = Vec::with_capacity(present.len() + 1);
+    options.push(("list", FILTER_ALL));
+    options.extend(present.iter().map(|(name, icon)| (*icon, *name)));
+
+    let init = selected
+        .as_deref()
+        .and_then(|s| names.iter().position(|n| *n == s).map(|i| i + 1))
+        .unwrap_or(0);
+
+    let dd = dropdown_with_icons(commands, fonts, &options, init);
+    // Size to the selected label (caps at max_width, where the label truncates),
+    // instead of the widget's fixed 140px min-width.
+    commands.entity(dd).insert(Node {
+        max_width: Val::Px(190.0),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(6.0),
+        padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+        border_radius: BorderRadius::all(Val::Px(4.0)),
+        position_type: PositionType::Relative,
+        ..default()
+    });
+
+    // index ↔ selected display-name (index 0 ⇒ None).
+    let names_get: Vec<String> = names.iter().map(|s| s.to_string()).collect();
+    let names_set = names_get.clone();
+    bind_2way(
+        commands,
+        dd,
+        move |w| {
+            w.get_resource::<NativeInspectorState>()
+                .and_then(|s| s.selected.clone())
+                .and_then(|s| names_get.iter().position(|n| *n == s).map(|i| i + 1))
+                .unwrap_or(0)
+        },
+        move |w, idx: &usize| {
+            let sel = if *idx == 0 {
+                None
+            } else {
+                names_set.get(*idx - 1).cloned()
+            };
+            if let Some(mut st) = w.get_resource_mut::<NativeInspectorState>() {
+                if st.selected != sel {
+                    st.selected = sel;
+                }
+            }
+        },
+    );
+    dd
 }
 
 /// The fixed bottom bar: a full-width Add Component button. Hidden when nothing
@@ -305,6 +397,17 @@ fn rebuild_inspector(world: &mut World) {
             .and_then(|s| s.get())
     });
 
+    // Drop a stale dropdown pick if that component isn't on the current entity
+    // (e.g. selection changed) so we don't strand the inspector on an empty list.
+    if let Some(sel) = world.resource::<NativeInspectorState>().selected.clone() {
+        let still_present = entity
+            .map(|e| present_components(world, e).iter().any(|(n, _)| *n == sel))
+            .unwrap_or(false);
+        if !still_present {
+            world.resource_mut::<NativeInspectorState>().selected = None;
+        }
+    }
+
     let mut cq = world.query_filtered::<Entity, With<InspectorRoot>>();
     let Some(container) = cq.iter(world).next() else {
         return;
@@ -316,11 +419,25 @@ fn rebuild_inspector(world: &mut World) {
     }
 
     let sections = collect_sections(world, entity);
-    let filter_active = !world.resource::<NativeInspectorState>().filter.is_empty();
+    let state = world.resource::<NativeInspectorState>();
+    let filter_active = !state.filter.is_empty() || state.selected.is_some();
     let existing: Vec<Entity> = world
         .get::<Children>(container)
         .map(|ch| ch.iter().collect())
         .unwrap_or_default();
+
+    // Rebuild the filter dropdown from the entity's components (the ember widget
+    // bakes options in at build time, so it's recreated when the set changes).
+    let filter_host = {
+        let mut hq = world.query_filtered::<Entity, With<FilterDropdownHost>>();
+        hq.iter(world).next()
+    };
+    let filter_host_children: Vec<Entity> = filter_host
+        .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
+        .unwrap_or_default();
+    let present: Vec<(&'static str, &'static str)> =
+        entity.map(|e| present_components(world, e)).unwrap_or_default();
+    let selected_now = world.resource::<NativeInspectorState>().selected.clone();
 
     // Native-drawer sections: (body, drawer, entity) — filled after the queue
     // applies, since drawers need exclusive &mut World.
@@ -331,6 +448,15 @@ fn rebuild_inspector(world: &mut World) {
         let mut commands = Commands::new(&mut queue, world);
         for child in existing {
             commands.entity(child).despawn();
+        }
+
+        // Rebuild the filter dropdown with the entity's current components.
+        if let Some(host) = filter_host {
+            for child in &filter_host_children {
+                commands.entity(*child).despawn();
+            }
+            let dd = build_filter_dropdown(&mut commands, &fonts, &present, &selected_now);
+            commands.entity(host).add_child(dd);
         }
 
         match entity {
@@ -384,6 +510,7 @@ fn inspector_signature(
     locked.hash(&mut h);
     if let Some(s) = world.get_resource::<NativeInspectorState>() {
         s.filter.hash(&mut h);
+        s.selected.hash(&mut h);
     }
     match entity {
         Some(e) => {
@@ -411,14 +538,20 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
     };
     let theme = world.get_resource::<ThemeManager>();
     let native_reg = world.get_resource::<NativeInspectorRegistry>();
-    let filter = world
+    let (filter, selected) = world
         .get_resource::<NativeInspectorState>()
-        .map(|s| s.filter.clone())
+        .map(|s| (s.filter.clone(), s.selected.clone()))
         .unwrap_or_default();
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world, entity) {
             continue;
+        }
+        // Exact component pick from the dropdown (ANDed with the text filter).
+        if let Some(sel) = &selected {
+            if entry.display_name != sel {
+                continue;
+            }
         }
         // Component-name filter (case-insensitive substring on the display name).
         if !filter.is_empty() && !entry.display_name.to_lowercase().contains(&filter) {
