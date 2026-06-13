@@ -21,7 +21,7 @@
 //! `EffectRouting`. `enabled = false` collapses intensity to 0 — visually
 //! "off" without touching the bindings.
 
-use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight};
+use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -173,6 +173,70 @@ fn cleanup_environment_map(
     }
 }
 
+/// Holds a removed [`GeneratedEnvironmentMapLight`] while the environment is
+/// inactive, so it can be restored verbatim when IBL switches back on.
+#[derive(Component)]
+struct DormantGeneratedEnvMap(GeneratedEnvironmentMapLight);
+
+/// Stop the per-frame environment-map (IBL) filtering when no environment is
+/// active, and resume it when one is.
+///
+/// Bevy 0.18 re-filters the atmosphere cubemap into radiance + irradiance maps
+/// EVERY frame for any camera carrying a `GeneratedEnvironmentMapLight`, with no
+/// bake-once / dirty mode (`bevy_pbr::light_probe::generate`). On a scene with no
+/// active `WorldEnvironment` that's pure waste — the `lightprobe_*` passes can be
+/// the majority of editor GPU time even though `intensity` is 0 (intensity only
+/// scales the lit result, it doesn't gate the generation).
+///
+/// We use `AtmosphereEnvironmentMapLight.intensity` (kept in sync by
+/// [`sync_environment_map`]) as the "is the environment active" signal:
+/// - **inactive** (`intensity ~ 0`): stash and remove `GeneratedEnvironmentMapLight`.
+///   The generate node then has nothing to do and the `lightprobe_*` passes stop.
+/// - **active** (`intensity > 0`): restore the stashed generator (with the live
+///   intensity) so IBL regenerates again.
+///
+/// This is safe w.r.t. the bind-group-layout lock that forces the probe to exist
+/// from spawn: the view's IBL *binding* comes from `EnvironmentMapLight` (left
+/// untouched, so the layout never changes) — `GeneratedEnvironmentMapLight` only
+/// drives the filtering that writes into it. While dormant the filtered maps just
+/// freeze (and at intensity 0 they're invisible anyway). `prepare_atmosphere_probe_components`
+/// won't re-add it because the camera keeps its `AtmosphereEnvironmentMap`.
+fn gate_environment_generation(
+    mut commands: Commands,
+    active: Query<
+        (Entity, &AtmosphereEnvironmentMapLight, &GeneratedEnvironmentMapLight),
+        Without<DormantGeneratedEnvMap>,
+    >,
+    dormant: Query<
+        (Entity, &AtmosphereEnvironmentMapLight, &DormantGeneratedEnvMap),
+        Without<GeneratedEnvironmentMapLight>,
+    >,
+) {
+    const ACTIVE_EPS: f32 = 1e-4;
+
+    // Active → inactive: pause generation.
+    for (entity, probe, generated) in &active {
+        if probe.intensity <= ACTIVE_EPS {
+            commands
+                .entity(entity)
+                .insert(DormantGeneratedEnvMap(generated.clone()))
+                .remove::<GeneratedEnvironmentMapLight>();
+        }
+    }
+
+    // Inactive → active: resume generation with the current intensity.
+    for (entity, probe, stash) in &dormant {
+        if probe.intensity > ACTIVE_EPS {
+            let mut generated = stash.0.clone();
+            generated.intensity = probe.intensity;
+            commands
+                .entity(entity)
+                .insert(generated)
+                .remove::<DormantGeneratedEnvMap>();
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct EnvironmentMapPlugin;
 
@@ -180,7 +244,17 @@ impl Plugin for EnvironmentMapPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] EnvironmentMapPlugin");
         app.register_type::<EnvironmentMapComponentSettings>();
-        app.add_systems(Update, (sync_environment_map, cleanup_environment_map));
+        // `gate_environment_generation` runs after `sync_environment_map` so it
+        // sees the intensity that was just resolved this frame.
+        app.add_systems(
+            Update,
+            (
+                sync_environment_map,
+                cleanup_environment_map,
+                gate_environment_generation,
+            )
+                .chain(),
+        );
     }
 }
 
