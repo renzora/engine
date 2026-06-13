@@ -388,6 +388,7 @@ struct RowData {
     message: String,
     timestamp: f64,
     frame: u64,
+    count: u32,
     show_ts: bool,
     show_frame: bool,
 }
@@ -400,6 +401,7 @@ fn hash_row(r: &RowData) -> u64 {
         &r.message,
         r.timestamp.to_bits(),
         r.frame,
+        r.count,
         r.show_ts,
         r.show_frame,
     )
@@ -439,8 +441,33 @@ fn build_log_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> En
         kids.push(label_text(commands, fonts, &r.message, text_primary(), 12.0));
     }
 
+    // Repeat-count badge (Chrome-style): "×N" pill for coalesced duplicate lines.
+    if r.count > 1 {
+        kids.push(count_badge(commands, fonts, r.count));
+    }
+
     commands.entity(row).add_children(&kids);
     row
+}
+
+/// A small rounded "×N" pill shown when a log line repeated.
+fn count_badge(commands: &mut Commands, fonts: &EmberFonts, count: u32) -> Entity {
+    let badge = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
+                margin: UiRect::left(Val::Px(2.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(70, 78, 92)),
+        ))
+        .id();
+    let label = mono_text(commands, fonts, &format!("×{count}"), text_primary(), 10.0);
+    commands.entity(badge).add_child(label);
+    badge
 }
 
 /// Keyed-list snapshot for the log list: filtered entries (keyed by their
@@ -471,6 +498,7 @@ fn log_snapshot(world: &World) -> KeyedSnapshot {
                     message: e.message.clone(),
                     timestamp: e.timestamp,
                     frame: e.frame,
+                    count: e.count,
                     show_ts,
                     show_frame,
                 },

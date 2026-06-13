@@ -46,6 +46,11 @@ pub struct LogEntry {
     pub timestamp: f64,
     pub frame: u64,
     pub category: String,
+    /// How many consecutive identical entries this represents. Repeated lines
+    /// (same level/category/message) collapse into a single entry with this
+    /// bumped — Chrome-devtools style — so a per-frame log can't flood the
+    /// buffer or stall the frame. `timestamp`/`frame` track the latest hit.
+    pub count: u32,
 }
 
 /// Thread-safe shared log buffer.
@@ -55,6 +60,20 @@ pub struct SharedLogBuffer(pub Arc<Mutex<VecDeque<LogEntry>>>);
 impl SharedLogBuffer {
     pub fn push(&self, entry: LogEntry) {
         if let Ok(mut buffer) = self.0.lock() {
+            // Coalesce a run of identical lines into one entry with a count,
+            // so repeated/per-frame logs increment a badge instead of growing
+            // the buffer (and the panel) unboundedly.
+            if let Some(last) = buffer.back_mut() {
+                if last.level == entry.level
+                    && last.category == entry.category
+                    && last.message == entry.message
+                {
+                    last.count = last.count.saturating_add(1);
+                    last.timestamp = entry.timestamp;
+                    last.frame = entry.frame;
+                    return;
+                }
+            }
             buffer.push_back(entry);
             while buffer.len() > MAX_LOG_ENTRIES {
                 buffer.pop_front();
@@ -87,6 +106,7 @@ pub fn console_log(level: LogLevel, category: &str, message: impl Into<String>) 
             timestamp: 0.0,
             frame: 0,
             category: category.to_string(),
+            count: 1,
         });
     }
 }
