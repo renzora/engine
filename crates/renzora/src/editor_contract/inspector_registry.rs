@@ -73,6 +73,13 @@ pub enum FieldType {
     Enum {
         options: &'static [&'static str],
     },
+    /// A full-width action button. The `FieldDef::name` is the button label and
+    /// `icon` is a leading Phosphor glyph. There's no value to read — `get_fn`
+    /// should return `None`; clicking invokes `set_fn` with
+    /// `FieldValue::Bool(true)` as a "pressed" signal.
+    Button {
+        icon: &'static str,
+    },
 }
 
 /// A single inspectable field on a component.

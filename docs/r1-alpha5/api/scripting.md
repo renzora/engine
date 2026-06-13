@@ -139,6 +139,25 @@ Transform writes are queued and applied after the hook returns. **Both backends.
 | `set_child_position(name, x, y, z)` | Set a named child's position |
 | `set_child_rotation(name, x, y, z)` | Set a named child's rotation |
 | `child_translate(name, x, y, z)` | Move a named child by an offset |
+| `goto_camera_preset(name)` | Jump self to a named camera angle (see below) |
+
+## Camera presets
+
+A camera entity can carry a list of named angles in a `CameraPresets` component. Author them in the inspector's **Camera Presets** section — *Capture current view* snapshots the editor fly-camera's pose (parent-aware) into a new preset, and each row offers rename / go-to / delete. Presets serialize into the scene.
+
+Attach a script to that camera and jump between angles by name:
+
+```lua
+function on_update()
+    if pressed("aim") then
+        goto_camera_preset("over_shoulder")
+    elseif pressed("map") then
+        goto_camera_preset("top_down")
+    end
+end
+```
+
+`goto_camera_preset(name)` moves the script's **own** entity to the matching preset's stored translation + rotation (it's a transform write, applied after the hook returns). It's a no-op with a console warning if the entity has no `CameraPresets` or no preset matches `name`. Both backends. To read the list generically, use component reflection (`get("CameraPresets...")`).
 
 ## Component reflection
 

@@ -42,13 +42,12 @@ pub fn foliage_paint_hover_system(
     terrain_query: Query<&TerrainData>,
 ) {
     // Only process when viewport is hovered (not over a panel/slider)
-    let vp_hovered = viewport.as_ref().is_some_and(|v| v.hovered);
-    if !vp_hovered {
+    let Some(vp) = viewport.as_ref().filter(|v| v.hovered) else {
         paint_state.hover_position = None;
         paint_state.hover_uv = None;
         paint_state.is_painting = false;
         return;
-    }
+    };
 
     let Ok(window) = windows.single() else { return };
     let Some(cursor) = window.cursor_position() else {
@@ -60,7 +59,16 @@ pub fn foliage_paint_hover_system(
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
-    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor) else {
+    // Map the window cursor into the viewport's render-target pixels: subtract
+    // the panel's screen offset, then scale for any Half / Quarter resolution.
+    if vp.screen_size.x <= 0.0 || vp.screen_size.y <= 0.0 {
+        return;
+    }
+    let render_pos = Vec2::new(
+        (cursor.x - vp.screen_position.x) / vp.screen_size.x * vp.current_size.x as f32,
+        (cursor.y - vp.screen_position.y) / vp.screen_size.y * vp.current_size.y as f32,
+    );
+    let Ok(ray) = camera.viewport_to_world(camera_transform, render_pos) else {
         return;
     };
 

@@ -334,6 +334,11 @@ fn register_api(engine: &mut Engine) {
             z: z as f32,
         });
     });
+    engine.register_fn("goto_camera_preset", |name: &str| {
+        push_command(ScriptCommand::GotoCameraPreset {
+            name: name.to_string(),
+        });
+    });
 
     // Parent transform
     engine.register_fn("parent_set_position", |x: f64, y: f64, z: f64| {

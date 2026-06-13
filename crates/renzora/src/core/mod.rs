@@ -845,6 +845,72 @@ pub struct SceneCamera;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct DefaultCamera;
 
+/// Per-camera render-resolution scale (Full / Half / Quarter).
+///
+/// Sizes this camera's render target at a fraction of the display size and
+/// upscales it. In the editor, the viewport reflects the resolution of the
+/// relevant scene camera (selected → default → first); in play mode the active
+/// camera's resolution drives the game render target. Absent ⇒ Full.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct CameraRenderResolution(pub viewport_types::RenderResolution);
+
+/// One named camera angle — a captured world-space pose.
+///
+/// Stored in a [`CameraPresets`] list on a camera entity so the angle persists
+/// in the scene RON and can be jumped to from scripting (`goto_camera_preset`)
+/// or the inspector's "Camera Presets" section.
+#[derive(Clone, Debug, Reflect, Serialize, Deserialize, PartialEq)]
+pub struct CameraPreset {
+    /// Lookup key used by scripting (`goto_camera_preset("name")`) and shown in
+    /// the inspector list. Not required to be unique, but `goto` matches the
+    /// first by name.
+    pub name: String,
+    /// World-space translation of the camera at capture time.
+    pub translation: Vec3,
+    /// World-space orientation of the camera at capture time.
+    pub rotation: Quat,
+}
+
+impl CameraPreset {
+    /// Build a preset from a name and a world-space transform.
+    pub fn from_transform(name: impl Into<String>, transform: &Transform) -> Self {
+        Self {
+            name: name.into(),
+            translation: transform.translation,
+            rotation: transform.rotation,
+        }
+    }
+
+    /// The pose as a [`Transform`] (scale left at one — camera scale is ignored).
+    pub fn to_transform(&self) -> Transform {
+        Transform {
+            translation: self.translation,
+            rotation: self.rotation,
+            scale: Vec3::ONE,
+        }
+    }
+}
+
+/// A list of named camera angles attached to a camera entity.
+///
+/// Authored in the inspector ("Camera Presets" section → *Capture current
+/// view*) and serialized into the scene. A script on the same entity can jump
+/// the camera to any preset by name with `goto_camera_preset("name")`, or query
+/// the list with `camera_preset_count()` / `camera_preset_name(i)`.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct CameraPresets {
+    pub presets: Vec<CameraPreset>,
+}
+
+impl CameraPresets {
+    /// Find a preset by name (first match).
+    pub fn get(&self, name: &str) -> Option<&CameraPreset> {
+        self.presets.iter().find(|p| p.name == name)
+    }
+}
+
 /// Live scene EV-100, written each frame by `renzora_auto_exposure`'s
 /// GPU luminance readback system. `0.0` until the first readback completes
 /// (or if auto-exposure isn't enabled). Read by scripting / debug HUDs.

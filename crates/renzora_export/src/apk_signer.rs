@@ -315,3 +315,201 @@ fn der_tag(tag: u8, content: &[u8]) -> Vec<u8> {
     out.extend_from_slice(content);
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── ZIP EOCD location ────────────────────────────────────────────────────
+
+    #[test]
+    fn find_eocd_locates_minimal_record() {
+        // A bare 22-byte EOCD record with no archive comment.
+        let mut data = vec![0u8; 22];
+        data[..4].copy_from_slice(&EOCD_SIG);
+        assert_eq!(find_eocd(&data).unwrap(), 0);
+    }
+
+    #[test]
+    fn find_eocd_allows_trailing_comment_and_picks_last_match() {
+        // EOCD record at offset 10, followed by comment bytes.
+        let mut data = vec![0u8; 40];
+        data[10..14].copy_from_slice(&EOCD_SIG);
+        assert_eq!(find_eocd(&data).unwrap(), 10);
+
+        // If the signature bytes also appear earlier (e.g. inside entry data),
+        // the backwards scan must still return the rearmost record.
+        data[2..6].copy_from_slice(&EOCD_SIG);
+        assert_eq!(find_eocd(&data).unwrap(), 10);
+    }
+
+    #[test]
+    fn find_eocd_rejects_undersized_or_missing_record() {
+        assert!(find_eocd(&[]).is_err());
+        assert!(find_eocd(&[0u8; 21]).is_err());
+        assert!(find_eocd(&[0u8; 64]).is_err());
+    }
+
+    // ── v2 block primitives ──────────────────────────────────────────────────
+
+    #[test]
+    fn lp_prefixes_little_endian_length() {
+        assert_eq!(lp(b"abc"), [3, 0, 0, 0, b'a', b'b', b'c']);
+        assert_eq!(lp(&[]), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn der_tag_uses_shortest_length_encoding() {
+        assert_eq!(der_tag(0x30, &[]), [0x30, 0x00]);
+        assert_eq!(der_tag(0x30, &[0xAA; 3])[..2], [0x30, 0x03]);
+        assert_eq!(der_tag(0x30, &[0xAA; 3])[2..], [0xAA, 0xAA, 0xAA]);
+        // Short form up to 0x7f, then one/two/three length bytes.
+        assert_eq!(der_tag(0x04, &[0u8; 0x7f])[..2], [0x04, 0x7f]);
+        assert_eq!(der_tag(0x04, &[0u8; 0x80])[..3], [0x04, 0x81, 0x80]);
+        assert_eq!(der_tag(0x04, &[0u8; 0xff])[..3], [0x04, 0x81, 0xff]);
+        assert_eq!(der_tag(0x04, &[0u8; 0x100])[..4], [0x04, 0x82, 0x01, 0x00]);
+        assert_eq!(der_tag(0x04, &[0u8; 0xffff])[..4], [0x04, 0x82, 0xff, 0xff]);
+        assert_eq!(
+            der_tag(0x04, &[0u8; 0x10000])[..5],
+            [0x04, 0x83, 0x01, 0x00, 0x00]
+        );
+    }
+
+    #[test]
+    fn ec_spki_wraps_point_in_der_sequence() {
+        // Dummy uncompressed P-256 point: 0x04 || X(32) || Y(32).
+        let key = [0x04u8; 65];
+        let spki = build_ec_spki(&key);
+
+        assert_eq!(spki.len(), 91);
+        // Outer SEQUENCE wrapping AlgorithmIdentifier + BIT STRING.
+        assert_eq!(&spki[..2], &[0x30, 89]);
+        // AlgorithmIdentifier SEQUENCE { ecPublicKey, prime256v1 }.
+        assert_eq!(&spki[2..4], &[0x30, 19]);
+        assert_eq!(
+            &spki[4..13],
+            &[0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]
+        );
+        assert_eq!(
+            &spki[13..23],
+            &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]
+        );
+        // BIT STRING with zero unused bits, then the raw point.
+        assert_eq!(&spki[23..26], &[0x03, 66, 0x00]);
+        assert_eq!(&spki[26..], &key);
+    }
+
+    // ── Content digest ───────────────────────────────────────────────────────
+
+    /// Reference v2 digest: 0xa5-prefixed 1 MiB chunk hashes, then a
+    /// 0x5a-prefixed hash over the chunk-digest concatenation. Literal
+    /// constants on purpose, so production drift gets caught.
+    fn spec_digest(sections: &[&[u8]]) -> Vec<u8> {
+        use ring::digest::{Context, SHA256};
+        let mut chunk_digests = Vec::new();
+        let mut count: u32 = 0;
+        for section in sections {
+            for chunk in section.chunks(1024 * 1024) {
+                let mut ctx = Context::new(&SHA256);
+                ctx.update(&[0xa5]);
+                ctx.update(&(chunk.len() as u32).to_le_bytes());
+                ctx.update(chunk);
+                chunk_digests.extend_from_slice(ctx.finish().as_ref());
+                count += 1;
+            }
+        }
+        let mut ctx = Context::new(&SHA256);
+        ctx.update(&[0x5a]);
+        ctx.update(&count.to_le_bytes());
+        ctx.update(&chunk_digests);
+        ctx.finish().as_ref().to_vec()
+    }
+
+    #[test]
+    fn content_digest_follows_chunked_format() {
+        let d = compute_content_digest(b"entries", b"central dir", b"eocd");
+        assert_eq!(d.len(), 32);
+        assert_eq!(d, spec_digest(&[b"entries", b"central dir", b"eocd"]));
+
+        // Empty sections contribute no chunks at all.
+        assert_eq!(compute_content_digest(b"", b"x", b""), spec_digest(&[b"x"]));
+
+        // Oversized sections split into 1 MiB chunks.
+        let big = vec![7u8; CHUNK_SIZE + 1];
+        assert_eq!(
+            compute_content_digest(&big, b"cd", b"eocd"),
+            spec_digest(&[&big, b"cd", b"eocd"])
+        );
+    }
+
+    #[test]
+    fn content_digest_is_sensitive_to_section_boundaries() {
+        // Same byte stream, different section split => different chunk lengths.
+        assert_ne!(
+            compute_content_digest(b"ab", b"c", b"!"),
+            compute_content_digest(b"a", b"bc", b"!")
+        );
+    }
+
+    // ── Block assembly ───────────────────────────────────────────────────────
+
+    #[test]
+    fn signed_data_nests_digest_cert_and_empty_attrs() {
+        let digest = [0xABu8; 32];
+        let cert = b"CERTDER";
+        let sd = build_signed_data(&digest, cert);
+
+        assert_eq!(sd.len(), 67);
+        // digests: lp(lp(algo_id + lp(digest)))
+        assert_eq!(&sd[0..4], &44u32.to_le_bytes());
+        assert_eq!(&sd[4..8], &40u32.to_le_bytes());
+        assert_eq!(&sd[8..12], &ECDSA_SHA256_ID.to_le_bytes());
+        assert_eq!(&sd[12..16], &32u32.to_le_bytes());
+        assert_eq!(&sd[16..48], &digest);
+        // certificates: lp(lp(cert_der))
+        assert_eq!(&sd[48..52], &11u32.to_le_bytes());
+        assert_eq!(&sd[52..56], &7u32.to_le_bytes());
+        assert_eq!(&sd[56..63], cert);
+        // additional attributes: empty
+        assert_eq!(&sd[63..67], &0u32.to_le_bytes());
+    }
+
+    #[test]
+    fn v2_block_nests_signer_components() {
+        let block = build_v2_block(b"SD", b"SIG", b"PK");
+
+        assert_eq!(block.len(), 39);
+        // signers sequence > signer
+        assert_eq!(&block[0..4], &35u32.to_le_bytes());
+        assert_eq!(&block[4..8], &31u32.to_le_bytes());
+        // signed data
+        assert_eq!(&block[8..12], &2u32.to_le_bytes());
+        assert_eq!(&block[12..14], b"SD");
+        // signatures sequence > (algo_id, lp(sig))
+        assert_eq!(&block[14..18], &15u32.to_le_bytes());
+        assert_eq!(&block[18..22], &11u32.to_le_bytes());
+        assert_eq!(&block[22..26], &ECDSA_SHA256_ID.to_le_bytes());
+        assert_eq!(&block[26..30], &3u32.to_le_bytes());
+        assert_eq!(&block[30..33], b"SIG");
+        // public key
+        assert_eq!(&block[33..37], &2u32.to_le_bytes());
+        assert_eq!(&block[37..39], b"PK");
+    }
+
+    #[test]
+    fn signing_block_frames_pairs_with_size_fields_and_magic() {
+        let v2 = b"V2BLOCK!";
+        let block = build_signing_block(v2);
+
+        // [size u64][pair_size u64][id u32][value][size u64][magic 16]
+        assert_eq!(block.len(), 52);
+        assert_eq!(&block[0..8], &44u64.to_le_bytes());
+        assert_eq!(&block[8..16], &12u64.to_le_bytes());
+        assert_eq!(&block[16..20], &V2_BLOCK_ID.to_le_bytes());
+        assert_eq!(&block[20..28], v2);
+        assert_eq!(&block[28..36], &44u64.to_le_bytes());
+        assert_eq!(&block[36..52], APK_SIG_BLOCK_MAGIC);
+        // Both size fields exclude the leading size field itself.
+        assert_eq!(block.len() as u64, 44 + 8);
+    }
+}

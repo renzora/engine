@@ -2225,9 +2225,20 @@ fn entity_pick_system(
         return;
     }
 
+    // The render target may be smaller than the on-screen panel (Half / Quarter
+    // resolution), so map the panel-local cursor into render-target pixels
+    // before building the pick ray — otherwise clicks land off-target.
+    if viewport.screen_size.x <= 0.0 || viewport.screen_size.y <= 0.0 {
+        return;
+    }
+    let render_pos = Vec2::new(
+        vp_local.x / viewport.screen_size.x * viewport.current_size.x as f32,
+        vp_local.y / viewport.screen_size.y * viewport.current_size.y as f32,
+    );
+
     // Modifiers are read at release time in `box_selection_system` — on
     // press we just arm the gesture.
-    let Ok(ray) = camera.viewport_to_world(cam_gt, vp_local) else {
+    let Ok(ray) = camera.viewport_to_world(cam_gt, render_pos) else {
         return;
     };
 
@@ -2512,3 +2523,393 @@ fn render_box_selection(
 }
 
 renzora::add!(GizmoPlugin, Editor);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::camera::primitives::Aabb;
+    use bevy::ecs::system::RunSystemOnce;
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    fn ray(origin: Vec3, dir: Vec3) -> Ray3d {
+        Ray3d {
+            origin,
+            direction: Dir3::new(dir).unwrap(),
+        }
+    }
+
+    // ── closest_distance_ray_segment ────────────────────────────────────────
+
+    #[test]
+    fn ray_segment_distance_at_closest_approach() {
+        // Ray along +X at y=1 passes 1 unit above a segment on the X axis.
+        let r = ray(Vec3::new(-5.0, 1.0, 0.0), Vec3::X);
+        let d = closest_distance_ray_segment(&r, Vec3::new(-1.0, 0.0, 0.0), Vec3::X).unwrap();
+        assert!((d - 1.0).abs() < 1e-4, "expected 1.0, got {d}");
+
+        // Ray passing straight through the segment midpoint → ~0.
+        let r = ray(Vec3::new(0.0, 5.0, 0.0), Vec3::NEG_Y);
+        let d = closest_distance_ray_segment(&r, Vec3::new(-1.0, 0.0, 0.0), Vec3::X).unwrap();
+        assert!(d < 1e-4, "expected ~0, got {d}");
+    }
+
+    #[test]
+    fn ray_segment_distance_clamps_to_endpoints() {
+        // Closest point on the infinite line is at x=10, but the segment ends
+        // at x=1 — distance must be measured to the endpoint instead.
+        let r = ray(Vec3::new(10.0, 5.0, 0.0), Vec3::NEG_Y);
+        let d = closest_distance_ray_segment(&r, Vec3::ZERO, Vec3::X).unwrap();
+        assert!((d - 9.0).abs() < 1e-3, "expected 9.0, got {d}");
+    }
+
+    #[test]
+    fn ray_segment_distance_degenerate_cases_return_none() {
+        // Parallel ray and segment → denominator collapses.
+        let r = ray(Vec3::new(0.0, 1.0, 0.0), Vec3::X);
+        assert!(closest_distance_ray_segment(&r, Vec3::ZERO, Vec3::X * 5.0).is_none());
+
+        // Zero-length segment.
+        let r = ray(Vec3::new(0.0, 5.0, 0.0), Vec3::NEG_Y);
+        assert!(closest_distance_ray_segment(&r, Vec3::ONE, Vec3::ONE).is_none());
+
+        // Closest approach behind the ray origin.
+        let r = ray(Vec3::new(0.0, 5.0, 0.0), Vec3::Y);
+        assert!(closest_distance_ray_segment(&r, Vec3::new(-1.0, 0.0, 0.0), Vec3::X).is_none());
+    }
+
+    // ── ray_circle_distance ─────────────────────────────────────────────────
+
+    #[test]
+    fn ray_circle_distance_through_center_is_radius() {
+        // Ray down the circle's normal through its center: every point on the
+        // circle is `radius` away (modulo the 32-segment polyline chords).
+        let r = ray(Vec3::new(0.0, 0.0, 10.0), Vec3::NEG_Z);
+        let d = ray_circle_distance(&r, Vec3::ZERO, Vec3::Z, 2.0).unwrap();
+        assert!(d > 1.95 && d <= 2.001, "expected ~2.0, got {d}");
+    }
+
+    #[test]
+    fn ray_circle_distance_at_rim_is_near_zero() {
+        let r = ray(Vec3::new(2.0, 0.0, 10.0), Vec3::NEG_Z);
+        let d = ray_circle_distance(&r, Vec3::ZERO, Vec3::Z, 2.0).unwrap();
+        assert!(d < 0.05, "expected ~0, got {d}");
+    }
+
+    // ── ray_hits_plane_quad ─────────────────────────────────────────────────
+
+    #[test]
+    fn ray_hits_plane_quad_inside_bounds() {
+        // Quad spanning (0,0)..(2,2) on the XY plane, ray hits its middle.
+        let r = ray(Vec3::new(1.0, 1.0, 5.0), Vec3::NEG_Z);
+        assert!(ray_hits_plane_quad(&r, Vec3::ZERO, Vec3::X, Vec3::Y, 2.0));
+    }
+
+    #[test]
+    fn ray_hits_plane_quad_rejects_misses() {
+        // Hits the plane but outside the quad bounds.
+        let r = ray(Vec3::new(3.0, 1.0, 5.0), Vec3::NEG_Z);
+        assert!(!ray_hits_plane_quad(&r, Vec3::ZERO, Vec3::X, Vec3::Y, 2.0));
+
+        // Ray parallel to the plane.
+        let r = ray(Vec3::new(1.0, 1.0, 5.0), Vec3::X);
+        assert!(!ray_hits_plane_quad(&r, Vec3::ZERO, Vec3::X, Vec3::Y, 2.0));
+
+        // Plane behind the ray origin.
+        let r = ray(Vec3::new(1.0, 1.0, 5.0), Vec3::Z);
+        assert!(!ray_hits_plane_quad(&r, Vec3::ZERO, Vec3::X, Vec3::Y, 2.0));
+    }
+
+    // ── perpendicular_pair ──────────────────────────────────────────────────
+
+    #[test]
+    fn perpendicular_pair_is_orthonormal() {
+        for normal in [Vec3::X, Vec3::Y, Vec3::Z, Vec3::new(1.0, 2.0, 3.0).normalize()] {
+            let (p1, p2) = perpendicular_pair(normal);
+            assert!((p1.length() - 1.0).abs() < 1e-5, "p1 not unit for {normal}");
+            assert!((p2.length() - 1.0).abs() < 1e-5, "p2 not unit for {normal}");
+            assert!(p1.dot(p2).abs() < 1e-5, "p1/p2 not orthogonal for {normal}");
+            assert!(p1.dot(normal).abs() < 1e-5, "p1 not perp to {normal}");
+            assert!(p2.dot(normal).abs() < 1e-5, "p2 not perp to {normal}");
+        }
+    }
+
+    // ── pick_threshold ──────────────────────────────────────────────────────
+
+    #[test]
+    fn pick_threshold_perspective_scales_with_distance() {
+        let cam = GlobalTransform::IDENTITY;
+        let proj = Projection::Perspective(PerspectiveProjection {
+            fov: FRAC_PI_2,
+            aspect_ratio: 1.0,
+            ..Default::default()
+        });
+        // tan(fov/2) = 1, so threshold = dist * 2 * 12 / vh.
+        let near = pick_threshold(&cam, Vec3::new(0.0, 0.0, -10.0), &proj, 600.0);
+        let far = pick_threshold(&cam, Vec3::new(0.0, 0.0, -20.0), &proj, 600.0);
+        assert!((near - 0.4).abs() < 1e-4, "got {near}");
+        assert!((far - 0.8).abs() < 1e-4, "got {far}");
+    }
+
+    #[test]
+    fn pick_threshold_orthographic_ignores_distance() {
+        let cam = GlobalTransform::IDENTITY;
+        let mut ortho = OrthographicProjection::default_3d();
+        ortho.area = Rect::new(-5.0, -5.0, 5.0, 5.0);
+        let proj = Projection::Orthographic(ortho);
+        let near = pick_threshold(&cam, Vec3::new(0.0, 0.0, -10.0), &proj, 600.0);
+        let far = pick_threshold(&cam, Vec3::new(0.0, 0.0, -1000.0), &proj, 600.0);
+        assert!((near - 0.2).abs() < 1e-4, "got {near}");
+        assert_eq!(near, far);
+    }
+
+    // ── GizmoAxis ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn gizmo_axis_directions_and_plane_classification() {
+        assert_eq!(GizmoAxis::X.direction(), Vec3::X);
+        assert_eq!(GizmoAxis::Y.direction(), Vec3::Y);
+        assert_eq!(GizmoAxis::Z.direction(), Vec3::Z);
+        // Plane "direction" is the plane normal.
+        assert_eq!(GizmoAxis::XY.direction(), Vec3::Z);
+        assert_eq!(GizmoAxis::XZ.direction(), Vec3::Y);
+        assert_eq!(GizmoAxis::YZ.direction(), Vec3::X);
+
+        for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
+            assert!(!axis.is_plane());
+            assert!(axis.plane_axes().is_none());
+        }
+        for plane in [GizmoAxis::XY, GizmoAxis::XZ, GizmoAxis::YZ] {
+            assert!(plane.is_plane());
+        }
+        assert_eq!(GizmoAxis::XY.plane_axes(), Some((Vec3::X, Vec3::Y)));
+        assert_eq!(GizmoAxis::XZ.plane_axes(), Some((Vec3::X, Vec3::Z)));
+        assert_eq!(GizmoAxis::YZ.plane_axes(), Some((Vec3::Y, Vec3::Z)));
+    }
+
+    #[test]
+    fn gizmo_axis_signed_direction_flips_single_axes_only() {
+        let signs = Vec3::new(-1.0, 1.0, -1.0);
+        assert_eq!(GizmoAxis::X.signed_direction(signs), Vec3::new(-1.0, 0.0, 0.0));
+        assert_eq!(GizmoAxis::Y.signed_direction(signs), Vec3::Y);
+        assert_eq!(GizmoAxis::Z.signed_direction(signs), Vec3::new(0.0, 0.0, -1.0));
+        // Plane normals are unaffected by signs.
+        assert_eq!(GizmoAxis::XY.signed_direction(signs), Vec3::Z);
+    }
+
+    #[test]
+    fn gizmo_axis_signed_plane_axes_bake_signs() {
+        let signs = Vec3::new(-1.0, 1.0, -1.0);
+        assert_eq!(
+            GizmoAxis::XY.signed_plane_axes(signs),
+            Some((Vec3::new(-1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)))
+        );
+        assert_eq!(
+            GizmoAxis::YZ.signed_plane_axes(signs),
+            Some((Vec3::new(0.0, 1.0, 0.0), Vec3::new(0.0, 0.0, -1.0)))
+        );
+        assert_eq!(GizmoAxis::X.signed_plane_axes(signs), None);
+    }
+
+    // ── screen-delta helpers ────────────────────────────────────────────────
+
+    #[test]
+    fn screen_delta_to_angle_front_facing_uses_combined_delta() {
+        // Identity camera looks down -Z; the Z axis faces the camera
+        // (|dot| = 1 > 0.7) → angle = (dx - dy) * 0.005.
+        let cam = GlobalTransform::IDENTITY;
+        let a = screen_delta_to_angle(Vec2::new(10.0, 4.0), Vec3::Z, &cam);
+        assert!((a - 0.03).abs() < 1e-6, "got {a}");
+    }
+
+    #[test]
+    fn screen_delta_to_angle_edge_on_projects_perpendicular() {
+        // X axis is edge-on to the identity camera: screen axis is (1,0),
+        // its perpendicular is (0,1) → only the vertical delta contributes.
+        let cam = GlobalTransform::IDENTITY;
+        let a = screen_delta_to_angle(Vec2::new(3.0, 8.0), Vec3::X, &cam);
+        assert!((a - 0.04).abs() < 1e-6, "got {a}");
+    }
+
+    #[test]
+    fn screen_delta_to_scale_projects_onto_axis() {
+        let cam = GlobalTransform::IDENTITY;
+        // X axis maps to screen (1, 0): only the horizontal delta counts.
+        let s = screen_delta_to_scale(Vec2::new(10.0, 99.0), Vec3::X, &cam);
+        assert!((s - 0.05).abs() < 1e-6, "got {s}");
+        // Z axis has no screen projection on the identity camera → 0.
+        let s = screen_delta_to_scale(Vec2::new(10.0, 10.0), Vec3::Z, &cam);
+        assert_eq!(s, 0.0);
+    }
+
+    // ── world-space AABB helpers ────────────────────────────────────────────
+
+    #[test]
+    fn world_space_min_y_handles_rotation() {
+        // Half-extents (2,1,1): rotating 90° about Z swings the ±2 X extent
+        // onto the Y axis, so the lowest corner sits at y = -2.
+        let aabb = Aabb::from_min_max(Vec3::new(-2.0, -1.0, -1.0), Vec3::new(2.0, 1.0, 1.0));
+        let gt = GlobalTransform::from(
+            Transform::from_translation(Vec3::new(0.0, 5.0, 0.0))
+                .with_rotation(Quat::from_rotation_z(FRAC_PI_2)),
+        );
+        let min_y = world_space_min_y(&aabb, &gt);
+        assert!((min_y - 3.0).abs() < 1e-4, "got {min_y}");
+    }
+
+    #[test]
+    fn world_aabb_min_applies_translation_and_scale() {
+        let aabb = Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0));
+        let min = world_aabb_min(
+            &aabb,
+            Vec3::new(10.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Vec3::new(2.0, 3.0, 1.0),
+        );
+        assert!((min - Vec3::new(8.0, -3.0, -1.0)).length() < 1e-4, "got {min}");
+    }
+
+    #[test]
+    fn world_aabb_min_applies_rotation() {
+        // 180° about X flips Y/Z, but a symmetric cube's min is unchanged.
+        let aabb = Aabb::from_min_max(Vec3::ZERO, Vec3::ONE);
+        let min = world_aabb_min(&aabb, Vec3::ZERO, Quat::from_rotation_x(PI), Vec3::ONE);
+        // Local (0..1)³ rotated 180° about X → y/z in (-1..0).
+        assert!((min - Vec3::new(0.0, -1.0, -1.0)).length() < 1e-4, "got {min}");
+    }
+
+    // ── BoxSelectionState ───────────────────────────────────────────────────
+
+    #[test]
+    fn box_selection_get_rect_normalizes_inverted_drag() {
+        let state = BoxSelectionState {
+            active: true,
+            start_pos: Vec2::new(100.0, 20.0),
+            current_pos: Vec2::new(40.0, 80.0),
+            pending_pick: None,
+        };
+        let (min, max) = state.get_rect();
+        assert_eq!(min, Vec2::new(40.0, 20.0));
+        assert_eq!(max, Vec2::new(100.0, 80.0));
+    }
+
+    #[test]
+    fn box_selection_is_drag_requires_movement_past_threshold() {
+        let mut state = BoxSelectionState {
+            start_pos: Vec2::new(10.0, 10.0),
+            current_pos: Vec2::new(10.0, 10.0),
+            ..Default::default()
+        };
+        assert!(!state.is_drag());
+        // Exactly 5px is still a click (threshold is strict >).
+        state.current_pos = Vec2::new(15.0, 10.0);
+        assert!(!state.is_drag());
+        state.current_pos = Vec2::new(15.1, 10.0);
+        assert!(state.is_drag());
+        // Either axis alone is enough.
+        state.current_pos = Vec2::new(10.0, 16.0);
+        assert!(state.is_drag());
+    }
+
+    // ── find_named_ancestor ─────────────────────────────────────────────────
+
+    fn run_find_named_ancestor(world: &mut World, start: Entity) -> Option<Entity> {
+        world
+            .run_system_once(
+                move |named: Query<(Entity, Has<SelectionStop>), With<Name>>,
+                      parents: Query<&ChildOf>| {
+                    find_named_ancestor(start, &named, &parents)
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn find_named_ancestor_returns_leafmost_named() {
+        let mut world = World::new();
+        let root = world.spawn(Name::new("Root")).id();
+        let mesh = world.spawn((Name::new("Mesh"), ChildOf(root))).id();
+        // Clicking the named mesh selects the mesh, not the root.
+        assert_eq!(run_find_named_ancestor(&mut world, mesh), Some(mesh));
+
+        // An unnamed child bubbles up to the nearest named ancestor.
+        let unnamed = world.spawn(ChildOf(mesh)).id();
+        assert_eq!(run_find_named_ancestor(&mut world, unnamed), Some(mesh));
+    }
+
+    #[test]
+    fn find_named_ancestor_selection_stop_overrides_leafmost() {
+        let mut world = World::new();
+        let compound = world.spawn((Name::new("Terrain"), SelectionStop)).id();
+        let chunk = world.spawn((Name::new("Chunk"), ChildOf(compound))).id();
+        assert_eq!(run_find_named_ancestor(&mut world, chunk), Some(compound));
+    }
+
+    #[test]
+    fn find_named_ancestor_unnamed_chain_returns_none() {
+        let mut world = World::new();
+        let root = world.spawn_empty().id();
+        let child = world.spawn(ChildOf(root)).id();
+        assert_eq!(run_find_named_ancestor(&mut world, child), None);
+    }
+
+    // ── compute_gizmo_pivot ─────────────────────────────────────────────────
+
+    fn run_compute_pivot(world: &mut World, entity: Entity, fallback: GlobalTransform) -> Vec3 {
+        world
+            .run_system_once(
+                move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
+                      children: Query<&Children>| {
+                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback)
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_uses_world_aabb_center() {
+        let mut meshes = Assets::<Mesh>::default();
+        let mesh = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+
+        let mut world = World::new();
+        let entity = world
+            .spawn((
+                Mesh3d(mesh),
+                Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0)),
+                GlobalTransform::from_translation(Vec3::new(10.0, 2.0, 0.0)),
+            ))
+            .id();
+        // Pivot anchors on the mesh AABB, not the (bogus) fallback transform.
+        let fallback = GlobalTransform::from_translation(Vec3::splat(99.0));
+        let pivot = run_compute_pivot(&mut world, entity, fallback);
+        assert!((pivot - Vec3::new(10.0, 2.0, 0.0)).length() < 1e-4, "got {pivot}");
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_includes_descendant_meshes() {
+        let mut meshes = Assets::<Mesh>::default();
+        let mesh = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+
+        let mut world = World::new();
+        // Parent has no mesh of its own — pivot must come from the child,
+        // matching the scene-GLB case where the root sits at the origin.
+        let parent = world.spawn(Name::new("Root")).id();
+        world.spawn((
+            Mesh3d(mesh),
+            Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0)),
+            GlobalTransform::from_translation(Vec3::new(0.0, 0.0, -6.0)),
+            ChildOf(parent),
+        ));
+        let fallback = GlobalTransform::IDENTITY;
+        let pivot = run_compute_pivot(&mut world, parent, fallback);
+        assert!((pivot - Vec3::new(0.0, 0.0, -6.0)).length() < 1e-4, "got {pivot}");
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_falls_back_without_aabbs() {
+        let mut world = World::new();
+        let entity = world.spawn(Name::new("JustSpawned")).id();
+        let fallback = GlobalTransform::from_translation(Vec3::new(1.0, 2.0, 3.0));
+        let pivot = run_compute_pivot(&mut world, entity, fallback);
+        assert_eq!(pivot, Vec3::new(1.0, 2.0, 3.0));
+    }
+}

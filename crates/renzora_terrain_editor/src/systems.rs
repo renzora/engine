@@ -173,8 +173,16 @@ pub fn terrain_sculpt_hover_system(
         return;
     };
 
-    // Viewport-local coordinates
-    let local_pos = Vec2::new(cursor_pos.x - vp_pos.x, cursor_pos.y - vp_pos.y);
+    // Viewport-local cursor mapped into render-target pixels (the target may be
+    // smaller than the panel at Half / Quarter resolution).
+    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
+        sculpt_state.hover_position = None;
+        return;
+    }
+    let local_pos = Vec2::new(
+        (cursor_pos.x - vp_pos.x) / vp_size.x * viewport.current_size.x as f32,
+        (cursor_pos.y - vp_pos.y) / vp_size.y * viewport.current_size.y as f32,
+    );
     let Ok(ray) = camera.viewport_to_world(cam_transform, local_pos) else {
         sculpt_state.hover_position = None;
         return;
@@ -604,7 +612,14 @@ pub fn terrain_paint_hover_system(
         return;
     };
 
-    let local_pos = Vec2::new(cursor_pos.x - vp_pos.x, cursor_pos.y - vp_pos.y);
+    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
+        paint_state.hover_position = None;
+        return;
+    }
+    let local_pos = Vec2::new(
+        (cursor_pos.x - vp_pos.x) / vp_size.x * viewport.current_size.x as f32,
+        (cursor_pos.y - vp_pos.y) / vp_size.y * viewport.current_size.y as f32,
+    );
     let Ok(ray) = camera.viewport_to_world(cam_transform, local_pos) else {
         paint_state.hover_position = None;
         return;

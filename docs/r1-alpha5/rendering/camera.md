@@ -125,6 +125,15 @@ fn spawn_game_camera(mut commands: Commands) {
 
 Render-to-texture and multi-camera setups use Bevy's stock components. Set draw order with `Camera { order, .. }`, and point a camera at a texture with `RenderTarget::Image(handle.into())` (from `bevy::camera`). For split-screen, set each camera's `Camera.viewport` (a `Viewport` whose `physical_position` / `physical_size` are `UVec2` pixel values — not normalized fractions).
 
+## Snap to Viewport & camera presets
+
+Authoring camera angles in the editor is two clicks:
+
+- **Snap to Viewport** — right-click a camera in the hierarchy (or use the button on its **Camera** component) to move that camera so it sits exactly where the editor fly-camera is looking. Parent-aware: a camera under a rig/empty lands at the right world pose.
+- **Camera Presets** — the camera's inspector has a *Camera Presets* section. *Capture current view* saves the current editor view as a named angle. Each preset row has three actions: **Go to** drives the editor fly-camera to that angle (preview it in the viewport), **Snap to Viewport** overwrites the preset with the current editor view, and the trash icon deletes it. Presets live in a `CameraPresets` component (`Vec<CameraPreset { name, translation, rotation }>`, world-space) that serializes into the scene.
+
+Presets are scriptable: a script on the camera calls `goto_camera_preset("name")` to move that camera entity to a stored angle at runtime. See the [Scripting](/docs/r1-alpha5/api/scripting) page.
+
 ## Post-process effects on cameras
 
 Renzora does **not** ask you to insert Bevy's effect components (`Bloom`, `DepthOfField`, …) directly. Instead you author an effect's **settings component** (e.g. `BloomSettings`, `AsciiSettings`, or the GI types `RtLighting` / `LumenLighting`), and the engine proxies it onto the active camera through the `EffectRouting` table.

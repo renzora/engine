@@ -316,6 +316,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(spot_light_entry());
     registry.register(ambient_light_entry());
     registry.register(camera_entry());
+    registry.register(camera_presets_entry());
     registry.register(camera3d_entry());
     registry.register(mesh3d_entry());
     registry.register(environment_map_light_entry());
@@ -1003,7 +1004,63 @@ fn camera_entry() -> InspectorEntry {
                     }
                 },
             },
+            FieldDef {
+                name: "Resolution",
+                field_type: FieldType::Enum {
+                    options: &["Full", "Half", "Quarter"],
+                },
+                get_fn: |world, entity| {
+                    let r = world
+                        .get::<renzora::core::CameraRenderResolution>(entity)
+                        .map(|c| c.0)
+                        .unwrap_or_default();
+                    Some(FieldValue::Enum(r.label().to_string()))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Enum(label) = val {
+                        let r = renzora::core::viewport_types::RenderResolution::from_label(&label);
+                        if let Some(mut c) =
+                            world.get_mut::<renzora::core::CameraRenderResolution>(entity)
+                        {
+                            c.0 = r;
+                        } else {
+                            world
+                                .entity_mut(entity)
+                                .insert(renzora::core::CameraRenderResolution(r));
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Snap to Viewport",
+                field_type: FieldType::Button {
+                    icon: "frame-corners",
+                },
+                get_fn: |_, _| None,
+                set_fn: |world, entity, _| {
+                    crate::camera::snap_entity_to_editor_camera(world, entity);
+                },
+            },
         ],
+    }
+}
+
+/// Camera angle presets. The body is a native (bevy_ui) drawer registered by
+/// `renzora_inspector` (`register_native_inspector_ui("camera_presets", …)`),
+/// so the fields here stay empty. Shown on any 3D camera; the `CameraPresets`
+/// component is inserted lazily when the first preset is captured.
+fn camera_presets_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "camera_presets",
+        display_name: "Camera Presets",
+        icon: "video-camera",
+        category: "camera",
+        has_fn: |world, entity| world.get::<Camera3d>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: Vec::new(),
     }
 }
 

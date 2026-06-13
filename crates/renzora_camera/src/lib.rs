@@ -83,6 +83,26 @@ impl OrbitCameraState {
         self.yaw += delta_yaw;
         self.pitch = (self.pitch + delta_pitch).clamp(-1.5, 1.5);
     }
+
+    /// Aim the orbit camera so it sits at `translation` looking along
+    /// `rotation`'s forward (−Z), preserving the current orbit `distance`.
+    ///
+    /// Used by "go to camera preset" to drive the editor view to a saved angle.
+    /// Roll is dropped — the orbit camera is always Y-up (matching
+    /// [`Self::calculate_transform`], which `looking_at`s the focus). The focus
+    /// is placed `distance` units ahead so subsequent orbit/zoom feel natural.
+    pub fn set_from_view(&mut self, translation: Vec3, rotation: Quat) {
+        let forward = (rotation * Vec3::NEG_Z).normalize_or_zero();
+        if forward == Vec3::ZERO {
+            return;
+        }
+        // position = focus + distance * u, with the camera looking toward focus,
+        // so the focus→camera unit vector u = −forward.
+        let u = -forward;
+        self.pitch = u.y.clamp(-1.0, 1.0).asin().clamp(-1.5, 1.5);
+        self.yaw = u.x.atan2(u.z);
+        self.focus = translation - u * self.distance;
+    }
 }
 
 /// Camera projection mode.

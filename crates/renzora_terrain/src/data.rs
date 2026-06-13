@@ -576,3 +576,224 @@ pub fn compute_brush_falloff(t: f32, falloff: f32, falloff_type: BrushFalloffTyp
         BrushFalloffType::Flat => 1.0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-5
+    }
+
+    #[test]
+    fn terrain_data_dimension_accessors() {
+        let t = TerrainData {
+            chunks_x: 3,
+            chunks_z: 2,
+            chunk_size: 64.0,
+            chunk_resolution: 129,
+            max_height: 40.0,
+            min_height: -10.0,
+        };
+        assert_eq!(t.total_width(), 192.0);
+        assert_eq!(t.total_depth(), 128.0);
+        assert_eq!(t.vertex_spacing(), 0.5); // 64 / (129 - 1)
+        assert_eq!(t.height_range(), 50.0);
+    }
+
+    #[test]
+    fn chunk_world_origin_is_centered_on_terrain() {
+        let t = TerrainData {
+            chunks_x: 4,
+            chunks_z: 4,
+            chunk_size: 64.0,
+            ..TerrainData::default()
+        };
+        assert_eq!(t.chunk_world_origin(0, 0), Vec3::new(-128.0, 0.0, -128.0));
+        // The chunk grid spans symmetrically around the origin.
+        assert_eq!(t.chunk_world_origin(2, 2), Vec3::new(0.0, 0.0, 0.0));
+        assert_eq!(t.chunk_world_origin(3, 1), Vec3::new(64.0, 0.0, -64.0));
+    }
+
+    #[test]
+    fn chunk_data_new_initializes_both_buffers() {
+        let chunk = TerrainChunkData::new(1, 2, 4, 0.3);
+        assert_eq!(chunk.chunk_x, 1);
+        assert_eq!(chunk.chunk_z, 2);
+        assert_eq!(chunk.base_heights, vec![0.3; 16]);
+        assert_eq!(chunk.heights, vec![0.3; 16]);
+        assert!(chunk.dirty);
+    }
+
+    #[test]
+    fn chunk_data_height_accessors_use_row_major_index() {
+        let mut chunk = TerrainChunkData::new(0, 0, 3, 0.0);
+        // (x=2, z=1) → index 1*3+2 = 5 in both buffers.
+        chunk.heights[5] = 0.8;
+        chunk.base_heights[5] = 0.6;
+        assert_eq!(chunk.get_height(2, 1, 3), 0.8);
+        assert_eq!(chunk.get_base_height(2, 1, 3), 0.6);
+        // Out-of-range reads fall back to 0.0 instead of panicking.
+        assert_eq!(chunk.get_height(2, 2, 4), 0.0);
+    }
+
+    #[test]
+    fn set_height_clamps_and_marks_dirty() {
+        let mut chunk = TerrainChunkData::new(0, 0, 3, 0.5);
+        chunk.dirty = false;
+        chunk.set_height(1, 1, 3, 1.5);
+        assert_eq!(chunk.get_base_height(1, 1, 3), 1.0);
+        assert!(chunk.dirty);
+
+        chunk.set_height(0, 0, 3, -0.5);
+        assert_eq!(chunk.get_base_height(0, 0, 3), 0.0);
+
+        // Out-of-range writes are a no-op and don't dirty the chunk.
+        let mut clean = TerrainChunkData::new(0, 0, 3, 0.5);
+        clean.dirty = false;
+        clean.set_height(5, 5, 3, 0.9);
+        assert!(!clean.dirty);
+        assert_eq!(clean.base_heights, vec![0.5; 9]);
+    }
+
+    #[test]
+    fn modify_height_applies_delta_and_clamps() {
+        let mut chunk = TerrainChunkData::new(0, 0, 2, 0.5);
+        chunk.dirty = false;
+        chunk.modify_height(0, 0, 2, 0.2);
+        assert!(approx(chunk.get_base_height(0, 0, 2), 0.7));
+        assert!(chunk.dirty);
+        chunk.modify_height(0, 0, 2, 1.0);
+        assert_eq!(chunk.get_base_height(0, 0, 2), 1.0);
+        chunk.modify_height(1, 1, 2, -2.0);
+        assert_eq!(chunk.get_base_height(1, 1, 2), 0.0);
+    }
+
+    #[test]
+    fn ensure_composed_buffer_syncs_after_deserialization() {
+        // Serde skips `heights`, so loaded chunks start with an empty buffer.
+        let mut chunk = TerrainChunkData {
+            chunk_x: 0,
+            chunk_z: 0,
+            base_heights: vec![0.4; 9],
+            heights: Vec::new(),
+            dirty: false,
+        };
+        chunk.ensure_composed_buffer();
+        assert_eq!(chunk.heights, vec![0.4; 9]);
+        assert!(chunk.dirty);
+
+        // Already-synced buffers are left alone.
+        chunk.dirty = false;
+        chunk.heights[0] = 0.9;
+        chunk.ensure_composed_buffer();
+        assert_eq!(chunk.heights[0], 0.9);
+        assert!(!chunk.dirty);
+    }
+
+    #[test]
+    fn falloff_is_one_inside_and_zero_at_edge() {
+        for ty in [
+            BrushFalloffType::Smooth,
+            BrushFalloffType::Linear,
+            BrushFalloffType::Spherical,
+            BrushFalloffType::Tip,
+            BrushFalloffType::Flat,
+        ] {
+            assert_eq!(compute_brush_falloff(0.0, 0.5, ty), 1.0);
+            // Inside the inner radius (t <= 1 - falloff) weight stays 1.
+            assert_eq!(compute_brush_falloff(0.5, 0.5, ty), 1.0);
+            assert_eq!(compute_brush_falloff(1.0, 0.5, ty), 0.0);
+            assert_eq!(compute_brush_falloff(1.5, 0.5, ty), 0.0);
+        }
+    }
+
+    #[test]
+    fn falloff_curve_midpoint_values() {
+        // falloff = 1.0 → edge_t == t, so midpoints are easy to predict.
+        assert!(approx(
+            compute_brush_falloff(0.5, 1.0, BrushFalloffType::Smooth),
+            0.5
+        ));
+        assert!(approx(
+            compute_brush_falloff(0.5, 1.0, BrushFalloffType::Linear),
+            0.5
+        ));
+        assert!(approx(
+            compute_brush_falloff(0.6, 1.0, BrushFalloffType::Spherical),
+            0.8
+        ));
+        assert!(approx(
+            compute_brush_falloff(0.5, 1.0, BrushFalloffType::Tip),
+            0.125
+        ));
+        assert_eq!(compute_brush_falloff(0.99, 1.0, BrushFalloffType::Flat), 1.0);
+    }
+
+    #[test]
+    fn falloff_smooth_is_monotonically_non_increasing() {
+        let mut prev = f32::INFINITY;
+        for i in 0..=100 {
+            let t = i as f32 / 100.0;
+            let w = compute_brush_falloff(t, 0.7, BrushFalloffType::Smooth);
+            assert!(w <= prev + 1e-6, "falloff increased at t={t}");
+            prev = w;
+        }
+    }
+
+    #[test]
+    fn stamp_sample_bilinear_interpolates() {
+        let stamp = StampBrushData {
+            pixels: vec![0.0, 1.0, 0.0, 1.0],
+            width: 2,
+            height: 2,
+            name: String::new(),
+        };
+        assert!(stamp.is_loaded());
+        assert_eq!(stamp.sample(0.0, 0.0), 0.0);
+        assert_eq!(stamp.sample(1.0, 0.0), 1.0);
+        assert_eq!(stamp.sample(1.0, 1.0), 1.0);
+        assert!(approx(stamp.sample(0.5, 0.5), 0.5));
+        assert!(approx(stamp.sample(0.25, 0.0), 0.25));
+    }
+
+    #[test]
+    fn stamp_sample_empty_returns_zero() {
+        let stamp = StampBrushData::default();
+        assert!(!stamp.is_loaded());
+        assert_eq!(stamp.sample(0.5, 0.5), 0.0);
+    }
+
+    #[test]
+    fn stamp_generate_presets_shape_profile() {
+        let size = 32u32;
+        let center = size / 2; // dx ≈ 0 at this pixel
+        let center_idx = (center * size + center) as usize;
+        let corner_idx = 0usize;
+
+        let dome = StampBrushData::generate(StampPreset::Dome, size);
+        assert_eq!(dome.width, size);
+        assert_eq!(dome.height, size);
+        assert_eq!(dome.pixels.len(), (size * size) as usize);
+        assert!(dome.is_loaded());
+        assert!(dome.pixels[center_idx] > 0.95);
+        assert_eq!(dome.pixels[corner_idx], 0.0); // corner is outside dist=1
+
+        let cone = StampBrushData::generate(StampPreset::Cone, size);
+        assert!(cone.pixels[center_idx] > 0.9);
+        // Cone falls off linearly along the center row.
+        let row = (center * size) as usize;
+        let mut prev = cone.pixels[row + center as usize];
+        for x in (center + 1)..size {
+            let v = cone.pixels[row + x as usize];
+            assert!(v <= prev + 1e-6);
+            prev = v;
+        }
+
+        let mesa = StampBrushData::generate(StampPreset::Mesa, size);
+        // Flat top: every pixel with dist < 0.6 is exactly 1.0.
+        assert_eq!(mesa.pixels[center_idx], 1.0);
+        assert_eq!(mesa.pixels[(center * size + center + 4) as usize], 1.0);
+        assert_eq!(mesa.pixels[corner_idx], 0.0);
+    }
+}

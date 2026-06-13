@@ -16,6 +16,9 @@ pub mod perf;
 pub mod resources;
 pub mod systems;
 
+#[cfg(test)]
+pub(crate) mod test_util;
+
 pub use backend::*;
 pub use command::*;
 pub use component::*;

@@ -17,6 +17,7 @@ use crate::resources::ScriptTimers;
 /// Runs in `ScriptingSet::CommandProcessing`.
 pub fn apply_script_commands(
     mut transforms: Query<&mut Transform>,
+    camera_presets: Query<&renzora::CameraPresets>,
     mut cmd_queue: ResMut<ScriptCommandQueue>,
     mut commands: Commands,
     mut timers: ResMut<ScriptTimers>,
@@ -166,6 +167,29 @@ pub fn apply_script_commands(
                     } else {
                         Visibility::Hidden
                     };
+                }
+            }
+
+            // === Camera presets ===
+            ScriptCommand::GotoCameraPreset { name } => {
+                let pose = camera_presets
+                    .get(source_entity)
+                    .ok()
+                    .and_then(|p| p.get(&name).map(|pr| pr.to_transform()));
+                match pose {
+                    Some(pose) => {
+                        if let Ok(mut t) = transforms.get_mut(source_entity) {
+                            t.translation = pose.translation;
+                            t.rotation = pose.rotation;
+                        }
+                    }
+                    None => {
+                        renzora::clog_warn!(
+                            "Script",
+                            "goto_camera_preset(\"{}\"): no matching preset on this entity",
+                            name
+                        );
+                    }
                 }
             }
 

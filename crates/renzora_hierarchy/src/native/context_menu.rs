@@ -83,7 +83,7 @@ pub(crate) fn hier_context_menu(
             set_default_camera(w, target)
         }));
         kids.push(menu_item(&mut commands, &fonts, "frame-corners", "Snap to Viewport", move |w| {
-            snap_to_viewport(w, target)
+            renzora_editor_framework::camera::snap_entity_to_editor_camera(w, target);
         }));
     }
 
@@ -234,18 +234,6 @@ fn set_default_camera(world: &mut World, target: Entity) {
         world.entity_mut(e).remove::<renzora::core::DefaultCamera>();
     }
     world.entity_mut(target).insert(renzora::core::DefaultCamera);
-}
-
-fn snap_to_viewport(world: &mut World, target: Entity) {
-    let editor_transform = {
-        let mut q = world.query_filtered::<&Transform, With<renzora::core::EditorCamera>>();
-        q.iter(world).next().copied()
-    };
-    if let Some(t) = editor_transform {
-        if let Some(mut transform) = world.get_mut::<Transform>(target) {
-            *transform = t;
-        }
-    }
 }
 
 /// Pick a `.ron` scene and spawn it as a nested instance under `parent`, with a

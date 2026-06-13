@@ -250,3 +250,209 @@ impl ScriptEngine {
             .eval_expression(expr)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::ScriptCommand;
+    use crate::context::{ScriptTime, ScriptTransform};
+    use crate::test_util::FakeBackend;
+
+    fn ctx() -> ScriptContext {
+        ScriptContext::new(ScriptTime::default(), ScriptTransform::default())
+    }
+
+    #[test]
+    fn resolve_path_absolute_is_unchanged() {
+        let mut engine = ScriptEngine::new();
+        engine.set_scripts_folder(PathBuf::from("scripts"));
+        // temp_dir is always absolute, so the scripts folder must be ignored.
+        let abs = std::env::temp_dir().join("player.fake");
+        assert_eq!(engine.resolve_path(&abs), abs);
+    }
+
+    #[test]
+    fn resolve_path_relative_joins_scripts_folder() {
+        let mut engine = ScriptEngine::new();
+        engine.set_scripts_folder(PathBuf::from("proj").join("scripts"));
+        assert_eq!(
+            engine.resolve_path(Path::new("ai/enemy.fake")),
+            PathBuf::from("proj").join("scripts").join("ai/enemy.fake")
+        );
+    }
+
+    #[test]
+    fn resolve_path_relative_without_folder_passes_through() {
+        let engine = ScriptEngine::new();
+        assert_eq!(
+            engine.resolve_path(Path::new("enemy.fake")),
+            PathBuf::from("enemy.fake")
+        );
+    }
+
+    #[test]
+    fn backend_for_dispatches_on_extension() {
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(FakeBackend::new("alpha", &["fake"])));
+        engine.add_backend(Box::new(FakeBackend::new("beta", &["mock", "stub"])));
+
+        let alpha = engine.backend_for(Path::new("a.fake")).unwrap();
+        assert_eq!(alpha.name(), "alpha");
+        // A backend with several extensions matches any of them.
+        let beta = engine.backend_for(Path::new("b.stub")).unwrap();
+        assert_eq!(beta.name(), "beta");
+    }
+
+    #[test]
+    fn backend_for_unknown_or_missing_extension_is_none() {
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(FakeBackend::new("alpha", &["fake"])));
+        assert!(engine.backend_for(Path::new("a.unknown")).is_none());
+        assert!(engine.backend_for(Path::new("no_extension")).is_none());
+    }
+
+    #[test]
+    fn add_backend_increments_backend_count() {
+        let mut engine = ScriptEngine::new();
+        assert_eq!(engine.backend_count(), 0);
+        engine.add_backend(Box::new(FakeBackend::new("alpha", &["fake"])));
+        engine.add_backend(Box::new(FakeBackend::new("beta", &["mock"])));
+        assert_eq!(engine.backend_count(), 2);
+    }
+
+    #[test]
+    fn set_scripts_folder_propagates_to_all_backends() {
+        let a = FakeBackend::new("alpha", &["fake"]);
+        let b = FakeBackend::new("beta", &["mock"]);
+        let (sa, sb) = (a.state_handle(), b.state_handle());
+
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(a));
+        engine.add_backend(Box::new(b));
+        engine.set_scripts_folder(PathBuf::from("game/scripts"));
+
+        assert_eq!(engine.scripts_folder(), Some(Path::new("game/scripts")));
+        let folder = Some(PathBuf::from("game/scripts"));
+        assert_eq!(sa.lock().unwrap().scripts_folder, folder);
+        assert_eq!(sb.lock().unwrap().scripts_folder, folder);
+    }
+
+    #[test]
+    fn get_available_scripts_merges_and_sorts_by_name() {
+        let mut a = FakeBackend::new("alpha", &["fake"]);
+        a.available = vec![
+            ("zebra".to_string(), PathBuf::from("zebra.fake")),
+            ("apple".to_string(), PathBuf::from("apple.fake")),
+        ];
+        let mut b = FakeBackend::new("beta", &["mock"]);
+        b.available = vec![("mango".to_string(), PathBuf::from("mango.mock"))];
+
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(a));
+        engine.add_backend(Box::new(b));
+
+        let names: Vec<String> = engine
+            .get_available_scripts()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(names, ["apple", "mango", "zebra"]);
+    }
+
+    #[test]
+    fn get_available_scripts_empty_without_backends() {
+        assert!(ScriptEngine::new().get_available_scripts().is_empty());
+    }
+
+    #[test]
+    fn eval_expression_errors_without_backends() {
+        let engine = ScriptEngine::new();
+        assert_eq!(
+            engine.eval_expression("1 + 1"),
+            Err("No backends registered".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_expression_uses_first_backend() {
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(FakeBackend::new("first", &["fake"])));
+        engine.add_backend(Box::new(FakeBackend::new("second", &["mock"])));
+        assert_eq!(engine.eval_expression("1 + 1"), Ok("first:1 + 1".to_string()));
+    }
+
+    #[test]
+    fn call_on_ready_routes_commands_through_context() {
+        let mut backend = FakeBackend::new("alpha", &["fake"]);
+        backend.on_ready = || {
+            Ok(vec![
+                // Transform command — must land in a context field…
+                ScriptCommand::SetPosition {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
+                // …while non-transform commands land in `ctx.commands`.
+                ScriptCommand::SpawnEntity {
+                    name: "minion".to_string(),
+                },
+            ])
+        };
+
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(backend));
+
+        let mut ctx = ctx();
+        let mut vars = crate::component::ScriptVariables::default();
+        engine
+            .call_on_ready(Path::new("a.fake"), &mut ctx, &mut vars)
+            .unwrap();
+
+        assert_eq!(ctx.new_position, Some(Vec3::new(1.0, 2.0, 3.0)));
+        assert_eq!(ctx.commands.len(), 1);
+        assert!(matches!(
+            &ctx.commands[0],
+            ScriptCommand::SpawnEntity { name } if name == "minion"
+        ));
+    }
+
+    #[test]
+    fn call_on_update_resolves_relative_path_for_backend() {
+        let backend = FakeBackend::new("alpha", &["fake"]);
+        let state = backend.state_handle();
+
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(backend));
+        engine.set_scripts_folder(PathBuf::from("root"));
+
+        let mut ctx = ctx();
+        let mut vars = crate::component::ScriptVariables::default();
+        engine
+            .call_on_update(Path::new("enemy.fake"), &mut ctx, &mut vars)
+            .unwrap();
+
+        assert_eq!(
+            state.lock().unwrap().update_paths,
+            vec![PathBuf::from("root").join("enemy.fake")]
+        );
+    }
+
+    #[test]
+    fn call_on_update_without_matching_backend_errors() {
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(FakeBackend::new("alpha", &["fake"])));
+
+        let mut ctx = ctx();
+        let mut vars = crate::component::ScriptVariables::default();
+        let err = engine
+            .call_on_update(Path::new("a.unknown"), &mut ctx, &mut vars)
+            .unwrap_err();
+        assert!(err.contains("No backend"));
+    }
+
+    #[test]
+    fn get_script_props_empty_without_matching_backend() {
+        let engine = ScriptEngine::new();
+        assert!(engine.get_script_props(Path::new("a.fake")).is_empty());
+    }
+}

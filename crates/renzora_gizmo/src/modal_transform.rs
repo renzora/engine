@@ -841,3 +841,352 @@ pub fn sync_modal_hud(
     ];
     hud.numeric_display = modal.numeric_input.display();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::FRAC_PI_2;
+
+    fn start_state(transform: Transform) -> EntityStartState {
+        EntityStartState {
+            entity: Entity::PLACEHOLDER,
+            transform,
+        }
+    }
+
+    fn quat_approx_eq(a: Quat, b: Quat) -> bool {
+        // q and -q are the same rotation.
+        a.dot(b).abs() > 1.0 - 1e-5
+    }
+
+    // ── NumericInputBuffer ──────────────────────────────────────────────────
+
+    #[test]
+    fn numeric_buffer_builds_value_from_digits() {
+        let mut buf = NumericInputBuffer::default();
+        assert!(buf.is_empty());
+        assert_eq!(buf.value(), None);
+
+        buf.push_digit('1');
+        buf.push_digit('2');
+        buf.push_digit('x'); // non-digit ignored
+        buf.push_digit('5');
+        assert_eq!(buf.buffer, "125");
+        assert_eq!(buf.value(), Some(125.0));
+    }
+
+    #[test]
+    fn numeric_buffer_decimal_only_once_and_pads_leading_zero() {
+        let mut buf = NumericInputBuffer::default();
+        buf.push_decimal();
+        assert_eq!(buf.buffer, "0.");
+        buf.push_digit('5');
+        buf.push_decimal(); // second decimal ignored
+        assert_eq!(buf.buffer, "0.5");
+        assert_eq!(buf.value(), Some(0.5));
+    }
+
+    #[test]
+    fn numeric_buffer_negative_toggles_and_applies_to_value() {
+        let mut buf = NumericInputBuffer::default();
+        buf.push_digit('4');
+        buf.toggle_negative();
+        assert_eq!(buf.value(), Some(-4.0));
+        assert_eq!(buf.display(), "-4");
+        buf.toggle_negative();
+        assert_eq!(buf.value(), Some(4.0));
+    }
+
+    #[test]
+    fn numeric_buffer_backspace_restores_decimal_and_clears_sign() {
+        let mut buf = NumericInputBuffer::default();
+        buf.push_digit('1');
+        buf.push_decimal();
+        buf.backspace(); // removes '.', decimal becomes available again
+        assert!(!buf.has_decimal);
+        buf.push_decimal();
+        assert_eq!(buf.buffer, "1.");
+
+        let mut buf = NumericInputBuffer::default();
+        buf.toggle_negative();
+        assert_eq!(buf.display(), "-");
+        buf.backspace(); // empty buffer: backspace clears the sign instead
+        assert!(!buf.negative);
+        assert_eq!(buf.display(), "");
+    }
+
+    // ── Enums & state machine ───────────────────────────────────────────────
+
+    #[test]
+    fn mode_and_constraint_display_names() {
+        assert_eq!(ModalTransformMode::Grab.display_name(), "Grab");
+        assert_eq!(ModalTransformMode::Rotate.display_name(), "Rotate");
+        assert_eq!(ModalTransformMode::Scale.display_name(), "Scale");
+
+        assert_eq!(AxisConstraint::None.display_name(), "");
+        assert_eq!(AxisConstraint::X.display_name(), "X");
+        assert_eq!(AxisConstraint::PlaneYZ.display_name(), "YZ");
+        assert_eq!(AxisConstraint::PlaneXY.display_name(), "XY");
+    }
+
+    #[test]
+    fn axis_constraint_color_matches_excluded_axis_pairing() {
+        // A plane constraint shares the color of the axis it excludes.
+        assert_eq!(AxisConstraint::X.color(), AxisConstraint::PlaneYZ.color());
+        assert_eq!(AxisConstraint::Y.color(), AxisConstraint::PlaneXZ.color());
+        assert_eq!(AxisConstraint::Z.color(), AxisConstraint::PlaneXY.color());
+        assert_eq!(AxisConstraint::None.color(), Color::WHITE);
+    }
+
+    #[test]
+    fn modal_state_start_resets_per_gesture_fields() {
+        let mut state = ModalTransformState {
+            axis_constraint: AxisConstraint::Z,
+            accumulated_delta: Vec2::splat(50.0),
+            ..Default::default()
+        };
+        state.numeric_input.push_digit('7');
+
+        let cursor = Vec2::new(3.0, 4.0);
+        state.start(
+            ModalTransformMode::Grab,
+            cursor,
+            vec![start_state(Transform::IDENTITY)],
+        );
+
+        assert!(state.active);
+        assert_eq!(state.mode, Some(ModalTransformMode::Grab));
+        assert_eq!(state.axis_constraint, AxisConstraint::None);
+        assert!(state.numeric_input.is_empty());
+        assert_eq!(state.accumulated_delta, Vec2::ZERO);
+        assert_eq!(state.last_cursor_pos, cursor);
+        assert_eq!(state.initial_cursor_pos, cursor);
+        assert_eq!(state.start_transforms.len(), 1);
+    }
+
+    #[test]
+    fn modal_state_set_axis_toggles_same_constraint_off() {
+        let mut state = ModalTransformState::default();
+        state.set_axis(AxisConstraint::X);
+        assert_eq!(state.axis_constraint, AxisConstraint::X);
+        // Pressing the same axis again clears the constraint.
+        state.set_axis(AxisConstraint::X);
+        assert_eq!(state.axis_constraint, AxisConstraint::None);
+        // Switching to a different axis replaces it directly.
+        state.set_axis(AxisConstraint::Y);
+        state.set_axis(AxisConstraint::PlaneXY);
+        assert_eq!(state.axis_constraint, AxisConstraint::PlaneXY);
+    }
+
+    // ── apply_grab ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn apply_grab_numeric_moves_along_constrained_axis() {
+        let mut modal = ModalTransformState::default();
+        modal.numeric_input.push_digit('5');
+        modal.axis_constraint = AxisConstraint::Y;
+
+        let start = start_state(Transform::from_xyz(1.0, 2.0, 3.0));
+        let mut transform = Transform::IDENTITY;
+        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y);
+        assert_eq!(transform.translation, Vec3::new(1.0, 7.0, 3.0));
+
+        // Negative value moves the other way.
+        modal.numeric_input.toggle_negative();
+        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y);
+        assert_eq!(transform.translation, Vec3::new(1.0, -3.0, 3.0));
+    }
+
+    #[test]
+    fn apply_grab_mouse_delta_free_move_uses_camera_axes() {
+        let modal = ModalTransformState::default(); // constraint None, no numeric
+        let start = start_state(Transform::IDENTITY);
+        let mut transform = Transform::IDENTITY;
+        // Screen-right = world +X, screen-up = world +Y; screen Y is inverted.
+        apply_grab(
+            &mut transform,
+            &start,
+            &modal,
+            Vec2::new(10.0, 20.0),
+            Vec3::X,
+            Vec3::Y,
+        );
+        let expected = Vec3::new(0.2, -0.4, 0.0); // (right*10 - up*20) * 0.02
+        assert!((transform.translation - expected).length() < 1e-5);
+    }
+
+    #[test]
+    fn apply_grab_plane_constraint_zeroes_excluded_axis() {
+        let modal = ModalTransformState {
+            axis_constraint: AxisConstraint::PlaneXZ,
+            ..Default::default()
+        };
+        let start = start_state(Transform::IDENTITY);
+        let mut transform = Transform::IDENTITY;
+        apply_grab(
+            &mut transform,
+            &start,
+            &modal,
+            Vec2::new(10.0, 20.0),
+            Vec3::X,
+            Vec3::Y,
+        );
+        // The free-move delta would be (0.2, -0.4, 0.0); XZ plane drops Y.
+        assert!((transform.translation - Vec3::new(0.2, 0.0, 0.0)).length() < 1e-5);
+    }
+
+    #[test]
+    fn apply_grab_axis_constraint_projects_screen_delta() {
+        let modal = ModalTransformState {
+            axis_constraint: AxisConstraint::X,
+            ..Default::default()
+        };
+        let start = start_state(Transform::IDENTITY);
+        let mut transform = Transform::IDENTITY;
+        apply_grab(
+            &mut transform,
+            &start,
+            &modal,
+            Vec2::new(10.0, 20.0),
+            Vec3::X,
+            Vec3::Y,
+        );
+        // X projects fully onto cam_right: proj = dx = 10 → 10 * 0.02 along X.
+        assert!((transform.translation - Vec3::new(0.2, 0.0, 0.0)).length() < 1e-5);
+    }
+
+    // ── apply_rotate ────────────────────────────────────────────────────────
+
+    #[test]
+    fn apply_rotate_numeric_input_is_degrees_about_constrained_axis() {
+        let mut modal = ModalTransformState::default();
+        modal.numeric_input.push_digit('9');
+        modal.numeric_input.push_digit('0');
+        modal.axis_constraint = AxisConstraint::Y;
+
+        let start = start_state(Transform::IDENTITY);
+        let mut transform = Transform::IDENTITY;
+        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO);
+        assert!(quat_approx_eq(
+            transform.rotation,
+            Quat::from_rotation_y(FRAC_PI_2)
+        ));
+    }
+
+    #[test]
+    fn apply_rotate_composes_onto_start_rotation() {
+        let mut modal = ModalTransformState::default();
+        modal.numeric_input.push_digit('9');
+        modal.numeric_input.push_digit('0');
+        modal.axis_constraint = AxisConstraint::X;
+
+        let initial = Quat::from_rotation_x(FRAC_PI_2);
+        let start = start_state(Transform::from_rotation(initial));
+        let mut transform = Transform::IDENTITY;
+        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO);
+        // 90° + 90° about X = 180° about X — applied to start, not accumulated.
+        assert!(quat_approx_eq(
+            transform.rotation,
+            Quat::from_rotation_x(std::f32::consts::PI)
+        ));
+    }
+
+    #[test]
+    fn apply_rotate_mouse_delta_defaults_to_z_axis() {
+        let modal = ModalTransformState {
+            sensitivity: 0.01,
+            ..Default::default()
+        };
+        let start = start_state(Transform::IDENTITY);
+        let mut transform = Transform::IDENTITY;
+        apply_rotate(&mut transform, &start, &modal, Vec2::new(10.0, 0.0));
+        // angle = (-dx + dy) * sensitivity * 0.5 = -0.05 about Z.
+        assert!(quat_approx_eq(
+            transform.rotation,
+            Quat::from_rotation_z(-0.05)
+        ));
+    }
+
+    // ── apply_scale ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn apply_scale_numeric_factor_multiplies_start_scale() {
+        let mut modal = ModalTransformState::default();
+        modal.numeric_input.push_digit('2');
+
+        let start = start_state(Transform::from_scale(Vec3::new(1.0, 2.0, 3.0)));
+        let mut transform = Transform::IDENTITY;
+        apply_scale(&mut transform, &start, &modal, Vec2::ZERO);
+        assert_eq!(transform.scale, Vec3::new(2.0, 4.0, 6.0));
+
+        // Single-axis constraint scales only that component.
+        modal.axis_constraint = AxisConstraint::X;
+        apply_scale(&mut transform, &start, &modal, Vec2::ZERO);
+        assert_eq!(transform.scale, Vec3::new(2.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn apply_scale_distance_based_factor_from_pivot() {
+        let modal = ModalTransformState {
+            pivot_screen_pos: Some(Vec2::new(100.0, 100.0)),
+            initial_cursor_pos: Vec2::new(110.0, 100.0), // 10px from pivot
+            ..Default::default()
+        };
+        let start = start_state(Transform::from_scale(Vec3::ONE));
+        let mut transform = Transform::IDENTITY;
+        // Cursor now 20px from pivot → factor 2.
+        apply_scale(&mut transform, &start, &modal, Vec2::new(120.0, 100.0));
+        assert!((transform.scale - Vec3::splat(2.0)).length() < 1e-5);
+    }
+
+    #[test]
+    fn apply_scale_degenerate_pivot_distance_clamps_to_one() {
+        // Initial cursor essentially on the pivot — factor must stay 1.0
+        // instead of exploding.
+        let modal = ModalTransformState {
+            pivot_screen_pos: Some(Vec2::new(100.0, 100.0)),
+            initial_cursor_pos: Vec2::new(100.5, 100.0),
+            ..Default::default()
+        };
+        let start = start_state(Transform::from_scale(Vec3::splat(3.0)));
+        let mut transform = Transform::IDENTITY;
+        apply_scale(&mut transform, &start, &modal, Vec2::new(500.0, 100.0));
+        assert_eq!(transform.scale, Vec3::splat(3.0));
+    }
+
+    #[test]
+    fn apply_scale_without_pivot_uses_horizontal_delta() {
+        let modal = ModalTransformState {
+            pivot_screen_pos: None,
+            initial_cursor_pos: Vec2::new(100.0, 100.0),
+            sensitivity: 0.01,
+            ..Default::default()
+        };
+        let start = start_state(Transform::from_scale(Vec3::ONE));
+        let mut transform = Transform::IDENTITY;
+        apply_scale(&mut transform, &start, &modal, Vec2::new(150.0, 100.0));
+        // factor = 1 + 50 * 0.01 * 0.1 = 1.05
+        assert!((transform.scale - Vec3::splat(1.05)).length() < 1e-5);
+    }
+
+    #[test]
+    fn axis_scale_vec_covers_all_constraints() {
+        let f = 2.0;
+        assert_eq!(axis_scale_vec(AxisConstraint::None, f), Vec3::splat(2.0));
+        assert_eq!(axis_scale_vec(AxisConstraint::X, f), Vec3::new(2.0, 1.0, 1.0));
+        assert_eq!(axis_scale_vec(AxisConstraint::Y, f), Vec3::new(1.0, 2.0, 1.0));
+        assert_eq!(axis_scale_vec(AxisConstraint::Z, f), Vec3::new(1.0, 1.0, 2.0));
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::PlaneYZ, f),
+            Vec3::new(1.0, 2.0, 2.0)
+        );
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::PlaneXZ, f),
+            Vec3::new(2.0, 1.0, 2.0)
+        );
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::PlaneXY, f),
+            Vec3::new(2.0, 2.0, 1.0)
+        );
+    }
+}

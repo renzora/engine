@@ -5,6 +5,7 @@
 //! script drawer in [`scripts`]); the reusable [`native::asset_drop_field`] is
 //! re-exported for drawers in other crates.
 
+mod camera_presets;
 mod native;
 mod scripts;
 
@@ -31,6 +32,7 @@ impl Plugin for InspectorPanelPlugin {
         // The bevy_ui-native inspector panel + the native script drawer.
         native::register_native_inspector(app);
         scripts::register(app);
+        camera_presets::register(app);
     }
 }
 

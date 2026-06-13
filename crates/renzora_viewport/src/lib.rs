@@ -72,6 +72,7 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
+            .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
             .init_resource::<CameraOrbitSnapshot>()
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
@@ -104,7 +105,12 @@ impl Plugin for ViewportPlugin {
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
-                resolve_viewport_slots,
+                // Grouped into one tuple slot to stay within Bevy's 20-element
+                // `add_systems` tuple cap (compute must precede resolve).
+                (
+                    compute_viewport_render_resolution.before(resolve_viewport_slots),
+                    resolve_viewport_slots,
+                ),
                 render_systems::update_render_toggles,
                 (
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
@@ -326,6 +332,56 @@ fn setup_viewport(
     }
 }
 
+/// Derives the editor viewport's render resolution from the relevant scene
+/// camera each frame and stores it in [`ViewportRenderResolution`] (read by
+/// [`resolve_viewport_slots`]).
+///
+/// Priority — in play mode: the active camera (default, else first). In the
+/// editor: the selected entity if it is a scene camera, else the default, else
+/// the first scene camera. A camera with no [`CameraRenderResolution`] (or no
+/// camera at all) resolves to `Full`.
+fn compute_viewport_render_resolution(
+    selection: Option<Res<renzora_editor_framework::EditorSelection>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    cameras: Query<
+        (
+            Entity,
+            Option<&renzora::core::DefaultCamera>,
+            Option<&renzora::core::CameraRenderResolution>,
+        ),
+        With<renzora::core::SceneCamera>,
+    >,
+    mut out: ResMut<renzora::core::viewport_types::ViewportRenderResolution>,
+) {
+    use renzora::core::viewport_types::RenderResolution;
+
+    let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+
+    let res_of = |r: Option<&renzora::core::CameraRenderResolution>| r.map(|r| r.0).unwrap_or_default();
+    let default_or_first = || -> Option<RenderResolution> {
+        cameras
+            .iter()
+            .find(|(_, d, _)| d.is_some())
+            .or_else(|| cameras.iter().next())
+            .map(|(_, _, r)| res_of(r))
+    };
+
+    let resolved = if in_play {
+        default_or_first()
+    } else {
+        selection
+            .and_then(|s| s.get())
+            .and_then(|e| cameras.get(e).ok())
+            .map(|(_, _, r)| res_of(r))
+            .or_else(default_or_first)
+    }
+    .unwrap_or_default();
+
+    if out.0 != resolved {
+        out.0 = resolved;
+    }
+}
+
 /// Per-frame resolver: applies each slot's pending resize, tracks dock
 /// membership + hover, picks the focused slot, and mirrors it into the
 /// singleton [`ViewportState`] that the gizmo / picking / overlay stack reads.
@@ -334,11 +390,22 @@ fn resolve_viewport_slots(
     docking: Option<Res<DockingState>>,
     ember_dock: Option<Res<renzora_ember::dock::Dock>>,
     modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
+    resolution: Option<Res<renzora::core::viewport_types::ViewportRenderResolution>>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // Render-resolution scale: the target is sized at this fraction of the
+    // panel and upscaled on display. `screen_size` stays the full panel size so
+    // pointer→render-target mapping (cursor picking, drops) divides it back out.
+    // The scale is derived per-frame from the relevant scene camera by
+    // `compute_viewport_render_resolution`.
+    let render_scale = resolution
+        .as_ref()
+        .map(|r| r.0.scale())
+        .unwrap_or(1.0);
 
     // A bevy_ui modal (settings overlay, search/add-component overlay, …) covers
     // the viewport and must swallow the wheel/pointer — otherwise scrolling over
@@ -385,7 +452,10 @@ fn resolve_viewport_slots(
         // a token size so that always-on pass rasterizes almost nothing; the
         // panel's resize request restores the real size on re-dock.
         let requested = if docked {
-            UVec2::new(w, h)
+            UVec2::new(
+                ((w as f32 * render_scale).round() as u32).max(1),
+                ((h as f32 * render_scale).round() as u32).max(1),
+            )
         } else {
             UVec2::splat(UNDOCKED_TARGET_SIZE)
         };

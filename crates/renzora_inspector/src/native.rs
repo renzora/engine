@@ -118,6 +118,7 @@ pub fn register_native_inspector(app: &mut App) {
         (
             remove_click,
             add_button_click,
+            field_button_click,
             lock_click,
             enum_option_click,
             asset_drop,
@@ -142,6 +143,7 @@ enum FieldKind {
     Text,
     Asset,
     Enum { options: &'static [&'static str] },
+    Button { icon: &'static str },
     ReadOnly,
 }
 
@@ -634,6 +636,10 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 (FieldType::Asset { .. }, Some(FieldValue::Asset(_))) => {
                     (FieldKind::Asset, FieldInit::Text(String::new()))
                 }
+                // Buttons have no value to read — match regardless of `val`.
+                (FieldType::Button { icon }, _) => {
+                    (FieldKind::Button { icon }, FieldInit::Text(String::new()))
+                }
                 _ => (FieldKind::ReadOnly, FieldInit::Text(format_value(val.as_ref()))),
             };
             let extensions = match &f.field_type {
@@ -702,6 +708,13 @@ struct RemoveBtn {
 
 #[derive(Component)]
 struct LockBtn {
+    entity: Entity,
+}
+
+/// Marks a `FieldType::Button` widget so [`field_button_click`] runs its action.
+#[derive(Component)]
+struct FieldButton {
+    set_fn: SetFn,
     entity: Entity,
 }
 
@@ -944,6 +957,26 @@ fn build_field_value(
                 field.extensions.clone(),
             );
             commands.entity(value_parent).add_child(f);
+        }
+        FieldKind::Button { icon } => {
+            let btn = renzora_ember::widgets::icon_label_button(commands, fonts, icon, field.name);
+            commands.entity(btn).insert((
+                Node {
+                    flex_grow: 1.0,
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    column_gap: Val::Px(5.0),
+                    padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                FieldButton {
+                    set_fn: field.set_fn,
+                    entity,
+                },
+            ));
+            commands.entity(value_parent).add_child(btn);
         }
         FieldKind::ReadOnly => {
             let text = if let FieldInit::Text(ref s) = field.init {
@@ -1407,6 +1440,22 @@ fn add_button_click(
     let Some(cmds) = cmds else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
         cmds.push(open_add_component);
+    }
+}
+
+/// Run a `FieldType::Button`'s action when its widget is pressed. The set_fn is
+/// invoked with `FieldValue::Bool(true)` as the "pressed" signal.
+fn field_button_click(
+    q: Query<(&Interaction, &FieldButton), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (set_fn, entity) = (btn.set_fn, btn.entity);
+        cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Bool(true)));
     }
 }
 

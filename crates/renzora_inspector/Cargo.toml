@@ -9,6 +9,7 @@ renzora_ember = { path = "../renzora_ember" }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
 renzora_ui = { path = "../renzora_ui" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_camera = { path = "../renzora_camera" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 

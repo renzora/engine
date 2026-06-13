@@ -23,6 +23,7 @@ pub use renzora;
 // Always compiled now. Whether it's added is decided at RUNTIME by the
 // `is_editor` arg to `add_engine_plugins` (the editor renders to its own
 // offscreen image, so viewport stretch only applies to a shipped game).
+mod render_scale;
 mod viewport_stretch;
 
 // Dylib keepalive: `pub use` every plugin crate so cargo emits a real
@@ -479,6 +480,8 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     if !is_editor {
         info!("[runtime] foundation: ViewportStretchPlugin");
         app.add_plugins(viewport_stretch::ViewportStretchPlugin);
+        info!("[runtime] foundation: RenderScalePlugin");
+        app.add_plugins(render_scale::RenderScalePlugin);
     }
 
     // ── Auto-discovered (any order) ────────────────────────────────────

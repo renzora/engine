@@ -558,6 +558,14 @@ fn register_api(lua: &Lua) {
     register_fn3(lua, &globals, "look_at", |x, y, z| {
         push_command(ScriptCommand::LookAt { x, y, z });
     });
+    let _ = globals.set(
+        "goto_camera_preset",
+        lua.create_function(|_, name: String| {
+            push_command(ScriptCommand::GotoCameraPreset { name });
+            Ok(())
+        })
+        .unwrap(),
+    );
 
     // -- Parent transform --
     register_fn3(lua, &globals, "parent_set_position", |x, y, z| {

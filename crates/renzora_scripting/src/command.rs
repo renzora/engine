@@ -40,6 +40,11 @@ pub enum ScriptCommand {
         y: f32,
         z: f32,
     },
+    /// Jump the script's own entity to a named [`renzora::CameraPresets`] angle.
+    /// No-op (with a warning) if the entity has no presets or none match.
+    GotoCameraPreset {
+        name: String,
+    },
 
     // === Parent Transform ===
     ParentSetPosition {
