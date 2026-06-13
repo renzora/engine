@@ -973,6 +973,11 @@ pub struct PbrMaterialExtracted {
     pub normal_texture: Option<String>,
     /// glTF metallic-roughness map. Channels: G = roughness, B = metallic.
     pub metallic_roughness_texture: Option<String>,
+    /// Standalone roughness map (`r` → roughness) for sources that don't pack
+    /// metallic-roughness into one image (OBJ `map_Pr`, USD).
+    pub roughness_texture: Option<String>,
+    /// Standalone metallic map (`r` → metallic).
+    pub metallic_texture: Option<String>,
     pub emissive_texture: Option<String>,
     /// Ambient occlusion map (R channel only).
     pub occlusion_texture: Option<String>,
@@ -982,6 +987,20 @@ pub struct PbrMaterialExtracted {
     /// the spec-gloss → metal-rough conversion. `None` for metal-rough
     /// materials.
     pub specular_glossiness_texture: Option<String>,
+    /// Standalone opacity/alpha map with no glTF metal-rough equivalent
+    /// (legacy FBX `TransparentColor` / `TransparencyFactor`). The material
+    /// observer samples its `r` channel into the `alpha` pin so cloud shells
+    /// and cutouts that drive transparency through a dedicated grayscale mask
+    /// punch through.
+    pub opacity_texture: Option<String>,
+    /// Standalone specular/reflectivity mask (legacy FBX `SpecularColor` /
+    /// `ReflectionColor`). Routed into `metallic` (and its inverse into
+    /// `roughness`) to approximate a pre-PBR specular map.
+    pub specular_texture: Option<String>,
+    /// Extended PBR channels (clearcoat, transmission, anisotropy, ior, …)
+    /// from glTF `KHR_materials_*` / modern FBX / USD. Default for sources that
+    /// only author base metallic-roughness.
+    pub advanced: PbrAdvanced,
     /// glTF alpha behavior. The graph resolver maps this onto Bevy's
     /// `AlphaMode` so transparency renders correctly.
     pub alpha_mode: PbrAlphaMode,
@@ -1000,6 +1019,112 @@ pub enum PbrAlphaMode {
     Opaque,
     Mask,
     Blend,
+}
+
+/// Extended/advanced PBR channels beyond the base metallic-roughness model —
+/// the union of what Bevy's `StandardMaterial` can shade and what glTF
+/// `KHR_materials_*` extensions (and modern FBX/USD) author. Importers fill in
+/// whatever the source provides; the graph builder seeds the matching
+/// `output/surface` pins and samples any textures into them.
+///
+/// Defaults mirror the glTF 2.0 spec so a material that omits a channel renders
+/// identically to one that never had it (e.g. `ior = 1.5`, no clearcoat).
+#[derive(Clone, Debug)]
+pub struct PbrAdvanced {
+    /// `KHR_materials_clearcoat` clearcoatFactor — strength of the lacquer layer.
+    pub clearcoat: f32,
+    pub clearcoat_roughness: f32,
+    pub clearcoat_texture: Option<String>,
+    pub clearcoat_roughness_texture: Option<String>,
+    pub clearcoat_normal_texture: Option<String>,
+    /// `KHR_materials_transmission` transmissionFactor → `specular_transmission`.
+    pub specular_transmission: f32,
+    pub transmission_texture: Option<String>,
+    /// Bevy diffuse transmission (translucent thin surfaces — leaves, paper).
+    pub diffuse_transmission: f32,
+    /// `KHR_materials_volume` — thickness of the refractive volume + textures.
+    pub thickness: f32,
+    pub thickness_texture: Option<String>,
+    /// `KHR_materials_ior` — index of refraction (glass ≈ 1.5, water ≈ 1.33).
+    pub ior: f32,
+    /// `KHR_materials_volume` attenuation: how far light travels before being
+    /// tinted by `attenuation_color`.
+    pub attenuation_distance: f32,
+    pub attenuation_color: [f32; 3],
+    /// `KHR_materials_anisotropy` — brushed-metal directional highlight.
+    pub anisotropy_strength: f32,
+    pub anisotropy_rotation: f32,
+    pub anisotropy_texture: Option<String>,
+    /// `KHR_materials_specular` specularFactor → dielectric `reflectance`.
+    pub reflectance: f32,
+    /// `KHR_materials_unlit` — bypass lighting entirely (emissive-style flat
+    /// shading). The graph builder switches to the unlit output when set.
+    pub unlit: bool,
+}
+
+impl Default for PbrAdvanced {
+    fn default() -> Self {
+        Self {
+            clearcoat: 0.0,
+            clearcoat_roughness: 0.0,
+            clearcoat_texture: None,
+            clearcoat_roughness_texture: None,
+            clearcoat_normal_texture: None,
+            specular_transmission: 0.0,
+            transmission_texture: None,
+            diffuse_transmission: 0.0,
+            thickness: 0.0,
+            thickness_texture: None,
+            ior: 1.5,
+            // Large finite sentinel rather than f32::INFINITY: the graph
+            // serializes to JSON, which has no infinity literal and would
+            // emit `null` — corrupting the value on reload. 1e37 is
+            // effectively "no attenuation" for any real scene.
+            attenuation_distance: 1.0e37,
+            attenuation_color: [1.0, 1.0, 1.0],
+            anisotropy_strength: 0.0,
+            anisotropy_rotation: 0.0,
+            anisotropy_texture: None,
+            reflectance: 0.5,
+            unlit: false,
+        }
+    }
+}
+
+impl PbrAdvanced {
+    /// Returns `true` when no extended channel deviates from its default, so
+    /// callers can skip emitting advanced nodes for plain metal-rough materials.
+    pub fn is_default(&self) -> bool {
+        self.clearcoat == 0.0
+            && self.clearcoat_texture.is_none()
+            && self.clearcoat_roughness_texture.is_none()
+            && self.clearcoat_normal_texture.is_none()
+            && self.specular_transmission == 0.0
+            && self.transmission_texture.is_none()
+            && self.diffuse_transmission == 0.0
+            && self.thickness == 0.0
+            && self.thickness_texture.is_none()
+            && self.ior == 1.5
+            && self.anisotropy_strength == 0.0
+            && self.anisotropy_texture.is_none()
+            && self.reflectance == 0.5
+            && !self.unlit
+    }
+
+    /// Produce a copy with every texture path mapped through `f` — used by the
+    /// import bridges to rewrite model-relative URIs to project-relative ones.
+    pub fn rewrite_textures(&self, f: impl Fn(&Option<String>) -> Option<String>) -> Self {
+        Self {
+            clearcoat_texture: f(&self.clearcoat_texture),
+            clearcoat_roughness_texture: f(&self.clearcoat_roughness_texture),
+            clearcoat_normal_texture: f(&self.clearcoat_normal_texture),
+            transmission_texture: f(&self.transmission_texture),
+            thickness_texture: f(&self.thickness_texture),
+            anisotropy_texture: f(&self.anisotropy_texture),
+            attenuation_color: self.attenuation_color,
+            ..self.clone()
+        }
+    }
 }
 
 

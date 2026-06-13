@@ -366,6 +366,85 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        // ── Extended PBR: KHR_materials_* extensions ──────────────────────
+        // These carry the channels beyond base metal-rough that real-world
+        // glTF/GLB exports rely on (car paint, glass, brushed metal, …). The
+        // output node already has matching pins; we just have to read them.
+        let exts = mat.get("extensions");
+        let ext = |name: &str| exts.and_then(|e| e.get(name));
+        let ext_f32 = |block: Option<&serde_json::Value>, key: &str, default: f32| -> f32 {
+            block
+                .and_then(|b| b.get(key))
+                .and_then(|v| v.as_f64())
+                .map(|x| x as f32)
+                .unwrap_or(default)
+        };
+
+        let clearcoat_ext = ext("KHR_materials_clearcoat");
+        let transmission_ext = ext("KHR_materials_transmission");
+        let volume_ext = ext("KHR_materials_volume");
+        let ior_ext = ext("KHR_materials_ior");
+        let specular_ext = ext("KHR_materials_specular");
+        let anisotropy_ext = ext("KHR_materials_anisotropy");
+        let emissive_strength_ext = ext("KHR_materials_emissive_strength");
+
+        let attenuation_color = volume_ext
+            .and_then(|v| v.get("attenuationColor"))
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                let r = arr.first()?.as_f64()? as f32;
+                let g = arr.get(1)?.as_f64()? as f32;
+                let b = arr.get(2)?.as_f64()? as f32;
+                Some([r, g, b])
+            })
+            .unwrap_or([1.0, 1.0, 1.0]);
+
+        let advanced = renzora::core::PbrAdvanced {
+            clearcoat: ext_f32(clearcoat_ext, "clearcoatFactor", 0.0),
+            clearcoat_roughness: ext_f32(clearcoat_ext, "clearcoatRoughnessFactor", 0.0),
+            clearcoat_texture: texture_info_uri(
+                clearcoat_ext.and_then(|c| c.get("clearcoatTexture")),
+            ),
+            clearcoat_roughness_texture: texture_info_uri(
+                clearcoat_ext.and_then(|c| c.get("clearcoatRoughnessTexture")),
+            ),
+            clearcoat_normal_texture: texture_info_uri(
+                clearcoat_ext.and_then(|c| c.get("clearcoatNormalTexture")),
+            ),
+            specular_transmission: ext_f32(transmission_ext, "transmissionFactor", 0.0),
+            transmission_texture: texture_info_uri(
+                transmission_ext.and_then(|t| t.get("transmissionTexture")),
+            ),
+            diffuse_transmission: 0.0,
+            thickness: ext_f32(volume_ext, "thicknessFactor", 0.0),
+            thickness_texture: texture_info_uri(volume_ext.and_then(|v| v.get("thicknessTexture"))),
+            ior: ext_f32(ior_ext, "ior", 1.5),
+            attenuation_distance: volume_ext
+                .and_then(|v| v.get("attenuationDistance"))
+                .and_then(|v| v.as_f64())
+                .map(|x| x as f32)
+                .unwrap_or(1.0e37),
+            attenuation_color,
+            anisotropy_strength: ext_f32(anisotropy_ext, "anisotropyStrength", 0.0),
+            anisotropy_rotation: ext_f32(anisotropy_ext, "anisotropyRotation", 0.0),
+            anisotropy_texture: texture_info_uri(
+                anisotropy_ext.and_then(|a| a.get("anisotropyTexture")),
+            ),
+            // KHR specularFactor is 0..1 scaling dielectric specular; Bevy's
+            // reflectance default of 0.5 corresponds to specularFactor 1.0.
+            reflectance: ext_f32(specular_ext, "specularFactor", 1.0) * 0.5,
+            unlit: ext("KHR_materials_unlit").is_some(),
+        };
+
+        // KHR_materials_emissive_strength scales the emissive factor (HDR bloom
+        // emitters author values > 1 here).
+        let strength = ext_f32(emissive_strength_ext, "emissiveStrength", 1.0);
+        let emissive = [
+            emissive[0] * strength,
+            emissive[1] * strength,
+            emissive[2] * strength,
+        ];
+
         out.push(ExtractedPbrMaterial {
             name,
             base_color,
@@ -375,9 +454,14 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             base_color_texture,
             normal_texture,
             metallic_roughness_texture,
+            roughness_texture: None,
+            metallic_texture: None,
             emissive_texture,
             occlusion_texture,
             specular_glossiness_texture,
+            opacity_texture: None,
+            specular_texture: None,
+            advanced,
             alpha_mode,
             alpha_cutoff,
             double_sided,
@@ -938,3 +1022,4 @@ pub(crate) fn pack_glb(json: &[u8], bin: Option<&[u8]>) -> Vec<u8> {
 
     out
 }
+

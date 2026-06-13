@@ -36,6 +36,12 @@ pub struct ExtractedPbrMaterial {
     pub normal_texture: Option<String>,
     /// Combined glTF metallic-roughness map. Channels: G = roughness, B = metallic.
     pub metallic_roughness_texture: Option<String>,
+    /// Standalone roughness map (OBJ `map_Pr`, USD UsdPreviewSurface). Its `r`
+    /// channel feeds `roughness`. Used when the source keeps roughness and
+    /// metallic in separate images rather than the packed glTF MR texture.
+    pub roughness_texture: Option<String>,
+    /// Standalone metallic map (OBJ `map_Pm`, USD). `r` → `metallic`.
+    pub metallic_texture: Option<String>,
     pub emissive_texture: Option<String>,
     /// Ambient occlusion map. Bevy reads only the R channel.
     pub occlusion_texture: Option<String>,
@@ -45,6 +51,23 @@ pub struct ExtractedPbrMaterial {
     /// `roughness` pin so per-pixel gloss (puddles vs dry stone) survives
     /// the spec-gloss → metal-rough conversion.
     pub specular_glossiness_texture: Option<String>,
+    /// Standalone opacity/alpha map (legacy FBX `TransparentColor` /
+    /// `TransparencyFactor`, which have no glTF metal-rough equivalent). The
+    /// graph builder samples its `r` channel into the `alpha` pin, so a cloud
+    /// shell or cutout that drives transparency through a dedicated grayscale
+    /// mask — not the base-color alpha channel — actually punches through.
+    pub opacity_texture: Option<String>,
+    /// Standalone specular/reflectivity mask (legacy FBX `SpecularColor` /
+    /// `ReflectionColor`). The builder routes its `r` channel into `metallic`
+    /// and the inverse into `roughness`, approximating a pre-PBR specular map:
+    /// bright (water, polished) → smooth + reflective, dark (land, matte) →
+    /// rough + dielectric.
+    pub specular_texture: Option<String>,
+    /// Extended PBR channels (clearcoat, transmission, anisotropy, ior, …).
+    /// Texture URIs here are model-relative, like the fields above; the import
+    /// bridge rewrites them to project-relative when firing the event. Shares
+    /// the contract type so no per-layer conversion is needed.
+    pub advanced: renzora::core::PbrAdvanced,
     /// glTF `alphaMode`: how transparency is rendered.
     pub alpha_mode: ExtractedAlphaMode,
     /// glTF `alphaCutoff` — discard threshold for `Mask` mode. Ignored otherwise.

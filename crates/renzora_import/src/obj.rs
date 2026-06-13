@@ -258,12 +258,66 @@ fn extract_obj_materials(
             )
         });
 
-        // Crude roughness/metallic fallback: OBJ/MTL is pre-PBR. Map shininess
-        // into roughness (lower shininess → rougher) and leave metallic at 0.
-        let roughness = mat
-            .shininess
-            .map(|s| (1.0 - (s / 1000.0)).clamp(0.05, 1.0))
-            .unwrap_or(0.8);
+        // PBR-MTL extension. The modern MTL spec adds `Pr` (roughness), `Pm`
+        // (metallic), `Ps` (sheen), `Pc`/`Pcr` (clearcoat), `Ke` (emissive),
+        // `aniso`/`anisor` (anisotropy) and their `map_*` variants. tobj keeps
+        // these unrecognized keywords in `unknown_param`. We honor them when
+        // present and fall back to the legacy shininess→roughness heuristic
+        // otherwise so plain OBJ files still import sensibly.
+        let param_f32 = |key: &str| -> Option<f32> {
+            mat.unknown_param
+                .get(key)
+                .and_then(|v| v.split_whitespace().next())
+                .and_then(|s| s.parse::<f32>().ok())
+        };
+        let param_vec3 = |key: &str| -> Option<[f32; 3]> {
+            let v = mat.unknown_param.get(key)?;
+            let nums: Vec<f32> = v.split_whitespace().filter_map(|s| s.parse().ok()).collect();
+            match nums.len() {
+                0 => None,
+                1 => Some([nums[0]; 3]),
+                _ => Some([nums[0], nums[1], nums[2]]),
+            }
+        };
+
+        let roughness = param_f32("Pr").unwrap_or_else(|| {
+            mat.shininess
+                .map(|s| (1.0 - (s / 1000.0)).clamp(0.05, 1.0))
+                .unwrap_or(0.8)
+        });
+        let metallic = param_f32("Pm").unwrap_or(0.0);
+        let emissive = param_vec3("Ke").unwrap_or([0.0, 0.0, 0.0]);
+        let advanced = renzora::core::PbrAdvanced {
+            clearcoat: param_f32("Pc").unwrap_or(0.0),
+            clearcoat_roughness: param_f32("Pcr").unwrap_or(0.0),
+            ior: mat.optical_density.unwrap_or(1.5),
+            anisotropy_strength: param_f32("aniso").unwrap_or(0.0),
+            anisotropy_rotation: param_f32("anisor").unwrap_or(0.0),
+            ..Default::default()
+        };
+        let alpha_blend = mat.dissolve.map(|d| d < 1.0).unwrap_or(false);
+
+        // Load the separate PBR map images, if any.
+        let mut load_param_tex = |key: &str,
+                                  bundle: &mut MaterialBundle,
+                                  extracted_textures: &mut Vec<ExtractedTexture>|
+         -> Option<usize> {
+            if !settings.extract_textures {
+                return None;
+            }
+            let p = mat.unknown_param.get(key)?.split_whitespace().last()?;
+            load_texture(
+                p,
+                bundle,
+                extracted_textures,
+                &mut tex_paths,
+                &mut used_names,
+                warnings,
+            )
+        };
+        let roughness_map = load_param_tex("map_Pr", &mut bundle, &mut extracted_textures);
+        let metallic_map = load_param_tex("map_Pm", &mut bundle, &mut extracted_textures);
+        let emissive_map = load_param_tex("map_Ke", &mut bundle, &mut extracted_textures);
 
         if settings.extract_materials {
             bundle.materials.push(PbrMaterialDef {
@@ -271,8 +325,15 @@ fn extract_obj_materials(
                 base_color,
                 base_color_texture: base_tex,
                 normal_texture: normal_tex,
-                metallic: 0.0,
+                metallic,
                 roughness,
+                emissive,
+                emissive_texture: emissive_map,
+                occlusion_texture: None,
+                opacity_texture: None,
+                specular_texture: None,
+                alpha_blend,
+                advanced: advanced.clone(),
             });
             let lookup = |idx: Option<usize>| -> Option<String> {
                 idx.and_then(|i| bundle.textures.get(i).map(|t| t.uri.clone()))
@@ -280,16 +341,25 @@ fn extract_obj_materials(
             extracted_materials.push(ExtractedPbrMaterial {
                 name: mat.name.clone(),
                 base_color,
-                metallic: 0.0,
+                metallic,
                 roughness,
-                emissive: [0.0, 0.0, 0.0],
+                emissive,
                 base_color_texture: lookup(base_tex),
                 normal_texture: lookup(normal_tex),
                 metallic_roughness_texture: None,
-                emissive_texture: None,
+                roughness_texture: lookup(roughness_map),
+                metallic_texture: lookup(metallic_map),
+                emissive_texture: lookup(emissive_map),
                 occlusion_texture: None,
                 specular_glossiness_texture: None,
-                alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                opacity_texture: None,
+                specular_texture: None,
+                advanced,
+                alpha_mode: if alpha_blend {
+                    crate::convert::ExtractedAlphaMode::Blend
+                } else {
+                    crate::convert::ExtractedAlphaMode::Opaque
+                },
                 alpha_cutoff: 0.5,
                 double_sided: false,
             });
@@ -653,6 +723,24 @@ pub(crate) struct PbrMaterialDef {
     pub normal_texture: Option<usize>,
     pub metallic: f32,
     pub roughness: f32,
+    /// Emissive factor (RGB linear), multiplied with `emissive_texture` or
+    /// used directly when there is none. Defaults to black.
+    pub emissive: [f32; 3],
+    /// Indices into [`MaterialBundle::textures`] for the extra channels the
+    /// FBX importer pulls off legacy Phong materials. The glTF/GLB writer in
+    /// this module ignores them — they flow only into the `.material` graph —
+    /// so non-FBX callers leave them `None`.
+    pub emissive_texture: Option<usize>,
+    pub occlusion_texture: Option<usize>,
+    pub opacity_texture: Option<usize>,
+    pub specular_texture: Option<usize>,
+    /// Whether the material renders with alpha blending (legacy FBX
+    /// transparency). Drives the graph's `alpha_mode`.
+    pub alpha_blend: bool,
+    /// Extended PBR channels (clearcoat, transmission, ior, anisotropy) read
+    /// from modern FBX PBR materials. Texture URIs are model-relative, resolved
+    /// at extraction time. Default for legacy Phong / OBJ.
+    pub advanced: renzora::core::PbrAdvanced,
 }
 
 #[derive(Debug, Clone)]
@@ -1234,6 +1322,13 @@ mod tests {
                 normal_texture: None,
                 metallic: 0.0,
                 roughness: 0.5,
+                emissive: [0.0, 0.0, 0.0],
+                emissive_texture: None,
+                occlusion_texture: None,
+                opacity_texture: None,
+                specular_texture: None,
+                alpha_blend: false,
+                advanced: renzora::core::PbrAdvanced::default(),
             }],
             textures: Vec::new(),
         };

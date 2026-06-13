@@ -112,10 +112,26 @@ pub enum PinDir {
 
 // ── Pin values ──────────────────────────────────────────────────────────────
 
+/// Lenient `f32` deserializer: accepts a JSON `null` (or any non-finite value
+/// that slipped into an older file) and maps it to `0.0` instead of failing the
+/// whole material parse. Historically `attenuation_distance` was seeded with
+/// `f32::INFINITY`, which serde_json writes as `null` — that one unreadable
+/// value used to poison the entire material on load.
+fn de_lenient_f32<'de, D>(d: D) -> Result<f32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = Option::<f32>::deserialize(d)?;
+    Ok(match v {
+        Some(f) if f.is_finite() => f,
+        _ => 0.0,
+    })
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[derive(Default)]
 pub enum PinValue {
-    Float(f32),
+    Float(#[serde(deserialize_with = "de_lenient_f32")] f32),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
     Vec4([f32; 4]),
@@ -136,7 +152,10 @@ impl PinValue {
     /// Convert to a WGSL literal expression.
     pub fn to_wgsl(&self) -> String {
         match self {
-            Self::Float(v) => format!("{:.6}", v),
+            // Guard against non-finite values reaching the shader — `{:.6}` on
+            // inf/NaN emits `inf`/`NaN`, which is not valid WGSL and would fail
+            // pipeline creation for the whole material.
+            Self::Float(v) => format!("{:.6}", if v.is_finite() { *v } else { 0.0 }),
             Self::Vec2([x, y]) => format!("vec2<f32>({:.6}, {:.6})", x, y),
             Self::Vec3([x, y, z]) => format!("vec3<f32>({:.6}, {:.6}, {:.6})", x, y, z),
             Self::Vec4([x, y, z, w]) | Self::Color([x, y, z, w]) => {

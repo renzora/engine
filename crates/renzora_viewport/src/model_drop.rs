@@ -429,9 +429,14 @@ fn run_import_pipeline(
                 base_color_texture: prefix(&mat.base_color_texture),
                 normal_texture: prefix(&mat.normal_texture),
                 metallic_roughness_texture: prefix(&mat.metallic_roughness_texture),
+                roughness_texture: prefix(&mat.roughness_texture),
+                metallic_texture: prefix(&mat.metallic_texture),
                 emissive_texture: prefix(&mat.emissive_texture),
                 occlusion_texture: prefix(&mat.occlusion_texture),
                 specular_glossiness_texture: prefix(&mat.specular_glossiness_texture),
+                opacity_texture: prefix(&mat.opacity_texture),
+                specular_texture: prefix(&mat.specular_texture),
+                advanced: mat.advanced.rewrite_textures(&prefix),
                 alpha_mode: match mat.alpha_mode {
                     renzora_import::ExtractedAlphaMode::Opaque => {
                         renzora::core::PbrAlphaMode::Opaque

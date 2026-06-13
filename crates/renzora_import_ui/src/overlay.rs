@@ -416,11 +416,16 @@ fn import_worker(
                                 metallic_roughness_texture: rewrite_uri(
                                     &mat.metallic_roughness_texture,
                                 ),
+                                roughness_texture: rewrite_uri(&mat.roughness_texture),
+                                metallic_texture: rewrite_uri(&mat.metallic_texture),
                                 emissive_texture: rewrite_uri(&mat.emissive_texture),
                                 occlusion_texture: rewrite_uri(&mat.occlusion_texture),
                                 specular_glossiness_texture: rewrite_uri(
                                     &mat.specular_glossiness_texture,
                                 ),
+                                opacity_texture: rewrite_uri(&mat.opacity_texture),
+                                specular_texture: rewrite_uri(&mat.specular_texture),
+                                advanced: mat.advanced.rewrite_textures(&rewrite_uri),
                                 alpha_mode: match mat.alpha_mode {
                                     renzora_import::ExtractedAlphaMode::Opaque => {
                                         renzora::core::PbrAlphaMode::Opaque

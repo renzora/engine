@@ -202,6 +202,16 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                 for m in bundle.materials.iter_mut() {
                     m.base_color_texture = None;
                     m.normal_texture = None;
+                    m.emissive_texture = None;
+                    m.occlusion_texture = None;
+                    m.opacity_texture = None;
+                    m.specular_texture = None;
+                    m.advanced.clearcoat_texture = None;
+                    m.advanced.clearcoat_roughness_texture = None;
+                    m.advanced.clearcoat_normal_texture = None;
+                    m.advanced.transmission_texture = None;
+                    m.advanced.thickness_texture = None;
+                    m.advanced.anisotropy_texture = None;
                 }
             }
             if !settings.extract_materials {
@@ -278,14 +288,23 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ImportResult, I
                         base_color: m.base_color,
                         metallic: m.metallic,
                         roughness: m.roughness,
-                        emissive: [0.0, 0.0, 0.0],
+                        emissive: m.emissive,
                         base_color_texture: lookup(m.base_color_texture),
                         normal_texture: lookup(m.normal_texture),
                         metallic_roughness_texture: None,
-                        emissive_texture: None,
-                        occlusion_texture: None,
+                        roughness_texture: None,
+                        metallic_texture: None,
+                        emissive_texture: lookup(m.emissive_texture),
+                        occlusion_texture: lookup(m.occlusion_texture),
                         specular_glossiness_texture: None,
-                        alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                        opacity_texture: lookup(m.opacity_texture),
+                        specular_texture: lookup(m.specular_texture),
+                        advanced: m.advanced.clone(),
+                        alpha_mode: if m.alpha_blend {
+                            crate::convert::ExtractedAlphaMode::Blend
+                        } else {
+                            crate::convert::ExtractedAlphaMode::Opaque
+                        },
                         alpha_cutoff: 0.5,
                         double_sided: false,
                     }
@@ -808,6 +827,18 @@ fn collect_textures_and_materials(
         tex_index.insert(tex.element.element_id, idx);
     }
 
+    // Resolve the texture bound to one of ufbx's normalized PBR channels to an
+    // index into the textures we extracted above. ufbx maps legacy FBX Phong
+    // slots onto this PBR view — e.g. `DiffuseColor → base_color`,
+    // `EmissiveColor → emission_color`, `TransparentColor → opacity`,
+    // `SpecularColor → specular_color`, `Bump`/`NormalMap → normal_map` — so a
+    // single code path covers both modern StingrayPBS and legacy materials.
+    let tex_of = |map: &ufbx::MaterialMap| -> Option<usize> {
+        map.texture
+            .as_ref()
+            .and_then(|t| tex_index.get(&t.element.element_id).copied())
+    };
+
     for mat in &scene.materials {
         let pbr = &mat.pbr;
 
@@ -818,16 +849,34 @@ fn collect_textures_and_materials(
             [1.0, 1.0, 1.0, 1.0]
         };
 
-        let base_color_texture = pbr
-            .base_color
-            .texture
-            .as_ref()
-            .and_then(|t| tex_index.get(&t.element.element_id).copied());
-        let normal_texture = pbr
-            .normal_map
-            .texture
-            .as_ref()
-            .and_then(|t| tex_index.get(&t.element.element_id).copied());
+        let base_color_texture = tex_of(&pbr.base_color);
+        let normal_texture = tex_of(&pbr.normal_map);
+        let emissive_texture = tex_of(&pbr.emission_color);
+        let occlusion_texture = tex_of(&pbr.ambient_occlusion);
+        let opacity_texture = tex_of(&pbr.opacity);
+        // Prefer the specular color map; fall back to the scalar specular
+        // factor map if that's where the reflectivity mask is bound.
+        let specular_texture = tex_of(&pbr.specular_color).or_else(|| tex_of(&pbr.specular_factor));
+
+        // Emissive factor: emission_color × emission_factor (so night-side
+        // city lights etc. carry their authored intensity even with a texture).
+        let emissive = if pbr.emission_color.has_value {
+            let c = pbr.emission_color.value_vec4;
+            let f = if pbr.emission_factor.has_value {
+                pbr.emission_factor.value_vec4.x as f32
+            } else {
+                1.0
+            };
+            [c.x as f32 * f, c.y as f32 * f, c.z as f32 * f]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
+
+        // Treat the material as alpha-blended when transparency is driven by a
+        // mask or a sub-unit constant opacity. ufbx normalizes FBX transparency
+        // so opacity = 1 is fully opaque.
+        let alpha_blend = opacity_texture.is_some()
+            || (pbr.opacity.has_value && (pbr.opacity.value_vec4.x as f32) < 0.999);
 
         let metallic = if pbr.metalness.has_value {
             pbr.metalness.value_vec4.x as f32
@@ -840,6 +889,42 @@ fn collect_textures_and_materials(
             0.8
         };
 
+        // Extended PBR channels (modern StingrayPBS / Arnold FBX). ufbx
+        // normalizes the coat/transmission/anisotropy slots onto its PBR view;
+        // legacy Phong materials leave these unset, so they fall back to the
+        // glTF-spec defaults. Texture indices resolve to model-relative URIs
+        // via the already-populated `bundle.textures`.
+        let val = |m: &ufbx::MaterialMap, default: f32| -> f32 {
+            if m.has_value {
+                m.value_vec4.x as f32
+            } else {
+                default
+            }
+        };
+        let adv_uri = |m: &ufbx::MaterialMap| -> Option<String> {
+            tex_of(m).and_then(|i| bundle.textures.get(i).map(|t| t.uri.clone()))
+        };
+        let advanced = renzora::core::PbrAdvanced {
+            clearcoat: val(&pbr.coat_factor, 0.0),
+            clearcoat_roughness: val(&pbr.coat_roughness, 0.0),
+            clearcoat_texture: adv_uri(&pbr.coat_factor),
+            clearcoat_roughness_texture: adv_uri(&pbr.coat_roughness),
+            clearcoat_normal_texture: adv_uri(&pbr.coat_normal),
+            specular_transmission: val(&pbr.transmission_factor, 0.0),
+            transmission_texture: adv_uri(&pbr.transmission_factor),
+            diffuse_transmission: 0.0,
+            thickness: 0.0,
+            thickness_texture: None,
+            ior: val(&pbr.specular_ior, 1.5),
+            attenuation_distance: 1.0e37,
+            attenuation_color: [1.0, 1.0, 1.0],
+            anisotropy_strength: val(&pbr.specular_anisotropy, 0.0),
+            anisotropy_rotation: val(&pbr.specular_rotation, 0.0),
+            anisotropy_texture: None,
+            reflectance: 0.5,
+            unlit: false,
+        };
+
         bundle.materials.push(PbrMaterialDef {
             name: (*mat.element.name).to_string(),
             base_color: base_color_factor,
@@ -847,6 +932,13 @@ fn collect_textures_and_materials(
             normal_texture,
             metallic,
             roughness,
+            emissive,
+            emissive_texture,
+            occlusion_texture,
+            opacity_texture,
+            specular_texture,
+            alpha_blend,
+            advanced,
         });
     }
 

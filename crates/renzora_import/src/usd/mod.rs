@@ -242,6 +242,25 @@ fn collect_usd_textures_and_materials(
                 warnings,
             )
         });
+        // Resolve the remaining UsdPreviewSurface texture inputs the importer
+        // previously dropped on the floor: emissive, separate metallic /
+        // roughness maps, opacity and occlusion. Each mirrors the base/normal
+        // resolution above.
+        let emissive_uri = mat.emissive_texture.as_ref().and_then(|t| {
+            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
+        });
+        let metallic_uri = mat.metallic_texture.as_ref().and_then(|t| {
+            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
+        });
+        let roughness_uri = mat.roughness_texture.as_ref().and_then(|t| {
+            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
+        });
+        let opacity_uri = mat.opacity_texture.as_ref().and_then(|t| {
+            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
+        });
+        let occlusion_uri = mat.occlusion_texture.as_ref().and_then(|t| {
+            resolve_texture(t, &mut extracted_textures, &mut source_uri, &mut used_names, warnings)
+        });
 
         if settings.extract_materials {
             extracted_materials.push(ExtractedPbrMaterial {
@@ -254,14 +273,28 @@ fn collect_usd_textures_and_materials(
                 ],
                 metallic: mat.metallic,
                 roughness: mat.roughness,
-                emissive: [0.0, 0.0, 0.0],
+                emissive: mat.emissive_color,
                 base_color_texture: base_color_uri,
                 normal_texture: normal_uri,
                 metallic_roughness_texture: None,
-                emissive_texture: None,
-                occlusion_texture: None,
+                roughness_texture: roughness_uri,
+                metallic_texture: metallic_uri,
+                emissive_texture: emissive_uri,
+                occlusion_texture: occlusion_uri,
                 specular_glossiness_texture: None,
-                alpha_mode: crate::convert::ExtractedAlphaMode::Opaque,
+                opacity_texture: opacity_uri.clone(),
+                specular_texture: None,
+                advanced: renzora::core::PbrAdvanced {
+                    ior: mat.ior,
+                    ..Default::default()
+                },
+                // Blend when opacity is authored below 1 or driven by a map,
+                // matching the UsdPreviewSurface opacity semantics.
+                alpha_mode: if mat.opacity < 1.0 || opacity_uri.is_some() {
+                    crate::convert::ExtractedAlphaMode::Blend
+                } else {
+                    crate::convert::ExtractedAlphaMode::Opaque
+                },
                 alpha_cutoff: 0.5,
                 double_sided: false,
             });

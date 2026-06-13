@@ -1912,6 +1912,37 @@ impl<'a> Ctx<'a> {
                 self.set_out(id, "result", v);
             }
 
+            // ── Custom ──────────────────────────────────────────────
+            "custom/code" => {
+                // Resolve inputs first (triggers upstream codegen) — each is
+                // coerced to vec4 by `input()` since the pins are declared Vec4.
+                let in_a = self.input(node, "a");
+                let in_b = self.input(node, "b");
+                let in_c = self.input(node, "c");
+                let in_d = self.input(node, "d");
+                let code = match node.input_values.get("code") {
+                    Some(PinValue::String(s)) if !s.trim().is_empty() => s.clone(),
+                    _ => "result = a;".to_string(),
+                };
+                // WGSL has no value-returning blocks, so the snippet runs in a
+                // generated helper. Each node id is unique and generated once,
+                // so the helper is emitted exactly once with no dedup needed.
+                let fn_name = format!("mat_custom_{id}");
+                self.module_prelude.push(format!(
+                    "fn {fn_name}(a: vec4<f32>, b: vec4<f32>, c: vec4<f32>, d: vec4<f32>) -> vec4<f32> {{\n    var result: vec4<f32> = vec4<f32>(0.0, 0.0, 0.0, 1.0);\n    {code}\n    return result;\n}}"
+                ));
+                let res = self.next_var("custom");
+                self.emit(format!(
+                    "    let {res} = {fn_name}({in_a}, {in_b}, {in_c}, {in_d});"
+                ));
+                self.set_out(id, "result", res.clone());
+                self.set_out(id, "rgb", format!("{res}.xyz"));
+                self.set_out(id, "x", format!("{res}.x"));
+                self.set_out(id, "y", format!("{res}.y"));
+                self.set_out(id, "z", format!("{res}.z"));
+                self.set_out(id, "w", format!("{res}.w"));
+            }
+
             // ── Control ─────────────────────────────────────────────
             "control/if" => {
                 let cond = self.input(node, "condition");
