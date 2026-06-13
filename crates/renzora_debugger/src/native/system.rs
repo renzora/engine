@@ -51,14 +51,20 @@ fn fps_color(fps: f32) -> Color {
         rgb((200, 100, 100))
     }
 }
+/// Stable, distinct color per pass name (hashed → fixed palette) so each bar in
+/// the GPU pass breakdown keeps the same color across frames.
 fn schedule_color(name: &str) -> Color {
-    match name {
-        "PreUpdate" => rgb((100, 180, 220)),
-        "Update" => rgb((140, 200, 140)),
-        "PostUpdate" => rgb((200, 160, 100)),
-        "Render" => rgb((180, 140, 200)),
-        _ => rgb((150, 150, 160)),
-    }
+    const PALETTE: [(u8, u8, u8); 6] = [
+        (100, 180, 220),
+        (140, 200, 140),
+        (200, 160, 100),
+        (180, 140, 200),
+        (220, 140, 140),
+        (140, 180, 200),
+    ];
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut h);
+    rgb(PALETTE[(h.finish() as usize) % PALETTE.len()])
 }
 fn format_count(n: u64) -> String {
     if n >= 1_000_000 {
@@ -230,20 +236,28 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     bind_display(commands, rs_section, |w| rstats(w, |r| r.enabled));
     let rs_label = section(commands, fonts, "Render Stats");
     let rs_grid = faint_box(commands);
-    let dc = grid_row(commands, fonts, "Draw Calls", |w| format!("{}", rstats(w, |r| r.draw_calls)));
+    let dc = grid_row(commands, fonts, "Instances", |w| format!("{}", rstats(w, |r| r.mesh_instances)));
     let tr = grid_row(commands, fonts, "Triangles", |w| format_count(rstats(w, |r| r.triangles)));
     let vx = grid_row(commands, fonts, "Vertices", |w| format_count(rstats(w, |r| r.vertices)));
-    let gp = grid_row(commands, fonts, "GPU Time", |w| format!("{:.2}ms", rstats(w, |r| r.gpu_time_ms)));
+    let gp = grid_row(commands, fonts, "GPU Time", |w| {
+        rstats(w, |r| {
+            if r.gpu_timing_available {
+                format!("{:.2}ms", r.gpu_time_ms)
+            } else {
+                "n/a".to_string()
+            }
+        })
+    });
     commands.entity(rs_grid).add_children(&[dc, tr, vx, gp]);
     commands.entity(rs_section).add_children(&[rs_label, rs_grid]);
 
-    // Schedule breakdown.
-    let sched_label = section(commands, fonts, "Schedule Overview (Estimated)");
+    // GPU pass breakdown (real per-pass GPU timings from RenderDiagnosticsPlugin).
+    let sched_label = section(commands, fonts, "GPU Pass Breakdown");
     let sched_box = faint_box(commands);
     keyed_list(commands, sched_box, schedule_snapshot);
     let sched_note = commands
         .spawn((
-            Text::new("Note: These are rough estimates, not actual measurements"),
+            Text::new("Per-pass GPU time (measured). CPU per-system timing needs an external profiler."),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(text_muted())),
         ))

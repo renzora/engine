@@ -262,8 +262,24 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "ms GPU",
-        |w| format!("{:.2}", render_stats(w, |r| r.gpu_time_ms)),
-        |w| gpu_time_color(render_stats(w, |r| r.gpu_time_ms)),
+        |w| {
+            render_stats(w, |r| {
+                if r.gpu_timing_available {
+                    format!("{:.2}", r.gpu_time_ms)
+                } else {
+                    "n/a".to_string()
+                }
+            })
+        },
+        |w| {
+            render_stats(w, |r| {
+                if r.gpu_timing_available {
+                    gpu_time_color(r.gpu_time_ms)
+                } else {
+                    rgb(text_muted())
+                }
+            })
+        },
     );
     let gpu_chart = line_chart_live(
         commands,
@@ -277,9 +293,9 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         |w| render_stats(w, |r| r.gpu_time_history.clone()),
     );
 
-    let pipe_label = section(commands, fonts, "Pipeline Statistics");
-    let draws = label_row(commands, fonts, "Draw Calls", |w| {
-        format_number(render_stats(w, |r| r.draw_calls))
+    let pipe_label = section(commands, fonts, "Scene Geometry");
+    let draws = label_row(commands, fonts, "Mesh Instances", |w| {
+        format_number(render_stats(w, |r| r.mesh_instances))
     });
     let tris = label_row(commands, fonts, "Triangles", |w| {
         format_number(render_stats(w, |r| r.triangles))

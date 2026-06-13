@@ -94,8 +94,14 @@ impl DiagnosticsState {
 pub struct RenderStats {
     pub enabled: bool,
     pub gpu_time_ms: f32,
+    /// Whether `gpu_time_ms` is a real measurement. False when the GPU backend
+    /// doesn't support timestamp queries (e.g. OpenGL) — the panel then shows
+    /// "n/a" instead of a fabricated value.
+    pub gpu_timing_available: bool,
     pub gpu_time_history: Vec<f32>,
-    pub draw_calls: u64,
+    /// Instance counts / loaded geometry totals — derived from the scene, not
+    /// from the render pipeline (no culling/batching/instancing awareness).
+    pub mesh_instances: u64,
     pub triangles: u64,
     pub vertices: u64,
     pub update_interval: f32,
@@ -107,8 +113,9 @@ impl Default for RenderStats {
         Self {
             enabled: false,
             gpu_time_ms: 0.0,
+            gpu_timing_available: false,
             gpu_time_history: Vec::with_capacity(MAX_SAMPLES),
-            draw_calls: 0,
+            mesh_instances: 0,
             triangles: 0,
             vertices: 0,
             update_interval: 0.1,
@@ -443,6 +450,40 @@ pub fn update_diagnostics_state(
     }
 }
 
+/// Top-level (shallowest) GPU render-pass spans recorded by
+/// `RenderDiagnosticsPlugin`, as `(pass_name, elapsed_ms)`.
+///
+/// The plugin emits one `render/<pass…>/elapsed_gpu` diagnostic per span, already
+/// in milliseconds. Spans nest — a parent pass's time includes its children — so
+/// summing every span would double-count. We keep only the shallowest depth (the
+/// outermost passes); every deeper span is an descendant of one of those, so the
+/// shallowest set both sums to the true frame total and gives a clean breakdown.
+///
+/// Returns an empty vec when no GPU timestamps exist (timestamp queries
+/// unsupported), which callers treat as "GPU timing unavailable".
+pub(crate) fn top_level_gpu_spans(diagnostics: &DiagnosticsStore) -> Vec<(String, f32)> {
+    let mut spans: Vec<(usize, String, f32)> = Vec::new();
+    let mut min_depth = usize::MAX;
+    for diagnostic in diagnostics.iter() {
+        let path = diagnostic.path().as_str();
+        let Some(stripped) = path.strip_suffix("/elapsed_gpu") else {
+            continue;
+        };
+        let Some(value) = diagnostic.smoothed() else {
+            continue;
+        };
+        let depth = stripped.split('/').count();
+        min_depth = min_depth.min(depth);
+        let name = stripped.rsplit('/').next().unwrap_or(stripped).to_string();
+        spans.push((depth, name, value as f32));
+    }
+    spans
+        .into_iter()
+        .filter(|(depth, _, _)| *depth == min_depth)
+        .map(|(_, name, ms)| (name, ms))
+        .collect()
+}
+
 pub fn update_render_stats(
     diagnostics: Res<DiagnosticsStore>,
     mut stats: ResMut<RenderStats>,
@@ -458,10 +499,10 @@ pub fn update_render_stats(
 
     let mut total_vertices: u64 = 0;
     let mut total_triangles: u64 = 0;
-    let mut draw_calls: u64 = 0;
+    let mut mesh_instances: u64 = 0;
 
     for mesh_handle in mesh_query.iter() {
-        draw_calls += 1;
+        mesh_instances += 1;
         if let Some(mesh) = meshes.get(&mesh_handle.0) {
             if let Some(positions) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
                 total_vertices += positions.len() as u64;
@@ -474,31 +515,21 @@ pub fn update_render_stats(
         }
     }
 
-    stats.draw_calls = draw_calls;
+    stats.mesh_instances = mesh_instances;
     stats.vertices = total_vertices;
     stats.triangles = total_triangles;
 
-    let mut found_gpu_timing = false;
-    for diagnostic in diagnostics.iter() {
-        let path = diagnostic.path().as_str();
-        if path.contains("gpu_time") || path.contains("elapsed") {
-            if let Some(value) = diagnostic.smoothed() {
-                let gpu_time = (value * 1000.0) as f32;
-                stats.gpu_time_ms = gpu_time;
-                stats.push_gpu_time(gpu_time);
-                found_gpu_timing = true;
-            }
-        }
-    }
-
-    if !found_gpu_timing {
-        if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
-            if let Some(value) = frame_time.smoothed() {
-                let gpu_time = (value * 0.6) as f32;
-                stats.gpu_time_ms = gpu_time;
-                stats.push_gpu_time(gpu_time);
-            }
-        }
+    // Real GPU time: sum of the top-level render-pass GPU spans (already in ms).
+    // No fabricated fallback — if timestamp queries aren't available the panel
+    // reports "n/a" rather than a frame-time-derived guess.
+    let gpu_spans = top_level_gpu_spans(&diagnostics);
+    if gpu_spans.is_empty() {
+        stats.gpu_timing_available = false;
+    } else {
+        let total: f32 = gpu_spans.iter().map(|(_, ms)| *ms).sum();
+        stats.gpu_timing_available = true;
+        stats.gpu_time_ms = total;
+        stats.push_gpu_time(total);
     }
 
     stats.enabled = true;
@@ -539,20 +570,32 @@ pub fn update_memory_profiler(
     let mut mesh_bytes: u64 = 0;
     let mesh_count = meshes.len();
     for (_, mesh) in meshes.iter() {
-        if let Some(positions) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
-            mesh_bytes += (positions.len() * 32) as u64;
-        }
-        if let Some(indices) = mesh.indices() {
-            mesh_bytes += (indices.len() * 4) as u64;
+        // Real CPU-side buffer sizes computed from the mesh's actual vertex
+        // layout and index buffer (not a fixed bytes-per-vertex guess).
+        mesh_bytes += mesh.get_vertex_buffer_size() as u64;
+        if let Some(indices) = mesh.get_index_buffer_bytes() {
+            mesh_bytes += indices.len() as u64;
         }
     }
 
     let mut texture_bytes: u64 = 0;
     let texture_count = images.len();
     for (_, image) in images.iter() {
-        texture_bytes += image.width() as u64 * image.height() as u64 * 4;
+        // Real allocated size when the pixel data is resident on the CPU;
+        // dimensional estimate only as a fallback for GPU-only textures that
+        // expose no CPU-side data.
+        texture_bytes += match image.data.as_ref() {
+            Some(data) => data.len() as u64,
+            None => {
+                let s = image.texture_descriptor.size;
+                s.width as u64 * s.height as u64 * s.depth_or_array_layers as u64 * 4
+            }
+        };
     }
 
+    // StandardMaterial's GPU uniform is a fixed-size struct; 256 bytes is a
+    // reasonable per-material estimate for it. Referenced textures are counted
+    // above under texture memory, not here.
     let material_count = materials.len();
     let material_bytes = (material_count * 256) as u64;
 
@@ -577,34 +620,22 @@ pub fn update_system_timing(
     }
     state.time_since_update = 0.0;
 
-    let frame_time_ms = if let Some(ft) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
-        ft.smoothed().unwrap_or(0.0) as f32
-    } else {
-        16.67
-    };
+    // Real per-pass GPU timings from `RenderDiagnosticsPlugin` (top-level spans,
+    // in ms). Replaces the old fabricated PreUpdate/Update/PostUpdate/Render split
+    // that was just fixed fractions of frame time. Empty when GPU timestamps are
+    // unavailable, in which case the panel shows "No timing data available".
+    let mut spans = top_level_gpu_spans(&diagnostics);
+    spans.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let total: f32 = spans.iter().map(|(_, ms)| *ms).sum();
 
-    state.schedule_timings = vec![
-        ScheduleTiming {
-            name: "PreUpdate".to_string(),
-            time_ms: frame_time_ms * 0.05,
-            percentage: 5.0,
-        },
-        ScheduleTiming {
-            name: "Update".to_string(),
-            time_ms: frame_time_ms * 0.35,
-            percentage: 35.0,
-        },
-        ScheduleTiming {
-            name: "PostUpdate".to_string(),
-            time_ms: frame_time_ms * 0.10,
-            percentage: 10.0,
-        },
-        ScheduleTiming {
-            name: "Render".to_string(),
-            time_ms: frame_time_ms * 0.50,
-            percentage: 50.0,
-        },
-    ];
+    state.schedule_timings = spans
+        .into_iter()
+        .map(|(name, time_ms)| ScheduleTiming {
+            name,
+            time_ms,
+            percentage: if total > 0.0 { time_ms / total * 100.0 } else { 0.0 },
+        })
+        .collect();
 }
 
 pub fn update_camera_debug_state(
@@ -621,7 +652,13 @@ pub fn update_camera_debug_state(
         With<Camera3d>,
     >,
     cameras_2d: Query<
-        (Entity, &Camera, &GlobalTransform, Option<&Name>),
+        (
+            Entity,
+            &Camera,
+            &GlobalTransform,
+            Option<&Name>,
+            Option<&Projection>,
+        ),
         (With<Camera2d>, Without<Camera3d>),
     >,
 ) {
@@ -691,6 +728,15 @@ pub fn update_camera_debug_state(
             ]
         });
 
+        // Real aspect ratio from the camera's render target / viewport; falls
+        // back to 16:9 only when the target size isn't known yet (e.g. before the
+        // first frame), rather than always reporting a hardcoded 16:9.
+        let aspect_ratio = camera
+            .logical_viewport_size()
+            .filter(|s| s.y > 0.0)
+            .map(|s| s.x / s.y)
+            .unwrap_or(16.0 / 9.0);
+
         state.cameras.push(CameraInfo {
             entity,
             name: name
@@ -702,7 +748,7 @@ pub fn update_camera_debug_state(
             fov_degrees: fov,
             near,
             far,
-            aspect_ratio: 16.0 / 9.0,
+            aspect_ratio,
             ortho_scale,
             position: translation,
             rotation_degrees,
@@ -712,7 +758,7 @@ pub fn update_camera_debug_state(
         });
     }
 
-    for (entity, camera, transform, name) in cameras_2d.iter() {
+    for (entity, camera, transform, name, projection) in cameras_2d.iter() {
         let (_, rotation, translation) = transform.to_scale_rotation_translation();
         let euler = rotation.to_euler(EulerRot::YXZ);
         let rotation_degrees = Vec3::new(
@@ -727,6 +773,17 @@ pub fn update_camera_debug_state(
             ClearColorConfig::None => None,
         };
 
+        // Read the real orthographic projection instead of assuming defaults.
+        let (near, far, ortho_scale) = match projection {
+            Some(Projection::Orthographic(o)) => (o.near, o.far, Some(o.scale)),
+            _ => (-1000.0, 1000.0, None),
+        };
+        let aspect_ratio = camera
+            .logical_viewport_size()
+            .filter(|s| s.y > 0.0)
+            .map(|s| s.x / s.y)
+            .unwrap_or(16.0 / 9.0);
+
         state.cameras.push(CameraInfo {
             entity,
             name: name
@@ -736,10 +793,10 @@ pub fn update_camera_debug_state(
             order: camera.order,
             projection_type: CameraProjectionType::Orthographic,
             fov_degrees: None,
-            near: -1000.0,
-            far: 1000.0,
-            aspect_ratio: 16.0 / 9.0,
-            ortho_scale: Some(1.0),
+            near,
+            far,
+            aspect_ratio,
+            ortho_scale,
             position: translation,
             rotation_degrees,
             forward: transform.forward().as_vec3(),

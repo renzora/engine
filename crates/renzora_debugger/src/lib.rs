@@ -78,6 +78,19 @@ impl Plugin for DebuggerPlugin {
             SystemInformationDiagnosticsPlugin,
         ));
 
+        // Real per-render-pass CPU/GPU timings (`render/<pass>/elapsed_{cpu,gpu}`).
+        // This is the ONLY source of genuine GPU time; without it the render-stats
+        // panel has nothing to read. On Vulkan/DX12 Bevy's default
+        // `WgpuSettingsPriority::Functionality` already enables `TIMESTAMP_QUERY`,
+        // so GPU timestamps populate automatically; on backends without it (GL,
+        // some integrated adapters) only CPU spans exist and the panel shows "n/a"
+        // for GPU rather than a fabricated number. Guarded because the (currently
+        // unused) Tracy bridge can also add it, and a duplicate add panics.
+        use bevy::render::diagnostic::RenderDiagnosticsPlugin;
+        if !app.is_plugin_added::<RenderDiagnosticsPlugin>() {
+            app.add_plugins(RenderDiagnosticsPlugin);
+        }
+
         // Init resources
         app.init_resource::<DiagnosticsState>()
             .init_resource::<RenderStats>()
