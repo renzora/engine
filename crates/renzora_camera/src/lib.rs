@@ -188,6 +188,7 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
             .init_resource::<OrbitMirror>()
+            .init_resource::<EditorViewportFov>()
             .add_systems(
                 Update,
                 toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
@@ -204,6 +205,9 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
+                    // Resolve the editor viewport FOV from the active scene
+                    // camera before the projection writers consume it.
+                    resolve_editor_viewport_fov,
                     // Load the focused slot's angle into the singleton orbit…
                     mirror_focused_orbit_in,
                     sync_viewport_settings,
@@ -923,6 +927,51 @@ fn apply_nav_overlay(
     }
 }
 
+/// Desired editor-viewport perspective FOV (radians), mirrored from the active
+/// scene camera so the editor view previews the game camera's field of view.
+///
+/// `apply_projection` is the **single** writer of the viewport cameras'
+/// projection, so the fov is fed through it rather than via a separate
+/// post-write system. A previous attempt wrote the fov in its own system that
+/// ran *after* `apply_projection` had already written aspect/far — touching the
+/// projection twice per frame — which jolted the atmosphere/TAA on the primary
+/// viewport camera. Folding it into the one writer keeps the projection written
+/// exactly once per camera per frame.
+#[derive(Resource)]
+struct EditorViewportFov(f32);
+
+impl Default for EditorViewportFov {
+    fn default() -> Self {
+        Self(std::f32::consts::FRAC_PI_4)
+    }
+}
+
+/// Mirror the active scene camera's perspective FOV into [`EditorViewportFov`]
+/// (the `DefaultCamera`, else the first `SceneCamera`; falls back to the 45°
+/// default when there's no scene camera). Runs before the projection writers.
+fn resolve_editor_viewport_fov(
+    scene_cams: Query<(&Projection, Has<renzora::DefaultCamera>), With<renzora::SceneCamera>>,
+    mut out: ResMut<EditorViewportFov>,
+) {
+    let mut first = None;
+    let mut chosen = None;
+    for (proj, is_default) in &scene_cams {
+        if let Projection::Perspective(p) = proj {
+            if is_default {
+                chosen = Some(p.fov);
+                break;
+            }
+            if first.is_none() {
+                first = Some(p.fov);
+            }
+        }
+    }
+    let fov = chosen.or(first).unwrap_or(std::f32::consts::FRAC_PI_4);
+    if out.0 != fov {
+        out.0 = fov;
+    }
+}
+
 /// Apply a perspective/orthographic projection to one camera, matching the
 /// editor's conventions (seamless ortho↔perspective at the orbit distance,
 /// metre-scale FixedVertical ortho). Shared by the focused-camera updater and
@@ -932,12 +981,13 @@ fn apply_projection(
     mode: ProjectionMode,
     distance: f32,
     aspect: f32,
+    fov: f32,
 ) {
     match mode {
         ProjectionMode::Perspective => {
             if !matches!(*projection, Projection::Perspective(_)) {
                 *projection = Projection::Perspective(PerspectiveProjection {
-                    fov: std::f32::consts::FRAC_PI_4,
+                    fov,
                     aspect_ratio: aspect,
                     far: 100_000.0,
                     ..default()
@@ -945,6 +995,7 @@ fn apply_projection(
             } else if let Projection::Perspective(ref mut persp) = *projection {
                 persp.aspect_ratio = aspect;
                 persp.far = 100_000.0;
+                persp.fov = fov;
             }
         }
         ProjectionMode::Orthographic => {
@@ -955,7 +1006,6 @@ fn apply_projection(
             // per world unit" — useless for a metre-scale 3D scene.
             // FixedVertical pins the visible world-height directly in
             // metres, independent of viewport pixel size.
-            let fov: f32 = std::f32::consts::FRAC_PI_4;
             let viewport_height = 2.0 * distance * (fov * 0.5).tan();
             if !matches!(*projection, Projection::Orthographic(_)) {
                 let mut ortho = OrthographicProjection::default_3d();
@@ -976,9 +1026,10 @@ fn apply_projection(
 fn update_camera_projection(
     orbit: Res<OrbitCameraState>,
     viewport: Option<Res<ViewportState>>,
+    fov: Res<EditorViewportFov>,
     mut camera_query: Query<&mut Projection, With<EditorCamera>>,
 ) {
-    if !orbit.is_changed() {
+    if !orbit.is_changed() && !fov.is_changed() {
         return;
     }
 
@@ -992,7 +1043,7 @@ fn update_camera_projection(
         .map(|v| v.screen_size.x / v.screen_size.y)
         .unwrap_or(16.0 / 9.0);
 
-    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect);
+    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
 }
 
 // ── Multi-viewport plumbing ─────────────────────────────────────────────────
@@ -1117,6 +1168,7 @@ fn mirror_focused_orbit_out(
 fn apply_secondary_viewport_cameras(
     viewports: Res<renzora::core::viewport_types::Viewports>,
     vp_settings: Option<Res<ViewportSettings>>,
+    fov: Res<EditorViewportFov>,
     mut cameras: Query<(&ViewportCamera, &mut Transform, &mut Projection), Without<PlayModeCamera>>,
 ) {
     let focused = viewports.focused;
@@ -1142,7 +1194,7 @@ fn apply_secondary_viewport_cameras(
         // still tracks live input — but no camera ever reads a shared value,
         // which makes it structurally impossible for the views to converge.
         *transform = orbit.calculate_transform();
-        apply_projection(&mut projection, mode, slot.distance, slot.aspect());
+        apply_projection(&mut projection, mode, slot.distance, slot.aspect(), fov.0);
     }
 }
 
