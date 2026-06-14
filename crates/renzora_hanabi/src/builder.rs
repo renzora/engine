@@ -688,6 +688,47 @@ mod tests {
         }
     }
 
+    /// EVERY shipped `.particle` file in `assets/particles/` must parse against
+    /// the current schema and build into an EffectAsset without panicking.
+    /// Reads the directory at runtime (so new effects are covered automatically).
+    #[test]
+    fn all_shipped_effects_parse_and_build() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/particles");
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("cannot read {dir}: {e}"));
+        let mut count = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("particle") {
+                continue;
+            }
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let src = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    failures.push(format!("{name}: read error: {e}"));
+                    continue;
+                }
+            };
+            match ron::from_str::<HanabiEffectDefinition>(&src) {
+                Ok(def) => {
+                    let _ = build_complete_effect(&def);
+                    count += 1;
+                }
+                Err(e) => failures.push(format!("{name}: {e}")),
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} of {} .particle files failed to parse:\n{}",
+            failures.len(),
+            count + failures.len(),
+            failures.join("\n")
+        );
+        assert!(count > 50, "expected many effects, only parsed {count}");
+    }
+
     /// Direct coverage of the three features added to the builder.
     #[test]
     fn size_curve_attractors_and_ribbon_build() {
