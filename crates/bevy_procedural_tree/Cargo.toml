@@ -1,0 +1,26 @@
+[package]
+name = "bevy_procedural_tree"
+description = "Procedurally generated 3D trees for bevy (vendored + forked for renzora)"
+# Upstream: https://github.com/Affinator/bevy_procedural_tree (MIT OR Apache-2.0),
+# a Rust port of https://github.com/dgreenheck/ez-tree. Forked into the renzora
+# workspace to: drop the egui `inspector` feature (renzora has no egui), add
+# serde derives so `Tree` round-trips through renzora's reflect-based scene
+# serializer, and make the generated-leaf coupling editor-friendly. See README.md.
+authors = ["Affinator", "renzora engine"]
+version = "0.3.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Affinator/bevy_procedural_tree"
+
+[features]
+default = []
+# Use u32 mesh indices instead of u16 (needed for very dense trees).
+u32_indices = []
+
+[dependencies]
+bevy = { workspace = true }
+fastrand = "2.3"
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

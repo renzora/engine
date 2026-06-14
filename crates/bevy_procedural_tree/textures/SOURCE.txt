@@ -1,0 +1,10 @@
+Leaf textures (deciduous_leaf_color/normal/roughness.png)
+=========================================================
+Source: ambientCG "LeafSet005" — https://ambientcg.com/view?id=LeafSet005
+License: CC0 1.0 (public domain) — https://creativecommons.org/publicdomain/zero/1.0/
+
+Vendored from the upstream bevy_procedural_tree repository
+(assets/textures/deciduous_leaves/) and embedded into the crate binary via
+include_bytes! so the default leaf material works without shipping loose asset
+files. color = base color (RGBA, alpha = leaf cutout), normal = OpenGL normal
+map, roughness = roughness map.

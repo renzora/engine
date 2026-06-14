@@ -24,6 +24,7 @@ members = [
     "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_mod_outline",
+    "crates/bevy_procedural_tree",
     "crates/bevy_silk",
     "crates/vleue_navigator",
 ]
