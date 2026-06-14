@@ -117,6 +117,13 @@ pub struct AnimatorState {
     pub state_time: f32,
     /// Runtime animation parameters (floats, bools, triggers).
     pub params: AnimParams,
+    /// Loaded property-animation clip handles keyed by slot name (the
+    /// `property_tracks` half of each `.anim`, sampled by the custom property
+    /// sampler rather than Bevy's `AnimationPlayer`).
+    pub prop_clip_handles: HashMap<String, Handle<crate::property_playback::PropertyClip>>,
+    /// Playback time (seconds) for property animation, advanced independently
+    /// of the skeletal `AnimationPlayer` so property-only entities still animate.
+    pub prop_time: f32,
 }
 
 impl Default for AnimatorState {
@@ -135,6 +142,8 @@ impl Default for AnimatorState {
             current_state: None,
             state_time: 0.0,
             params: AnimParams::default(),
+            prop_clip_handles: HashMap::new(),
+            prop_time: 0.0,
         }
     }
 }

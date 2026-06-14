@@ -198,7 +198,7 @@ pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
 pub use timeline::*;
-pub use timeline_view::{timeline_view, TimelineHandle, TimelineView};
+pub use timeline_view::{timeline_view, TimelineHandle, TimelineView, LANE_INSET};
 
 pub use gallery::*;
 
@@ -208,6 +208,8 @@ pub struct WidgetsPlugin;
 impl Plugin for WidgetsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<popup::PointerOverOverlay>();
+        app.init_resource::<drag_value::WheelOverDragValue>();
+        app.init_resource::<drag_value::WheelGesture>();
         app.add_systems(
             Update,
             (
@@ -231,6 +233,8 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     drag_value::drag_value_drag,
+                    drag_value::drag_value_edit,
+                    drag_value::drag_value_scroll.before(scroll_area::scroll_wheel),
                     drag_value::drag_value_apply,
                     toggle_switch::switch_interact,
                     toggle_switch::switch_apply,

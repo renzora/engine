@@ -17,12 +17,18 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::{bind_bg, keyed_list, KeyedSnapshot};
 use crate::style::{Rgba, Theme, TimelineStyle};
 use crate::theme::{border, header_bg, rgb, section_bg};
+
+/// Left gutter (px) between the lane pane's edge and `t=0`, so the playhead and
+/// the `t=0` keyframe aren't flush against (and clipped by) the header column.
+/// The ruler, playhead, scrub mapping AND the caller's keyframe placement all
+/// add this, so everything stays aligned.
+pub const LANE_INSET: f32 = 14.0;
 
 /// Live geometry of a [`timeline_view`], owned on its root entity. The caller
 /// writes the fields each frame from its own state (via [`TimelineView::set_geom`])
@@ -203,6 +209,18 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
         .id();
     keyed_list(commands, lanes_bg, move |w| lane_bg_snapshot(w, root));
+    // Vertical gridlines (behind keyframes), aligned with the ruler ticks.
+    let gridlines = commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(0.0),
+            left: Val::Px(0.0),
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            ..default()
+        })
+        .id();
+    keyed_list(commands, gridlines, move |w| gridlines_snapshot(w, root));
     let clips = commands
         .spawn(Node {
             position_type: PositionType::Absolute,
@@ -213,7 +231,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             ..default()
         })
         .id();
-    commands.entity(lanes).add_children(&[lanes_bg, clips]);
+    commands.entity(lanes).add_children(&[lanes_bg, gridlines, clips]);
 
     let playhead = commands
         .spawn((
@@ -233,6 +251,41 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
         .id();
     bind_bg(commands, playhead, |w| tl_style(w).playhead.color());
 
+    // Grab handle at the top of the needle (a rounded tab + a downward point).
+    let handle = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(-5.25),
+                width: Val::Px(12.0),
+                height: Val::Px(9.0),
+                border_radius: BorderRadius::all(Val::Px(2.5)),
+                ..default()
+            },
+            BackgroundColor(st.playhead.color()),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    let point = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(6.0),
+                left: Val::Px(-2.75),
+                width: Val::Px(7.0),
+                height: Val::Px(7.0),
+                ..default()
+            },
+            BackgroundColor(st.playhead.color()),
+            UiTransform::from_rotation(Rot2::degrees(45.0)),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    bind_bg(commands, handle, |w| tl_style(w).playhead.color());
+    bind_bg(commands, point, |w| tl_style(w).playhead.color());
+    commands.entity(playhead).add_children(&[handle, point]);
+
     let scrub = commands
         .spawn((
             Node {
@@ -246,6 +299,9 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             BackgroundColor(Color::NONE),
             Interaction::default(),
             RelativeCursorPosition::default(),
+            // Grab cursor over the whole scrub surface (the needle + keys sit
+            // beneath it, so hovering them shows the grab cursor too).
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
             TlScrub { root },
             Name::new("timeline-view-scrub"),
         ))
@@ -265,25 +321,7 @@ fn ruler_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
     let ruler_h = st.ruler_height;
     let (major_col, minor_col) = (st.tick_major.color(), st.tick_minor.color());
 
-    let interval = if zoom >= 200.0 {
-        0.5
-    } else if zoom >= 80.0 {
-        1.0
-    } else if zoom >= 30.0 {
-        2.0
-    } else {
-        5.0
-    };
-    let mut ticks: Vec<(f32, bool)> = Vec::new();
-    let mut t = (scroll / interval).floor() * interval;
-    let end = scroll + 4000.0 / zoom;
-    while t <= end && t <= dur + interval {
-        if t >= 0.0 {
-            let major = (t % (interval * 5.0)).abs() < 0.001;
-            ticks.push((t, major));
-        }
-        t += interval;
-    }
+    let (ticks, label_step) = timeline_ticks(zoom, scroll, dur);
     let items: Vec<(u64, u64)> = ticks
         .iter()
         .map(|(time, major)| {
@@ -298,7 +336,7 @@ fn ruler_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
             let (time, major) = ticks[i];
-            let x = (time - scroll) * zoom;
+            let x = (time - scroll) * zoom + LANE_INSET;
             let (col, th) = if major { (major_col, 9.0) } else { (minor_col, 4.0) };
             let tick = c
                 .spawn((
@@ -328,8 +366,12 @@ fn ruler_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
                 .id();
             c.entity(tick).add_child(mark);
             if major {
-                let label = if time >= 60.0 {
+                let label = if label_step < 0.2 {
+                    format!("f{}", (time * 30.0).round() as i64)
+                } else if time >= 60.0 {
                     format!("{}:{:04.1}", (time / 60.0) as u32, time % 60.0)
+                } else if label_step < 1.0 {
+                    format!("{:.2}s", time)
                 } else {
                     format!("{:.0}s", time)
                 };
@@ -344,6 +386,89 @@ fn ruler_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
                 c.entity(tick).add_child(lbl);
             }
             tick
+        }),
+    }
+}
+
+/// Shared tick generation for the ruler and the lane gridlines, so the two stay
+/// aligned. Returns `(ticks, label_step)` where each tick is `(time, is_major)`;
+/// major (labeled) ticks land on round `label_step`-second boundaries, with
+/// `divs` minor gridlines between each. `label_step` drives the label format.
+fn timeline_ticks(zoom: f32, scroll: f32, dur: f32) -> (Vec<(f32, bool)>, f32) {
+    // Labeled spacing (seconds) — a round number scaled to keep labels readable.
+    let label_step = if zoom >= 700.0 {
+        1.0 / 30.0 // per-frame
+    } else if zoom >= 360.0 {
+        0.25
+    } else if zoom >= 160.0 {
+        0.5
+    } else if zoom >= 80.0 {
+        1.0
+    } else if zoom >= 40.0 {
+        2.0
+    } else if zoom >= 16.0 {
+        5.0
+    } else {
+        10.0
+    };
+    // Minor gridlines between labels.
+    let divs: i64 = if zoom >= 80.0 { 4 } else { 2 };
+    let minor = label_step / divs as f32;
+    // Index-based generation avoids float-modulo drift; major = on a label boundary.
+    let mut ticks: Vec<(f32, bool)> = Vec::new();
+    let start_i = (scroll / minor).floor() as i64;
+    let end = scroll + 4000.0 / zoom;
+    let mut i = start_i;
+    loop {
+        let t = i as f32 * minor;
+        if t > end || t > dur + minor {
+            break;
+        }
+        if t >= 0.0 {
+            ticks.push((t, i.rem_euclid(divs) == 0));
+        }
+        i += 1;
+    }
+    (ticks, label_step)
+}
+
+/// Vertical gridlines down the lanes, aligned with the ruler ticks. Major ticks
+/// are slightly brighter than minor ones; both are dim so keyframes stay legible.
+fn gridlines_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
+    let Some(v) = world.get::<TimelineView>(root) else { return empty() };
+    let (zoom, scroll, dur) = (v.zoom.max(1.0), v.scroll, v.duration);
+    let st = tl_style(world);
+    let (ticks, _) = timeline_ticks(zoom, scroll, dur);
+    let major = st.tick_major.color().with_alpha(0.16);
+    let minor = st.tick_minor.color().with_alpha(0.07);
+    let items: Vec<(u64, u64)> = ticks
+        .iter()
+        .map(|(time, is_major)| {
+            let mut k = hasher();
+            time.to_bits().hash(&mut k);
+            let mut h = hasher();
+            (zoom.to_bits(), scroll.to_bits(), is_major, rgba_key(st.tick_major)).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, _f, i| {
+            let (time, is_major) = ticks[i];
+            let x = (time - scroll) * zoom + LANE_INSET;
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(x),
+                    top: Val::Px(0.0),
+                    width: Val::Px(1.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(if is_major { major } else { minor }),
+                bevy::ui::FocusPolicy::Pass,
+            ))
+            .id()
         }),
     }
 }
@@ -381,13 +506,15 @@ fn timeline_view_playhead(
 ) {
     for (e, ph) in &phs {
         let Ok(v) = views.get(ph.root) else { continue };
-        let x = (v.playhead - v.scroll) * v.zoom;
+        let raw = (v.playhead - v.scroll) * v.zoom;
+        let x = raw + LANE_INSET;
         if let Ok(mut n) = nodes.get_mut(e) {
-            let l = Val::Px(x.max(0.0));
+            let l = Val::Px(x);
             if n.left != l {
                 n.left = l;
             }
-            let d = if x >= 0.0 { Display::Flex } else { Display::None };
+            // Hide only when the playhead is left of the window start.
+            let d = if raw >= 0.0 { Display::Flex } else { Display::None };
             if n.display != d {
                 n.display = d;
             }
@@ -408,7 +535,8 @@ fn timeline_view_scrub(
         let Ok(mut v) = views.get_mut(s.root) else { continue };
         let width = cn.size().x * cn.inverse_scale_factor();
         // bevy's `normalized` is centered: (-0.5,-0.5) top-left .. (0.5,0.5) bottom-right.
-        let t = (norm.x + 0.5) * width / v.zoom.max(1.0) + v.scroll;
+        let px = (norm.x + 0.5) * width;
+        let t = (px - LANE_INSET).max(0.0) / v.zoom.max(1.0) + v.scroll;
         v.scrub_out = Some(t.clamp(0.0, v.duration.max(0.0)));
     }
 }

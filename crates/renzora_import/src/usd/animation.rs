@@ -30,5 +30,6 @@ pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {
         name: anim.name.clone(),
         duration: anim.duration,
         tracks,
+        property_tracks: Vec::new(),
     }
 }

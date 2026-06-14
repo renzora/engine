@@ -134,6 +134,7 @@ impl Plugin for ViewportPlugin {
                         .after(model_flatten::flatten_pending_scenes),
                     model_drop::bind_material_refs,
                     model_drop::auto_discover_animations,
+                    model_drop::mark_models_selectable_as_unit,
                     model_drop::align_models_to_ground,
                 ),
                 (

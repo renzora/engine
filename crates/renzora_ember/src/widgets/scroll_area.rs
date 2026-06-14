@@ -187,6 +187,7 @@ fn content_h(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
 /// (dropdown / menu / popup) stacked above the candidate swallows the wheel.
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
+    capture: Res<super::drag_value::WheelOverDragValue>,
     mut areas: Query<(Entity, &RelativeCursorPosition, &ComputedNode, &mut EmberScroll)>,
     overlays: Query<(&RelativeCursorPosition, &ComputedNode, &Node), With<super::popup::OverlaySurface>>,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
@@ -197,6 +198,11 @@ pub(crate) fn scroll_wheel(
         dy += ev.y;
     }
     if dy == 0.0 {
+        return;
+    }
+    // A value field under the cursor claims the wheel (scrubs its value); don't
+    // also scroll the panel beneath it.
+    if capture.0 {
         return;
     }
     let modal_open = !modals.is_empty();

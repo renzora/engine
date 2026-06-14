@@ -48,6 +48,8 @@ pub struct AnimationEditorState {
     pub auto_fit_clip: Option<String>,
     /// Height (pixels) of each keyframe track row. User-resizable.
     pub track_height: f32,
+    /// When armed, edits to tracked property fields auto-key at the playhead.
+    pub record_enabled: bool,
 }
 
 impl Default for AnimationEditorState {
@@ -66,6 +68,7 @@ impl Default for AnimationEditorState {
             clip_duration: None,
             auto_fit_clip: None,
             track_height: 22.0,
+            record_enabled: false,
         }
     }
 }
@@ -90,6 +93,7 @@ enum AnimEditorAction {
     SetTimelineScroll(f32),
     SetSnapEnabled(bool),
     SetTrackHeight(f32),
+    SetRecordEnabled(bool),
     AutoFitDone(String),
     SetParam { name: String, value: f32 },
     SetBoolParam { name: String, value: bool },
@@ -146,6 +150,9 @@ fn sync_anim_editor_bridge(
             AnimEditorAction::SetTrackHeight(h) => {
                 editor_state.track_height = h.clamp(14.0, 96.0);
             }
+            AnimEditorAction::SetRecordEnabled(enabled) => {
+                editor_state.record_enabled = enabled;
+            }
             AnimEditorAction::AutoFitDone(clip_name) => {
                 editor_state.auto_fit_clip = Some(clip_name);
             }
@@ -188,6 +195,30 @@ fn sync_anim_editor_bridge(
                             weight,
                         });
                 }
+            }
+        }
+    }
+}
+
+/// Single owner of the preview playhead: advances `scrub_time` while Play is on,
+/// independent of whether the entity has a skeleton, property tracks, or the
+/// Studio Preview panel open. Wraps (loop) or stops at the clip duration. The
+/// skeletal seek (`update_animation_preview`) and the property sampler both just
+/// read `scrub_time`.
+fn advance_preview_time(time: Res<Time>, mut state: ResMut<AnimationEditorState>) {
+    if !state.is_previewing {
+        return;
+    }
+    let speed = state.preview_speed;
+    state.scrub_time += time.delta_secs() * speed;
+
+    if let Some(duration) = state.clip_duration {
+        if duration > 0.0 && state.scrub_time >= duration {
+            if state.preview_looping {
+                state.scrub_time %= duration;
+            } else {
+                state.scrub_time = duration;
+                state.is_previewing = false;
             }
         }
     }
@@ -324,6 +355,15 @@ impl Plugin for AnimationEditorPlugin {
                 studio_preview::sync_studio_preview_activation,
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        );
+
+        // Single owner of the preview playhead. Runs even when no Studio Preview
+        // panel is mounted and for property-only / skeleton-less entities.
+        app.add_systems(
+            Update,
+            advance_preview_time
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(renzora::not_in_play_mode),
         );
 
         // Heavy studio-preview work: only run when the Studio Preview panel is

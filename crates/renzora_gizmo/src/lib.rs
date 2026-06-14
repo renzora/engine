@@ -1041,8 +1041,10 @@ fn handle_selection_shortcuts(
     }
 
     // Delete fires from any panel (e.g. selecting in the Hierarchy and
-    // pressing Delete without moving the cursor into the viewport).
-    if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
+    // pressing Delete without moving the cursor into the viewport). It is
+    // suppressed while a panel (e.g. the animation timeline with a keyframe
+    // selected) is consuming Delete to remove the keyframe, not the entity.
+    if keybindings.just_pressed(EditorAction::Delete, &keyboard) && !input_focus.suppress_entity_delete {
         let entities = selection.get_all();
         if !entities.is_empty() {
             selection.clear();

@@ -19,6 +19,7 @@ pub mod extract;
 pub mod graph_builder;
 pub mod layers;
 pub mod loader;
+pub mod property_playback;
 pub mod read_state;
 pub mod script_extension;
 pub mod sm_loader;
@@ -32,6 +33,7 @@ pub use component::{AnimClipSlot, AnimatorComponent, AnimatorState};
 pub use discovery::discover_animation_clips;
 pub use layers::{AnimationLayer, LayerBlendMode};
 pub use loader::AnimClipLoader;
+pub use property_playback::{PropertyClip, PropertyClipLoader};
 pub use read_state::AnimatorReadState;
 pub use state_machine::{
     AnimCondition, AnimParams, AnimState, AnimTransition, AnimationStateMachine, StateMotion,
@@ -55,9 +57,12 @@ impl Plugin for AnimationPlugin {
             .register_type::<AnimationLayer>()
             .register_type::<LayerBlendMode>()
             .init_asset::<AnimationStateMachine>()
+            .init_asset::<PropertyClip>()
             .init_asset_loader::<AnimClipLoader>()
+            .init_asset_loader::<PropertyClipLoader>()
             .init_asset_loader::<sm_loader::AnimSmLoader>()
-            .init_resource::<AnimationCommandQueue>();
+            .init_resource::<AnimationCommandQueue>()
+            .init_resource::<property_playback::PropAnimDebug>();
 
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);
@@ -84,6 +89,15 @@ impl Plugin for AnimationPlugin {
                 tween::update_procedural_tweens,
             )
                 .chain(),
+        );
+
+        // Property animation runs in the exported runtime / editor play mode.
+        // While editing, the animation-editor scrub preview drives sampling.
+        app.add_systems(
+            Update,
+            property_playback::apply_runtime_property_animation
+                .after(systems::process_animation_commands)
+                .run_if(property_playback::property_animation_active),
         );
 
         app.add_systems(
@@ -138,6 +152,7 @@ fn apply_asset_path_changes_to_animators(
                 state.graph_handle = None;
                 state.current_clip = None;
                 state.clip_handles.clear();
+                state.prop_clip_handles.clear();
             }
         }
     }

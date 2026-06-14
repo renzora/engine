@@ -26,8 +26,7 @@ pub struct PreviewPlaybackState {
 /// Advance scrub time when previewing, clamp/wrap at clip duration,
 /// and seek both the source entity's and the preview model's AnimationPlayer.
 pub fn update_animation_preview(
-    time: Res<Time>,
-    mut editor_state: ResMut<AnimationEditorState>,
+    editor_state: Res<AnimationEditorState>,
     animators: Query<&AnimatorState>,
     mut players: Query<(&mut AnimationPlayer, Option<&mut AnimationTransitions>)>,
     preview_roots: Query<Entity, With<StudioPreviewModel>>,
@@ -61,23 +60,8 @@ pub fn update_animation_preview(
         return;
     };
 
-    // Advance scrub time if previewing
-    if editor_state.is_previewing {
-        editor_state.scrub_time += time.delta_secs() * editor_state.preview_speed;
-
-        // Wrap or stop at clip end
-        if let Some(duration) = editor_state.clip_duration {
-            if duration > 0.0 && editor_state.scrub_time >= duration {
-                if editor_state.preview_looping {
-                    editor_state.scrub_time = 0.0;
-                } else {
-                    editor_state.scrub_time = 0.0;
-                    editor_state.is_previewing = false;
-                }
-            }
-        }
-    }
-
+    // The playhead (scrub_time) is advanced globally by `advance_preview_time`
+    // (lib.rs); here we only seek the players to it.
     let scrub = editor_state.scrub_time;
 
     // Seek the source entity's AnimationPlayer

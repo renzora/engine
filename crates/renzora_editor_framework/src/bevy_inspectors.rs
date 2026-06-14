@@ -497,20 +497,19 @@ fn transform_entry() -> InspectorEntry {
                 name: "Rotation",
                 field_type: FieldType::Vec3 { speed: 0.5 },
                 get_fn: |world, entity| {
-                    world.get::<Transform>(entity).map(|t| {
-                        let (x, y, z) = t.rotation.to_euler(EulerRot::XYZ);
-                        FieldValue::Vec3([x.to_degrees(), y.to_degrees(), z.to_degrees()])
-                    })
+                    let t = world.get::<Transform>(entity)?;
+                    // Prefer the typed-Euler cache (so the field holds 0..360+ and
+                    // the middle axis doesn't snap at 90°); fall back to deriving
+                    // from the quaternion when something else moved the entity.
+                    let cache = world.get::<renzora::EditorEulerCache>(entity);
+                    let deg = renzora::rotation_euler_deg(t.rotation, cache, "transform");
+                    Some(FieldValue::Vec3(deg.to_array()))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Vec3(v) = val {
+                        let q = renzora::cache_euler_deg(world, entity, "transform", Vec3::from_array(v));
                         if let Some(mut t) = world.get_mut::<Transform>(entity) {
-                            t.rotation = Quat::from_euler(
-                                EulerRot::XYZ,
-                                v[0].to_radians(),
-                                v[1].to_radians(),
-                                v[2].to_radians(),
-                            );
+                            t.rotation = q;
                         }
                     }
                 },
@@ -1174,20 +1173,24 @@ fn environment_map_light_entry() -> InspectorEntry {
                 name: "Rotation",
                 field_type: FieldType::Vec3 { speed: 0.5 },
                 get_fn: |world, entity| {
-                    world.get::<EnvironmentMapLight>(entity).map(|l| {
-                        let (x, y, z) = l.rotation.to_euler(EulerRot::XYZ);
-                        FieldValue::Vec3([x.to_degrees(), y.to_degrees(), z.to_degrees()])
-                    })
+                    let l = world.get::<EnvironmentMapLight>(entity)?;
+                    // Same typed-Euler cache as Transform, but under its own key so
+                    // the two rotation fields on one entity don't collide.
+                    let cache = world.get::<renzora::EditorEulerCache>(entity);
+                    let deg =
+                        renzora::rotation_euler_deg(l.rotation, cache, "environment_map_light");
+                    Some(FieldValue::Vec3(deg.to_array()))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Vec3(v) = val {
+                        let q = renzora::cache_euler_deg(
+                            world,
+                            entity,
+                            "environment_map_light",
+                            Vec3::from_array(v),
+                        );
                         if let Some(mut l) = world.get_mut::<EnvironmentMapLight>(entity) {
-                            l.rotation = Quat::from_euler(
-                                EulerRot::XYZ,
-                                v[0].to_radians(),
-                                v[1].to_radians(),
-                                v[2].to_radians(),
-                            );
+                            l.rotation = q;
                         }
                     }
                 },

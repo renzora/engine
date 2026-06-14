@@ -49,6 +49,9 @@ pub fn rehydrate_animators(
                 );
                 let handle: Handle<AnimationClip> = asset_server.load(&slot.path);
                 state.clip_handles.insert(slot.name.clone(), handle);
+                let prop_handle = asset_server
+                    .load::<crate::property_playback::PropertyClip>(&slot.path);
+                state.prop_clip_handles.insert(slot.name.clone(), prop_handle);
             }
         }
 
@@ -72,6 +75,9 @@ pub fn rehydrate_animators(
         state
             .clip_handles
             .retain(|name, _| current_slot_names.contains(name));
+        state
+            .prop_clip_handles
+            .retain(|name, _| current_slot_names.contains(name));
 
         let mut added_any = false;
         for slot in &animator.clips {
@@ -86,6 +92,11 @@ pub fn rehydrate_animators(
                 let handle: Handle<AnimationClip> = asset_server.load(&slot.path);
                 state.clip_handles.insert(slot.name.clone(), handle);
                 added_any = true;
+            }
+            if !state.prop_clip_handles.contains_key(&slot.name) {
+                let prop_handle = asset_server
+                    .load::<crate::property_playback::PropertyClip>(&slot.path);
+                state.prop_clip_handles.insert(slot.name.clone(), prop_handle);
             }
         }
 

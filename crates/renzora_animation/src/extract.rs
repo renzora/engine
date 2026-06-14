@@ -8,6 +8,7 @@ pub fn create_empty_clip(name: &str, duration: f32) -> AnimClip {
         name: name.to_string(),
         duration,
         tracks: Vec::new(),
+        property_tracks: Vec::new(),
     }
 }
 

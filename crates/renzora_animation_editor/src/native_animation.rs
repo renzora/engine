@@ -198,6 +198,15 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     bind_display(commands, scan_btn, crate::setup::can_scan_clips);
 
+    let create_anim_btn = crate::setup::action_button(
+        commands,
+        fonts,
+        "plus-circle",
+        "Create Animation",
+        crate::setup::CreateAnimBtn,
+    );
+    bind_display(commands, create_anim_btn, crate::setup::can_create_anim);
+
     let feedback = crate::setup::feedback_label(commands, fonts);
 
     let candidates = crate::setup::candidates_list(commands);
@@ -207,7 +216,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands
         .entity(note)
-        .add_children(&[note_ic, note_lbl, hint_lbl, scan_btn, feedback, candidates]);
+        .add_children(&[note_ic, note_lbl, hint_lbl, scan_btn, create_anim_btn, feedback, candidates]);
     bind_display(commands, note, |w| !ready(w));
 
     // Body: collapsible sections.

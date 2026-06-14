@@ -204,3 +204,362 @@ fn read_value_from_reflect(field: &dyn bevy::reflect::PartialReflect) -> Option<
     }
     None
 }
+
+// ============================================================================
+// Reflected SET (write a component field by string path)
+// ============================================================================
+
+/// Write a reflected component field value into the world. Mirrors
+/// [`get_reflected_field`]: case-insensitive component short-name lookup,
+/// friendly field-name aliases, dotted/tuple-index path navigation. Returns
+/// `false` if the component/field is missing or the value kind doesn't fit.
+pub fn set_reflected_field(
+    world: &mut World,
+    entity: Entity,
+    component_type: &str,
+    field_path: &str,
+    value: &PropertyValue,
+) -> bool {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+
+    let query = component_type.to_lowercase();
+    let Some(registration) = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    }) else {
+        return false;
+    };
+
+    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+        return false;
+    };
+
+    let entity_ref = world.entity(entity);
+    let Some(reflected) = reflect_component.reflect(entity_ref) else {
+        return false;
+    };
+    let Ok(mut cloned) = reflected.reflect_clone() else {
+        return false;
+    };
+
+    let resolved_path = resolve_field_alias(component_type, field_path);
+    let parts: Vec<&str> = resolved_path.split('.').collect();
+    if set_field_by_path(cloned.as_mut(), &parts, value) {
+        let mut entity_mut = world.entity_mut(entity);
+        reflect_component.apply(&mut entity_mut, cloned.as_partial_reflect());
+        true
+    } else {
+        false
+    }
+}
+
+/// Recursively navigate a reflected struct or tuple-struct by field path and set
+/// the final value. Numeric path parts (e.g. "0") index into tuple structs.
+pub fn set_field_by_path(
+    reflect: &mut dyn bevy::reflect::PartialReflect,
+    path: &[&str],
+    value: &PropertyValue,
+) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+
+    let field_name = path[0];
+    let remaining = &path[1..];
+
+    match reflect.reflect_mut() {
+        bevy::reflect::ReflectMut::Struct(s) => {
+            let Some(field) = s.field_mut(field_name) else {
+                return false;
+            };
+            if remaining.is_empty() {
+                apply_value_to_reflect(field, value)
+            } else {
+                set_field_by_path(field, remaining, value)
+            }
+        }
+        bevy::reflect::ReflectMut::TupleStruct(ts) => {
+            let Ok(idx) = field_name.parse::<usize>() else {
+                return false;
+            };
+            let Some(field) = ts.field_mut(idx) else {
+                return false;
+            };
+            if remaining.is_empty() {
+                apply_value_to_reflect(field, value)
+            } else {
+                set_field_by_path(field, remaining, value)
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Apply a [`PropertyValue`] onto a reflected field, coercing numeric types.
+pub fn apply_value_to_reflect(
+    field: &mut dyn bevy::reflect::PartialReflect,
+    value: &PropertyValue,
+) -> bool {
+    match value {
+        PropertyValue::Float(v) => {
+            if let Some(current) = field.try_downcast_mut::<f32>() {
+                *current = *v;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<f64>() {
+                *current = *v as f64;
+                return true;
+            }
+            false
+        }
+        PropertyValue::Int(v) => {
+            if let Some(current) = field.try_downcast_mut::<i32>() {
+                *current = *v as i32;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<i64>() {
+                *current = *v;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<u32>() {
+                *current = *v as u32;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<usize>() {
+                *current = *v as usize;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<f32>() {
+                *current = *v as f32;
+                return true;
+            }
+            false
+        }
+        PropertyValue::Bool(v) => {
+            if let Some(current) = field.try_downcast_mut::<bool>() {
+                *current = *v;
+                return true;
+            }
+            false
+        }
+        PropertyValue::String(v) => {
+            if let Some(current) = field.try_downcast_mut::<String>() {
+                *current = v.clone();
+                return true;
+            }
+            false
+        }
+        PropertyValue::Vec3(v) => {
+            if let Some(current) = field.try_downcast_mut::<Vec3>() {
+                *current = Vec3::new(v[0], v[1], v[2]);
+                return true;
+            }
+            false
+        }
+        PropertyValue::Color(v) => {
+            if let Some(current) = field.try_downcast_mut::<Color>() {
+                *current = Color::srgba(v[0], v[1], v[2], v[3]);
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<Vec4>() {
+                *current = Vec4::new(v[0], v[1], v[2], v[3]);
+                return true;
+            }
+            false
+        }
+    }
+}
+
+// ============================================================================
+// Component / field enumeration (for inspectors, scripting, the anim picker)
+// ============================================================================
+
+/// Read ALL fields of a reflected component, returning a flat map. Nested
+/// structs are flattened with dot notation (e.g. "color.x"); types that read as
+/// a single [`PropertyValue`] (Vec3, Color, …) stop there rather than recursing.
+pub fn get_all_component_fields(
+    world: &World,
+    entity: Entity,
+    component_type: &str,
+) -> Option<std::collections::HashMap<String, PropertyValue>> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+
+    let query = component_type.to_lowercase();
+    let registration = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    })?;
+
+    let reflect_component = registration.data::<ReflectComponent>()?;
+    let entity_ref = world.entity(entity);
+    let reflected = reflect_component.reflect(entity_ref)?;
+
+    let mut fields = std::collections::HashMap::new();
+    collect_struct_fields(reflected, "", &mut fields);
+    Some(fields)
+}
+
+fn collect_struct_fields(
+    reflect: &dyn bevy::reflect::PartialReflect,
+    prefix: &str,
+    out: &mut std::collections::HashMap<String, PropertyValue>,
+) {
+    match reflect.reflect_ref() {
+        ReflectRef::Struct(s) => {
+            for i in 0..s.field_len() {
+                let name = s.name_at(i).unwrap_or("?");
+                let full_name = if prefix.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{}.{}", prefix, name)
+                };
+                let Some(field) = s.field_at(i) else { continue };
+                if let Some(val) = read_value_from_reflect(field) {
+                    out.insert(full_name, val);
+                } else {
+                    collect_struct_fields(field, &full_name, out);
+                }
+            }
+        }
+        _ => {
+            if let Some(val) = read_value_from_reflect(reflect) {
+                if !prefix.is_empty() {
+                    out.insert(prefix.to_string(), val);
+                }
+            }
+        }
+    }
+}
+
+/// Get the short names of all reflected components actually present on an entity.
+pub fn get_entity_component_names(world: &World, entity: Entity) -> Vec<String> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+    let mut names = Vec::new();
+
+    let entity_ref = world.entity(entity);
+    let archetype = entity_ref.archetype();
+
+    for &component_id in archetype.components() {
+        let Some(info) = world.components().get_info(component_id) else {
+            continue;
+        };
+        let type_id = match info.type_id() {
+            Some(id) => id,
+            None => continue,
+        };
+        if let Some(registration) = registry.get(type_id) {
+            if registration.data::<ReflectComponent>().is_some() {
+                let path = registration.type_info().type_path();
+                let short = path.rsplit("::").next().unwrap_or(path);
+                names.push(short.to_string());
+            }
+        }
+    }
+
+    names.sort();
+    names
+}
+
+// ============================================================================
+// Animatable-field discovery (property-animation "Add Property" picker)
+// ============================================================================
+
+/// The animatable value kind of a field — used to filter/display in the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimFieldKind {
+    Float,
+    Vec3,
+    Quat,
+    Color,
+    Bool,
+}
+
+/// One animatable field offered by the property-animation picker.
+#[derive(Debug, Clone)]
+pub struct AnimatableField {
+    /// Reflected component short-name (e.g. "transform", "directional_light").
+    pub component: String,
+    /// Dotted reflection field path (e.g. "translation", "illuminance").
+    pub field: String,
+    pub kind: AnimFieldKind,
+    /// Human-friendly label for display (e.g. "Translation").
+    pub label: String,
+}
+
+/// Enumerate the animatable fields of every reflected component on `entity`.
+///
+/// Transform is special-cased to its three transform channels (the generic
+/// reflection path can't surface `Quat` rotation as one field). Other components
+/// are enumerated via reflection and filtered to interpolatable value kinds.
+pub fn list_animatable_fields(world: &World, entity: Entity) -> Vec<AnimatableField> {
+    let mut out = Vec::new();
+    for component in get_entity_component_names(world, entity) {
+        let lc = component.to_lowercase();
+        if lc == "transform" {
+            for (field, kind) in [
+                ("translation", AnimFieldKind::Vec3),
+                // Rotation animates as Euler degrees (Vec3) so a 0→360 key pair
+                // produces a real spin (quaternion slerp would take the short path).
+                ("rotation", AnimFieldKind::Vec3),
+                ("scale", AnimFieldKind::Vec3),
+            ] {
+                out.push(AnimatableField {
+                    component: component.clone(),
+                    field: field.to_string(),
+                    kind,
+                    label: prettify_field(field),
+                });
+            }
+            continue;
+        }
+        let Some(fields) = get_all_component_fields(world, entity, &component) else {
+            continue;
+        };
+        let mut entries: Vec<(String, AnimFieldKind)> = fields
+            .into_iter()
+            .filter_map(|(field, value)| anim_field_kind(&value).map(|k| (field, k)))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (field, kind) in entries {
+            let label = prettify_field(&field);
+            out.push(AnimatableField {
+                component: component.clone(),
+                field,
+                kind,
+                label,
+            });
+        }
+    }
+    out
+}
+
+fn anim_field_kind(value: &PropertyValue) -> Option<AnimFieldKind> {
+    match value {
+        PropertyValue::Float(_) | PropertyValue::Int(_) => Some(AnimFieldKind::Float),
+        PropertyValue::Vec3(_) => Some(AnimFieldKind::Vec3),
+        PropertyValue::Color(_) => Some(AnimFieldKind::Color),
+        PropertyValue::Bool(_) => Some(AnimFieldKind::Bool),
+        PropertyValue::String(_) => None,
+    }
+}
+
+/// Title-case a dotted field path for display ("base_color" -> "Base Color").
+fn prettify_field(field: &str) -> String {
+    field
+        .replace(['_', '.'], " ")
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}

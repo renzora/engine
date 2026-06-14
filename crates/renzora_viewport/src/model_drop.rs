@@ -644,6 +644,28 @@ pub fn align_models_to_ground(
     }
 }
 
+/// System: make imported models selectable as a single unit in the viewport.
+///
+/// Without this, a viewport click resolves to the leaf-most named child mesh
+/// (see `renzora_gizmo::find_named_ancestor`), so clicking a model selects a
+/// hidden sub-mesh — the Hierarchy shows no selection, and the gizmo ends up
+/// rotating a different entity than the one the animation editor reads (which
+/// resolves up to the `AnimatorComponent`/model root). Tagging the model root
+/// (the `MeshInstanceData` bearer) with `SelectionStop` makes a click select
+/// the root — the visible Hierarchy row and the entity that owns the animator.
+/// Sub-meshes remain selectable via the Hierarchy tree. Covers fresh imports
+/// and scene-loaded models (keyed on the persistent `MeshInstanceData`).
+pub fn mark_models_selectable_as_unit(
+    mut commands: Commands,
+    models: Query<(Entity, &MeshInstanceData), Without<renzora::SelectionStop>>,
+) {
+    for (entity, data) in &models {
+        if data.model_path.is_some() {
+            commands.entity(entity).try_insert(renzora::SelectionStop);
+        }
+    }
+}
+
 /// System: auto-discover `.anim` files for entities loaded from scenes that have
 /// `MeshInstanceData` (a model) but no `AnimatorComponent` yet.
 pub fn auto_discover_animations(

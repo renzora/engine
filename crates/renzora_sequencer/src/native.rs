@@ -12,7 +12,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_text, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{timeline_view, TimelineView};
+use renzora_ember::widgets::{timeline_view, TimelineView, LANE_INSET};
 
 use crate::model::TrackKind;
 use crate::runtime::{push_action, track_clip_views, SequencerAction, SequencerBridge, SequencerState};
@@ -240,7 +240,7 @@ fn clips_snapshot(world: &World) -> KeyedSnapshot {
 
 #[allow(clippy::too_many_arguments)]
 fn clip_node(commands: &mut Commands, fonts: &EmberFonts, ti: usize, color: (u8, u8, u8), is_marker: bool, start: f32, dur: f32, name: &str, zoom: f32, scroll: f32, th: f32) -> Entity {
-    let left = (start - scroll) * zoom;
+    let left = (start - scroll) * zoom + LANE_INSET;
     let top = ti as f32 * th + 2.0;
     if is_marker {
         // A thin flag bar at the marker time.

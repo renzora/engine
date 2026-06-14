@@ -153,6 +153,7 @@ pub fn extract_animations_from_glb(
             name: clip_name.clone(),
             duration,
             tracks,
+            property_tracks: Vec::new(),
         };
         crate::anim_decimate::decimate_clip(&mut clip);
 

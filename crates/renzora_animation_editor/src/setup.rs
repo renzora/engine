@@ -23,7 +23,7 @@ use bevy::prelude::*;
 use renzora::core::{CurrentProject, HideInHierarchy, MeshInstanceData};
 use renzora_animation::{
     state_machine::{AnimState, AnimationStateMachine, StateMotion},
-    AnimatorComponent, AnimatorState,
+    AnimClip, AnimClipSlot, AnimatorComponent, AnimatorState,
 };
 use renzora_editor_framework::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -39,7 +39,7 @@ impl Plugin for AnimSetupPlugin {
         app.init_resource::<SetupFeedback>();
         app.add_systems(
             Update,
-            (select_entity_click, scan_clips_click, create_sm_click, clear_feedback_on_select)
+            (select_entity_click, scan_clips_click, create_sm_click, create_anim_click, clear_feedback_on_select)
                 .run_if(in_state(SplashState::Editor)),
         );
     }
@@ -66,6 +66,12 @@ pub struct ScanClipsBtn;
 /// "Create State Machine" — shown when the animator has clips but no `.animsm`.
 #[derive(Component)]
 pub struct CreateSmBtn;
+
+/// "Create Animation" — shown when the selected entity has no clips. Makes an
+/// empty `.anim` for authoring property tracks (works on non-model entities
+/// like a sun light that have no skeleton to import clips from).
+#[derive(Component)]
+pub struct CreateAnimBtn;
 
 // ── World accessors ──────────────────────────────────────────────────────────
 
@@ -94,6 +100,15 @@ pub fn can_create_sm(w: &World) -> bool {
     selected_entity(w)
         .and_then(|e| w.get::<AnimatorComponent>(e))
         .is_some_and(|a| !a.clips.is_empty() && a.state_machine.is_none())
+}
+
+/// Whether the "Create Animation" action applies: a selected entity with no
+/// clip slots (no animator, or an animator that has none yet).
+pub fn can_create_anim(w: &World) -> bool {
+    let Some(e) = selected_entity(w) else {
+        return false;
+    };
+    w.get::<AnimatorComponent>(e).is_none_or(|a| a.clips.is_empty())
 }
 
 /// Feedback line for the selected entity, if any.
@@ -504,6 +519,81 @@ fn create_sm_click(
         }
         // Rebuild the runtime state so the state machine asset gets loaded.
         world.entity_mut(entity).remove::<AnimatorState>();
+        set_feedback(world, entity, format!("Created {}", rel_path), false);
+    });
+}
+
+/// "Create Animation": write an empty `.anim` under `animations/<Entity>.anim`,
+/// attach an [`AnimatorComponent`] (if missing) with that clip as default, and
+/// select it — the starting point for authoring property tracks on any entity.
+fn create_anim_click(
+    q: Query<&Interaction, (With<CreateAnimBtn>, Changed<Interaction>)>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    cmds.push(|world: &mut World| {
+        let Some(entity) = world
+            .get_resource::<AnimationEditorState>()
+            .and_then(|s| s.selected_entity)
+        else {
+            return;
+        };
+        let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone())
+        else {
+            set_feedback(world, entity, "No project open".into(), true);
+            return;
+        };
+
+        let raw_name = world
+            .get::<Name>(entity)
+            .map(|n| n.as_str().to_string())
+            .unwrap_or_else(|| "entity".into());
+        let safe: String = raw_name
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+            .collect();
+        let clip_name = if safe.is_empty() { "animation".into() } else { safe };
+        let rel_path = format!("animations/{}.anim", clip_name);
+        let abs_path = project_root.join(&rel_path);
+
+        if !abs_path.exists() {
+            let clip = AnimClip {
+                name: clip_name.clone(),
+                duration: 2.0,
+                tracks: Vec::new(),
+                property_tracks: Vec::new(),
+            };
+            if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
+                set_feedback(world, entity, format!("Write failed: {e}"), true);
+                return;
+            }
+        }
+
+        // Attach/extend the animator with the new clip and make it default.
+        if let Some(mut animator) = world.get_mut::<AnimatorComponent>(entity) {
+            if animator.get_slot(&clip_name).is_none() {
+                animator.add_clip(AnimClipSlot::new(clip_name.clone(), rel_path.clone()));
+            }
+            if animator.default_clip.is_none() {
+                animator.default_clip = Some(clip_name.clone());
+            }
+        } else {
+            let mut animator = AnimatorComponent::new();
+            animator.add_clip(AnimClipSlot::new(clip_name.clone(), rel_path.clone()));
+            animator.default_clip = Some(clip_name.clone());
+            world.entity_mut(entity).insert(animator);
+        }
+        // Rebuild the runtime state so the new clip loads.
+        world.entity_mut(entity).remove::<AnimatorState>();
+        if let Some(mut state) = world.get_resource_mut::<AnimationEditorState>() {
+            state.selected_clip = Some(clip_name.clone());
+            state.clip_duration = None;
+            state.auto_fit_clip = None;
+            state.scrub_time = 0.0;
+        }
         set_feedback(world, entity, format!("Created {}", rel_path), false);
     });
 }
