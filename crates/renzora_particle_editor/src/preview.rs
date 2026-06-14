@@ -4,10 +4,12 @@
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
+use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
+use bevy::ui::ComputedNode;
 use bevy_hanabi::prelude::*;
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor_framework::DockingState;
@@ -21,14 +23,16 @@ pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 #[derive(Resource)]
 pub struct ParticlePreviewImage {
     pub handle: Handle<Image>,
-    pub size: (u32, u32),
+    pub current_size: (u32, u32),
+    pub requested_size: (u32, u32),
 }
 
 impl Default for ParticlePreviewImage {
     fn default() -> Self {
         Self {
             handle: Handle::default(),
-            size: (512, 512),
+            current_size: (512, 512),
+            requested_size: (512, 512),
         }
     }
 }
@@ -41,6 +45,14 @@ pub struct ParticlePreviewLight;
 
 #[derive(Component)]
 pub struct ParticlePreviewEffect;
+
+#[derive(Component)]
+pub struct ParticlePreviewFloor;
+
+/// Marker for the preview panel's image node so the orbit-input system can tell
+/// when the cursor is over the preview (via its `RelativeCursorPosition`).
+#[derive(Component)]
+pub struct ParticlePreviewViewport;
 
 #[derive(Resource)]
 pub struct ParticlePreviewOrbit {
@@ -58,7 +70,7 @@ impl Default for ParticlePreviewOrbit {
             yaw: 0.0,
             pitch: 0.3,
             distance: 5.0,
-            target: Vec3::ZERO,
+            target: Vec3::new(0.0, 1.0, 0.0),
             auto_rotate: false,
             auto_rotate_speed: 0.2,
         }
@@ -71,9 +83,43 @@ pub struct ParticlePreviewTracker {
     pub last_file_path: Option<String>,
 }
 
+/// User toggles for the preview viewport.
+#[derive(Resource)]
+pub struct ParticlePreviewSettings {
+    pub show_floor: bool,
+}
+
+impl Default for ParticlePreviewSettings {
+    fn default() -> Self {
+        Self { show_floor: true }
+    }
+}
+
+/// Apply the floor (checkerboard plane) toggle to its `Visibility`.
+fn sync_floor_visibility(
+    settings: Res<ParticlePreviewSettings>,
+    mut floor: Query<&mut Visibility, With<ParticlePreviewFloor>>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    let want = if settings.show_floor {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut v in floor.iter_mut() {
+        if *v != want {
+            *v = want;
+        }
+    }
+}
+
 fn setup_particle_preview(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let size = Extent3d {
         width: 512,
@@ -94,7 +140,8 @@ fn setup_particle_preview(
 
     commands.insert_resource(ParticlePreviewImage {
         handle: image_handle.clone(),
-        size: (512, 512),
+        current_size: (512, 512),
+        requested_size: (512, 512),
     });
 
     commands.spawn((
@@ -134,6 +181,56 @@ fn setup_particle_preview(
         EditorLocked,
         Name::new("Particle Preview Light"),
     ));
+
+    // Checkerboard floor (matches the animation studio preview / terrain look).
+    let checker_size = 16u32;
+    let checker_tiles = 8u32;
+    let tex_dim = checker_size * checker_tiles;
+    let mut checker_data = vec![0u8; (tex_dim * tex_dim * 4) as usize];
+    for y in 0..tex_dim {
+        for x in 0..tex_dim {
+            let tx = x / checker_size;
+            let ty = y / checker_size;
+            let is_light = (tx + ty).is_multiple_of(2);
+            let (r, g, b) = if is_light { (55, 55, 60) } else { (35, 35, 40) };
+            let idx = ((y * tex_dim + x) * 4) as usize;
+            checker_data[idx] = b; // BGRA
+            checker_data[idx + 1] = g;
+            checker_data[idx + 2] = r;
+            checker_data[idx + 3] = 255;
+        }
+    }
+    let mut checker_image = Image {
+        data: Some(checker_data),
+        ..default()
+    };
+    checker_image.texture_descriptor.size = Extent3d {
+        width: tex_dim,
+        height: tex_dim,
+        depth_or_array_layers: 1,
+    };
+    checker_image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+    checker_image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    let checker_tex = images.add(checker_image);
+    let floor_material = materials.add(StandardMaterial {
+        base_color_texture: Some(checker_tex),
+        perceptual_roughness: 0.9,
+        metallic: 0.0,
+        reflectance: 0.1,
+        ..default()
+    });
+    let floor_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(5.0)));
+    commands.spawn((
+        Mesh3d(floor_mesh),
+        MeshMaterial3d(floor_material),
+        Transform::from_translation(Vec3::ZERO),
+        RenderLayers::layer(PARTICLE_PREVIEW_LAYER),
+        ParticlePreviewFloor,
+        HideInHierarchy,
+        EditorLocked,
+        Name::new("Particle Preview Floor"),
+    ));
 }
 
 fn spawn_preview_effect(
@@ -167,7 +264,9 @@ fn spawn_preview_effect(
 
     commands.spawn((
         ParticleEffect::new(effect_handle),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        // Sit the emitter above the floor so the burst's lower hemisphere
+        // doesn't clip below the checkerboard.
+        Transform::from_xyz(0.0, 1.0, 0.0),
         Visibility::Visible,
         InheritedVisibility::VISIBLE,
         ViewVisibility::default(),
@@ -224,7 +323,9 @@ fn update_preview_effect(
 
     commands.spawn((
         ParticleEffect::new(effect_handle),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        // Sit the emitter above the floor so the burst's lower hemisphere
+        // doesn't clip below the checkerboard.
+        Transform::from_xyz(0.0, 1.0, 0.0),
         Visibility::Visible,
         InheritedVisibility::VISIBLE,
         ViewVisibility::default(),
@@ -407,6 +508,69 @@ fn sync_preview_camera_active(
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum PreviewDrag {
+    Rotate,
+    Pan,
+}
+
+/// Mouse orbit/pan/zoom for the preview camera, active only while the cursor is
+/// over (or a drag was started over) the preview panel. Left-drag = rotate,
+/// right/middle-drag = pan the focus point, scroll = zoom. Writes the shared
+/// `ParticlePreviewOrbit`, which `update_particle_preview_camera` applies.
+fn particle_preview_input(
+    hover: Query<&Interaction, With<ParticlePreviewViewport>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    motion: Res<AccumulatedMouseMotion>,
+    scroll: Res<AccumulatedMouseScroll>,
+    mut orbit: ResMut<ParticlePreviewOrbit>,
+    mut drag: Local<Option<PreviewDrag>>,
+) {
+    // Use the image node's `Interaction` (picking-aware) rather than a geometric
+    // cursor test, so dragging a dock splitter that overlaps the preview rect —
+    // or clicking the floor toggle overlay — doesn't grab the camera.
+    let over = hover
+        .iter()
+        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+
+    if drag.is_none() && over {
+        if mouse.just_pressed(MouseButton::Left) {
+            *drag = Some(PreviewDrag::Rotate);
+        } else if mouse.just_pressed(MouseButton::Right) || mouse.just_pressed(MouseButton::Middle) {
+            *drag = Some(PreviewDrag::Pan);
+        }
+    }
+    // Any button released with nothing held ends the drag.
+    if !mouse.pressed(MouseButton::Left)
+        && !mouse.pressed(MouseButton::Right)
+        && !mouse.pressed(MouseButton::Middle)
+    {
+        *drag = None;
+    }
+
+    if let Some(mode) = *drag {
+        let d = motion.delta;
+        if d != Vec2::ZERO {
+            match mode {
+                PreviewDrag::Rotate => {
+                    orbit.yaw -= d.x * 0.01;
+                    orbit.pitch = (orbit.pitch + d.y * 0.01).clamp(-1.4, 1.4);
+                }
+                PreviewDrag::Pan => {
+                    let yaw = orbit.yaw;
+                    let right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
+                    let scale = (orbit.distance * 0.0005).max(0.0002);
+                    orbit.target += right * (-d.x * scale) + Vec3::Y * (d.y * scale);
+                }
+            }
+        }
+    }
+
+    if over && scroll.delta.y != 0.0 {
+        orbit.distance = (orbit.distance * (1.0 - scroll.delta.y * 0.1)).clamp(0.5, 50.0);
+    }
+}
+
 fn update_particle_preview_camera(
     time: Res<Time>,
     mut orbit: ResMut<ParticlePreviewOrbit>,
@@ -418,11 +582,45 @@ fn update_particle_preview_camera(
 
     for mut transform in camera.iter_mut() {
         let x = orbit.distance * orbit.pitch.cos() * orbit.yaw.sin();
-        let y = orbit.distance * orbit.pitch.sin() + 1.0;
+        let y = orbit.distance * orbit.pitch.sin();
         let z = orbit.distance * orbit.pitch.cos() * orbit.yaw.cos();
 
         transform.translation = orbit.target + Vec3::new(x, y, z);
         transform.look_at(orbit.target, Vec3::Y);
+    }
+}
+
+/// Report the preview panel's pixel size so the render target can match it
+/// (crisp 1:1 instead of upscaling a fixed 512² image).
+fn report_preview_size(
+    panel: Query<&ComputedNode, With<ParticlePreviewViewport>>,
+    mut img: ResMut<ParticlePreviewImage>,
+) {
+    if let Some(cn) = panel.iter().next() {
+        let s = cn.size(); // physical pixels
+        let w = (s.x.round() as u32).max(1);
+        let h = (s.y.round() as u32).max(1);
+        if img.requested_size != (w, h) {
+            img.requested_size = (w, h);
+        }
+    }
+}
+
+/// Recreate the render-target image when the requested (panel) size changes.
+fn resize_preview(mut img: ResMut<ParticlePreviewImage>, mut images: ResMut<Assets<Image>>) {
+    let (rw, rh) = img.requested_size;
+    if (rw, rh) == img.current_size {
+        return;
+    }
+    let w = rw.clamp(64, 3840);
+    let h = rh.clamp(64, 2160);
+    if let Some(image) = images.get_mut(&img.handle) {
+        image.resize(Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        });
+        img.current_size = (w, h);
     }
 }
 
@@ -434,16 +632,20 @@ impl Plugin for ParticlePreviewPlugin {
         app.init_resource::<ParticlePreviewOrbit>();
         app.init_resource::<ParticlePreviewImage>();
         app.init_resource::<ParticlePreviewTracker>();
+        app.init_resource::<ParticlePreviewSettings>();
 
         app.add_systems(PostStartup, setup_particle_preview);
         // sync_preview_camera_active runs every frame so close transitions are
         // always caught (mirrors the Studio Preview / Camera Preview pattern).
-        app.add_systems(Update, sync_preview_camera_active);
+        app.add_systems(Update, (sync_preview_camera_active, sync_floor_visibility));
         // Heavy work — compiling the effect graph and respawning the preview
         // entity — only when the Particle Preview panel is actually mounted.
         app.add_systems(
             Update,
             (
+                report_preview_size.before(resize_preview),
+                resize_preview,
+                particle_preview_input.before(update_particle_preview_camera),
                 update_particle_preview_camera,
                 spawn_preview_effect.before(update_preview_effect),
                 update_preview_effect,

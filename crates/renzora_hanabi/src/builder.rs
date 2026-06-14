@@ -203,6 +203,22 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         )
     });
 
+    // Attractor force fields: each becomes a ConformToSphereModifier (the modern
+    // replacement for the removed multi-source ForceFieldModifier).
+    let attractor_data: Vec<_> = def
+        .attractors
+        .iter()
+        .map(|a| {
+            (
+                writer.lit(Vec3::from_array(a.position)).expr(),
+                writer.lit(a.radius.max(0.0)).expr(),
+                writer.lit(a.influence_dist).expr(),
+                writer.lit(a.strength).expr(),
+                writer.lit(a.max_speed).expr(),
+            )
+        })
+        .collect();
+
     // Noise turbulence
     let noise_data = if def.noise_amplitude > 0.001 && def.noise_frequency > 0.001 {
         Some((
@@ -290,6 +306,18 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         None
     };
 
+    // Ribbon / trail: the engine activates its ribbon render path automatically
+    // when RIBBON_ID is present in the particle layout. AGE must also be present
+    // (ribbons are ordered by age), so we init both explicitly.
+    let ribbon_inits = if def.ribbon.is_some() {
+        Some((
+            writer.lit(0.0f32).expr(), // AGE = 0 at spawn
+            writer.lit(0u32).expr(),   // single continuous ribbon (id 0)
+        ))
+    } else {
+        None
+    };
+
     // Finish writer
     let module = writer.finish();
 
@@ -370,6 +398,11 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
 
     effect = effect.init(SetAttributeModifier::new(Attribute::SIZE, size_init_expr));
 
+    if let Some((age_expr, ribbon_id_expr)) = ribbon_inits {
+        effect = effect.init(SetAttributeModifier::new(Attribute::AGE, age_expr));
+        effect = effect.init(SetAttributeModifier::new(Attribute::RIBBON_ID, ribbon_id_expr));
+    }
+
     if let Some(sprite_expr) = flipbook_sprite_init {
         effect = effect.init(SetAttributeModifier::new(
             Attribute::SPRITE_INDEX,
@@ -394,6 +427,11 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         conform.shell_half_thickness = Some(thickness);
         conform.sticky_factor = Some(sticky);
         effect = effect.update(conform);
+    }
+    for (origin, radius, influence, accel, max_speed) in attractor_data {
+        effect = effect.update(ConformToSphereModifier::new(
+            origin, radius, influence, accel, max_speed,
+        ));
     }
     for (zone_type, kill_inside) in &kill_zone_data {
         match zone_type {
@@ -431,7 +469,15 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     }
 
     // Render modifiers
-    let size_gradient = if def.size_non_uniform {
+    // Multi-key size curve takes priority; falls back to linear start->end
+    // (uniform or non-uniform) when no curve is authored.
+    let size_gradient = if !def.size_curve.is_empty() {
+        let mut g: HanabiGradient<Vec3> = HanabiGradient::new();
+        for p in &def.size_curve {
+            g.add_key(p.time.clamp(0.0, 1.0), Vec3::splat(p.value.max(0.0)));
+        }
+        g
+    } else if def.size_non_uniform {
         HanabiGradient::linear(
             Vec3::new(def.size_start_x, def.size_start_y, 0.0),
             Vec3::new(def.size_end_x, def.size_end_y, 0.0),
@@ -611,4 +657,53 @@ fn build_spawner(def: &HanabiEffectDefinition) -> SpawnerSettings {
 enum KillZoneType {
     Sphere(ExprHandle, ExprHandle),
     Aabb(ExprHandle, ExprHandle),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::HanabiEffectDefinition;
+
+    /// Every shipped drakkar port must parse against the current schema and build
+    /// into an EffectAsset without panicking. Also exercises size curves,
+    /// attractors, and ribbons (the features added alongside these effects).
+    #[test]
+    fn drakkar_effects_parse_and_build() {
+        let files: &[(&str, &str)] = &[
+            ("fire", include_str!("../../../assets/particles/drakkar_fire.particle")),
+            ("bolt", include_str!("../../../assets/particles/drakkar_bolt.particle")),
+            ("fire_vortex", include_str!("../../../assets/particles/drakkar_fire_vortex.particle")),
+            ("sparks_fire", include_str!("../../../assets/particles/drakkar_sparks_fire.particle")),
+            ("sparks_magic", include_str!("../../../assets/particles/drakkar_sparks_magic.particle")),
+            ("fire_ring", include_str!("../../../assets/particles/drakkar_fire_ring.particle")),
+            ("loot_aura", include_str!("../../../assets/particles/drakkar_loot_aura.particle")),
+            ("aura", include_str!("../../../assets/particles/drakkar_aura.particle")),
+        ];
+
+        for (name, src) in files {
+            let def: HanabiEffectDefinition = ron::from_str(src)
+                .unwrap_or_else(|e| panic!("drakkar_{name}.particle failed to parse: {e}"));
+            // Must not panic while lowering to a bevy_hanabi EffectAsset.
+            let _ = build_complete_effect(&def);
+        }
+    }
+
+    /// Direct coverage of the three features added to the builder.
+    #[test]
+    fn size_curve_attractors_and_ribbon_build() {
+        use crate::data::{Attractor, CurvePoint, RibbonSettings};
+
+        let mut def = HanabiEffectDefinition::default();
+        def.size_curve = vec![
+            CurvePoint { time: 0.0, value: 0.1 },
+            CurvePoint { time: 0.5, value: 0.4 },
+            CurvePoint { time: 1.0, value: 0.0 },
+        ];
+        def.attractors = vec![
+            Attractor::default(),
+            Attractor { position: [1.0, 0.0, 0.0], ..Attractor::default() },
+        ];
+        def.ribbon = Some(RibbonSettings { groups: 1 });
+        let _ = build_complete_effect(&def);
+    }
 }

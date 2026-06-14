@@ -35,6 +35,7 @@ enum DropKind {
     Material,
     Scene,
     Sprite,
+    Particle,
 }
 
 /// The last drop candidate seen hovering the focused viewport. Captured while
@@ -55,6 +56,8 @@ pub(crate) struct ArmedViewportDrop(Option<Armed>);
 fn classify(payload: &AssetDragPayload, view: ViewportView) -> Option<DropKind> {
     if payload.matches_extensions(crate::material_drop::MATERIAL_EXTENSIONS) {
         Some(DropKind::Material)
+    } else if payload.matches_extensions(crate::particle_drop::PARTICLE_EXTENSIONS) {
+        Some(DropKind::Particle)
     } else if payload.matches_extensions(crate::scene_drop::SCENE_EXTENSIONS) {
         Some(DropKind::Scene)
     } else if view == ViewportView::Two
@@ -142,5 +145,6 @@ pub fn commit_viewport_drop(
         DropKind::Material => crate::material_drop::commit_material_drop(world, cursor, vp_rect, path),
         DropKind::Scene => crate::scene_drop::commit_scene_drop(world, cursor, vp_rect, path),
         DropKind::Sprite => crate::sprite_drop::commit_sprite_drop(world, cursor, vp_rect, path),
+        DropKind::Particle => crate::particle_drop::commit_particle_drop(world, cursor, vp_rect, path),
     });
 }

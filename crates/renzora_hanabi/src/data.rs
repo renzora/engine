@@ -222,6 +222,67 @@ impl Default for ConformToSphere {
 }
 
 // ============================================================================
+// Attractor Force Fields
+// ============================================================================
+
+/// A point attractor that pulls particles toward `position`.
+///
+/// The upstream multi-source `ForceFieldModifier` was removed from bevy_hanabi;
+/// each attractor is realised as a `ConformToSphereModifier` (origin = position),
+/// so a `Vec<Attractor>` reproduces the classic multi-source force-field setup.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Reflect, Debug)]
+#[reflect(Serialize, Deserialize)]
+pub struct Attractor {
+    /// World-space (or local, per `simulation_space`) attractor centre.
+    pub position: [f32; 3],
+    /// Radius of the attractor core; particles are pulled toward this sphere.
+    pub radius: f32,
+    /// Distance over which the attractor has influence (falloff range).
+    pub influence_dist: f32,
+    /// Acceleration applied toward the attractor (negative = repel).
+    pub strength: f32,
+    /// Maximum speed the attractor can impart.
+    pub max_speed: f32,
+}
+
+impl Default for Attractor {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            radius: 0.0,
+            influence_dist: 1.0,
+            strength: 5.0,
+            max_speed: 10.0,
+        }
+    }
+}
+
+// ============================================================================
+// Ribbon / Trail
+// ============================================================================
+
+/// Connected ribbon/trail geometry.
+///
+/// When enabled, particles are linked into a single ribbon (shared `RIBBON_ID`)
+/// ordered by age, and the engine's ribbon render path draws connecting quads
+/// between them. The ribbon width comes from the particle size (`size_*` /
+/// `size_curve`). Best suited to single-stream trails (e.g. a moving emitter
+/// leaving a wake). `AlongVelocity` orient + a `Velocity` billboard read best.
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Reflect, Debug)]
+#[reflect(Serialize, Deserialize)]
+pub struct RibbonSettings {
+    /// Number of independent ribbons; particles are assigned round-robin by
+    /// particle id. `0` or `1` = a single continuous ribbon.
+    pub groups: u32,
+}
+
+impl Default for RibbonSettings {
+    fn default() -> Self {
+        Self { groups: 1 }
+    }
+}
+
+// ============================================================================
 // Flipbook Animation
 // ============================================================================
 
@@ -368,6 +429,9 @@ pub struct HanabiEffectDefinition {
     pub tangent_accel_axis: [f32; 3],
     #[serde(default)]
     pub conform_to_sphere: Option<ConformToSphere>,
+    /// Point attractors (modern replacement for the old multi-source force field).
+    #[serde(default)]
+    pub attractors: Vec<Attractor>,
 
     // Noise Turbulence
     #[serde(default)]
@@ -438,6 +502,9 @@ pub struct HanabiEffectDefinition {
     pub rotation_speed: f32,
     #[serde(default)]
     pub flipbook: Option<FlipbookSettings>,
+    /// Connected ribbon/trail geometry (uses the engine's RIBBON_ID render path).
+    #[serde(default)]
+    pub ribbon: Option<RibbonSettings>,
 
     // Simulation
     pub simulation_space: SimulationSpace,
@@ -506,6 +573,7 @@ impl Default for HanabiEffectDefinition {
             tangent_acceleration: 0.0,
             tangent_accel_axis: [0.0, 1.0, 0.0],
             conform_to_sphere: None,
+            attractors: Vec::new(),
             noise_frequency: 0.0,
             noise_amplitude: 0.0,
             noise_octaves: 3,
@@ -548,6 +616,7 @@ impl Default for HanabiEffectDefinition {
             orient_mode: ParticleOrientMode::ParallelCameraDepthPlane,
             rotation_speed: 0.0,
             flipbook: None,
+            ribbon: None,
             simulation_space: SimulationSpace::Local,
             simulation_condition: SimulationCondition::Always,
             motion_integration: MotionIntegrationMode::PostUpdate,

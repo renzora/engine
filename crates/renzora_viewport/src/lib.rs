@@ -19,6 +19,7 @@ mod native_drop;
 mod native_header;
 mod native_nav;
 mod native_viewport;
+pub mod particle_drop;
 pub mod persistence;
 pub mod play_mode;
 pub mod render_systems;

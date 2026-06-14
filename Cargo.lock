@@ -10750,6 +10750,7 @@ dependencies = [
  "renzora_engine",
  "renzora_game_ui",
  "renzora_game_ui_editor",
+ "renzora_hanabi",
  "renzora_import",
  "renzora_keybindings",
  "renzora_shader",

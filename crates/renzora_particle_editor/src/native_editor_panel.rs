@@ -15,23 +15,22 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
-use renzora_editor_framework::SplashState;
+use renzora::core::CurrentProject;
+use renzora_editor_framework::{DocTabKind, DocumentTabState, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::inspector::color_field;
+use renzora_ember::inspector::{color_field, inspector_row};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, checkbox, collapsible, drag_value, menu_item, screen_menu, text_input, DragRange};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange};
 
 use renzora_hanabi::{
-    ConformToSphere, EditorMode, EffectVariable, GradientStop, HanabiEffectDefinition, HanabiEmitShape, KillZone,
-    OrbitSettings, ParticleAlphaMode, ParticleColorBlendMode, ParticleEditorState, ParticleOrientMode,
-    ShapeDimension, SimulationCondition, SimulationSpace, SpawnMode, VelocityMode,
+    load_effect_from_file, ConformToSphere, EditorMode, EffectVariable, GradientStop, HanabiEffectDefinition,
+    HanabiEmitShape, KillZone, OrbitSettings, ParticleAlphaMode, ParticleColorBlendMode, ParticleEditorState,
+    ParticleOrientMode, ShapeDimension, SimulationCondition, SimulationSpace, SpawnMode, VelocityMode,
 };
 
-const LABEL_W: f32 = 96.0;
 const AXES3: [(&str, (u8, u8, u8)); 3] = [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230))];
 
 type Action = Arc<dyn Fn(&mut World) + Send + Sync>;
@@ -41,7 +40,50 @@ pub struct NativeParticleEditor;
 impl Plugin for NativeParticleEditor {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_editor", true, build);
-        app.add_systems(Update, (action_btn_click, combo_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, action_btn_click.run_if(in_state(SplashState::Editor)));
+        app.add_systems(Update, particle_doc_load.run_if(in_state(SplashState::Editor)));
+    }
+}
+
+/// Load the effect for the ACTIVE particle document tab, reloading whenever the
+/// active tab changes.
+///
+/// Reads `DocumentTabState` directly (updated on every tab click) rather than
+/// `EditorContext` (which only syncs through `open_asset_tab`, so clicking
+/// between already-open tabs never updated it). This makes switching between
+/// multiple open `.particle` tabs swap the edited + previewed effect, and also
+/// fixes double-click / the inspector "Edit" button showing the default effect.
+/// Keyed on the active tab id so it loads once per switch and never clobbers
+/// in-editor edits or a freshly-created "New Effect" (which don't change tabs).
+fn particle_doc_load(world: &mut World, mut last_tab: Local<Option<u64>>) {
+    let active_id = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.active_tab_id());
+    if *last_tab == active_id {
+        return;
+    }
+    *last_tab = active_id;
+
+    let rel = world.get_resource::<DocumentTabState>().and_then(|ts| {
+        ts.active_tab().and_then(|t| {
+            if t.kind == DocTabKind::Particle {
+                t.scene_path.clone().filter(|p| !p.is_empty())
+            } else {
+                None
+            }
+        })
+    });
+    let Some(rel) = rel else { return };
+    let abs = world
+        .get_resource::<CurrentProject>()
+        .map(|p| p.resolve_path(&rel))
+        .unwrap_or_else(|| std::path::PathBuf::from(&rel));
+    if let Some(effect) = load_effect_from_file(&abs) {
+        if let Some(mut s) = world.get_resource_mut::<ParticleEditorState>() {
+            s.current_effect = Some(effect);
+            s.current_file_path = Some(abs.to_string_lossy().to_string());
+            s.is_modified = false;
+        }
     }
 }
 
@@ -197,7 +239,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 // ── Part-2 sections: Shape (enum payload), Conform, Orbit ─────────────────────
 
 fn section_shape(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("shapes"), "Emission Shape", true);
+    let (root, body) = section(commands, fonts, Some("shapes"), "Emission Shape", true);
     let shape = row_combo(commands, fonts, "Shape", |w| getf(w, |e| shape_name(&e.emit_shape), "Point").to_string(), vec![
         ("Point".into(), act(|e| e.emit_shape = HanabiEmitShape::Point)),
         ("Circle".into(), act(|e| e.emit_shape = HanabiEmitShape::Circle { radius: 1.0, dimension: ShapeDimension::Volume })),
@@ -307,7 +349,7 @@ fn set_shape_ext(w: &mut World, i: usize, v: f32) {
 }
 
 fn section_conform(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("atom"), "Conform to Sphere", false);
+    let (root, body) = section(commands, fonts, Some("atom"), "Conform to Sphere", false);
     let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.conform_to_sphere.is_some(), false), |w, v| setf(w, |e| e.conform_to_sphere = if *v { Some(ConformToSphere::default()) } else { None }));
     commands.entity(body).add_child(en);
     let origin = row_vec3(commands, fonts, "Origin",
@@ -333,7 +375,7 @@ fn cnf_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, 
 }
 
 fn section_orbit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("planet"), "Orbit", false);
+    let (root, body) = section(commands, fonts, Some("planet"), "Orbit", false);
     let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.orbit.is_some(), false), |w, v| setf(w, |e| e.orbit = if *v { Some(OrbitSettings::default()) } else { None }));
     commands.entity(body).add_child(en);
     let center = row_vec3(commands, fonts, "Center",
@@ -361,7 +403,7 @@ fn orb_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, 
 // ── Part-3 sections: Color (gradient), Kill Zones, Variables ──────────────────
 
 fn section_color(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("palette"), "Color Over Lifetime", true);
+    let (root, body) = section(commands, fonts, Some("palette"), "Color Over Lifetime", true);
     let flat_check = row_bool(commands, fonts, "Flat Color", |w| getf(w, |e| e.use_flat_color, false), |w, v| setf(w, |e| e.use_flat_color = *v));
     commands.entity(body).add_child(flat_check);
 
@@ -440,7 +482,7 @@ fn stop_row(commands: &mut Commands, fonts: &EmberFonts, i: usize, can_remove: b
 }
 
 fn section_kill_zones(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("prohibit"), "Kill Zones", false);
+    let (root, body) = section(commands, fonts, Some("prohibit"), "Kill Zones", false);
     let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
     keyed_list(commands, list, kill_snapshot);
     let add = row_actions(commands, fonts, "Add", vec![
@@ -507,7 +549,7 @@ fn kill_zone_group(commands: &mut Commands, fonts: &EmberFonts, i: usize, is_aab
 }
 
 fn section_variables(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("code"), "Variables", false);
+    let (root, body) = section(commands, fonts, Some("code"), "Variables", false);
     let hint = commands.spawn((Text::new("Exposed to scripts"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() })).id();
     let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
     keyed_list(commands, list, variables_snapshot);
@@ -639,7 +681,7 @@ fn save_effect_to_file(path: &std::path::Path, effect: &HanabiEffectDefinition) 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
 fn section_general(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("gear"), "General", true);
+    let (root, body) = section(commands, fonts, Some("gear"), "General", true);
     let name_row = base_row(commands, fonts, "Name");
     let ti = text_input(commands, &fonts.ui, "Effect name", "");
     bind_text_input(commands, ti, |w| getf(w, |e| e.name.clone(), String::new()), |w, v| setf(w, |e| e.name = v));
@@ -650,7 +692,7 @@ fn section_general(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_spawning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("sparkle"), "Spawning", true);
+    let (root, body) = section(commands, fonts, Some("sparkle"), "Spawning", true);
     let mode = row_combo(commands, fonts, "Mode", |w| match getf(w, |e| e.spawn_mode, SpawnMode::Rate) {
         SpawnMode::Rate => "Continuous".into(),
         SpawnMode::Burst => "Single Burst".into(),
@@ -674,7 +716,7 @@ fn section_spawning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_lifetime(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("timer"), "Lifetime", true);
+    let (root, body) = section(commands, fonts, Some("timer"), "Lifetime", true);
     let min = row_num(commands, fonts, "Min", 0.1, 0.01, 60.0, |w| getf(w, |e| e.lifetime_min, 0.0), |w, v| setf(w, |e| {
         e.lifetime_min = *v;
         if e.lifetime_min > e.lifetime_max { e.lifetime_max = e.lifetime_min; }
@@ -688,7 +730,7 @@ fn section_lifetime(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_velocity(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("arrows-out"), "Velocity", true);
+    let (root, body) = section(commands, fonts, Some("arrows-out"), "Velocity", true);
     let mode = row_combo(commands, fonts, "Mode", |w| match getf(w, |e| e.velocity_mode, VelocityMode::Directional) {
         VelocityMode::Directional => "Directional".into(),
         VelocityMode::Radial => "Radial".into(),
@@ -718,7 +760,7 @@ fn section_velocity(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_forces(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("wind"), "Forces", true);
+    let (root, body) = section(commands, fonts, Some("wind"), "Forces", true);
     let accel = row_vec3(commands, fonts, "Accel",
         Arc::new(|w, i| getf(w, |e| e.acceleration[i], 0.0)),
         Arc::new(|w, i, v| setf(w, |e| e.acceleration[i] = v)));
@@ -739,7 +781,7 @@ fn section_forces(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_size(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("resize"), "Size Over Lifetime", true);
+    let (root, body) = section(commands, fonts, Some("resize"), "Size Over Lifetime", true);
     let nonu = row_bool(commands, fonts, "Non-Uniform", |w| getf(w, |e| e.size_non_uniform, false), |w, v| setf(w, |e| e.size_non_uniform = *v));
     let sx = row_num(commands, fonts, "Start X", 0.01, 0.001, 10.0, |w| getf(w, |e| e.size_start_x, 0.0), |w, v| setf(w, |e| e.size_start_x = *v));
     let sy = row_num(commands, fonts, "Start Y", 0.01, 0.001, 10.0, |w| getf(w, |e| e.size_start_y, 0.0), |w, v| setf(w, |e| e.size_start_y = *v));
@@ -767,7 +809,7 @@ fn section_size(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_noise(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("spiral"), "Noise Turbulence", false);
+    let (root, body) = section(commands, fonts, Some("spiral"), "Noise Turbulence", false);
     let freq = row_num(commands, fonts, "Frequency", 0.1, 0.0, 100.0, |w| getf(w, |e| e.noise_frequency, 0.0), |w, v| setf(w, |e| e.noise_frequency = *v));
     let amp = row_num(commands, fonts, "Amplitude", 0.1, 0.0, 100.0, |w| getf(w, |e| e.noise_amplitude, 0.0), |w, v| setf(w, |e| e.noise_amplitude = *v));
     let oct = row_num(commands, fonts, "Octaves", 1.0, 1.0, 8.0, |w| getf(w, |e| e.noise_octaves as f32, 0.0), |w, v| setf(w, |e| e.noise_octaves = v.round().clamp(1.0, 8.0) as u32));
@@ -777,14 +819,14 @@ fn section_noise(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_velocity_limit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("gauge"), "Velocity Limit", false);
+    let (root, body) = section(commands, fonts, Some("gauge"), "Velocity Limit", false);
     let lim = row_num(commands, fonts, "Max Speed", 0.1, 0.0, 1000.0, |w| getf(w, |e| e.velocity_limit, 0.0), |w, v| setf(w, |e| e.velocity_limit = *v));
     commands.entity(body).add_child(lim);
     root
 }
 
 fn section_simulation(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("gear"), "Simulation", false);
+    let (root, body) = section(commands, fonts, Some("gear"), "Simulation", false);
     let space = row_combo(commands, fonts, "Space", |w| match getf(w, |e| e.simulation_space, SimulationSpace::Local) {
         SimulationSpace::Local => "Local".into(),
         SimulationSpace::World => "World".into(),
@@ -813,7 +855,7 @@ fn section_simulation(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 fn section_rendering(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("cube"), "Rendering", false);
+    let (root, body) = section(commands, fonts, Some("cube"), "Rendering", false);
     let alpha = row_combo(commands, fonts, "Alpha Mode", |w| match getf(w, |e| e.alpha_mode, ParticleAlphaMode::Blend) {
         ParticleAlphaMode::Blend => "Blend".into(),
         ParticleAlphaMode::Premultiply => "Premultiply".into(),
@@ -852,18 +894,31 @@ fn section_rendering(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Row builders ─────────────────────────────────────────────────────────────
 
+/// A labelled property row built on ember's shared `inspector_row` (so the panel
+/// matches the standard inspector's label column + layout). Returns the row plus
+/// the value cell that callers add controls to.
 fn base_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> (Entity, Entity) {
-    let row = commands
-        .spawn(Node { width: Val::Percent(100.0), min_height: Val::Px(22.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() })
-        .id();
-    let lbl = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap(), Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }))
-        .id();
     let cell = commands
-        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(3.0), ..default() })
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), ..default() })
         .id();
-    commands.entity(row).add_children(&[lbl, cell]);
+    let row = inspector_row(commands, &fonts.ui, label, cell);
     (row, cell)
+}
+
+/// A collapsible section with the standard inspector header bar (colored header ·
+/// accent icon · caret · title) so the panel matches the entity inspector's look.
+/// Drop-in for the old `collapsible` (same args; `_default_open` kept for
+/// call-site compatibility — sections render expanded).
+fn section(commands: &mut Commands, fonts: &EmberFonts, icon: Option<&str>, title: &str, _default_open: bool) -> (Entity, Entity) {
+    let (root, _header, body) = renzora_ember::widgets::section_with_header(
+        commands,
+        fonts,
+        icon.unwrap_or("circle"),
+        title,
+        (120, 140, 200),
+        (44, 44, 54),
+    );
+    (root, body)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -873,7 +928,13 @@ where
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let (row, cell) = base_row(commands, fonts, label);
-    let field = num_field(commands, fonts, "", value_text(), 0.0, step, min, max, get, set);
+    // Match the inspector: a plain drag value (no slider track). The min/max are
+    // still enforced by clamping on write so values stay in range.
+    let clamped = move |w: &mut World, v: &f32| {
+        let cv = if max > min { v.clamp(min, max) } else { *v };
+        set(w, &cv);
+    };
+    let field = num_field(commands, fonts, "", value_text(), 0.0, step, 0.0, 0.0, get, clamped);
     commands.entity(cell).add_child(field);
     row
 }
@@ -903,23 +964,30 @@ fn row_vec3(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: Arc<d
     row
 }
 
+/// A labelled dropdown built on ember's `dropdown` widget. Keeps the original
+/// `(label, action)` option interface: the current selection is derived from
+/// `value`, and picking an option runs its action.
 fn row_combo(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: impl Fn(&World) -> String + Send + Sync + 'static, options: Vec<(String, Action)>) -> Entity {
+    let labels: Vec<String> = options.iter().map(|(l, _)| l.clone()).collect();
+    let actions: Vec<Action> = options.into_iter().map(|(_, a)| a).collect();
+    let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+    let dd = dropdown(commands, fonts, &label_refs, 0);
+    let labels_get = labels;
+    bind_2way(
+        commands,
+        dd,
+        move |w| {
+            let cur = value(w);
+            labels_get.iter().position(|l| *l == cur).unwrap_or(0)
+        },
+        move |w, idx: &usize| {
+            if let Some(a) = actions.get(*idx) {
+                a(w);
+            }
+        },
+    );
     let (row, cell) = base_row(commands, fonts, label);
-    let combo = commands
-        .spawn((
-            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            Interaction::default(),
-            RelativeCursorPosition::default(),
-            Combo { options },
-        ))
-        .id();
-    let vtext = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { min_width: Val::Px(80.0), ..default() })).id();
-    bind_text(commands, vtext, value);
-    let caret = renzora_ember::font::icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 9.0);
-    commands.entity(combo).add_children(&[vtext, caret]);
-    commands.entity(cell).add_child(combo);
+    commands.entity(cell).add_child(dd);
     row
 }
 
@@ -960,12 +1028,8 @@ where
     dv
 }
 
-// ── Generic combo + action button ────────────────────────────────────────────
+// ── Action button ─────────────────────────────────────────────────────────────
 
-#[derive(Component)]
-struct Combo {
-    options: Vec<(String, Action)>,
-}
 #[derive(Component)]
 struct ActionBtn(Action);
 
@@ -976,27 +1040,4 @@ fn action_btn_click(q: Query<(&Interaction, &ActionBtn), Changed<Interaction>>, 
             commands.queue(move |w: &mut World| action(w));
         }
     }
-}
-
-fn combo_open(
-    q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode, &Combo), Changed<Interaction>>,
-    windows: Query<&Window>,
-    fonts: Option<Res<EmberFonts>>,
-    mut commands: Commands,
-) {
-    let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
-    let size = cn.size() * cn.inverse_scale_factor();
-    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let kids: Vec<Entity> = combo
-        .options
-        .iter()
-        .map(|(label, action)| {
-            let action = action.clone();
-            menu_item(&mut commands, &fonts, "circle", label, move |w| action(w))
-        })
-        .collect();
-    commands.entity(menu).add_children(&kids);
 }
