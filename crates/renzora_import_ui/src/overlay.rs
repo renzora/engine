@@ -425,7 +425,7 @@ fn import_worker(
                                 ),
                                 opacity_texture: rewrite_uri(&mat.opacity_texture),
                                 specular_texture: rewrite_uri(&mat.specular_texture),
-                                advanced: mat.advanced.rewrite_textures(&rewrite_uri),
+                                advanced: mat.advanced.rewrite_textures(rewrite_uri),
                                 alpha_mode: match mat.alpha_mode {
                                     renzora_import::ExtractedAlphaMode::Opaque => {
                                         renzora::core::PbrAlphaMode::Opaque

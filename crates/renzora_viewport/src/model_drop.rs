@@ -436,7 +436,7 @@ fn run_import_pipeline(
                 specular_glossiness_texture: prefix(&mat.specular_glossiness_texture),
                 opacity_texture: prefix(&mat.opacity_texture),
                 specular_texture: prefix(&mat.specular_texture),
-                advanced: mat.advanced.rewrite_textures(&prefix),
+                advanced: mat.advanced.rewrite_textures(prefix),
                 alpha_mode: match mat.alpha_mode {
                     renzora_import::ExtractedAlphaMode::Opaque => {
                         renzora::core::PbrAlphaMode::Opaque
