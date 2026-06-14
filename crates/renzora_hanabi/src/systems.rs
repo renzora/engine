@@ -1,12 +1,61 @@
 //! Runtime systems for syncing HanabiEffect with bevy_hanabi ParticleEffect.
 
 use bevy::prelude::*;
+use bevy::image::ImageSampler;
+use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy_hanabi::prelude::*;
+use bevy_hanabi::EffectMaterial;
 use std::path::PathBuf;
 
 use crate::builder::build_complete_effect;
 use crate::data::*;
 use renzora::CurrentProject;
+
+/// A built-in soft radial sprite bound to every particle effect, so quads render
+/// as soft round blobs (modulated by the particle color) instead of hard squares
+/// — the cheapest, highest-impact "de-blocking" step. Generated procedurally so
+/// there's no asset file / VFS path to resolve.
+#[derive(Resource, Default)]
+pub struct ParticleSoftTexture(pub Handle<Image>);
+
+/// Create the soft radial sprite (grayscale falloff in all RGBA channels, so it
+/// softens both additive RGB and alpha-blended effects via Modulate).
+pub fn setup_soft_particle_texture(
+    mut images: ResMut<Assets<Image>>,
+    mut commands: Commands,
+) {
+    let size = 64u32;
+    let mut data = vec![0u8; (size * size * 4) as usize];
+    let c = (size as f32 - 1.0) * 0.5;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = (x as f32 - c) / c;
+            let dy = (y as f32 - c) / c;
+            let d = (dx * dx + dy * dy).sqrt();
+            let mut a = (1.0 - d).clamp(0.0, 1.0);
+            a = a * a * (3.0 - 2.0 * a); // smoothstep for a soft edge
+            let v = (a * 255.0) as u8;
+            let i = ((y * size + x) * 4) as usize;
+            data[i] = v;
+            data[i + 1] = v;
+            data[i + 2] = v;
+            data[i + 3] = v;
+        }
+    }
+    let mut image = Image {
+        data: Some(data),
+        ..default()
+    };
+    image.texture_descriptor.size = Extent3d {
+        width: size,
+        height: size,
+        depth_or_array_layers: 1,
+    };
+    image.texture_descriptor.format = TextureFormat::Rgba8Unorm;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image.sampler = ImageSampler::linear();
+    commands.insert_resource(ParticleSoftTexture(images.add(image)));
+}
 
 /// Resolve an effect definition from its source.
 fn resolve_effect_definition(
@@ -48,6 +97,7 @@ pub fn sync_hanabi_effects(
     query: Query<(Entity, &HanabiEffect, Option<&HanabiEffectSynced>), Changed<HanabiEffect>>,
     removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffect>>,
     project: Option<Res<CurrentProject>>,
+    soft: Res<ParticleSoftTexture>,
 ) {
     for (entity, effect_data, maybe_synced) in query.iter() {
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
@@ -61,6 +111,7 @@ pub fn sync_hanabi_effects(
             let effect_handle = effects.add(effect_asset);
             commands.entity(entity).try_insert((
                 ParticleEffect::new(effect_handle.clone()),
+                EffectMaterial { images: vec![soft.0.clone()] },
                 HanabiEffectSynced { effect_handle },
             ));
         }
@@ -88,6 +139,7 @@ pub fn rehydrate_hanabi_effects(
     mut effects: ResMut<Assets<EffectAsset>>,
     query: Query<(Entity, &HanabiEffect), Without<HanabiEffectSynced>>,
     project: Option<Res<CurrentProject>>,
+    soft: Res<ParticleSoftTexture>,
 ) {
     for (entity, effect_data) in query.iter() {
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
@@ -95,6 +147,7 @@ pub fn rehydrate_hanabi_effects(
         let effect_handle = effects.add(effect_asset);
         commands.entity(entity).try_insert((
             ParticleEffect::new(effect_handle.clone()),
+            EffectMaterial { images: vec![soft.0.clone()] },
             HanabiEffectSynced { effect_handle },
         ));
     }

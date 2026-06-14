@@ -584,9 +584,10 @@ impl Modifier for VelocityLimitModifier {
         let attr = m.attr(Attribute::VELOCITY);
         let attr = context.eval(m, attr)?;
         let max_speed = context.eval(m, self.max_speed)?;
+        // WGSL reserves the `__` identifier prefix, so this local must not use it.
         context.main_code += &format!(
-            "let __vel_limit_speed = length({attr});\n\
-             if (__vel_limit_speed > {max_speed}) {{ {attr} = normalize({attr}) * {max_speed}; }}\n"
+            "let vel_limit_speed = length({attr});\n\
+             if (vel_limit_speed > {max_speed}) {{ {attr} = normalize({attr}) * {max_speed}; }}\n"
         );
         Ok(())
     }

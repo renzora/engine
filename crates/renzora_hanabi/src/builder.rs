@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 use bevy_hanabi::AlphaMode as HanabiAlphaMode;
 use bevy_hanabi::Gradient as HanabiGradient;
+use bevy_hanabi::ImageSampleMapping;
 
 use crate::data::{
     HanabiEffectDefinition, HanabiEmitShape, KillZone, MotionIntegrationMode, ParticleAlphaMode,
@@ -300,11 +301,11 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         None
     };
 
-    let texture_slot_expr = if def.texture_path.is_some() {
-        Some(writer.lit(0u32).expr())
-    } else {
-        None
-    };
+    // Every effect samples the built-in soft sprite (slot 0), bound per-entity via
+    // `EffectMaterial`, so particles render as soft round blobs instead of hard
+    // squares. `ImageSampleMapping::Modulate` multiplies all RGBA channels, which
+    // softens both additive (RGB falloff) and alpha-blended (alpha falloff) effects.
+    let texture_slot_expr = writer.lit(0u32).expr();
 
     // Ribbon / trail: the engine activates its ribbon render path automatically
     // when RIBBON_ID is present in the particle layout. AGE must also be present
@@ -319,7 +320,9 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     };
 
     // Finish writer
-    let module = writer.finish();
+    let mut module = writer.finish();
+    // Declare the soft-sprite texture slot (slot 0); bound per-entity via EffectMaterial.
+    module.add_texture_slot("color");
 
     // Build spawner
     let spawner = build_spawner(def);
@@ -556,9 +559,9 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
             sprite_grid_size: UVec2::new(fb.grid_columns, fb.grid_rows),
         });
     }
-    if let Some(tex_slot) = texture_slot_expr {
-        effect = effect.render(ParticleTextureModifier::new(tex_slot));
-    }
+    let mut tex_mod = ParticleTextureModifier::new(texture_slot_expr);
+    tex_mod.sample_mapping = ImageSampleMapping::Modulate;
+    effect = effect.render(tex_mod);
 
     // Alpha mode
     let alpha_mode = match def.alpha_mode {

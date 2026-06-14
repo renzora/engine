@@ -9,7 +9,7 @@ pub mod node_graph;
 pub mod systems;
 
 pub use data::*;
-pub use systems::{HanabiEffectSynced, ParticleCommand, ParticleCommandQueue};
+pub use systems::{HanabiEffectSynced, ParticleCommand, ParticleCommandQueue, ParticleSoftTexture};
 
 use bevy::prelude::*;
 use bevy_hanabi::HanabiPlugin;
@@ -33,6 +33,8 @@ impl Plugin for HanabiParticlePlugin {
         if !headless {
             app.add_plugins(HanabiPlugin);
             app.init_resource::<ParticleCommandQueue>();
+            app.init_resource::<systems::ParticleSoftTexture>();
+            app.add_systems(Startup, systems::setup_soft_particle_texture);
         }
 
         app.init_resource::<ParticleEditorState>();

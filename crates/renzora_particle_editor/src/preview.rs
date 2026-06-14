@@ -16,7 +16,8 @@ use renzora_editor_framework::DockingState;
 
 use renzora_hanabi::builder::build_complete_effect;
 use renzora_hanabi::data::EditorMode;
-use renzora_hanabi::{HanabiEffectDefinition, HanabiEmitShape, ParticleEditorState};
+use renzora_hanabi::{HanabiEffectDefinition, HanabiEmitShape, ParticleEditorState, ParticleSoftTexture};
+use bevy_hanabi::EffectMaterial;
 
 pub const PARTICLE_PREVIEW_LAYER: usize = 7;
 
@@ -238,6 +239,7 @@ fn spawn_preview_effect(
     mut effects: ResMut<Assets<EffectAsset>>,
     editor_state: Res<ParticleEditorState>,
     existing: Query<Entity, With<ParticlePreviewEffect>>,
+    soft: Res<ParticleSoftTexture>,
 ) {
     if !existing.is_empty() {
         return;
@@ -264,6 +266,7 @@ fn spawn_preview_effect(
 
     commands.spawn((
         ParticleEffect::new(effect_handle),
+        EffectMaterial { images: vec![soft.0.clone()] },
         // Sit the emitter above the floor so the burst's lower hemisphere
         // doesn't clip below the checkerboard.
         Transform::from_xyz(0.0, 1.0, 0.0),
@@ -284,6 +287,7 @@ fn update_preview_effect(
     mut tracker: ResMut<ParticlePreviewTracker>,
     mut effects: ResMut<Assets<EffectAsset>>,
     existing: Query<Entity, With<ParticlePreviewEffect>>,
+    soft: Res<ParticleSoftTexture>,
 ) {
     // In graph mode, compile the node graph; in simple mode, use the definition directly
     let def = match editor_state.editor_mode {
@@ -323,6 +327,7 @@ fn update_preview_effect(
 
     commands.spawn((
         ParticleEffect::new(effect_handle),
+        EffectMaterial { images: vec![soft.0.clone()] },
         // Sit the emitter above the floor so the burst's lower hemisphere
         // doesn't clip below the checkerboard.
         Transform::from_xyz(0.0, 1.0, 0.0),
