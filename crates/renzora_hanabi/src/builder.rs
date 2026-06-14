@@ -20,6 +20,31 @@ fn map_dimension(dim: OurShapeDimension) -> ShapeDimension {
     }
 }
 
+/// Approximate blackbody radiation colour for a temperature in Kelvin, returned
+/// as linear-ish RGB in 0..1 (Tanner Helland's well-known approximation). Used
+/// for physically-plausible fire colour ramps.
+fn kelvin_to_rgb(kelvin: f32) -> [f32; 3] {
+    let t = (kelvin / 100.0).clamp(10.0, 400.0);
+    let r = if t <= 66.0 {
+        255.0
+    } else {
+        (329.698_73 * (t - 60.0).powf(-0.133_204_76)).clamp(0.0, 255.0)
+    };
+    let g = if t <= 66.0 {
+        (99.470_8 * t.ln() - 161.119_57).clamp(0.0, 255.0)
+    } else {
+        (288.122_17 * (t - 60.0).powf(-0.075_514_85)).clamp(0.0, 255.0)
+    };
+    let b = if t >= 66.0 {
+        255.0
+    } else if t <= 19.0 {
+        0.0
+    } else {
+        (138.517_73 * (t - 10.0).ln() - 305.044_8).clamp(0.0, 255.0)
+    };
+    [r / 255.0, g / 255.0, b / 255.0]
+}
+
 /// Build a complete EffectAsset with all modifiers from our definition.
 pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     let writer = ExprWriter::new();
@@ -518,6 +543,24 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         );
         effect = effect.render(SetColorModifier {
             color: c.into(),
+            blend: color_blend,
+            mask: ColorBlendMask::RGBA,
+        });
+    } else if let Some([t_start, t_end]) = def.blackbody {
+        // Physically-based fire colour from blackbody temperature (Kelvin) over
+        // life: hot/white at birth -> cooler red -> fade out. Overrides the
+        // authored color_gradient when set.
+        let mut g: HanabiGradient<Vec4> = HanabiGradient::new();
+        let steps = 6;
+        for i in 0..=steps {
+            let f = i as f32 / steps as f32;
+            let k = t_start + (t_end - t_start) * f;
+            let [r, gc, b] = kelvin_to_rgb(k);
+            let a = (1.0 - f * f).clamp(0.0, 1.0); // ease alpha to 0 by end of life
+            g.add_key(f, Vec4::new(r * hdr_mult, gc * hdr_mult, b * hdr_mult, a));
+        }
+        effect = effect.render(ColorOverLifetimeModifier {
+            gradient: g,
             blend: color_blend,
             mask: ColorBlendMask::RGBA,
         });

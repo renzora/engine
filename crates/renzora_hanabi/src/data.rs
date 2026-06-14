@@ -484,6 +484,11 @@ pub struct HanabiEffectDefinition {
     pub use_hdr_color: bool,
     #[serde(default = "default_one")]
     pub hdr_intensity: f32,
+    /// Physically-based fire colour from blackbody temperature in Kelvin
+    /// `[start, end]` over particle life. Overrides `color_gradient` when set
+    /// (e.g. `Some([6500.0, 1200.0])` = white-hot fading to dim red).
+    #[serde(default)]
+    pub blackbody: Option<[f32; 2]>,
     #[serde(default)]
     pub color_blend_mode: ParticleColorBlendMode,
 
@@ -606,6 +611,7 @@ impl Default for HanabiEffectDefinition {
             flat_color: [1.0, 1.0, 1.0, 1.0],
             use_hdr_color: false,
             hdr_intensity: 1.0,
+            blackbody: None,
             color_blend_mode: ParticleColorBlendMode::Modulate,
             blend_mode: BlendMode::Blend,
             texture_path: None,
