@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 use bevy_hanabi::AlphaMode as HanabiAlphaMode;
 use bevy_hanabi::Gradient as HanabiGradient;
-use bevy_hanabi::ImageSampleMapping;
+use bevy_hanabi::{ErosionModifier, ImageSampleMapping};
 
 use crate::data::{
     HanabiEffectDefinition, HanabiEmitShape, KillZone, MotionIntegrationMode, ParticleAlphaMode,
@@ -331,6 +331,9 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     // squares. `ImageSampleMapping::Modulate` multiplies all RGBA channels, which
     // softens both additive (RGB falloff) and alpha-blended (alpha falloff) effects.
     let texture_slot_expr = writer.lit(0u32).expr();
+    // Erosion noise lives in texture slot 1 (declared on the module below only
+    // when erosion is enabled, and bound as the 2nd EffectMaterial image).
+    let erosion_slot_expr = writer.lit(1u32).expr();
 
     // Ribbon / trail: the engine activates its ribbon render path automatically
     // when RIBBON_ID is present in the particle layout. AGE must also be present
@@ -348,6 +351,11 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     let mut module = writer.finish();
     // Declare the soft-sprite texture slot (slot 0); bound per-entity via EffectMaterial.
     module.add_texture_slot("color");
+    // Erosion noise slot (1), only when used. Slot order must match the
+    // `EffectMaterial::images` order set when spawning the effect.
+    if def.erosion {
+        module.add_texture_slot("erosion_noise");
+    }
 
     // Build spawner
     let spawner = build_spawner(def);
@@ -605,6 +613,13 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
     let mut tex_mod = ParticleTextureModifier::new(texture_slot_expr);
     tex_mod.sample_mapping = ImageSampleMapping::Modulate;
     effect = effect.render(tex_mod);
+
+    // Erosion/dissolve: a second texture slot (1) holds grayscale noise; the
+    // ErosionModifier dissolves the particle as it fades. Added last so it sees
+    // the final colour. The noise image is bound as the 2nd EffectMaterial image.
+    if def.erosion {
+        effect = effect.render(ErosionModifier::new(erosion_slot_expr));
+    }
 
     // Alpha mode
     let alpha_mode = match def.alpha_mode {

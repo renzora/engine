@@ -603,6 +603,24 @@ fn register_api(engine: &mut Engine) {
             speed: speed as f32,
         });
     });
+    engine.register_fn("seek_animation", |time: f64| {
+        push_command(ScriptCommand::SeekAnimation {
+            entity_id: None,
+            time: time as f32,
+        });
+    });
+    engine.register_fn("get_animation_time", || -> f64 {
+        match crate::get_handler::call_get(None, "AnimatorReadState", "time") {
+            Some(PropertyValue::Float(f)) => f as f64,
+            _ => 0.0,
+        }
+    });
+    engine.register_fn("is_animation_playing", || -> bool {
+        matches!(
+            crate::get_handler::call_get(None, "AnimatorReadState", "playing"),
+            Some(PropertyValue::Bool(true))
+        )
+    });
     engine.register_fn(
         "crossfade_animation",
         |name: ImmutableString, duration: f64| {

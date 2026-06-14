@@ -57,6 +57,84 @@ pub fn setup_soft_particle_texture(
     commands.insert_resource(ParticleSoftTexture(images.add(image)));
 }
 
+/// Grayscale fbm noise bound as the 2nd texture of effects with `erosion`, used
+/// by the `ErosionModifier` to dissolve particles in organic wisps as they fade.
+#[derive(Resource, Default)]
+pub struct ParticleErosionNoise(pub Handle<Image>);
+
+fn noise_hash(x: i32, y: i32) -> f32 {
+    let mut h = (x.wrapping_mul(374_761_393).wrapping_add(y.wrapping_mul(668_265_263))) as u32;
+    h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
+    h ^= h >> 16;
+    (h as f32) / (u32::MAX as f32)
+}
+
+fn value_noise(x: f32, y: f32) -> f32 {
+    let (xi, yi) = (x.floor() as i32, y.floor() as i32);
+    let (xf, yf) = (x - x.floor(), y - y.floor());
+    let u = xf * xf * (3.0 - 2.0 * xf);
+    let v = yf * yf * (3.0 - 2.0 * yf);
+    let a = noise_hash(xi, yi);
+    let b = noise_hash(xi + 1, yi);
+    let c = noise_hash(xi, yi + 1);
+    let d = noise_hash(xi + 1, yi + 1);
+    let ab = a + (b - a) * u;
+    let cd = c + (d - c) * u;
+    ab + (cd - ab) * v
+}
+
+/// Create the erosion noise texture (4-octave fbm, grayscale in all channels).
+pub fn setup_erosion_noise_texture(mut images: ResMut<Assets<Image>>, mut commands: Commands) {
+    let size = 128u32;
+    let mut data = vec![0u8; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let (mut f, mut amp, mut freq) = (0.0f32, 0.5f32, 4.0f32);
+            for _ in 0..4 {
+                let nx = x as f32 / size as f32 * freq;
+                let ny = y as f32 / size as f32 * freq;
+                f += value_noise(nx, ny) * amp;
+                freq *= 2.0;
+                amp *= 0.5;
+            }
+            let val = (f.clamp(0.0, 1.0) * 255.0) as u8;
+            let i = ((y * size + x) * 4) as usize;
+            data[i] = val;
+            data[i + 1] = val;
+            data[i + 2] = val;
+            data[i + 3] = 255;
+        }
+    }
+    let mut image = Image {
+        data: Some(data),
+        ..default()
+    };
+    image.texture_descriptor.size = Extent3d {
+        width: size,
+        height: size,
+        depth_or_array_layers: 1,
+    };
+    image.texture_descriptor.format = TextureFormat::Rgba8Unorm;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+    image.sampler = ImageSampler::linear();
+    commands.insert_resource(ParticleErosionNoise(images.add(image)));
+}
+
+/// Build the `EffectMaterial` image list for an effect: soft sprite in slot 0,
+/// plus erosion noise in slot 1 when the effect uses erosion. The order MUST
+/// match the texture slots declared in `build_complete_effect`.
+fn effect_images(
+    def: &HanabiEffectDefinition,
+    soft: &ParticleSoftTexture,
+    noise: &ParticleErosionNoise,
+) -> Vec<Handle<Image>> {
+    if def.erosion {
+        vec![soft.0.clone(), noise.0.clone()]
+    } else {
+        vec![soft.0.clone()]
+    }
+}
+
 /// Resolve an effect definition from its source.
 fn resolve_effect_definition(
     source: &EffectSource,
@@ -98,6 +176,7 @@ pub fn sync_hanabi_effects(
     removed_query: Query<(Entity, &HanabiEffectSynced), Without<HanabiEffect>>,
     project: Option<Res<CurrentProject>>,
     soft: Res<ParticleSoftTexture>,
+    noise: Res<ParticleErosionNoise>,
 ) {
     for (entity, effect_data, maybe_synced) in query.iter() {
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
@@ -111,7 +190,7 @@ pub fn sync_hanabi_effects(
             let effect_handle = effects.add(effect_asset);
             commands.entity(entity).try_insert((
                 ParticleEffect::new(effect_handle.clone()),
-                EffectMaterial { images: vec![soft.0.clone()] },
+                EffectMaterial { images: effect_images(&definition, &soft, &noise) },
                 HanabiEffectSynced { effect_handle },
             ));
         }
@@ -140,6 +219,7 @@ pub fn rehydrate_hanabi_effects(
     query: Query<(Entity, &HanabiEffect), Without<HanabiEffectSynced>>,
     project: Option<Res<CurrentProject>>,
     soft: Res<ParticleSoftTexture>,
+    noise: Res<ParticleErosionNoise>,
 ) {
     for (entity, effect_data) in query.iter() {
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
@@ -147,7 +227,7 @@ pub fn rehydrate_hanabi_effects(
         let effect_handle = effects.add(effect_asset);
         commands.entity(entity).try_insert((
             ParticleEffect::new(effect_handle.clone()),
-            EffectMaterial { images: vec![soft.0.clone()] },
+            EffectMaterial { images: effect_images(&definition, &soft, &noise) },
             HanabiEffectSynced { effect_handle },
         ));
     }

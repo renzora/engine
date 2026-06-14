@@ -14,7 +14,7 @@ use bevy::asset::{AssetLoader, LoadContext};
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
-use renzora::{sample_property_track, PropertyTrack, TrackValue};
+use renzora::{sample_property_track, AnimMarker, PropertyTrack, TrackValue};
 
 use crate::component::{AnimatorComponent, AnimatorState};
 use crate::loader::AnimLoadError;
@@ -32,6 +32,7 @@ use crate::loader::AnimLoadError;
 pub struct PropertyClip {
     pub duration: f32,
     pub tracks: Vec<PropertyTrack>,
+    pub markers: Vec<AnimMarker>,
 }
 
 #[derive(Default, TypePath)]
@@ -54,6 +55,7 @@ impl AssetLoader for PropertyClipLoader {
         Ok(PropertyClip {
             duration: anim.duration,
             tracks: anim.property_tracks,
+            markers: anim.markers,
         })
     }
 
@@ -236,6 +238,7 @@ pub fn apply_runtime_property_animation(world: &mut World) {
     )> = SystemState::new(world);
 
     let mut work: Vec<(Entity, Vec<PropertyTrack>, f32)> = Vec::new();
+    let mut events: Vec<(Entity, String)> = Vec::new();
     let mut verbose = false;
     {
         let (time, mut dbg, clips, mut animators) = sys.get_mut(world);
@@ -252,6 +255,12 @@ pub fn apply_runtime_property_animation(world: &mut World) {
             if state.is_paused {
                 if verbose {
                     info!("[prop-anim] {:?} skipped: paused", entity);
+                }
+                continue;
+            }
+            if state.prop_stopped {
+                if verbose {
+                    info!("[prop-anim] {:?} skipped: stopped", entity);
                 }
                 continue;
             }
@@ -285,20 +294,47 @@ pub fn apply_runtime_property_animation(world: &mut World) {
                 continue;
             }
 
-            let slot = animator.get_slot(&clip_name);
-            let speed = slot.map(|s| s.speed).filter(|s| *s != 0.0).unwrap_or(1.0);
-            let looping = slot.map(|s| s.looping).unwrap_or(true);
+            let looping = animator.get_slot(&clip_name).map(|s| s.looping).unwrap_or(true);
+            // Runtime speed override (set by Play/SetSpeed scripts), default 1.0.
+            let speed = state.prop_speed;
 
-            let mut t = state.prop_time + dt * speed;
-            if clip.duration > 0.0 {
-                if looping {
-                    t = t.rem_euclid(clip.duration);
+            let prev = state.prop_time;
+            let raw = prev + dt * speed;
+            let dur = clip.duration;
+
+            // Fire markers crossed in (prev, raw] (handling a single loop wrap).
+            for m in &clip.markers {
+                let crossed = if dur <= 0.0 || raw <= dur {
+                    m.time > prev && m.time <= raw
                 } else {
-                    t = t.clamp(0.0, clip.duration);
+                    (m.time > prev && m.time <= dur) || (m.time <= raw - dur)
+                };
+                if crossed {
+                    events.push((entity, m.name.clone()));
                 }
             }
+
+            let t = if dur > 0.0 && looping {
+                raw.rem_euclid(dur)
+            } else if dur > 0.0 {
+                raw.clamp(0.0, dur)
+            } else {
+                raw
+            };
             state.prop_time = t;
             work.push((entity, clip.tracks.clone(), t));
+        }
+    }
+
+    // Deliver animation events to scripts (broadcast via the inbox).
+    if !events.is_empty() {
+        if let Some(mut inbox) = world.get_resource_mut::<renzora::ScriptAnimEventInbox>() {
+            for (entity, name) in events {
+                inbox.pending.push(renzora::AnimEvent {
+                    name,
+                    entity_bits: entity.to_bits(),
+                });
+            }
         }
     }
 

@@ -31,5 +31,6 @@ pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {
         duration: anim.duration,
         tracks,
         property_tracks: Vec::new(),
+        markers: Vec::new(),
     }
 }

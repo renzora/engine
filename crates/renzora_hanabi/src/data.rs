@@ -510,6 +510,10 @@ pub struct HanabiEffectDefinition {
     /// Connected ribbon/trail geometry (uses the engine's RIBBON_ID render path).
     #[serde(default)]
     pub ribbon: Option<RibbonSettings>,
+    /// Erode/dissolve particles with a noise texture as they fade (organic
+    /// dissipation in wisps instead of a uniform fade). Great for smoke/fire.
+    #[serde(default)]
+    pub erosion: bool,
 
     // Simulation
     pub simulation_space: SimulationSpace,
@@ -623,6 +627,7 @@ impl Default for HanabiEffectDefinition {
             rotation_speed: 0.0,
             flipbook: None,
             ribbon: None,
+            erosion: false,
             simulation_space: SimulationSpace::Local,
             simulation_condition: SimulationCondition::Always,
             motion_integration: MotionIntegrationMode::PostUpdate,

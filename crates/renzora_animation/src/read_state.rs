@@ -21,6 +21,10 @@ pub struct AnimatorReadState {
     pub current_state: String,
     /// Seconds spent in the current state.
     pub state_time: f32,
+    /// Current property-animation playback time (seconds).
+    pub time: f32,
+    /// Whether animation is actively playing (not paused or stopped).
+    pub playing: bool,
     /// Per-clip duration in seconds. Populated once clips load.
     pub clip_lengths: HashMap<String, f32>,
     /// Current float parameters on the state machine.
@@ -51,6 +55,8 @@ pub fn update_animator_read_state(
         rs.current_clip = state.current_clip.clone().unwrap_or_default();
         rs.current_state = state.current_state.clone().unwrap_or_default();
         rs.state_time = state.state_time;
+        rs.time = state.prop_time;
+        rs.playing = !state.is_paused && !state.prop_stopped;
         for (name, handle) in &state.clip_handles {
             if let Some(clip) = clips.get(handle) {
                 rs.clip_lengths.insert(name.clone(), clip.duration());

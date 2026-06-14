@@ -86,6 +86,9 @@ pub struct TimelineHandle {
     pub header_list: Entity,
     /// Absolute layer over the lanes — mount positioned clips / keyframes here.
     pub clips: Entity,
+    /// Absolute layer over the whole pane (above the scrub surface) — mount
+    /// event markers / flags here so they stay clickable.
+    pub markers: Entity,
 }
 
 #[derive(Component)]
@@ -306,10 +309,25 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             Name::new("timeline-view-scrub"),
         ))
         .id();
-    commands.entity(pane).add_children(&[ruler, lanes, playhead, scrub]);
+    // Markers overlay: above the scrub surface so flags stay clickable.
+    let markers = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("timeline-view-markers"),
+        ))
+        .id();
+    commands.entity(pane).add_children(&[ruler, lanes, playhead, scrub, markers]);
 
     commands.entity(root).add_children(&[header_col, sep, pane]);
-    TimelineHandle { root, header_corner, header_list, clips }
+    TimelineHandle { root, header_corner, header_list, clips, markers }
 }
 
 // ── Generic snapshots (driven by the root's `TimelineView`) ───────────────────

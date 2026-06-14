@@ -173,6 +173,13 @@ pub fn run_scripts(world: &mut World) {
         .map(|mut inbox| std::mem::take(&mut inbox.pending))
         .unwrap_or_default();
 
+    // Animation events fired when playback crosses a clip marker since last
+    // frame. Each fires every script's `on_animation_event(name, entity)` hook.
+    let pending_anim_events: Vec<renzora::AnimEvent> = world
+        .get_resource_mut::<renzora::ScriptAnimEventInbox>()
+        .map(|mut inbox| std::mem::take(&mut inbox.pending))
+        .unwrap_or_default();
+
     // Completed HTTP responses since last frame (from background request
     // threads). Each fires every script's `on_http(callback, status, body)`.
     let pending_http: Vec<crate::http::HttpResult> = world
@@ -609,6 +616,23 @@ pub fn run_scripts(world: &mut World) {
                 perf_batch.on_ui.push((script_path.clone(), dur));
                 if let Err(e) = res {
                     warn!("Script on_ui error [{}]: {}", script_path.display(), e);
+                }
+            }
+
+            // Deliver animation events to `on_animation_event(name, entity)`.
+            for ev in &pending_anim_events {
+                if let Err(e) = engine.call_on_animation_event(
+                    &script_path,
+                    &ev.name,
+                    ev.entity_bits,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!(
+                        "Script on_animation_event error [{}]: {}",
+                        script_path.display(),
+                        e
+                    );
                 }
             }
 

@@ -301,6 +301,7 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
         duration,
         tracks,
         property_tracks: Vec::new(),
+        markers: Vec::new(),
     }
 }
 

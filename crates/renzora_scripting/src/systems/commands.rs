@@ -463,6 +463,13 @@ fn script_command_to_action(
             args.insert("speed".into(), V::Float(speed));
             "set_animation_speed"
         }
+        ScriptCommand::SeekAnimation { entity_id, time } => {
+            if let Some(id) = entity_id {
+                args.insert("entity_id".into(), V::Int(id as i64));
+            }
+            args.insert("time".into(), V::Float(time));
+            "seek_animation"
+        }
         ScriptCommand::CrossfadeAnimation {
             entity_id,
             name,

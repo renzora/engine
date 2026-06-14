@@ -33,5 +33,6 @@
     render_layer: 0,
     simulation_space: World,
     simulation_condition: Always,
+    erosion: true,
     variables: {},
 )

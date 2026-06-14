@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
 use renzora::reflection::list_animatable_fields;
-use renzora::{PropertyKey, PropertyTrack, TrackValue};
+use renzora::{AnimMarker, PropertyKey, PropertyTrack, TrackValue};
 use renzora_animation::property_playback::{apply_property_tracks, read_track_value};
 use renzora_animation::{AnimClip, AnimatorComponent};
 use renzora_editor_framework::SplashState;
@@ -24,7 +24,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{drag_value, menu_item, screen_menu, timeline_view, DragRange, TimelineView, LANE_INSET};
+use renzora_ember::widgets::{drag_value, menu_item, screen_menu, text_input, timeline_view, DragRange, EmberTextInput, TimelineView, LANE_INSET};
 
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
@@ -61,6 +61,7 @@ impl Plugin for NativeAnimTimeline {
                 update_anim_play_icon,
                 key_context_menu,
                 save_clip_click,
+                add_marker_click,
                 auto_save_clip,
                 timeline_wheel_zoom,
                 timeline_shortcuts,
@@ -270,6 +271,12 @@ struct AddKeyTrackBtn(usize);
 /// Marker on the "add track" button in the track-header column corner.
 #[derive(Component)]
 struct AddTrackBtn;
+/// Marker on the toolbar "add marker" button.
+#[derive(Component)]
+struct AddMarkerBtn;
+/// Marker on the toolbar marker-name text field.
+#[derive(Component)]
+struct MarkerNameField;
 #[derive(Component)]
 struct SpeedBtn(f32);
 #[derive(Component)]
@@ -430,6 +437,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(tl.header_corner).add_children(&[htitle, hspacer, add_track]);
     keyed_list(commands, tl.header_list, header_snapshot);
     keyed_list(commands, tl.clips, keyframe_snapshot);
+    keyed_list(commands, tl.markers, marker_snapshot);
 
     commands.entity(body).add_children(&[note, tl.root]);
     commands.entity(root).add_children(&[toolbar, body]);
@@ -517,6 +525,23 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let add_prop_b = icon_btn(commands, fonts, "list-plus", text_primary(), AnimBtn::AddProperty).0;
     let add_key_b = icon_btn(commands, fonts, "diamond", text_primary(), AnimBtn::AddKey).0;
 
+    // Event-marker authoring: name field + add-at-playhead button.
+    let marker_field = text_input(commands, &fonts.ui, "event", "");
+    commands.entity(marker_field).insert((
+        MarkerNameField,
+        Node {
+            min_width: Val::Px(64.0),
+            width: Val::Px(80.0),
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            flex_shrink: 0.0,
+            ..default()
+        },
+    ));
+    let add_marker_b = icon_btn(commands, fonts, "flag", MARKER, AddMarkerBtn).0;
+
     // Save — accent-colored while there are unsaved keyframe edits.
     let (save_b, save_ic) = icon_btn(commands, fonts, "floppy-disk", text_muted(), SaveClipBtn);
     bind_text_color(commands, save_ic, |w| {
@@ -556,7 +581,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, sep3, speed_lbl];
     kids.extend(speed_btns);
-    kids.extend([sep4, add_prop_b, add_key_b, snap_b, save_b, keyinfo, gap, len_lbl, len_dv, time, zoom_out, zoom_lbl, zoom_in]);
+    kids.extend([sep4, add_prop_b, add_key_b, marker_field, add_marker_b, snap_b, save_b, keyinfo, gap, len_lbl, len_dv, time, zoom_out, zoom_lbl, zoom_in]);
     commands.entity(bar).add_children(&kids);
     bar
 }
@@ -956,6 +981,53 @@ fn prop_bar(commands: &mut Commands, lane: usize, t0: f32, t1: f32, zoom: f32, s
             bevy::ui::FocusPolicy::Pass,
         ))
         .id()
+}
+
+/// Color for event-marker flags.
+const MARKER: (u8, u8, u8) = (200, 140, 220);
+
+/// Renders each clip marker as a labeled flag + thin full-height line. Visual
+/// only (`FocusPolicy::Pass`); deletion is a math hit-test in `key_context_menu`.
+fn marker_snapshot(world: &World) -> KeyedSnapshot {
+    let Some(clip) = cur_clip(world) else { return empty() };
+    let Some(s) = state(world) else { return empty() };
+    let (zoom, scroll) = (s.timeline_zoom, s.timeline_scroll);
+    let markers: Vec<(f32, String)> = clip.markers.iter().map(|m| (m.time, m.name.clone())).collect();
+    let items: Vec<(u64, u64)> = markers
+        .iter()
+        .enumerate()
+        .map(|(i, (t, name))| {
+            let mut k = hasher();
+            i.hash(&mut k);
+            let mut h = hasher();
+            (t.to_bits(), name, zoom.to_bits(), scroll.to_bits()).hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (t, name) = &markers[i];
+            marker_flag(c, f, *t, name, zoom, scroll)
+        }),
+    }
+}
+
+fn marker_flag(commands: &mut Commands, fonts: &EmberFonts, time: f32, name: &str, zoom: f32, scroll: f32) -> Entity {
+    let x = (time - scroll) * zoom + LANE_INSET;
+    let root = commands
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(x), top: Val::Px(0.0), width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, bevy::ui::FocusPolicy::Pass))
+        .id();
+    let line = commands
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(1.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgba_u8(MARKER.0, MARKER.1, MARKER.2, 110)), bevy::ui::FocusPolicy::Pass))
+        .id();
+    let flag = commands
+        .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(1.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(3.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(MARKER)), bevy::ui::FocusPolicy::Pass))
+        .id();
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 8.0), TextColor(rgb((25, 20, 30))), bevy::text::TextLayout::new_with_no_wrap())).id();
+    commands.entity(flag).add_child(lbl);
+    commands.entity(root).add_children(&[line, flag]);
+    root
 }
 
 fn empty() -> KeyedSnapshot {
@@ -1374,6 +1446,30 @@ fn key_context_menu(
     };
     let (zoom, scroll, th) = (state.timeline_zoom, state.timeline_scroll, state.track_height);
 
+    // Top strip: right-click near a marker flag → delete that marker.
+    if p.y < 16.0 {
+        if let Some(mi) = clip
+            .markers
+            .iter()
+            .position(|m| ((m.time - scroll) * zoom + LANE_INSET - p.x).abs() < 7.0)
+        {
+            let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+            let label = format!("Delete marker '{}'", clip.markers[mi].name);
+            let del = menu_item(&mut commands, &fonts, "trash", &label, move |w| {
+                if let Some(mut cache) = w.get_resource_mut::<NativeAnimClip>() {
+                    if let Some(clip) = cache.clip.as_mut() {
+                        if mi < clip.markers.len() {
+                            clip.markers.remove(mi);
+                        }
+                    }
+                    cache.dirty = true;
+                }
+            });
+            commands.entity(menu).add_children(&[del]);
+            return;
+        }
+    }
+
     // Right-click ON a key → delete / interp menu.
     if let Some(pick) = pick_key(clip, zoom, scroll, th, p) {
         let menu = screen_menu(&mut commands, cursor.x, cursor.y);
@@ -1465,6 +1561,31 @@ fn auto_save_clip(time: Res<Time>, mut cache: ResMut<NativeAnimClip>, mut timer:
         }
         Some(Err(e)) => warn!("[timeline] auto-save failed: {}", e),
         None => {}
+    }
+}
+
+/// "Add Marker" button → add an event marker at the playhead, named from the
+/// toolbar field (default "event").
+fn add_marker_click(
+    q: Query<&Interaction, (With<AddMarkerBtn>, Changed<Interaction>)>,
+    field: Query<&EmberTextInput, With<MarkerNameField>>,
+    state: Option<Res<AnimationEditorState>>,
+    mut cache: ResMut<NativeAnimClip>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(state) = state else { return };
+    let name = field
+        .iter()
+        .next()
+        .map(|f| f.value.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "event".to_string());
+    let time = state.scrub_time;
+    if let Some(clip) = cache.clip.as_mut() {
+        clip.markers.push(AnimMarker { time, name });
+        cache.dirty = true;
     }
 }
 

@@ -516,6 +516,7 @@ pub fn extract_animations(
             duration: duration_f as f32,
             tracks,
             property_tracks: Vec::new(),
+            markers: Vec::new(),
         };
         let dropped = crate::anim_decimate::decimate_clip(&mut clip);
         if dropped > 0 {

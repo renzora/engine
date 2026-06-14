@@ -150,6 +150,68 @@ impl ParticleTextureModifier {
     }
 }
 
+/// A modifier that erodes (dissolves) particles using a noise texture, tied to
+/// the particle's remaining opacity: as a particle fades over its life it
+/// dissipates in organic wisps/holes instead of dimming uniformly.
+///
+/// Reads the red channel of a grayscale noise image bound via [`EffectMaterial`]
+/// at the given texture slot, and scales the particle colour by a smooth
+/// threshold of that noise against `1 - color.a`. Works for both additive
+/// (RGB falloff) and alpha-blended (alpha falloff) effects.
+///
+/// [`EffectMaterial`]: crate::EffectMaterial
+#[derive(Debug, Clone, Copy, PartialEq, Reflect, Serialize, Deserialize)]
+pub struct ErosionModifier {
+    /// Index of the texture slot holding the grayscale erosion noise.
+    pub noise_slot: ExprHandle,
+}
+
+impl ErosionModifier {
+    /// Create a new erosion modifier reading noise from `noise_slot`.
+    pub fn new(noise_slot: ExprHandle) -> Self {
+        Self { noise_slot }
+    }
+}
+
+impl_mod_render!(ErosionModifier, &[]);
+
+#[cfg_attr(feature = "serde", typetag::serde)]
+impl RenderModifier for ErosionModifier {
+    fn apply_render(
+        &self,
+        module: &mut Module,
+        context: &mut RenderContext,
+    ) -> Result<(), ExprError> {
+        context.set_needs_uv();
+        let slot = module.try_get(self.noise_slot)?;
+        let slot = slot.eval(module, context)?;
+        let mut code = String::with_capacity(512);
+        code += &format!(
+            "    // ErosionModifier
+    var erosion_n: f32;
+    switch ({slot}) {{\n"
+        );
+        let count = module.texture_layout().layout.len() as u32;
+        for index in 0..count {
+            let wgsl_index = index.to_wgsl_string();
+            code += &format!("      case {wgsl_index}: {{ erosion_n = textureSample(material_texture_{index}, material_sampler_{index}, uv).r; }}\n");
+        }
+        code += "      default: { erosion_n = 1.0; }\n";
+        code += "    }\n";
+        code += "    {\n        let erode_t = 1.0 - color.a;\n        let erode_factor = smoothstep(erode_t, erode_t + 0.15, erosion_n);\n        color = color * erode_factor;\n    }\n";
+        context.fragment_code += &code;
+        Ok(())
+    }
+
+    fn boxed_render_clone(&self) -> Box<dyn RenderModifier> {
+        Box::new(*self)
+    }
+
+    fn as_modifier(&self) -> &dyn Modifier {
+        self
+    }
+}
+
 /// Color blending modes.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub enum ColorBlendMode {

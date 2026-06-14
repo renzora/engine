@@ -344,6 +344,10 @@ pub enum ScriptCommand {
         entity_id: Option<u64>,
         speed: f32,
     },
+    SeekAnimation {
+        entity_id: Option<u64>,
+        time: f32,
+    },
     CrossfadeAnimation {
         entity_id: Option<u64>,
         name: String,

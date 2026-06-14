@@ -9,6 +9,7 @@ pub fn create_empty_clip(name: &str, duration: f32) -> AnimClip {
         duration,
         tracks: Vec::new(),
         property_tracks: Vec::new(),
+        markers: Vec::new(),
     }
 }
 

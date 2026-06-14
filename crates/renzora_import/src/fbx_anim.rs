@@ -394,6 +394,7 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
             duration,
             tracks,
             property_tracks: Vec::new(),
+            markers: Vec::new(),
         };
         crate::anim_decimate::decimate_clip(&mut clip);
 

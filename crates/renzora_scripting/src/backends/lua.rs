@@ -434,6 +434,30 @@ impl ScriptBackend for LuaBackend {
         })
     }
 
+    fn call_on_animation_event(
+        &self,
+        path: &Path,
+        name: &str,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>("on_animation_event") else {
+                return Ok(()); // script doesn't handle animation events — fine
+            };
+            func.call::<()>((name, entity_bits)).map_err(|e| {
+                let script = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} on_animation_event: {}", script, e)
+            })?;
+            Ok(())
+        })
+    }
+
     fn call_on_http(
         &self,
         path: &Path,
@@ -1030,6 +1054,39 @@ fn register_api(lua: &Lua) {
                 speed,
             });
             Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "seek_animation",
+        lua.create_function(|_, time: f32| {
+            push_command(ScriptCommand::SeekAnimation {
+                entity_id: None,
+                time,
+            });
+            Ok(())
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "get_animation_time",
+        lua.create_function(|_, ()| {
+            Ok(
+                match crate::get_handler::call_get(None, "AnimatorReadState", "time") {
+                    Some(crate::command::PropertyValue::Float(f)) => f,
+                    _ => 0.0,
+                },
+            )
+        })
+        .unwrap(),
+    );
+    let _ = globals.set(
+        "is_animation_playing",
+        lua.create_function(|_, ()| {
+            Ok(matches!(
+                crate::get_handler::call_get(None, "AnimatorReadState", "playing"),
+                Some(crate::command::PropertyValue::Bool(true))
+            ))
         })
         .unwrap(),
     );

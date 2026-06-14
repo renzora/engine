@@ -1402,6 +1402,17 @@ pub struct AnimClip {
     /// `.anim` files (which have no `property_tracks` field) loadable.
     #[serde(default)]
     pub property_tracks: Vec<PropertyTrack>,
+    /// Named event markers — when playback crosses one, scripts' `on_animation_event`
+    /// hook fires with the marker name.
+    #[serde(default)]
+    pub markers: Vec<AnimMarker>,
+}
+
+/// A named event marker on an animation clip's timeline.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AnimMarker {
+    pub time: f32,
+    pub name: String,
 }
 
 /// Animation curves for a single bone/target.
@@ -2096,6 +2107,26 @@ pub struct UiCallback {
 #[derive(Resource, Default)]
 pub struct ScriptUiInbox {
     pub pending: Vec<UiCallback>,
+}
+
+/// An animation event fired when playback crosses a clip marker, awaiting
+/// dispatch to scripts' `on_animation_event(name, entity)` hook.
+#[derive(Clone, Debug)]
+pub struct AnimEvent {
+    /// The marker name.
+    pub name: String,
+    /// The animator entity that fired it (`Entity::to_bits`).
+    pub entity_bits: u64,
+}
+
+/// Inbox bridge for animation events. The animation runtime pushes an
+/// [`AnimEvent`] when playback crosses a clip marker; `renzora_scripting` drains
+/// it each frame and invokes every script's `on_animation_event(name, entity)`
+/// hook (broadcast, same semantics as [`ScriptUiInbox`]). Lives in core so
+/// scripting doesn't depend on `renzora_animation`.
+#[derive(Resource, Default)]
+pub struct ScriptAnimEventInbox {
+    pub pending: Vec<AnimEvent>,
 }
 
 /// Marker resource: present when the runtime is running as a dedicated server

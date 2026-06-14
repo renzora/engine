@@ -565,6 +565,7 @@ fn create_anim_click(
                 duration: 2.0,
                 tracks: Vec::new(),
                 property_tracks: Vec::new(),
+                markers: Vec::new(),
             };
             if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
                 set_feedback(world, entity, format!("Write failed: {e}"), true);

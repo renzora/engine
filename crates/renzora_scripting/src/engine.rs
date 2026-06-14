@@ -185,6 +185,27 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Dispatch an animation event to a script's `on_animation_event(name, entity)`.
+    pub fn call_on_animation_event(
+        &self,
+        path: &Path,
+        name: &str,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands =
+            backend.call_on_animation_event(&resolved, name, entity_bits, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
     /// Dispatch a completed HTTP response to a script's `on_http(callback,
     /// status, body)` hook.
     pub fn call_on_http(

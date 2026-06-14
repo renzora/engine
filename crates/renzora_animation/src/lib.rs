@@ -62,7 +62,8 @@ impl Plugin for AnimationPlugin {
             .init_asset_loader::<PropertyClipLoader>()
             .init_asset_loader::<sm_loader::AnimSmLoader>()
             .init_resource::<AnimationCommandQueue>()
-            .init_resource::<property_playback::PropAnimDebug>();
+            .init_resource::<property_playback::PropAnimDebug>()
+            .init_resource::<renzora::ScriptAnimEventInbox>();
 
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);

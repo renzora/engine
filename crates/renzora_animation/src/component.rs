@@ -124,6 +124,11 @@ pub struct AnimatorState {
     /// Playback time (seconds) for property animation, advanced independently
     /// of the skeletal `AnimationPlayer` so property-only entities still animate.
     pub prop_time: f32,
+    /// When true, property animation is explicitly stopped (set by the `Stop`
+    /// command) and won't auto-play the default clip. Cleared by `Play`/`Resume`.
+    pub prop_stopped: bool,
+    /// Playback speed multiplier for property animation (set by `Play`/`SetSpeed`).
+    pub prop_speed: f32,
 }
 
 impl Default for AnimatorState {
@@ -144,6 +149,8 @@ impl Default for AnimatorState {
             params: AnimParams::default(),
             prop_clip_handles: HashMap::new(),
             prop_time: 0.0,
+            prop_stopped: false,
+            prop_speed: 1.0,
         }
     }
 }

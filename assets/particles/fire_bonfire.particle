@@ -34,5 +34,6 @@
     render_layer: 0,
     simulation_space: Local,
     simulation_condition: Always,
+    erosion: true,
     variables: {},
 )

@@ -88,6 +88,21 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute the `on_animation_event(name, entity)` hook when animation
+    /// playback crosses a clip marker. `entity_bits` is the animator entity's
+    /// `Entity::to_bits()`. Default is a no-op so backends without support compile.
+    fn call_on_animation_event(
+        &self,
+        path: &Path,
+        name: &str,
+        entity_bits: u64,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, name, entity_bits, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Execute the `on_http(callback, status, body)` hook for a completed HTTP
     /// request. Default is a no-op so backends without HTTP support compile.
     fn call_on_http(

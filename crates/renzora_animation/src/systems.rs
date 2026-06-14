@@ -335,6 +335,11 @@ pub enum AnimationCommand {
         entity: Entity,
         speed: f32,
     },
+    /// Seek playback to an absolute time (seconds).
+    Seek {
+        entity: Entity,
+        time: f32,
+    },
     /// Crossfade to a new clip with explicit duration.
     Crossfade {
         entity: Entity,
@@ -397,15 +402,27 @@ pub fn process_animation_commands(
                 let Ok((animator, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
-                if !state.initialized {
-                    continue;
-                }
 
                 // Idempotent: scripts re-call `play_animation` every frame
-                // because the Lua state doesn't persist locals. Skip if the
-                // clip is already the current one so looping clips don't
-                // restart every frame.
-                if state.current_clip.as_deref() == Some(name.as_str()) && !state.is_paused {
+                // because the Lua state doesn't persist locals. Skip restarting
+                // if the clip is already the current one.
+                let already = state.current_clip.as_deref() == Some(name.as_str())
+                    && !state.is_paused
+                    && !state.prop_stopped;
+                let prev_clip = state.current_clip.clone();
+
+                // Property-animation state — applied even without a skeletal
+                // player (so a sun / property-only entity responds to scripts).
+                state.prop_speed = speed;
+                state.prop_stopped = false;
+                state.is_paused = false;
+                if !already {
+                    state.current_clip = Some(name.clone());
+                    state.prop_time = 0.0;
+                }
+
+                // Skeletal player work requires init + a player.
+                if already || !state.initialized {
                     continue;
                 }
 
@@ -425,8 +442,7 @@ pub fn process_animation_commands(
                 // Per-clip blend: prefer target.blend_in, else source.blend_out,
                 // else the animator's global blend_duration.
                 let target_blend_in = animator.get_slot(&name).and_then(|s| s.blend_in);
-                let source_blend_out = state
-                    .current_clip
+                let source_blend_out = prev_clip
                     .as_ref()
                     .and_then(|n| animator.get_slot(n))
                     .and_then(|s| s.blend_out);
@@ -440,15 +456,15 @@ pub fn process_animation_commands(
                     playing.repeat();
                 }
                 playing.set_speed(speed);
-
-                state.current_clip = Some(name);
-                state.is_paused = false;
             }
 
             AnimationCommand::Stop { entity } => {
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
+                state.prop_stopped = true;
+                state.prop_time = 0.0;
+                state.is_paused = false;
                 if !state.initialized {
                     continue;
                 }
@@ -470,13 +486,13 @@ pub fn process_animation_commands(
                 }
 
                 state.current_clip = None;
-                state.is_paused = false;
             }
 
             AnimationCommand::Pause { entity } => {
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
+                state.is_paused = true;
                 if !state.initialized {
                     continue;
                 }
@@ -490,13 +506,14 @@ pub fn process_animation_commands(
                 };
 
                 player.pause_all();
-                state.is_paused = true;
             }
 
             AnimationCommand::Resume { entity } => {
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
+                state.is_paused = false;
+                state.prop_stopped = false;
                 if !state.initialized {
                     continue;
                 }
@@ -510,13 +527,39 @@ pub fn process_animation_commands(
                 };
 
                 player.resume_all();
-                state.is_paused = false;
+            }
+
+            AnimationCommand::Seek { entity, time } => {
+                let Ok((_, mut state)) = animators.get_mut(entity) else {
+                    continue;
+                };
+                let time = time.max(0.0);
+                state.prop_time = time;
+                if !state.initialized {
+                    continue;
+                }
+                let Some(current) = state.current_clip.clone() else {
+                    continue;
+                };
+                let Some(&node_idx) = state.node_indices.get(&current) else {
+                    continue;
+                };
+                let Some(player_entity) = state.player_entity else {
+                    continue;
+                };
+                let Ok((mut player, _)) = players.get_mut(player_entity) else {
+                    continue;
+                };
+                if let Some(anim) = player.animation_mut(node_idx) {
+                    anim.seek_to(time);
+                }
             }
 
             AnimationCommand::SetSpeed { entity, speed } => {
-                let Ok((_, state)) = animators.get_mut(entity) else {
+                let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
+                state.prop_speed = speed;
                 if !state.initialized {
                     continue;
                 }
@@ -551,6 +594,12 @@ pub fn process_animation_commands(
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
+                state.prop_stopped = false;
+                state.is_paused = false;
+                if state.current_clip.as_deref() != Some(name.as_str()) {
+                    state.prop_time = 0.0;
+                }
+                state.current_clip = Some(name.clone());
                 if !state.initialized {
                     continue;
                 }
@@ -573,9 +622,6 @@ pub fn process_animation_commands(
                 if looping {
                     playing.repeat();
                 }
-
-                state.current_clip = Some(name);
-                state.is_paused = false;
             }
 
             AnimationCommand::SetParam {

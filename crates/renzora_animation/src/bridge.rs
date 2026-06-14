@@ -80,6 +80,12 @@ pub fn handle_animation_script_actions(
                 speed: get_f32("speed", 1.0),
             });
         }
+        "seek_animation" => {
+            anim_queue.commands.push(AnimationCommand::Seek {
+                entity: get_entity(),
+                time: get_f32("time", 0.0),
+            });
+        }
         "crossfade_animation" => {
             anim_queue.commands.push(AnimationCommand::Crossfade {
                 entity: get_entity(),
