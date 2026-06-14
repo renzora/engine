@@ -354,6 +354,20 @@ These read Bevy prepass buffers, so the camera must have the matching prepass en
 
 > `scene/scene_color` is a placeholder: Bevy doesn't expose a grab-pass texture to custom-material shaders without a dedicated render-graph node, so this node currently outputs magenta.
 
+### Custom
+
+| Node type | Name | Description |
+|-----------|------|-------------|
+| `custom/code` | Custom Code | Inline WGSL escape hatch — write shader logic the node library can't express |
+
+`custom/code` takes four `vec4` inputs (`a`, `b`, `c`, `d`) plus a `code` string pin, and exposes `result` (`vec4`) and its `rgb`/`x`/`y`/`z`/`w` channels. The snippet runs in a generated helper function with the inputs in scope and assigns the `result` (pre-seeded to opaque black):
+
+```wgsl
+result = a * b + vec4<f32>(sin(c.x), 0.0, 0.0, 1.0);
+```
+
+It's the in-graph counterpart to a full [code shader](#code-shaders): reach for it when you only need a few lines of WGSL inside an otherwise node-based material.
+
 ## Material functions (subgraphs)
 
 A reusable subgraph is stored as a `.material_function` JSON file (a `MaterialFunction`: a `name` plus a `MaterialGraph`). The resolver loads `*.material_function` files sibling to a material. Inside a function graph you use the bracket nodes instead of an output node:

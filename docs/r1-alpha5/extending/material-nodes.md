@@ -22,7 +22,7 @@ A material is a **node graph** (`MaterialGraph`) saved to a `.material` file (JS
 
 Material nodes are therefore **compile-time**: they produce WGSL, not runtime logic. When a graph is saved through the editor, codegen runs once and the resulting `.wgsl` path is stored in the graph's `wgsl_path` field so the runtime can skip codegen entirely.
 
-> **Important:** the set of graph node types is **fixed and compiled into `renzora_shader`** (`material/nodes.rs::ALL_NODES`, dispatched in `material/codegen.rs`). There is **no runtime trait or plugin API for registering new graph node types** — adding a brand-new built-in node is an engine-source change (see *Adding a built-in node*). To make reusable nodes without editing the engine, use a **Material Function** (a saved subgraph). To author arbitrary shader logic outside the graph, write a **code shader** and, if needed, a custom **`ShaderBackend`**.
+> **Important:** the set of graph node types is **fixed and compiled into `renzora_shader`** (`material/nodes.rs::ALL_NODES`, dispatched in `material/codegen.rs`). There is **no runtime trait or plugin API for registering new graph node types** — adding a brand-new built-in node is an engine-source change (see *Adding a built-in node*). To make reusable nodes without editing the engine, use a **Material Function** (a saved subgraph). For a few lines of arbitrary shader logic *inside* the graph, drop in a **`custom/code`** (Custom Code) node — it compiles your WGSL snippet into a helper function. To author whole shaders outside the graph, write a **code shader** and, if needed, a custom **`ShaderBackend`**.
 
 ## The graph data model
 
@@ -74,6 +74,7 @@ Every node is identified by a namespaced `node_type` string (e.g. `"math/add"`, 
 | Utility | `utility/` | `utility/depth_fade`, `utility/dither`, `utility/hash`, derivatives (`dpdx`/`dpdy`/`fwidth`), masks |
 | Control | `control/` | `control/if`, `control/static_switch`, comparisons (`greater_than`, `equal`, …), boolean ops |
 | Scene | `scene/` | `scene/pixel_depth`, `scene/scene_depth`, `scene/screen_uv`, `scene/env_map_sample`, `scene/motion_vector` |
+| Custom | `custom/` | `custom/code` (inline-WGSL escape hatch) |
 | Output | `output/` | `output/surface`, `output/terrain_layer`, `output/vegetation`, `output/unlit` |
 
 Look up a definition at runtime with `nodes::node_def(node_type)` or list a category with `nodes::nodes_in_category(category)`.
