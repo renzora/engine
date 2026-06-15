@@ -41,14 +41,9 @@ The toolchain image is multi-arch (amd64 + arm64), so Apple Silicon Macs run it 
 
 ## Documentation
 
-| Guide | What's inside |
-|---|---|
-| [Plugin Development](docs/plugin-development.md) | SDK, scaffolding, components, editor panels |
-| [Scripting API](docs/scripting_api.md) | Lua hooks, globals, and the full function reference (transform, reflection, input, audio, networking, HTTP, …) |
-| [Template (UI) API](docs/template_api.md) | The `.html` markup language: elements, bindings `{{ }}`, conditionals, loops, components |
-| [UI Component Catalog](docs/hui_components.md) | The widget toolbox and roadmap for building any UI |
-| [Networking Test Plan](docs/networking-test-plan.md) | Multiplayer setup and testing |
-| [Roadmap](docs/roadmap.md) | What's planned |
+Full documentation — getting started, scripting, UI, plugins, exporting, and more — lives on the website:
+
+**[renzora.com/docs](https://renzora.com/docs)**
 
 ## Supported Platforms
 
