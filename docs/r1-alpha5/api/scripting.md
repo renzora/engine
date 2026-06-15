@@ -233,16 +233,21 @@ end
 
 | Function | Description |
 |----------|-------------|
-| `play_animation(name [, looping [, speed]])` | Play a clip (defaults: looping `true`, speed `1.0`) |
+| `play_animation(name [, looping [, speed]])` | Play a clip — bone **and** property tracks (defaults: looping `true`, speed `1.0`) |
 | `stop_animation()` | Stop the current animation |
 | `pause_animation()` | Pause playback |
 | `resume_animation()` | Resume playback |
 | `set_animation_speed(speed)` | Set playback speed |
+| `seek_animation(time)` | Jump playback to `time` seconds |
+| `get_animation_time()` | Current property-playback time (seconds) |
+| `is_animation_playing()` | `true` unless paused or stopped |
 | `crossfade_animation(name, duration [, looping])` | Smoothly transition to a clip |
 | `set_anim_param(name, value)` | Set a float state-machine parameter |
 | `set_anim_bool(name, value)` | Set a bool state-machine parameter |
 | `trigger_anim(name)` | Fire a one-shot trigger parameter |
 | `set_layer_weight(layer, weight)` | Set an animation layer's blend weight |
+
+**Lua-only hook:** `on_animation_event(name, entity)` fires when playback crosses a named clip marker (see [Animation → Event markers](../editor/animation.md#event-markers)).
 
 > Rhai takes only `play_animation(name)`. When `renzora_animation` is active its [extension](#extension-functions) re-registers `set_anim_param`/`set_anim_bool` (routing through `ScriptAction`) and adds `set_anim_trigger` + `get_animation_length`.
 

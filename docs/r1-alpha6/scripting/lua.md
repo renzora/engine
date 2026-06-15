@@ -165,7 +165,7 @@ end
 |----------|-----------|
 | Physics | `apply_force(x,y,z)`, `apply_impulse(x,y,z)`, `set_velocity(x,y,z)`, `set_gravity_scale(s)` |
 | Audio | `play_sound(path[, vol[, bus]])`, `play_sound_looping(path, vol)`, `play_music(path[, vol[, fade]])`, `stop_music([fade])`, `stop_all_sounds()`, `play_audio([entity])` |
-| Animation | `play_animation(name[, looping[, speed]])`, `stop_animation()`, `pause_animation()`, `resume_animation()`, `set_animation_speed(s)`, `crossfade_animation(name, dur[, looping])`, `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `trigger_anim(name)`, `set_layer_weight(layer, w)` |
+| Animation | `play_animation(name[, looping[, speed]])`, `stop_animation()`, `pause_animation()`, `resume_animation()`, `set_animation_speed(s)`, `seek_animation(t)`, `get_animation_time()`, `is_animation_playing()`, `crossfade_animation(name, dur[, looping])`, `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `trigger_anim(name)`, `set_layer_weight(layer, w)`. Hook: `on_animation_event(name, entity)` on clip markers. |
 | Timers | `start_timer(name, duration[, repeat])`, `stop_timer(name)` — finished timers appear in `timers_finished` |
 | Spawning | `spawn_entity(name)`, `spawn_primitive(name, kind, x, y, z[, r, g, b])`, `despawn_self()`, `despawn_by_prefix(prefix)`, `load_scene(path)` |
 | Rendering | `set_visibility(bool)`, `set_material_color(r, g, b[, a])`, `screen_shake(intensity, duration)`, `draw_line(sx,sy,sz, ex,ey,ez[, duration])` |

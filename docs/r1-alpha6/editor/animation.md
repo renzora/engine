@@ -1,6 +1,8 @@
 # Animation
 
-Renzora's animation system is built on Bevy's `AnimationGraph` and adds RON clip files, state machines, blend trees, layers, and procedural tweens — all authored in the editor and driven from Lua or Rhai.
+Renzora's animation system is built on Bevy's `AnimationGraph` and adds RON clip files, a **property-animation dopesheet** (keyframe any component field — rotation, scale, a light's azimuth, …), named **event markers**, state machines, blend trees, layers, and procedural tweens — all authored in the editor and driven from Lua or Rhai.
+
+> **Two animation layers in one clip.** A `.anim` file can carry **skeletal bone tracks** (imported from a model, played through Bevy's `AnimationPlayer`) *and* **property tracks** (authored on the dopesheet, sampled by a custom property sampler). They share the same clip slot, transport, and script controls. The skeletal half is covered first; [Property animation](#property-animation) covers the dopesheet.
 
 ## How it works
 
@@ -128,6 +130,87 @@ The Timeline panel edits the selected clip directly:
 - **Mouse wheel** zooms the time axis.
 - Dense keyframe runs draw as per-channel **range bars** rather than thousands of individual diamonds; zoom in and they split back into editable keys.
 
+## Property animation
+
+Alongside imported skeletal clips, the **Timeline** is a full **dopesheet** for animating arbitrary **component fields** — Transform rotation/scale/translation, a light's intensity, a sky's elevation, or any reflected `f32`/`Vec3`/`Color`/`bool` field. This is the Godot/Unity-style workflow: pick an entity, add a property, drop keyframes, scrub.
+
+Property tracks live in the same `.anim` clip as skeletal tracks and play back in both the editor and exported games. They don't need a skeleton, so you can animate a primitive cube, a camera, or a directional light.
+
+### Authoring workflow
+
+1. **Select the entity** in the viewport or hierarchy. (A viewport click selects the whole model as a unit.)
+2. If it has no clip yet, the Timeline/Animation panel shows **Create Animation** — click it to write an empty `animations/<Entity>.anim` and attach an `AnimatorComponent`.
+3. **Add a track:** the **+ Add Track** button (Tracks header) or the toolbar **Add Property** button adds an empty track. Its row has a **dropdown** — pick the property to bind (e.g. `Transform · Rotation`). The picker hides properties already used, so you can't make duplicate tracks.
+4. **Key it.** Two reliable ways:
+   - Move the playhead, **pose the object** (rotate/scale it in the viewport — it stays put), then press **Add Key** (toolbar diamond, keys all tracks) or the **◆** button on a single track row.
+   - **Select a keyframe** (click it — the playhead jumps to it), then pose the object; the selected key updates live.
+   - **Right-click** an empty spot on a track → **Add keyframe here**.
+   - Or right-click a key → **Set to current pose**.
+5. **Record mode** (the red ● toggle) auto-keys any pose change at the playhead.
+6. **Scrub** the playhead (or press **Play**) to preview. Save with the floppy button — edits also **auto-save** (so Play mode, which reads the file from disk, sees them).
+
+> **Posing vs. keying.** Moving the object only changes its live transform — it does not write a keyframe until you capture it (Add Key / Set to current pose / Record). While a keyframe is selected, posing updates *that* key. The preview never overwrites a manual pose — grabbing the object auto-pauses playback so your edit sticks.
+
+### Keyframe editing
+
+- **Drag** a key horizontally to retime (snap-aware).
+- **Click** a key to select it — it highlights and its value shows in the toolbar readout (`Rotation @ 1.33s = (0°, 90°, 0°)`).
+- **Delete** removes the selected key. (With a key selected over the timeline, Delete removes the keyframe, not the entity.)
+- **Right-click** a key → Delete, **Set to current pose**, or toggle **Linear / Stepped** interpolation.
+- **Length** field (toolbar) sets the clip duration; **gridlines** and ruler labels mark seconds (and frames when zoomed in).
+
+> **Interpolation:** Linear (smooth) or Stepped (hold) per key. Rotation is keyed as **Euler degrees** so a full 0→360° spin works (quaternion slerp would take the shortest path and not move). For a continuous spin, use keys **less than 180° apart** — e.g. 0° / 120° / 240° / 360°.
+
+### Event markers
+
+**Markers** are named points on the timeline that fire a script callback when playback crosses them — for footsteps, hit frames, spawn cues, etc.
+
+- Type a name in the toolbar **marker field** (defaults to `event`), then click the **🚩 flag button** to drop a marker at the playhead.
+- Markers render as labeled purple flags; **right-click** a flag to delete it.
+- At runtime, crossing a marker fires every script's `on_animation_event(name, entity)` hook — see [Reacting to animation events](#reacting-to-animation-events).
+
+### Keyboard shortcuts
+
+While the cursor is over the Timeline:
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / pause |
+| `Home` / `End` | Jump to start / end |
+| `←` / `→` (or `,` / `.`) | Step one frame back / forward |
+| `K` | Add keyframe (all tracks at the playhead) |
+| `N` | New track |
+| `Delete` / `Backspace` | Delete the selected keyframe |
+
+### `.anim` property data
+
+Property tracks and markers serialize into the same RON `AnimClip` as skeletal `tracks`, under `property_tracks` and `markers` (both default-empty, so older files still load):
+
+```ron
+(
+    name: "Sun",
+    duration: 4.0,
+    tracks: [],
+    property_tracks: [
+        (
+            target: "self",            // "" / "self" = the animator entity; else a child Name
+            component: "Transform",    // reflected component short-name
+            field: "rotation",         // dotted reflect path
+            keys: [
+                (time: 0.0, value: Vec3((0.0,   0.0, 0.0)), interp: Linear),
+                (time: 2.0, value: Vec3((0.0, 180.0, 0.0)), interp: Linear),
+                (time: 4.0, value: Vec3((0.0, 360.0, 0.0)), interp: Linear),
+            ],
+        ),
+    ],
+    markers: [
+        (time: 2.0, name: "halfway"),
+    ],
+)
+```
+
+`value` is one of `Float`, `Vec3`, `Quat`, `Color`, or `Bool`. At runtime the sampler writes Transform fields directly and other fields through reflection (the same path scripts use for `set("Component.field", …)`), so it works in exported builds.
+
 ## State machines
 
 A state machine (`.animsm`) automates transitions so you don't have to script every clip change. It is RON-serialized `AnimationStateMachine`:
@@ -234,15 +317,18 @@ end
 
 ## Playing animations from scripts
 
-These functions are registered in **both** Lua and Rhai. They act on the **entity the script is attached to** — there is no entity argument. Refer to clips by their slot `name`.
+These functions are registered in **both** Lua and Rhai. They act on the **entity the script is attached to** — there is no entity argument. Refer to clips by their slot `name`. They drive **both** the skeletal and the [property-animation](#property-animation) halves of a clip.
 
 | Function | Lua | Rhai | Notes |
 |----------|-----|------|-------|
-| `play_animation(name [, looping [, speed]])` | ✅ | `play_animation(name)` | Lua `looping` defaults to `true`, `speed` to `1.0`. Rhai always loops. |
+| `play_animation(name [, looping [, speed]])` | ✅ | `play_animation(name)` | Lua `looping` defaults to `true`, `speed` to `1.0`. Rhai always loops. Plays the clip's bone **and** property tracks; works on skeleton-less entities. |
 | `crossfade_animation(name, duration [, looping])` | ✅ | `crossfade_animation(name, duration)` | Smoothly blend to a clip over `duration` seconds. |
-| `stop_animation()` | ✅ | ✅ | Stop the current clip. |
+| `stop_animation()` | ✅ | ✅ | Stop the current clip (fully halts property playback too). |
 | `pause_animation()` / `resume_animation()` | ✅ | ✅ | Pause / resume playback. |
-| `set_animation_speed(speed)` | ✅ | ✅ | `1.0` = normal, `2.0` = double, negative = reverse. |
+| `set_animation_speed(speed)` | ✅ | ✅ | `1.0` = normal, `2.0` = double, negative = reverse. Affects property playback speed. |
+| `seek_animation(time)` | ✅ | ✅ | Jump playback to `time` seconds. |
+| `get_animation_time()` | ✅ | ✅ | Current property-playback time in seconds. |
+| `is_animation_playing()` | ✅ | ✅ | `true` unless paused or stopped. |
 | `set_anim_param(name, value)` | ✅ | ✅ | Set a state-machine float parameter. |
 | `set_anim_bool(name, value)` | ✅ | ✅ | Set a state-machine bool parameter. |
 | `trigger_anim(name)` | ✅ | ✅ | Fire a one-shot trigger. (`set_anim_trigger` is a Lua-only alias.) |
@@ -280,16 +366,32 @@ Live playback is mirrored into an `AnimatorReadState` component, read through re
 | `get("AnimatorReadState.current_clip")` | name of the playing clip slot |
 | `get("AnimatorReadState.current_state")` | current state-machine state |
 | `get("AnimatorReadState.state_time")` | seconds spent in the current state |
+| `get("AnimatorReadState.time")` | current property-playback time (same as `get_animation_time()`) |
+| `get("AnimatorReadState.playing")` | `true` unless paused or stopped |
 | `get("AnimatorReadState.clip_lengths.<clip>")` | duration of a loaded clip |
 | `get("AnimatorReadState.params.<name>")` | a float parameter |
 | `get("AnimatorReadState.bool_params.<name>")` | a bool parameter |
 
-### Reacting when a clip finishes
+### Reacting to animation events
 
-There is **no keyframe-event system and no `on_anim_event` hook**. To react to a clip ending, either:
+Add named **markers** to a clip on the timeline (see [Event markers](#event-markers)). When playback crosses one, every script's **`on_animation_event(name, entity)`** hook fires — ideal for footsteps, hit frames, or spawn cues synced to the animation. `entity` is the animator entity that fired it.
 
-- Poll the read state — compare `state_time` (or your own timer) against `get_animation_length(name)`, or watch `current_clip` change.
-- Use a **visual blueprint** — the `animation/on_finished` event node fires when a non-looping clip finishes. (The runtime detects the finished clip and surfaces it to the blueprint interpreter; this is the supported event path.)
+```lua
+function on_animation_event(name, entity)
+    if name == "footstep" then
+        play_sound("step.wav")
+    elseif name == "hit" then
+        apply_damage(entity, 10)
+    end
+end
+```
+
+> `on_animation_event` is **Lua-only** (like `on_ui` / `on_rpc`); Rhai scripts don't receive it. Markers fire in play mode and in exported games, and loop-wrap is handled.
+
+To react to a clip **ending** instead:
+
+- Poll the read state — compare `state_time` (or `get_animation_time()`) against `get_animation_length(name)`, or watch `current_clip` change.
+- Use a **visual blueprint** — the `animation/on_finished` event node fires when a non-looping clip finishes.
 
 ```lua
 function on_update()

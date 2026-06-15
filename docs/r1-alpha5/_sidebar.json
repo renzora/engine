@@ -25,6 +25,7 @@
             { "slug": "editor/materials", "title": "Material Editor" },
             { "slug": "editor/terrain", "title": "Terrain" },
             { "slug": "editor/animation", "title": "Animation" },
+            { "slug": "editor/particles", "title": "Particles & VFX" },
             { "slug": "editor/audio", "title": "Audio" },
             { "slug": "editor/shortcuts", "title": "Keyboard Shortcuts" }
           ]
