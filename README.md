@@ -43,7 +43,7 @@ The toolchain image is multi-arch (amd64 + arm64), so Apple Silicon Macs run it 
 
 Full documentation — getting started, scripting, UI, plugins, exporting, and more — lives on the website:
 
-**[renzora.com/docs](https://renzora.com/docs)**
+<strong><a href="https://renzora.com/docs" target="_blank" rel="noopener noreferrer">renzora.com/docs</a></strong>
 
 ## Supported Platforms
 
