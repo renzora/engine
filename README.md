@@ -1,16 +1,16 @@
 # Renzora Engine
 
-A 3D game engine and visual editor built on [Bevy 0.18](https://bevyengine.org/). It's fully compatible with the Bevy plugin ecosystem and is itself modular — every system is a plugin you can add, remove, or replace. Use it as a standalone engine to build games out of the box, or treat it as a customizable foundation you can modify into your own bespoke engine.
+A 3D game engine and visual editor built on <a href="https://bevyengine.org/" target="_blank" rel="noopener noreferrer">Bevy 0.18</a>. It's fully compatible with the Bevy plugin ecosystem and is itself modular — every system is a plugin you can add, remove, or replace. Use it as a standalone engine to build games out of the box, or treat it as a customizable foundation you can modify into your own bespoke engine.
 
 ![Renzora Editor](assets/previews/interface.png)
 
 > **Warning:** Early alpha. Expect bugs, incomplete features, and breaking changes between versions.
 
-> **AI-Assisted Development:** This project uses AI code generation tools (Claude by Anthropic) throughout development. If that's a concern, check out [Bevy](https://bevyengine.org/), [Godot](https://godotengine.org/), or [Fyrox](https://fyrox.rs/).
+> **AI-Assisted Development:** This project uses AI code generation tools (Claude by Anthropic) throughout development. If that's a concern, check out <a href="https://bevyengine.org/" target="_blank" rel="noopener noreferrer">Bevy</a>, <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">Godot</a>, or <a href="https://fyrox.rs/" target="_blank" rel="noopener noreferrer">Fyrox</a>.
 
 ## Getting Started
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/), and Rust just to install the CLI.
+**Prerequisites:** <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noopener noreferrer">Docker</a>, and Rust just to install the CLI.
 
 ```bash
 cargo install renzora     # installs the `renzora` command
@@ -75,5 +75,5 @@ Full documentation — getting started, scripting, UI, plugins, exporting, and m
 
 Dual-licensed under MIT or Apache 2.0.
 
-- [MIT License](LICENSE-MIT)
-- [Apache License 2.0](LICENSE-APACHE)
+- <a href="LICENSE-MIT" target="_blank" rel="noopener noreferrer">MIT License</a>
+- <a href="LICENSE-APACHE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>
