@@ -58,30 +58,27 @@ If a platform's template isn't present locally, the export modal can **Download 
 
 ## Building the desktop templates
 
-The desktop "template" is just the runtime binary. Build it with the cargo aliases in `.cargo/config.toml`:
+The desktop "template" is just the runtime binary. Build it via the renzora CLI (Docker):
 
 ```bash
-# Lean game binary only (NOT --workspace): the shipped game template
-cargo build-runtime
-
-# Full editor build: binary + renzora_editor bundle + one shared bevy_dylib
-cargo build-all
+# Builds the desktop binary + renzora_editor bundle + one shared bevy_dylib.
+# Every editor build also produces the lean runtime binary.
+renzora build
 ```
 
-`cargo build-runtime` expands to `cargo build --profile dist --bin renzora` and produces the `renzora`/`renzora.exe` binary plus its shared libraries (`bevy_dylib`, `renzora.dll`, `std-*`). That binary, with `renzora_editor.*` removed, is the desktop template.
+`renzora build` produces the `renzora`/`renzora.exe` binary plus its shared libraries (`bevy_dylib`, `renzora.dll`, `std-*`). That binary, with `renzora_editor.*` removed, is the desktop template.
 
-For cross-platform output in one pass, use the container build, which writes the arch-suffixed `dist/` layout the scanner expects:
+For cross-platform output in one pass, pass the platform tokens — `renzora build` writes the arch-suffixed `dist/` layout the scanner expects (it runs `docker/build-all.sh` inside `ghcr.io/renzora/engine`, so the host only needs Docker):
 
 ```bash
-# Runs inside ghcr.io/renzora/engine; the host only needs Docker
-./docker/build-all.sh dist windows linux macos
+renzora build windows linux macos
 ```
 
 > There is **no `renzora_runtime` binary package** to `cargo build --package`. The only workspace binary is `renzora_app` (`[[bin]] name = "renzora"`, `default-run = "renzora"`); the crate literally named `renzora` is the contracts *library*.
 
 ## Building the web template
 
-The WASM runtime is **game-only** — there is no WebAssembly editor. The `wasm` lane of `docker/build-all.sh` builds it:
+The WASM runtime is **game-only** — there is no WebAssembly editor. Build it with `renzora build wasm`; under the hood that runs the `wasm` lane of `docker/build-all.sh`:
 
 ```bash
 # from docker/build-all.sh — the WASM lane

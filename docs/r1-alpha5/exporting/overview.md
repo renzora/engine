@@ -84,10 +84,10 @@ For platforms you have **not built locally**, the editor can fetch a prebuilt ru
 
 ### Building the templates yourself
 
-Cross-platform templates are built in the engine's Docker image with `docker/build-all.sh <output-dir> [platforms...]`, which writes **arch-suffixed** output directories. Desktop binaries land directly in their dir; web and mobile nest under `runtime/`:
+Cross-platform templates are built with `renzora build [platforms...]` (inside the engine's Docker image), which writes **arch-suffixed** output directories into `dist/`. Desktop binaries land directly in their dir; web and mobile nest under `runtime/`:
 
 ```bash
-docker/build-all.sh dist windows linux wasm android ios
+renzora build windows linux wasm android ios
 ```
 
 | Token | Output directory |
@@ -134,5 +134,5 @@ Android and iOS export by injecting your `game.rpak` into a prebuilt template (`
 
 ## What's next
 
-- [Installation → Build from source](/docs/r1-alpha5/getting-started/installation) — the cargo aliases and Docker cross-compile setup behind these builds.
+- [Installation → Working from a checkout](/docs/r1-alpha5/getting-started/installation) — the `renzora` CLI and Docker cross-compile setup behind these builds.
 - [Multiplayer → Server setup](/docs/r1-alpha5/multiplayer/server-setup) — running the exported dedicated server.

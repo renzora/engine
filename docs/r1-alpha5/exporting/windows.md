@@ -4,10 +4,7 @@ Cross-compile your game to a native Windows x64 (`x86_64-pc-windows-msvc`) build
 
 ## How Windows builds work
 
-Renzora is one binary. The Windows target is the same `renzora` binary as every other platform, compiled for the MSVC ABI and emitted to `dist/windows-x64/`. There are two ways to produce it:
-
-- **Cross-compile in the Docker image (recommended).** The engine's builder image carries a full Linux→Windows-MSVC toolchain (xwin + `lld-link` + `clang-cl`), so you can build a Windows `.exe` from Linux, macOS, or Windows.
-- **Build natively on a Windows host** with the MSVC C++ Build Tools and a matching Rust toolchain.
+Renzora is one binary. The Windows target is the same `renzora` binary as every other platform, compiled for the MSVC ABI and emitted to `dist/windows-x64/`. It is produced with the `renzora` CLI, which cross-compiles inside the Docker image: the engine's builder image carries a full Linux→Windows-MSVC toolchain (xwin + `lld-link` + `clang-cl`), so you can build a Windows `.exe` from Linux, macOS, or Windows. The host needs only Docker + Git (Rust just to install the CLI).
 
 > The editor is not a compile-time variant. The same `renzora.exe` is the editor when `renzora_editor.dll` sits beside it, and the shipped game when that one file is removed (or you pass `--no-editor`). "Exporting" a Windows game is really "build the binary, then drop the editor bundle." See [Building from Source](/docs/r1-alpha5/setup/building-from-source) for the full one-binary model.
 
@@ -16,16 +13,16 @@ Renzora is one binary. The Windows target is the same `renzora` binary as every 
 Every cross-platform target builds inside `ghcr.io/renzora/engine` (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). The image bundles xwin (which splats Microsoft's redistributable MSVC SDK + CRT at image-build time), `lld-link`, `clang-cl`, and the `x86_64-pc-windows-msvc` rustup target. The host only needs Docker:
 
 ```bash
-docker/build-all.sh dist windows
+renzora build windows
 ```
 
-`build-all.sh <output-dir> [platforms...]` runs inside the container and writes the Windows build to `dist/windows-x64/`. Pass several tokens to build more than one platform in one run:
+`renzora build [platforms...]` runs the build inside the container and writes the Windows build to `dist/windows-x64/`. Pass several tokens to build more than one platform in one run:
 
 ```bash
-docker/build-all.sh dist windows linux
+renzora build windows linux
 ```
 
-> `renzora build windows` (the CLI) derives the image tag, pulls it, and runs this same `docker/build-all.sh` step in the container. From a checkout you can call `docker/build-all.sh` or the `cargo` aliases below directly instead.
+> `renzora build windows` derives the image tag, pulls it, and runs the `docker/build-all.sh` step inside the container — that wrapper is the documented build path.
 
 ## Output layout
 
@@ -42,7 +39,7 @@ dist/windows-x64/
     └── *.dll                # distribution plugins (rendering, GI, etc.)
 ```
 
-`build-all.sh` only emits executables and libraries — it does not pack your assets (see [Packaging assets](#packaging-assets)).
+The build only emits executables and libraries — it does not pack your assets (see [Packaging assets](#packaging-assets)).
 
 ### Editor vs. shipped game
 
@@ -56,22 +53,16 @@ The remaining `renzora.exe` now launches straight into your game. Everything els
 
 > You can also keep the bundle and launch the same exe in game mode for testing with `renzora.exe --no-editor`. The dedicated server is this binary too: `renzora.exe --server` (headless) or `renzora.exe --host` (windowed listen server).
 
-## Building natively on Windows
+## Why the build runs in Docker
 
-If you are on Windows and want a local build without Docker, install:
-
-- **MSVC C++ Build Tools** (Visual Studio Build Tools with "Desktop development with C++"), which provides the linker and Windows SDK.
-- **Rust** via [rustup](https://rustup.rs). The toolchain is pinned in `docker/Dockerfile` (currently **Rust 1.93.0**) — there is no `rust-toolchain.toml`, so match that version for a clean build.
-
-Then use the workspace `cargo` aliases from `.cargo/config.toml`:
+There is no supported native `cargo` build path. A native build produces a different `bevy_dylib`/engine build hash, which breaks the dynamic-plugin ABI (see the ABI hash below), so every build runs inside the pinned `ghcr.io/renzora/engine` image via the `renzora` CLI. The compiler version is pinned in `docker/Dockerfile` (currently **Rust 1.93.0**); you don't install it yourself — the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
-cargo build-all     # build --profile dist --workspace (binary + editor bundle + plugins)
-cargo renzora       # build the workspace and launch the editor
-cargo build-runtime # build --profile dist --bin renzora (lean game binary, no bundle)
+renzora build       # binary + editor bundle + plugins into dist/windows-x64/
+renzora run         # build, then launch the editor
 ```
 
-The native build uses the same MSVC target settings the container does (see below), so the on-disk output matches `dist/windows-x64/`.
+The container build uses the MSVC target settings described below, so the on-disk output is `dist/windows-x64/`.
 
 ## The Windows toolchain
 
@@ -112,8 +103,8 @@ So to ship a game, place either an `assets/` folder or a packed `renzora.rpak` n
 The builder image ships UPX. To shrink the exe and all the shared libraries in a built directory:
 
 ```bash
-docker/upx-compress.sh windows        # compresses dist/windows-x64/
-docker/upx-compress.sh dist/windows-x64
+renzora upx windows        # compresses dist/windows-x64/
+renzora upx dist/windows-x64
 ```
 
 It packs `renzora.exe`, `renzora.dll`, `renzora_editor.dll`, the hashed `bevy_dylib`, and everything in `plugins/` with `upx --brute` (slow, smallest output).

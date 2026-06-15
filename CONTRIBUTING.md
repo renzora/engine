@@ -39,8 +39,8 @@ Include:
 - **Steps to reproduce** — Minimal, concrete steps to trigger the bug
 - **Expected behavior** — What you expected to happen
 - **Actual behavior** — What actually happened
-- **Environment** — OS, GPU, Rust toolchain version (`rustc --version`)
-- **Feature flags** — Which Cargo features you built with (e.g., `editor`, `solari`)
+- **Environment** — OS, GPU, and engine version
+- **Run mode** — editor (bundle present), shipped game (`--no-editor`), `--server`, or `--host`
 - **Logs / screenshots** — Console output, error messages, or screenshots if applicable
 
 ### Feature Requests
@@ -69,13 +69,13 @@ If the engine crashes, check the `crash.log` file generated in the working direc
 2. **One concern per PR** — Don't mix bug fixes with new features or refactors
 3. **Write tests** for new functionality when the module has existing test coverage
 4. **Update documentation** if you change public APIs or add new features
-5. **Don't break existing tests** — Run `cargo test` before submitting
+5. **Don't break existing tests** — Run `renzora test` before submitting
 6. **Keep changes minimal** — Don't refactor unrelated code, add unnecessary comments, or reformat files you didn't change
 
 ### PR Checklist
 
-- [ ] Code compiles without warnings (`cargo build`)
-- [ ] All existing tests pass (`cargo test`)
+- [ ] Code compiles cleanly (`renzora check`)
+- [ ] All existing tests pass (`renzora test`)
 - [ ] New tests added for new functionality (where applicable)
 - [ ] No unrelated formatting changes
 - [ ] Branch is up to date with `main`
@@ -88,39 +88,33 @@ If the engine crashes, check the `crash.log` file generated in the working direc
 
 ## Development Setup
 
+Renzora builds **only** inside its pinned Docker toolchain — there is no supported native `cargo` build. Building in the container is what keeps your `bevy_dylib` and engine build hash identical to everyone else's, which is exactly what keeps the plugin ABI compatible across machines.
+
 ### Prerequisites
 
-- **Rust (nightly)** — Install from [rustup.rs](https://rustup.rs/). The project's `rust-toolchain.toml` will select the correct toolchain automatically.
+- **Docker** — the toolchain runs in a container. Install [Docker](https://docs.docker.com/get-docker/) and make sure the daemon is running.
+- **Git** — to clone the engine.
+- **Rust** — only to install the CLI (`cargo install renzora`); it is not used to build the engine.
 - **Windows 10/11, Linux, or macOS**
-- **Linux only:** `sudo apt install libwayland-dev`
 
 ### Building and Running
 
 ```bash
-cargo run                      # Run the editor (default features)
-cargo run --features solari    # With raytracing (requires Vulkan SDK + DLSS SDK)
-cargo test                     # Run the full test suite
+git clone https://github.com/renzora/engine.git
+cd engine
+renzora init            # build/pull the toolchain image + container (first run is slow)
+renzora run             # build the workspace in the container and run the editor
+renzora run runtime     # run the shipped-game shape (--no-editor)
+renzora test            # run the full test suite (in the container)
 ```
 
-### Faster Linking (Recommended)
-
-**Windows:**
-```bash
-rustup component add llvm-tools-preview
-```
-
-**Linux:**
-```bash
-sudo apt install lld clang
-```
-
-See the [README](README.md) for detailed setup instructions including optional Solari/raytracing prerequisites.
+The editor and game **run** natively on your GPU; only the build happens in the container. See the [README](README.md) and the Building from a Checkout guide for the full command list.
 
 ## Code Style
 
 ### Formatting
 
-Use default `rustfmt` settings. Run `cargo fmt` before committing. Don't manually format code in ways that conflict with `rustfmt`.
+Use default `rustfmt` settings. Run `cargo fmt` (inside the container via `renzora shell`) before committing. Don't manually format code in ways that conflict with `rustfmt`.
 
 ### Naming
 
@@ -158,10 +152,10 @@ use bevy::prelude::*;
 ### Running Tests
 
 ```bash
-cargo test                                    # Full suite
-cargo test -- blueprint::graph_tests          # Specific module
-cargo test -- scripting::tests                # Scripting tests
-cargo test -- component_system::tests         # Component registry tests
+renzora test                                  # Full suite (in the container)
+renzora test -- blueprint::graph_tests        # Specific module
+renzora test -- scripting::tests              # Scripting tests
+renzora test -- component_system::tests       # Component registry tests
 ```
 
 ### Writing Tests

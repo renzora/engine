@@ -53,15 +53,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 ## Prerequisites
 
-- **A Mac with Xcode** — required to assemble and code-sign the final `.app`. The Linux build container can produce the static library, but only macOS + Xcode can build and sign the app bundle.
+- **A Mac with Xcode** — required to assemble and code-sign the final `.app`. The build container produces the static library, but only macOS + Xcode can build and sign the app bundle.
 - **Apple Developer account** — needed to run on a physical device and to publish to the App Store.
-- **Rust iOS targets** — install them with `rustup` if you build the library on a Mac:
 
-```bash
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-```
-
-`aarch64-apple-ios` is for real devices; `aarch64-apple-ios-sim` is the Apple Silicon simulator. These are the only two iOS targets the project supports.
+The project supports two iOS targets: `aarch64-apple-ios` for real devices and `aarch64-apple-ios-sim` for the Apple Silicon simulator. You don't install these yourself — `renzora build ios` provides them inside the container.
 
 ## Building the static library
 
@@ -72,7 +67,7 @@ There are two ways to produce `librenzora_ios.a`.
 The Docker image (`ghcr.io/renzora/engine`) bundles the iOS SDK and toolchain, so a single command cross-compiles the library from any host:
 
 ```bash
-docker/build-all.sh dist ios
+renzora build ios
 ```
 
 This runs the iOS lane and writes the result to:
@@ -83,16 +78,9 @@ dist/ios-arm64/runtime/librenzora_ios.a
 
 > The iOS lane is **best-effort**: in `build-all.sh` it is marked `optional`, so if the iOS cross-compile fails it logs a warning and the rest of the build still succeeds. The container builds the **device** library (`aarch64-apple-ios`) only — it cannot produce a signed `.app`, and there is no simulator lane.
 
-### Directly with Cargo (on a Mac)
+### Simulator and on-Mac builds
 
-The repo ships cargo aliases in `.cargo/config.toml`:
-
-```bash
-cargo build-ios        # build --profile dist --target aarch64-apple-ios -p renzora-ios
-cargo build-ios-sim    # build --profile dist --target aarch64-apple-ios-sim -p renzora-ios
-```
-
-The artifact lands under `target/<triple>/dist/librenzora_ios.a`.
+`renzora build ios` produces the **device** library in the container. The Apple Silicon **simulator** library (`aarch64-apple-ios-sim`) is built on a Mac by the template script (next section), which the editor export drives for you. Either way the artifact is `librenzora_ios.a`.
 
 ## Assembling the app
 

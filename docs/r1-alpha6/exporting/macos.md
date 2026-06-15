@@ -4,7 +4,7 @@ Cross-compile your game to macOS (Intel and Apple Silicon) from the Renzora Dock
 
 ## How macOS builds work
 
-macOS targets are built by `docker/build-all.sh` inside the engine image (`ghcr.io/renzora/engine`, `FROM rust:1.93.0-bookworm`). The image ships [osxcross](https://github.com/tpoechtrager/osxcross) with the macOS SDK and the two Rust Apple targets, so the build runs on a Linux host — you do **not** need a Mac to produce macOS binaries.
+macOS targets are built by `renzora build` inside the engine image (`ghcr.io/renzora/engine`, `FROM rust:1.93.0-bookworm`). The image ships [osxcross](https://github.com/tpoechtrager/osxcross) with the macOS SDK and the two Rust Apple targets, so the build runs on a Linux host — you do **not** need a Mac to produce macOS binaries.
 
 There are two macOS architectures, each built and emitted separately:
 
@@ -22,16 +22,16 @@ From the repository root, with Docker installed:
 
 ```bash
 # Both architectures
-docker/build-all.sh dist macos
+renzora build macos
 
 # A single architecture
-docker/build-all.sh dist macos-arm64
-docker/build-all.sh dist macos-x64
+renzora build macos-arm64
+renzora build macos-x64
 ```
 
-The first argument is the output directory; every argument after it is a platform token. Pass no tokens to build every platform the image supports.
+Every argument is a platform token. Pass no tokens to build every platform the image supports; output lands in `dist/<platform>/`.
 
-> `renzora build macos` (the CLI) runs this same `docker/build-all.sh` step in the container. From a checkout you can call `docker/build-all.sh` or the `.cargo/config.toml` aliases directly. See [Installation](/docs/r1-alpha5/getting-started/installation) for both.
+> `renzora build macos` derives the image tag, pulls it, and runs the `docker/build-all.sh` step inside the container — that wrapper is the documented build path; you never run cargo natively. See [Installation](/docs/r1-alpha5/getting-started/installation).
 
 ## Output layout
 

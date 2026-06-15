@@ -179,8 +179,8 @@ If you want the bake to handle your node, add a matching arm in `crates/renzora_
 `BlueprintPlugin` self-registers with `renzora::add!(BlueprintPlugin)` at runtime scope, so blueprints (and your new nodes) run in both the editor's play mode and exported games — there is nothing extra to enable. Because nodes live in a workspace crate that is statically linked into the engine, rebuild the engine after editing:
 
 ```bash
-cargo renzora    # editor (debug-driven dist build)
-cargo runtime    # shipped game
+renzora run            # editor
+renzora run runtime    # shipped game
 ```
 
 ## See also

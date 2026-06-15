@@ -68,16 +68,16 @@ The web target (`wasm32-unknown-unknown`) is built game-runtime-only, then post-
 
 > The web build is **runtime-only** — there is no WebAssembly editor (the binary has no compile-time `editor` feature, and the editor bundle is a desktop-only dlopen target). On `wasm32`, Lua is not compiled (only Rhai runs), and audio/DAW/mixer/networking compile to no-op stubs.
 
-## Building with `docker/build-all.sh`
+## Building with `renzora build`
 
-`docker/build-all.sh <output-dir> [platform ...]` runs inside the container and drives every cross build. Pass no platforms to build everything the image can produce, or a filtered list:
+`renzora build [platform ...]` runs the cross build inside the container and writes into `dist/` (it wraps `docker/build-all.sh` under the hood). Pass no platforms to build everything the image can produce, or a filtered list:
 
 ```bash
-# Build specific platforms into ./dist
-docker/build-all.sh dist windows linux
+# Build specific platforms into dist/
+renzora build windows linux
 
 # Build everything the container can produce
-docker/build-all.sh dist
+renzora build
 ```
 
 ### Platform tokens
@@ -157,18 +157,17 @@ It also emits two values used by the dynamic-plugin ABI guard, regardless of tar
 - `RENZORA_ENGINE_VERSION` — the package version.
 - `RENZORA_BUILD_HASH` — an FNV-1a hash of `"<version>-<rustc>-bevy0.18"`. The loader **rejects** any plugin whose hash differs, so a plugin built against a different compiler or engine version is refused rather than crashing. (This is why every build uses the same `dist` profile and the same containerized compiler.)
 
-## Local single-target cross builds
+## Single-target cross builds
 
-For quick one-off cross builds you can use the `cargo` aliases in `.cargo/config.toml` directly, but you must provide the corresponding toolchain yourself — the container is the supported path:
+To build just one target, pass its platform token to `renzora build` — everything still runs inside the container, so the host needs only Docker:
 
 ```bash
-cargo build-web          # wasm32 game runtime (needs wasm-bindgen + the wasm32 target)
-cargo build-android      # aarch64-linux-android (needs the NDK + linker config)
-cargo build-ios          # aarch64-apple-ios staticlib (macOS host / osxcross)
-cargo build-ios-sim      # aarch64-apple-ios-sim
+renzora build wasm           # wasm32 game runtime
+renzora build android        # aarch64-linux-android
+renzora build ios            # aarch64-apple-ios staticlib
 ```
 
-These build into a single `target/dist/` directory rather than the per-feature dirs `build-all.sh` uses, and they do **not** run the `wasm-bindgen` / AppImage / shared-lib-copy post-processing that `build-all.sh` does. For reproducible, shippable output use the container.
+These write into the arch-suffixed `dist/` layout and run the full `wasm-bindgen` / AppImage / shared-lib-copy post-processing.
 
 > `cargo build-tvos` / `build-tvos-sim` exist but cannot build — there is no tvOS target or SDK in the toolchain (see the note above).
 

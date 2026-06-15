@@ -11,17 +11,18 @@ Be respectful, constructive, and collaborative. Harassment, trolling, and uncons
 1. **Fork** the [engine repo](https://github.com/renzora/engine) on GitHub.
 2. **Clone** your fork and check out a branch from `main`.
 3. **Make your changes**, following the guidelines below.
-4. **Run the checks** (`cargo test`, `cargo clippy`, `cargo fmt`) locally.
+4. **Run the checks** (`renzora test`, `renzora check`) locally — both run in the container.
 5. **Push** to your fork and open a **pull request** against `main`.
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/engine.git
 cd engine
 git checkout -b fix-spotlight-shadow
+renzora init                      # one-time: build/pull the toolchain image
 # make changes...
-cargo fmt
-cargo clippy --workspace --no-deps -- -D warnings
-cargo test --workspace
+renzora shell -- cargo fmt        # rustfmt inside the container
+renzora check                     # clippy (warnings denied) in the container
+renzora test                      # test suite in the container
 git commit -m "Fix spotlight shadow not updating when range changes"
 git push origin fix-spotlight-shadow
 ```
@@ -30,27 +31,22 @@ If you're looking for a first contribution, check for issues labeled `good first
 
 ## Development setup
 
-The full build story — the one-binary / editor-as-removable-cdylib model, the `.cargo/config.toml` aliases, and the Docker cross-compile image — is documented in [Building from Source](/docs/r1-alpha5/setup/building-from-source). The short version:
+The full build story — the one-binary / editor-as-removable-cdylib model and the Docker toolchain image — is documented in [Building from a Checkout](/docs/r1-alpha5/setup/building-from-source). Every build runs in the container; the short version:
 
 ```bash
-cargo renzora        # build the workspace and run the EDITOR
-cargo runtime        # run the shipped-game shape (same binary, --no-editor)
-cargo server         # run a headless dedicated server (--server)
+renzora run              # build the workspace and run the EDITOR
+renzora run runtime      # run the shipped-game shape (same binary, --no-editor)
+renzora run -- --server  # run a headless dedicated server (--server)
 ```
 
-> Use `cargo renzora`, not a bare `cargo run`. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself, so the editor run must be `--workspace` (which `cargo renzora` expands to). There is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
+> Renzora builds **only** in the container — there is no supported native `cargo` build. The container guarantees your `bevy_dylib` and engine build hash match everyone else's, which is what keeps the plugin ABI compatible. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
 
 ### Toolchain
 
-- Install Rust via [rustup](https://rustup.rs). The version is pinned in **one place**: `docker/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly — match the pinned release with `rustup default 1.93.0`.
-- **Linux** native builds need a C/C++ toolchain plus the usual Bevy system libraries; the bundled linker config also expects `clang` and `mold` (`.cargo/config.toml` hardcodes `-fuse-ld=/usr/bin/mold` for `x86_64-unknown-linux-gnu`):
-
-  ```bash
-  sudo apt install build-essential pkg-config clang mold \
-      libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-  ```
-
-- **Windows** uses `rust-lld` (bundled with rustc — nothing extra to install). MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`, which is why the config switches the linker.
+- The build runs in the pinned `ghcr.io/renzora/engine` image — you only need **Docker** and **Git**. The Rust version, C/C++ toolchain, linkers (`clang`/`mold`/`rust-lld`), and the Bevy system libraries are all baked into the image; you install none of them locally.
+- Rust/Cargo is needed only to install the CLI (`cargo install renzora`), not to build the engine.
+- The Rust version is pinned in **one place**: `docker/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly.
+- Linux uses `mold` and Windows uses `rust-lld` inside the image (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`) — that linker setup is fixed in the container, another reason the build is container-only.
 
 > Heads-up for older docs: there is no `--features solari` raytracing build. `bevy_solari` is not wired in, and the GI tier `LumenQuality::Hwrt` currently renders nothing because wgpu ray tracing is not enabled. Don't add a `solari` feature flag to your build or bug report.
 
@@ -91,11 +87,11 @@ Use default `rustfmt`. Run `cargo fmt` before committing, and don't hand-format 
 
 ## Testing
 
-Tests live in `#[cfg(test)] mod tests` blocks alongside the code. Run the suite the same way CI does:
+Tests live in `#[cfg(test)] mod tests` blocks alongside the code. Run the suite the same way CI does — in the container, via the CLI:
 
 ```bash
-cargo test --workspace
-cargo test -- scripting::tests        # a specific module
+renzora test
+renzora test -- scripting::tests      # a specific module
 ```
 
 Focus on logic, serialization round-trips, and edge cases:
@@ -121,9 +117,9 @@ What's worth a test: new data structures (serialize/deserialize round-trips), ne
 
 CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the pinned toolchain image** `ghcr.io/renzora/engine:latest`, so the runner needs nothing installed — `rustc 1.93`, the cross toolchains, and the Linux dev libs are baked into the image.
 
-> CI invokes **`cargo test` and `cargo clippy` directly** inside the image. The `renzora test` / `renzora check` CLI commands wrap the same cargo invocations in the container, so either reproduces CI locally.
+> CI invokes **`cargo test` and `cargo clippy`** inside the image. The `renzora test` / `renzora check` CLI commands wrap those same cargo invocations in the container, so they reproduce CI locally — run those, not a native `cargo`.
 
-The two jobs reproduce locally as:
+Each job runs this inside the image (reproduce with `renzora test` / `renzora check`):
 
 ```bash
 # Test job — first-party crates only; the vendored Bevy-ecosystem crates are excluded
@@ -155,9 +151,9 @@ The vendored crates (`bevy_*`, `vleue_navigator`) are third-party code copied in
 
 ### PR checklist
 
-- [ ] `cargo fmt` applied, no unrelated formatting changes
-- [ ] `cargo clippy --workspace --no-deps -- -D warnings` is clean
-- [ ] `cargo test --workspace` passes
+- [ ] `cargo fmt` applied (via `renzora shell`), no unrelated formatting changes
+- [ ] `renzora check` (clippy, warnings denied) is clean
+- [ ] `renzora test` passes
 - [ ] New tests added where applicable
 - [ ] Branch is up to date with `main`
 

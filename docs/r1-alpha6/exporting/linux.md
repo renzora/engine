@@ -6,36 +6,26 @@ Build and package your Renzora game for 64-bit Linux desktop (`x86_64`).
 
 Renzora is **one binary** (`renzora`) that is either the editor or the shipped game depending on whether the removable editor bundle sits beside it. There is no per-platform "runtime build" toggle and no separate game executable — exporting for Linux means producing that binary plus its shared libraries and your packed assets.
 
-Every cross-platform target is built inside the engine's Docker image, `ghcr.io/renzora/engine` (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). The image bundles the `x86_64-unknown-linux-gnu` toolchain, the `mold`/`lld` linkers, and `appimagetool`, so the host only needs Docker:
+Every cross-platform target is built inside the engine's Docker image, `ghcr.io/renzora/engine` (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). The image bundles the `x86_64-unknown-linux-gnu` toolchain, the `mold`/`lld` linkers, and `appimagetool`, so the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
-docker/build-all.sh dist linux
+renzora build linux
 ```
 
-`build-all.sh <output-dir> [platforms...]` writes the Linux artifacts to **`dist/linux-x64/`**. Because the build host *is* Linux, this lane compiles natively (no cross toolchain), so on a Linux machine with a Rust toolchain you can also build straight from `cargo` (see below).
+`renzora build [platforms...]` writes the Linux artifacts to **`dist/linux-x64/`** (it runs the `docker/build-all.sh` step inside the container).
 
-> `renzora build linux` (the CLI) runs exactly this `docker/build-all.sh` step inside the container. From a checkout you can also call `docker/build-all.sh` or the `.cargo/config.toml` aliases directly — and since the host is Linux, build natively with `cargo`.
+### Why the build runs in Docker
 
-### Building from source on a Linux host
-
-A native Linux build needs the usual Bevy system libraries:
+Builds go through the `renzora` CLI even on a Linux host: a native `cargo`/`apt` build produces a mismatched engine build hash and breaks the dynamic-plugin ABI. So there is no `sudo apt install …`/`rustup` setup — the host needs only Docker + Git:
 
 ```bash
-sudo apt install build-essential pkg-config libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev
+renzora build       # editor build: binary + editor bundle + shared bevy_dylib, into dist/linux-x64/
+renzora run         # build, then launch the editor
 ```
-
-Then use the cargo aliases shipped in `.cargo/config.toml`:
-
-```bash
-cargo build-all       # editor build: binary + editor bundle + shared bevy_dylib
-cargo build-runtime   # lean game binary only (--bin renzora, no editor bundle)
-```
-
-`cargo build-all` and `cargo build-runtime` write to `target/dist/`. `build-runtime` produces just the game-shaped binary; `build-all` additionally produces the editor bundle.
 
 ## The output folder
 
-After `docker/build-all.sh dist linux`, the desktop lane builds the **editor** and wraps it into an AppDir (and an AppImage if `appimagetool` is available):
+After `renzora build linux`, the desktop lane builds the **editor** and wraps it into an AppDir (and an AppImage if `appimagetool` is available):
 
 ```
 dist/linux-x64/

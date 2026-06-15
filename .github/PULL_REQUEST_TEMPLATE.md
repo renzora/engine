@@ -14,8 +14,8 @@ Closes #
 
 ## Checklist
 
-- [ ] Code compiles without warnings (`cargo build`)
-- [ ] All existing tests pass (`cargo test`)
+- [ ] Code compiles cleanly (`renzora check`)
+- [ ] All existing tests pass (`renzora test`)
 - [ ] New tests added (if applicable)
 - [ ] No unrelated formatting or refactoring changes
 - [ ] Branch is up to date with `main`

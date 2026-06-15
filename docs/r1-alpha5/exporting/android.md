@@ -53,17 +53,17 @@ To assemble an actual APK on your own machine, install once:
 
 The template auto-detects `JAVA_HOME`, `ANDROID_HOME`, and the newest installed NDK under `$ANDROID_HOME/ndk`; set those env vars only if detection fails.
 
-> `renzora build android` (the CLI) orchestrates these same scripts inside the container. From a checkout you can run the scripts and `cargo` directly instead.
+> `renzora build android` (the CLI) orchestrates these steps inside the container — that is the documented build path.
 
 ## Building the native library
 
 ### In the container
 
-`docker/build-all.sh <output-dir> [platform…]` accepts the platform tokens `android` (both arches), `android-arm64`, and `android-x86` (which builds the **x86_64** ABI, for emulators):
+`renzora build` accepts the platform tokens `android` (both arches), `android-arm64`, and `android-x86` (which builds the **x86_64** ABI, for emulators):
 
 ```bash
-# Inside the engine image — build both Android architectures
-./docker/build-all.sh dist android
+# Build both Android architectures inside the engine image
+renzora build android
 ```
 
 It copies the resulting libraries into arch-suffixed, `runtime/`-nested directories:
@@ -82,7 +82,7 @@ cargo build --profile dist -p renzora-android \
 
 ### Locally
 
-There is a convenience alias `cargo build-android` (= `build --profile dist --no-default-features --target aarch64-linux-android`), but a bare `cargo build` for an Android triple won't find the NDK linker. Use **cargo-ndk**, which the template invokes for you (see below) — it sets up the correct NDK toolchain and `--platform` (min SDK) for each ABI.
+`renzora build android` runs the cross-compile inside the container, which owns the NDK linker setup. For a hand-assembled APK outside the container, use **cargo-ndk**, which the template invokes for you (see below) — it sets up the correct NDK toolchain and `--platform` (min SDK) for each ABI.
 
 ## Packaging into an APK
 

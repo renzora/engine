@@ -233,7 +233,7 @@ Reads go through a `PakBackend`: `MmapBackend` (desktop/iOS default — the OS p
 The crate ships an `inspect_pack` example that runs the project BFS and prints what it would pack:
 
 ```bash
-cargo run -p renzora_rpak --example inspect_pack -- path/to/project
+renzora shell -- cargo run -p renzora_rpak --example inspect_pack -- path/to/project
 ```
 
 It lists every entry the packer collected and the asset-like quoted paths found in `scenes/main.ron`, which is handy for diagnosing assets that fail to make it into an export.

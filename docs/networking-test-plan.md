@@ -10,29 +10,22 @@ This covers the scenarios that work right now: connect, presence, chat, authorit
 
 ## 1. Build a binary
 
-Build a game-runtime binary with the `renzora` CLI, or — from inside a checkout — with the cargo aliases / `docker/build-all.sh` directly. The dedicated server is the **same `renzora` binary** launched with `--server`; there is no separate server executable.
+Build a game-runtime binary with the `renzora` CLI — every build runs inside the Docker toolchain (there is no native `cargo` build). The dedicated server is the **same `renzora` binary** launched with `--server`; there is no separate server executable.
 
 ```bash
-# With the renzora CLI (builds in the container)
-renzora build windows                 # -> dist/windows-x64/renzora.exe
-
-# Or, inside a checkout, call the container script directly
-docker/build-all.sh dist windows      # -> dist/windows-x64/renzora.exe
-
-# Or build natively with cargo aliases (output lands in target/dist/)
-cargo build-runtime                   # lean game            -> target/dist/renzora.exe
-cargo build-all                       # editor + bundle      -> target/dist/renzora.exe + renzora_editor.dll
+# Game runtime (no editor bundle) -> dist/windows-x64/renzora.exe
+renzora build windows
 ```
 
 The same binary is the client, the server, and the host — the mode is chosen by a runtime flag, not by a build.
 
-> **Editor vs game.** A bare launch boots the **editor** if `renzora_editor.dll` sits beside the exe, otherwise it boots the shipped **game**. `docker/build-all.sh` writes a game runtime (no bundle) into `dist/windows-x64/`, so that binary is a game client. If you only have an editor build (`cargo build-all`), pass `--no-editor` to launch a game client, or just press Play in the editor. A `--server`/`--host` launch is **never** an editor session, even when the bundle is present.
+> **Editor vs game.** A bare launch boots the **editor** if `renzora_editor.dll` sits beside the exe, otherwise it boots the shipped **game**. `renzora build` writes a game runtime (no bundle) into `dist/windows-x64/`, so that binary is a game client. If you instead used `renzora run` (which builds the editor + bundle), pass `--no-editor` to launch a game client, or just press Play in the editor. A `--server`/`--host` launch is **never** an editor session, even when the bundle is present.
 
 > **`renzora-runtime` is stale.** Some script header comments say `renzora-runtime --server`. The locally built binary is plain `renzora` / `renzora.exe`; `renzora-runtime` only applies to exported mobile/web templates. Use `renzora.exe --server`.
 
 ## 2. Build the HUD (one-time, in the editor)
 
-Launch the editor (`cargo renzora`), add a **UI Canvas** named `HUD`, and inside it add five **Text** widgets named exactly:
+Launch the editor (`renzora run`), add a **UI Canvas** named `HUD`, and inside it add five **Text** widgets named exactly:
 
 | Widget name | Shows |
 |---|---|
@@ -71,7 +64,7 @@ Default port **7636**, tick rate **64**, max clients **32**, overridable with `-
 
 `--host` is a windowed listen server (client + server in one process) and **wins over `--server`** if both are passed. The local host player runs as an in-process `HostClient` (no UDP loopback for itself).
 
-> The binary name is platform-specific: `renzora.exe` on Windows, bare `renzora` on Linux/macOS. `docker/build-all.sh` lands it in `dist/windows-x64/` (etc.); the cargo aliases land it in `target/dist/`.
+> The binary name is platform-specific: `renzora.exe` on Windows, bare `renzora` on Linux/macOS. `renzora build` lands it in `dist/<platform>/` (e.g. `dist/windows-x64/`).
 
 ---
 
@@ -95,7 +88,7 @@ Default port **7636**, tick rate **64**, max clients **32**, overridable with `-
 ## 6. Troubleshooting
 
 - **Client won't connect:** start the server first; check the port matches (`--port` / `net_connect`'s `port` prop, default 7636); same machine uses `127.0.0.1`, LAN uses the server's IP; open UDP 7636 in the firewall. Only **native UDP** works.
-- **Bare launch opens the editor instead of a game client:** `renzora_editor.dll` is beside the exe. Use a `docker/build-all.sh` runtime build, delete the dll, or pass `--no-editor`.
+- **Bare launch opens the editor instead of a game client:** `renzora_editor.dll` is beside the exe. Use a `renzora build` runtime build, delete the dll, or pass `--no-editor`.
 - **HUD not updating:** the widget `Name` must match the script string exactly (case-sensitive). The headless `--server` has no UI — watch its console instead.
 - **`on_player_joined` never fires on a client:** it is **server-only**. It runs only on the `--server`/`--host` process; clients learn presence from `net_lobby`'s broadcast `on_rpc("lobby", ...)`.
 - **Sender shows as `0`:** expected for any RPC that reached you via the server relay — see Known limitations. Only RPCs the server receives directly carry the real sender id.

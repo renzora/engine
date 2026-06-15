@@ -45,10 +45,10 @@ Run a windowed listen server (host plays in the same process):
 renzora --host --port 7636
 ```
 
-During engine development you can use the cargo alias, which builds and runs the dedicated server:
+During engine development you can use the renzora CLI, which builds (inside the Docker toolchain) and runs the dedicated server:
 
 ```bash
-cargo server
+renzora run -- --server
 ```
 
 ## Configuration

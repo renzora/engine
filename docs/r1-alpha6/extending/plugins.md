@@ -113,11 +113,11 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 ```
 
-To get linked into the binary, add the crate as a dependency of `renzora_runtime` (`renzora_myplugin = { path = "../renzora_myplugin" }`). Its `inventory` constructor then self-registers at process start — you do **not** call `add_plugins` anywhere. Build with the editor/runtime aliases:
+To get linked into the binary, add the crate as a dependency of `renzora_runtime` (`renzora_myplugin = { path = "../renzora_myplugin" }`). Its `inventory` constructor then self-registers at process start — you do **not** call `add_plugins` anywhere. Build via the renzora CLI (which runs the build inside the pinned Docker toolchain):
 
 ```bash
-cargo build-editor    # binary + editor bundle (--workspace)
-cargo build-runtime   # lean game binary only (--bin renzora)
+renzora build    # binary + editor bundle (--workspace)
+renzora build    # lean game binary only (--bin renzora)
 ```
 
 > An `Editor`-scope workspace plugin is added to `renzora_runtime` as an **optional** dependency under its `editor` feature, so it is excluded from the lean runtime build.
@@ -144,10 +144,10 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 ```
 
-The Rust is identical to a workspace plugin (one `Default` plugin type, one `renzora::add!`). Build it and copy the artifact into the engine's `plugins/` directory:
+The Rust is identical to a workspace plugin (one `Default` plugin type, one `renzora::add!`). Build it via the renzora CLI (the build runs inside the Docker toolchain) and copy the artifact into the engine's `plugins/` directory:
 
 ```bash
-cargo build -p renzora_myplugin --profile dist
+renzora build
 # -> target/dist/renzora_myplugin.{dll,so,dylib}
 # copy that file into  <renzora-binary>/plugins/
 ```
@@ -156,14 +156,14 @@ At startup `dynamic_plugin_loader` scans `<exe>/plugins/`, verifies the ABI guar
 
 `renzora_hot_demo` (`crates/renzora_hot_demo`) is a complete, working example of a distribution plugin that spawns and animates entities to prove a `dlopen`'d cdylib gets the same full `&mut App` / ECS access as a built-in plugin.
 
-## Scaffolding with `add-plugin.sh`
+## Scaffolding with `renzora add`
 
-`docker/add-plugin.sh` generates a plugin skeleton (`crates/renzora_<name>/` with `Cargo.toml` + `src/lib.rs`):
+`renzora add` generates a plugin skeleton (`crates/renzora_<name>/` with `Cargo.toml` + `src/lib.rs`):
 
 ```bash
-docker/add-plugin.sh <name>            # static workspace plugin
-docker/add-plugin.sh <name> --editor   # Editor-scope, optional dep under [features].editor
-docker/add-plugin.sh <name> --dylib    # distribution cdylib (default = ["dlopen"])
+renzora add <name>            # static workspace plugin
+renzora add <name> --editor   # Editor-scope, optional dep under [features].editor
+renzora add <name> --dylib    # distribution cdylib (default = ["dlopen"])
 ```
 
 | Flag | Crate type | Scope | Wiring it does |

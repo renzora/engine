@@ -1,33 +1,33 @@
 # Testing
 
-How to write and run tests for the Renzora engine workspace with plain `cargo test`.
+How to write and run tests for the Renzora engine workspace with the `renzora test` CLI.
 
 ## Running tests
 
-Renzora is one Cargo workspace, so the standard `cargo` test commands work everywhere:
+Renzora is one Cargo workspace, and `renzora test` runs its suite inside the pinned toolchain container (it forwards to `cargo test`, so the usual selectors still work):
 
 ```bash
 # All first-party crates
-cargo test --workspace
+renzora test
 
 # A single crate
-cargo test --package renzora_network
+renzora test --package renzora_network
 
 # A single test by name (substring match)
-cargo test host_client_is_promoted
+renzora test host_client_is_promoted
 
 # Show stdout / println! from passing tests
-cargo test -- --nocapture
+renzora test -- --nocapture
 ```
 
-> The `renzora test` CLI command wraps the same `cargo test --workspace` inside the container, so locally either works. CI invokes `cargo test` directly (see [CI](#what-ci-runs)); this page uses plain `cargo` so you don't need the CLI installed.
+> `renzora test` wraps `cargo test --workspace` inside the pinned toolchain container, so the suite runs against the exact rustc and libs CI uses. (CI itself invokes `cargo test` directly inside the same image — see [CI](#what-ci-runs).)
 
 ### Excluding the vendored crates
 
-A bare `cargo test --workspace` also tries to run the test suites of the vendored Bevy-ecosystem crates (`bevy_*`, `vleue_navigator`). Those are third-party code copied into the tree; running them just re-tests upstream against our Bevy version and breaks on API drift. CI excludes them, and you can too:
+A bare `renzora test` (which runs `cargo test --workspace`) also tries to run the test suites of the vendored Bevy-ecosystem crates (`bevy_*`, `vleue_navigator`). Those are third-party code copied into the tree; running them just re-tests upstream against our Bevy version and breaks on API drift. CI excludes them, and you can too:
 
 ```bash
-cargo test --workspace \
+renzora test \
   --exclude bevy_gauge \
   --exclude bevy_hanabi \
   --exclude bevy_mod_outline \

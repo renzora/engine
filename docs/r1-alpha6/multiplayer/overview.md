@@ -69,7 +69,7 @@ renzora --host
 
 Recognized flags: `--server`, `--host`, `--port`, `--addr` / `--address`, `--tick-rate`, `--max-clients`. (These are parsed only for server/host launches.)
 
-> When building from source, the cargo aliases are the quickest way to launch a role: `cargo server` runs the dedicated server, `cargo runtime` runs a plain game client.
+> During development, the renzora CLI is the quickest way to launch a role: `renzora run -- --server` runs the dedicated server, `renzora run runtime` runs a plain game client.
 
 ## State replication
 

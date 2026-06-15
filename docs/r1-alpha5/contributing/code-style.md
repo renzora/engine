@@ -4,10 +4,10 @@ Coding conventions for contributing to the Renzora engine workspace — formatti
 
 ## Formatting
 
-Renzora uses **rustfmt defaults**. There is no top-level `rustfmt.toml` (the only one in the tree belongs to a vendored crate, `crates/bevy_silk`), so the standard style applies everywhere. Format before you commit:
+Renzora uses **rustfmt defaults**. There is no top-level `rustfmt.toml` (the only one in the tree belongs to a vendored crate, `crates/bevy_silk`), so the standard style applies everywhere. Format before you commit, running rustfmt through the toolchain container:
 
 ```bash
-cargo fmt --all
+renzora shell -- cargo fmt --all
 ```
 
 > CI runs two jobs — **tests** and **Clippy** (`.github/workflows/test.yml`); there is no separate `cargo fmt --check` gate. Run rustfmt anyway so diffs stay clean and reviewable.
@@ -34,7 +34,7 @@ That single `allow` exists because `renzora::add!` gates its FFI exports behind 
 
 ### Clippy
 
-CI denies all warnings. The exact command (run inside the `ghcr.io/renzora/engine` toolchain image) is:
+CI denies all warnings. Lint locally with `renzora check`, which runs the following inside the `ghcr.io/renzora/engine` toolchain image:
 
 ```bash
 cargo clippy --workspace --no-deps \
@@ -57,7 +57,7 @@ cargo clippy --workspace --no-deps \
 
 ## Tests
 
-Tests run with the same first-party scope as Clippy, excluding the vendored crates:
+Tests run with the same first-party scope as Clippy, excluding the vendored crates. Run them with `renzora test`, which wraps:
 
 ```bash
 cargo test --workspace \
@@ -109,10 +109,10 @@ Many features are split into a **dual-mode pair**:
 To add a crate, just create its directory; the glob picks it up. Check a single crate from the workspace root with:
 
 ```bash
-cargo check -p renzora_<name>
+renzora check -p renzora_<name>
 ```
 
-> See [Project Structure](/docs/r1-alpha5/setup/project-structure) for the full layout and [Building From Source](/docs/r1-alpha5/setup/building-from-source) for the `cargo` aliases that drive editor/runtime builds.
+> See [Project Structure](/docs/r1-alpha5/setup/project-structure) for the full layout and [Building From Source](/docs/r1-alpha5/setup/building-from-source) for the `renzora` CLI commands that drive editor/runtime builds.
 
 ## Inside a crate
 
@@ -242,11 +242,11 @@ Common scopes: a crate short-name (`physics`, `ember`, `shader`, `animation`), o
 
 - One logical change per PR.
 - Describe **why**, not just what.
-- Add or update tests for new behaviour and bug fixes; make sure `cargo test` and the Clippy command above pass before requesting review.
+- Add or update tests for new behaviour and bug fixes; make sure `renzora test` and `renzora check` pass before requesting review.
 - Keep vendored `bevy_*` / `vleue_navigator` crates out of scope — they are upstream copies, not first-party code.
 
 ## What's next?
 
-- [Building From Source](/docs/r1-alpha5/setup/building-from-source) — the `cargo` aliases and `docker/` scripts the workflow actually uses
+- [Building From Source](/docs/r1-alpha5/setup/building-from-source) — the `renzora` CLI commands the workflow actually uses
 - [Project Structure](/docs/r1-alpha5/setup/project-structure) — how the workspace's ~187 crates are organized
 - [Building Plugins](/docs/r1-alpha5/extending/plugins) — the `renzora::add!` plugin model in depth

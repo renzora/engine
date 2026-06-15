@@ -35,7 +35,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make, no `rust-toolchain.toml`, and no `_legacy_src/`. The pinned Rust version (`1.93.0`) lives only in `docker/Dockerfile`, and common tasks are cargo aliases in `.cargo/config.toml` (see [Build System](/docs/r1-alpha5/setup/build-system)).
+> There is **no** `Makefile.toml`/cargo-make, no `rust-toolchain.toml`, and no `_legacy_src/`. The pinned Rust version (`1.93.0`) lives only in `docker/Dockerfile`, and common tasks run through the `renzora` CLI, which wraps the cargo aliases in `.cargo/config.toml` inside the container (see [Build System](/docs/r1-alpha5/setup/build-system)).
 
 ## The workspace member globs
 
@@ -183,12 +183,12 @@ renzora::add!(MyFeaturePlugin);
 Wiring it in:
 
 - A **runtime** crate that should be statically linked is added as a dependency of `renzora_runtime`; an **editor-only** crate is added to the `renzora_editor` bundle.
-- A **distribution** (cdylib) plugin needs no dependency wiring — it is dlopen'd from `<exe>/plugins/`. The `docker/add-plugin.sh <name> [--editor|--dylib]` helper scaffolds one for you (`--editor` = an editor-scope optional dependency; `--dylib` = a cdylib distribution plugin with `default = ["dlopen"]`; the flags are mutually exclusive).
+- A **distribution** (cdylib) plugin needs no dependency wiring — it is dlopen'd from `<exe>/plugins/`. The `renzora add <name> [--editor|--dylib]` helper scaffolds one for you (`--editor` = an editor-scope optional dependency; `--dylib` = a cdylib distribution plugin with `default = ["dlopen"]`; the flags are mutually exclusive).
 
 > Use `use renzora::*;` (or `use renzora::Inspectable;`). There is **no** `renzora::prelude` module. `Inspectable`, `AppEditorExt`, and the `#[field(...)]` / `#[inspectable(...)]` attributes are behind `renzora`'s `editor` feature, so an inspector-aware crate must depend on `renzora = { ..., features = ["editor"] }`.
 
 ## What's next?
 
-- [Build System](/docs/r1-alpha5/setup/build-system) — cargo aliases, the Docker toolchain, output layout
+- [Build System](/docs/r1-alpha5/setup/build-system) — the `renzora` CLI, the Docker toolchain, output layout
 - [Core Concepts](/docs/r1-alpha5/getting-started/concepts) — ECS, plugins, and the one-binary model
 - [Building Plugins](/docs/r1-alpha5/extending/plugins) — write a workspace or distribution plugin
