@@ -63,7 +63,7 @@ impl Platform {
         }
     }
 
-    /// Runtime binary name within the runtime/ directory.
+    /// Filename a downloaded runtime template is saved as for this platform.
     pub fn runtime_binary_name(&self) -> &'static str {
         match self {
             Platform::WindowsX64 => "renzora-runtime.exe",
@@ -208,19 +208,47 @@ impl Default for TemplateManager {
     }
 }
 
+/// Find a `*<suffix>` bundle dir directly under `pdir` and join `inner` onto it
+/// (e.g. the `renzora` binary inside a `.app` / `.AppDir`). Returns a path that
+/// won't exist when there's no such bundle, so the caller's `.exists()` skips it.
+fn bundle_inner(pdir: &std::path::Path, suffix: &str, inner: &[&str]) -> PathBuf {
+    let bundle = std::fs::read_dir(pdir).ok().and_then(|rd| {
+        rd.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.ends_with(suffix))
+                .unwrap_or(false)
+        })
+    });
+    match bundle {
+        Some(b) => inner.iter().fold(b, |acc, c| acc.join(c)),
+        None => pdir.join(format!("__missing{suffix}")),
+    }
+}
+
 impl TemplateManager {
     /// Scan `dist/<platform>/` for an already-built game binary per platform.
+    ///
+    /// `build-all.sh` nests each platform's runtime differently, so we resolve
+    /// to where the file actually lives — not a uniform flat path:
+    /// * Windows — flat `dist/windows-x64/renzora.exe`.
+    /// * macOS — the editor is wrapped in a `.app`, so the binary is at
+    ///   `dist/macos-*/<name>.app/Contents/MacOS/renzora`.
+    /// * Linux — wrapped in the AppImage's `.AppDir`, so the binary is at
+    ///   `dist/linux-x64/<name>.AppDir/renzora`.
+    /// * Mobile/web — the lane drops its artifact flat in `dist/<platform>/`.
     pub fn scan(&mut self) {
         self.templates.clear();
 
         for platform in Platform::ALL {
             let pdir = self.dist_dir.join(platform.dist_dir_name());
-            // Desktop: the single `renzora`/`renzora.exe` binary IS the game
-            // template. Mobile/web: their lane's packaged artifact (apk/zip).
-            let path = if platform.is_desktop() {
-                pdir.join(platform.binary_name("renzora"))
-            } else {
-                pdir.join("runtime").join(platform.template_filename())
+            let path = match platform {
+                Platform::WindowsX64 => pdir.join(platform.binary_name("renzora")),
+                Platform::LinuxX64 => bundle_inner(&pdir, ".AppDir", &["renzora"]),
+                Platform::MacOSX64 | Platform::MacOSArm64 => {
+                    bundle_inner(&pdir, ".app", &["Contents", "MacOS", "renzora"])
+                }
+                _ => pdir.join(platform.template_filename()),
             };
             if path.exists() {
                 self.templates.push(ExportTemplate {
@@ -357,18 +385,28 @@ mod tests {
     #[test]
     fn scan_locates_artifacts_per_platform_layout() {
         let dist = temp_dir("scan_layout");
-        // Desktop: bare game binary at dist/<platform>/renzora(.exe).
+        // Windows: flat exe at dist/windows-x64/renzora.exe.
         let win_dir = dist.join(Platform::WindowsX64.dist_dir_name());
         fs::create_dir_all(&win_dir).unwrap();
         fs::write(win_dir.join("renzora.exe"), b"bin").unwrap();
-        // Mobile: packaged artifact under dist/<platform>/runtime/.
-        let apk_dir = dist.join(Platform::AndroidArm64.dist_dir_name()).join("runtime");
+        // macOS: binary INSIDE the .app bundle.
+        let mac_macos = dist
+            .join(Platform::MacOSArm64.dist_dir_name())
+            .join("Renzora Engine.app")
+            .join("Contents")
+            .join("MacOS");
+        fs::create_dir_all(&mac_macos).unwrap();
+        fs::write(mac_macos.join("renzora"), b"bin").unwrap();
+        // Linux: binary INSIDE the AppImage's AppDir.
+        let lin_appdir = dist
+            .join(Platform::LinuxX64.dist_dir_name())
+            .join("Renzora Engine.AppDir");
+        fs::create_dir_all(&lin_appdir).unwrap();
+        fs::write(lin_appdir.join("renzora"), b"bin").unwrap();
+        // Mobile: packaged artifact FLAT in dist/<platform>/ (no runtime/ subdir).
+        let apk_dir = dist.join(Platform::AndroidArm64.dist_dir_name());
         fs::create_dir_all(&apk_dir).unwrap();
         fs::write(apk_dir.join(Platform::AndroidArm64.template_filename()), b"apk").unwrap();
-        // A desktop binary in the mobile lane's layout must NOT count.
-        let linux_dir = dist.join(Platform::LinuxX64.dist_dir_name()).join("runtime");
-        fs::create_dir_all(&linux_dir).unwrap();
-        fs::write(linux_dir.join(Platform::LinuxX64.template_filename()), b"x").unwrap();
 
         let mut mgr = TemplateManager {
             dist_dir: dist.clone(),
@@ -377,12 +415,14 @@ mod tests {
         mgr.scan();
 
         assert!(mgr.is_installed(Platform::WindowsX64));
+        assert!(mgr.is_installed(Platform::MacOSArm64));
+        assert!(mgr.is_installed(Platform::LinuxX64));
         assert!(mgr.is_installed(Platform::AndroidArm64));
-        assert!(!mgr.is_installed(Platform::LinuxX64));
-        assert_eq!(mgr.templates.len(), 2);
+        assert_eq!(mgr.templates.len(), 4);
 
-        let t = mgr.get(Platform::WindowsX64).unwrap();
-        assert_eq!(t.path, win_dir.join("renzora.exe"));
+        // The macOS template resolves to the binary inside the .app bundle.
+        let t = mgr.get(Platform::MacOSArm64).unwrap();
+        assert_eq!(t.path, mac_macos.join("renzora"));
         assert_eq!(t.version, "local");
         assert!(mgr.get(Platform::WebWasm32).is_none());
 
