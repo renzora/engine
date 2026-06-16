@@ -24,6 +24,37 @@ pub enum SelectionHighlightMode {
     Gizmo,
 }
 
+/// What a viewport click resolves to when the raycast hits a mesh inside a
+/// larger imported hierarchy. The picker walks up from the hit mesh toward the
+/// scene root; this decides where it stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelectionGranularity {
+    /// The exact leaf mesh the ray hit — never bubbles up to a parent.
+    Mesh,
+    /// The root of the clicked mesh's own sub-tree: the topmost named ancestor
+    /// still *below* the model boundary (`SelectionStop`). For a flat model
+    /// whose meshes sit directly under the root this is the mesh itself; for a
+    /// nested scene it's the top-level sub-object (e.g. a whole building).
+    #[default]
+    MeshRoot,
+    /// The entire imported model as one unit — bubbles all the way up to the
+    /// model root (the `SelectionStop` bearer).
+    EntireRoot,
+}
+
+impl SelectionGranularity {
+    pub const ALL: &'static [SelectionGranularity] =
+        &[Self::Mesh, Self::MeshRoot, Self::EntireRoot];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Mesh => "Mesh",
+            Self::MeshRoot => "Mesh Root",
+            Self::EntireRoot => "Entire Model",
+        }
+    }
+}
+
 /// Available proportional (UI) font families.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UiFont {
@@ -109,6 +140,8 @@ pub struct EditorSettings {
     pub settings_tab: SettingsTab,
     /// Selection highlight mode (outline or gizmo)
     pub selection_highlight_mode: SelectionHighlightMode,
+    /// What a viewport click selects within an imported model hierarchy
+    pub selection_granularity: SelectionGranularity,
     /// Render the selection boundary on top of all geometry
     pub selection_boundary_on_top: bool,
     /// Base font size in points
@@ -170,6 +203,7 @@ impl Default for EditorSettings {
         Self {
             settings_tab: SettingsTab::default(),
             selection_highlight_mode: SelectionHighlightMode::default(),
+            selection_granularity: SelectionGranularity::default(),
             selection_boundary_on_top: false,
             font_size: 14.0,
             ui_scale: renzora::load_ui_scale(),

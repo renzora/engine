@@ -14,7 +14,8 @@ use renzora::{
     WindowMode,
 };
 use renzora_editor_framework::{
-    CustomFonts, EditorSettings, MonoFont, SelectionHighlightMode, SettingsTab, UiFont,
+    CustomFonts, EditorSettings, MonoFont, SelectionGranularity, SelectionHighlightMode,
+    SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -1371,6 +1372,24 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
         },
     );
     settings_row(commands, fonts, body, 1, "Selection", dd);
+    let gran_labels: Vec<&str> = SelectionGranularity::ALL.iter().map(|g| g.label()).collect();
+    let dd = ctl_dropdown(
+        commands, fonts, &gran_labels,
+        // Seed with the default; reseeded from the resource by bind_2way.
+        SelectionGranularity::ALL
+            .iter()
+            .position(|g| *g == SelectionGranularity::default())
+            .unwrap_or(0),
+        |w| {
+            let cur = w.resource::<EditorSettings>().selection_granularity;
+            SelectionGranularity::ALL.iter().position(|g| *g == cur).unwrap_or(0)
+        },
+        |w, &i| {
+            let g = SelectionGranularity::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<EditorSettings>().selection_granularity = g;
+        },
+    );
+    settings_row(commands, fonts, body, 2, "Click Selects", dd);
     let dd = ctl_dropdown(
         commands, fonts, &["On Top", "Depth Tested"], 0,
         |w| {
@@ -1382,7 +1401,7 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
         },
         |w, &i| w.resource_mut::<EditorSettings>().selection_boundary_on_top = i == 0,
     );
-    settings_row(commands, fonts, body, 2, "Boundary", dd);
+    settings_row(commands, fonts, body, 3, "Boundary", dd);
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────

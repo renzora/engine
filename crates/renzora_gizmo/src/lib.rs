@@ -34,7 +34,10 @@ use renzora::core::viewport_types::{
 };
 use renzora::core::InputFocusState;
 use renzora::SelectionStop;
-use renzora_editor_framework::{EditorCamera, EditorLocked, EditorSelection, HideInHierarchy};
+use renzora_editor_framework::{
+    EditorCamera, EditorLocked, EditorSelection, EditorSettings, HideInHierarchy,
+    SelectionGranularity,
+};
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -2156,10 +2159,10 @@ fn entity_pick_system(
     mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
-    handle_state: Option<Res<collider_handles::ColliderHandleState>>,
     viewport: Option<Res<ViewportState>>,
     nav_overlay: Option<Res<NavOverlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    settings: Res<EditorSettings>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
@@ -2184,7 +2187,6 @@ fn entity_pick_system(
         // Otherwise still suppress to avoid deselecting while the user is tweaking.
         return;
     }
-    let _ = handle_state;
     // GizmoMode::None means a plugin tool is driving — skip picking.
     if *mode == GizmoMode::None {
         return;
@@ -2257,7 +2259,15 @@ fn entity_pick_system(
             continue;
         }
 
-        if let Some(target) = find_named_ancestor(*entity, &named_entities, &parent_query) {
+        if let Some(target) = resolve_pick(
+            *entity,
+            settings.selection_granularity,
+            &named_entities,
+            &parent_query,
+            &hidden_entities,
+        ) {
+            // `resolve_pick` already skips hidden named ancestors, so `target`
+            // is a visible row — this guard is a belt-and-braces no-op.
             if hidden_entities.get(target).is_ok() {
                 continue;
             }
@@ -2440,31 +2450,70 @@ fn box_selection_system(
     }
 }
 
-fn find_named_ancestor(
+/// Resolve a raycast-hit entity to the entity a click should select, per the
+/// configured [`SelectionGranularity`].
+///
+/// Walking up from the hit mesh toward the scene root, three candidates fall
+/// out of a single pass:
+///   - `leaf`  — the nearest named ancestor (the clicked mesh itself)
+///   - `group` — the topmost named ancestor still *below* a `SelectionStop`
+///     boundary (the clicked mesh's own sub-root within an imported model)
+///   - `root`  — the `SelectionStop` bearer (the whole imported model), or the
+///     topmost named ancestor when the chain has no stop.
+///
+/// `SelectionStop` marks a compound boundary (an imported model root, terrain
+/// root, etc.) whose internals are selected as a unit under `EntireRoot`.
+///
+/// Entities tagged [`HideInHierarchy`] are transparent here: an imported model
+/// often carries a named-but-hidden GLTF wrapper (`RootNode`, `Scene`, …) that
+/// `hide_gltf_wrappers` flagged when flatten couldn't collapse it. The hierarchy
+/// panel hides those rows and re-parents their children to the nearest visible
+/// ancestor, so the click resolution must mirror that — otherwise `MeshRoot`
+/// could land on a hidden wrapper and the caller would reject it, selecting
+/// nothing.
+fn resolve_pick(
     entity: Entity,
+    granularity: SelectionGranularity,
     named: &Query<(Entity, Has<SelectionStop>), With<Name>>,
     parents: &Query<&ChildOf>,
+    hidden: &Query<(), With<HideInHierarchy>>,
 ) -> Option<Entity> {
-    // Walk toward the root and return the leaf-most named entity, so a click
-    // on a child mesh of an imported model selects the mesh itself rather
-    // than bubbling up to the model root. A `SelectionStop` on any entity in
-    // the chain overrides this — it acts as a compound boundary (terrain
-    // root, etc.) whose internals shouldn't be selected individually.
-    let mut nearest: Option<Entity> = None;
+    let mut leaf: Option<Entity> = None;
+    let mut group: Option<Entity> = None;
+    let mut root: Option<Entity> = None;
     let mut current = entity;
     loop {
         if let Ok((e, stop)) = named.get(current) {
-            if nearest.is_none() {
-                nearest = Some(e);
+            let visible = hidden.get(e).is_err();
+            if visible {
+                if leaf.is_none() {
+                    leaf = Some(e);
+                }
+                if !stop {
+                    group = Some(e);
+                }
             }
             if stop {
-                return Some(e);
+                // A `SelectionStop` is a boundary even if the bearer is hidden,
+                // but only a *visible* stop is a valid `EntireRoot` target.
+                if visible {
+                    root = Some(e);
+                }
+                break;
             }
         }
         match parents.get(current) {
             Ok(child_of) => current = child_of.parent(),
-            Err(_) => return nearest,
+            Err(_) => break,
         }
+    }
+    // No `SelectionStop` in the chain: the whole-model root is just the topmost
+    // visible named ancestor, which is exactly `group`.
+    let root = root.or(group);
+    match granularity {
+        SelectionGranularity::Mesh => leaf,
+        SelectionGranularity::MeshRoot => group.or(leaf),
+        SelectionGranularity::EntireRoot => root.or(leaf),
     }
 }
 
@@ -2815,46 +2864,96 @@ mod tests {
         assert!(state.is_drag());
     }
 
-    // ── find_named_ancestor ─────────────────────────────────────────────────
+    // ── resolve_pick ────────────────────────────────────────────────────────
 
-    fn run_find_named_ancestor(world: &mut World, start: Entity) -> Option<Entity> {
+    fn run_resolve_pick(
+        world: &mut World,
+        start: Entity,
+        g: SelectionGranularity,
+    ) -> Option<Entity> {
         world
             .run_system_once(
                 move |named: Query<(Entity, Has<SelectionStop>), With<Name>>,
-                      parents: Query<&ChildOf>| {
-                    find_named_ancestor(start, &named, &parents)
+                      parents: Query<&ChildOf>,
+                      hidden: Query<(), With<HideInHierarchy>>| {
+                    resolve_pick(start, g, &named, &parents, &hidden)
                 },
             )
             .unwrap()
     }
 
     #[test]
-    fn find_named_ancestor_returns_leafmost_named() {
+    fn resolve_pick_no_stop_returns_leaf_or_topmost() {
         let mut world = World::new();
         let root = world.spawn(Name::new("Root")).id();
         let mesh = world.spawn((Name::new("Mesh"), ChildOf(root))).id();
-        // Clicking the named mesh selects the mesh, not the root.
-        assert_eq!(run_find_named_ancestor(&mut world, mesh), Some(mesh));
+        use SelectionGranularity::*;
+        // Without a SelectionStop boundary, Mesh = the clicked mesh; MeshRoot
+        // and EntireRoot both bubble to the topmost named ancestor.
+        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(root));
+        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(root));
 
-        // An unnamed child bubbles up to the nearest named ancestor.
+        // An unnamed child resolves to its nearest named ancestor.
         let unnamed = world.spawn(ChildOf(mesh)).id();
-        assert_eq!(run_find_named_ancestor(&mut world, unnamed), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, unnamed, Mesh), Some(mesh));
     }
 
     #[test]
-    fn find_named_ancestor_selection_stop_overrides_leafmost() {
+    fn resolve_pick_distinguishes_granularity_at_stop_boundary() {
+        // model (SelectionStop) → group → mesh
         let mut world = World::new();
-        let compound = world.spawn((Name::new("Terrain"), SelectionStop)).id();
-        let chunk = world.spawn((Name::new("Chunk"), ChildOf(compound))).id();
-        assert_eq!(run_find_named_ancestor(&mut world, chunk), Some(compound));
+        let model = world.spawn((Name::new("Model"), SelectionStop)).id();
+        let group = world.spawn((Name::new("Building"), ChildOf(model))).id();
+        let mesh = world.spawn((Name::new("Wall"), ChildOf(group))).id();
+        use SelectionGranularity::*;
+        // Mesh = clicked leaf; MeshRoot = topmost named below the stop (the
+        // sub-object); EntireRoot = the whole model at the stop.
+        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(group));
+        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
     }
 
     #[test]
-    fn find_named_ancestor_unnamed_chain_returns_none() {
+    fn resolve_pick_flat_model_meshroot_is_mesh() {
+        // model (SelectionStop) → mesh directly. MeshRoot collapses to the mesh
+        // since there is no intermediate group below the stop.
+        let mut world = World::new();
+        let model = world.spawn((Name::new("Car"), SelectionStop)).id();
+        let mesh = world.spawn((Name::new("Wheel"), ChildOf(model))).id();
+        use SelectionGranularity::*;
+        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
+    }
+
+    #[test]
+    fn resolve_pick_skips_hidden_wrapper_between_root_and_mesh() {
+        // model (SelectionStop) → RootNode (named + HideInHierarchy) → mesh.
+        // The hidden wrapper must be transparent: MeshRoot resolves to the mesh
+        // (the topmost VISIBLE named below the stop), not the hidden wrapper —
+        // otherwise the caller rejects the hidden target and nothing selects.
+        let mut world = World::new();
+        let model = world.spawn((Name::new("Model"), SelectionStop)).id();
+        let wrapper = world
+            .spawn((Name::new("RootNode"), HideInHierarchy, ChildOf(model)))
+            .id();
+        let mesh = world.spawn((Name::new("Wall"), ChildOf(wrapper))).id();
+        use SelectionGranularity::*;
+        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(mesh));
+        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
+    }
+
+    #[test]
+    fn resolve_pick_unnamed_chain_returns_none() {
         let mut world = World::new();
         let root = world.spawn_empty().id();
         let child = world.spawn(ChildOf(root)).id();
-        assert_eq!(run_find_named_ancestor(&mut world, child), None);
+        assert_eq!(
+            run_resolve_pick(&mut world, child, SelectionGranularity::MeshRoot),
+            None
+        );
     }
 
     // ── compute_gizmo_pivot ─────────────────────────────────────────────────
