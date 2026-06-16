@@ -1,12 +1,24 @@
 # Cross-Compilation
 
-Every Renzora target is cross-compiled inside one Docker image, so a single Linux container can produce Windows, macOS, iOS, Android, and WebAssembly builds — your host only needs Docker.
+Every Renzora target is cross-compiled inside Docker, so your host only needs Docker to produce Windows, macOS, iOS, Android, and WebAssembly builds. The toolchain is split into a shared base image plus one image per platform, so you download only the toolchains you actually build.
 
-## One container, every target
+## One image per platform, on a shared base
 
-Renzora does **not** use `cross`, `mingw`, or per-host linker juggling. All cross builds happen inside the engine's prebuilt image, **`ghcr.io/renzora/engine`** (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). That image bundles every cross toolchain — the rustup targets, the linkers, and the platform SDKs — so the host only needs Docker installed. The GPU editor and game still run **natively** from the `dist/` output; only the *build* happens in the container.
+Renzora does **not** use `cross`, `mingw`, or per-host linker juggling. Cross builds happen inside the engine's prebuilt images, published under **`ghcr.io/renzora/*`**:
 
-The Dockerfile is also the **single source of truth for the Rust version** — there is no `rust-toolchain.toml` in the repo. Bumping the compiler means editing the `FROM rust:1.93.0-bookworm` line (which changes the image's content hash, so the external CLI re-pulls the new image).
+| Image | Adds on top of base |
+|---|---|
+| `base` (`docker/base/Dockerfile`, `FROM rust:1.93.0-bookworm`) | rust + Linux dev libs + LLVM-19 |
+| `linux` | appimagetool + dual-arch cross-gcc + UPX |
+| `windows` | xwin (MSVC SDK + CRT) |
+| `macos` | osxcross + macOS SDK + rcodesign |
+| `ios` | osxcross + iPhoneOS SDK |
+| `android` | Android NDK |
+| `wasm` | wasm-bindgen + binaryen |
+
+Each platform image builds `FROM base`, so they share the base layer on pull (downloaded once, stored once) while a toolchain change to one platform never re-downloads the others. The `renzora` CLI pulls only what a command needs: `renzora run` pulls the host platform image; `renzora build` (no args) pulls all; `renzora build windows` pulls only Windows. The GPU editor and game still run **natively** from the `dist/` output; only the *build* happens in the container.
+
+The base image is the **single source of truth for the Rust version** — there is no `rust-toolchain.toml` in the repo. Bumping the compiler means editing the `FROM rust:1.93.0-bookworm` line in `docker/base/Dockerfile`. Tags are content hashes (`baseTag = sha256(docker/base/Dockerfile)`, `<plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)`), so a base edit re-rolls **every** platform tag — the CLI re-pulls and CI rebuilds each platform on the new base — while a platform-only edit moves just that platform's tag.
 
 > Ignore older guides that mention `cargo install cross`, `gcc-mingw-w64`, `aarch64-apple-ios-sim` via Xcode, or hand-editing `~/.cargo/config.toml` per target. None of that applies — the container already contains a configured linker and SDK for every supported triple.
 
@@ -89,11 +101,11 @@ renzora build
 | `macos` | `macos-x64` + `macos-arm64` | `dist/macos-x64/`, `dist/macos-arm64/` |
 | `macos-x64` | macOS x64 only | `dist/macos-x64/` |
 | `macos-arm64` | macOS ARM64 only | `dist/macos-arm64/` |
-| `wasm` | Web runtime | `dist/web-wasm32/runtime/` |
-| `android` | `android-arm64` + `android-x86` | `dist/android-arm64/runtime/`, `dist/android-x86/runtime/` |
-| `android-arm64` | Android ARM64 only | `dist/android-arm64/runtime/` |
-| `android-x86` | Android x86_64 only | `dist/android-x86/runtime/` |
-| `ios` | iOS ARM64 | `dist/ios-arm64/runtime/` |
+| `wasm` | Web runtime | `dist/web-wasm32/` |
+| `android` | `android-arm64` + `android-x86` | `dist/android-arm64/`, `dist/android-x86/` |
+| `android-arm64` | Android ARM64 only | `dist/android-arm64/` |
+| `android-x86` | Android x86_64 only | `dist/android-x86/` |
+| `ios` | iOS ARM64 | `dist/ios-arm64/` |
 
 Output directories are **arch-suffixed**, and the names do not match the README's flat `dist/<platform>/`. Desktop targets place the binary and its shared libraries **directly** in the platform dir; web and mobile targets nest their output under a `runtime/` subdirectory.
 
@@ -126,9 +138,9 @@ On Linux the binary is `renzora` (no extension) with `librenzora.so` / `librenzo
 
 | Target | Artifact | Path |
 |---|---|---|
-| Web | `renzora-runtime.js` + `renzora-runtime_bg.wasm` | `dist/web-wasm32/runtime/` |
-| Android | `libmain.so` | `dist/android-arm64/runtime/`, `dist/android-x86/runtime/` |
-| iOS | `librenzora_ios.a` (staticlib) | `dist/ios-arm64/runtime/` |
+| Web | `renzora-runtime.js` + `renzora-runtime_bg.wasm` | `dist/web-wasm32/` |
+| Android | `libmain.so` | `dist/android-arm64/`, `dist/android-x86/` |
+| iOS | `librenzora_ios.a` (staticlib) | `dist/ios-arm64/` |
 
 On Linux, the editor output is additionally wrapped into an `AppDir` and packaged as `Renzora Engine-x86_64.AppImage` when `appimagetool` is available.
 

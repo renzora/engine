@@ -4,7 +4,7 @@ Cross-compile your game to macOS (Intel and Apple Silicon) from the Renzora Dock
 
 ## How macOS builds work
 
-macOS targets are built by `renzora build` inside the engine image (`ghcr.io/renzora/engine`, `FROM rust:1.93.0-bookworm`). The image ships [osxcross](https://github.com/tpoechtrager/osxcross) with the macOS SDK and the two Rust Apple targets, so the build runs on a Linux host — you do **not** need a Mac to produce macOS binaries.
+macOS targets are built by `renzora build` inside `ghcr.io/renzora/macos` (`docker/macos/Dockerfile`, `FROM base`). The image ships [osxcross](https://github.com/tpoechtrager/osxcross) with the macOS SDK and the two Rust Apple targets, so the build runs on a Linux host — you do **not** need a Mac to produce macOS binaries.
 
 There are two macOS architectures, each built and emitted separately:
 
@@ -102,7 +102,7 @@ If you have an Apple Developer account, the standard distribution flow on a Mac 
 
 | Issue | Cause / fix |
 |---|---|
-| `WARN: osxcross not found, skipping macOS builds` | The image has no osxcross. Use the official `ghcr.io/renzora/engine` image, which bundles it. |
+| `WARN: osxcross not found, skipping macOS builds` | The container has no osxcross. Use the official `ghcr.io/renzora/macos` image, which bundles it. |
 | `"<app> is damaged and can't be opened"` | Unsigned cross-built binary flagged by Gatekeeper. Run `xattr -cr <binary>`, or sign and notarize on a Mac. |
 | `dyld: Library not loaded: ...dylib` | A required dylib is missing. Ship the whole platform directory — keep `librenzora.dylib`, `libbevy_dylib-*.dylib`, `libstd-*.dylib`, and `plugins/` next to the binary. |
 | Editor launches instead of the game | `librenzora_editor.dylib` is still present. Delete it, or run with `--no-editor`. |

@@ -10,7 +10,7 @@ Renzora is one binary. The Windows target is the same `renzora` binary as every 
 
 ## Building with Docker
 
-Every cross-platform target builds inside `ghcr.io/renzora/engine` (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). The image bundles xwin (which splats Microsoft's redistributable MSVC SDK + CRT at image-build time), `lld-link`, `clang-cl`, and the `x86_64-pc-windows-msvc` rustup target. The host only needs Docker:
+Windows builds inside `ghcr.io/renzora/windows` (`docker/windows/Dockerfile`, `FROM base`). The image bundles xwin (which splats Microsoft's redistributable MSVC SDK + CRT at image-build time), `lld-link`, `clang-cl`, and the `x86_64-pc-windows-msvc` rustup target. The host only needs Docker (the CLI pulls just this image for a Windows build):
 
 ```bash
 renzora build windows
@@ -55,7 +55,7 @@ The remaining `renzora.exe` now launches straight into your game. Everything els
 
 ## Why the build runs in Docker
 
-There is no supported native `cargo` build path. A native build produces a different `bevy_dylib`/engine build hash, which breaks the dynamic-plugin ABI (see the ABI hash below), so every build runs inside the pinned `ghcr.io/renzora/engine` image via the `renzora` CLI. The compiler version is pinned in `docker/Dockerfile` (currently **Rust 1.93.0**); you don't install it yourself — the host needs only Docker + Git (Rust just to install the CLI):
+There is no supported native `cargo` build path. A native build produces a different `bevy_dylib`/engine build hash, which breaks the dynamic-plugin ABI (see the ABI hash below), so every build runs inside the pinned `ghcr.io/renzora/windows` image via the `renzora` CLI. The compiler version is pinned in `docker/base/Dockerfile` (currently **Rust 1.93.0**, shared by every platform image); you don't install it yourself — the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
 renzora build       # binary + editor bundle + plugins into dist/windows-x64/

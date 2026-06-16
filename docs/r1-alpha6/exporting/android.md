@@ -36,7 +36,7 @@ You can build either inside the engine's Docker image (no Android SDK on your ma
 
 ### Container route (recommended)
 
-The `ghcr.io/renzora/engine` image (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`) already bundles everything: the `aarch64-linux-android` and `x86_64-linux-android` rustup targets and **Android NDK r27c**. Your host only needs Docker. This route produces the native `libmain.so`; it does **not** assemble the APK (Gradle/Android SDK live outside the container).
+The `ghcr.io/renzora/android` image (`docker/android/Dockerfile`, `FROM base`) already bundles everything: the `aarch64-linux-android` and `x86_64-linux-android` rustup targets and **Android NDK r27c** (amd64 host only — Google ships no arm64-Linux NDK). Your host only needs Docker. This route produces the native `libmain.so`; it does **not** assemble the APK (Gradle/Android SDK live outside the container).
 
 ### Local route (Android Studio + cargo-ndk)
 
@@ -70,8 +70,8 @@ It copies the resulting libraries into arch-suffixed, `runtime/`-nested director
 
 | Platform token | Rust target | Android ABI | Output |
 |---|---|---|---|
-| `android-arm64` | `aarch64-linux-android` | `arm64-v8a` | `dist/android-arm64/runtime/libmain.so` |
-| `android-x86` | `x86_64-linux-android` | `x86_64` | `dist/android-x86/runtime/libmain.so` |
+| `android-arm64` | `aarch64-linux-android` | `arm64-v8a` | `dist/android-arm64/libmain.so` |
+| `android-x86` | `x86_64-linux-android` | `x86_64` | `dist/android-x86/libmain.so` |
 
 Under the hood each arch is just:
 

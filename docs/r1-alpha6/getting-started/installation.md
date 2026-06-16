@@ -55,7 +55,7 @@ cd renzora
 
 ## Install the CLI (to build your own projects)
 
-The `renzora` CLI scaffolds projects and runs **every** build inside the pinned `ghcr.io/renzora/engine` Docker toolchain, so your build environment matches everyone else's — and the plugin ABI. Install it with Cargo:
+The `renzora` CLI scaffolds projects and runs **every** build inside the pinned `ghcr.io/renzora/*` Docker toolchain images (a shared `base` plus one per platform), so your build environment matches everyone else's — and the plugin ABI. Install it with Cargo:
 
 ```bash
 cargo install renzora
@@ -98,7 +98,7 @@ You don't need the deeper details to get started — the cross-compile toolchain
 
 ### Cross-compiling for other platforms
 
-Cross-platform builds run inside the same `ghcr.io/renzora/engine` toolchain image — the host only needs Docker. The CLI drives it:
+Cross-platform builds run inside the `ghcr.io/renzora/<platform>` toolchain images — the host only needs Docker, and the CLI pulls just the platform(s) you build. The CLI drives it:
 
 ```bash
 renzora build windows linux

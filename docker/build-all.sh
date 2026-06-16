@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Build engine targets — used in the engine-builder Docker container
+# Build engine targets — run inside the renzora per-platform toolchain containers
 # =============================================================================
 #
 # Usage: ./scripts/build-all.sh <output-dir> [platform ...]
@@ -9,6 +9,17 @@
 # feature flag and target directory. No feature unification, no hash mixing.
 # The dedicated server is not a separate target — it's the runtime launched
 # with `--server`.
+#
+# ── Per-platform toolchain images ────────────────────────────────────────────
+# The toolchain is split into one image per platform (base + linux
+# / windows / macos / ios / android / wasm).
+# The `renzora` CLI runs THIS script once inside each requested platform's
+# container with that platform's arg, so only that platform's toolchain is
+# present. This script needs no per-image awareness: it already filters by the
+# platform arg and degrades gracefully when a toolchain is absent (osxcross /
+# NDK / the linux cross marker are simply not there in the wrong container, so
+# those guards no-op). Passing several platform args still works within a single
+# container that happens to carry several toolchains (e.g. a local full image).
 #
 # Platforms (positional args after <output-dir>; pass none to build all):
 #   linux        Linux, native container arch (x86_64 or arm64)
@@ -52,8 +63,8 @@ OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir> [platform ...]}"
 shift
 mkdir -p "$OUTPUT_DIR"
 
-# The linux lane builds the container's native arch (no cross-libc sysroot in
-# the image), so its platform name / Rust triple / AppImage arch follow uname.
+# The native linux lane builds the container's own arch (full toolchain, mold,
+# fastest path), so its platform name / Rust triple / AppImage arch follow uname.
 if [ "$(uname -m)" = "aarch64" ]; then
     LINUX_PLATFORM="linux-arm64"
     LINUX_TRIPLE="aarch64-unknown-linux-gnu"
@@ -62,6 +73,24 @@ else
     LINUX_PLATFORM="linux-x64"
     LINUX_TRIPLE="x86_64-unknown-linux-gnu"
     LINUX_APPIMAGE_ARCH="x86_64"
+fi
+
+# Cross linux lane — the OTHER desktop Linux arch. The Dockerfile drops a marker
+# (/etc/renzora-linux-cross-triple) iff it installed the cross gcc + foreign
+# libasound2/libudev dev packages for that arch. When present we emit BOTH
+# arches from one container via true cross-compilation (rustc runs at native
+# speed, emits foreign code, links with the cross gcc — no emulation). When
+# absent (older image built before this support) we silently stay native-only,
+# so an un-rebuilt image keeps working exactly as before.
+LINUX_CROSS_TRIPLE=""
+LINUX_CROSS_PLATFORM=""
+LINUX_CROSS_APPIMAGE_ARCH=""
+if [ -f /etc/renzora-linux-cross-triple ]; then
+    LINUX_CROSS_TRIPLE=$(cat /etc/renzora-linux-cross-triple)
+    case "$LINUX_CROSS_TRIPLE" in
+        x86_64-*)  LINUX_CROSS_PLATFORM="linux-x64";   LINUX_CROSS_APPIMAGE_ARCH="x86_64"  ;;
+        aarch64-*) LINUX_CROSS_PLATFORM="linux-arm64"; LINUX_CROSS_APPIMAGE_ARCH="aarch64" ;;
+    esac
 fi
 
 # Platform filter: empty array = build everything; non-empty = filter set.
@@ -297,6 +326,12 @@ build_one() {
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
             copy_std "$LINUX_PLATFORM" "$FEATURE" "$LINUX_TRIPLE"        "libstd-*.so" ;;
+        "$LINUX_CROSS_PLATFORM")
+            # Cross arch — explicit --target triple (like macOS/Windows), not
+            # `native`. The .cargo/config.toml entry for this triple points the
+            # linker at the GNU cross-gcc.
+            build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
+            copy_std "$LINUX_CROSS_PLATFORM" "$FEATURE" "$LINUX_CROSS_TRIPLE"          "libstd-*.so" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
@@ -318,7 +353,8 @@ build_one() {
 
 # ── Wrap the Linux editor output into an AppDir + AppImage ────────────────────
 wrap_linux_appimage() {
-    local EDITOR_DIR="$OUTPUT_DIR/$LINUX_PLATFORM"
+    local PLATFORM="$1" APPIMAGE_ARCH="$2"
+    local EDITOR_DIR="$OUTPUT_DIR/$PLATFORM"
     [ -f "$EDITOR_DIR/renzora" ] || return 0
 
     local APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
@@ -355,9 +391,17 @@ DESKTOP
         cp icon.png "$APPDIR/.DirIcon"
     fi
 
+    # appimagetool embeds an arch-specific runtime into the .AppImage. When
+    # cross-building (e.g. an x86_64 AppImage from an arm64 host) it can't reuse
+    # its own host runtime, so prefer a pre-staged runtime for the TARGET arch
+    # (the Dockerfile fetches both); fall back to appimagetool's own lookup.
+    local RUNTIME_ARG=()
+    [ -f "/opt/appimage-runtimes/runtime-$APPIMAGE_ARCH" ] \
+        && RUNTIME_ARG=(--runtime-file "/opt/appimage-runtimes/runtime-$APPIMAGE_ARCH")
+
     if command -v appimagetool >/dev/null 2>&1; then
-        ARCH="$LINUX_APPIMAGE_ARCH" appimagetool "$APPDIR" "$EDITOR_DIR/Renzora Engine-$LINUX_APPIMAGE_ARCH.AppImage" \
-            && echo "Built $EDITOR_DIR/Renzora Engine-$LINUX_APPIMAGE_ARCH.AppImage" \
+        ARCH="$APPIMAGE_ARCH" appimagetool "${RUNTIME_ARG[@]}" "$APPDIR" "$EDITOR_DIR/Renzora Engine-$APPIMAGE_ARCH.AppImage" \
+            && echo "Built $EDITOR_DIR/Renzora Engine-$APPIMAGE_ARCH.AppImage" \
             || echo "WARN: appimagetool failed"
     else
         echo "WARN: appimagetool not found; AppDir left at $APPDIR"
@@ -441,12 +485,24 @@ PLIST
 lane_desktop_feature() {
     local FEATURE="$1" p
     for p in "${DESKTOP_PLATFORMS[@]}"; do
-        build_one "$p" "$FEATURE" || return 1
+        # The cross Linux arch is best-effort: a cross-link failure must not
+        # sink the native build that already succeeded. Every other platform
+        # stays fatal. (The cross dir simply has no `renzora` on failure, so the
+        # AppImage wrap below no-ops for it.)
+        if [ -n "$LINUX_CROSS_PLATFORM" ] && [ "$p" = "$LINUX_CROSS_PLATFORM" ]; then
+            build_one "$p" "$FEATURE" \
+                || echo "WARN: cross Linux build ($p) failed — native arch still built"
+        else
+            build_one "$p" "$FEATURE" || return 1
+        fi
     done
     # Bundle wrapping only applies to the editor (AppImage / .app).
     if [ "$FEATURE" = "editor" ]; then
         if array_contains "$LINUX_PLATFORM" "${DESKTOP_PLATFORMS[@]}"; then
-            wrap_linux_appimage || return 1
+            wrap_linux_appimage "$LINUX_PLATFORM" "$LINUX_APPIMAGE_ARCH" || return 1
+        fi
+        if [ -n "$LINUX_CROSS_PLATFORM" ] && array_contains "$LINUX_CROSS_PLATFORM" "${DESKTOP_PLATFORMS[@]}"; then
+            wrap_linux_appimage "$LINUX_CROSS_PLATFORM" "$LINUX_CROSS_APPIMAGE_ARCH" || return 1
         fi
         if array_contains "macos-x64" "${DESKTOP_PLATFORMS[@]}"; then
             wrap_macos_app macos-x64 || return 1
@@ -468,14 +524,14 @@ build_wasm() {
     local WASM_FILE
     WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
     if [ -n "$WASM_FILE" ]; then
-        mkdir -p "$OUTPUT_DIR/web-wasm32/runtime"
-        wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32/runtime" --out-name renzora-runtime --target web "$WASM_FILE"
+        mkdir -p "$OUTPUT_DIR/web-wasm32"
+        wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32" --out-name renzora-runtime --target web "$WASM_FILE"
         if command -v wasm-opt &>/dev/null; then
             wasm-opt -Oz \
                 --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
                 --enable-mutable-globals --enable-reference-types --enable-multivalue \
-                "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm" \
-                -o "$OUTPUT_DIR/web-wasm32/runtime/renzora-runtime_bg.wasm"
+                "$OUTPUT_DIR/web-wasm32/renzora-runtime_bg.wasm" \
+                -o "$OUTPUT_DIR/web-wasm32/renzora-runtime_bg.wasm"
         fi
     fi
 
@@ -490,23 +546,23 @@ build_wasm() {
 # Both archs share target/android (sequential within this lane); best-effort.
 build_android() {
     if [ ! -d "${ANDROID_NDK_HOME:-/opt/android-ndk}" ]; then
-        echo "WARN: Android NDK not present in this image (no arm64-Linux NDK from Google) — skipping Android builds"
+        echo "WARN: Android NDK not present in this image — skipping Android builds"
         return 0
     fi
     if should_build android-arm64; then
         echo "=== Building Android ARM64 Runtime ==="
         cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
         if [ -f target/android/aarch64-linux-android/dist/libmain.so ]; then
-            mkdir -p "$OUTPUT_DIR/android-arm64/runtime"
-            cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/runtime/"
+            mkdir -p "$OUTPUT_DIR/android-arm64"
+            cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/"
         fi
     fi
     if should_build android-x86; then
         echo "=== Building Android x86_64 Runtime ==="
         cargo build --profile dist -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
         if [ -f target/android/x86_64-linux-android/dist/libmain.so ]; then
-            mkdir -p "$OUTPUT_DIR/android-x86/runtime"
-            cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/runtime/"
+            mkdir -p "$OUTPUT_DIR/android-x86"
+            cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/"
         fi
     fi
     return 0
@@ -523,8 +579,8 @@ build_ios() {
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios14.0 -isysroot /opt/iphoneos.sdk" \
     cargo build --profile dist -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
     if [ -f target/ios/aarch64-apple-ios/dist/librenzora_ios.a ]; then
-        mkdir -p "$OUTPUT_DIR/ios-arm64/runtime"
-        cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/runtime/"
+        mkdir -p "$OUTPUT_DIR/ios-arm64"
+        cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/"
     fi
     return 0
 }
@@ -536,8 +592,13 @@ build_ios() {
 # Which desktop platforms are in scope (filter + osxcross availability).
 OSXCROSS_CLANG=$(ls /opt/osxcross/target/bin/x86_64-apple-darwin*-clang 2>/dev/null | head -1 || true)
 DESKTOP_PLATFORMS=()
-# `linux` means the container's native arch; the explicit name also works.
+# `linux` builds BOTH desktop Linux arches when the image carries the cross
+# toolchain (native + cross); the explicit per-arch names (`linux-x64` /
+# `linux-arm64`) select just one, whichever the running container can produce.
 if should_build linux || should_build "$LINUX_PLATFORM"; then DESKTOP_PLATFORMS+=("$LINUX_PLATFORM"); fi
+if [ -n "$LINUX_CROSS_PLATFORM" ] && { should_build linux || should_build "$LINUX_CROSS_PLATFORM"; }; then
+    DESKTOP_PLATFORMS+=("$LINUX_CROSS_PLATFORM")
+fi
 if should_build windows; then DESKTOP_PLATFORMS+=("windows-x64"); fi
 if [ -n "$OSXCROSS_CLANG" ]; then
     if should_build macos-x64;   then DESKTOP_PLATFORMS+=("macos-x64"); fi

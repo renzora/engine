@@ -34,7 +34,7 @@ That single `allow` exists because `renzora::add!` gates its FFI exports behind 
 
 ### Clippy
 
-CI denies all warnings. Lint locally with `renzora check`, which runs the following inside the `ghcr.io/renzora/engine` toolchain image:
+CI denies all warnings. Lint locally with `renzora check`, which runs the following inside the `ghcr.io/renzora/linux` container:
 
 ```bash
 cargo clippy --workspace --no-deps \

@@ -23,15 +23,29 @@ container. It is a **separately published tool**, not part of this workspace.
 
 | Command | What it does |
 |---|---|
-| `renzora init` | Build the image + create/start the container (idempotent) |
-| `renzora check` | `cargo check` in the container (clippy-style gate) |
-| `renzora test [args]` | Run the test suite in the container (no args = workspace suite) |
+| `renzora init` | Pull/build the host toolchain image + create/start its container (idempotent) |
+| `renzora check` | `cargo check` in the linux container (clippy-style gate) |
+| `renzora test [args]` | Run the test suite in the linux container (no args = workspace suite) |
 | `renzora build [platforms]` | Cross-build for one or more platforms (no args = all) |
 | `renzora run` | Build for this host and launch it (editor by default) |
 | `renzora add <name>` | Scaffold a new plugin crate |
 | `renzora remove <name>` | Delete a plugin crate |
-| `renzora shell` | Interactive shell inside the container |
+| `renzora shell` | Interactive shell inside the linux container |
+| `renzora destroy` | Remove this checkout's containers + build-cache volumes |
+| `renzora prune` | Remove this checkout's stale (non-current) toolchain images |
 | `renzora new` | Create a new project by cloning the engine |
+
+**Split toolchain images.** The toolchain is one shared base image
+(`base`: rust + Linux deps + LLVM-19) plus one image per platform built
+`FROM` it (`linux`, `windows`, `macos`, `ios`,
+`android`, `wasm`). `renzora run` pulls only the host platform
+image; `renzora build` (no args) pulls all; `renzora build windows` pulls only
+Windows. Each platform runs in its own container; Linux-native ops (`test`,
+`check`, `shell`, `clean`, `add`/`remove`, `upx`) use the linux container. Tags
+are content hashes: `baseTag = sha256(docker/base/Dockerfile)` and
+`<plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)`, so a base edit
+cascades to every platform while a platform edit moves only its own tag. Stale
+tags are pruned automatically on update.
 
 If you need the user to run an interactive/auth command, suggest they prefix it
 with `!` in the prompt so its output lands in the session.
@@ -55,9 +69,11 @@ So:
 - ❌ Native `cargo build` / `cargo test` of the workspace — **will fail to link.**
   Don't propose it, don't try to "fix" the link error by stripping the dylib.
 
-Pinned toolchain (single source of truth = `docker/Dockerfile`): **Rust 1.93.0**,
-**Bevy 0.18**. CI (`.github/workflows/test.yml`) runs `cargo test` + `cargo
-clippy -D warnings` in the same container, excluding the vendored `bevy_*` /
+Pinned toolchain (single source of truth = `docker/base/Dockerfile`): **Rust
+1.93.0**, **Bevy 0.18**. The base image is the foundation every platform image
+builds `FROM`, so the Rust version lives there (a bump cascades to all
+platforms — see §3). CI (`.github/workflows/test.yml`) runs `cargo test` + `cargo
+clippy -D warnings` in the `base` image, excluding the vendored `bevy_*` /
 `vleue_navigator` crates. Keep clippy green; the vendored crates must stay
 excluded.
 
@@ -95,8 +111,15 @@ the copied `bevy_dylib-<hash>.<ext>`).
 
 Things that change the hash: a Bevy version bump, a change to `bevy`'s enabled
 feature set, a Rust compiler version change, or anything that alters
-`bevy_dylib`'s compilation. A change with **none** of those is a red flag worth
-investigating.
+`bevy_dylib`'s compilation. All of those live in **`docker/base/Dockerfile`**
+(the shared base image), so the ABI hash is governed by the base, not the
+per-platform images — a per-platform Dockerfile edit cannot move it. A change
+with **none** of those is a red flag worth investigating.
+
+Note the hash is **per-target**: each platform's `bevy_dylib` carries its own
+cargo-metadata hash (the triple is folded in), so the macOS, Windows, and Linux
+artifacts naturally differ from each other and from `6f39727ed2dbbb6c`. The pin
+applies per platform; compare a platform's hash to its own prior value.
 
 ### Bevy 0.19 (expected, not yet done)
 
@@ -273,7 +296,10 @@ Domain functions belong in that domain crate's extension.
 | `crates/dynamic_plugin_loader/src/lib.rs` | dlopen loader + ABI hash gate + hot-reload |
 | `crates/renzora_scripting/` | Lua + Rhai backends, `ScriptExtension` trait |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | Distribution `cdylib` plugin templates |
-| `docker/Dockerfile`, `docker/build-all.sh` | Pinned toolchain + multi-platform build |
+| `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
+| `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
+| `docker/build-all.sh` | In-container build orchestrator (run once per platform container) |
+| `.github/workflows/docker-image.yml` | Publishes base + each <platform> image to GHCR |
 | `docs/r1-alpha6/` | Current docs (edit here); `extending/plugins.md` for the plugin API |
 | `docs/BEVY_0.19_MIGRATION.md` | Bevy 0.19 upgrade notes (ABI hash will change) |
 | `.github/workflows/test.yml` | CI: container test + clippy gate |

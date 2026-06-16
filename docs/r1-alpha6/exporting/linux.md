@@ -6,7 +6,7 @@ Build and package your Renzora game for 64-bit Linux desktop (`x86_64`).
 
 Renzora is **one binary** (`renzora`) that is either the editor or the shipped game depending on whether the removable editor bundle sits beside it. There is no per-platform "runtime build" toggle and no separate game executable — exporting for Linux means producing that binary plus its shared libraries and your packed assets.
 
-Every cross-platform target is built inside the engine's Docker image, `ghcr.io/renzora/engine` (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). The image bundles the `x86_64-unknown-linux-gnu` toolchain, the `mold`/`lld` linkers, and `appimagetool`, so the host needs only Docker + Git (Rust just to install the CLI):
+Linux builds inside `ghcr.io/renzora/linux` (`docker/linux/Dockerfile`, `FROM base`). The image bundles both Linux GNU toolchains (so one build emits **x86_64 and arm64**), the `mold`/`lld` linkers, the cross-gcc for the non-host arch, and `appimagetool`, so the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
 renzora build linux

@@ -64,7 +64,7 @@ There are two ways to produce `librenzora_ios.a`.
 
 ### In the build container (recommended)
 
-The Docker image (`ghcr.io/renzora/engine`) bundles the iOS SDK and toolchain, so a single command cross-compiles the library from any host:
+The `ghcr.io/renzora/ios` image (`docker/ios/Dockerfile`, `FROM base`) bundles the iOS SDK and toolchain, so a single command cross-compiles the library from any host:
 
 ```bash
 renzora build ios
@@ -73,7 +73,7 @@ renzora build ios
 This runs the iOS lane and writes the result to:
 
 ```
-dist/ios-arm64/runtime/librenzora_ios.a
+dist/ios-arm64/librenzora_ios.a
 ```
 
 > The iOS lane is **best-effort**: in `build-all.sh` it is marked `optional`, so if the iOS cross-compile fails it logs a warning and the rest of the build still succeeds. The container builds the **device** library (`aarch64-apple-ios`) only — it cannot produce a signed `.app`, and there is no simulator lane.
@@ -151,7 +151,7 @@ Touch and motion arrive through Bevy's standard `winit` input events. Build your
 
 Despite some leftover references in the repo, **tvOS / Apple TV cannot be built today** and is not a supported export target:
 
-- The build container (`docker/Dockerfile`) installs only `aarch64-apple-ios` and `aarch64-apple-ios-sim`. **No tvOS rustup target is installed.**
+- The build container (`docker/base/Dockerfile`) installs only `aarch64-apple-ios` and `aarch64-apple-ios-sim`. **No tvOS rustup target is installed.**
 - `docker/build-all.sh` has **no tvOS lane** — only `ios`.
 - The orphaned `cargo build-tvos` / `cargo build-tvos-sim` aliases and the `--tvos` flags in `templates/ios/build-template.sh` target `aarch64-apple-tvos`, which the toolchain cannot compile.
 

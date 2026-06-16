@@ -2,7 +2,7 @@
 
 Clone the Renzora engine workspace and build the editor, the game runtime, or every export target — all through the `renzora` CLI, which runs every build inside the pinned Docker toolchain.
 
-> **Why the container, always.** Renzora's dynamic-plugin system needs the host binary, the editor bundle, and every plugin to share **one** compiled copy of Bevy and the `renzora` SDK. A native `cargo` build on your own machine produces a different `bevy_dylib` and engine build hash, so plugins built elsewhere would be refused. Building in the pinned `ghcr.io/renzora/engine` image guarantees everyone's hash matches — so there is **no supported native build**. The GPU editor and game still *run* natively from `dist/`; only the *build* happens in the container.
+> **Why the container, always.** Renzora's dynamic-plugin system needs the host binary, the editor bundle, and every plugin to share **one** compiled copy of Bevy and the `renzora` SDK. A native `cargo` build on your own machine produces a different `bevy_dylib` and engine build hash, so plugins built elsewhere would be refused. Building in the pinned `ghcr.io/renzora/*` images (all on the shared `base`) guarantees everyone's hash matches — so there is **no supported native build**. The GPU editor and game still *run* natively from `dist/`; only the *build* happens in the container.
 
 ## What you're building
 
@@ -19,7 +19,7 @@ Renzora is a single Bevy 0.18 Cargo workspace with exactly **one binary**: `renz
 - **Git** — to clone the engine.
 - **Rust** — only to install the CLI (`cargo install renzora`); it is **not** used to build the engine. Install via [rustup](https://rustup.rs) if you don't have it.
 
-> You do **not** install a Rust toolchain, a C/C++ toolchain, or any Bevy system libraries for the build — they're all baked into the Docker image. The pinned Rust version lives in **one place only**, `docker/Dockerfile` (`FROM rust:1.93.0-bookworm`); there is **no `rust-toolchain.toml`**.
+> You do **not** install a Rust toolchain, a C/C++ toolchain, or any Bevy system libraries for the build — they're all baked into the Docker image. The pinned Rust version lives in **one place only**, `docker/base/Dockerfile` (`FROM rust:1.93.0-bookworm`); there is **no `rust-toolchain.toml`**.
 
 ## Clone and run
 
@@ -85,7 +85,7 @@ It also embeds the Windows icon/version resource (via `winres` on a Windows host
 
 ## Cross-compiling for other platforms
 
-Every cross-platform target builds inside the engine's Docker image, **`ghcr.io/renzora/engine`** (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`). That image is the single source of truth for the Rust version and bundles every cross toolchain: rustup targets for linux-gnu, windows-msvc (via xwin), wasm32, Android arm64/x86_64, and Apple darwin/iOS; the `mold`/`clang`/`lld`/`lld-link` linkers; osxcross (macOS + iOS SDKs); the Android NDK r27c; `wasm-bindgen`; `binaryen` (`wasm-opt`); UPX; and `appimagetool`. The host only needs Docker — the GPU editor/game still runs natively from `dist/`.
+Every cross-platform target builds inside the engine's Docker toolchain, split into a shared base plus one image per platform (all under **`ghcr.io/renzora/*`**). The base (`docker/base/Dockerfile`, `FROM rust:1.93.0-bookworm`) is the single source of truth for the Rust version and carries the linux-gnu targets + `mold`/`clang`/`lld` linkers + LLVM-19; each platform image builds `FROM` it and adds its cross toolchain — `windows` (xwin/MSVC), `macos` & `ios` (osxcross + SDKs), `android` (NDK r27c), `wasm` (`wasm-bindgen` + `binaryen`), `linux` (dual-arch cross-gcc + `appimagetool` + UPX). The host only needs Docker, and the CLI pulls just the images a command needs — the GPU editor/game still runs natively from `dist/`.
 
 ```bash
 # Build specific platforms into ./dist
@@ -103,9 +103,9 @@ renzora build
 | `windows` | `dist/windows-x64/` |
 | `macos` (= `macos-x64` + `macos-arm64`) | `dist/macos-x64/`, `dist/macos-arm64/` |
 | `macos-x64` / `macos-arm64` | the individual macOS dir |
-| `wasm` | `dist/web-wasm32/runtime/` |
-| `android` (= `android-arm64` + `android-x86`) | `dist/android-arm64/runtime/`, `dist/android-x86/runtime/` |
-| `ios` | `dist/ios-arm64/runtime/` |
+| `wasm` | `dist/web-wasm32/` |
+| `android` (= `android-arm64` + `android-x86`) | `dist/android-arm64/`, `dist/android-x86/` |
+| `ios` | `dist/ios-arm64/` |
 
 Desktop targets place the binary and its shared libraries directly in the platform dir; wasm and mobile targets nest their output under a `runtime/` subdirectory.
 
@@ -141,7 +141,7 @@ A few things that live outside this workspace, or that older docs got wrong:
 |---|---|
 | The `renzora` CLI source | The CLI (`cargo install renzora`) is real, but its **source is a separate published crate**, not this workspace. Its commands drive the `docker/` toolchain: `build`/`add`/`remove`/`upx` wrap the `docker/*.sh` scripts here; `new`/`init`/`run`/`test`/`check`/`shell`/`clean`/`destroy` are CLI-level (container lifecycle + cargo wrappers that run *inside* the image). |
 | A native `cargo run` / `cargo build` build | Not supported — every build runs in the container so the plugin ABI stays consistent. Use `renzora run` / `renzora build`. |
-| `rust-toolchain.toml` | Does not exist — the Rust version lives only in `docker/Dockerfile`. |
+| `rust-toolchain.toml` | Does not exist — the Rust version lives only in `docker/base/Dockerfile`. |
 | `Makefile.toml` / `cargo-make` (`makers ...`) | Referenced in some comments but no `Makefile.toml` exists; use the `renzora` CLI and `docker/` scripts. |
 | A separate dedicated-server binary | Gone — the server is the same `renzora` binary launched with `--server`. |
 | An `editor` compile-time feature / separate editor binary | Removed — the editor is the removable `renzora_editor` cdylib bundle. |

@@ -7,19 +7,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Both jobs run INSIDE the pinned toolchain image (ghcr.io/renzora/engine) —
-# the same environment local `renzora test` uses and the same one plugins are
-# built against (the ABI contract). So there's nothing to install on the runner:
-# rustc 1.93, the cross toolchains, and the Linux dev libs (alsa/udev/wayland/
-# xkbcommon/vulkan/mold) are all baked into the image. We pin `:latest` rather
-# than the Dockerfile-hash tag because this workflow and docker-image.yml are
-# independent — on a push that changes the Dockerfile, the hash-tagged image may
-# not be published yet; `:latest` with eventual consistency is fine for tests.
+# Both jobs run INSIDE the shared base toolchain image
+# (ghcr.io/renzora/base) — native Linux `cargo test`/`clippy` need only
+# rustc 1.93 + the Linux dev libs (alsa/udev/wayland/xkbcommon/vulkan/mold),
+# which the base carries; the per-platform cross toolchains (osxcross/xwin/NDK)
+# aren't needed to test first-party crates. We pin `:latest` rather than the
+# content-hash tag because this workflow and docker-image.yml are independent —
+# on a push that changes a Dockerfile the hash-tagged image may not be published
+# yet; `:latest` with eventual consistency is fine for tests.
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: ghcr.io/renzora/engine:latest
+    container: ghcr.io/renzora/base:latest
 
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    container: ghcr.io/renzora/engine:latest
+    container: ghcr.io/renzora/base:latest
 
     steps:
       - uses: actions/checkout@v4

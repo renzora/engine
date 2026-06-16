@@ -216,7 +216,7 @@ fn pump_until_loaded(app: &mut App, handle: &Handle<HtmlTemplate>) {
 
 ## What CI runs
 
-`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the pinned toolchain image** `ghcr.io/renzora/engine:latest` — the same container that builds the engine and its plugins (the ABI contract), with rustc 1.93, the cross toolchains, and the Linux dev libs already baked in. There is nothing to install on the runner.
+`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the shared base toolchain image** `ghcr.io/renzora/base:latest` — native Linux `cargo test`/`clippy` need only rustc 1.93 and the Linux dev libs, which the base carries (the per-platform cross toolchains aren't needed to test first-party crates). There is nothing to install on the runner.
 
 Two jobs:
 
@@ -243,7 +243,7 @@ Notes on the clippy lane:
 - `too_many_arguments` and `type_complexity` are allowed because they are inherent to Bevy systems and queries (Bevy allows them too).
 - The image deliberately ships without the `clippy` component (it would race the parallel docker build lanes on the rustup download), so the job adds it with `rustup component add clippy`.
 
-> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps — only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the Rust version pinned in `docker/Dockerfile` (`rust:1.93.0-bookworm`); there is no `rust-toolchain.toml`.
+> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps — only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the Rust version pinned in `docker/base/Dockerfile` (`rust:1.93.0-bookworm`); there is no `rust-toolchain.toml`.
 
 ## Notes
 

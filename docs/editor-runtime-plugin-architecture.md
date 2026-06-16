@@ -237,7 +237,7 @@ Local builds use the `.cargo/config.toml` aliases (all on the `dist` profile for
 
 > The editor build **must** be `--workspace`: that is how Cargo's resolver-2 feature unification gives the binary and the bundle one shared `bevy_dylib`. Build the bundle in isolation (`cargo build -p renzora_editor`) and it links a *separate* static Bevy → a different `World` `TypeId` → `plugin_bevy_hash` mismatch → the loader silently rejects it.
 
-Cross-platform release artifacts are produced by `docker/build-all.sh` inside the `ghcr.io/renzora/engine` image (`docker/Dockerfile`, `FROM rust:1.93.0-bookworm`, the single source of the Rust version — there is no `rust-toolchain.toml`). It writes arch-suffixed dirs (`dist/windows-x64`, `dist/linux-x64`, `dist/macos-x64`, `dist/macos-arm64`; wasm/mobile nest under `runtime/`).
+Cross-platform release artifacts are produced by `docker/build-all.sh`, run once per platform inside that platform's `ghcr.io/renzora/<platform>` image (all `FROM` the shared `base`, `docker/base/Dockerfile`, `FROM rust:1.93.0-bookworm` — the single source of the Rust version; there is no `rust-toolchain.toml`). It writes arch-suffixed dirs (`dist/windows-x64`, `dist/linux-x64`, `dist/linux-arm64`, `dist/macos-x64`, `dist/macos-arm64`; macOS/Linux wrap the binary in a `.app`/AppImage `.AppDir`, wasm/mobile drop their artifact flat in the platform dir).
 
 Packaging is the file split made literal:
 

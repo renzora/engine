@@ -1,45 +1,56 @@
-name: Toolchain Image
+name: Toolchain Images
 
-# Builds the pinned cross-compile toolchain image and pushes it to GHCR so
-# `renzora init` / `renzora run` can `docker pull ghcr.io/renzora/engine`
-# instead of building osxcross/NDK/xwin/etc. locally (a few-minute pull vs a
-# 10-25 min build). Only rebuilds when the Dockerfile changes — the image is
-# toolchain-only (no engine source; that's bind-mounted at run time).
+# Builds the split cross-compile toolchain images and pushes them to GHCR so
+# `renzora init` / `run` / `build` can `docker pull` per platform instead of
+# building osxcross/NDK/xwin/etc. locally. The toolchain is one shared BASE image
+# (rust + Linux deps + LLVM-19) plus one image per platform that builds FROM it.
 #
-# Multi-arch: amd64 and arm64 (Apple Silicon) build natively on their own
-# runners — no QEMU, which would turn the osxcross/LLVM layers into a
-# multi-hour build — then a merge job stitches the per-arch digests into one
-# manifest list per tag.
+#   base               rust 1.93 + Linux dev libs + LLVM-19
+#   linux              + appimagetool + dual-arch cross-gcc + UPX
+#   windows            + xwin (MSVC)
+#   macos              + osxcross + macOS SDK + rcodesign
+#   ios                + osxcross + iPhoneOS SDK
+#   android            + NDK (amd64 only)
+#   wasm               + wasm-bindgen + binaryen
+#
+# Tags (content hashes, computed identically here and by the renzora CLI):
+#   baseTag   = sha256(docker/base/Dockerfile)[:12]
+#   <plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)[:12]
+# Folding baseTag into every platform tag is what makes a base change cascade:
+# it re-rolls every platform tag, so the CLI re-pulls and CI rebuilds on the new
+# base. A platform-only change moves just that platform's tag.
+#
+# Multi-arch: amd64 + arm64 build natively on their own runners (no QEMU, which
+# would turn the osxcross/LLVM layers into a multi-hour build); a merge job per
+# image stitches the per-arch digests into one manifest list per tag.
 
 on:
   push:
     branches: [main]
     paths:
-      - "docker/Dockerfile"
+      - "docker/**"
       - ".github/workflows/docker-image.yml"
   workflow_dispatch:
 
+env:
+  REGISTRY_IMAGE: ghcr.io/renzora
+
 jobs:
-  build:
+  # ── 1. Build the shared base (per-arch, pushed by digest) ───────────────────
+  base-build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
-            arch: amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            arch: arm64
-            runner: ubuntu-24.04-arm
+          - { platform: linux/amd64, arch: amd64, runner: ubuntu-latest }
+          - { platform: linux/arm64, arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -47,20 +58,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Push by digest only — tags are assembled in the merge job below so
-      # each tag is a single manifest list covering both arches.
-      - name: Build and push (by digest)
+      - name: Build and push base (by digest)
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/base/Dockerfile
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=ghcr.io/renzora/engine,push-by-digest=true,push=true
-          # Per-arch registry cache so unchanged layers (osxcross, SDKs, xwin)
-          # aren't rebuilt every run.
-          cache-from: type=registry,ref=ghcr.io/renzora/engine:buildcache-${{ matrix.arch }}
-          cache-to: type=registry,ref=ghcr.io/renzora/engine:buildcache-${{ matrix.arch }},mode=max
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }}/base,push-by-digest=true,push=true
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}/base:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}/base:buildcache-${{ matrix.arch }},mode=max
 
       - name: Export digest
         run: |
@@ -70,27 +77,27 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ matrix.arch }}
+          name: digest-base-${{ matrix.arch }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  merge:
-    needs: build
+  # ── 2. Merge base into a manifest at baseTag + latest ───────────────────────
+  base-merge:
+    needs: base-build
     runs-on: ubuntu-latest
     permissions:
       packages: write
+    outputs:
+      base_tag: ${{ steps.tag.outputs.base_tag }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
-          pattern: digest-*
+          pattern: digest-base-*
           merge-multiple: true
-
       - uses: docker/setup-buildx-action@v3
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -98,23 +105,116 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Content tag = first 12 hex of the SHA-256 of the Dockerfile (CRLF
-      # stripped so it matches the hash the CLI computes on any platform). The
-      # `renzora` CLI derives the same tag and pulls it, so a checkout's source
-      # is pinned to the exact toolchain image it was built against.
-      - name: Compute Dockerfile content tag
-        id: dftag
-        run: echo "tag=$(tr -d '\r' < docker/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+      # baseTag = first 12 hex of SHA-256 of docker/base/Dockerfile (CRLF
+      # stripped so it matches the CLI's hash on any platform).
+      - name: Compute base content tag
+        id: tag
+        run: echo "base_tag=$(tr -d '\r' < docker/base/Dockerfile | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
-      - name: Create multi-arch manifests
+      - name: Create base manifest
         working-directory: /tmp/digests
         run: |
-          digests=$(printf 'ghcr.io/renzora/engine@sha256:%s ' *)
+          digests=$(printf '${{ env.REGISTRY_IMAGE }}/base@sha256:%s ' *)
           docker buildx imagetools create \
-            -t ghcr.io/renzora/engine:latest \
-            -t ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }} \
-            -t ghcr.io/renzora/engine:${{ github.sha }} \
+            -t ${{ env.REGISTRY_IMAGE }}/base:latest \
+            -t ${{ env.REGISTRY_IMAGE }}/base:${{ steps.tag.outputs.base_tag }} \
             $digests
-
       - name: Inspect
-        run: docker buildx imagetools inspect ghcr.io/renzora/engine:${{ steps.dftag.outputs.tag }}
+        run: docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}/base:${{ steps.tag.outputs.base_tag }}
+
+  # ── 3. Build each platform image FROM base (per-arch, pushed by digest) ──────
+  platform-build:
+    needs: base-merge
+    strategy:
+      fail-fast: false
+      matrix:
+        platform_name: [linux, windows, macos, ios, android, wasm]
+        target:
+          - { arch: amd64, os: linux/amd64, runner: ubuntu-latest }
+          - { arch: arm64, os: linux/arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.target.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.platform_name }} (by digest)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.platform_name }}/Dockerfile
+          platforms: ${{ matrix.target.os }}
+          build-args: |
+            BASE_TAG=${{ needs.base-merge.outputs.base_tag }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }},push-by-digest=true,push=true
+          cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:buildcache-${{ matrix.target.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:buildcache-${{ matrix.target.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.platform_name }}-${{ matrix.target.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── 4. Merge each platform into a manifest at <plat>Tag + latest + sha ───────
+  platform-merge:
+    needs: [base-merge, platform-build]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform_name: [linux, windows, macos, ios, android, wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.platform_name }}-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # <plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)[:12] — the exact
+      # concatenation the renzora CLI hashes (baseTag string bytes, then the
+      # CRLF-stripped platform Dockerfile).
+      - name: Compute platform content tag
+        id: tag
+        run: |
+          base_tag='${{ needs.base-merge.outputs.base_tag }}'
+          plat_tag=$( { printf '%s' "$base_tag"; tr -d '\r' < docker/${{ matrix.platform_name }}/Dockerfile; } | sha256sum | cut -c1-12 )
+          echo "plat_tag=$plat_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create platform manifest
+        working-directory: /tmp/digests
+        run: |
+          digests=$(printf '${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}@sha256:%s ' *)
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:latest \
+            -t ${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:${{ steps.tag.outputs.plat_tag }} \
+            -t ${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:${{ github.sha }} \
+            $digests
+      - name: Inspect
+        run: docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}/${{ matrix.platform_name }}:${{ steps.tag.outputs.plat_tag }}

@@ -43,9 +43,9 @@ renzora run -- --server  # run a headless dedicated server (--server)
 
 ### Toolchain
 
-- The build runs in the pinned `ghcr.io/renzora/engine` image — you only need **Docker** and **Git**. The Rust version, C/C++ toolchain, linkers (`clang`/`mold`/`rust-lld`), and the Bevy system libraries are all baked into the image; you install none of them locally.
+- The build runs in the pinned `ghcr.io/renzora/*` images (a shared `base` plus one per platform) — you only need **Docker** and **Git**. The Rust version, C/C++ toolchain, linkers (`clang`/`mold`/`rust-lld`), and the Bevy system libraries are all baked into the images; you install none of them locally. The CLI pulls only the images a command needs.
 - Rust/Cargo is needed only to install the CLI (`cargo install renzora`), not to build the engine.
-- The Rust version is pinned in **one place**: `docker/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly.
+- The Rust version is pinned in **one place**: `docker/base/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly.
 - Linux uses `mold` and Windows uses `rust-lld` inside the image (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`) — that linker setup is fixed in the container, another reason the build is container-only.
 
 > Heads-up for older docs: there is no `--features solari` raytracing build. `bevy_solari` is not wired in, and the GI tier `LumenQuality::Hwrt` currently renders nothing because wgpu ray tracing is not enabled. Don't add a `solari` feature flag to your build or bug report.
@@ -115,7 +115,7 @@ What's worth a test: new data structures (serialize/deserialize round-trips), ne
 
 ## Continuous integration
 
-CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the pinned toolchain image** `ghcr.io/renzora/engine:latest`, so the runner needs nothing installed — `rustc 1.93`, the cross toolchains, and the Linux dev libs are baked into the image.
+CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the shared base image** `ghcr.io/renzora/base:latest`, so the runner needs nothing installed — `rustc 1.93` and the Linux dev libs are baked into the base (the per-platform cross toolchains aren't needed to test first-party crates).
 
 > CI invokes **`cargo test` and `cargo clippy`** inside the image. The `renzora test` / `renzora check` CLI commands wrap those same cargo invocations in the container, so they reproduce CI locally — run those, not a native `cargo`.
 

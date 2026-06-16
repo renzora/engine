@@ -101,7 +101,7 @@ Two ABI guards protect the dlopen boundary, and a bevy bump trips both:
 let hash_input = format!("{pkg_version}-{rustc_ver}-bevy0.18"); // -> bevy0.19
 ```
 
-Change `bevy0.18` → `bevy0.19` so the build hash distinguishes 0.18-built artifacts from 0.19-built ones. There is **no `rust-toolchain.toml`** — the Rust version lives only in `docker/Dockerfile` (`FROM rust:1.93.0-bookworm`); if the 0.19 bump requires a newer rustc, update it there.
+Change `bevy0.18` → `bevy0.19` so the build hash distinguishes 0.18-built artifacts from 0.19-built ones. There is **no `rust-toolchain.toml`** — the Rust version lives only in `docker/base/Dockerfile` (`FROM rust:1.93.0-bookworm`); if the 0.19 bump requires a newer rustc, update it there.
 
 Then do a clean `--workspace` rebuild (`cargo build-all`) so the binary, the `renzora_editor` bundle, the shared `bevy_dylib`, and all dlopen plugins land on one matching ABI.
 
@@ -209,5 +209,5 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 - [ ] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
 - [ ] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
 - [ ] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
-- [ ] `docker/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists)
+- [ ] `docker/base/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists)
 - [ ] Clean `--workspace` rebuild of binary + `renzora_editor` bundle + `bevy_dylib` + all dlopen plugins (re-syncs `plugin_bevy_hash` + `RENZORA_BUILD_HASH`)

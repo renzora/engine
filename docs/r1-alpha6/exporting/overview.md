@@ -84,7 +84,7 @@ For platforms you have **not built locally**, the editor can fetch a prebuilt ru
 
 ### Building the templates yourself
 
-Cross-platform templates are built with `renzora build [platforms...]` (inside the engine's Docker image), which writes **arch-suffixed** output directories into `dist/`. Desktop binaries land directly in their dir; web and mobile nest under `runtime/`:
+Cross-platform templates are built with `renzora build [platforms...]` (inside the engine's Docker image), which writes **arch-suffixed** output directories into `dist/`. Windows lands a flat exe; macOS/Linux wrap the binary in a `.app` / AppImage `.AppDir`; web and mobile drop their artifact directly in the platform dir:
 
 ```bash
 renzora build windows linux wasm android ios
@@ -95,9 +95,9 @@ renzora build windows linux wasm android ios
 | `windows` | `dist/windows-x64/` |
 | `linux` | `dist/linux-x64/` |
 | `macos` (= `macos-x64` + `macos-arm64`) | `dist/macos-x64/`, `dist/macos-arm64/` |
-| `wasm` | `dist/web-wasm32/runtime/` |
-| `android` (= `android-arm64` + `android-x86`) | `dist/android-arm64/runtime/`, `dist/android-x86/runtime/` |
-| `ios` | `dist/ios-arm64/runtime/` |
+| `wasm` | `dist/web-wasm32/` |
+| `android` (= `android-arm64` + `android-x86`) | `dist/android-arm64/`, `dist/android-x86/` |
+| `ios` | `dist/ios-arm64/` |
 
 > macOS lanes build only when osxcross is present; the Android and iOS lanes are best-effort (a failure there does not fail the whole build). See [Installation → Cross-compiling with Docker](/docs/r1-alpha5/getting-started/installation) for toolchain details.
 

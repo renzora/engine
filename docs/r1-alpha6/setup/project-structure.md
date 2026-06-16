@@ -35,7 +35,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make, no `rust-toolchain.toml`, and no `_legacy_src/`. The pinned Rust version (`1.93.0`) lives only in `docker/Dockerfile`, and common tasks run through the `renzora` CLI, which wraps the cargo aliases in `.cargo/config.toml` inside the container (see [Build System](/docs/r1-alpha5/setup/build-system)).
+> There is **no** `Makefile.toml`/cargo-make, no `rust-toolchain.toml`, and no `_legacy_src/`. The pinned Rust version (`1.93.0`) lives only in `docker/base/Dockerfile`, and common tasks run through the `renzora` CLI, which wraps the cargo aliases in `.cargo/config.toml` inside the container (see [Build System](/docs/r1-alpha5/setup/build-system)).
 
 ## The workspace member globs
 

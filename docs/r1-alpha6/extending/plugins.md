@@ -188,7 +188,7 @@ pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
 }
 ```
 
-The loader compares this against its own value and **rejects any plugin whose hash does not match** — a mismatch means the plugin was built against a different Bevy/engine and would corrupt ECS access. In practice this means: build distribution plugins with the **same engine version and toolchain** as the host (the `docker/Dockerfile` image, pinned to one Rust version, is the canonical build environment). The build also stamps a `RENZORA_BUILD_HASH` (version + rustc + Bevy) used for the same compatibility checks.
+The loader compares this against its own value and **rejects any plugin whose hash does not match** — a mismatch means the plugin was built against a different Bevy/engine and would corrupt ECS access. In practice this means: build distribution plugins with the **same engine version and toolchain** as the host (the `docker/base/Dockerfile` image, pinned to one Rust version, is the canonical build environment). The build also stamps a `RENZORA_BUILD_HASH` (version + rustc + Bevy) used for the same compatibility checks.
 
 ## Hot-loading
 

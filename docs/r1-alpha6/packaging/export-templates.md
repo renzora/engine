@@ -38,7 +38,7 @@ There is **no `templates/windows/` (or linux/macos)** — desktop platforms use 
 `TemplateManager` (in `crates/renzora_export/src/templates.rs`) scans `dist/<platform>/` once on startup. The `dist/` root is two levels above the running editor exe (`dist/<platform>/renzora.exe` → `dist/`). For each platform it looks for:
 
 - **Desktop** → the game binary directly in `dist/<platform>/`.
-- **Mobile / web** → the packaged artifact under `dist/<platform>/runtime/`.
+- **Mobile / web** → the packaged artifact under `dist/<platform>/`.
 
 | Platform | `dist/` directory | Template artifact the scanner expects |
 |---|---|---|
@@ -46,11 +46,11 @@ There is **no `templates/windows/` (or linux/macos)** — desktop platforms use 
 | Linux (x64) | `dist/linux-x64/` | `renzora` |
 | macOS (x64) | `dist/macos-x64/` | `renzora` |
 | macOS (ARM64) | `dist/macos-arm64/` | `renzora` |
-| Android (ARM64) | `dist/android-arm64/runtime/` | `renzora-runtime-android-arm64.apk` |
-| Android (x86_64) | `dist/android-x86/runtime/` | `renzora-runtime-android-x86_64.apk` |
-| Fire TV (ARM64) | `dist/firetv-arm64/runtime/` | `renzora-runtime-firetv-arm64.apk` |
-| iOS (ARM64) | `dist/ios-arm64/runtime/` | `renzora-runtime-ios-arm64.zip` |
-| Web (WASM) | `dist/web-wasm32/runtime/` | `renzora-runtime-web-wasm32.zip` |
+| Android (ARM64) | `dist/android-arm64/` | `renzora-runtime-android-arm64.apk` |
+| Android (x86_64) | `dist/android-x86/` | `renzora-runtime-android-x86_64.apk` |
+| Fire TV (ARM64) | `dist/firetv-arm64/` | `renzora-runtime-firetv-arm64.apk` |
+| iOS (ARM64) | `dist/ios-arm64/` | `renzora-runtime-ios-arm64.zip` |
+| Web (WASM) | `dist/web-wasm32/` | `renzora-runtime-web-wasm32.zip` |
 
 If a platform's template isn't present locally, the export modal can **Download from GitHub** (it fetches the matching `renzora-runtime-*` asset from the `renzora/engine` releases) or **Install from file…** (you point it at a template you built yourself). Both copy the artifact into the editor's runtime directory.
 
@@ -68,7 +68,7 @@ renzora build
 
 `renzora build` produces the `renzora`/`renzora.exe` binary plus its shared libraries (`bevy_dylib`, `renzora.dll`, `std-*`). That binary, with `renzora_editor.*` removed, is the desktop template.
 
-For cross-platform output in one pass, pass the platform tokens — `renzora build` writes the arch-suffixed `dist/` layout the scanner expects (it runs `docker/build-all.sh` inside `ghcr.io/renzora/engine`, so the host only needs Docker):
+For cross-platform output in one pass, pass the platform tokens — `renzora build` writes the arch-suffixed `dist/` layout the scanner expects (it runs `docker/build-all.sh` inside each platform's `ghcr.io/renzora/<platform>` container, pulling only the images those tokens need):
 
 ```bash
 renzora build windows linux macos
@@ -86,12 +86,12 @@ cargo build --profile dist -p renzora_app \
     --no-default-features --features wasm \
     --target wasm32-unknown-unknown --target-dir target/wasm
 
-wasm-bindgen --out-dir dist/web-wasm32/runtime \
+wasm-bindgen --out-dir dist/web-wasm32 \
     --out-name renzora-runtime --target web \
     target/wasm/wasm32-unknown-unknown/dist/renzora.wasm
 
-wasm-opt -Oz dist/web-wasm32/runtime/renzora-runtime_bg.wasm \
-    -o dist/web-wasm32/runtime/renzora-runtime_bg.wasm
+wasm-opt -Oz dist/web-wasm32/renzora-runtime_bg.wasm \
+    -o dist/web-wasm32/renzora-runtime_bg.wasm
 ```
 
 This produces `renzora-runtime.js` + `renzora-runtime_bg.wasm`. The web template the editor consumes is a zip of those two files; the export step adds `game.rpak` and a generated `index.html` (which `fetch`es `game.rpak`, calls `set_rpak`, then `start()`). The `templates/web/` Vite scaffold is for local previewing of that bundle.
@@ -114,7 +114,7 @@ fn main() {
 The container build produces just the native library:
 
 ```bash
-# docker/build-all.sh android lane → dist/android-arm64/runtime/libmain.so
+# docker/build-all.sh android lane → dist/android-arm64/libmain.so
 cargo build --profile dist -p renzora-android \
     --target aarch64-linux-android --target-dir target/android
 ```
@@ -135,7 +135,7 @@ Each run emits an **unsigned** release APK named `renzora-runtime-android-arm64.
 iOS ships the `renzora-ios` crate as a **staticlib** (`librenzora_ios.a`). The container build produces only that library:
 
 ```bash
-# docker/build-all.sh ios lane → dist/ios-arm64/runtime/librenzora_ios.a
+# docker/build-all.sh ios lane → dist/ios-arm64/librenzora_ios.a
 cargo build --profile dist -p renzora-ios \
     --target aarch64-apple-ios --target-dir target/ios
 ```
