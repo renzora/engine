@@ -37,6 +37,18 @@ pub struct EmberScroll {
     track: Entity,
 }
 
+impl EmberScroll {
+    /// Ease the view so vertical pixel offset `offset` (from the top of the
+    /// content) becomes the new scroll position. `scroll_update` clamps it to
+    /// the scrollable range each frame and eases `ScrollPosition` toward it, so
+    /// callers can drive "scroll this row into view" by setting the offset.
+    /// Cancels bottom-stick so a pinned log view doesn't snap back.
+    pub fn scroll_to(&mut self, offset: f32) {
+        self.target = offset;
+        self.stick = false;
+    }
+}
+
 /// The draggable scrollbar thumb; points back at its viewport + track.
 #[derive(Component)]
 pub struct ScrollThumb {

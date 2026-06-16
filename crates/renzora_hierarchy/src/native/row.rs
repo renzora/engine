@@ -16,9 +16,9 @@ use super::components::{
 };
 use super::drag::HierDrag;
 
-const INDENT: f32 = 12.0;
-const ROW_H: f32 = 24.0;
-const BASE_X: f32 = 4.0;
+pub(crate) const INDENT: f32 = 12.0;
+pub(crate) const ROW_H: f32 = 24.0;
+pub(crate) const BASE_X: f32 = 4.0;
 const LINE_OFFSET: f32 = INDENT / 2.0 - 1.0; // 5.0
 const CENTER_Y: f32 = ROW_H / 2.0;
 /// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).

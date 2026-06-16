@@ -8,15 +8,19 @@ use bevy::prelude::*;
 use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_undo::{execute, LockToggleCmd, UndoContext, VisibilityToggleCmd};
 
+use bevy::ui::{ComputedNode, ScrollPosition};
+use renzora_ember::widgets::EmberScroll;
+
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
 
 use super::components::{HierCaretToggle, HierLockToggle, HierRowClick, HierVisToggle};
-use super::HierExpanded;
+use super::row::ROW_H;
+use super::{HierExpanded, HierRevealPending, HierScrollContent};
 
 /// Visible (flattened, respecting expansion) entity order — the anchor list for
-/// shift-range selection.
-fn visible_order(cache: &HierarchyTreeCache, expanded: &HashSet<Entity>) -> Vec<Entity> {
+/// shift-range selection (and the row-index basis for scroll-to + parent stacking).
+pub(crate) fn visible_order(cache: &HierarchyTreeCache, expanded: &HashSet<Entity>) -> Vec<Entity> {
     fn walk(nodes: &[EntityNode], expanded: &HashSet<Entity>, out: &mut Vec<Entity>) {
         for n in nodes {
             out.push(n.entity);
@@ -28,6 +32,149 @@ fn visible_order(cache: &HierarchyTreeCache, expanded: &HashSet<Entity>) -> Vec<
     let mut out = Vec::new();
     walk(&cache.nodes, expanded, &mut out);
     out
+}
+
+/// Depth-first search for `target` in the cached tree, recording the path of
+/// ancestors (root → … → target) into `path`. Returns `true` once found.
+fn find_tree_path(nodes: &[EntityNode], target: Entity, path: &mut Vec<Entity>) -> bool {
+    for n in nodes {
+        path.push(n.entity);
+        if n.entity == target || find_tree_path(&n.children, target, path) {
+            return true;
+        }
+        path.pop();
+    }
+    false
+}
+
+/// Reveal the primary selection in the tree. When selection changes (typically
+/// from a viewport click) the selected entity may live under a collapsed model
+/// root, so no row exists to carry the selection-highlight binding — the user
+/// sees nothing selected in the hierarchy. Expand every displayed ancestor of
+/// the selection so its row materialises and highlights.
+///
+/// `EditorSelection` uses interior mutability (`set` takes `&self`), so its
+/// `Res` change-tick doesn't fire on selection writes — we track the last
+/// revealed `(selection, cache version)` in `Local`s instead. Re-running on a
+/// cache-version bump also reveals the current selection once a freshly loaded
+/// model's subtree appears in the tree.
+pub(crate) fn hierarchy_reveal_selection(
+    selection: Option<Res<EditorSelection>>,
+    mut pending: ResMut<HierRevealPending>,
+    mut last_sel: Local<Option<Entity>>,
+) {
+    let Some(selection) = selection else {
+        return;
+    };
+    let current = selection.get();
+    if current == *last_sel {
+        return;
+    }
+    *last_sel = current;
+
+    // Arm the reveal for the new primary selection. The work (expand ancestors,
+    // centre the row) happens in `hierarchy_scroll_to_selection`. This is driven
+    // SOLELY by selection change — never by cache rebuilds — so spawning the
+    // parent-stack/row entities (which dirties the tree cache) can't re-arm it
+    // and trap the user's scrolling on the selected row.
+    pending.entity = current;
+    pending.frames = 0;
+    pending.decided = false;
+    pending.scroll = false;
+}
+
+/// Reveal the pending (just-selected) row: expand its ancestors so the row
+/// exists, and — only if it's off-screen — snap-scroll it to the vertical centre
+/// of the panel (no easing). If the row is already visible the scroll is left
+/// untouched (so clicking a visible row never yanks the view).
+///
+/// Every row is a fixed `ROW_H`, so the content height and the target's band
+/// derive straight from the visible-order index — exact even before the freshly
+/// expanded rows have laid out. It re-snaps for a few frames so a transient short
+/// content height (rows still building, which would otherwise let `scroll_update`
+/// clamp the position down) can't leave the row off-centre. A frame budget guards
+/// a target that never resolves (e.g. a model still spawning, or filtered out).
+pub(crate) fn hierarchy_scroll_to_selection(
+    mut pending: ResMut<HierRevealPending>,
+    cache: Res<HierarchyTreeCache>,
+    mut expanded: ResMut<HierExpanded>,
+    content: Query<Entity, With<HierScrollContent>>,
+    parents: Query<&ChildOf>,
+    mut viewports: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode)>,
+) {
+    let Some(target) = pending.entity else {
+        return;
+    };
+    if pending.frames > 40 {
+        pending.entity = None;
+        return;
+    }
+
+    // Expand the target's ancestors so its row materialises. Use the cached tree
+    // (which re-parents through hidden wrappers) rather than raw `ChildOf`, so
+    // the expansion matches what the panel actually displays. If the target
+    // isn't in the tree yet (e.g. a model still spawning), wait and retry.
+    let mut path = Vec::new();
+    if !find_tree_path(&cache.nodes, target, &mut path) {
+        pending.frames += 1;
+        return;
+    }
+    for ancestor in path.iter().rev().skip(1) {
+        expanded.0.insert(*ancestor);
+    }
+
+    // Index in the (now-expanded) visible order → its pixel band. `order.len()`
+    // is the row count, so content height is exact even before rows lay out.
+    let order = visible_order(&cache, &expanded.0);
+    let Some(idx) = order.iter().position(|e| *e == target) else {
+        pending.frames += 1;
+        return;
+    };
+
+    // The panel's scroll viewport is the parent of the marked content node.
+    let Some(list) = content.iter().next() else {
+        return;
+    };
+    let Ok(vp) = parents.get(list).map(|c| c.parent()) else {
+        return;
+    };
+    let Ok((mut scroll, mut sp, cn)) = viewports.get_mut(vp) else {
+        return;
+    };
+    let vh = cn.size().y * cn.inverse_scale_factor();
+    if vh <= 0.0 {
+        return; // not laid out yet — retry next frame (don't burn the budget)
+    }
+
+    let row_top = idx as f32 * ROW_H;
+    let row_bottom = row_top + ROW_H;
+
+    // First time the row resolves: decide whether to scroll at all. A row that's
+    // already fully visible (e.g. you clicked it in the tree) stays put.
+    if !pending.decided {
+        pending.decided = true;
+        pending.scroll = !(row_top >= sp.y && row_bottom <= sp.y + vh);
+        if !pending.scroll {
+            pending.entity = None;
+            return;
+        }
+        pending.frames = 0; // start the snap window fresh
+    }
+
+    // Centre the row's band in the viewport, clamped to the scrollable range.
+    let content_h = order.len() as f32 * ROW_H;
+    let max = (content_h - vh).max(0.0);
+    let centered = (row_top + ROW_H / 2.0 - vh / 2.0).clamp(0.0, max);
+
+    // Snap: set both the smooth-scroll target and the live position so
+    // `scroll_update` has nothing to ease toward.
+    scroll.scroll_to(centered);
+    sp.y = centered;
+
+    pending.frames += 1;
+    if pending.frames >= 4 {
+        pending.entity = None;
+    }
 }
 
 /// Row click → select the entity. Ctrl toggles it in the selection; Shift selects

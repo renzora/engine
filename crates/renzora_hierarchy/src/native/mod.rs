@@ -13,6 +13,7 @@ mod components;
 mod context_menu;
 mod drag;
 mod filter;
+mod pin;
 mod rename;
 mod row;
 mod scene_starter;
@@ -31,9 +32,35 @@ const PANEL_ID: &str = "hierarchy";
 #[derive(Resource, Default)]
 pub(crate) struct HierExpanded(pub HashSet<Entity>);
 
+/// Marks the hierarchy's keyed-list content node so the reveal logic can locate
+/// *this* panel's scroll viewport (the content's parent) without colliding with
+/// any other [`renzora_ember::widgets::EmberScroll`] in the editor.
+#[derive(Component)]
+pub(crate) struct HierScrollContent;
+
+/// A selection waiting to be revealed (ancestors expanded + scrolled into view).
+/// Armed *only* when the primary selection changes — never on cache rebuilds, so
+/// it can't fight the user scrolling. Persists a few frames because newly
+/// expanded rows take a frame or two to lay out and grow the content height the
+/// scroll position clamps against.
+#[derive(Resource, Default)]
+pub(crate) struct HierRevealPending {
+    pub entity: Option<Entity>,
+    pub frames: u32,
+    /// Whether the in-view decision has been made yet (on the first frame the
+    /// target row resolves).
+    pub decided: bool,
+    /// Outcome of that decision: the row was off-screen, so we scroll-centre it.
+    /// When the row was already visible we don't move the scroll at all.
+    pub scroll: bool,
+}
+
 pub fn register_native_hierarchy(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<HierExpanded>();
+    app.init_resource::<HierRevealPending>();
+    app.init_resource::<tree::HierFlatCache>();
+    app.init_resource::<tree::HierScrollMetrics>();
     app.init_resource::<drag::HierDrag>();
     app.init_resource::<filter::HierFilter>();
     app.init_resource::<filter::HierSearch>();
@@ -84,10 +111,19 @@ pub fn register_native_hierarchy(app: &mut App) {
                     ..default()
                 },
                 Name::new("hierarchy-list"),
+                HierScrollContent,
             ))
             .id();
         renzora_ember::reactive::keyed_list(commands, list, tree::hierarchy_snapshot);
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
+        // Parent-stacking overlay: pinned ancestor headers over the top of the
+        // scroll viewport (toggled by EditorSettings.hierarchy_parent_stacking).
+        let stack_container = pin::build_stack_container(commands);
+        commands.entity(scroll).add_child(stack_container);
+        commands.insert_resource(pin::HierParentStack {
+            container: stack_container,
+            current: Vec::new(),
+        });
         // While the scene has entities, show the tree; when empty, the starter
         // picker takes its place.
         renzora_ember::reactive::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
@@ -100,7 +136,12 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.add_systems(
         Update,
         (
+            tree::update_flatten_cache,
+            tree::update_scroll_metrics,
             systems::hierarchy_row_click,
+            systems::hierarchy_reveal_selection,
+            systems::hierarchy_scroll_to_selection,
+            pin::hierarchy_parent_stack,
             systems::hierarchy_caret_click,
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
