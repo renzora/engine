@@ -642,22 +642,16 @@ fn divider_drag(
     let ratio = (drag.start_ratio + moved / extent).clamp(0.1, 0.9);
 
     let first_wrap = div.first_wrap;
-    let handle = drag.handle;
     let horizontal = div.horizontal;
     let dpath = div.path.clone();
 
+    // Resize the first pane; the divider strip is a flex sibling, so flexbox
+    // re-places it on the new boundary automatically — no handle to move.
     if let Ok(mut n) = nodes.get_mut(first_wrap) {
         if horizontal {
             n.width = Val::Percent(ratio * 100.0);
         } else {
             n.height = Val::Percent(ratio * 100.0);
-        }
-    }
-    if let Ok(mut n) = nodes.get_mut(handle) {
-        if horizontal {
-            n.left = Val::Percent(ratio * 100.0);
-        } else {
-            n.top = Val::Percent(ratio * 100.0);
         }
     }
     dock.tree.update_ratio(&dpath, ratio);
@@ -1304,19 +1298,46 @@ fn build_tree(
             let child_a = build_tree(commands, font, phosphor, Some(info_a), path_a, first, preserved);
             commands.entity(wrap_a).add_child(child_a);
 
+            // A grabbable divider strip, laid out as a flex sibling *between* the
+            // two wraps. Flexbox always places it exactly on the split boundary —
+            // regardless of where the dock sits on screen, how deeply the split is
+            // nested, or the UI scale. (The previous design overlaid an
+            // absolutely-positioned grab handle centered on a 1px line via a
+            // negative margin; taffy doesn't apply that margin to abs-pos nodes, so
+            // the grab zone drifted off the visible divider and felt "off" to grab.)
+            const DIVIDER_THICKNESS: f32 = 5.0;
             let mut dv = Node {
                 flex_shrink: 0.0,
                 ..default()
             };
             if row {
-                dv.width = Val::Px(1.0);
+                dv.width = Val::Px(DIVIDER_THICKNESS);
                 dv.height = Val::Percent(100.0);
             } else {
-                dv.height = Val::Px(1.0);
+                dv.height = Val::Px(DIVIDER_THICKNESS);
                 dv.width = Val::Percent(100.0);
             }
+            let cursor = crate::cursor_icon::parse_cursor(if row {
+                "ew-resize"
+            } else {
+                "ns-resize"
+            })
+            .unwrap();
             let divider = commands
-                .spawn((dv, BackgroundColor(rgb(divider())), DockPart::Divider, Name::new("divider")))
+                .spawn((
+                    dv,
+                    BackgroundColor(rgb(divider())),
+                    Interaction::default(),
+                    crate::cursor_icon::HoverCursor(cursor),
+                    Divider {
+                        container,
+                        first_wrap: wrap_a,
+                        horizontal: row,
+                        path: path.clone(),
+                    },
+                    DockPart::Divider,
+                    Name::new("divider"),
+                ))
                 .id();
 
             let mut wb = Node {
@@ -1349,48 +1370,9 @@ fn build_tree(
             let child_b = build_tree(commands, font, phosphor, Some(info_b), path_b, second, preserved);
             commands.entity(wrap_b).add_child(child_b);
 
-            const GRAB: f32 = 11.0;
-            let mut hit = Node {
-                position_type: PositionType::Absolute,
-                ..default()
-            };
-            if row {
-                hit.left = Val::Percent(pct);
-                hit.margin = UiRect::left(Val::Px(-GRAB / 2.0));
-                hit.width = Val::Px(GRAB);
-                hit.top = Val::Px(0.0);
-                hit.height = Val::Percent(100.0);
-            } else {
-                hit.top = Val::Percent(pct);
-                hit.margin = UiRect::top(Val::Px(-GRAB / 2.0));
-                hit.height = Val::Px(GRAB);
-                hit.left = Val::Px(0.0);
-                hit.width = Val::Percent(100.0);
-            }
-            let cursor = crate::cursor_icon::parse_cursor(if row {
-                "ew-resize"
-            } else {
-                "ns-resize"
-            })
-            .unwrap();
-            let handle = commands
-                .spawn((
-                    hit,
-                    Interaction::default(),
-                    crate::cursor_icon::HoverCursor(cursor),
-                    Divider {
-                        container,
-                        first_wrap: wrap_a,
-                        horizontal: row,
-                        path: path.clone(),
-                    },
-                    Name::new("divider-handle"),
-                ))
-                .id();
-
             commands
                 .entity(container)
-                .add_children(&[wrap_a, divider, wrap_b, handle]);
+                .add_children(&[wrap_a, divider, wrap_b]);
             container
         }
         DockTree::Leaf { tabs, active_tab } => {
