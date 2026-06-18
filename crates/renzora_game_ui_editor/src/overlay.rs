@@ -13,8 +13,10 @@ use std::hash::{Hash, Hasher};
 use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, UiTransform};
+use bevy::window::SystemCursorIcon;
 
 use renzora::{EditorSelection, SplashState};
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 
@@ -54,6 +56,17 @@ impl ResizeHandle {
             Self::Left => (true, false, false, false),
         }
     }
+
+    /// OS resize cursor that matches this handle's drag axis (diagonals for the
+    /// corners). Shown on hover so the handle reads as a resize grip.
+    fn cursor(self) -> SystemCursorIcon {
+        match self {
+            Self::TopLeft | Self::BottomRight => SystemCursorIcon::NwseResize,
+            Self::TopRight | Self::BottomLeft => SystemCursorIcon::NeswResize,
+            Self::Top | Self::Bottom => SystemCursorIcon::NsResize,
+            Self::Left | Self::Right => SystemCursorIcon::EwResize,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -70,8 +83,19 @@ pub(crate) struct CanvasHandle {
 }
 
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, position_sel_boxes.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        (position_sel_boxes, position_marquee)
+            // After the geometry snapshot so the box tracks the same frame's
+            // widget sizes instead of trailing a frame behind during a resize.
+            .after(crate::geometry::snapshot_widgets)
+            .run_if(in_state(SplashState::Editor)),
+    );
 }
+
+/// Marker on the marquee (rubber-band) rectangle drawn during a box-select.
+#[derive(Component)]
+struct MarqueeRect;
 
 /// Build the overlay layer (added as a child of the design frame, over the image).
 pub(crate) fn build(commands: &mut Commands) -> Entity {
@@ -91,7 +115,19 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
         .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, FocusPolicy::Pass))
         .id();
     keyed_list(commands, boxes, selection_snapshot);
-    commands.entity(layer).add_child(boxes);
+    // Rubber-band rectangle, hidden until a marquee drag is in progress.
+    let marquee = commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, border: UiRect::all(Val::Px(1.0)), ..default() },
+            BackgroundColor(rgb(accent()).with_alpha(0.12)),
+            BorderColor::all(rgb(accent())),
+            FocusPolicy::Pass,
+            Visibility::Hidden,
+            MarqueeRect,
+            Name::new("ui-canvas-marquee"),
+        ))
+        .id();
+    commands.entity(layer).add_children(&[boxes, marquee]);
     layer
 }
 
@@ -144,6 +180,7 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
                 BackgroundColor(rgb(window_bg())),
                 BorderColor::all(rgb(accent())),
                 Interaction::default(),
+                HoverCursor(rh.cursor()),
                 CanvasHandle { widget: entity, kind: HandleKind::Resize(rh) },
             ))
             .id();
@@ -156,6 +193,7 @@ fn sel_box(commands: &mut Commands, entity: Entity) -> Entity {
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(accent())),
             Interaction::default(),
+            HoverCursor(SystemCursorIcon::Grab),
             CanvasHandle { widget: entity, kind: HandleKind::Rotate },
         ))
         .id();
@@ -174,6 +212,25 @@ fn position_sel_boxes(state: Res<NativeCanvasState>, mut q: Query<(&SelBox, &mut
             node.width = Val::Px(g.width * zoom);
             node.height = Val::Px(g.height * zoom);
             tf.rotation = Rot2::radians(g.rotation);
+        }
+    }
+}
+
+/// Draw / hide the marquee rectangle from `NativeCanvasState.marquee`
+/// (design-space corners) in frame space (× zoom).
+fn position_marquee(state: Res<NativeCanvasState>, mut q: Query<(&mut Node, &mut Visibility), With<MarqueeRect>>) {
+    let zoom = state.zoom;
+    for (mut node, mut vis) in &mut q {
+        match state.marquee {
+            Some((a, b)) => {
+                let (min, max) = (a.min(b), a.max(b));
+                node.left = Val::Px(min.x * zoom);
+                node.top = Val::Px(min.y * zoom);
+                node.width = Val::Px((max.x - min.x) * zoom);
+                node.height = Val::Px((max.y - min.y) * zoom);
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
         }
     }
 }

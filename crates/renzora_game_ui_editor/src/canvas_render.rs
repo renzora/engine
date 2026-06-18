@@ -19,8 +19,10 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, T
 
 use renzora_game_ui::components::UiCanvas;
 
-/// Resolution of the UI editor render-target image. Matches the design
-/// resolution 1:1 — text and shapes raster at native size.
+/// *Initial* resolution of the UI editor render-target image (the default
+/// canvas reference). The target is resized to follow the active canvas's
+/// reference resolution by [`sync_render_target_to_reference`], so the render
+/// is always 1:1 with design space — one design pixel = one texture pixel.
 pub const UI_RENDER_WIDTH: u32 = 1280;
 pub const UI_RENDER_HEIGHT: u32 = 720;
 
@@ -31,6 +33,9 @@ pub const UI_RENDER_HEIGHT: u32 = 720;
 pub struct UiCanvasRender {
     pub image_handle: Handle<Image>,
     pub camera_entity: Entity,
+    /// Current pixel size of `image_handle`, tracked so the resize system only
+    /// reallocates the texture when the reference resolution actually changes.
+    pub current_size: UVec2,
 }
 
 /// Marker component for the editor's dedicated UI render camera.
@@ -92,7 +97,50 @@ pub fn setup_ui_canvas_render(mut commands: Commands, mut images: ResMut<Assets<
     commands.insert_resource(UiCanvasRender {
         image_handle,
         camera_entity,
+        current_size: UVec2::new(UI_RENDER_WIDTH, UI_RENDER_HEIGHT),
     });
+}
+
+/// Keep the offscreen render target sized to the **active canvas's reference
+/// resolution** so the canvas renders 1:1 — one design pixel maps to one
+/// texture pixel — with the global `UiScale` left at its default `1.0`.
+///
+/// This replaces the old `sync_ui_scale_to_canvas_reference`, which fit a
+/// non-default reference (say 1920×1080) into a *fixed* 1280×720 texture by
+/// writing the global `UiScale`. Because the editor shell is itself native
+/// bevy_ui under the same global `UiScale`, that scaled the entire editor
+/// chrome (ribbon, panels, popups) — see issue #55. Sizing the target to the
+/// reference instead keeps design-space coordinates lined up everywhere
+/// (geometry, overlay handles, drag math all already work in reference space ×
+/// zoom) and never touches the chrome.
+///
+/// The texture is reused via [`Image::resize`]; it only reallocates when the
+/// reference changes, which is a rare design-time edit. The display frame
+/// stretches this texture to `reference × zoom`, so any size renders cleanly.
+pub(crate) fn sync_render_target_to_reference(
+    state: Res<crate::NativeCanvasState>,
+    render: Option<ResMut<UiCanvasRender>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let Some(mut render) = render else {
+        return;
+    };
+    // Clamp to the same bounds the `Ref Width`/`Ref Height` inspector fields
+    // allow (1..=7680 × 1..=4320), guarding against a degenerate texture size.
+    let w = (state.canvas_width.round() as i64).clamp(1, 7680) as u32;
+    let h = (state.canvas_height.round() as i64).clamp(1, 4320) as u32;
+    let requested = UVec2::new(w, h);
+    if render.current_size == requested {
+        return;
+    }
+    if let Some(image) = images.get_mut(&render.image_handle) {
+        image.resize(Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        });
+        render.current_size = requested;
+    }
 }
 
 /// Sync system — keeps every `UiCanvas` pointed at the editor's UI render

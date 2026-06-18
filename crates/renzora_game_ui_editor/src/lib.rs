@@ -64,6 +64,10 @@ pub(crate) struct NativeCanvasState {
     pub canvas_height: f32,
     /// Per-frame design-space geometry of every widget under the active canvas.
     pub widgets: Vec<geometry::WidgetGeom>,
+    /// Active marquee (rubber-band) selection rectangle in design space, as
+    /// `(press, current)` corners. `None` when not box-selecting. The overlay
+    /// draws it; release selects the widgets it fully encloses.
+    pub marquee: Option<(Vec2, Vec2)>,
 }
 
 impl Default for NativeCanvasState {
@@ -78,6 +82,7 @@ impl Default for NativeCanvasState {
             canvas_width: 1280.0,
             canvas_height: 720.0,
             widgets: Vec::new(),
+            marquee: None,
         }
     }
 }

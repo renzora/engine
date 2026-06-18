@@ -307,6 +307,12 @@ pub fn spawn_html_template_at(
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 position_type: PositionType::Absolute,
+                // Pin to the canvas's top-left. Without explicit insets an
+                // absolute node uses its flex "static position", which the
+                // parent's alignment can shift — so a full-size template would
+                // land slightly off instead of covering the canvas exactly.
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
                 ..default()
             },
         ))

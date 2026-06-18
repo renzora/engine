@@ -26,6 +26,11 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(rgb(window_bg())),
+            // Clicking the dark area around the frame clears the selection. The
+            // centered frame sits on top where it covers, so a press only reaches
+            // this node when it lands *outside* the frame.
+            Interaction::default(),
+            crate::interaction::CanvasBackground,
             Name::new("ui-canvas-viewport"),
         ))
         .id();

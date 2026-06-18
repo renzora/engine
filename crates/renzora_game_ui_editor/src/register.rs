@@ -574,7 +574,7 @@ pub fn register_game_ui_editor(app: &mut App) {
         Update,
         canvas_render::sync_canvases_to_editor_camera.after(sync_ui_canvas_target_camera),
     );
-    app.add_systems(Update, sync_ui_scale_to_canvas_reference);
+    app.add_systems(Update, canvas_render::sync_render_target_to_reference);
     app.add_systems(
         Update,
         (
@@ -588,37 +588,14 @@ pub fn register_game_ui_editor(app: &mut App) {
     app.add_systems(Update, auto_switch_view_on_selection);
 }
 
-// ── UiScale ↔ canvas reference sync ─────────────────────────────────────
+// ── Canvas reference resolution ─────────────────────────────────────────
 //
-// The editor renders bevy_ui to a fixed-size texture (`UI_RENDER_WIDTH ×
-// UI_RENDER_HEIGHT`), then displays it in the canvas tab at the active
-// canvas's reference resolution. If those two don't match — say, a
-// 1920×1080 canvas reference into a 1280×720 render target — every
-// `Val::Px(400)` would render at 400 texture-pixels (= 600 design-pixels
-// on display), and selection handles authored in design space would sit
-// at the wrong place over the rendered widget.
-//
-// Fix: scale `UiScale` so `design_pixels × UiScale = render_pixels`
-// matches the texture's resolution. Then bevy_ui rasterises at the
-// correct fraction of the render target, the texture stretches cleanly
-// to the display, and design-space coordinates line up everywhere.
-//
-// Single global UiScale means we use the *first* canvas's reference; if
-// you have multiple canvases at different references, only the first
-// will match. That's fine for the common single-canvas authoring case.
-fn sync_ui_scale_to_canvas_reference(
-    canvases: Query<&UiCanvas>,
-    mut ui_scale: ResMut<bevy::ui::UiScale>,
-) {
-    let Some(canvas) = canvases.iter().next() else {
-        return;
-    };
-    let ref_w = canvas.reference_width.max(1.0);
-    let target = canvas_render::UI_RENDER_WIDTH as f32 / ref_w;
-    if (ui_scale.0 - target).abs() > 0.001 {
-        ui_scale.0 = target;
-    }
-}
+// Matching the editor's bevy_ui render target to the active canvas's
+// reference resolution is handled by `canvas_render::sync_render_target_to_
+// reference` — it resizes the offscreen texture so the canvas always renders
+// 1:1 in design space. The earlier approach wrote the *global* `UiScale` to
+// fit a fixed-size texture, which scaled the entire editor shell (issue #55),
+// since the chrome is native bevy_ui under that same global scale.
 
 // ── Editor-only systems ─────────────────────────────────────────────────────
 
