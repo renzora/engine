@@ -32,7 +32,7 @@ The tabs in the center of the top bar are **workspaces**. Each one is a ready-ma
 - **Particles** — fire, smoke, sparkles, and other effects.
 - **Debug** — performance and diagnostics while you test.
 
-Click a tab to switch. You can drag tabs to reorder them, right-click to rename or remove, and press `+` to add a new one. Your changes to each layout are saved automatically.
+Click a tab to switch. You can drag tabs to reorder them, right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
 
 ## Panels can go anywhere
 

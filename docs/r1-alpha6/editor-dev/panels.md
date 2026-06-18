@@ -221,7 +221,7 @@ renzora::add!(FpsStatusPlugin, Editor);
 
 ## Where panels appear
 
-Registering a panel does **not** force it into a layout. The metadata makes it available in the dock tab strip's **+** (Add-Panel) picker, grouped by `category`; the user docks it where they like. Built-in workspaces (Scene, Blueprints, Scripting, Animation, Materials, Particles, Debug, Gallery) are eight separate `DockTree`s the shell ships and the user can reorder, rename, and add to. The live layout persists per workspace.
+Registering a panel does **not** force it into a layout. The metadata makes it available in the dock tab strip's **+** (Add-Panel) picker, grouped by `category`; the user docks it where they like. Built-in workspaces (Scene, Blueprints, Scripting, Animation, Materials, Particles, Debug, Gallery) are eight separate `DockTree`s the shell ships and the user can reorder, rename, and add to. The live layout persists per workspace, and the whole set (every workspace's tree + the active index) is serialized to `~/.renzora/layout.json` so split sizes, panel placement, and active tabs survive a restart. On launch the shell restores that file and appends any built-in workspace the saved set predates; deleting the file resets to the shipped defaults.
 
 If you want a panel docked by default, add it to a workspace layout rather than relying on the picker; otherwise the **+** picker is how users bring it in (this is exactly what the tutorial's throwaway "Demo Panel" does — registered but deliberately not pre-docked).
 

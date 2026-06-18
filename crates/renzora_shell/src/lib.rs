@@ -30,12 +30,30 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
         app.add_plugins(EmberPlugin);
-        let layouts = dock::workspace_layouts();
-        // The dock starts on the first workspace (overrides DockPlugin's empty).
+        // Restore the persisted per-workspace dock layout if one exists, else use
+        // the built-in defaults. When restoring, append any *new* built-in
+        // workspace whose name the saved file predates — so engine updates that
+        // add a default workspace still surface it instead of being shadowed by an
+        // older saved set. (A workspace the user deliberately removed reappearing
+        // is the accepted trade-off; the alternative hides new defaults.)
+        let defaults = dock::workspace_layouts();
+        let (layouts, active) = match dock::load_dock_layouts() {
+            Some((mut saved, active)) => {
+                for (name, tree) in defaults {
+                    if !saved.iter().any(|(n, _)| n == &name) {
+                        saved.push((name, tree));
+                    }
+                }
+                let active = active.min(saved.len().saturating_sub(1));
+                (saved, active)
+            }
+            None => (defaults, 0),
+        };
+        // The dock starts on the active workspace (overrides DockPlugin's empty).
         app.insert_resource(Dock {
-            tree: layouts[0].1.clone(),
+            tree: layouts[active].1.clone(),
         });
-        app.insert_resource(ShellLayouts { layouts, active: 0 });
+        app.insert_resource(ShellLayouts { layouts, active });
         app.init_resource::<renzora::ShellPanelRegistry>();
         app.init_resource::<renzora::ShellStatusRegistry>();
         seed_panel_meta(app);
@@ -61,7 +79,7 @@ impl Plugin for ShellPlugin {
                 doc_add_click,
                 doc_tab_click,
                 doc_tab_close,
-                sync_workspace_to_active_doc,
+                (sync_workspace_to_active_doc, persist_dock_layout),
                 workspace_add_click,
                 (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
                 (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
@@ -1932,6 +1950,52 @@ fn apply_workspace(index: usize, layouts: &mut ShellLayouts, dock: &mut Dock, di
     dock.tree = layouts.layouts[index].1.clone();
     layouts.active = index;
     dirty.0 = true;
+}
+
+/// Persist the per-workspace dock layout to `~/.renzora/layout.json` whenever it
+/// settles after a change, so split ratios / panel placement / active tabs come
+/// back on the next launch.
+///
+/// Triggers on a real change to either the live [`Dock`] (a divider/tab drag, a
+/// tab switch) or [`ShellLayouts`] (workspace add/remove/rename/reorder), but the
+/// write is **debounced** two ways: it waits until the left mouse button is
+/// released (a divider drag mutates the tree every frame — we want one write at
+/// the end, not hundreds mid-drag), and it skips the disk write when the
+/// serialized layout is byte-identical to what was last written (so the system
+/// never churns the file). The live active workspace's tree is synced into its
+/// slot for the snapshot without mutating [`ShellLayouts`] — mutating it here
+/// would re-trigger change detection and spin the system every frame.
+fn persist_dock_layout(
+    dock: Res<Dock>,
+    layouts: Res<ShellLayouts>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut pending: Local<bool>,
+    mut last_saved: Local<Option<String>>,
+) {
+    if dock.is_changed() || layouts.is_changed() {
+        *pending = true;
+    }
+    if !*pending || mouse.pressed(MouseButton::Left) {
+        return;
+    }
+    *pending = false;
+
+    // Snapshot all workspaces with the active slot's tree taken from the live
+    // dock (the in-resource copy is only synced on workspace switch).
+    let mut snapshot = layouts.layouts.clone();
+    if let Some(slot) = snapshot.get_mut(layouts.active) {
+        slot.1 = dock.tree.clone();
+    }
+    let Some(json) = dock::layout_json(&snapshot, layouts.active) else {
+        return;
+    };
+    if last_saved.as_deref() == Some(json.as_str()) {
+        return;
+    }
+    match dock::write_layout(&json) {
+        Ok(()) => *last_saved = Some(json),
+        Err(e) => warn!("[shell] failed to persist dock layout: {e}"),
+    }
 }
 
 /// `+` → add an "Untitled Scene" document and focus it.

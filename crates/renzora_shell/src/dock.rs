@@ -8,6 +8,108 @@
 
 pub use renzora_ember::dock::{DockTree, DropZone, SplitDirection};
 
+use serde::{Deserialize, Serialize};
+
+// ── Persistence ────────────────────────────────────────────────────────────────
+//
+// Dock positions (split ratios, which panels sit where, active tabs) persist
+// across sessions in a per-user file, mirroring the `~/.renzora/*.toml`
+// convention used for the renderer/UI-scale preferences (see `renzora::core`).
+// JSON, not TOML: the layout is a recursive tagged enum tree, which TOML renders
+// as an unreadable pile of nested tables — JSON round-trips it cleanly. The set
+// of workspaces is machine-local user state, not project state, so it lives next
+// to the other per-user prefs rather than in `project.toml`.
+
+/// One persisted workspace: its ribbon name + its dock tree.
+#[derive(Serialize, Deserialize)]
+struct PersistedWorkspace {
+    name: String,
+    tree: DockTree,
+}
+
+/// The on-disk dock layout file: every workspace plus the active index.
+#[derive(Serialize, Deserialize)]
+struct PersistedLayout {
+    active: usize,
+    workspaces: Vec<PersistedWorkspace>,
+}
+
+/// Path to the persisted dock layout: `~/.renzora/layout.json`. Resolves the
+/// home dir via env vars (matching `renzora::core`'s pref paths) so this stays
+/// dependency-light. `None` on wasm / when no home dir is resolvable.
+#[cfg(not(target_arch = "wasm32"))]
+fn layout_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)?;
+    Some(home.join(".renzora").join("layout.json"))
+}
+
+/// Load the persisted workspaces + active index, or `None` when the file is
+/// absent / unreadable / malformed (callers then fall back to the built-in
+/// [`workspace_layouts`]).
+pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize)> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let text = std::fs::read_to_string(layout_path()?).ok()?;
+        let data: PersistedLayout = serde_json::from_str(&text).ok()?;
+        if data.workspaces.is_empty() {
+            return None;
+        }
+        let workspaces = data
+            .workspaces
+            .into_iter()
+            .map(|w| (w.name, w.tree))
+            .collect::<Vec<_>>();
+        let active = data.active.min(workspaces.len() - 1);
+        Some((workspaces, active))
+    }
+}
+
+/// Serialize the workspaces + active index to the JSON we'd persist. Returns the
+/// string so the caller can skip a redundant disk write when nothing changed
+/// (the save system compares it against the last-written snapshot).
+pub fn layout_json(workspaces: &[(String, DockTree)], active: usize) -> Option<String> {
+    let data = PersistedLayout {
+        active,
+        workspaces: workspaces
+            .iter()
+            .map(|(name, tree)| PersistedWorkspace {
+                name: name.clone(),
+                tree: tree.clone(),
+            })
+            .collect(),
+    };
+    serde_json::to_string_pretty(&data).ok()
+}
+
+/// Write a pre-serialized layout JSON (from [`layout_json`]) to disk, creating
+/// `~/.renzora/` if needed. No-op `Ok` on wasm.
+#[allow(unused_variables)]
+pub fn write_layout(json: &str) -> std::io::Result<()> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok(())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = layout_path().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "could not resolve home directory for dock layout",
+            )
+        })?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, json)
+    }
+}
+
 /// The ribbon workspace layouts, in ribbon order (Scene … Debug). Ports
 /// `renzora_ui::layouts` (the visible, non-asset layouts) into the shell's
 /// egui-free dock model.

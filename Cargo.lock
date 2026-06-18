@@ -10416,6 +10416,8 @@ dependencies = [
  "renzora_theme",
  "renzora_ui",
  "rfd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

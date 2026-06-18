@@ -25,7 +25,7 @@ use crate::theme::{
 // ── Model ────────────────────────────────────────────────────────────────────
 
 /// Direction of a split in the dock tree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SplitDirection {
     /// Children are side-by-side (left / right).
     Horizontal,
@@ -34,7 +34,11 @@ pub enum SplitDirection {
 }
 
 /// A node in the dock tree.
-#[derive(Debug, Clone)]
+///
+/// `Serialize`/`Deserialize` so the editor shell can persist each workspace's
+/// layout (split ratios, panel placement, active tabs) to disk and restore it
+/// across sessions. The recursive `Box<DockTree>` children serialize fine.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum DockTree {
     Split {
         direction: SplitDirection,
