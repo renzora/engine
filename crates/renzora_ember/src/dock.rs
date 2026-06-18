@@ -1298,35 +1298,63 @@ fn build_tree(
             let child_a = build_tree(commands, font, phosphor, Some(info_a), path_a, first, preserved);
             commands.entity(wrap_a).add_child(child_a);
 
-            // A grabbable divider strip, laid out as a flex sibling *between* the
-            // two wraps. Flexbox always places it exactly on the split boundary —
-            // regardless of where the dock sits on screen, how deeply the split is
-            // nested, or the UI scale. (The previous design overlaid an
-            // absolutely-positioned grab handle centered on a 1px line via a
-            // negative margin; taffy doesn't apply that margin to abs-pos nodes, so
-            // the grab zone drifted off the visible divider and felt "off" to grab.)
-            const DIVIDER_THICKNESS: f32 = 5.0;
-            let mut dv = Node {
+            // The divider is a flush 1px line laid out as a flex sibling *between*
+            // the two panes, so the panels stay flush (no gap) and the line sits
+            // exactly on the boundary at any dock position / nesting / UI scale.
+            //
+            // The grab area is a wider, transparent, absolutely-positioned child of
+            // the line. Centering it uses only negative *px* insets (no percent +
+            // margin combo, which taffy doesn't honor on abs-pos nodes — the bug
+            // that made the old handle drift off the line). It overhangs both panes
+            // without taking layout space; a `ZIndex` lift puts the line + handle
+            // above the neighbouring pane so the whole grab width is clickable.
+            const GRAB: f32 = 11.0;
+            let mut line = Node {
                 flex_shrink: 0.0,
+                position_type: PositionType::Relative,
                 ..default()
             };
             if row {
-                dv.width = Val::Px(DIVIDER_THICKNESS);
-                dv.height = Val::Percent(100.0);
+                line.width = Val::Px(1.0);
+                line.height = Val::Percent(100.0);
             } else {
-                dv.height = Val::Px(DIVIDER_THICKNESS);
-                dv.width = Val::Percent(100.0);
+                line.height = Val::Px(1.0);
+                line.width = Val::Percent(100.0);
             }
+            let divider = commands
+                .spawn((
+                    line,
+                    BackgroundColor(rgb(divider())),
+                    bevy::ui::ZIndex(1),
+                    DockPart::Divider,
+                    Name::new("divider"),
+                ))
+                .id();
+
             let cursor = crate::cursor_icon::parse_cursor(if row {
                 "ew-resize"
             } else {
                 "ns-resize"
             })
             .unwrap();
-            let divider = commands
+            let mut hit = Node {
+                position_type: PositionType::Absolute,
+                ..default()
+            };
+            if row {
+                hit.left = Val::Px(-(GRAB - 1.0) / 2.0);
+                hit.width = Val::Px(GRAB);
+                hit.top = Val::Px(0.0);
+                hit.height = Val::Percent(100.0);
+            } else {
+                hit.top = Val::Px(-(GRAB - 1.0) / 2.0);
+                hit.height = Val::Px(GRAB);
+                hit.left = Val::Px(0.0);
+                hit.width = Val::Percent(100.0);
+            }
+            let handle = commands
                 .spawn((
-                    dv,
-                    BackgroundColor(rgb(divider())),
+                    hit,
                     Interaction::default(),
                     crate::cursor_icon::HoverCursor(cursor),
                     Divider {
@@ -1335,10 +1363,10 @@ fn build_tree(
                         horizontal: row,
                         path: path.clone(),
                     },
-                    DockPart::Divider,
-                    Name::new("divider"),
+                    Name::new("divider-handle"),
                 ))
                 .id();
+            commands.entity(divider).add_child(handle);
 
             let mut wb = Node {
                 overflow: Overflow::clip(),
