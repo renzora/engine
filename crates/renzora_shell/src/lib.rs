@@ -306,7 +306,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Scene / editing
     ("hierarchy", "Hierarchy", "tree-structure", "Scene"),
     ("inspector", "Inspector", "sliders-horizontal", "Editing"),
-    ("scenes", "Scenes", "stack", "Scene"),
+    ("scenes", "Scenes", "film-slate", "Scene"),
     ("scene_diagnostics", "Scene Diagnostics", "first-aid", "Debug"),
     ("assets", "Assets", "folder-open", "Assets"),
     ("shape_library", "Shapes", "shapes", "Assets"),

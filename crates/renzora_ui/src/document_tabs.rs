@@ -70,7 +70,7 @@ impl DocTabKind {
     /// renderer (e.g. `renzora_ember::font::icon_glyph`) resolves it to a glyph.
     pub fn icon(self) -> &'static str {
         match self {
-            DocTabKind::Scene => "film-script",
+            DocTabKind::Scene => "film-slate",
             DocTabKind::Material => "palette",
             DocTabKind::Particle => "sparkle",
             DocTabKind::Blueprint => "blueprint",

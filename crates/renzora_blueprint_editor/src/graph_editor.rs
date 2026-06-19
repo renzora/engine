@@ -15,7 +15,7 @@ pub fn category_icon(category: &str) -> &'static str {
         "Physics" => "atom",
         "Audio" => "speaker-high",
         "UI" => "layout",
-        "Scene" => "film-strip",
+        "Scene" => "film-slate",
         "Debug" => "bug",
         "Variable" => "database",
         "Rendering" => "eye",

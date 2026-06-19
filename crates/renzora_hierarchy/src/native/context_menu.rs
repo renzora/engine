@@ -88,7 +88,7 @@ pub(crate) fn hier_context_menu(
     }
 
     kids.push(menu_sep(&mut commands));
-    kids.push(menu_item(&mut commands, &fonts, "film-strip", "Instance Scene…", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "film-slate", "Instance Scene…", move |w| {
         instance_scene(w, target)
     }));
     if is_inst {

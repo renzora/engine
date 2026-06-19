@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 
 use renzora_editor_framework::{EditorCommands, SceneStarterRegistry, SplashState};
-use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 
@@ -120,10 +120,15 @@ fn build_card(commands: &mut Commands, fonts: &EmberFonts, id: &'static str, tit
             Name::new("hier-starter-card"),
         ))
         .id();
-    // The starter icon is a phosphor glyph char (rendered with the phosphor font).
+    // `icon` is a kebab-case Phosphor *name* (per the SceneStarter contract), so
+    // resolve it to its single PUA glyph before rendering. Passing the raw name
+    // to the phosphor font lets ligature substitution mangle multi-word names —
+    // e.g. "image-square" renders as two glyphs (image + square) and a name with
+    // no ligature match renders nothing. `icon_glyph` gives the one correct glyph.
+    let glyph_ch = icon_glyph(icon).unwrap_or('\u{E4C6}'); // fallback: "question"
     let glyph = commands
         .spawn((
-            Text::new(icon.to_string()),
+            Text::new(glyph_ch.to_string()),
             TextFont { font: fonts.phosphor.clone(), font_size: 22.0, ..default() },
             TextColor(rgb(text_primary())),
         ))

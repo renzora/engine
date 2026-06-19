@@ -1125,7 +1125,7 @@ impl Plugin for ScenePlugin {
         app.register_component_icon(ComponentIconEntry {
             type_id: std::any::TypeId::of::<renzora::SceneInstance>(),
             name: "Scene Instance",
-            icon: "film-strip",
+            icon: "film-slate",
             color: [170, 200, 255],
             priority: 75,
             dynamic_icon_fn: None,

@@ -94,7 +94,7 @@ impl Plugin for HierarchyPanelPlugin {
             id: "empty_scene",
             title: "Empty Scene",
             description: "Start with just a camera",
-            icon: "circle-dashed",
+            icon: "film-slate",
             spawn_fn: |world: &mut World| {
                 use renzora::core::SceneCamera;
                 world.spawn((
