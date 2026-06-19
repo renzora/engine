@@ -675,7 +675,26 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             fields,
         });
     }
+
+    // Pin the most-edited components to the top in a fixed order — Name,
+    // Transform, then Scripts, then Material — so they're always right where you
+    // expect regardless of plugin registration order. A stable sort keeps every
+    // other component in its original registry order behind them.
+    out.sort_by_key(|s| section_priority(s.title));
     out
+}
+
+/// Display order weight for a section: pinned components come first in a fixed
+/// order; everything else shares the same (higher) weight and so keeps its
+/// registry order under the stable sort in [`collect_sections`].
+fn section_priority(title: &str) -> u8 {
+    match title {
+        "Name" => 0,
+        "Transform" => 1,
+        "Scripts" => 2,
+        "Material" => 3,
+        _ => 4,
+    }
 }
 
 fn format_value(v: Option<&FieldValue>) -> String {

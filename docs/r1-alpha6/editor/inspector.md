@@ -27,7 +27,7 @@ In a section header you'll find:
 - An **on/off toggle** (on components that support it) so you can switch a feature off without deleting it.
 - A **trash** button to remove the component entirely.
 
-Inside each section are the editable fields. The first two sections are always **Name** and **Transform**, so the things you reach for most are right at the top.
+Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Name**, **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
 
 At the very top is an **Add** button and a **filter box** — start typing a component name to hide everything else. There's a second Add button at the bottom of the list for convenience.
 
