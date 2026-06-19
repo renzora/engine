@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 77 Obsidian"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#6E5AE0"
+success = "#3AC890"
+warning = "#D0A840"
+error = "#E04060"
+selection = "#241F44"
+selection_stroke = "#181430"
+
+[surfaces]
+window = "#08070C"
+window_stroke = "#221E34"
+panel = "#0E0C14"
+popup = "#15121E"
+overlay = "#000004B0"
+faint = "#0B0A10"
+extreme = "#1A1626"
+
+[text]
+primary = "#E0DCEC"
+secondary = "#9A94B0"
+muted = "#56506E"
+heading = "#A89AE8"
+disabled = "#34304A"
+hyperlink = "#8A78E0"
+
+[widgets]
+noninteractive_bg = "#1A1626"
+noninteractive_fg = "#7E7896"
+inactive_bg = "#201C30"
+inactive_fg = "#9A94B0"
+hovered_bg = "#2C2642"
+hovered_fg = "#E0DCEC"
+active_bg = "#6E5AE0"
+active_fg = "#0E0C14"
+border = "#0B0A10"
+border_light = "#221E34"
+
+[panels]
+tree_line = "#322C4A"
+drop_line = "#6E5AE0"
+drop_child_highlight = "#6E5AE040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#110F18"
+inspector_row_odd = "#161320"
+category_frame_bg = "#15121E"
+item_bg = "#161320"
+item_hover = "#201C30"
+tab_active = "#201C30"
+tab_inactive = "#0E0C14"
+tab_hover = "#2C2642"
+close_hover = "#E04060"
+
+[viewport]
+grid_line = "#1E1A2E"
+gizmo_x = "#E04060"
+gizmo_y = "#3AC890"
+gizmo_z = "#6A6AE0"
+gizmo_selected = "#D0A840"
+
+[material]
+canvas_bg = "#050408"
+grid_dot = "#201C30"
+node_bg = "#0E0C14"
+node_border = "#221E34"
+node_selected_border = "#6E5AE0"
+connection = "#7E7896"
+connection_preview = "#D0A840"
+selection_rect_fill = "#6E5AE022"
+selection_rect_stroke = "#6E5AE0"

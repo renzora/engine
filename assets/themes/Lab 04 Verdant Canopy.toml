@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 04 Verdant Canopy"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#4CAF50"
+success = "#7CD13F"
+warning = "#E0A516"
+error = "#E0524D"
+selection = "#2C5E2E"
+selection_stroke = "#4CAF50"
+
+[surfaces]
+window = "#0A1208"
+window_stroke = "#1E3018"
+panel = "#101C0C"
+popup = "#142210"
+overlay = "#02100090"
+faint = "#0C1609"
+extreme = "#182814"
+
+[text]
+primary = "#E4F5DC"
+secondary = "#B0CFA2"
+muted = "#6E8862"
+heading = "#9FD884"
+disabled = "#3E5436"
+hyperlink = "#86D15E"
+
+[widgets]
+noninteractive_bg = "#182814"
+noninteractive_fg = "#A0BC90"
+inactive_bg = "#1E321A"
+inactive_fg = "#C2DCB4"
+hovered_bg = "#2A4424"
+hovered_fg = "#E4F5DC"
+active_bg = "#4CAF50"
+active_fg = "#08160A"
+border = "#0E1A0A"
+border_light = "#2A4424"
+
+[panels]
+tree_line = "#34522C"
+drop_line = "#4CAF50"
+drop_child_highlight = "#4CAF5040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#13200E"
+inspector_row_odd = "#182814"
+category_frame_bg = "#142210"
+item_bg = "#182814"
+item_hover = "#243C1E"
+tab_active = "#243C1E"
+tab_inactive = "#101C0C"
+tab_hover = "#2A4424"
+close_hover = "#E0524D"
+
+[viewport]
+grid_line = "#2A4424"
+gizmo_x = "#FF5050"
+gizmo_y = "#7AE050"
+gizmo_z = "#5090FF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#081006"
+grid_dot = "#1E321A"
+node_bg = "#13200E"
+node_border = "#2A4424"
+node_selected_border = "#4CAF50"
+connection = "#A0BC90"
+connection_preview = "#FFD000"
+selection_rect_fill = "#4CAF5022"
+selection_rect_stroke = "#4CAF50"

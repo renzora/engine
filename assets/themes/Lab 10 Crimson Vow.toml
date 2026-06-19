@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 10 Crimson Vow"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E51937"
+success = "#62B847"
+warning = "#E8A21C"
+error = "#FF3B5C"
+selection = "#5C0F1C"
+selection_stroke = "#E51937"
+
+[surfaces]
+window = "#0C0406"
+window_stroke = "#2E1015"
+panel = "#16070A"
+popup = "#1C090D"
+overlay = "#0A0002C0"
+faint = "#100507"
+extreme = "#220A0F"
+
+[text]
+primary = "#F7DCE0"
+secondary = "#D69AA4"
+muted = "#8A5860"
+heading = "#FF6B82"
+disabled = "#542E36"
+hyperlink = "#FF7A92"
+
+[widgets]
+noninteractive_bg = "#220A0F"
+noninteractive_fg = "#C49098"
+inactive_bg = "#2E0E14"
+inactive_fg = "#E0AAB2"
+hovered_bg = "#3E141C"
+hovered_fg = "#F7DCE0"
+active_bg = "#E51937"
+active_fg = "#FFFFFF"
+border = "#14070A"
+border_light = "#3A141C"
+
+[panels]
+tree_line = "#4A1822"
+drop_line = "#E51937"
+drop_child_highlight = "#E5193740"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#18080C"
+inspector_row_odd = "#220A0F"
+category_frame_bg = "#1C090D"
+item_bg = "#220A0F"
+item_hover = "#341018"
+tab_active = "#341018"
+tab_inactive = "#16070A"
+tab_hover = "#3E141C"
+close_hover = "#FF3B5C"
+
+[viewport]
+grid_line = "#3A141C"
+gizmo_x = "#FF5050"
+gizmo_y = "#62D847"
+gizmo_z = "#5080FF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#0A0305"
+grid_dot = "#2E0E14"
+node_bg = "#18080C"
+node_border = "#3A141C"
+node_selected_border = "#E51937"
+connection = "#C49098"
+connection_preview = "#FFD000"
+selection_rect_fill = "#E5193722"
+selection_rect_stroke = "#E51937"

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 73 Plasma"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF1EBE"
+success = "#30E0C0"
+warning = "#FFD030"
+error = "#FF2050"
+selection = "#5A1050"
+selection_stroke = "#3E0A38"
+
+[surfaces]
+window = "#0C0410"
+window_stroke = "#3A1248"
+panel = "#16081E"
+popup = "#1E0C2A"
+overlay = "#04000C9A"
+faint = "#110618"
+extreme = "#280E38"
+
+[text]
+primary = "#F8DCFF"
+secondary = "#C088E0"
+muted = "#7A4A90"
+heading = "#FF60E0"
+disabled = "#482A54"
+hyperlink = "#FF50D0"
+
+[widgets]
+noninteractive_bg = "#280E38"
+noninteractive_fg = "#A068C0"
+inactive_bg = "#321244"
+inactive_fg = "#C088E0"
+hovered_bg = "#481860"
+hovered_fg = "#F8DCFF"
+active_bg = "#FF1EBE"
+active_fg = "#16081E"
+border = "#110618"
+border_light = "#3A1248"
+
+[panels]
+tree_line = "#4A1860"
+drop_line = "#FF1EBE"
+drop_child_highlight = "#FF1EBE40"
+row_odd_bg = "#FFFFFF09"
+inspector_row_even = "#1A0A24"
+inspector_row_odd = "#200E2E"
+category_frame_bg = "#1E0C2A"
+item_bg = "#200E2E"
+item_hover = "#321244"
+tab_active = "#321244"
+tab_inactive = "#16081E"
+tab_hover = "#481860"
+close_hover = "#FF2050"
+
+[viewport]
+grid_line = "#2E1040"
+gizmo_x = "#FF4060"
+gizmo_y = "#30E0C0"
+gizmo_z = "#7A50FF"
+gizmo_selected = "#FFD030"
+
+[material]
+canvas_bg = "#08030C"
+grid_dot = "#321244"
+node_bg = "#16081E"
+node_border = "#3A1248"
+node_selected_border = "#FF1EBE"
+connection = "#A068C0"
+connection_preview = "#FFD030"
+selection_rect_fill = "#FF1EBE22"
+selection_rect_stroke = "#FF1EBE"

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 42 Inferno Core"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF3300"
+success = "#C0D000"
+warning = "#FFB000"
+error = "#FF0040"
+selection = "#5A1000"
+selection_stroke = "#FF3300"
+
+[surfaces]
+window = "#0A0200"
+window_stroke = "#2E0C00"
+panel = "#140400"
+popup = "#1A0600"
+overlay = "#060000D0"
+faint = "#0E0300"
+extreme = "#220A02"
+
+[text]
+primary = "#FFE0D2"
+secondary = "#E09078"
+muted = "#945040"
+heading = "#FF6A2E"
+disabled = "#5A2C20"
+hyperlink = "#FF8A4D"
+
+[widgets]
+noninteractive_bg = "#220A02"
+noninteractive_fg = "#C88068"
+inactive_bg = "#2E0E04"
+inactive_fg = "#E0A088"
+hovered_bg = "#401408"
+hovered_fg = "#FFE0D2"
+active_bg = "#FF3300"
+active_fg = "#1A0400"
+border = "#160600"
+border_light = "#3C1408"
+
+[panels]
+tree_line = "#4E180A"
+drop_line = "#FF3300"
+drop_child_highlight = "#FF330040"
+row_odd_bg = "#FF330008"
+inspector_row_even = "#180600"
+inspector_row_odd = "#220A02"
+category_frame_bg = "#1A0600"
+item_bg = "#220A02"
+item_hover = "#341006"
+tab_active = "#341006"
+tab_inactive = "#140400"
+tab_hover = "#401408"
+close_hover = "#FF0040"
+
+[viewport]
+grid_line = "#341006"
+gizmo_x = "#FF3300"
+gizmo_y = "#C0D000"
+gizmo_z = "#4A7AFF"
+gizmo_selected = "#FFB000"
+
+[material]
+canvas_bg = "#080100"
+grid_dot = "#2E0E04"
+node_bg = "#180600"
+node_border = "#3C1408"
+node_selected_border = "#FF3300"
+connection = "#C88068"
+connection_preview = "#FFB000"
+selection_rect_fill = "#FF330022"
+selection_rect_stroke = "#FF3300"

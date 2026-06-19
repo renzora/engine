@@ -1,0 +1,13 @@
+<!-- Toast notification: top-center pill with an accent dot, title and message line -->
+<template>
+    <property name="title">Saved</property>
+    <property name="message">Progress synced to cloud</property>
+    <property name="accent">#37C871</property>
+    <node position="absolute" top="24px" left="50%" margin="0px 0px 0px -180px" flex_direction="row" align_items="center" column_gap="10px" width="360px" padding="12px 16px 12px 16px" background="#161D26F2" border="1px" border_color="#2A323D" border_radius="10px">
+        <node width="10px" height="10px" background="{accent}" border_radius="999px" flex_shrink="0" />
+        <node flex_direction="column" row_gap="2px">
+            <text font_size="14" font_color="#FFFFFF">{title}</text>
+            <text font_size="12" font_color="#AEB6C2">{message}</text>
+        </node>
+    </node>
+</template>

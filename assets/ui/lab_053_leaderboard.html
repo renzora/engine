@@ -1,0 +1,22 @@
+<!-- lab_053_leaderboard: ranked table with highlighted top-3 + self row + season filter -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="560px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Leaderboard</text>
+                <button padding="7px 12px" background="#1B1F27" border_radius="8px" hover:background="#222A36" on_press="cycle_season" justify_content="center"><text font_size="12" font_color="#A8B2C0">Season 4</text></button>
+            </node>
+            <node flex_direction="column" row_gap="6px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border="1px" border_color="#E5B567" border_radius="8px"><text font_size="13" font_color="#E5B567">1   Valkyrjr</text><text font_size="13" font_color="#FFFFFF">48,210</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border="1px" border_color="#9FB1C4" border_radius="8px"><text font_size="13" font_color="#C7D0DA">2   Nightshade</text><text font_size="13" font_color="#FFFFFF">45,980</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border="1px" border_color="#C08552" border_radius="8px"><text font_size="13" font_color="#D2A077">3   Ironclad</text><text font_size="13" font_color="#FFFFFF">43,115</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">4   Stormwind</text><text font_size="13" font_color="#E6EAF0">40,002</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">5   Ravenhart</text><text font_size="13" font_color="#E6EAF0">38,447</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#222A36" border="1px" border_color="#4C8BF5" border_radius="8px"><text font_size="13" font_color="#4C8BF5">17   You</text><text font_size="13" font_color="#FFFFFF">21,330</text></node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end">
+                <button padding="10px 18px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_leaderboard" justify_content="center"><text font_size="13" font_color="#FFFFFF">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

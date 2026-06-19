@@ -1,0 +1,12 @@
+<!-- Combo meter: left-side hit multiplier with a draining timing bar -->
+<template>
+    <node position="absolute" top="40%" left="24px" flex_direction="column" row_gap="6px">
+        <node flex_direction="row" align_items="flex_end" column_gap="4px">
+            <text font_size="40" font_color="#FF8A3D">{{ Combo.count }}</text>
+            <text font_size="18" font_color="#FFD24A">x</text>
+        </node>
+        <node width="120px" height="6px" background="#1B2027" border_radius="999px">
+            <node width="70%" height="100%" background="#FF8A3D" border_radius="999px" />
+        </node>
+    </node>
+</template>

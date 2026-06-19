@@ -1,0 +1,24 @@
+<!-- Data dashboard: multi-gauge + chart command center -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#05070D" flex_direction="column" padding="24px" row_gap="18px">
+        <node flex_direction="row" justify_content="space-between" align_items="center">
+            <text font_size="24" font_color="#00E5FF">SYSTEMS TELEMETRY</text>
+            <text font_size="14" font_color="#5A6B82">CLUSTER 04 // LIVE</text>
+        </node>
+        <node flex_direction="row" column_gap="18px">
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="72" min="0" max="100" start="135" sweep="270" color="#00E5FF" track="#11202E" thickness="14" readout="72" unit="%" readsize="28" />
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="48" min="0" max="100" start="135" sweep="270" color="#FF4D6D" track="#2A1420" thickness="14" readout="48" unit="%" readsize="28" />
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="91" min="0" max="120" start="135" sweep="270" color="#A0F060" track="#16240F" thickness="14" readout="91" unit="C" readsize="28" />
+        </node>
+        <node flex_direction="row" column_gap="18px">
+            <node width="50%" height="220px" background="#0A0E18" border="1px" border_color="#1B2433" border_radius="10px" padding="14px" flex_direction="column" row_gap="8px">
+                <text font_size="14" font_color="#7EE0FF">THROUGHPUT / 24H</text>
+                <node template="ui/components/line_chart.html" width="100%" height="160px" color="#00E5FF" />
+            </node>
+            <node width="50%" height="220px" background="#0A0E18" border="1px" border_color="#1B2433" border_radius="10px" padding="14px" flex_direction="column" row_gap="8px">
+                <text font_size="14" font_color="#FFB36B">REGION LOAD</text>
+                <node template="ui/components/bar_chart.html" width="100%" height="160px" color="#FFB36B" />
+            </node>
+        </node>
+    </node>
+</template>

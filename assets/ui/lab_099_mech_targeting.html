@@ -1,0 +1,29 @@
+<!-- Mech-pilot targeting HUD: reticle, lock box, weapon heat -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0A0604">
+        <node position="absolute" left="50%" top="50%" width="200px" height="200px" margin="-100px" border="2px" border_color="#FF6B2C" border_radius="12px" />
+        <node position="absolute" left="50%" top="50%" width="60px" height="2px" margin="0px 0px 0px -30px" background="#FF6B2C" />
+        <node position="absolute" left="50%" top="50%" width="2px" height="60px" margin="-30px 0px 0px 0px" background="#FF6B2C" />
+        <node position="absolute" left="50%" top="38%" margin="-60px" width="120px" align_items="center"><text font_size="15" font_color="#FF6B2C">LOCKED</text></node>
+        <node position="absolute" left="40px" top="40px" flex_direction="column" row_gap="8px">
+            <text font_size="14" font_color="#FFB347">TARGET: RAVEN-04</text>
+            <text font_size="13" font_color="#9A8A7A">DIST 480M</text>
+            <text font_size="13" font_color="#FF5252">ARMOR 34%</text>
+            <node width="200px" height="14px" background="#1A0E08" border_radius="4px" padding="2px"><node width="34%" height="100%" background="#FF5252" border_radius="3px" /></node>
+        </node>
+        <node position="absolute" left="40px" bottom="40px" width="220px" flex_direction="column" row_gap="10px">
+            <text font_size="13" font_color="#FFB347">WEAPON HEAT</text>
+            <node width="100%" height="16px" background="#1A0E08" border_radius="8px" padding="2px"><node width="72%" height="100%" background="#FF6B2C" border_radius="6px" /></node>
+            <text font_size="13" font_color="#FFB347">AMMO 240 / 600</text>
+        </node>
+        <node position="absolute" right="40px" top="40px" width="170px" flex_direction="column" align_items="center" row_gap="8px">
+            <node vector="gauge" width="150px" height="150px" min_width="150px" flex_shrink="0" value="88" min="0" max="100" start="135" sweep="270" color="#FF6B2C" track="#1A0E08" thickness="12" readout="88" unit="%" readsize="24" />
+            <text font_size="13" font_color="#FFB347">REACTOR 88%</text>
+        </node>
+        <node position="absolute" right="40px" bottom="40px" flex_direction="column" align_items="flex-end" row_gap="6px">
+            <text font_size="13" font_color="#A0F060">LEG SERVO OK</text>
+            <text font_size="13" font_color="#FFD98B">L-ARM 62%</text>
+            <text font_size="13" font_color="#FF5252">R-ARM 18%</text>
+        </node>
+    </node>
+</template>

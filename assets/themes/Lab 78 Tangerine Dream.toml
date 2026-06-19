@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 78 Tangerine Dream"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF8C1A"
+success = "#5AC8A0"
+warning = "#FFC020"
+error = "#FF4A5A"
+selection = "#7A3E0A"
+selection_stroke = "#552A06"
+
+[surfaces]
+window = "#1A0E04"
+window_stroke = "#442810"
+panel = "#231408"
+popup = "#2E1B0C"
+overlay = "#100600A0"
+faint = "#1E1106"
+extreme = "#382010"
+
+[text]
+primary = "#FFEAD0"
+secondary = "#E0B080"
+muted = "#9A6E44"
+heading = "#FFB050"
+disabled = "#5E4028"
+hyperlink = "#FFA040"
+
+[widgets]
+noninteractive_bg = "#382010"
+noninteractive_fg = "#C08A58"
+inactive_bg = "#422814"
+inactive_fg = "#E0B080"
+hovered_bg = "#583418"
+hovered_fg = "#FFEAD0"
+active_bg = "#FF8C1A"
+active_fg = "#231408"
+border = "#1E1106"
+border_light = "#442810"
+
+[panels]
+tree_line = "#5A361A"
+drop_line = "#FF8C1A"
+drop_child_highlight = "#FF8C1A40"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#27170A"
+inspector_row_odd = "#301C0E"
+category_frame_bg = "#2E1B0C"
+item_bg = "#301C0E"
+item_hover = "#422814"
+tab_active = "#422814"
+tab_inactive = "#231408"
+tab_hover = "#583418"
+close_hover = "#FF4A5A"
+
+[viewport]
+grid_line = "#3A2212"
+gizmo_x = "#FF5A5A"
+gizmo_y = "#5AC850"
+gizmo_z = "#5A88FF"
+gizmo_selected = "#FFC020"
+
+[material]
+canvas_bg = "#140A03"
+grid_dot = "#422814"
+node_bg = "#231408"
+node_border = "#442810"
+node_selected_border = "#FF8C1A"
+connection = "#C08A58"
+connection_preview = "#FFC020"
+selection_rect_fill = "#FF8C1A22"
+selection_rect_stroke = "#FF8C1A"

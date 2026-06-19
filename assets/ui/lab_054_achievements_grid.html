@@ -1,0 +1,26 @@
+<!-- lab_054_achievements_grid: 3-wide achievement cards with locked/unlocked states + progress header -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="700px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Achievements</text>
+                <text font_size="13" font_color="#7C8694">42 / 120 unlocked</text>
+            </node>
+            <node flex_direction="column" row_gap="10px">
+                <node flex_direction="row" column_gap="10px">
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#171B23" border="1px" border_color="#2E7D5B" border_radius="10px"><text font_size="13" font_color="#FFFFFF">First Blood</text><text font_size="11" font_color="#8A93A2">Defeat your first foe.</text></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#171B23" border="1px" border_color="#2E7D5B" border_radius="10px"><text font_size="13" font_color="#FFFFFF">Pathfinder</text><text font_size="11" font_color="#8A93A2">Discover 10 regions.</text></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="10px"><text font_size="13" font_color="#5A6370">Untouchable</text><text font_size="11" font_color="#5A6370">Locked</text></node>
+                </node>
+                <node flex_direction="row" column_gap="10px">
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#171B23" border="1px" border_color="#2E7D5B" border_radius="10px"><text font_size="13" font_color="#FFFFFF">Hoarder</text><text font_size="11" font_color="#8A93A2">Hold 10,000 gold.</text></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="10px"><text font_size="13" font_color="#5A6370">Legend</text><text font_size="11" font_color="#5A6370">Locked</text></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px" padding="12px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="10px"><text font_size="13" font_color="#5A6370">Speedrunner</text><text font_size="11" font_color="#5A6370">Locked</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end">
+                <button padding="10px 18px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_achievements" justify_content="center"><text font_size="13" font_color="#FFFFFF">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 60 Retro Terminal"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FFB000"
+success = "#40D040"
+warning = "#FFD000"
+error = "#FF4040"
+selection = "#5A3E00"
+selection_stroke = "#3E2A00"
+
+[surfaces]
+window = "#0A0800"
+window_stroke = "#3A2E00"
+panel = "#100C00"
+popup = "#181200"
+overlay = "#00000099"
+faint = "#0D0A00"
+extreme = "#221A00"
+
+[text]
+primary = "#FFC840"
+secondary = "#C89820"
+muted = "#7A5E10"
+heading = "#FFD860"
+disabled = "#4A3A08"
+hyperlink = "#FFA000"
+
+[widgets]
+noninteractive_bg = "#221A00"
+noninteractive_fg = "#A07810"
+inactive_bg = "#2A2000"
+inactive_fg = "#C89820"
+hovered_bg = "#3A2E00"
+hovered_fg = "#FFC840"
+active_bg = "#FFB000"
+active_fg = "#100C00"
+border = "#0D0A00"
+border_light = "#3A2E00"
+
+[panels]
+tree_line = "#4A3A08"
+drop_line = "#FFB000"
+drop_child_highlight = "#FFB00040"
+row_odd_bg = "#FFB00008"
+inspector_row_even = "#150F00"
+inspector_row_odd = "#1C1500"
+category_frame_bg = "#181200"
+item_bg = "#1C1500"
+item_hover = "#2A2000"
+tab_active = "#2A2000"
+tab_inactive = "#100C00"
+tab_hover = "#3A2E00"
+close_hover = "#FF4040"
+
+[viewport]
+grid_line = "#2A2000"
+gizmo_x = "#FF5050"
+gizmo_y = "#50FF50"
+gizmo_z = "#5090FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#070500"
+grid_dot = "#2A2000"
+node_bg = "#100C00"
+node_border = "#3A2E00"
+node_selected_border = "#FFB000"
+connection = "#A07810"
+connection_preview = "#FFE000"
+selection_rect_fill = "#FFB00022"
+selection_rect_stroke = "#FFB000"

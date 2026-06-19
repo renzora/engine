@@ -1,0 +1,19 @@
+<!-- lab_043_dialogue_box: bottom-anchored dialogue with portrait, speaker, body + choice buttons -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%">
+        <node position="absolute" left="0px" bottom="0px" width="100%" padding="24px" flex_direction="row" justify_content="center">
+            <node width="820px" background="#12161EF2" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="row" padding="18px" column_gap="16px">
+                <node width="96px" height="96px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="10px" justify_content="center" align_items="center" flex_shrink="0"><text font_size="11" font_color="#5A6370">portrait</text></node>
+                <node flex_grow="1" flex_direction="column" row_gap="12px">
+                    <text font_size="15" font_color="#4C8BF5">Elder Maren</text>
+                    <text font_size="14" font_color="#E6EAF0">The road north is no longer safe, traveler. The mists took the watchmen, and they have not returned. Will you look into it?</text>
+                    <node flex_direction="column" row_gap="6px">
+                        <button padding="10px 14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="choice_accept" justify_content="flex_start"><text font_size="13" font_color="#FFFFFF">I'll investigate the mists.</text></button>
+                        <button padding="10px 14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="choice_reward" justify_content="flex_start"><text font_size="13" font_color="#E5B567">What's the reward?</text></button>
+                        <button padding="10px 14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="choice_decline" justify_content="flex_start"><text font_size="13" font_color="#8A93A2">Not now.</text></button>
+                    </node>
+                </node>
+            </node>
+        </node>
+    </node>
+</template>

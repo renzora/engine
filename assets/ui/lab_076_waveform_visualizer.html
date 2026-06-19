@@ -1,0 +1,25 @@
+<!-- Audio waveform visualizer: stacked spectra + level meters -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#050510" flex_direction="column" padding="26px" row_gap="16px">
+        <node flex_direction="row" justify_content="space-between" align_items="center">
+            <text font_size="22" font_color="#9D5BFF">SPECTRUM // LIVE</text>
+            <text font_size="14" font_color="#5BD3FF">48kHz / 24bit</text>
+        </node>
+        <node width="100%" height="160px" background="#0A0A1A" border="1px" border_color="#2A1F4A" border_radius="10px" padding="14px">
+            <node template="ui/components/waveform.html" width="100%" height="130px" color="#9D5BFF" />
+        </node>
+        <node width="100%" height="160px" background="#0A0A1A" border="1px" border_color="#1F2F4A" border_radius="10px" padding="14px">
+            <node template="ui/components/waveform.html" width="100%" height="130px" color="#5BD3FF" />
+        </node>
+        <node flex_direction="row" column_gap="16px">
+            <node width="50%" background="#0A0A1A" border_radius="10px" padding="14px" flex_direction="column" row_gap="8px">
+                <text font_size="13" font_color="#9D5BFF">L CHANNEL</text>
+                <node width="100%" height="16px" background="#150F28" border_radius="8px" padding="2px"><node width="72%" height="100%" background="#9D5BFF" border_radius="6px" /></node>
+            </node>
+            <node width="50%" background="#0A0A1A" border_radius="10px" padding="14px" flex_direction="column" row_gap="8px">
+                <text font_size="13" font_color="#5BD3FF">R CHANNEL</text>
+                <node width="100%" height="16px" background="#0F1C28" border_radius="8px" padding="2px"><node width="66%" height="100%" background="#5BD3FF" border_radius="6px" /></node>
+            </node>
+        </node>
+    </node>
+</template>

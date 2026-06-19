@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 11 Royal Amethyst"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#9B5CFF"
+success = "#5CD6A0"
+warning = "#F0C04A"
+error = "#F0556B"
+selection = "#3A1E66"
+selection_stroke = "#9B5CFF"
+
+[surfaces]
+window = "#0A0614"
+window_stroke = "#241640"
+panel = "#120A24"
+popup = "#170E2E"
+overlay = "#04000CB4"
+faint = "#0E0820"
+extreme = "#1E1238"
+
+[text]
+primary = "#ECE2FF"
+secondary = "#C0AEE0"
+muted = "#6E5C90"
+heading = "#C79BFF"
+disabled = "#443458"
+hyperlink = "#B68CFF"
+
+[widgets]
+noninteractive_bg = "#1E1238"
+noninteractive_fg = "#A898C8"
+inactive_bg = "#261848"
+inactive_fg = "#CABDE4"
+hovered_bg = "#342056"
+hovered_fg = "#ECE2FF"
+active_bg = "#9B5CFF"
+active_fg = "#0E0820"
+border = "#160C2C"
+border_light = "#342056"
+
+[panels]
+tree_line = "#3E2868"
+drop_line = "#9B5CFF"
+drop_child_highlight = "#9B5CFF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#150C2A"
+inspector_row_odd = "#1E1238"
+category_frame_bg = "#170E2E"
+item_bg = "#1E1238"
+item_hover = "#2C1C4E"
+tab_active = "#2C1C4E"
+tab_inactive = "#120A24"
+tab_hover = "#342056"
+close_hover = "#F0556B"
+
+[viewport]
+grid_line = "#2C1C4E"
+gizmo_x = "#FF5A6E"
+gizmo_y = "#5CD66E"
+gizmo_z = "#6E8CFF"
+gizmo_selected = "#F0C04A"
+
+[material]
+canvas_bg = "#080510"
+grid_dot = "#261848"
+node_bg = "#150C2A"
+node_border = "#342056"
+node_selected_border = "#9B5CFF"
+connection = "#A898C8"
+connection_preview = "#F0C04A"
+selection_rect_fill = "#9B5CFF22"
+selection_rect_stroke = "#9B5CFF"

@@ -1,0 +1,10 @@
+<!-- Ammo counter: bottom-right, large mag count over a faded reserve count -->
+<template>
+    <node position="absolute" bottom="24px" right="28px" flex_direction="row" align_items="flex_end" column_gap="8px">
+        <text font_size="44" font_color="#FFFFFF">{{ Weapon.mag }}</text>
+        <node flex_direction="column" align_items="flex_start" margin="0px 0px 6px 0px">
+            <text font_size="16" font_color="#8C97A6">/ {{ Weapon.reserve }}</text>
+            <text font_size="12" font_color="#5C6675">{{ Weapon.name }}</text>
+        </node>
+    </node>
+</template>

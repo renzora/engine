@@ -1,0 +1,29 @@
+<!-- lab_042_quest_log: left quest list + right detail with objectives + rewards -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="760px" height="460px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <text font_size="20" font_color="#FFFFFF">Quest Log</text>
+            <node flex_direction="row" column_gap="16px" flex_grow="1">
+                <node width="240px" flex_direction="column" row_gap="8px">
+                    <button padding="11px 12px" background="#222A36" border="1px" border_color="#4C8BF5" border_radius="8px" hover:background="#28323F" on_press="select_quest_main" justify_content="flex_start"><text font_size="13" font_color="#FFFFFF">The Shattered Crown</text></button>
+                    <button padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="select_quest_herbs" justify_content="flex_start"><text font_size="13" font_color="#A8B2C0">Gather Moonherbs</text></button>
+                    <button padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="select_quest_bandits" justify_content="flex_start"><text font_size="13" font_color="#A8B2C0">Bandit Trouble</text></button>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="12px" padding="14px" background="#171B23" border_radius="10px">
+                    <text font_size="16" font_color="#FFFFFF">The Shattered Crown</text>
+                    <text font_size="13" font_color="#8A93A2">Recover the three crown shards from the ruins beneath Drelmoor.</text>
+                    <node flex_direction="column" row_gap="6px">
+                        <text font_size="12" font_color="#2E7D5B">[x] Find the East Shard</text>
+                        <text font_size="12" font_color="#A8B2C0">[ ] Find the West Shard</text>
+                        <text font_size="12" font_color="#A8B2C0">[ ] Return to King Aldric</text>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" padding="8px 10px" background="#12161E" border_radius="6px"><text font_size="12" font_color="#7C8694">Reward</text><text font_size="12" font_color="#E5B567">500g + Crownblade</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="track_quest" justify_content="center"><text font_size="13" font_color="#A8B2C0">Track</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_quest_log" justify_content="center"><text font_size="13" font_color="#FFFFFF">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

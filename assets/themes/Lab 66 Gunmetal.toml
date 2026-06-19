@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 66 Gunmetal"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#5A8AA0"
+success = "#6AA878"
+warning = "#C0A860"
+error = "#C05858"
+selection = "#2E3E48"
+selection_stroke = "#1E2A32"
+
+[surfaces]
+window = "#0E1114"
+window_stroke = "#2A323A"
+panel = "#15191E"
+popup = "#1D2228"
+overlay = "#04060899"
+faint = "#11151A"
+extreme = "#252C34"
+
+[text]
+primary = "#D0D8DE"
+secondary = "#94A0A8"
+muted = "#586068"
+heading = "#A8BAC4"
+disabled = "#3A4248"
+hyperlink = "#78A8C0"
+
+[widgets]
+noninteractive_bg = "#252C34"
+noninteractive_fg = "#828E96"
+inactive_bg = "#2A323A"
+inactive_fg = "#94A0A8"
+hovered_bg = "#384450"
+hovered_fg = "#D0D8DE"
+active_bg = "#5A8AA0"
+active_fg = "#15191E"
+border = "#11151A"
+border_light = "#2A323A"
+
+[panels]
+tree_line = "#3A464E"
+drop_line = "#5A8AA0"
+drop_child_highlight = "#5A8AA040"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#181C22"
+inspector_row_odd = "#1E242A"
+category_frame_bg = "#1D2228"
+item_bg = "#1E242A"
+item_hover = "#2A323A"
+tab_active = "#2A323A"
+tab_inactive = "#15191E"
+tab_hover = "#384450"
+close_hover = "#C05858"
+
+[viewport]
+grid_line = "#28303A"
+gizmo_x = "#D05858"
+gizmo_y = "#6AC878"
+gizmo_z = "#5890D0"
+gizmo_selected = "#E0C060"
+
+[material]
+canvas_bg = "#0A0D10"
+grid_dot = "#2A323A"
+node_bg = "#15191E"
+node_border = "#2A323A"
+node_selected_border = "#5A8AA0"
+connection = "#828E96"
+connection_preview = "#E0C060"
+selection_rect_fill = "#5A8AA022"
+selection_rect_stroke = "#5A8AA0"

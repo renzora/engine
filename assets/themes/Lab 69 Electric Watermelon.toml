@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 69 Electric Watermelon"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF2E63"
+success = "#2EE65A"
+warning = "#E0E040"
+error = "#FF1040"
+selection = "#0C5A2A"
+selection_stroke = "#083E1C"
+
+[surfaces]
+window = "#06140A"
+window_stroke = "#124A24"
+panel = "#0A2010"
+popup = "#0E2C16"
+overlay = "#00100899"
+faint = "#08190C"
+extreme = "#10381C"
+
+[text]
+primary = "#E8FFE0"
+secondary = "#90D0A0"
+muted = "#4A8058"
+heading = "#FF5A80"
+disabled = "#2E5038"
+hyperlink = "#FF4A78"
+
+[widgets]
+noninteractive_bg = "#10381C"
+noninteractive_fg = "#70B080"
+inactive_bg = "#144424"
+inactive_fg = "#90D0A0"
+hovered_bg = "#1A5A30"
+hovered_fg = "#E8FFE0"
+active_bg = "#FF2E63"
+active_fg = "#0A2010"
+border = "#08190C"
+border_light = "#124A24"
+
+[panels]
+tree_line = "#1E5A30"
+drop_line = "#FF2E63"
+drop_child_highlight = "#FF2E6340"
+row_odd_bg = "#FFFFFF09"
+inspector_row_even = "#0C2412"
+inspector_row_odd = "#102E18"
+category_frame_bg = "#0E2C16"
+item_bg = "#102E18"
+item_hover = "#144424"
+tab_active = "#144424"
+tab_inactive = "#0A2010"
+tab_hover = "#1A5A30"
+close_hover = "#FF1040"
+
+[viewport]
+grid_line = "#103820"
+gizmo_x = "#FF3050"
+gizmo_y = "#2EFF5A"
+gizmo_z = "#4A80FF"
+gizmo_selected = "#FFE040"
+
+[material]
+canvas_bg = "#040E06"
+grid_dot = "#144424"
+node_bg = "#0A2010"
+node_border = "#124A24"
+node_selected_border = "#FF2E63"
+connection = "#70B080"
+connection_preview = "#FFE040"
+selection_rect_fill = "#FF2E6322"
+selection_rect_stroke = "#FF2E63"

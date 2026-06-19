@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 93 High Contrast"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FFFF00"
+success = "#00FF00"
+warning = "#FFA000"
+error = "#FF0000"
+selection = "#0040FF"
+selection_stroke = "#FFFFFF"
+
+[surfaces]
+window = "#000000"
+window_stroke = "#FFFFFF"
+panel = "#000000"
+popup = "#0A0A0A"
+overlay = "#000000DD"
+faint = "#050505"
+extreme = "#141414"
+
+[text]
+primary = "#FFFFFF"
+secondary = "#E0E0E0"
+muted = "#B0B0B0"
+heading = "#FFFF00"
+disabled = "#808080"
+hyperlink = "#00FFFF"
+
+[widgets]
+noninteractive_bg = "#000000"
+noninteractive_fg = "#E0E0E0"
+inactive_bg = "#101010"
+inactive_fg = "#FFFFFF"
+hovered_bg = "#0040FF"
+hovered_fg = "#FFFFFF"
+active_bg = "#FFFF00"
+active_fg = "#000000"
+border = "#FFFFFF"
+border_light = "#C0C0C0"
+
+[panels]
+tree_line = "#808080"
+drop_line = "#FFFF00"
+drop_child_highlight = "#FFFF0050"
+row_odd_bg = "#FFFFFF12"
+inspector_row_even = "#000000"
+inspector_row_odd = "#141414"
+category_frame_bg = "#0A0A0A"
+item_bg = "#141414"
+item_hover = "#0040FF"
+tab_active = "#0040FF"
+tab_inactive = "#000000"
+tab_hover = "#202020"
+close_hover = "#FF0000"
+
+[viewport]
+grid_line = "#404040"
+gizmo_x = "#FF0000"
+gizmo_y = "#00FF00"
+gizmo_z = "#0080FF"
+gizmo_selected = "#FFFF00"
+
+[material]
+canvas_bg = "#000000"
+grid_dot = "#303030"
+node_bg = "#0A0A0A"
+node_border = "#FFFFFF"
+node_selected_border = "#FFFF00"
+connection = "#FFFFFF"
+connection_preview = "#00FFFF"
+selection_rect_fill = "#FFFF0028"
+selection_rect_stroke = "#FFFF00"

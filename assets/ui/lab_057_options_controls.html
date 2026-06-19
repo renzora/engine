@@ -1,0 +1,19 @@
+<!-- lab_057_options_controls: keybind rows (action label + rebindable key button) + reset -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="560px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <text font_size="20" font_color="#FFFFFF">Controls</text>
+            <node flex_direction="column" row_gap="8px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Move Forward</text><button padding="6px 14px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="6px" hover:background="#222A36" on_press="rebind_forward" justify_content="center"><text font_size="12" font_color="#FFFFFF">W</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Move Back</text><button padding="6px 14px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="6px" hover:background="#222A36" on_press="rebind_back" justify_content="center"><text font_size="12" font_color="#FFFFFF">S</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Jump</text><button padding="6px 14px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="6px" hover:background="#222A36" on_press="rebind_jump" justify_content="center"><text font_size="12" font_color="#FFFFFF">Space</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Interact</text><button padding="6px 14px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="6px" hover:background="#222A36" on_press="rebind_interact" justify_content="center"><text font_size="12" font_color="#FFFFFF">E</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Sprint</text><button padding="6px 14px" background="#222A36" border="1px" border_color="#4C8BF5" border_radius="6px" hover:background="#28323F" on_press="rebind_sprint" justify_content="center"><text font_size="12" font_color="#4C8BF5">Press a key…</text></button></node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="reset_binds" justify_content="center"><text font_size="13" font_color="#E06C75">Reset Defaults</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="save_binds" justify_content="center"><text font_size="13" font_color="#FFFFFF">Save</text></button>
+            </node>
+        </node>
+    </node>
+</template>

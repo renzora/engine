@@ -1,0 +1,8 @@
+<!-- Score panel: top-right boxed card showing current score and a small high-score line -->
+<template>
+    <node position="absolute" top="16px" right="16px" flex_direction="column" row_gap="4px" padding="12px 16px 12px 16px" background="#12161CE6" border="1px" border_color="#252C36" border_radius="10px" align_items="flex_end">
+        <text font_size="12" font_color="#8C97A6">SCORE</text>
+        <text font_size="28" font_color="#FFD24A">{{ Game.score }}</text>
+        <text font_size="11" font_color="#6B7480">BEST {{ Game.high_score }}</text>
+    </node>
+</template>

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 29 Cyber Magenta"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF00AA"
+success = "#00F0C0"
+warning = "#FFD000"
+error = "#FF3355"
+selection = "#5C0040"
+selection_stroke = "#FF00AA"
+
+[surfaces]
+window = "#0A0410"
+window_stroke = "#34103A"
+panel = "#13081C"
+popup = "#1A0C26"
+overlay = "#050008C0"
+faint = "#0F0618"
+extreme = "#220E30"
+
+[text]
+primary = "#FCDCF4"
+secondary = "#C896C0"
+muted = "#7A4E76"
+heading = "#FF5AC8"
+disabled = "#4E2C4A"
+hyperlink = "#00F0C0"
+
+[widgets]
+noninteractive_bg = "#220E30"
+noninteractive_fg = "#B084AC"
+inactive_bg = "#2C123E"
+inactive_fg = "#D0A0CA"
+hovered_bg = "#3A1A50"
+hovered_fg = "#FCDCF4"
+active_bg = "#FF00AA"
+active_fg = "#FFFFFF"
+border = "#1A0C28"
+border_light = "#3A1A50"
+
+[panels]
+tree_line = "#44205E"
+drop_line = "#00F0C0"
+drop_child_highlight = "#00F0C040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#170A22"
+inspector_row_odd = "#220E30"
+category_frame_bg = "#1A0C26"
+item_bg = "#220E30"
+item_hover = "#321648"
+tab_active = "#321648"
+tab_inactive = "#13081C"
+tab_hover = "#3A1A50"
+close_hover = "#FF3355"
+
+[viewport]
+grid_line = "#FF00AA28"
+gizmo_x = "#FF3355"
+gizmo_y = "#00F0A0"
+gizmo_z = "#5A6AFF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#08030E"
+grid_dot = "#2C123E"
+node_bg = "#170A22"
+node_border = "#3A1A50"
+node_selected_border = "#FF00AA"
+connection = "#B084AC"
+connection_preview = "#00F0C0"
+selection_rect_fill = "#FF00AA22"
+selection_rect_stroke = "#FF00AA"

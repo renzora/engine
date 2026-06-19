@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 02 Ember Forge"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF6A1A"
+success = "#9CCC3D"
+warning = "#FFC23D"
+error = "#FF3B3B"
+selection = "#8A3411"
+selection_stroke = "#FF6A1A"
+
+[surfaces]
+window = "#0C0705"
+window_stroke = "#2E1810"
+panel = "#160C08"
+popup = "#1C100A"
+overlay = "#000000C0"
+faint = "#100805"
+extreme = "#221008"
+
+[text]
+primary = "#FFE9D6"
+secondary = "#E0B79A"
+muted = "#8A6450"
+heading = "#FFB07A"
+disabled = "#54382A"
+hyperlink = "#FF9A4D"
+
+[widgets]
+noninteractive_bg = "#221008"
+noninteractive_fg = "#C49A80"
+inactive_bg = "#2E180E"
+inactive_fg = "#E0C0AA"
+hovered_bg = "#3E2212"
+hovered_fg = "#FFE9D6"
+active_bg = "#FF6A1A"
+active_fg = "#1A0A02"
+border = "#140A06"
+border_light = "#3A2014"
+
+[panels]
+tree_line = "#4A2818"
+drop_line = "#FF6A1A"
+drop_child_highlight = "#FF6A1A40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#180E08"
+inspector_row_odd = "#22120A"
+category_frame_bg = "#1C100A"
+item_bg = "#22120A"
+item_hover = "#341A0E"
+tab_active = "#341A0E"
+tab_inactive = "#160C08"
+tab_hover = "#3E2212"
+close_hover = "#FF3B3B"
+
+[viewport]
+grid_line = "#3A2014"
+gizmo_x = "#FF5050"
+gizmo_y = "#7AE050"
+gizmo_z = "#5090FF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#0A0604"
+grid_dot = "#2E180E"
+node_bg = "#180E08"
+node_border = "#3A2014"
+node_selected_border = "#FF6A1A"
+connection = "#C49A80"
+connection_preview = "#FFD000"
+selection_rect_fill = "#FF6A1A22"
+selection_rect_stroke = "#FF6A1A"

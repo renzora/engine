@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 19 Rose Quartz"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#D6477A"
+success = "#4FB388"
+warning = "#E0A030"
+error = "#E0455C"
+selection = "#F2C6D6"
+selection_stroke = "#D6477A"
+
+[surfaces]
+window = "#FBF1F4"
+window_stroke = "#E8C8D2"
+panel = "#FEF7F9"
+popup = "#FFFFFF"
+overlay = "#3A1A2630"
+faint = "#F6E6EB"
+extreme = "#F0D6DE"
+
+[text]
+primary = "#4A2230"
+secondary = "#7A4A58"
+muted = "#A87E8A"
+heading = "#C03A68"
+disabled = "#C8A2AE"
+hyperlink = "#B83A66"
+
+[widgets]
+noninteractive_bg = "#F6E6EB"
+noninteractive_fg = "#8A5A68"
+inactive_bg = "#F0D8DF"
+inactive_fg = "#6A3A48"
+hovered_bg = "#EAC6D0"
+hovered_fg = "#4A2230"
+active_bg = "#D6477A"
+active_fg = "#FFFFFF"
+border = "#E8C8D2"
+border_light = "#F0D8DF"
+
+[panels]
+tree_line = "#E4B8C6"
+drop_line = "#D6477A"
+drop_child_highlight = "#D6477A40"
+row_odd_bg = "#4A222608"
+inspector_row_even = "#FCF2F5"
+inspector_row_odd = "#F6E6EB"
+category_frame_bg = "#FAEEF1"
+item_bg = "#FAEEF1"
+item_hover = "#F0D6DE"
+tab_active = "#FFFFFF"
+tab_inactive = "#F0D8DF"
+tab_hover = "#EAC6D0"
+close_hover = "#E0455C"
+
+[viewport]
+grid_line = "#E8C8D2"
+gizmo_x = "#E0455C"
+gizmo_y = "#3DA878"
+gizmo_z = "#4A78E0"
+gizmo_selected = "#E0A030"
+
+[material]
+canvas_bg = "#F6E6EB"
+grid_dot = "#E8C8D2"
+node_bg = "#FEF7F9"
+node_border = "#E8C8D2"
+node_selected_border = "#D6477A"
+connection = "#8A5A68"
+connection_preview = "#E0A030"
+selection_rect_fill = "#D6477A22"
+selection_rect_stroke = "#D6477A"

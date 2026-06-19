@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 34 Autumn Harvest"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#D96A1E"
+success = "#8AA82A"
+warning = "#E0A82A"
+error = "#C43A2A"
+selection = "#4A2A12"
+selection_stroke = "#D96A1E"
+
+[surfaces]
+window = "#100A06"
+window_stroke = "#30200E"
+panel = "#18100A"
+popup = "#1E150D"
+overlay = "#0A050299"
+faint = "#140D08"
+extreme = "#261A10"
+
+[text]
+primary = "#F2E2CC"
+secondary = "#CCA87E"
+muted = "#866848"
+heading = "#E69248"
+disabled = "#544028"
+hyperlink = "#E0A050"
+
+[widgets]
+noninteractive_bg = "#261A10"
+noninteractive_fg = "#BC9468"
+inactive_bg = "#302014"
+inactive_fg = "#D8B080"
+hovered_bg = "#3E2C1A"
+hovered_fg = "#F2E2CC"
+active_bg = "#D96A1E"
+active_fg = "#160E06"
+border = "#1C130C"
+border_light = "#3E2C1A"
+
+[panels]
+tree_line = "#48321E"
+drop_line = "#D96A1E"
+drop_child_highlight = "#D96A1E40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#1A120B"
+inspector_row_odd = "#261A10"
+category_frame_bg = "#1E150D"
+item_bg = "#261A10"
+item_hover = "#342416"
+tab_active = "#342416"
+tab_inactive = "#18100A"
+tab_hover = "#3E2C1A"
+close_hover = "#C43A2A"
+
+[viewport]
+grid_line = "#342416"
+gizmo_x = "#E04A3A"
+gizmo_y = "#8AA82A"
+gizmo_z = "#4A80D0"
+gizmo_selected = "#E0A82A"
+
+[material]
+canvas_bg = "#0C0805"
+grid_dot = "#302014"
+node_bg = "#1A120B"
+node_border = "#3E2C1A"
+node_selected_border = "#D96A1E"
+connection = "#BC9468"
+connection_preview = "#E0A82A"
+selection_rect_fill = "#D96A1E22"
+selection_rect_stroke = "#D96A1E"

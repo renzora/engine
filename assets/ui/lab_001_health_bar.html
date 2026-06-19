@@ -1,0 +1,14 @@
+<!-- Health bar: top-left HUD, label + numeric readout above a rounded fill bar bound to Player.hp -->
+<template>
+    <property name="label">HEALTH</property>
+    <property name="color">#E74C3C</property>
+    <node position="absolute" top="16px" left="16px" flex_direction="column" row_gap="6px">
+        <node flex_direction="row" justify_content="space_between" width="240px">
+            <text font_size="13" font_color="#FFFFFF">{label}</text>
+            <text font_size="13" font_color="#AEB6C2">{{ Player.hp }} / {{ Player.hp_max }}</text>
+        </node>
+        <node width="240px" height="18px" background="#1B2027" border="1px" border_color="#2A323D" border_radius="9px" padding="2px">
+            <node width="72%" height="100%" background="{color}" border_radius="7px" />
+        </node>
+    </node>
+</template>

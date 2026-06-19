@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 90 Sunset Gradient"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF7E4A"
+success = "#E0A060"
+warning = "#FFC050"
+error = "#E84066"
+selection = "#5A2848"
+selection_stroke = "#3E1C32"
+
+[surfaces]
+window = "#140A18"
+window_stroke = "#3E2040"
+panel = "#1C0E20"
+popup = "#26142C"
+overlay = "#0A000C98"
+faint = "#180C1C"
+extreme = "#301840"
+
+[text]
+primary = "#FFE0D4"
+secondary = "#E0A0A8"
+muted = "#9A6072"
+heading = "#FF9A6A"
+disabled = "#583A50"
+hyperlink = "#FF8088"
+
+[widgets]
+noninteractive_bg = "#301840"
+noninteractive_fg = "#B07888"
+inactive_bg = "#3A1E48"
+inactive_fg = "#E0A0A8"
+hovered_bg = "#502858"
+hovered_fg = "#FFE0D4"
+active_bg = "#FF7E4A"
+active_fg = "#1C0E20"
+border = "#180C1C"
+border_light = "#3E2040"
+
+[panels]
+tree_line = "#4E2A54"
+drop_line = "#FF7E4A"
+drop_child_highlight = "#FF7E4A40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#201024"
+inspector_row_odd = "#28142E"
+category_frame_bg = "#26142C"
+item_bg = "#28142E"
+item_hover = "#3A1E48"
+tab_active = "#3A1E48"
+tab_inactive = "#1C0E20"
+tab_hover = "#502858"
+close_hover = "#E84066"
+
+[viewport]
+grid_line = "#2E1838"
+gizmo_x = "#FF5A6A"
+gizmo_y = "#7AD060"
+gizmo_z = "#6A7AE0"
+gizmo_selected = "#FFC050"
+
+[material]
+canvas_bg = "#100814"
+grid_dot = "#3A1E48"
+node_bg = "#1C0E20"
+node_border = "#3E2040"
+node_selected_border = "#FF7E4A"
+connection = "#B07888"
+connection_preview = "#FFC050"
+selection_rect_fill = "#FF7E4A22"
+selection_rect_stroke = "#FF7E4A"

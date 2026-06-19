@@ -1,0 +1,32 @@
+<!-- lab_059_deck_builder: collection grid (left) + current deck list (right) with count + save -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="800px" height="500px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <text font_size="20" font_color="#FFFFFF">Deck Builder</text>
+            <node flex_direction="row" column_gap="16px" flex_grow="1">
+                <node flex_grow="1" flex_direction="column" row_gap="10px">
+                    <text font_size="13" font_color="#A8B2C0">Collection</text>
+                    <node flex_direction="row" column_gap="8px">
+                        <button width="78px" height="108px" background="#171B23" border="1px" border_color="#3A4250" border_radius="8px" hover:background="#1F2530" on_press="add_card_emberbolt" justify_content="center" align_items="center"><text font_size="10" font_color="#E06C75">Emberbolt</text></button>
+                        <button width="78px" height="108px" background="#171B23" border="1px" border_color="#3A4250" border_radius="8px" hover:background="#1F2530" on_press="add_card_frostward" justify_content="center" align_items="center"><text font_size="10" font_color="#4C8BF5">Frostward</text></button>
+                        <button width="78px" height="108px" background="#171B23" border="1px" border_color="#3A4250" border_radius="8px" hover:background="#1F2530" on_press="add_card_thornvine" justify_content="center" align_items="center"><text font_size="10" font_color="#2E7D5B">Thornvine</text></button>
+                    </node>
+                    <node flex_direction="row" column_gap="8px">
+                        <button width="78px" height="108px" background="#171B23" border="1px" border_color="#3A4250" border_radius="8px" hover:background="#1F2530" on_press="add_card_stoneguard" justify_content="center" align_items="center"><text font_size="10" font_color="#A8B2C0">Stoneguard</text></button>
+                        <button width="78px" height="108px" background="#171B23" border="1px" border_color="#3A4250" border_radius="8px" hover:background="#1F2530" on_press="add_card_voidcall" justify_content="center" align_items="center"><text font_size="10" font_color="#A86CF0">Voidcall</text></button>
+                    </node>
+                </node>
+                <node width="240px" flex_direction="column" row_gap="8px" padding="12px" background="#0F151C" border_radius="10px">
+                    <node flex_direction="row" justify_content="space_between"><text font_size="13" font_color="#A8B2C0">Deck</text><text font_size="12" font_color="#E5B567">28 / 30</text></node>
+                    <button flex_direction="row" justify_content="space_between" padding="8px 10px" background="#171B23" border_radius="6px" hover:background="#1F2530" on_press="remove_card_emberbolt"><text font_size="12" font_color="#E6EAF0">Emberbolt</text><text font_size="12" font_color="#7C8694">×2</text></button>
+                    <button flex_direction="row" justify_content="space_between" padding="8px 10px" background="#171B23" border_radius="6px" hover:background="#1F2530" on_press="remove_card_frostward"><text font_size="12" font_color="#E6EAF0">Frostward</text><text font_size="12" font_color="#7C8694">×3</text></button>
+                    <button flex_direction="row" justify_content="space_between" padding="8px 10px" background="#171B23" border_radius="6px" hover:background="#1F2530" on_press="remove_card_stoneguard"><text font_size="12" font_color="#E6EAF0">Stoneguard</text><text font_size="12" font_color="#7C8694">×1</text></button>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="clear_deck" justify_content="center"><text font_size="13" font_color="#A8B2C0">Clear</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="save_deck" justify_content="center"><text font_size="13" font_color="#FFFFFF">Save Deck</text></button>
+            </node>
+        </node>
+    </node>
+</template>

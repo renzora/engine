@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 97 Witching Hour"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#8AE03A"
+success = "#3AC890"
+warning = "#D0A030"
+error = "#C82E6A"
+selection = "#2A184A"
+selection_stroke = "#1C1034"
+
+[surfaces]
+window = "#080612"
+window_stroke = "#241848"
+panel = "#0E0A1E"
+popup = "#16102C"
+overlay = "#020008B0"
+faint = "#0B0818"
+extreme = "#1A1238"
+
+[text]
+primary = "#DCE8C8"
+secondary = "#9888C0"
+muted = "#564A78"
+heading = "#A0E04A"
+disabled = "#342A50"
+hyperlink = "#9AD840"
+
+[widgets]
+noninteractive_bg = "#1A1238"
+noninteractive_fg = "#7868A0"
+inactive_bg = "#201644"
+inactive_fg = "#9888C0"
+hovered_bg = "#2C2058"
+hovered_fg = "#DCE8C8"
+active_bg = "#8AE03A"
+active_fg = "#0E0A1E"
+border = "#0B0818"
+border_light = "#241848"
+
+[panels]
+tree_line = "#30245A"
+drop_line = "#8AE03A"
+drop_child_highlight = "#8AE03A40"
+row_odd_bg = "#8AE03A0A"
+inspector_row_even = "#120C26"
+inspector_row_odd = "#181030"
+category_frame_bg = "#16102C"
+item_bg = "#181030"
+item_hover = "#201644"
+tab_active = "#201644"
+tab_inactive = "#0E0A1E"
+tab_hover = "#2C2058"
+close_hover = "#C82E6A"
+
+[viewport]
+grid_line = "#1E1640"
+gizmo_x = "#E04A6A"
+gizmo_y = "#8AE03A"
+gizmo_z = "#7A6AE0"
+gizmo_selected = "#D0A030"
+
+[material]
+canvas_bg = "#05040C"
+grid_dot = "#201644"
+node_bg = "#0E0A1E"
+node_border = "#241848"
+node_selected_border = "#8AE03A"
+connection = "#7868A0"
+connection_preview = "#D0A030"
+selection_rect_fill = "#8AE03A22"
+selection_rect_stroke = "#8AE03A"

@@ -1,0 +1,12 @@
+<!-- Tooltip: floating dark bubble with a bold name, type sub-line and a description body -->
+<template>
+    <property name="name">Iron Greatsword</property>
+    <property name="kind">Two-Handed Weapon</property>
+    <property name="body">+24 Attack. Slow swing speed.</property>
+    <node position="absolute" top="40%" left="40%" width="220px" flex_direction="column" row_gap="6px" padding="10px 12px 10px 12px" background="#0D1117F2" border="1px" border_color="#3A4452" border_radius="8px">
+        <text font_size="14" font_color="#FFD24A">{name}</text>
+        <text font_size="11" font_color="#8C97A6">{kind}</text>
+        <node width="100%" height="1px" background="#2A323D" />
+        <text font_size="12" font_color="#C7D0DA">{body}</text>
+    </node>
+</template>

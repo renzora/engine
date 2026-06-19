@@ -1,0 +1,20 @@
+<!-- Circuit-board UI: PCB traces, chips, solder pads -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#04140C">
+        <node position="absolute" left="60px" top="80px" width="320px" height="8px" background="#1FCB6A" />
+        <node position="absolute" left="372px" top="80px" width="8px" height="180px" background="#1FCB6A" />
+        <node position="absolute" left="60px" top="260px" width="520px" height="8px" background="#1FCB6A" />
+        <node position="absolute" left="200px" top="160px" width="260px" height="8px" background="#14E0A055" />
+        <node position="absolute" left="120px" top="60px" width="140px" height="100px" background="#0A2418" border="2px" border_color="#1FCB6A" border_radius="6px" align_items="center" justify_content="center"><text font_size="16" font_color="#5BFFB0">CPU-9</text></node>
+        <node position="absolute" left="420px" top="180px" width="120px" height="90px" background="#0A2418" border="2px" border_color="#1FCB6A" border_radius="6px" align_items="center" justify_content="center"><text font_size="14" font_color="#5BFFB0">RAM-X</text></node>
+        <node position="absolute" left="60px" top="320px" width="100px" height="70px" background="#241A0A" border="2px" border_color="#E0A03F" border_radius="6px" align_items="center" justify_content="center"><text font_size="13" font_color="#FFD98B">PWR</text></node>
+        <node position="absolute" left="300px" top="80px" width="20px" height="20px" border_radius="10px" background="#FFD98B" />
+        <node position="absolute" left="360px" top="250px" width="20px" height="20px" border_radius="10px" background="#FFD98B" />
+        <node position="absolute" left="560px" top="250px" width="20px" height="20px" border_radius="10px" background="#FFD98B" />
+        <node position="absolute" right="40px" top="40px" width="220px" background="#0A2418CC" border="1px" border_color="#1FCB6A" border_radius="10px" padding="16px" flex_direction="column" row_gap="10px">
+            <text font_size="15" font_color="#5BFFB0">BOARD DIAGNOSTIC</text>
+            <node template="ui/components/gauge.html" value="42" min="0" max="100" unit="C" color="#1FCB6A" size="140px" />
+            <text font_size="12" font_color="#3FB880">ALL TRACES NOMINAL</text>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 63 Infrared Heatmap"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF3C00"
+success = "#FFD000"
+warning = "#FF8800"
+error = "#FF0033"
+selection = "#5A0E40"
+selection_stroke = "#3E0830"
+
+[surfaces]
+window = "#0A0018"
+window_stroke = "#3A0A50"
+panel = "#140428"
+popup = "#1E0838"
+overlay = "#02000CA0"
+faint = "#100222"
+extreme = "#2A0A48"
+
+[text]
+primary = "#FFE0A0"
+secondary = "#FF9A60"
+muted = "#A04A60"
+heading = "#FF6A00"
+disabled = "#54304A"
+hyperlink = "#FFB000"
+
+[widgets]
+noninteractive_bg = "#2A0A48"
+noninteractive_fg = "#C06070"
+inactive_bg = "#360E58"
+inactive_fg = "#FF9A60"
+hovered_bg = "#581A40"
+hovered_fg = "#FFE0A0"
+active_bg = "#FF3C00"
+active_fg = "#140428"
+border = "#100222"
+border_light = "#3A0A50"
+
+[panels]
+tree_line = "#5A1A50"
+drop_line = "#FF3C00"
+drop_child_highlight = "#FF3C0040"
+row_odd_bg = "#FF3C0010"
+inspector_row_even = "#18062E"
+inspector_row_odd = "#220A3C"
+category_frame_bg = "#1E0838"
+item_bg = "#220A3C"
+item_hover = "#360E58"
+tab_active = "#360E58"
+tab_inactive = "#140428"
+tab_hover = "#581A40"
+close_hover = "#FF0033"
+
+[viewport]
+grid_line = "#340A50"
+gizmo_x = "#FF3033"
+gizmo_y = "#FFD000"
+gizmo_z = "#6A40FF"
+gizmo_selected = "#FFFF80"
+
+[material]
+canvas_bg = "#070010"
+grid_dot = "#360E58"
+node_bg = "#140428"
+node_border = "#3A0A50"
+node_selected_border = "#FF3C00"
+connection = "#C06070"
+connection_preview = "#FFFF80"
+selection_rect_fill = "#FF3C0022"
+selection_rect_stroke = "#FF3C00"

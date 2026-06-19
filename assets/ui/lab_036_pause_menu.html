@@ -1,0 +1,20 @@
+<!-- lab_036_pause_menu: dim-backdrop pause overlay with resume / options / quit -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#06080CCC" flex_direction="column" justify_content="center" align_items="center" row_gap="28px">
+        <text font_size="44" font_color="#FFFFFF">PAUSED</text>
+        <node flex_direction="column" row_gap="10px" width="300px">
+            <button padding="14px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="resume" justify_content="center">
+                <text font_size="14" font_color="#FFFFFF">Resume</text>
+            </button>
+            <button padding="14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="open_options" justify_content="center">
+                <text font_size="14" font_color="#FFFFFF">Options</text>
+            </button>
+            <button padding="14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="save_and_exit" justify_content="center">
+                <text font_size="14" font_color="#FFFFFF">Save &amp; Exit</text>
+            </button>
+            <button padding="14px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="quit_to_menu" justify_content="center">
+                <text font_size="14" font_color="#E06C75">Quit to Menu</text>
+            </button>
+        </node>
+    </node>
+</template>

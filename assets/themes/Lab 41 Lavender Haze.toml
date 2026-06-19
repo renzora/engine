@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 41 Lavender Haze"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#8E6CE0"
+success = "#4FB888"
+warning = "#E0A83D"
+error = "#E0556B"
+selection = "#DDD0F2"
+selection_stroke = "#8E6CE0"
+
+[surfaces]
+window = "#F4F0FB"
+window_stroke = "#D6C8EC"
+panel = "#FAF7FE"
+popup = "#FFFFFF"
+overlay = "#241A3A30"
+faint = "#EDE6F8"
+extreme = "#E2D6F2"
+
+[text]
+primary = "#2E2244"
+secondary = "#5A4A78"
+muted = "#8E80A8"
+heading = "#6A48C0"
+disabled = "#BAACD0"
+hyperlink = "#7048C8"
+
+[widgets]
+noninteractive_bg = "#EDE6F8"
+noninteractive_fg = "#605078"
+inactive_bg = "#E4DAF4"
+inactive_fg = "#3E2E58"
+hovered_bg = "#D8C8EE"
+hovered_fg = "#2E2244"
+active_bg = "#8E6CE0"
+active_fg = "#FFFFFF"
+border = "#D6C8EC"
+border_light = "#E4DAF4"
+
+[panels]
+tree_line = "#D0BEE8"
+drop_line = "#8E6CE0"
+drop_child_highlight = "#8E6CE040"
+row_odd_bg = "#2E224408"
+inspector_row_even = "#F4EEFB"
+inspector_row_odd = "#EDE6F8"
+category_frame_bg = "#F2ECFA"
+item_bg = "#F2ECFA"
+item_hover = "#E2D6F2"
+tab_active = "#FFFFFF"
+tab_inactive = "#E4DAF4"
+tab_hover = "#D8C8EE"
+close_hover = "#E0556B"
+
+[viewport]
+grid_line = "#D6C8EC"
+gizmo_x = "#E0556B"
+gizmo_y = "#4FB878"
+gizmo_z = "#5A6AE0"
+gizmo_selected = "#E0A83D"
+
+[material]
+canvas_bg = "#EDE6F8"
+grid_dot = "#D6C8EC"
+node_bg = "#FAF7FE"
+node_border = "#D6C8EC"
+node_selected_border = "#8E6CE0"
+connection = "#605078"
+connection_preview = "#E0A83D"
+selection_rect_fill = "#8E6CE022"
+selection_rect_stroke = "#8E6CE0"

@@ -1,0 +1,44 @@
+<!-- lab_038_inventory_grid: 5-wide item grid with header, weight bar, action footer -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="520px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="18px" row_gap="16px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Inventory</text>
+                <text font_size="13" font_color="#7C8694">Gold 1,240</text>
+            </node>
+            <node flex_direction="column" row_gap="8px">
+                <node flex_direction="row" column_gap="8px">
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Sword</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Shield</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Potion</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                </node>
+                <node flex_direction="row" column_gap="8px">
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Bow</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Arrows</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                </node>
+                <node flex_direction="row" column_gap="8px">
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                    <node width="84px" height="84px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">empty</text></node>
+                </node>
+            </node>
+            <node flex_direction="column" row_gap="6px">
+                <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#7C8694">Weight</text><text font_size="12" font_color="#A8B2C0">42 / 80</text></node>
+                <node width="100%" height="8px" background="#1B1F27" border_radius="999px">
+                    <node width="52%" height="8px" background="#4C8BF5" border_radius="999px"></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="sort_items" justify_content="center"><text font_size="13" font_color="#A8B2C0">Sort</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_inventory" justify_content="center"><text font_size="13" font_color="#FFFFFF">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

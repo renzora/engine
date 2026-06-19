@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 95 Candy Crush"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF4FA3"
+success = "#3FD66A"
+warning = "#FFD23F"
+error = "#FF3F5A"
+selection = "#FFD0E8"
+selection_stroke = "#FFA8D4"
+
+[surfaces]
+window = "#FFF4FA"
+window_stroke = "#FFCCE6"
+panel = "#FCE8F4"
+popup = "#FFFAFD"
+overlay = "#7A2A5A33"
+faint = "#FEEDF6"
+extreme = "#FAD8EC"
+
+[text]
+primary = "#5A1A44"
+secondary = "#9A3A6E"
+muted = "#C078A0"
+heading = "#E0207A"
+disabled = "#D4A0C0"
+hyperlink = "#FF2090"
+
+[widgets]
+noninteractive_bg = "#FAD8EC"
+noninteractive_fg = "#A85A82"
+inactive_bg = "#F8CCE4"
+inactive_fg = "#9A3A6E"
+hovered_bg = "#F8B4DA"
+hovered_fg = "#5A1A44"
+active_bg = "#FF4FA3"
+active_fg = "#FFF4FA"
+border = "#FFCCE6"
+border_light = "#FAD8EC"
+
+[panels]
+tree_line = "#F0A0CC"
+drop_line = "#FF4FA3"
+drop_child_highlight = "#FF4FA340"
+row_odd_bg = "#FFD23F18"
+inspector_row_even = "#FEEDF6"
+inspector_row_odd = "#FBE0F0"
+category_frame_bg = "#FFFAFD"
+item_bg = "#FBE0F0"
+item_hover = "#F8CCE4"
+tab_active = "#FCE8F4"
+tab_inactive = "#FAD8EC"
+tab_hover = "#F8B4DA"
+close_hover = "#FF3F5A"
+
+[viewport]
+grid_line = "#F4C0DC"
+gizmo_x = "#FF3F5A"
+gizmo_y = "#3FD66A"
+gizmo_z = "#3F8AFF"
+gizmo_selected = "#FFC000"
+
+[material]
+canvas_bg = "#FFFAFD"
+grid_dot = "#F8CCE4"
+node_bg = "#FCE8F4"
+node_border = "#FFCCE6"
+node_selected_border = "#FF4FA3"
+connection = "#B86A94"
+connection_preview = "#FFC000"
+selection_rect_fill = "#FF4FA322"
+selection_rect_stroke = "#FF4FA3"

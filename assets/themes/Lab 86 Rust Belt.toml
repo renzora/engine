@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 86 Rust Belt"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#B5612E"
+success = "#7A8A50"
+warning = "#C09830"
+error = "#A8341E"
+selection = "#52301A"
+selection_stroke = "#382010"
+
+[surfaces]
+window = "#120D0A"
+window_stroke = "#352618"
+panel = "#1A130D"
+popup = "#231911"
+overlay = "#08040090"
+faint = "#15100B"
+extreme = "#2C2014"
+
+[text]
+primary = "#E4D6C4"
+secondary = "#B49A80"
+muted = "#74604A"
+heading = "#C88A50"
+disabled = "#4E4030"
+hyperlink = "#BC744A"
+
+[widgets]
+noninteractive_bg = "#2C2014"
+noninteractive_fg = "#94785C"
+inactive_bg = "#34261A"
+inactive_fg = "#B49A80"
+hovered_bg = "#463222"
+hovered_fg = "#E4D6C4"
+active_bg = "#B5612E"
+active_fg = "#1A130D"
+border = "#15100B"
+border_light = "#352618"
+
+[panels]
+tree_line = "#4A3422"
+drop_line = "#B5612E"
+drop_child_highlight = "#B5612E40"
+row_odd_bg = "#FFFFFF06"
+inspector_row_even = "#1E1610"
+inspector_row_odd = "#251B13"
+category_frame_bg = "#231911"
+item_bg = "#251B13"
+item_hover = "#34261A"
+tab_active = "#34261A"
+tab_inactive = "#1A130D"
+tab_hover = "#463222"
+close_hover = "#A8341E"
+
+[viewport]
+grid_line = "#302216"
+gizmo_x = "#D0504A"
+gizmo_y = "#7AC850"
+gizmo_z = "#5A80D0"
+gizmo_selected = "#E0A030"
+
+[material]
+canvas_bg = "#0E0A07"
+grid_dot = "#34261A"
+node_bg = "#1A130D"
+node_border = "#352618"
+node_selected_border = "#B5612E"
+connection = "#94785C"
+connection_preview = "#E0A030"
+selection_rect_fill = "#B5612E22"
+selection_rect_stroke = "#B5612E"

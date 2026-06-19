@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 88 Magma Chamber"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF4500"
+success = "#C0A030"
+warning = "#FF9000"
+error = "#FF1010"
+selection = "#5A1408"
+selection_stroke = "#3E0E04"
+
+[surfaces]
+window = "#0E0402"
+window_stroke = "#3A1006"
+panel = "#160704"
+popup = "#200A06"
+overlay = "#06000098"
+faint = "#120503"
+extreme = "#2A0E08"
+
+[text]
+primary = "#FFD8B0"
+secondary = "#E09858"
+muted = "#9A5830"
+heading = "#FF7020"
+disabled = "#5A301C"
+hyperlink = "#FF8030"
+
+[widgets]
+noninteractive_bg = "#2A0E08"
+noninteractive_fg = "#C07040"
+inactive_bg = "#34120A"
+inactive_fg = "#E09858"
+hovered_bg = "#4E1A0C"
+hovered_fg = "#FFD8B0"
+active_bg = "#FF4500"
+active_fg = "#160704"
+border = "#120503"
+border_light = "#3A1006"
+
+[panels]
+tree_line = "#561C0E"
+drop_line = "#FF4500"
+drop_child_highlight = "#FF450040"
+row_odd_bg = "#FF450010"
+inspector_row_even = "#1A0805"
+inspector_row_odd = "#220C07"
+category_frame_bg = "#200A06"
+item_bg = "#220C07"
+item_hover = "#34120A"
+tab_active = "#34120A"
+tab_inactive = "#160704"
+tab_hover = "#4E1A0C"
+close_hover = "#FF1010"
+
+[viewport]
+grid_line = "#320E08"
+gizmo_x = "#FF3030"
+gizmo_y = "#C8C830"
+gizmo_z = "#6050FF"
+gizmo_selected = "#FFB000"
+
+[material]
+canvas_bg = "#0A0301"
+grid_dot = "#34120A"
+node_bg = "#160704"
+node_border = "#3A1006"
+node_selected_border = "#FF4500"
+connection = "#C07040"
+connection_preview = "#FFB000"
+selection_rect_fill = "#FF450022"
+selection_rect_stroke = "#FF4500"

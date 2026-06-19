@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 39 Steel Industrial"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF8C1A"
+success = "#5CB85C"
+warning = "#F0B429"
+error = "#E04545"
+selection = "#3A3E44"
+selection_stroke = "#FF8C1A"
+
+[surfaces]
+window = "#15171A"
+window_stroke = "#2E3338"
+panel = "#1C1F23"
+popup = "#22262B"
+overlay = "#08090BB0"
+faint = "#181B1E"
+extreme = "#2A2F34"
+
+[text]
+primary = "#E4E7EA"
+secondary = "#A8AEB4"
+muted = "#666C72"
+heading = "#FFA94D"
+disabled = "#44494E"
+hyperlink = "#FFA94D"
+
+[widgets]
+noninteractive_bg = "#2A2F34"
+noninteractive_fg = "#969CA2"
+inactive_bg = "#32383E"
+inactive_fg = "#B8BEC4"
+hovered_bg = "#3E454C"
+hovered_fg = "#E4E7EA"
+active_bg = "#FF8C1A"
+active_fg = "#15171A"
+border = "#22262B"
+border_light = "#3E454C"
+
+[panels]
+tree_line = "#404750"
+drop_line = "#FF8C1A"
+drop_child_highlight = "#FF8C1A40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#1E2226"
+inspector_row_odd = "#2A2F34"
+category_frame_bg = "#22262B"
+item_bg = "#2A2F34"
+item_hover = "#363C42"
+tab_active = "#363C42"
+tab_inactive = "#1C1F23"
+tab_hover = "#3E454C"
+close_hover = "#E04545"
+
+[viewport]
+grid_line = "#32383E"
+gizmo_x = "#E04545"
+gizmo_y = "#5CB85C"
+gizmo_z = "#4A8CE0"
+gizmo_selected = "#F0B429"
+
+[material]
+canvas_bg = "#121417"
+grid_dot = "#32383E"
+node_bg = "#1E2226"
+node_border = "#3E454C"
+node_selected_border = "#FF8C1A"
+connection = "#969CA2"
+connection_preview = "#F0B429"
+selection_rect_fill = "#FF8C1A22"
+selection_rect_stroke = "#FF8C1A"

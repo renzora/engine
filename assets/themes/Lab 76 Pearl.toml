@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 76 Pearl"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#9A8AC0"
+success = "#6AB0A0"
+warning = "#D0B070"
+error = "#D07A8A"
+selection = "#E0DCEA"
+selection_stroke = "#CAC4DC"
+
+[surfaces]
+window = "#F6F4FA"
+window_stroke = "#D8D4E4"
+panel = "#EFECF6"
+popup = "#FBFAFE"
+overlay = "#9A8AC033"
+faint = "#F2F0F8"
+extreme = "#E6E2F0"
+
+[text]
+primary = "#3A3650"
+secondary = "#666080"
+muted = "#9A94B0"
+heading = "#5A4E8A"
+disabled = "#BCB6CE"
+hyperlink = "#7060B0"
+
+[widgets]
+noninteractive_bg = "#E6E2F0"
+noninteractive_fg = "#807A98"
+inactive_bg = "#DEDAEC"
+inactive_fg = "#666080"
+hovered_bg = "#D2CCE4"
+hovered_fg = "#3A3650"
+active_bg = "#9A8AC0"
+active_fg = "#F6F4FA"
+border = "#D8D4E4"
+border_light = "#E6E2F0"
+
+[panels]
+tree_line = "#CAC2DE"
+drop_line = "#9A8AC0"
+drop_child_highlight = "#9A8AC040"
+row_odd_bg = "#00000007"
+inspector_row_even = "#F2F0F8"
+inspector_row_odd = "#EAE6F4"
+category_frame_bg = "#FBFAFE"
+item_bg = "#EAE6F4"
+item_hover = "#DEDAEC"
+tab_active = "#EFECF6"
+tab_inactive = "#E6E2F0"
+tab_hover = "#D2CCE4"
+close_hover = "#D07A8A"
+
+[viewport]
+grid_line = "#DCD6EC"
+gizmo_x = "#D05A6A"
+gizmo_y = "#5AB090"
+gizmo_z = "#6070C0"
+gizmo_selected = "#D0A030"
+
+[material]
+canvas_bg = "#FBFAFE"
+grid_dot = "#DEDAEC"
+node_bg = "#EFECF6"
+node_border = "#D8D4E4"
+node_selected_border = "#9A8AC0"
+connection = "#807A98"
+connection_preview = "#D0A030"
+selection_rect_fill = "#9A8AC022"
+selection_rect_stroke = "#9A8AC0"

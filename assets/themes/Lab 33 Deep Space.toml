@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 33 Deep Space"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#7B5CFF"
+success = "#3DE0B0"
+warning = "#FFC83D"
+error = "#FF4D6D"
+selection = "#241C50"
+selection_stroke = "#7B5CFF"
+
+[surfaces]
+window = "#020208"
+window_stroke = "#161430"
+panel = "#070612"
+popup = "#0A0918"
+overlay = "#000004C8"
+faint = "#05040E"
+extreme = "#100E24"
+
+[text]
+primary = "#E2E0F7"
+secondary = "#A29ED0"
+muted = "#5A5688"
+heading = "#9F8AFF"
+disabled = "#383458"
+hyperlink = "#6AA8FF"
+
+[widgets]
+noninteractive_bg = "#100E24"
+noninteractive_fg = "#928EC0"
+inactive_bg = "#161430"
+inactive_fg = "#B2AEDC"
+hovered_bg = "#221E44"
+hovered_fg = "#E2E0F7"
+active_bg = "#7B5CFF"
+active_fg = "#050410"
+border = "#0C0A1E"
+border_light = "#221E44"
+
+[panels]
+tree_line = "#2C2858"
+drop_line = "#7B5CFF"
+drop_child_highlight = "#7B5CFF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#0B0A1C"
+inspector_row_odd = "#100E24"
+category_frame_bg = "#0A0918"
+item_bg = "#100E24"
+item_hover = "#1C1A3A"
+tab_active = "#1C1A3A"
+tab_inactive = "#070612"
+tab_hover = "#221E44"
+close_hover = "#FF4D6D"
+
+[viewport]
+grid_line = "#1C1A3A"
+gizmo_x = "#FF4D6D"
+gizmo_y = "#3DE08A"
+gizmo_z = "#6A8AFF"
+gizmo_selected = "#FFC83D"
+
+[material]
+canvas_bg = "#010106"
+grid_dot = "#161430"
+node_bg = "#0B0A1C"
+node_border = "#221E44"
+node_selected_border = "#7B5CFF"
+connection = "#928EC0"
+connection_preview = "#FFC83D"
+selection_rect_fill = "#7B5CFF22"
+selection_rect_stroke = "#7B5CFF"

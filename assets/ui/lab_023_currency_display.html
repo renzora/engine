@@ -1,0 +1,13 @@
+<!-- Currency display: top-right cluster of gold and gem counts with colored dots -->
+<template>
+    <node position="absolute" top="16px" right="16px" flex_direction="row" column_gap="14px" align_items="center">
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <node width="14px" height="14px" background="#FFD24A" border_radius="999px" />
+            <text font_size="14" font_color="#FFFFFF">{{ Wallet.gold }}</text>
+        </node>
+        <node flex_direction="row" align_items="center" column_gap="6px">
+            <node width="14px" height="14px" background="#A66BF8" border_radius="999px" />
+            <text font_size="14" font_color="#FFFFFF">{{ Wallet.gems }}</text>
+        </node>
+    </node>
+</template>

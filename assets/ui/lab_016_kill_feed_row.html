@@ -1,0 +1,11 @@
+<!-- Kill feed row: single right-aligned line of killer, weapon glyph and victim -->
+<template>
+    <property name="killer">Vex</property>
+    <property name="weapon">rifle</property>
+    <property name="victim">Doc</property>
+    <node position="absolute" top="80px" right="16px" flex_direction="row" align_items="center" column_gap="8px" padding="5px 10px 5px 10px" background="#0D1117CC" border_radius="6px">
+        <text font_size="12" font_color="#6BA1F8">{killer}</text>
+        <text font_size="12" font_color="#8C97A6">[{weapon}]</text>
+        <text font_size="12" font_color="#E74C3C">{victim}</text>
+    </node>
+</template>

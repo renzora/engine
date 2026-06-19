@@ -29,5 +29,6 @@
     render_layer: 0,
     simulation_space: Local,
     simulation_condition: Always,
+    light: Some((color: (1.0, 0.5, 0.18), intensity: 25000.0, range: 4.0, flicker: 0.5, shadows: true)),
     variables: {},
 )

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 98 Bismuth Crystal"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF5AC8"
+success = "#30E0B0"
+warning = "#F0E040"
+error = "#FF4A6A"
+selection = "#1E3A6A"
+selection_stroke = "#14284A"
+
+[surfaces]
+window = "#0A0E1A"
+window_stroke = "#28385A"
+panel = "#10162A"
+popup = "#161E38"
+overlay = "#02040CA0"
+faint = "#0D1322"
+extreme = "#1C2848"
+
+[text]
+primary = "#E0E8F4"
+secondary = "#A0B0D0"
+muted = "#5A6890"
+heading = "#FF8AD8"
+disabled = "#3A4668"
+hyperlink = "#5AD0E0"
+
+[widgets]
+noninteractive_bg = "#1C2848"
+noninteractive_fg = "#8090B8"
+inactive_bg = "#223054"
+inactive_fg = "#A0B0D0"
+hovered_bg = "#2E406E"
+hovered_fg = "#E0E8F4"
+active_bg = "#FF5AC8"
+active_fg = "#10162A"
+border = "#0D1322"
+border_light = "#28385A"
+
+[panels]
+tree_line = "#324470"
+drop_line = "#FF5AC8"
+drop_child_highlight = "#FF5AC840"
+row_odd_bg = "#30E0B00C"
+inspector_row_even = "#131A30"
+inspector_row_odd = "#18223E"
+category_frame_bg = "#161E38"
+item_bg = "#18223E"
+item_hover = "#223054"
+tab_active = "#223054"
+tab_inactive = "#10162A"
+tab_hover = "#2E406E"
+close_hover = "#FF4A6A"
+
+[viewport]
+grid_line = "#1E2C4E"
+gizmo_x = "#FF4A6A"
+gizmo_y = "#30E0B0"
+gizmo_z = "#5A8AFF"
+gizmo_selected = "#F0E040"
+
+[material]
+canvas_bg = "#070A14"
+grid_dot = "#223054"
+node_bg = "#10162A"
+node_border = "#28385A"
+node_selected_border = "#FF5AC8"
+connection = "#8090B8"
+connection_preview = "#F0E040"
+selection_rect_fill = "#FF5AC822"
+selection_rect_stroke = "#FF5AC8"

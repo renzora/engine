@@ -1,0 +1,29 @@
+<!-- lab_040_skill_tree: branching skill tree with tiers of nodes + connector spacing + points footer -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="680px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="20px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Skill Tree — Marksman</text>
+                <text font_size="13" font_color="#E5B567">5 points</text>
+            </node>
+            <node flex_direction="column" align_items="center" row_gap="14px">
+                <node flex_direction="row" column_gap="40px" justify_content="center">
+                    <button width="92px" height="92px" background="#2E7D5B" border_radius="12px" hover:background="#379268" on_press="skill_steady_aim" justify_content="center" align_items="center"><text font_size="11" font_color="#FFFFFF">Steady Aim</text></button>
+                </node>
+                <node flex_direction="row" column_gap="24px" justify_content="center">
+                    <button width="92px" height="92px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="12px" hover:background="#222A36" on_press="skill_piercing" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Piercing</text></button>
+                    <button width="92px" height="92px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="12px" hover:background="#222A36" on_press="skill_rapid" justify_content="center" align_items="center"><text font_size="11" font_color="#A8B2C0">Rapid Fire</text></button>
+                </node>
+                <node flex_direction="row" column_gap="24px" justify_content="center">
+                    <button width="92px" height="92px" background="#171B23" border="1px" border_color="#2C3340" border_radius="12px" hover:background="#1F2530" on_press="skill_volley" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">Volley</text></button>
+                    <button width="92px" height="92px" background="#171B23" border="1px" border_color="#2C3340" border_radius="12px" hover:background="#1F2530" on_press="skill_headshot" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">Headshot</text></button>
+                    <button width="92px" height="92px" background="#171B23" border="1px" border_color="#2C3340" border_radius="12px" hover:background="#1F2530" on_press="skill_evasion" justify_content="center" align_items="center"><text font_size="11" font_color="#5A6370">Evasion</text></button>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="reset_tree" justify_content="center"><text font_size="13" font_color="#E06C75">Reset</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="confirm_tree" justify_content="center"><text font_size="13" font_color="#FFFFFF">Confirm</text></button>
+            </node>
+        </node>
+    </node>
+</template>

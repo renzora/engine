@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 67 Coral Reef"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF7A6A"
+success = "#3FD0B0"
+warning = "#FFCA60"
+error = "#FF4060"
+selection = "#1A5A6A"
+selection_stroke = "#103E4A"
+
+[surfaces]
+window = "#04161C"
+window_stroke = "#185060"
+panel = "#082630"
+popup = "#0E323E"
+overlay = "#001016A0"
+faint = "#061E26"
+extreme = "#103E4A"
+
+[text]
+primary = "#DCF4F0"
+secondary = "#8AC8C0"
+muted = "#4A7A78"
+heading = "#FF9A8A"
+disabled = "#2E4E50"
+hyperlink = "#5AD0C0"
+
+[widgets]
+noninteractive_bg = "#103E4A"
+noninteractive_fg = "#70A8A4"
+inactive_bg = "#144A58"
+inactive_fg = "#8AC8C0"
+hovered_bg = "#1C6070"
+hovered_fg = "#DCF4F0"
+active_bg = "#FF7A6A"
+active_fg = "#082630"
+border = "#061E26"
+border_light = "#185060"
+
+[panels]
+tree_line = "#206070"
+drop_line = "#FF7A6A"
+drop_child_highlight = "#FF7A6A40"
+row_odd_bg = "#FFFFFF0A"
+inspector_row_even = "#0A2A34"
+inspector_row_odd = "#0E3440"
+category_frame_bg = "#0E323E"
+item_bg = "#0E3440"
+item_hover = "#144A58"
+tab_active = "#144A58"
+tab_inactive = "#082630"
+tab_hover = "#1C6070"
+close_hover = "#FF4060"
+
+[viewport]
+grid_line = "#10404E"
+gizmo_x = "#FF5A6A"
+gizmo_y = "#3FE0B0"
+gizmo_z = "#5AA0E0"
+gizmo_selected = "#FFCA40"
+
+[material]
+canvas_bg = "#031018"
+grid_dot = "#144A58"
+node_bg = "#082630"
+node_border = "#185060"
+node_selected_border = "#FF7A6A"
+connection = "#70A8A4"
+connection_preview = "#FFCA40"
+selection_rect_fill = "#FF7A6A22"
+selection_rect_stroke = "#FF7A6A"

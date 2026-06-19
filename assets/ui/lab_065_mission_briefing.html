@@ -1,0 +1,29 @@
+<!-- lab_065_mission_briefing: mission header + objectives list + difficulty + deploy/abort -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13F2" justify_content="center" align_items="center">
+        <node width="640px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="22px" row_gap="18px">
+            <node flex_direction="column" row_gap="6px">
+                <text font_size="12" font_color="#E06C75">OPERATION</text>
+                <text font_size="24" font_color="#FFFFFF">Black Tide</text>
+                <text font_size="13" font_color="#8A93A2">Infiltrate the harbor and disable the coastal guns before dawn.</text>
+            </node>
+            <node flex_direction="row" column_gap="16px">
+                <node flex_grow="1" flex_direction="column" row_gap="8px">
+                    <text font_size="13" font_color="#A8B2C0">Objectives</text>
+                    <node flex_direction="row" align_items="center" column_gap="8px" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="12" font_color="#4C8BF5">●</text><text font_size="12" font_color="#E6EAF0">Disable both gun batteries</text></node>
+                    <node flex_direction="row" align_items="center" column_gap="8px" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="12" font_color="#7C8694">○</text><text font_size="12" font_color="#A8B2C0">Avoid raising the alarm (bonus)</text></node>
+                    <node flex_direction="row" align_items="center" column_gap="8px" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="12" font_color="#7C8694">○</text><text font_size="12" font_color="#A8B2C0">Recover the manifest (bonus)</text></node>
+                </node>
+                <node width="200px" flex_direction="column" row_gap="8px" padding="14px" background="#0F151C" border_radius="10px">
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#7C8694">Difficulty</text><text font_size="12" font_color="#E06C75">Hard</text></node>
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#7C8694">Est. Time</text><text font_size="12" font_color="#E6EAF0">25 min</text></node>
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#7C8694">Reward</text><text font_size="12" font_color="#E5B567">1,200 XP</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="12px 20px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="abort_mission" justify_content="center"><text font_size="13" font_color="#A8B2C0">Abort</text></button>
+                <button padding="12px 20px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="deploy_mission" justify_content="center"><text font_size="13" font_color="#FFFFFF">Deploy</text></button>
+            </node>
+        </node>
+    </node>
+</template>

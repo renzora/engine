@@ -1,0 +1,20 @@
+<!-- Radial ability wheel: center core + orbiting slots -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0A0612">
+        <node position="absolute" left="0px" top="0px" width="100%" height="100%" flex_direction="column" align_items="center" justify_content="center">
+            <node width="360px" height="360px" border="2px" border_color="#7A4DFF55" border_radius="180px" background="#160B2A66" />
+        </node>
+        <node position="absolute" left="50%" top="50%" width="120px" height="120px" margin="-60px" border_radius="60px" background="#7A4DFF" border="3px" border_color="#C9B3FF" flex_direction="column" align_items="center" justify_content="center">
+            <text font_size="14" font_color="#FFFFFF">CAST</text>
+            <text font_size="11" font_color="#E0D6FF">CORE</text>
+        </node>
+        <node position="absolute" left="50%" top="14%" width="84px" height="84px" margin="-42px" border_radius="42px" background="#FF4D6D" align_items="center" justify_content="center"><text font_size="13" font_color="#FFFFFF">FIRE</text></node>
+        <node position="absolute" right="14%" top="50%" width="84px" height="84px" margin="-42px" border_radius="42px" background="#2EE6FF" align_items="center" justify_content="center"><text font_size="13" font_color="#04222A">FROST</text></node>
+        <node position="absolute" left="50%" bottom="14%" width="84px" height="84px" margin="-42px" border_radius="42px" background="#A0F060" align_items="center" justify_content="center"><text font_size="13" font_color="#13240A">HEAL</text></node>
+        <node position="absolute" left="14%" top="50%" width="84px" height="84px" margin="-42px" border_radius="42px" background="#FFC857" align_items="center" justify_content="center"><text font_size="13" font_color="#2A2410">BOLT</text></node>
+        <node position="absolute" left="50%" bottom="30px" margin="-90px" width="180px" flex_direction="column" align_items="center" row_gap="6px">
+            <text font_size="14" font_color="#C9B3FF">MANA</text>
+            <node width="180px" height="14px" background="#1A1030" border_radius="7px" padding="2px"><node width="74%" height="100%" background="#7A4DFF" border_radius="5px" /></node>
+        </node>
+    </node>
+</template>

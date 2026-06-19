@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 62 Ultraviolet"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#B026FF"
+success = "#50E0C0"
+warning = "#E0C040"
+error = "#FF2E80"
+selection = "#4A1A6A"
+selection_stroke = "#321048"
+
+[surfaces]
+window = "#0A0414"
+window_stroke = "#2E1A48"
+panel = "#120A20"
+popup = "#1A1030"
+overlay = "#08001890"
+faint = "#0E0818"
+extreme = "#221440"
+
+[text]
+primary = "#EAD8FF"
+secondary = "#B090E0"
+muted = "#6A4A90"
+heading = "#C860FF"
+disabled = "#3E2A58"
+hyperlink = "#D070FF"
+
+[widgets]
+noninteractive_bg = "#221440"
+noninteractive_fg = "#9070C0"
+inactive_bg = "#2A1A50"
+inactive_fg = "#B090E0"
+hovered_bg = "#3A2468"
+hovered_fg = "#EAD8FF"
+active_bg = "#B026FF"
+active_fg = "#120A20"
+border = "#0E0818"
+border_light = "#2E1A48"
+
+[panels]
+tree_line = "#3E2868"
+drop_line = "#B026FF"
+drop_child_highlight = "#B026FF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#160C28"
+inspector_row_odd = "#1C1232"
+category_frame_bg = "#1A1030"
+item_bg = "#1C1232"
+item_hover = "#2A1A50"
+tab_active = "#2A1A50"
+tab_inactive = "#120A20"
+tab_hover = "#3A2468"
+close_hover = "#FF2E80"
+
+[viewport]
+grid_line = "#2A1A48"
+gizmo_x = "#FF4A8A"
+gizmo_y = "#50E0A0"
+gizmo_z = "#7A6AFF"
+gizmo_selected = "#E0FF40"
+
+[material]
+canvas_bg = "#070310"
+grid_dot = "#2A1A50"
+node_bg = "#120A20"
+node_border = "#2E1A48"
+node_selected_border = "#B026FF"
+connection = "#9070C0"
+connection_preview = "#E0FF40"
+selection_rect_fill = "#B026FF22"
+selection_rect_stroke = "#B026FF"

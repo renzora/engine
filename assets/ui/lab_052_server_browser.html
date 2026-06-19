@@ -1,0 +1,36 @@
+<!-- lab_052_server_browser: lobby list table with columns, ping, join buttons + refresh -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="760px" height="480px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Server Browser</text>
+                <button padding="8px 14px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="refresh_servers" justify_content="center"><text font_size="13" font_color="#A8B2C0">Refresh</text></button>
+            </node>
+            <node flex_direction="row" justify_content="space_between" padding="8px 12px" background="#0F151C" border_radius="8px">
+                <text font_size="12" font_color="#7C8694">Name</text>
+                <text font_size="12" font_color="#7C8694">Mode</text>
+                <text font_size="12" font_color="#7C8694">Players</text>
+                <text font_size="12" font_color="#7C8694">Ping</text>
+                <text font_size="12" font_color="#7C8694"></text>
+            </node>
+            <node flex_grow="1" flex_direction="column" row_gap="6px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                    <text font_size="13" font_color="#E6EAF0">Ironhold Arena</text><text font_size="13" font_color="#A8B2C0">Deathmatch</text><text font_size="13" font_color="#A8B2C0">12/16</text><text font_size="13" font_color="#2E7D5B">34ms</text>
+                    <button padding="5px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="join_ironhold" justify_content="center"><text font_size="12" font_color="#FFFFFF">Join</text></button>
+                </node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                    <text font_size="13" font_color="#E6EAF0">Frostvale Co-op</text><text font_size="13" font_color="#A8B2C0">Survival</text><text font_size="13" font_color="#A8B2C0">3/4</text><text font_size="13" font_color="#E5B567">88ms</text>
+                    <button padding="5px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="join_frostvale" justify_content="center"><text font_size="12" font_color="#FFFFFF">Join</text></button>
+                </node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                    <text font_size="13" font_color="#E6EAF0">Emberreach Siege</text><text font_size="13" font_color="#A8B2C0">Conquest</text><text font_size="13" font_color="#E06C75">32/32</text><text font_size="13" font_color="#E06C75">142ms</text>
+                    <button padding="5px 12px" background="#1B1F27" border_radius="6px" hover:background="#222A36" on_press="join_emberreach" justify_content="center"><text font_size="12" font_color="#5A6370">Full</text></button>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="host_server" justify_content="center"><text font_size="13" font_color="#A8B2C0">Host</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="direct_connect" justify_content="center"><text font_size="13" font_color="#FFFFFF">Direct Connect</text></button>
+            </node>
+        </node>
+    </node>
+</template>

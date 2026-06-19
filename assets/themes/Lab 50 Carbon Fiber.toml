@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 50 Carbon Fiber"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#2EC4FF"
+success = "#4ADE80"
+warning = "#FACC15"
+error = "#F43F5E"
+selection = "#1E2A33"
+selection_stroke = "#2EC4FF"
+
+[surfaces]
+window = "#0D0F11"
+window_stroke = "#242A2E"
+panel = "#141719"
+popup = "#191D20"
+overlay = "#000000C0"
+faint = "#101315"
+extreme = "#1E2326"
+
+[text]
+primary = "#E8ECEF"
+secondary = "#A4ACB2"
+muted = "#62696E"
+heading = "#7ED4FF"
+disabled = "#3E454A"
+hyperlink = "#2EC4FF"
+
+[widgets]
+noninteractive_bg = "#1E2326"
+noninteractive_fg = "#929AA0"
+inactive_bg = "#262C30"
+inactive_fg = "#B4BCC2"
+hovered_bg = "#32393E"
+hovered_fg = "#E8ECEF"
+active_bg = "#2EC4FF"
+active_fg = "#0A1216"
+border = "#191D20"
+border_light = "#32393E"
+
+[panels]
+tree_line = "#363E44"
+drop_line = "#2EC4FF"
+drop_child_highlight = "#2EC4FF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#171B1E"
+inspector_row_odd = "#1E2326"
+category_frame_bg = "#191D20"
+item_bg = "#1E2326"
+item_hover = "#2A3135"
+tab_active = "#2A3135"
+tab_inactive = "#141719"
+tab_hover = "#32393E"
+close_hover = "#F43F5E"
+
+[viewport]
+grid_line = "#262C30"
+gizmo_x = "#F43F5E"
+gizmo_y = "#4ADE80"
+gizmo_z = "#2E9AFF"
+gizmo_selected = "#FACC15"
+
+[material]
+canvas_bg = "#0B0D0F"
+grid_dot = "#262C30"
+node_bg = "#171B1E"
+node_border = "#32393E"
+node_selected_border = "#2EC4FF"
+connection = "#929AA0"
+connection_preview = "#FACC15"
+selection_rect_fill = "#2EC4FF22"
+selection_rect_stroke = "#2EC4FF"

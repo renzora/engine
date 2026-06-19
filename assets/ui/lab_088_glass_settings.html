@@ -1,0 +1,25 @@
+<!-- Glassmorphism settings card: frosted translucent panel -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#1A1040" flex_direction="row" align_items="center" justify_content="center">
+        <node position="absolute" left="80px" top="120px" width="260px" height="260px" border_radius="130px" background="#FF6AC155" />
+        <node position="absolute" right="120px" bottom="100px" width="300px" height="300px" border_radius="150px" background="#5BD3FF55" />
+        <node width="440px" background="#FFFFFF1A" border="1px" border_color="#FFFFFF44" border_radius="20px" padding="30px" flex_direction="column" row_gap="20px">
+            <text font_size="24" font_color="#FFFFFF">Settings</text>
+            <node flex_direction="row" justify_content="space-between" align_items="center">
+                <text font_size="15" font_color="#E8E2FF">Notifications</text>
+                <node width="52px" height="28px" background="#7DF9C8" border_radius="14px" padding="3px"><node width="22px" height="22px" border_radius="11px" background="#FFFFFF" margin="0px 0px 0px 24px" /></node>
+            </node>
+            <node height="1px" background="#FFFFFF22" />
+            <node flex_direction="row" justify_content="space-between" align_items="center">
+                <text font_size="15" font_color="#E8E2FF">Dark Mode</text>
+                <node width="52px" height="28px" background="#FFFFFF33" border_radius="14px" padding="3px"><node width="22px" height="22px" border_radius="11px" background="#FFFFFF" /></node>
+            </node>
+            <node height="1px" background="#FFFFFF22" />
+            <node flex_direction="column" row_gap="8px">
+                <text font_size="15" font_color="#E8E2FF">Volume</text>
+                <node width="100%" height="10px" background="#FFFFFF22" border_radius="5px" padding="1px"><node width="64%" height="100%" background="#FF6AC1" border_radius="4px" /></node>
+            </node>
+            <button background="#FFFFFF33" border_radius="12px" padding="14px" hover:background="#FFFFFF4D"><text font_size="16" font_color="#FFFFFF">Save Changes</text></button>
+        </node>
+    </node>
+</template>

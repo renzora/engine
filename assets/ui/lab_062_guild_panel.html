@@ -1,0 +1,22 @@
+<!-- lab_062_guild_panel: guild header with banner + member roster table + recruit/leave actions -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="640px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <node flex_direction="row" align_items="center" column_gap="14px">
+                <node width="56px" height="56px" background="#222A36" border="1px" border_color="#4C8BF5" border_radius="10px" flex_shrink="0"></node>
+                <node flex_direction="column" row_gap="4px"><text font_size="20" font_color="#FFFFFF">Ashen Vanguard</text><text font_size="12" font_color="#7C8694">Level 8 · 24 / 50 members</text></node>
+            </node>
+            <node flex_direction="row" justify_content="space_between" padding="8px 12px" background="#0F151C" border_radius="8px"><text font_size="12" font_color="#7C8694">Member</text><text font_size="12" font_color="#7C8694">Rank</text><text font_size="12" font_color="#7C8694">Last Online</text></node>
+            <node flex_direction="column" row_gap="6px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E5B567">Valkyrjr</text><text font_size="12" font_color="#A8B2C0">Guildmaster</text><text font_size="12" font_color="#2E7D5B">Online</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Nightshade</text><text font_size="12" font_color="#A8B2C0">Officer</text><text font_size="12" font_color="#2E7D5B">Online</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Ironclad</text><text font_size="12" font_color="#A8B2C0">Member</text><text font_size="12" font_color="#7C8694">3h ago</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Stormwind</text><text font_size="12" font_color="#A8B2C0">Member</text><text font_size="12" font_color="#7C8694">2d ago</text></node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="leave_guild" justify_content="center"><text font_size="13" font_color="#E06C75">Leave</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="recruit_guild" justify_content="center"><text font_size="13" font_color="#FFFFFF">Recruit</text></button>
+            </node>
+        </node>
+    </node>
+</template>

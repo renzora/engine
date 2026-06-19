@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 68 Volcanic Ash"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E85A2A"
+success = "#7A9A6A"
+warning = "#C8A050"
+error = "#D43A2A"
+selection = "#403838"
+selection_stroke = "#2A2424"
+
+[surfaces]
+window = "#0E0D0C"
+window_stroke = "#33302E"
+panel = "#161413"
+popup = "#1E1B19"
+overlay = "#02010098"
+faint = "#121110"
+extreme = "#282422"
+
+[text]
+primary = "#DAD4CE"
+secondary = "#A09890"
+muted = "#605850"
+heading = "#E89060"
+disabled = "#42403C"
+hyperlink = "#E07A4A"
+
+[widgets]
+noninteractive_bg = "#282422"
+noninteractive_fg = "#8A827A"
+inactive_bg = "#302C2A"
+inactive_fg = "#A09890"
+hovered_bg = "#403A38"
+hovered_fg = "#DAD4CE"
+active_bg = "#E85A2A"
+active_fg = "#161413"
+border = "#121110"
+border_light = "#33302E"
+
+[panels]
+tree_line = "#443E3A"
+drop_line = "#E85A2A"
+drop_child_highlight = "#E85A2A40"
+row_odd_bg = "#FFFFFF06"
+inspector_row_even = "#1A1816"
+inspector_row_odd = "#201D1B"
+category_frame_bg = "#1E1B19"
+item_bg = "#201D1B"
+item_hover = "#302C2A"
+tab_active = "#302C2A"
+tab_inactive = "#161413"
+tab_hover = "#403A38"
+close_hover = "#D43A2A"
+
+[viewport]
+grid_line = "#2E2A28"
+gizmo_x = "#E0504A"
+gizmo_y = "#7AC86A"
+gizmo_z = "#5A88D0"
+gizmo_selected = "#FFB040"
+
+[material]
+canvas_bg = "#0A0908"
+grid_dot = "#302C2A"
+node_bg = "#161413"
+node_border = "#33302E"
+node_selected_border = "#E85A2A"
+connection = "#8A827A"
+connection_preview = "#FFB040"
+selection_rect_fill = "#E85A2A22"
+selection_rect_stroke = "#E85A2A"

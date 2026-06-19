@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 92 Monochrome Red"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF2020"
+success = "#C04040"
+warning = "#FF6060"
+error = "#FF0000"
+selection = "#5A0808"
+selection_stroke = "#3E0404"
+
+[surfaces]
+window = "#100404"
+window_stroke = "#3A0C0C"
+panel = "#180606"
+popup = "#220A0A"
+overlay = "#06000098"
+faint = "#140505"
+extreme = "#2C0E0E"
+
+[text]
+primary = "#FFC8C8"
+secondary = "#E07878"
+muted = "#9A4040"
+heading = "#FF4040"
+disabled = "#5A2828"
+hyperlink = "#FF5050"
+
+[widgets]
+noninteractive_bg = "#2C0E0E"
+noninteractive_fg = "#B85858"
+inactive_bg = "#361212"
+inactive_fg = "#E07878"
+hovered_bg = "#4E1818"
+hovered_fg = "#FFC8C8"
+active_bg = "#FF2020"
+active_fg = "#180606"
+border = "#140505"
+border_light = "#3A0C0C"
+
+[panels]
+tree_line = "#561A1A"
+drop_line = "#FF2020"
+drop_child_highlight = "#FF202040"
+row_odd_bg = "#FF202010"
+inspector_row_even = "#1C0808"
+inspector_row_odd = "#240A0A"
+category_frame_bg = "#220A0A"
+item_bg = "#240A0A"
+item_hover = "#361212"
+tab_active = "#361212"
+tab_inactive = "#180606"
+tab_hover = "#4E1818"
+close_hover = "#FF0000"
+
+[viewport]
+grid_line = "#320E0E"
+gizmo_x = "#FF4040"
+gizmo_y = "#C8A0A0"
+gizmo_z = "#A06060"
+gizmo_selected = "#FF8080"
+
+[material]
+canvas_bg = "#0A0303"
+grid_dot = "#361212"
+node_bg = "#180606"
+node_border = "#3A0C0C"
+node_selected_border = "#FF2020"
+connection = "#B85858"
+connection_preview = "#FF8080"
+selection_rect_fill = "#FF202022"
+selection_rect_stroke = "#FF2020"

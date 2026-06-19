@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 61 Hacker Green"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#00FF66"
+success = "#00E050"
+warning = "#A0FF00"
+error = "#FF2040"
+selection = "#004A24"
+selection_stroke = "#003018"
+
+[surfaces]
+window = "#000600"
+window_stroke = "#0A3318"
+panel = "#020E04"
+popup = "#04160A"
+overlay = "#000000AA"
+faint = "#020A03"
+extreme = "#062012"
+
+[text]
+primary = "#A0FFB0"
+secondary = "#50C070"
+muted = "#2A6A3A"
+heading = "#00FF66"
+disabled = "#1A4028"
+hyperlink = "#40FF90"
+
+[widgets]
+noninteractive_bg = "#062012"
+noninteractive_fg = "#3A9050"
+inactive_bg = "#082A18"
+inactive_fg = "#50C070"
+hovered_bg = "#0C4024"
+hovered_fg = "#A0FFB0"
+active_bg = "#00FF66"
+active_fg = "#020E04"
+border = "#020A03"
+border_light = "#0A3318"
+
+[panels]
+tree_line = "#0E4A2A"
+drop_line = "#00FF66"
+drop_child_highlight = "#00FF6640"
+row_odd_bg = "#00FF6608"
+inspector_row_even = "#041206"
+inspector_row_odd = "#06190C"
+category_frame_bg = "#04160A"
+item_bg = "#06190C"
+item_hover = "#082A18"
+tab_active = "#082A18"
+tab_inactive = "#020E04"
+tab_hover = "#0C4024"
+close_hover = "#FF2040"
+
+[viewport]
+grid_line = "#0A3018"
+gizmo_x = "#FF4040"
+gizmo_y = "#00FF66"
+gizmo_z = "#4080FF"
+gizmo_selected = "#C0FF00"
+
+[material]
+canvas_bg = "#000400"
+grid_dot = "#082A18"
+node_bg = "#020E04"
+node_border = "#0A3318"
+node_selected_border = "#00FF66"
+connection = "#3A9050"
+connection_preview = "#C0FF00"
+selection_rect_fill = "#00FF6622"
+selection_rect_stroke = "#00FF66"

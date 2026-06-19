@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 15 Synthwave Sunset"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF2E97"
+success = "#2EE6C0"
+warning = "#FFB02E"
+error = "#FF3B3B"
+selection = "#5C1248"
+selection_stroke = "#FF2E97"
+
+[surfaces]
+window = "#0E0420"
+window_stroke = "#2E0E4A"
+panel = "#160830"
+popup = "#1C0C3E"
+overlay = "#060010B8"
+faint = "#120628"
+extreme = "#240F50"
+
+[text]
+primary = "#FCE4FF"
+secondary = "#C49AE0"
+muted = "#7A5A9E"
+heading = "#FF6AC2"
+disabled = "#4A3068"
+hyperlink = "#2EE6C0"
+
+[widgets]
+noninteractive_bg = "#240F50"
+noninteractive_fg = "#AE8CCC"
+inactive_bg = "#2E1462"
+inactive_fg = "#CCA8E4"
+hovered_bg = "#3C1C7A"
+hovered_fg = "#FCE4FF"
+active_bg = "#FF2E97"
+active_fg = "#FFFFFF"
+border = "#1A0A3A"
+border_light = "#3C1C7A"
+
+[panels]
+tree_line = "#48208C"
+drop_line = "#2EE6C0"
+drop_child_highlight = "#2EE6C040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#190A3C"
+inspector_row_odd = "#240F50"
+category_frame_bg = "#1C0C3E"
+item_bg = "#240F50"
+item_hover = "#321668"
+tab_active = "#321668"
+tab_inactive = "#160830"
+tab_hover = "#3C1C7A"
+close_hover = "#FF3B3B"
+
+[viewport]
+grid_line = "#FF2E9730"
+gizmo_x = "#FF5050"
+gizmo_y = "#2EE6A0"
+gizmo_z = "#5A8CFF"
+gizmo_selected = "#FFB02E"
+
+[material]
+canvas_bg = "#0A0318"
+grid_dot = "#2E1462"
+node_bg = "#190A3C"
+node_border = "#3C1C7A"
+node_selected_border = "#FF2E97"
+connection = "#AE8CCC"
+connection_preview = "#2EE6C0"
+selection_rect_fill = "#FF2E9722"
+selection_rect_stroke = "#FF2E97"

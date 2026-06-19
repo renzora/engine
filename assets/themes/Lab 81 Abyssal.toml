@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 81 Abyssal"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#1FA8C0"
+success = "#2AC8A8"
+warning = "#C0B040"
+error = "#E04A6A"
+selection = "#0A3A4A"
+selection_stroke = "#062832"
+
+[surfaces]
+window = "#020A10"
+window_stroke = "#0E2E3E"
+panel = "#04141E"
+popup = "#081E2A"
+overlay = "#000408C0"
+faint = "#031018"
+extreme = "#0A2632"
+
+[text]
+primary = "#C8E8F0"
+secondary = "#70A8B8"
+muted = "#386070"
+heading = "#40C0D8"
+disabled = "#244048"
+hyperlink = "#30B0D0"
+
+[widgets]
+noninteractive_bg = "#0A2632"
+noninteractive_fg = "#5A8A98"
+inactive_bg = "#0E303E"
+inactive_fg = "#70A8B8"
+hovered_bg = "#144450"
+hovered_fg = "#C8E8F0"
+active_bg = "#1FA8C0"
+active_fg = "#04141E"
+border = "#031018"
+border_light = "#0E2E3E"
+
+[panels]
+tree_line = "#164652"
+drop_line = "#1FA8C0"
+drop_child_highlight = "#1FA8C040"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#06181F"
+inspector_row_odd = "#0A2028"
+category_frame_bg = "#081E2A"
+item_bg = "#0A2028"
+item_hover = "#0E303E"
+tab_active = "#0E303E"
+tab_inactive = "#04141E"
+tab_hover = "#144450"
+close_hover = "#E04A6A"
+
+[viewport]
+grid_line = "#0E2C38"
+gizmo_x = "#E04A6A"
+gizmo_y = "#2AE0A8"
+gizmo_z = "#3A90E0"
+gizmo_selected = "#D0C040"
+
+[material]
+canvas_bg = "#01080E"
+grid_dot = "#0E303E"
+node_bg = "#04141E"
+node_border = "#0E2E3E"
+node_selected_border = "#1FA8C0"
+connection = "#5A8A98"
+connection_preview = "#D0C040"
+selection_rect_fill = "#1FA8C022"
+selection_rect_stroke = "#1FA8C0"

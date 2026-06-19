@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 52 Toxic Swamp"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#9ACD32"
+success = "#6FCF50"
+warning = "#D4D440"
+error = "#C84030"
+selection = "#4A6620"
+selection_stroke = "#33480F"
+
+[surfaces]
+window = "#0C1208"
+window_stroke = "#24331A"
+panel = "#121A0C"
+popup = "#182410"
+overlay = "#04100066"
+faint = "#0F160A"
+extreme = "#1E2C12"
+
+[text]
+primary = "#DCEFC0"
+secondary = "#A8C880"
+muted = "#5E7448"
+heading = "#C0E060"
+disabled = "#3A4A2A"
+hyperlink = "#B8E060"
+
+[widgets]
+noninteractive_bg = "#1E2C12"
+noninteractive_fg = "#88A060"
+inactive_bg = "#243318"
+inactive_fg = "#A8C880"
+hovered_bg = "#33481F"
+hovered_fg = "#DCEFC0"
+active_bg = "#9ACD32"
+active_fg = "#121A0C"
+border = "#0F160A"
+border_light = "#24331A"
+
+[panels]
+tree_line = "#3A5022"
+drop_line = "#9ACD32"
+drop_child_highlight = "#9ACD3240"
+row_odd_bg = "#FFFFFF06"
+inspector_row_even = "#16200E"
+inspector_row_odd = "#1C2A12"
+category_frame_bg = "#182410"
+item_bg = "#1C2A12"
+item_hover = "#24331A"
+tab_active = "#24331A"
+tab_inactive = "#121A0C"
+tab_hover = "#33481F"
+close_hover = "#C84030"
+
+[viewport]
+grid_line = "#2A3A1A"
+gizmo_x = "#FF5050"
+gizmo_y = "#7AFF50"
+gizmo_z = "#5080FF"
+gizmo_selected = "#E0FF40"
+
+[material]
+canvas_bg = "#0A1006"
+grid_dot = "#243318"
+node_bg = "#121A0C"
+node_border = "#24331A"
+node_selected_border = "#9ACD32"
+connection = "#88A060"
+connection_preview = "#E0FF40"
+selection_rect_fill = "#9ACD3222"
+selection_rect_stroke = "#9ACD32"

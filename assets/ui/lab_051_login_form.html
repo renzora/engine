@@ -1,0 +1,25 @@
+<!-- lab_051_login_form: centered account login card with field rows + remember toggle -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13F2" justify_content="center" align_items="center">
+        <node width="360px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="24px" row_gap="16px">
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="24" font_color="#FFFFFF">Sign In</text>
+                <text font_size="12" font_color="#7C8694">Welcome back to Renzora Online</text>
+            </node>
+            <node flex_direction="column" row_gap="8px">
+                <text font_size="12" font_color="#8A93A2">Email</text>
+                <node padding="11px 12px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="8px"><text font_size="13" font_color="#5A6370">you@example.com</text></node>
+            </node>
+            <node flex_direction="column" row_gap="8px">
+                <text font_size="12" font_color="#8A93A2">Password</text>
+                <node padding="11px 12px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="8px"><text font_size="13" font_color="#5A6370">••••••••</text></node>
+            </node>
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <button padding="4px 10px" background="#1B1F27" border_radius="999px" hover:background="#222A36" on_press="toggle_remember" justify_content="center"><text font_size="12" font_color="#A8B2C0">Remember me</text></button>
+                <button padding="4px 6px" background="#00000000" hover:background="#171B23" border_radius="6px" on_press="forgot_password" justify_content="center"><text font_size="12" font_color="#4C8BF5">Forgot?</text></button>
+            </node>
+            <button padding="13px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="submit_login" justify_content="center"><text font_size="14" font_color="#FFFFFF">Log In</text></button>
+            <button padding="13px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="create_account" justify_content="center"><text font_size="13" font_color="#A8B2C0">Create Account</text></button>
+        </node>
+    </node>
+</template>

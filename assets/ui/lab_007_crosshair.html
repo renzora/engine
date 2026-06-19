@@ -1,0 +1,11 @@
+<!-- Crosshair: screen-center cross built from four gap-spaced ticks plus a center dot -->
+<template>
+    <property name="color">#F2F5F7</property>
+    <node position="absolute" top="50%" left="50%" margin="-12px 0px 0px -12px" width="24px" height="24px" justify_content="center" align_items="center">
+        <node position="absolute" top="0px" left="11px" width="2px" height="8px" background="{color}" />
+        <node position="absolute" bottom="0px" left="11px" width="2px" height="8px" background="{color}" />
+        <node position="absolute" left="0px" top="11px" width="8px" height="2px" background="{color}" />
+        <node position="absolute" right="0px" top="11px" width="8px" height="2px" background="{color}" />
+        <node width="2px" height="2px" background="{color}" border_radius="999px" />
+    </node>
+</template>

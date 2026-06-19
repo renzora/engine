@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 01 Neon Abyss"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#00E5FF"
+success = "#3DDC84"
+warning = "#FFB300"
+error = "#FF4D6D"
+selection = "#0E5C9E"
+selection_stroke = "#00E5FF"
+
+[surfaces]
+window = "#05060A"
+window_stroke = "#1A2030"
+panel = "#0B0E16"
+popup = "#0E121C"
+overlay = "#000000B4"
+faint = "#080A12"
+extreme = "#12161F"
+
+[text]
+primary = "#E6F7FF"
+secondary = "#AEC6D6"
+muted = "#5E7180"
+heading = "#9FD8E8"
+disabled = "#3A4654"
+hyperlink = "#5AB7FF"
+
+[widgets]
+noninteractive_bg = "#12161F"
+noninteractive_fg = "#9FB2C0"
+inactive_bg = "#1A2230"
+inactive_fg = "#C4D4DE"
+hovered_bg = "#243140"
+hovered_fg = "#E6F7FF"
+active_bg = "#00E5FF"
+active_fg = "#04141A"
+border = "#0A0E14"
+border_light = "#1E2A38"
+
+[panels]
+tree_line = "#2A3848"
+drop_line = "#00E5FF"
+drop_child_highlight = "#00E5FF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#10141E"
+inspector_row_odd = "#141A26"
+category_frame_bg = "#0E121C"
+item_bg = "#141A26"
+item_hover = "#1E2A38"
+tab_active = "#1E2A38"
+tab_inactive = "#0B0E16"
+tab_hover = "#243140"
+close_hover = "#FF4D6D"
+
+[viewport]
+grid_line = "#26303C"
+gizmo_x = "#FF5050"
+gizmo_y = "#50FF50"
+gizmo_z = "#5080FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#070A10"
+grid_dot = "#1A2230"
+node_bg = "#10151F"
+node_border = "#1E2A38"
+node_selected_border = "#00E5FF"
+connection = "#9FB2C0"
+connection_preview = "#FFE000"
+selection_rect_fill = "#00E5FF22"
+selection_rect_stroke = "#00E5FF"

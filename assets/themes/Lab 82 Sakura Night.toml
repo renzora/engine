@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 82 Sakura Night"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF9AC4"
+success = "#6AD0B0"
+warning = "#E8C870"
+error = "#FF5A8A"
+selection = "#4A2842"
+selection_stroke = "#341C2E"
+
+[surfaces]
+window = "#0E0810"
+window_stroke = "#341E30"
+panel = "#160E18"
+popup = "#1E1422"
+overlay = "#04000898"
+faint = "#120A14"
+extreme = "#281A2A"
+
+[text]
+primary = "#F4DCEA"
+secondary = "#C090B0"
+muted = "#7A5070"
+heading = "#FF9AC4"
+disabled = "#4A3044"
+hyperlink = "#FF80B8"
+
+[widgets]
+noninteractive_bg = "#281A2A"
+noninteractive_fg = "#A07090"
+inactive_bg = "#302034"
+inactive_fg = "#C090B0"
+hovered_bg = "#422C46"
+hovered_fg = "#F4DCEA"
+active_bg = "#FF9AC4"
+active_fg = "#160E18"
+border = "#120A14"
+border_light = "#341E30"
+
+[panels]
+tree_line = "#442E48"
+drop_line = "#FF9AC4"
+drop_child_highlight = "#FF9AC440"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#1A101C"
+inspector_row_odd = "#201622"
+category_frame_bg = "#1E1422"
+item_bg = "#201622"
+item_hover = "#302034"
+tab_active = "#302034"
+tab_inactive = "#160E18"
+tab_hover = "#422C46"
+close_hover = "#FF5A8A"
+
+[viewport]
+grid_line = "#2A1C2E"
+gizmo_x = "#FF5A8A"
+gizmo_y = "#6AE0B0"
+gizmo_z = "#7A88FF"
+gizmo_selected = "#E8C840"
+
+[material]
+canvas_bg = "#0A060C"
+grid_dot = "#302034"
+node_bg = "#160E18"
+node_border = "#341E30"
+node_selected_border = "#FF9AC4"
+connection = "#A07090"
+connection_preview = "#E8C840"
+selection_rect_fill = "#FF9AC422"
+selection_rect_stroke = "#FF9AC4"

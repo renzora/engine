@@ -1,0 +1,29 @@
+<!-- Rhythm-game lane HUD: note lanes + combo + accuracy -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#08040F">
+        <node position="absolute" left="50%" top="0px" margin="-220px" width="440px" height="100%" flex_direction="row" column_gap="6px" justify_content="center">
+            <node width="100px" height="100%" background="#12081F" border="1px" border_color="#FF3CAC33">
+                <node position="absolute" top="120px" width="100px" height="40px" background="#FF3CAC" border_radius="6px" />
+            </node>
+            <node width="100px" height="100%" background="#12081F" border="1px" border_color="#2EE6FF33">
+                <node position="absolute" top="280px" width="100px" height="40px" background="#2EE6FF" border_radius="6px" />
+            </node>
+            <node width="100px" height="100%" background="#12081F" border="1px" border_color="#A0F06033">
+                <node position="absolute" top="60px" width="100px" height="40px" background="#A0F060" border_radius="6px" />
+            </node>
+            <node width="100px" height="100%" background="#12081F" border="1px" border_color="#FFC85733">
+                <node position="absolute" top="200px" width="100px" height="40px" background="#FFC857" border_radius="6px" />
+            </node>
+        </node>
+        <node position="absolute" left="50%" bottom="90px" margin="-220px" width="440px" height="10px" background="#FFFFFF" border_radius="5px" />
+        <node position="absolute" left="50%" top="40px" margin="-80px" width="160px" flex_direction="column" align_items="center" row_gap="4px">
+            <text font_size="44" font_color="#FFFFFF">348x</text>
+            <text font_size="16" font_color="#2EE6FF">PERFECT</text>
+        </node>
+        <node position="absolute" right="40px" top="40px" flex_direction="column" align_items="flex-end" row_gap="6px">
+            <text font_size="14" font_color="#9A86C8">ACCURACY</text>
+            <text font_size="32" font_color="#A0F060">98.4%</text>
+            <text font_size="14" font_color="#9A86C8">SCORE 1,204,880</text>
+        </node>
+    </node>
+</template>

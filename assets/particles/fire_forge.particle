@@ -34,5 +34,6 @@
     render_layer: 0,
     simulation_space: Local,
     simulation_condition: Always,
+    light: Some((color: (1.0, 0.55, 0.2), intensity: 140000.0, range: 8.0, flicker: 0.4, shadows: true)),
     variables: {},
 )

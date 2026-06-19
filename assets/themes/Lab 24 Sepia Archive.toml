@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 24 Sepia Archive"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#8A6A3A"
+success = "#7A8A4A"
+warning = "#B8902A"
+error = "#A8543C"
+selection = "#D8C2A0"
+selection_stroke = "#8A6A3A"
+
+[surfaces]
+window = "#EFE6D4"
+window_stroke = "#CBB896"
+panel = "#F4ECDC"
+popup = "#FAF4E8"
+overlay = "#2E241430"
+faint = "#E8DCC6"
+extreme = "#DECCAE"
+
+[text]
+primary = "#382C1A"
+secondary = "#665236"
+muted = "#988260"
+heading = "#6E4E26"
+disabled = "#BCA886"
+hyperlink = "#8A5E2A"
+
+[widgets]
+noninteractive_bg = "#E8DCC6"
+noninteractive_fg = "#6E5C3E"
+inactive_bg = "#E0D2B8"
+inactive_fg = "#4E3E26"
+hovered_bg = "#D6C4A2"
+hovered_fg = "#382C1A"
+active_bg = "#8A6A3A"
+active_fg = "#FAF4E8"
+border = "#CBB896"
+border_light = "#E0D2B8"
+
+[panels]
+tree_line = "#C8B48E"
+drop_line = "#8A6A3A"
+drop_child_highlight = "#8A6A3A40"
+row_odd_bg = "#382C1A08"
+inspector_row_even = "#EEE4D0"
+inspector_row_odd = "#E8DCC6"
+category_frame_bg = "#ECE2CE"
+item_bg = "#ECE2CE"
+item_hover = "#DECCAE"
+tab_active = "#FAF4E8"
+tab_inactive = "#E0D2B8"
+tab_hover = "#D6C4A2"
+close_hover = "#A8543C"
+
+[viewport]
+grid_line = "#CBB896"
+gizmo_x = "#A8543C"
+gizmo_y = "#7A8A4A"
+gizmo_z = "#4A6A9A"
+gizmo_selected = "#B8902A"
+
+[material]
+canvas_bg = "#E8DCC6"
+grid_dot = "#CBB896"
+node_bg = "#F4ECDC"
+node_border = "#CBB896"
+node_selected_border = "#8A6A3A"
+connection = "#6E5C3E"
+connection_preview = "#B8902A"
+selection_rect_fill = "#8A6A3A22"
+selection_rect_stroke = "#8A6A3A"

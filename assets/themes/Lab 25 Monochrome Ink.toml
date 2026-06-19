@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 25 Monochrome Ink"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E0E0E0"
+success = "#B8B8B8"
+warning = "#C8C8C8"
+error = "#FF6464"
+selection = "#3A3A3A"
+selection_stroke = "#E0E0E0"
+
+[surfaces]
+window = "#0A0A0A"
+window_stroke = "#262626"
+panel = "#121212"
+popup = "#181818"
+overlay = "#000000C0"
+faint = "#0E0E0E"
+extreme = "#1E1E1E"
+
+[text]
+primary = "#F0F0F0"
+secondary = "#B0B0B0"
+muted = "#6A6A6A"
+heading = "#FFFFFF"
+disabled = "#444444"
+hyperlink = "#C8C8C8"
+
+[widgets]
+noninteractive_bg = "#1E1E1E"
+noninteractive_fg = "#A8A8A8"
+inactive_bg = "#262626"
+inactive_fg = "#C8C8C8"
+hovered_bg = "#343434"
+hovered_fg = "#F0F0F0"
+active_bg = "#E0E0E0"
+active_fg = "#0A0A0A"
+border = "#1A1A1A"
+border_light = "#343434"
+
+[panels]
+tree_line = "#3A3A3A"
+drop_line = "#E0E0E0"
+drop_child_highlight = "#E0E0E040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#161616"
+inspector_row_odd = "#1E1E1E"
+category_frame_bg = "#181818"
+item_bg = "#1E1E1E"
+item_hover = "#2C2C2C"
+tab_active = "#2C2C2C"
+tab_inactive = "#121212"
+tab_hover = "#343434"
+close_hover = "#FF6464"
+
+[viewport]
+grid_line = "#2A2A2A"
+gizmo_x = "#FF6464"
+gizmo_y = "#64FF64"
+gizmo_z = "#6496FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#080808"
+grid_dot = "#262626"
+node_bg = "#161616"
+node_border = "#343434"
+node_selected_border = "#E0E0E0"
+connection = "#A8A8A8"
+connection_preview = "#FFE000"
+selection_rect_fill = "#E0E0E022"
+selection_rect_stroke = "#E0E0E0"

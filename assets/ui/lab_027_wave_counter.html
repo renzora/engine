@@ -1,0 +1,8 @@
+<!-- Wave counter: top-center survival readout showing current wave and enemies left -->
+<template>
+    <node position="absolute" top="90px" left="50%" margin="0px 0px 0px -80px" width="160px" flex_direction="column" align_items="center" row_gap="2px" padding="8px 0px 8px 0px" background="#10141AE6" border="1px" border_color="#252C36" border_radius="10px">
+        <text font_size="11" font_color="#8C97A6">WAVE</text>
+        <text font_size="26" font_color="#E74C3C">{{ Arena.wave }}</text>
+        <text font_size="11" font_color="#AEB6C2">{{ Arena.enemies_left }} left</text>
+    </node>
+</template>

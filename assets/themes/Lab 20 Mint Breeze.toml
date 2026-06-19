@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 20 Mint Breeze"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#16A789"
+success = "#3DB86A"
+warning = "#D8A416"
+error = "#E0524D"
+selection = "#B6EBDC"
+selection_stroke = "#16A789"
+
+[surfaces]
+window = "#EDF8F4"
+window_stroke = "#C6E4DA"
+panel = "#F5FCF9"
+popup = "#FFFFFF"
+overlay = "#0A2A2230"
+faint = "#E2F2EC"
+extreme = "#D4EDE3"
+
+[text]
+primary = "#103A30"
+secondary = "#356056"
+muted = "#6E948A"
+heading = "#0E7A60"
+disabled = "#A2C4BA"
+hyperlink = "#0E8A6E"
+
+[widgets]
+noninteractive_bg = "#E2F2EC"
+noninteractive_fg = "#46685E"
+inactive_bg = "#D8ECE4"
+inactive_fg = "#2A4C44"
+hovered_bg = "#C6E2D8"
+hovered_fg = "#103A30"
+active_bg = "#16A789"
+active_fg = "#F5FCF9"
+border = "#C6E4DA"
+border_light = "#D8ECE4"
+
+[panels]
+tree_line = "#B2D8CC"
+drop_line = "#16A789"
+drop_child_highlight = "#16A78940"
+row_odd_bg = "#103A3008"
+inspector_row_even = "#EFF8F4"
+inspector_row_odd = "#E2F2EC"
+category_frame_bg = "#EAF6F1"
+item_bg = "#EAF6F1"
+item_hover = "#D4EDE3"
+tab_active = "#FFFFFF"
+tab_inactive = "#D8ECE4"
+tab_hover = "#C6E2D8"
+close_hover = "#E0524D"
+
+[viewport]
+grid_line = "#C6E4DA"
+gizmo_x = "#E0524D"
+gizmo_y = "#3DB86A"
+gizmo_z = "#3D80E0"
+gizmo_selected = "#D8A416"
+
+[material]
+canvas_bg = "#E2F2EC"
+grid_dot = "#C6E4DA"
+node_bg = "#F5FCF9"
+node_border = "#C6E4DA"
+node_selected_border = "#16A789"
+connection = "#46685E"
+connection_preview = "#D8A416"
+selection_rect_fill = "#16A78922"
+selection_rect_stroke = "#16A789"

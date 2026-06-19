@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 57 Autumn Ember"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#D9742B"
+success = "#9AA830"
+warning = "#E0A82E"
+error = "#C0392B"
+selection = "#7A4420"
+selection_stroke = "#552E14"
+
+[surfaces]
+window = "#160F0A"
+window_stroke = "#3A281A"
+panel = "#1E150D"
+popup = "#281C12"
+overlay = "#10080090"
+faint = "#1A120B"
+extreme = "#2E2014"
+
+[text]
+primary = "#F2E0CC"
+secondary = "#CBA988"
+muted = "#8A6A4E"
+heading = "#E8A85A"
+disabled = "#544030"
+hyperlink = "#E0944A"
+
+[widgets]
+noninteractive_bg = "#2E2014"
+noninteractive_fg = "#B08A66"
+inactive_bg = "#36261A"
+inactive_fg = "#CBA988"
+hovered_bg = "#4A3320"
+hovered_fg = "#F2E0CC"
+active_bg = "#D9742B"
+active_fg = "#1E150D"
+border = "#1A120B"
+border_light = "#3A281A"
+
+[panels]
+tree_line = "#54381F"
+drop_line = "#D9742B"
+drop_child_highlight = "#D9742B40"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#221810"
+inspector_row_odd = "#2A1E14"
+category_frame_bg = "#281C12"
+item_bg = "#2A1E14"
+item_hover = "#36261A"
+tab_active = "#36261A"
+tab_inactive = "#1E150D"
+tab_hover = "#4A3320"
+close_hover = "#C0392B"
+
+[viewport]
+grid_line = "#3A2818"
+gizmo_x = "#E85A4A"
+gizmo_y = "#9AC83A"
+gizmo_z = "#5A8AE0"
+gizmo_selected = "#FFC850"
+
+[material]
+canvas_bg = "#120C07"
+grid_dot = "#36261A"
+node_bg = "#1E150D"
+node_border = "#3A281A"
+node_selected_border = "#D9742B"
+connection = "#B08A66"
+connection_preview = "#FFC850"
+selection_rect_fill = "#D9742B22"
+selection_rect_stroke = "#D9742B"

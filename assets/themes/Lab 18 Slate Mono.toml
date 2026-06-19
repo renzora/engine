@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 18 Slate Mono"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#7C8B9A"
+success = "#7FA888"
+warning = "#C4A45A"
+error = "#C47A7A"
+selection = "#3A4654"
+selection_stroke = "#7C8B9A"
+
+[surfaces]
+window = "#161A1F"
+window_stroke = "#2C333C"
+panel = "#1C2128"
+popup = "#22282F"
+overlay = "#0A0C0FB0"
+faint = "#191E24"
+extreme = "#2A313A"
+
+[text]
+primary = "#DDE3EA"
+secondary = "#A8B2BC"
+muted = "#66707A"
+heading = "#BCC6D0"
+disabled = "#454E58"
+hyperlink = "#8AA0B6"
+
+[widgets]
+noninteractive_bg = "#2A313A"
+noninteractive_fg = "#98A2AC"
+inactive_bg = "#323A44"
+inactive_fg = "#B8C2CC"
+hovered_bg = "#3E4852"
+hovered_fg = "#DDE3EA"
+active_bg = "#7C8B9A"
+active_fg = "#161A1F"
+border = "#222831"
+border_light = "#3E4852"
+
+[panels]
+tree_line = "#404A54"
+drop_line = "#7C8B9A"
+drop_child_highlight = "#7C8B9A40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#20262E"
+inspector_row_odd = "#2A313A"
+category_frame_bg = "#22282F"
+item_bg = "#2A313A"
+item_hover = "#363E48"
+tab_active = "#363E48"
+tab_inactive = "#1C2128"
+tab_hover = "#3E4852"
+close_hover = "#C47A7A"
+
+[viewport]
+grid_line = "#323A44"
+gizmo_x = "#C47A7A"
+gizmo_y = "#7FA888"
+gizmo_z = "#7C9ABA"
+gizmo_selected = "#C4A45A"
+
+[material]
+canvas_bg = "#14181D"
+grid_dot = "#323A44"
+node_bg = "#20262E"
+node_border = "#3E4852"
+node_selected_border = "#7C8B9A"
+connection = "#98A2AC"
+connection_preview = "#C4A45A"
+selection_rect_fill = "#7C8B9A22"
+selection_rect_stroke = "#7C8B9A"

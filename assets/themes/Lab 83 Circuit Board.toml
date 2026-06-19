@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 83 Circuit Board"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FFC83A"
+success = "#3AE07A"
+warning = "#FFD83A"
+error = "#FF5040"
+selection = "#0A3A24"
+selection_stroke = "#062818"
+
+[surfaces]
+window = "#03120A"
+window_stroke = "#0E3A24"
+panel = "#061C10"
+popup = "#0A2616"
+overlay = "#00100899"
+faint = "#04160C"
+extreme = "#0C3020"
+
+[text]
+primary = "#D0F0D8"
+secondary = "#7AB890"
+muted = "#406850"
+heading = "#FFC83A"
+disabled = "#284838"
+hyperlink = "#5AD088"
+
+[widgets]
+noninteractive_bg = "#0C3020"
+noninteractive_fg = "#609878"
+inactive_bg = "#103A28"
+inactive_fg = "#7AB890"
+hovered_bg = "#185038"
+hovered_fg = "#D0F0D8"
+active_bg = "#FFC83A"
+active_fg = "#061C10"
+border = "#04160C"
+border_light = "#0E3A24"
+
+[panels]
+tree_line = "#1A4E36"
+drop_line = "#FFC83A"
+drop_child_highlight = "#FFC83A40"
+row_odd_bg = "#FFC83A0A"
+inspector_row_even = "#081E12"
+inspector_row_odd = "#0C2818"
+category_frame_bg = "#0A2616"
+item_bg = "#0C2818"
+item_hover = "#103A28"
+tab_active = "#103A28"
+tab_inactive = "#061C10"
+tab_hover = "#185038"
+close_hover = "#FF5040"
+
+[viewport]
+grid_line = "#0E3422"
+gizmo_x = "#FF5040"
+gizmo_y = "#3AE07A"
+gizmo_z = "#4A90FF"
+gizmo_selected = "#FFC83A"
+
+[material]
+canvas_bg = "#020E08"
+grid_dot = "#103A28"
+node_bg = "#061C10"
+node_border = "#0E3A24"
+node_selected_border = "#FFC83A"
+connection = "#609878"
+connection_preview = "#FFD83A"
+selection_rect_fill = "#FFC83A22"
+selection_rect_stroke = "#FFC83A"

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 45 Plasma Storm"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#C04DFF"
+success = "#3DF0D0"
+warning = "#FFCA3D"
+error = "#FF4D9C"
+selection = "#3E1A5C"
+selection_stroke = "#C04DFF"
+
+[surfaces]
+window = "#0C0618"
+window_stroke = "#2E1850"
+panel = "#140A26"
+popup = "#1A0E32"
+overlay = "#040210C0"
+faint = "#100820"
+extreme = "#221442"
+
+[text]
+primary = "#F0E2FF"
+secondary = "#C2A6E8"
+muted = "#74589E"
+heading = "#D88AFF"
+disabled = "#4A3868"
+hyperlink = "#3DF0D0"
+
+[widgets]
+noninteractive_bg = "#221442"
+noninteractive_fg = "#AE90D4"
+inactive_bg = "#2C1A54"
+inactive_fg = "#CCB0E8"
+hovered_bg = "#3A2268"
+hovered_fg = "#F0E2FF"
+active_bg = "#C04DFF"
+active_fg = "#100620"
+border = "#1A0E36"
+border_light = "#3A2268"
+
+[panels]
+tree_line = "#46287E"
+drop_line = "#3DF0D0"
+drop_child_highlight = "#3DF0D040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#170C2E"
+inspector_row_odd = "#221442"
+category_frame_bg = "#1A0E32"
+item_bg = "#221442"
+item_hover = "#301C5C"
+tab_active = "#301C5C"
+tab_inactive = "#140A26"
+tab_hover = "#3A2268"
+close_hover = "#FF4D9C"
+
+[viewport]
+grid_line = "#C04DFF28"
+gizmo_x = "#FF4D9C"
+gizmo_y = "#3DF0A0"
+gizmo_z = "#6A8AFF"
+gizmo_selected = "#FFCA3D"
+
+[material]
+canvas_bg = "#080414"
+grid_dot = "#2C1A54"
+node_bg = "#170C2E"
+node_border = "#3A2268"
+node_selected_border = "#C04DFF"
+connection = "#AE90D4"
+connection_preview = "#3DF0D0"
+selection_rect_fill = "#C04DFF22"
+selection_rect_stroke = "#C04DFF"

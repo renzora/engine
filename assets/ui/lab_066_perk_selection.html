@@ -1,0 +1,27 @@
+<!-- lab_066_perk_selection: choose-one-of-three perk cards (level-up style) with confirm -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13F2" flex_direction="column" justify_content="center" align_items="center" row_gap="28px">
+        <node flex_direction="column" align_items="center" row_gap="6px">
+            <text font_size="14" font_color="#E5B567">CHOOSE A PERK</text>
+            <text font_size="13" font_color="#7C8694">Pick one to carry into the next floor</text>
+        </node>
+        <node flex_direction="row" column_gap="16px">
+            <button width="200px" flex_direction="column" row_gap="10px" padding="18px" background="#171B23" border="1px" border_color="#3A4250" border_radius="12px" hover:border_color="#4C8BF5" hover:background="#1F2530" on_press="pick_perk_berserk">
+                <node width="48px" height="48px" background="#1B1F27" border_radius="8px"></node>
+                <text font_size="15" font_color="#FFFFFF">Berserk</text>
+                <text font_size="12" font_color="#8A93A2">+25% damage below 50% HP.</text>
+            </button>
+            <button width="200px" flex_direction="column" row_gap="10px" padding="18px" background="#171B23" border="1px" border_color="#3A4250" border_radius="12px" hover:border_color="#4C8BF5" hover:background="#1F2530" on_press="pick_perk_vampiric">
+                <node width="48px" height="48px" background="#1B1F27" border_radius="8px"></node>
+                <text font_size="15" font_color="#FFFFFF">Vampiric</text>
+                <text font_size="12" font_color="#8A93A2">Heal 5% of damage dealt.</text>
+            </button>
+            <button width="200px" flex_direction="column" row_gap="10px" padding="18px" background="#171B23" border="1px" border_color="#3A4250" border_radius="12px" hover:border_color="#4C8BF5" hover:background="#1F2530" on_press="pick_perk_fleet">
+                <node width="48px" height="48px" background="#1B1F27" border_radius="8px"></node>
+                <text font_size="15" font_color="#FFFFFF">Fleet-Footed</text>
+                <text font_size="12" font_color="#8A93A2">+15% move &amp; dodge speed.</text>
+            </button>
+        </node>
+        <button padding="12px 28px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="confirm_perk" justify_content="center"><text font_size="14" font_color="#FFFFFF">Confirm</text></button>
+    </node>
+</template>

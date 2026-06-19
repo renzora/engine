@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 16 Terminal Amber"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FFB000"
+success = "#C0D000"
+warning = "#FFD000"
+error = "#FF5A2A"
+selection = "#4A3000"
+selection_stroke = "#FFB000"
+
+[surfaces]
+window = "#0A0600"
+window_stroke = "#2A1C00"
+panel = "#100A02"
+popup = "#150D02"
+overlay = "#000000C8"
+faint = "#0C0801"
+extreme = "#1C1304"
+
+[text]
+primary = "#FFD98A"
+secondary = "#D6A84A"
+muted = "#806020"
+heading = "#FFB000"
+disabled = "#4E3A14"
+hyperlink = "#FFC84A"
+
+[widgets]
+noninteractive_bg = "#1C1304"
+noninteractive_fg = "#C09838"
+inactive_bg = "#241906"
+inactive_fg = "#E0B454"
+hovered_bg = "#34240A"
+hovered_fg = "#FFD98A"
+active_bg = "#FFB000"
+active_fg = "#0A0600"
+border = "#140D02"
+border_light = "#32230A"
+
+[panels]
+tree_line = "#3E2C0C"
+drop_line = "#FFB000"
+drop_child_highlight = "#FFB00040"
+row_odd_bg = "#FFB00008"
+inspector_row_even = "#140E03"
+inspector_row_odd = "#1C1304"
+category_frame_bg = "#150D02"
+item_bg = "#1C1304"
+item_hover = "#2A1D08"
+tab_active = "#2A1D08"
+tab_inactive = "#100A02"
+tab_hover = "#34240A"
+close_hover = "#FF5A2A"
+
+[viewport]
+grid_line = "#32230A"
+gizmo_x = "#FF5A2A"
+gizmo_y = "#C0D000"
+gizmo_z = "#5A8CFF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#080500"
+grid_dot = "#241906"
+node_bg = "#140E03"
+node_border = "#32230A"
+node_selected_border = "#FFB000"
+connection = "#C09838"
+connection_preview = "#FFD000"
+selection_rect_fill = "#FFB00022"
+selection_rect_stroke = "#FFB000"

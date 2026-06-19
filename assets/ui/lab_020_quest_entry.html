@@ -1,0 +1,18 @@
+<!-- Quest entry: list row with a level badge, title, giver sub-line and reward pill -->
+<template>
+    <property name="title">Smoke on the Ridge</property>
+    <property name="giver">Captain Ros</property>
+    <property name="level">12</property>
+    <node flex_direction="row" align_items="center" column_gap="12px" width="340px" padding="10px 12px 10px 12px" background="#10141A" border="1px" border_color="#252C36" border_radius="8px">
+        <node width="34px" height="34px" justify_content="center" align_items="center" background="#1B2129" border_radius="6px" flex_shrink="0">
+            <text font_size="13" font_color="#FFD24A">{level}</text>
+        </node>
+        <node flex_direction="column" row_gap="2px" flex_grow="1">
+            <text font_size="14" font_color="#FFFFFF">{title}</text>
+            <text font_size="11" font_color="#8C97A6">{giver}</text>
+        </node>
+        <node padding="3px 8px 3px 8px" background="#1A1606" border_radius="999px" flex_shrink="0">
+            <text font_size="11" font_color="#FFD24A">+150 XP</text>
+        </node>
+    </node>
+</template>

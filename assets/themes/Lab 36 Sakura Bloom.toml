@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 36 Sakura Bloom"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E86A9C"
+success = "#6AB88A"
+warning = "#E0A84A"
+error = "#E0556B"
+selection = "#F6D0DE"
+selection_stroke = "#E86A9C"
+
+[surfaces]
+window = "#FDF4F6"
+window_stroke = "#ECCDD8"
+panel = "#FFF9FB"
+popup = "#FFFFFF"
+overlay = "#3A202830"
+faint = "#F8E8EE"
+extreme = "#F2D8E0"
+
+[text]
+primary = "#4A2C38"
+secondary = "#7A5260"
+muted = "#A8848E"
+heading = "#C04A78"
+disabled = "#CCAAB4"
+hyperlink = "#B05088"
+
+[widgets]
+noninteractive_bg = "#F8E8EE"
+noninteractive_fg = "#8A5E6C"
+inactive_bg = "#F2DCE4"
+inactive_fg = "#5E3C48"
+hovered_bg = "#EECAD6"
+hovered_fg = "#4A2C38"
+active_bg = "#E86A9C"
+active_fg = "#FFFFFF"
+border = "#ECCDD8"
+border_light = "#F2DCE4"
+
+[panels]
+tree_line = "#E8BECC"
+drop_line = "#E86A9C"
+drop_child_highlight = "#E86A9C40"
+row_odd_bg = "#4A2C3808"
+inspector_row_even = "#FCF2F6"
+inspector_row_odd = "#F8E8EE"
+category_frame_bg = "#FBEEF2"
+item_bg = "#FBEEF2"
+item_hover = "#F2D8E0"
+tab_active = "#FFFFFF"
+tab_inactive = "#F2DCE4"
+tab_hover = "#EECAD6"
+close_hover = "#E0556B"
+
+[viewport]
+grid_line = "#ECCDD8"
+gizmo_x = "#E0556B"
+gizmo_y = "#5AA878"
+gizmo_z = "#5A82E0"
+gizmo_selected = "#E0A84A"
+
+[material]
+canvas_bg = "#F8E8EE"
+grid_dot = "#ECCDD8"
+node_bg = "#FFF9FB"
+node_border = "#ECCDD8"
+node_selected_border = "#E86A9C"
+connection = "#8A5E6C"
+connection_preview = "#E0A84A"
+selection_rect_fill = "#E86A9C22"
+selection_rect_stroke = "#E86A9C"

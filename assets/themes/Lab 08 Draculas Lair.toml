@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 08 Draculas Lair"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#BD93F9"
+success = "#50FA7B"
+warning = "#F1FA8C"
+error = "#FF5555"
+selection = "#44475A"
+selection_stroke = "#BD93F9"
+
+[surfaces]
+window = "#1A1B26"
+window_stroke = "#343746"
+panel = "#282A36"
+popup = "#21222C"
+overlay = "#0E0F16B0"
+faint = "#22232E"
+extreme = "#343746"
+
+[text]
+primary = "#F8F8F2"
+secondary = "#C8CADA"
+muted = "#6272A4"
+heading = "#FF79C6"
+disabled = "#4A4D60"
+hyperlink = "#8BE9FD"
+
+[widgets]
+noninteractive_bg = "#343746"
+noninteractive_fg = "#BCC0D4"
+inactive_bg = "#3C3F52"
+inactive_fg = "#D8DAE8"
+hovered_bg = "#44475A"
+hovered_fg = "#F8F8F2"
+active_bg = "#BD93F9"
+active_fg = "#1A1B26"
+border = "#282A36"
+border_light = "#44475A"
+
+[panels]
+tree_line = "#4A4D63"
+drop_line = "#BD93F9"
+drop_child_highlight = "#BD93F940"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#2C2E3B"
+inspector_row_odd = "#343746"
+category_frame_bg = "#21222C"
+item_bg = "#343746"
+item_hover = "#3E4152"
+tab_active = "#3E4152"
+tab_inactive = "#282A36"
+tab_hover = "#44475A"
+close_hover = "#FF5555"
+
+[viewport]
+grid_line = "#3C3F52"
+gizmo_x = "#FF5555"
+gizmo_y = "#50FA7B"
+gizmo_z = "#6DA8FF"
+gizmo_selected = "#F1FA8C"
+
+[material]
+canvas_bg = "#191A24"
+grid_dot = "#343746"
+node_bg = "#2C2E3B"
+node_border = "#44475A"
+node_selected_border = "#BD93F9"
+connection = "#BCC0D4"
+connection_preview = "#F1FA8C"
+selection_rect_fill = "#BD93F922"
+selection_rect_stroke = "#BD93F9"

@@ -35,5 +35,6 @@
     noise_amplitude: 2.0,
     noise_octaves: 2,
     noise_lacunarity: 2.0,
+    light: Some((color: (1.0, 0.55, 0.25), intensity: 600000.0, range: 18.0, flicker: 0.0, shadows: false)),
     variables: {},
 )

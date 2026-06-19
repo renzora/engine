@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 13 Cotton Candy"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF7EB6"
+success = "#5FD0A8"
+warning = "#FFC36B"
+error = "#FF5C8A"
+selection = "#FFD6E8"
+selection_stroke = "#FF7EB6"
+
+[surfaces]
+window = "#FFF4FA"
+window_stroke = "#F2CEDF"
+panel = "#FFFAFD"
+popup = "#FFFFFF"
+overlay = "#5A2A4030"
+faint = "#FCEAF3"
+extreme = "#F8DCEC"
+
+[text]
+primary = "#5A2A45"
+secondary = "#8A5A72"
+muted = "#B58CA0"
+heading = "#D44E86"
+disabled = "#D4AEC0"
+hyperlink = "#C24A8C"
+
+[widgets]
+noninteractive_bg = "#FCEAF3"
+noninteractive_fg = "#9A6A82"
+inactive_bg = "#FADCEC"
+inactive_fg = "#7A4A62"
+hovered_bg = "#F6CADE"
+hovered_fg = "#5A2A45"
+active_bg = "#FF7EB6"
+active_fg = "#FFFFFF"
+border = "#F2CEDF"
+border_light = "#FADCEC"
+
+[panels]
+tree_line = "#EEBAD2"
+drop_line = "#FF7EB6"
+drop_child_highlight = "#FF7EB640"
+row_odd_bg = "#5A2A4008"
+inspector_row_even = "#FFF6FB"
+inspector_row_odd = "#FCEAF3"
+category_frame_bg = "#FDF0F6"
+item_bg = "#FDF0F6"
+item_hover = "#F8DCEC"
+tab_active = "#FFFFFF"
+tab_inactive = "#FADCEC"
+tab_hover = "#F6CADE"
+close_hover = "#FF5C8A"
+
+[viewport]
+grid_line = "#F2CEDF"
+gizmo_x = "#E8455C"
+gizmo_y = "#3DB87A"
+gizmo_z = "#4A86E8"
+gizmo_selected = "#F0A020"
+
+[material]
+canvas_bg = "#FCEAF3"
+grid_dot = "#F2CEDF"
+node_bg = "#FFFAFD"
+node_border = "#F2CEDF"
+node_selected_border = "#FF7EB6"
+connection = "#9A6A82"
+connection_preview = "#F0A020"
+selection_rect_fill = "#FF7EB622"
+selection_rect_stroke = "#FF7EB6"

@@ -1,0 +1,23 @@
+<!-- lab_055_options_graphics: graphics options with preset row + quality dropdown-style rows -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="600px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <text font_size="20" font_color="#FFFFFF">Graphics</text>
+            <node flex_direction="row" column_gap="8px">
+                <button flex_grow="1" padding="10px" background="#1B1F27" border_radius="8px" hover:background="#222A36" on_press="preset_low" justify_content="center"><text font_size="13" font_color="#A8B2C0">Low</text></button>
+                <button flex_grow="1" padding="10px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="preset_high" justify_content="center"><text font_size="13" font_color="#FFFFFF">High</text></button>
+                <button flex_grow="1" padding="10px" background="#1B1F27" border_radius="8px" hover:background="#222A36" on_press="preset_ultra" justify_content="center"><text font_size="13" font_color="#A8B2C0">Ultra</text></button>
+            </node>
+            <node flex_direction="column" row_gap="10px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Resolution</text><button padding="5px 12px" background="#1B1F27" border_radius="6px" hover:background="#222A36" on_press="cycle_resolution" justify_content="center"><text font_size="12" font_color="#A8B2C0">2560×1440</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Shadow Quality</text><button padding="5px 12px" background="#1B1F27" border_radius="6px" hover:background="#222A36" on_press="cycle_shadows" justify_content="center"><text font_size="12" font_color="#A8B2C0">High</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">Anti-Aliasing</text><button padding="5px 12px" background="#1B1F27" border_radius="6px" hover:background="#222A36" on_press="cycle_aa" justify_content="center"><text font_size="12" font_color="#A8B2C0">TAA</text></button></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">VSync</text><button padding="5px 14px" background="#2E7D5B" border_radius="999px" hover:background="#379268" on_press="toggle_vsync" justify_content="center"><text font_size="12" font_color="#FFFFFF">On</text></button></node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="cancel_graphics" justify_content="center"><text font_size="13" font_color="#A8B2C0">Cancel</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="apply_graphics" justify_content="center"><text font_size="13" font_color="#FFFFFF">Apply</text></button>
+            </node>
+        </node>
+    </node>
+</template>

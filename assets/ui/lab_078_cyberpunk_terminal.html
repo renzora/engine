@@ -1,0 +1,24 @@
+<!-- Cyberpunk terminal: ICE breaker / netrunner console -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#050A08" flex_direction="row">
+        <node width="64%" height="100%" padding="24px" flex_direction="column" row_gap="6px">
+            <text font_size="16" font_color="#00FF9C">root@nightcity:~# breach --target ARASAKA_ICE</text>
+            <text font_size="14" font_color="#00B86F">[*] handshake established ........ OK</text>
+            <text font_size="14" font_color="#00B86F">[*] enumerating daemons ......... 14 found</text>
+            <text font_size="14" font_color="#FFB000">[!] black ICE detected: SENTINEL-7</text>
+            <text font_size="14" font_color="#00B86F">[*] injecting payload 0xDEADBEEF ..</text>
+            <text font_size="14" font_color="#FF3355">[x] trace started: 38s remaining</text>
+            <text font_size="14" font_color="#00FF9C">> deploy mask.exe --quiet</text>
+            <node height="1px" background="#0E3A28" margin="8px" />
+            <node template="ui/components/line_chart.html" width="100%" height="120px" color="#00FF9C" />
+        </node>
+        <node width="36%" height="100%" background="#08120E" border="1px" border_color="#0E3A28" padding="20px" flex_direction="column" row_gap="14px">
+            <text font_size="15" font_color="#00FF9C">TRACE TIMER</text>
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="38" min="0" max="60" start="135" sweep="270" color="#FF3355" track="#1A0A0E" thickness="14" readout="38" unit="S" readsize="30" />
+            <node height="1px" background="#0E3A28" />
+            <text font_size="13" font_color="#FFB000">RAM 6/8 SLOTS</text>
+            <text font_size="13" font_color="#00B86F">FIREWALL: BYPASSED</text>
+            <button background="#0E3A28" border_radius="8px" padding="10px" hover:background="#155038"><text font_size="14" font_color="#00FF9C">JACK OUT</text></button>
+        </node>
+    </node>
+</template>

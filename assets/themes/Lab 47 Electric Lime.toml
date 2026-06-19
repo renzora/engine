@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 47 Electric Lime"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#C6FF00"
+success = "#00FFB0"
+warning = "#FFE000"
+error = "#FF2D6A"
+selection = "#2A3A00"
+selection_stroke = "#C6FF00"
+
+[surfaces]
+window = "#080A02"
+window_stroke = "#243006"
+panel = "#0E1204"
+popup = "#121806"
+overlay = "#020400C8"
+faint = "#0A0E03"
+extreme = "#181E08"
+
+[text]
+primary = "#EEF7D2"
+secondary = "#B4C880"
+muted = "#647440"
+heading = "#C6FF00"
+disabled = "#3E4A22"
+hyperlink = "#00FFB0"
+
+[widgets]
+noninteractive_bg = "#181E08"
+noninteractive_fg = "#A4B868"
+inactive_bg = "#20280C"
+inactive_fg = "#C2D488"
+hovered_bg = "#2C3812"
+hovered_fg = "#EEF7D2"
+active_bg = "#C6FF00"
+active_fg = "#080A02"
+border = "#141A06"
+border_light = "#2C3812"
+
+[panels]
+tree_line = "#36461A"
+drop_line = "#C6FF00"
+drop_child_highlight = "#C6FF0040"
+row_odd_bg = "#C6FF0008"
+inspector_row_even = "#101604"
+inspector_row_odd = "#181E08"
+category_frame_bg = "#121806"
+item_bg = "#181E08"
+item_hover = "#262E10"
+tab_active = "#262E10"
+tab_inactive = "#0E1204"
+tab_hover = "#2C3812"
+close_hover = "#FF2D6A"
+
+[viewport]
+grid_line = "#262E10"
+gizmo_x = "#FF2D6A"
+gizmo_y = "#C6FF00"
+gizmo_z = "#3D8CFF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#060800"
+grid_dot = "#20280C"
+node_bg = "#101604"
+node_border = "#2C3812"
+node_selected_border = "#C6FF00"
+connection = "#A4B868"
+connection_preview = "#00FFB0"
+selection_rect_fill = "#C6FF0022"
+selection_rect_stroke = "#C6FF00"

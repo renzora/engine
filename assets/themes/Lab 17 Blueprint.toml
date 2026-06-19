@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 17 Blueprint"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#4AA3FF"
+success = "#5CE0B0"
+warning = "#FFD24A"
+error = "#FF6B6B"
+selection = "#103A66"
+selection_stroke = "#4AA3FF"
+
+[surfaces]
+window = "#0A2444"
+window_stroke = "#1C4470"
+panel = "#0E2C50"
+popup = "#123458"
+overlay = "#04122490"
+faint = "#0C2848"
+extreme = "#163C64"
+
+[text]
+primary = "#E0EEFF"
+secondary = "#A8C6E8"
+muted = "#5E80A0"
+heading = "#9FCBFF"
+disabled = "#3E5A78"
+hyperlink = "#6AB6FF"
+
+[widgets]
+noninteractive_bg = "#163C64"
+noninteractive_fg = "#98B6D6"
+inactive_bg = "#1C4470"
+inactive_fg = "#B8D2EC"
+hovered_bg = "#245282"
+hovered_fg = "#E0EEFF"
+active_bg = "#4AA3FF"
+active_fg = "#0A2444"
+border = "#0E3056"
+border_light = "#245282"
+
+[panels]
+tree_line = "#2E5C8C"
+drop_line = "#4AA3FF"
+drop_child_highlight = "#4AA3FF40"
+row_odd_bg = "#FFFFFF0A"
+inspector_row_even = "#11305A"
+inspector_row_odd = "#163C64"
+category_frame_bg = "#123458"
+item_bg = "#163C64"
+item_hover = "#204A78"
+tab_active = "#204A78"
+tab_inactive = "#0E2C50"
+tab_hover = "#245282"
+close_hover = "#FF6B6B"
+
+[viewport]
+grid_line = "#4AA3FF40"
+gizmo_x = "#FF6B6B"
+gizmo_y = "#5CE08A"
+gizmo_z = "#4AA3FF"
+gizmo_selected = "#FFD24A"
+
+[material]
+canvas_bg = "#0A2240"
+grid_dot = "#4AA3FF30"
+node_bg = "#11305A"
+node_border = "#245282"
+node_selected_border = "#4AA3FF"
+connection = "#98B6D6"
+connection_preview = "#FFD24A"
+selection_rect_fill = "#4AA3FF22"
+selection_rect_stroke = "#4AA3FF"

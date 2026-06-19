@@ -1,0 +1,25 @@
+<!-- Weather station dashboard: temp/wind/humidity gauges + forecast -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0A1420" flex_direction="column" padding="24px" row_gap="18px">
+        <node flex_direction="row" justify_content="space-between" align_items="center">
+            <text font_size="24" font_color="#7FD6FF">RIDGEVIEW STATION</text>
+            <text font_size="14" font_color="#5A8AA8">06:42 // PARTLY CLOUDY</text>
+        </node>
+        <node flex_direction="row" column_gap="18px">
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="21" min="-20" max="50" start="135" sweep="270" color="#FFB347" track="#1A2435" thickness="14" readout="21" unit="C" readsize="30" />
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="64" min="0" max="100" start="135" sweep="270" color="#5BD3FF" track="#1A2435" thickness="14" readout="64" unit="%" readsize="30" />
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="18" min="0" max="80" start="135" sweep="270" color="#A0F060" track="#1A2435" thickness="14" readout="18" unit="KMH" readsize="26" />
+        </node>
+        <node flex_direction="row" column_gap="34px" padding="6px">
+            <text font_size="14" font_color="#FFB347">TEMP 21C</text>
+            <text font_size="14" font_color="#5BD3FF">HUMIDITY 64%</text>
+            <text font_size="14" font_color="#A0F060">WIND 18 NW</text>
+        </node>
+        <node flex_direction="row" column_gap="12px">
+            <node width="100px" height="120px" background="#0E1C2A" border_radius="10px" padding="12px" flex_direction="column" align_items="center" row_gap="8px"><text font_size="13" font_color="#5A8AA8">MON</text><node width="40px" height="40px" border_radius="20px" background="#FFB347" /><text font_size="14" font_color="#E8F0F5">23</text></node>
+            <node width="100px" height="120px" background="#0E1C2A" border_radius="10px" padding="12px" flex_direction="column" align_items="center" row_gap="8px"><text font_size="13" font_color="#5A8AA8">TUE</text><node width="40px" height="40px" border_radius="20px" background="#7FA8C0" /><text font_size="14" font_color="#E8F0F5">19</text></node>
+            <node width="100px" height="120px" background="#0E1C2A" border_radius="10px" padding="12px" flex_direction="column" align_items="center" row_gap="8px"><text font_size="13" font_color="#5A8AA8">WED</text><node width="40px" height="40px" border_radius="20px" background="#5BD3FF" /><text font_size="14" font_color="#E8F0F5">16</text></node>
+            <node width="100px" height="120px" background="#0E1C2A" border_radius="10px" padding="12px" flex_direction="column" align_items="center" row_gap="8px"><text font_size="13" font_color="#5A8AA8">THU</text><node width="40px" height="40px" border_radius="20px" background="#FFB347" /><text font_size="14" font_color="#E8F0F5">24</text></node>
+        </node>
+    </node>
+</template>

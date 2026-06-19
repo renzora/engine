@@ -1,0 +1,22 @@
+<!-- lab_058_save_slots: pause:save-slots list with thumbnail + meta per slot + empty slot -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="560px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <text font_size="20" font_color="#FFFFFF">Save Game</text>
+            <node flex_direction="column" row_gap="10px">
+                <button flex_direction="row" align_items="center" column_gap="14px" padding="12px" background="#171B23" border_radius="10px" hover:background="#1F2530" on_press="save_slot_1" justify_content="flex_start">
+                    <node width="80px" height="48px" background="#0F151C" border="1px" border_color="#3A4250" border_radius="6px" flex_shrink="0"></node>
+                    <node flex_direction="column" row_gap="4px"><text font_size="13" font_color="#FFFFFF">Slot 1 — Drelmoor</text><text font_size="11" font_color="#7C8694">Lv 18 · 12h 04m · 2 days ago</text></node>
+                </button>
+                <button flex_direction="row" align_items="center" column_gap="14px" padding="12px" background="#171B23" border_radius="10px" hover:background="#1F2530" on_press="save_slot_2" justify_content="flex_start">
+                    <node width="80px" height="48px" background="#0F151C" border="1px" border_color="#3A4250" border_radius="6px" flex_shrink="0"></node>
+                    <node flex_direction="column" row_gap="4px"><text font_size="13" font_color="#FFFFFF">Slot 2 — Frostvale</text><text font_size="11" font_color="#7C8694">Lv 12 · 6h 41m · 5 days ago</text></node>
+                </button>
+                <button flex_direction="row" align_items="center" justify_content="center" padding="20px" background="#0F151C" border="1px" border_color="#2C3340" border_radius="10px" hover:background="#171B23" on_press="save_slot_empty"><text font_size="13" font_color="#7C8694">+ Empty Slot</text></button>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="cancel_save" justify_content="center"><text font_size="13" font_color="#A8B2C0">Cancel</text></button>
+            </node>
+        </node>
+    </node>
+</template>

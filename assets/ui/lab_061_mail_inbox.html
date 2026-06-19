@@ -1,0 +1,26 @@
+<!-- lab_061_mail_inbox: message list (left, unread dot) + reading pane (right) with claim-attachment -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="760px" height="460px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <text font_size="20" font_color="#FFFFFF">Mailbox</text>
+            <node flex_direction="row" column_gap="16px" flex_grow="1">
+                <node width="260px" flex_direction="column" row_gap="6px">
+                    <button flex_direction="row" justify_content="space_between" align_items="center" padding="11px 12px" background="#222A36" border="1px" border_color="#4C8BF5" border_radius="8px" hover:background="#28323F" on_press="open_mail_reward"><text font_size="13" font_color="#FFFFFF">Season Reward</text><text font_size="11" font_color="#4C8BF5">●</text></button>
+                    <button flex_direction="row" justify_content="space_between" align_items="center" padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="open_mail_guild"><text font_size="13" font_color="#A8B2C0">Guild Notice</text><text font_size="11" font_color="#7C8694"></text></button>
+                    <button flex_direction="row" justify_content="space_between" align_items="center" padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="open_mail_friend"><text font_size="13" font_color="#A8B2C0">From Borin</text><text font_size="11" font_color="#7C8694"></text></button>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="12px" padding="16px" background="#171B23" border_radius="10px">
+                    <text font_size="16" font_color="#FFFFFF">Season Reward</text>
+                    <text font_size="12" font_color="#7C8694">System · expires in 6 days</text>
+                    <text font_size="13" font_color="#C7D0DA">Congratulations on reaching Gold rank this season. Your rewards are attached below.</text>
+                    <node flex_direction="row" align_items="center" column_gap="10px" padding="10px 12px" background="#12161E" border="1px" border_color="#E5B567" border_radius="8px"><node width="36px" height="36px" background="#1B1F27" border_radius="6px"></node><text font_size="13" font_color="#E5B567">Gilded Chest ×1</text></node>
+                    <button padding="11px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="claim_attachment" justify_content="center"><text font_size="13" font_color="#FFFFFF">Claim</text></button>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="delete_mail" justify_content="center"><text font_size="13" font_color="#E06C75">Delete</text></button>
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="close_mailbox" justify_content="center"><text font_size="13" font_color="#A8B2C0">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

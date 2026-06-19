@@ -1,0 +1,14 @@
+<!-- Interaction prompt: centered actionable button with a keycap and verb, fires interact -->
+<template>
+    <property name="key">F</property>
+    <property name="verb">Pick up</property>
+    <property name="target">Health Kit</property>
+    <node position="absolute" bottom="150px" left="50%" margin="0px 0px 0px -110px">
+        <button flex_direction="row" align_items="center" column_gap="10px" padding="8px 16px 8px 10px" background="#12161CE6" border="1px" border_color="#3A4452" border_radius="8px" on_press="interact" hover:border_color="#4C8BF5" hover:background="#1B2433" delay="0.12s" ease="cubic_out">
+            <node min_width="28px" height="28px" justify_content="center" align_items="center" padding="0px 6px 0px 6px" background="#1B2129" border="2px" border_color="#3A4452" border_radius="5px">
+                <text font_size="14" font_color="#FFFFFF">{key}</text>
+            </node>
+            <text font_size="14" font_color="#E4E9EF">{verb} {target}</text>
+        </button>
+    </node>
+</template>

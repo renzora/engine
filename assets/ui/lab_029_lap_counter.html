@@ -1,0 +1,11 @@
+<!-- Lap counter: top-left racing panel with lap progress and last-lap time -->
+<template>
+    <node position="absolute" top="16px" left="16px" flex_direction="column" row_gap="4px" padding="10px 14px 10px 14px" background="#10141AE6" border="1px" border_color="#252C36" border_radius="10px">
+        <node flex_direction="row" align_items="flex_end" column_gap="6px">
+            <text font_size="11" font_color="#8C97A6">LAP</text>
+            <text font_size="22" font_color="#FFFFFF">{{ Race.lap }}</text>
+            <text font_size="13" font_color="#6B7480">/ {{ Race.total_laps }}</text>
+        </node>
+        <text font_size="12" font_color="#37C871">LAST {{ Race.last_lap }}</text>
+    </node>
+</template>

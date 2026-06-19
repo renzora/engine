@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 94 Colorblind Safe"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#0072B2"
+success = "#009E73"
+warning = "#E69F00"
+error = "#D55E00"
+selection = "#1A3A52"
+selection_stroke = "#102838"
+
+[surfaces]
+window = "#0E1418"
+window_stroke = "#2A3640"
+panel = "#141C22"
+popup = "#1C262E"
+overlay = "#04080A99"
+faint = "#11181D"
+extreme = "#222E38"
+
+[text]
+primary = "#F0F2F4"
+secondary = "#B0BAC0"
+muted = "#6E7A82"
+heading = "#56B4E9"
+disabled = "#444E56"
+hyperlink = "#56B4E9"
+
+[widgets]
+noninteractive_bg = "#222E38"
+noninteractive_fg = "#94A0A8"
+inactive_bg = "#283640"
+inactive_fg = "#B0BAC0"
+hovered_bg = "#364654"
+hovered_fg = "#F0F2F4"
+active_bg = "#0072B2"
+active_fg = "#F0F2F4"
+border = "#11181D"
+border_light = "#2A3640"
+
+[panels]
+tree_line = "#3A4A56"
+drop_line = "#0072B2"
+drop_child_highlight = "#0072B240"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#18202680"
+inspector_row_odd = "#1E282E"
+category_frame_bg = "#1C262E"
+item_bg = "#1E282E"
+item_hover = "#283640"
+tab_active = "#283640"
+tab_inactive = "#141C22"
+tab_hover = "#364654"
+close_hover = "#D55E00"
+
+[viewport]
+grid_line = "#283640"
+gizmo_x = "#D55E00"
+gizmo_y = "#009E73"
+gizmo_z = "#0072B2"
+gizmo_selected = "#F0E442"
+
+[material]
+canvas_bg = "#0A1014"
+grid_dot = "#283640"
+node_bg = "#141C22"
+node_border = "#2A3640"
+node_selected_border = "#0072B2"
+connection = "#94A0A8"
+connection_preview = "#F0E442"
+selection_rect_fill = "#0072B222"
+selection_rect_stroke = "#0072B2"

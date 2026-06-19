@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 96 Royal Jelly"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FFB81A"
+success = "#8AC830"
+warning = "#FFD040"
+error = "#D0306A"
+selection = "#3A2470"
+selection_stroke = "#28184E"
+
+[surfaces]
+window = "#0C0820"
+window_stroke = "#2E2060"
+panel = "#13102E"
+popup = "#1B163E"
+overlay = "#04001098"
+faint = "#0F0B26"
+extreme = "#221C50"
+
+[text]
+primary = "#F4ECC8"
+secondary = "#BCB0E0"
+muted = "#6E6498"
+heading = "#FFC83A"
+disabled = "#42386E"
+hyperlink = "#C0A8FF"
+
+[widgets]
+noninteractive_bg = "#221C50"
+noninteractive_fg = "#9088C0"
+inactive_bg = "#2A2460"
+inactive_fg = "#BCB0E0"
+hovered_bg = "#383078"
+hovered_fg = "#F4ECC8"
+active_bg = "#FFB81A"
+active_fg = "#13102E"
+border = "#0F0B26"
+border_light = "#2E2060"
+
+[panels]
+tree_line = "#3E347E"
+drop_line = "#FFB81A"
+drop_child_highlight = "#FFB81A40"
+row_odd_bg = "#FFB81A0C"
+inspector_row_even = "#161232"
+inspector_row_odd = "#1C1840"
+category_frame_bg = "#1B163E"
+item_bg = "#1C1840"
+item_hover = "#2A2460"
+tab_active = "#2A2460"
+tab_inactive = "#13102E"
+tab_hover = "#383078"
+close_hover = "#D0306A"
+
+[viewport]
+grid_line = "#241E54"
+gizmo_x = "#FF4A6A"
+gizmo_y = "#8AE030"
+gizmo_z = "#7A6AFF"
+gizmo_selected = "#FFD040"
+
+[material]
+canvas_bg = "#080518"
+grid_dot = "#2A2460"
+node_bg = "#13102E"
+node_border = "#2E2060"
+node_selected_border = "#FFB81A"
+connection = "#9088C0"
+connection_preview = "#FFD040"
+selection_rect_fill = "#FFB81A22"
+selection_rect_stroke = "#FFB81A"

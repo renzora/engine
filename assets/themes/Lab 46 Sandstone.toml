@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 46 Sandstone"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#C08A4A"
+success = "#7A9E4A"
+warning = "#D6A82A"
+error = "#C45A42"
+selection = "#E6D6B8"
+selection_stroke = "#C08A4A"
+
+[surfaces]
+window = "#F5EFE2"
+window_stroke = "#D8C8A8"
+panel = "#FAF6EC"
+popup = "#FEFCF6"
+overlay = "#2E261430"
+faint = "#EEE6D2"
+extreme = "#E4D8BE"
+
+[text]
+primary = "#3A3122"
+secondary = "#685C42"
+muted = "#988A6A"
+heading = "#8A6634"
+disabled = "#BCB092"
+hyperlink = "#9A6E38"
+
+[widgets]
+noninteractive_bg = "#EEE6D2"
+noninteractive_fg = "#6E6248"
+inactive_bg = "#E6DCC2"
+inactive_fg = "#4E442E"
+hovered_bg = "#DCCEAE"
+hovered_fg = "#3A3122"
+active_bg = "#C08A4A"
+active_fg = "#FEFCF6"
+border = "#D8C8A8"
+border_light = "#E6DCC2"
+
+[panels]
+tree_line = "#D4C49E"
+drop_line = "#C08A4A"
+drop_child_highlight = "#C08A4A40"
+row_odd_bg = "#3A312208"
+inspector_row_even = "#F4EEDE"
+inspector_row_odd = "#EEE6D2"
+category_frame_bg = "#F2EAD8"
+item_bg = "#F2EAD8"
+item_hover = "#E4D8BE"
+tab_active = "#FEFCF6"
+tab_inactive = "#E6DCC2"
+tab_hover = "#DCCEAE"
+close_hover = "#C45A42"
+
+[viewport]
+grid_line = "#D8C8A8"
+gizmo_x = "#C45A42"
+gizmo_y = "#7A9E4A"
+gizmo_z = "#4A78B8"
+gizmo_selected = "#D6A82A"
+
+[material]
+canvas_bg = "#EEE6D2"
+grid_dot = "#D8C8A8"
+node_bg = "#FAF6EC"
+node_border = "#D8C8A8"
+node_selected_border = "#C08A4A"
+connection = "#6E6248"
+connection_preview = "#D6A82A"
+selection_rect_fill = "#C08A4A22"
+selection_rect_stroke = "#C08A4A"

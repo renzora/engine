@@ -1,0 +1,31 @@
+<!-- lab_039_character_sheet: two-column character sheet, portrait + attributes + equipment -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="720px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="18px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="22" font_color="#FFFFFF">Aria Vance</text>
+                <text font_size="13" font_color="#7C8694">Level 18 Ranger</text>
+            </node>
+            <node flex_direction="row" column_gap="18px">
+                <node width="180px" flex_direction="column" row_gap="10px" align_items="center">
+                    <node width="160px" height="200px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="10px" justify_content="center" align_items="center"><text font_size="12" font_color="#5A6370">portrait</text></node>
+                    <node width="100%" flex_direction="column" row_gap="6px">
+                        <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#7C8694">XP</text><text font_size="12" font_color="#A8B2C0">7,820 / 10,000</text></node>
+                        <node width="100%" height="8px" background="#1B1F27" border_radius="999px"><node width="78%" height="8px" background="#E5B567" border_radius="999px"></node></node>
+                    </node>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="10px">
+                    <text font_size="15" font_color="#E6EAF0">Attributes</text>
+                    <node flex_direction="row" justify_content="space_between" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">Strength</text><text font_size="13" font_color="#FFFFFF">14</text></node>
+                    <node flex_direction="row" justify_content="space_between" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">Dexterity</text><text font_size="13" font_color="#FFFFFF">22</text></node>
+                    <node flex_direction="row" justify_content="space_between" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">Intellect</text><text font_size="13" font_color="#FFFFFF">11</text></node>
+                    <node flex_direction="row" justify_content="space_between" padding="9px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A8B2C0">Vitality</text><text font_size="13" font_color="#FFFFFF">17</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end" column_gap="10px">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="open_equipment" justify_content="center"><text font_size="13" font_color="#A8B2C0">Equipment</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_sheet" justify_content="center"><text font_size="13" font_color="#FFFFFF">Done</text></button>
+            </node>
+        </node>
+    </node>
+</template>

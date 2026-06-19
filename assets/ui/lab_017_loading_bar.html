@@ -1,0 +1,13 @@
+<!-- Loading bar: bottom-anchored progress track with a caption and percent readout -->
+<template>
+    <property name="caption">Streaming world…</property>
+    <node position="absolute" bottom="40px" left="50%" margin="0px 0px 0px -200px" width="400px" flex_direction="column" row_gap="6px">
+        <node flex_direction="row" justify_content="space_between">
+            <text font_size="12" font_color="#AEB6C2">{caption}</text>
+            <text font_size="12" font_color="#FFFFFF">{{ Loader.percent }}%</text>
+        </node>
+        <node width="100%" height="6px" background="#1B2027" border_radius="999px">
+            <node width="38%" height="100%" background="#4C8BF5" border_radius="999px" />
+        </node>
+    </node>
+</template>

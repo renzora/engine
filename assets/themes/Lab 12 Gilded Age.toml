@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 12 Gilded Age"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#D4AF37"
+success = "#9CB84A"
+warning = "#E0A020"
+error = "#C84A3C"
+selection = "#5C4410"
+selection_stroke = "#D4AF37"
+
+[surfaces]
+window = "#0C0A04"
+window_stroke = "#2E2410"
+panel = "#15110A"
+popup = "#1B160C"
+overlay = "#08060097"
+faint = "#100C06"
+extreme = "#221B0E"
+
+[text]
+primary = "#F5ECD0"
+secondary = "#CEBC8E"
+muted = "#857850"
+heading = "#E6C964"
+disabled = "#544A30"
+hyperlink = "#D4B860"
+
+[widgets]
+noninteractive_bg = "#221B0E"
+noninteractive_fg = "#BCAA80"
+inactive_bg = "#2C2412"
+inactive_fg = "#D8C698"
+hovered_bg = "#3C301A"
+hovered_fg = "#F5ECD0"
+active_bg = "#D4AF37"
+active_fg = "#141006"
+border = "#16110A"
+border_light = "#3A2E18"
+
+[panels]
+tree_line = "#4A3C1E"
+drop_line = "#D4AF37"
+drop_child_highlight = "#D4AF3740"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#18130A"
+inspector_row_odd = "#221B0E"
+category_frame_bg = "#1B160C"
+item_bg = "#221B0E"
+item_hover = "#322816"
+tab_active = "#322816"
+tab_inactive = "#15110A"
+tab_hover = "#3C301A"
+close_hover = "#C84A3C"
+
+[viewport]
+grid_line = "#3A2E18"
+gizmo_x = "#E05050"
+gizmo_y = "#9CD84A"
+gizmo_z = "#5080FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#0A0803"
+grid_dot = "#2C2412"
+node_bg = "#18130A"
+node_border = "#3A2E18"
+node_selected_border = "#D4AF37"
+connection = "#BCAA80"
+connection_preview = "#FFE000"
+selection_rect_fill = "#D4AF3722"
+selection_rect_stroke = "#D4AF37"

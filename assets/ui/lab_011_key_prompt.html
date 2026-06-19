@@ -1,0 +1,11 @@
+<!-- Key-prompt hint: a keycap glyph beside an action label, centered low on screen -->
+<template>
+    <property name="key">E</property>
+    <property name="action">Open</property>
+    <node position="absolute" bottom="120px" left="50%" margin="0px 0px 0px -70px" flex_direction="row" align_items="center" column_gap="10px">
+        <node min_width="34px" height="34px" justify_content="center" align_items="center" padding="0px 8px 0px 8px" background="#1B2129" border="2px" border_color="#3A4452" border_radius="6px">
+            <text font_size="16" font_color="#FFFFFF">{key}</text>
+        </node>
+        <text font_size="15" font_color="#E4E9EF">{action}</text>
+    </node>
+</template>

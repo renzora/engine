@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 40 Oceanic Depths"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#14B8C4"
+success = "#2EC4A0"
+warning = "#E0B83D"
+error = "#F0556B"
+selection = "#0A3E44"
+selection_stroke = "#14B8C4"
+
+[surfaces]
+window = "#021014"
+window_stroke = "#0E2E34"
+panel = "#04181E"
+popup = "#062026"
+overlay = "#00080AB8"
+faint = "#031418"
+extreme = "#0A2A30"
+
+[text]
+primary = "#D6F2F4"
+secondary = "#8EC0C6"
+muted = "#467278"
+heading = "#3DD0D8"
+disabled = "#2A4E52"
+hyperlink = "#36C8E0"
+
+[widgets]
+noninteractive_bg = "#0A2A30"
+noninteractive_fg = "#7CAEB4"
+inactive_bg = "#0E343A"
+inactive_fg = "#9ECAD0"
+hovered_bg = "#14444C"
+hovered_fg = "#D6F2F4"
+active_bg = "#14B8C4"
+active_fg = "#021014"
+border = "#072228"
+border_light = "#14444C"
+
+[panels]
+tree_line = "#1A525A"
+drop_line = "#14B8C4"
+drop_child_highlight = "#14B8C440"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#06201E"
+inspector_row_odd = "#0A2A30"
+category_frame_bg = "#062026"
+item_bg = "#0A2A30"
+item_hover = "#123C42"
+tab_active = "#123C42"
+tab_inactive = "#04181E"
+tab_hover = "#14444C"
+close_hover = "#F0556B"
+
+[viewport]
+grid_line = "#123C42"
+gizmo_x = "#F0556B"
+gizmo_y = "#2EC48A"
+gizmo_z = "#4AA8E0"
+gizmo_selected = "#E0B83D"
+
+[material]
+canvas_bg = "#010C10"
+grid_dot = "#0E343A"
+node_bg = "#06201E"
+node_border = "#14444C"
+node_selected_border = "#14B8C4"
+connection = "#7CAEB4"
+connection_preview = "#E0B83D"
+selection_rect_fill = "#14B8C422"
+selection_rect_stroke = "#14B8C4"

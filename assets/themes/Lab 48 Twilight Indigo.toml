@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 48 Twilight Indigo"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#5C6CFF"
+success = "#3DD0A8"
+warning = "#E6B84A"
+error = "#FF5C7A"
+selection = "#1E2456"
+selection_stroke = "#5C6CFF"
+
+[surfaces]
+window = "#070818"
+window_stroke = "#1A1E48"
+panel = "#0C0E24"
+popup = "#10132E"
+overlay = "#030410B8"
+faint = "#090B1E"
+extreme = "#161A3C"
+
+[text]
+primary = "#DEE0F7"
+secondary = "#A4A8D8"
+muted = "#5A5E90"
+heading = "#8A92FF"
+disabled = "#383C64"
+hyperlink = "#7088FF"
+
+[widgets]
+noninteractive_bg = "#161A3C"
+noninteractive_fg = "#9498C8"
+inactive_bg = "#1C2048"
+inactive_fg = "#B0B4E0"
+hovered_bg = "#262C5A"
+hovered_fg = "#DEE0F7"
+active_bg = "#5C6CFF"
+active_fg = "#070818"
+border = "#101434"
+border_light = "#262C5A"
+
+[panels]
+tree_line = "#2E3470"
+drop_line = "#5C6CFF"
+drop_child_highlight = "#5C6CFF40"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#0E1028"
+inspector_row_odd = "#161A3C"
+category_frame_bg = "#10132E"
+item_bg = "#161A3C"
+item_hover = "#202650"
+tab_active = "#202650"
+tab_inactive = "#0C0E24"
+tab_hover = "#262C5A"
+close_hover = "#FF5C7A"
+
+[viewport]
+grid_line = "#202650"
+gizmo_x = "#FF5C7A"
+gizmo_y = "#3DD08A"
+gizmo_z = "#6C8CFF"
+gizmo_selected = "#E6B84A"
+
+[material]
+canvas_bg = "#050610"
+grid_dot = "#1C2048"
+node_bg = "#0E1028"
+node_border = "#262C5A"
+node_selected_border = "#5C6CFF"
+connection = "#9498C8"
+connection_preview = "#E6B84A"
+selection_rect_fill = "#5C6CFF22"
+selection_rect_stroke = "#5C6CFF"

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 27 High Voltage"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#EEFF00"
+success = "#00FF9C"
+warning = "#FFAA00"
+error = "#FF1744"
+selection = "#3A3A00"
+selection_stroke = "#EEFF00"
+
+[surfaces]
+window = "#000000"
+window_stroke = "#2A2A00"
+panel = "#0A0A05"
+popup = "#101006"
+overlay = "#000000D0"
+faint = "#070703"
+extreme = "#16160A"
+
+[text]
+primary = "#FCFCE0"
+secondary = "#C8C880"
+muted = "#787840"
+heading = "#EEFF00"
+disabled = "#4A4A28"
+hyperlink = "#00FF9C"
+
+[widgets]
+noninteractive_bg = "#16160A"
+noninteractive_fg = "#B0B068"
+inactive_bg = "#20200E"
+inactive_fg = "#D0D084"
+hovered_bg = "#2E2E12"
+hovered_fg = "#FCFCE0"
+active_bg = "#EEFF00"
+active_fg = "#000000"
+border = "#121208"
+border_light = "#2E2E12"
+
+[panels]
+tree_line = "#3A3A14"
+drop_line = "#EEFF00"
+drop_child_highlight = "#EEFF0040"
+row_odd_bg = "#EEFF0008"
+inspector_row_even = "#101008"
+inspector_row_odd = "#16160A"
+category_frame_bg = "#101006"
+item_bg = "#16160A"
+item_hover = "#262610"
+tab_active = "#262610"
+tab_inactive = "#0A0A05"
+tab_hover = "#2E2E12"
+close_hover = "#FF1744"
+
+[viewport]
+grid_line = "#2A2A0E"
+gizmo_x = "#FF1744"
+gizmo_y = "#00FF9C"
+gizmo_z = "#2A6AFF"
+gizmo_selected = "#EEFF00"
+
+[material]
+canvas_bg = "#000000"
+grid_dot = "#20200E"
+node_bg = "#101008"
+node_border = "#2E2E12"
+node_selected_border = "#EEFF00"
+connection = "#B0B068"
+connection_preview = "#00FF9C"
+selection_rect_fill = "#EEFF0022"
+selection_rect_stroke = "#EEFF00"

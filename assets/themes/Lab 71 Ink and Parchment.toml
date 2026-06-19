@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 71 Ink and Parchment"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#3A4A8A"
+success = "#5A7A40"
+warning = "#B08020"
+error = "#A03020"
+selection = "#D8CCAC"
+selection_stroke = "#C0B088"
+
+[surfaces]
+window = "#EDE4CC"
+window_stroke = "#C8B898"
+panel = "#E5DAC0"
+popup = "#F2EAD4"
+overlay = "#2A220844"
+faint = "#E9DFC6"
+extreme = "#DACEAE"
+
+[text]
+primary = "#2A2618"
+secondary = "#544C36"
+muted = "#867A5E"
+heading = "#1E2A5A"
+disabled = "#B0A684"
+hyperlink = "#3A4A8A"
+
+[widgets]
+noninteractive_bg = "#DACEAE"
+noninteractive_fg = "#6E6448"
+inactive_bg = "#D4C8A6"
+inactive_fg = "#544C36"
+hovered_bg = "#CABC96"
+hovered_fg = "#2A2618"
+active_bg = "#3A4A8A"
+active_fg = "#EDE4CC"
+border = "#C8B898"
+border_light = "#DACEAE"
+
+[panels]
+tree_line = "#BCAC84"
+drop_line = "#3A4A8A"
+drop_child_highlight = "#3A4A8A40"
+row_odd_bg = "#00000008"
+inspector_row_even = "#E9DFC6"
+inspector_row_odd = "#E0D4B6"
+category_frame_bg = "#F2EAD4"
+item_bg = "#E0D4B6"
+item_hover = "#D4C8A6"
+tab_active = "#E5DAC0"
+tab_inactive = "#DACEAE"
+tab_hover = "#CABC96"
+close_hover = "#A03020"
+
+[viewport]
+grid_line = "#CCBE96"
+gizmo_x = "#B03020"
+gizmo_y = "#5A7A40"
+gizmo_z = "#3A4A8A"
+gizmo_selected = "#B08020"
+
+[material]
+canvas_bg = "#F2EAD4"
+grid_dot = "#D4C8A6"
+node_bg = "#E5DAC0"
+node_border = "#C8B898"
+node_selected_border = "#3A4A8A"
+connection = "#6E6448"
+connection_preview = "#B08020"
+selection_rect_fill = "#3A4A8A22"
+selection_rect_stroke = "#3A4A8A"

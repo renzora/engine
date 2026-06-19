@@ -1,0 +1,14 @@
+<!-- Mana bar: top-left under the health bar, blue rounded fill with right-aligned value -->
+<template>
+    <property name="label">MANA</property>
+    <property name="color">#3D8BFD</property>
+    <node position="absolute" top="48px" left="16px" flex_direction="column" row_gap="6px">
+        <node flex_direction="row" justify_content="space_between" width="240px">
+            <text font_size="13" font_color="#FFFFFF">{label}</text>
+            <text font_size="13" font_color="#AEB6C2">{{ Player.mana }} / {{ Player.mana_max }}</text>
+        </node>
+        <node width="240px" height="14px" background="#161C26" border="1px" border_color="#243049" border_radius="7px" padding="2px">
+            <node width="55%" height="100%" background="{color}" border_radius="5px" />
+        </node>
+    </node>
+</template>

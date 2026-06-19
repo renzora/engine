@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 44 Jungle Fever"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#A8E020"
+success = "#2ED88A"
+warning = "#FFD000"
+error = "#FF6A3C"
+selection = "#2E4410"
+selection_stroke = "#A8E020"
+
+[surfaces]
+window = "#0A1204"
+window_stroke = "#26380E"
+panel = "#101C08"
+popup = "#14220A"
+overlay = "#040A02B0"
+faint = "#0C1606"
+extreme = "#1A2C0E"
+
+[text]
+primary = "#EAF7D2"
+secondary = "#B2CC86"
+muted = "#647A40"
+heading = "#C2F04A"
+disabled = "#3E5024"
+hyperlink = "#2ED88A"
+
+[widgets]
+noninteractive_bg = "#1A2C0E"
+noninteractive_fg = "#9CB868"
+inactive_bg = "#223812"
+inactive_fg = "#BAD488"
+hovered_bg = "#2E4A18"
+hovered_fg = "#EAF7D2"
+active_bg = "#A8E020"
+active_fg = "#0A1204"
+border = "#16260C"
+border_light = "#2E4A18"
+
+[panels]
+tree_line = "#365620"
+drop_line = "#A8E020"
+drop_child_highlight = "#A8E02040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#12200A"
+inspector_row_odd = "#1A2C0E"
+category_frame_bg = "#14220A"
+item_bg = "#1A2C0E"
+item_hover = "#264016"
+tab_active = "#264016"
+tab_inactive = "#101C08"
+tab_hover = "#2E4A18"
+close_hover = "#FF6A3C"
+
+[viewport]
+grid_line = "#264016"
+gizmo_x = "#FF6A3C"
+gizmo_y = "#A8E020"
+gizmo_z = "#4A9AFF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#080E03"
+grid_dot = "#223812"
+node_bg = "#12200A"
+node_border = "#2E4A18"
+node_selected_border = "#A8E020"
+connection = "#9CB868"
+connection_preview = "#FFD000"
+selection_rect_fill = "#A8E02022"
+selection_rect_stroke = "#A8E020"

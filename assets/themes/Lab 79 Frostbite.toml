@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 79 Frostbite"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#7AD8FF"
+success = "#8AE0C0"
+warning = "#D8E060"
+error = "#FF7A8A"
+selection = "#C4E4F4"
+selection_stroke = "#A0CEEA"
+
+[surfaces]
+window = "#EAF4FA"
+window_stroke = "#C0D8E8"
+panel = "#DEEDF6"
+popup = "#F2F9FD"
+overlay = "#3A6A8A33"
+faint = "#E4F0F8"
+extreme = "#D0E4F0"
+
+[text]
+primary = "#1E3848"
+secondary = "#4E6E80"
+muted = "#86A0B0"
+heading = "#2A6A9A"
+disabled = "#A8C0CE"
+hyperlink = "#2088C8"
+
+[widgets]
+noninteractive_bg = "#D0E4F0"
+noninteractive_fg = "#6E8A9A"
+inactive_bg = "#C6DCEC"
+inactive_fg = "#4E6E80"
+hovered_bg = "#B4D2E6"
+hovered_fg = "#1E3848"
+active_bg = "#7AD8FF"
+active_fg = "#1E3848"
+border = "#C0D8E8"
+border_light = "#D0E4F0"
+
+[panels]
+tree_line = "#AECEE4"
+drop_line = "#7AD8FF"
+drop_child_highlight = "#7AD8FF40"
+row_odd_bg = "#00000007"
+inspector_row_even = "#E4F0F8"
+inspector_row_odd = "#D8EAF4"
+category_frame_bg = "#F2F9FD"
+item_bg = "#D8EAF4"
+item_hover = "#C6DCEC"
+tab_active = "#DEEDF6"
+tab_inactive = "#D0E4F0"
+tab_hover = "#B4D2E6"
+close_hover = "#FF7A8A"
+
+[viewport]
+grid_line = "#C4DCEC"
+gizmo_x = "#E05A6A"
+gizmo_y = "#3AC890"
+gizmo_z = "#3A8AE0"
+gizmo_selected = "#C8B020"
+
+[material]
+canvas_bg = "#F2F9FD"
+grid_dot = "#C6DCEC"
+node_bg = "#DEEDF6"
+node_border = "#C0D8E8"
+node_selected_border = "#7AD8FF"
+connection = "#6E8A9A"
+connection_preview = "#C8B020"
+selection_rect_fill = "#7AD8FF22"
+selection_rect_stroke = "#7AD8FF"

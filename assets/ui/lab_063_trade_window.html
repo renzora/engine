@@ -1,0 +1,32 @@
+<!-- lab_063_trade_window: two-sided trade offer grid + ready/cancel + lock states -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="680px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <text font_size="20" font_color="#FFFFFF">Trade</text>
+            <node flex_direction="row" column_gap="16px">
+                <node flex_grow="1" flex_direction="column" row_gap="10px" padding="14px" background="#171B23" border_radius="10px">
+                    <node flex_direction="row" justify_content="space_between" align_items="center"><text font_size="14" font_color="#FFFFFF">You</text><text font_size="12" font_color="#7C8694">Not ready</text></node>
+                    <node flex_direction="row" column_gap="8px">
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#A8B2C0">Ring</text></node>
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#5A6370">+</text></node>
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#5A6370">+</text></node>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" padding="8px 10px" background="#12161E" border_radius="6px"><text font_size="12" font_color="#7C8694">Gold</text><text font_size="12" font_color="#E5B567">150</text></node>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="10px" padding="14px" background="#171B23" border_radius="10px">
+                    <node flex_direction="row" justify_content="space_between" align_items="center"><text font_size="14" font_color="#FFFFFF">Borin</text><text font_size="12" font_color="#2E7D5B">Ready</text></node>
+                    <node flex_direction="row" column_gap="8px">
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#A8B2C0">Axe</text></node>
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#A8B2C0">Ore</text></node>
+                        <node width="64px" height="64px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" justify_content="center" align_items="center"><text font_size="10" font_color="#5A6370">+</text></node>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" padding="8px 10px" background="#12161E" border_radius="6px"><text font_size="12" font_color="#7C8694">Gold</text><text font_size="12" font_color="#E5B567">0</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="11px 18px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="cancel_trade" justify_content="center"><text font_size="13" font_color="#E06C75">Cancel</text></button>
+                <button padding="11px 18px" background="#2E7D5B" border_radius="8px" hover:background="#379268" on_press="ready_trade" justify_content="center"><text font_size="13" font_color="#FFFFFF">Ready</text></button>
+            </node>
+        </node>
+    </node>
+</template>

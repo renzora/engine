@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 38 Honey Glow"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E0931A"
+success = "#7CA82A"
+warning = "#E6B82A"
+error = "#D6543C"
+selection = "#F5DCA0"
+selection_stroke = "#E0931A"
+
+[surfaces]
+window = "#FCF4E0"
+window_stroke = "#E6CE96"
+panel = "#FEF8EC"
+popup = "#FFFDF6"
+overlay = "#3A2A0A30"
+faint = "#F6E8C8"
+extreme = "#EEDAAC"
+
+[text]
+primary = "#3E2E0E"
+secondary = "#6E5824"
+muted = "#9E8848"
+heading = "#A86A14"
+disabled = "#C4AE78"
+hyperlink = "#B07818"
+
+[widgets]
+noninteractive_bg = "#F6E8C8"
+noninteractive_fg = "#7A6430"
+inactive_bg = "#F0DEB4"
+inactive_fg = "#5A461C"
+hovered_bg = "#E8D098"
+hovered_fg = "#3E2E0E"
+active_bg = "#E0931A"
+active_fg = "#FFFDF6"
+border = "#E6CE96"
+border_light = "#F0DEB4"
+
+[panels]
+tree_line = "#E2C684"
+drop_line = "#E0931A"
+drop_child_highlight = "#E0931A40"
+row_odd_bg = "#3E2E0E08"
+inspector_row_even = "#FAF0D8"
+inspector_row_odd = "#F6E8C8"
+category_frame_bg = "#F8ECD0"
+item_bg = "#F8ECD0"
+item_hover = "#EEDAAC"
+tab_active = "#FFFDF6"
+tab_inactive = "#F0DEB4"
+tab_hover = "#E8D098"
+close_hover = "#D6543C"
+
+[viewport]
+grid_line = "#E6CE96"
+gizmo_x = "#D6543C"
+gizmo_y = "#7CA82A"
+gizmo_z = "#4A80D0"
+gizmo_selected = "#E6B82A"
+
+[material]
+canvas_bg = "#F6E8C8"
+grid_dot = "#E6CE96"
+node_bg = "#FEF8EC"
+node_border = "#E6CE96"
+node_selected_border = "#E0931A"
+connection = "#7A6430"
+connection_preview = "#E6B82A"
+selection_rect_fill = "#E0931A22"
+selection_rect_stroke = "#E0931A"

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 55 Bubblegum"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF6FB5"
+success = "#4FD6A6"
+warning = "#FFC94F"
+error = "#FF4F6F"
+selection = "#FFB3D9"
+selection_stroke = "#FF8FC4"
+
+[surfaces]
+window = "#FFF0F7"
+window_stroke = "#FFC4E0"
+panel = "#FFE6F2"
+popup = "#FFF6FB"
+overlay = "#FF6FB540"
+faint = "#FFEAF4"
+extreme = "#FFD6EC"
+
+[text]
+primary = "#5A2A44"
+secondary = "#8A4A6A"
+muted = "#B07A92"
+heading = "#D63A8A"
+disabled = "#D0A8BC"
+hyperlink = "#E0408A"
+
+[widgets]
+noninteractive_bg = "#FFD6EC"
+noninteractive_fg = "#9A5A78"
+inactive_bg = "#FFCCE6"
+inactive_fg = "#8A4A6A"
+hovered_bg = "#FFB8DC"
+hovered_fg = "#5A2A44"
+active_bg = "#FF6FB5"
+active_fg = "#FFF0F7"
+border = "#FFC4E0"
+border_light = "#FFD6EC"
+
+[panels]
+tree_line = "#F0A8CC"
+drop_line = "#FF6FB5"
+drop_child_highlight = "#FF6FB540"
+row_odd_bg = "#00000008"
+inspector_row_even = "#FFEAF4"
+inspector_row_odd = "#FFE0F0"
+category_frame_bg = "#FFF6FB"
+item_bg = "#FFE0F0"
+item_hover = "#FFCCE6"
+tab_active = "#FFE6F2"
+tab_inactive = "#FFD6EC"
+tab_hover = "#FFB8DC"
+close_hover = "#FF4F6F"
+
+[viewport]
+grid_line = "#F0C4DC"
+gizmo_x = "#FF4F6F"
+gizmo_y = "#4FD6A6"
+gizmo_z = "#5F8FFF"
+gizmo_selected = "#FFB000"
+
+[material]
+canvas_bg = "#FFF6FB"
+grid_dot = "#FFCCE6"
+node_bg = "#FFE6F2"
+node_border = "#FFC4E0"
+node_selected_border = "#FF6FB5"
+connection = "#C07A98"
+connection_preview = "#FFB000"
+selection_rect_fill = "#FF6FB522"
+selection_rect_stroke = "#FF6FB5"

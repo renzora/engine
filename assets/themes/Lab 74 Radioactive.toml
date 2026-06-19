@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 74 Radioactive"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#CCFF00"
+success = "#7AE000"
+warning = "#FFE000"
+error = "#FF4020"
+selection = "#3A4A00"
+selection_stroke = "#283200"
+
+[surfaces]
+window = "#0A0C04"
+window_stroke = "#2E3A0A"
+panel = "#101407"
+popup = "#181E0C"
+overlay = "#02040099"
+faint = "#0D1005"
+extreme = "#202A0E"
+
+[text]
+primary = "#EAFFC0"
+secondary = "#AAD060"
+muted = "#5E7430"
+heading = "#CCFF00"
+disabled = "#3A4A1E"
+hyperlink = "#B0FF20"
+
+[widgets]
+noninteractive_bg = "#202A0E"
+noninteractive_fg = "#88A840"
+inactive_bg = "#283412"
+inactive_fg = "#AAD060"
+hovered_bg = "#384A18"
+hovered_fg = "#EAFFC0"
+active_bg = "#CCFF00"
+active_fg = "#101407"
+border = "#0D1005"
+border_light = "#2E3A0A"
+
+[panels]
+tree_line = "#3E5018"
+drop_line = "#CCFF00"
+drop_child_highlight = "#CCFF0040"
+row_odd_bg = "#CCFF000A"
+inspector_row_even = "#13180A"
+inspector_row_odd = "#19200D"
+category_frame_bg = "#181E0C"
+item_bg = "#19200D"
+item_hover = "#283412"
+tab_active = "#283412"
+tab_inactive = "#101407"
+tab_hover = "#384A18"
+close_hover = "#FF4020"
+
+[viewport]
+grid_line = "#283410"
+gizmo_x = "#FF5030"
+gizmo_y = "#9AFF00"
+gizmo_z = "#5080FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#070A03"
+grid_dot = "#283412"
+node_bg = "#101407"
+node_border = "#2E3A0A"
+node_selected_border = "#CCFF00"
+connection = "#88A840"
+connection_preview = "#FFE000"
+selection_rect_fill = "#CCFF0022"
+selection_rect_stroke = "#CCFF00"

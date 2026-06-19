@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 06 Solar Flare"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#268BD2"
+success = "#859900"
+warning = "#B58900"
+error = "#DC322F"
+selection = "#073642"
+selection_stroke = "#2AA198"
+
+[surfaces]
+window = "#002B36"
+window_stroke = "#0A4956"
+panel = "#06303B"
+popup = "#073642"
+overlay = "#00141AB0"
+faint = "#042830"
+extreme = "#0A3D49"
+
+[text]
+primary = "#EEE8D5"
+secondary = "#93A1A1"
+muted = "#657B83"
+heading = "#2AA198"
+disabled = "#3F5560"
+hyperlink = "#268BD2"
+
+[widgets]
+noninteractive_bg = "#0A3D49"
+noninteractive_fg = "#839496"
+inactive_bg = "#0E4654"
+inactive_fg = "#93A1A1"
+hovered_bg = "#125463"
+hovered_fg = "#EEE8D5"
+active_bg = "#2AA198"
+active_fg = "#002B36"
+border = "#063038"
+border_light = "#125463"
+
+[panels]
+tree_line = "#0E5666"
+drop_line = "#2AA198"
+drop_child_highlight = "#2AA19840"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#073642"
+inspector_row_odd = "#0A3D49"
+category_frame_bg = "#073642"
+item_bg = "#0A3D49"
+item_hover = "#0E4C5A"
+tab_active = "#0E4C5A"
+tab_inactive = "#06303B"
+tab_hover = "#125463"
+close_hover = "#DC322F"
+
+[viewport]
+grid_line = "#0E4654"
+gizmo_x = "#DC322F"
+gizmo_y = "#859900"
+gizmo_z = "#268BD2"
+gizmo_selected = "#B58900"
+
+[material]
+canvas_bg = "#02262E"
+grid_dot = "#0E4654"
+node_bg = "#073642"
+node_border = "#125463"
+node_selected_border = "#2AA198"
+connection = "#839496"
+connection_preview = "#B58900"
+selection_rect_fill = "#2AA19822"
+selection_rect_stroke = "#2AA198"

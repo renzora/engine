@@ -1,0 +1,25 @@
+<!-- Spaceship status console: subsystem gauges + hull map -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#040810" flex_direction="column" padding="24px" row_gap="16px">
+        <node flex_direction="row" justify_content="space-between" align_items="center">
+            <text font_size="22" font_color="#5BC8FF">SSV AURORA // STATUS</text>
+            <text font_size="14" font_color="#FFB347">WARP STANDBY</text>
+        </node>
+        <node flex_direction="row" column_gap="16px">
+            <node vector="gauge" width="150px" height="150px" min_width="150px" flex_shrink="0" value="88" min="0" max="100" start="135" sweep="270" color="#5BC8FF" track="#0E2435" thickness="12" readout="88" unit="%" readsize="24" />
+            <node vector="gauge" width="150px" height="150px" min_width="150px" flex_shrink="0" value="64" min="0" max="100" start="135" sweep="270" color="#A0F060" track="#16240F" thickness="12" readout="64" unit="%" readsize="24" />
+            <node vector="gauge" width="150px" height="150px" min_width="150px" flex_shrink="0" value="32" min="0" max="100" start="135" sweep="270" color="#FF5252" track="#2A1414" thickness="12" readout="32" unit="%" readsize="24" />
+            <node vector="gauge" width="150px" height="150px" min_width="150px" flex_shrink="0" value="76" min="0" max="100" start="135" sweep="270" color="#FFB347" track="#2A2110" thickness="12" readout="76" unit="%" readsize="24" />
+        </node>
+        <node flex_direction="row" column_gap="40px" padding="8px">
+            <text font_size="13" font_color="#5BC8FF">SHIELDS 88%</text>
+            <text font_size="13" font_color="#A0F060">LIFE SUPPORT 64%</text>
+            <text font_size="13" font_color="#FF5252">HULL 32%</text>
+            <text font_size="13" font_color="#FFB347">ENGINES 76%</text>
+        </node>
+        <node width="100%" height="180px" background="#081420" border="1px" border_color="#163040" border_radius="10px" padding="16px" flex_direction="column" row_gap="8px">
+            <text font_size="14" font_color="#5BC8FF">POWER DISTRIBUTION</text>
+            <node template="ui/components/bar_chart.html" width="100%" height="120px" color="#5BC8FF" />
+        </node>
+    </node>
+</template>

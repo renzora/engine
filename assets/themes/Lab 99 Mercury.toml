@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 99 Mercury"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#8896A0"
+success = "#70A890"
+warning = "#B0A060"
+error = "#B06868"
+selection = "#C0CAD2"
+selection_stroke = "#A0AEB8"
+
+[surfaces]
+window = "#E4E8EC"
+window_stroke = "#BCC6CE"
+panel = "#DADFE4"
+popup = "#EEF1F4"
+overlay = "#3A444C33"
+faint = "#DFE3E8"
+extreme = "#CCD4DA"
+
+[text]
+primary = "#2A3138"
+secondary = "#56606A"
+muted = "#8A949C"
+heading = "#3A4650"
+disabled = "#A8B2BA"
+hyperlink = "#506878"
+
+[widgets]
+noninteractive_bg = "#CCD4DA"
+noninteractive_fg = "#6E7880"
+inactive_bg = "#C4CDD4"
+inactive_fg = "#56606A"
+hovered_bg = "#B6C0C8"
+hovered_fg = "#2A3138"
+active_bg = "#8896A0"
+active_fg = "#E4E8EC"
+border = "#BCC6CE"
+border_light = "#CCD4DA"
+
+[panels]
+tree_line = "#AEB8C0"
+drop_line = "#8896A0"
+drop_child_highlight = "#8896A040"
+row_odd_bg = "#00000007"
+inspector_row_even = "#DFE3E8"
+inspector_row_odd = "#D4DADF"
+category_frame_bg = "#EEF1F4"
+item_bg = "#D4DADF"
+item_hover = "#C4CDD4"
+tab_active = "#DADFE4"
+tab_inactive = "#CCD4DA"
+tab_hover = "#B6C0C8"
+close_hover = "#B06868"
+
+[viewport]
+grid_line = "#C6CED6"
+gizmo_x = "#C05858"
+gizmo_y = "#50A080"
+gizmo_z = "#5078A0"
+gizmo_selected = "#B09040"
+
+[material]
+canvas_bg = "#EEF1F4"
+grid_dot = "#C4CDD4"
+node_bg = "#DADFE4"
+node_border = "#BCC6CE"
+node_selected_border = "#8896A0"
+connection = "#6E7880"
+connection_preview = "#B09040"
+selection_rect_fill = "#8896A022"
+selection_rect_stroke = "#8896A0"

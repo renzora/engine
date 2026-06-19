@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 72 Stormcloud"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#8FA8C8"
+success = "#6AA890"
+warning = "#D0C070"
+error = "#D06A6A"
+selection = "#384452"
+selection_stroke = "#28323E"
+
+[surfaces]
+window = "#14181E"
+window_stroke = "#323A46"
+panel = "#1B2028"
+popup = "#232A34"
+overlay = "#08101899"
+faint = "#171C23"
+extreme = "#2A3340"
+
+[text]
+primary = "#DCE2EA"
+secondary = "#9CA8B8"
+muted = "#5E6878"
+heading = "#B8C8DC"
+disabled = "#3E4652"
+hyperlink = "#88B0D8"
+
+[widgets]
+noninteractive_bg = "#2A3340"
+noninteractive_fg = "#869098"
+inactive_bg = "#303A48"
+inactive_fg = "#9CA8B8"
+hovered_bg = "#3E4A5A"
+hovered_fg = "#DCE2EA"
+active_bg = "#8FA8C8"
+active_fg = "#1B2028"
+border = "#171C23"
+border_light = "#323A46"
+
+[panels]
+tree_line = "#404C5A"
+drop_line = "#8FA8C8"
+drop_child_highlight = "#8FA8C840"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#1E242C"
+inspector_row_odd = "#242C36"
+category_frame_bg = "#232A34"
+item_bg = "#242C36"
+item_hover = "#303A48"
+tab_active = "#303A48"
+tab_inactive = "#1B2028"
+tab_hover = "#3E4A5A"
+close_hover = "#D06A6A"
+
+[viewport]
+grid_line = "#2A3340"
+gizmo_x = "#E06A6A"
+gizmo_y = "#6AC890"
+gizmo_z = "#6A98D8"
+gizmo_selected = "#E0C860"
+
+[material]
+canvas_bg = "#0F1318"
+grid_dot = "#303A48"
+node_bg = "#1B2028"
+node_border = "#323A46"
+node_selected_border = "#8FA8C8"
+connection = "#869098"
+connection_preview = "#E0C860"
+selection_rect_fill = "#8FA8C822"
+selection_rect_stroke = "#8FA8C8"

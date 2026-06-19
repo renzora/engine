@@ -1,0 +1,23 @@
+<!-- Node-graph mock: connected processing nodes with ports -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#12141C">
+        <node position="absolute" left="60px" top="120px" width="180px" background="#1C2230" border="1px" border_color="#3FE0A0" border_radius="10px" flex_direction="column">
+            <node background="#16382A" border_radius="9px" padding="10px"><text font_size="14" font_color="#7CFFB2">INPUT</text></node>
+            <node padding="12px" flex_direction="column" row_gap="8px"><text font_size="12" font_color="#9FD9BE">texture</text><text font_size="12" font_color="#9FD9BE">uv</text></node>
+        </node>
+        <node position="absolute" left="320px" top="60px" width="160px" height="6px" background="#3FE0A088" />
+        <node position="absolute" left="320px" top="200px" width="200px" background="#1C2230" border="1px" border_color="#5BD3FF" border_radius="10px" flex_direction="column">
+            <node background="#0E2A38" border_radius="9px" padding="10px"><text font_size="14" font_color="#7FE0FF">MULTIPLY</text></node>
+            <node padding="12px" flex_direction="column" row_gap="8px"><text font_size="12" font_color="#A0D8E8">a</text><text font_size="12" font_color="#A0D8E8">b</text><text font_size="12" font_color="#FFD98B">out</text></node>
+        </node>
+        <node position="absolute" left="540px" top="220px" width="160px" height="6px" background="#5BD3FF88" />
+        <node position="absolute" left="620px" top="140px" width="200px" background="#1C2230" border="1px" border_color="#FF6AC1" border_radius="10px" flex_direction="column">
+            <node background="#38101F" border_radius="9px" padding="10px"><text font_size="14" font_color="#FF9AD0">OUTPUT</text></node>
+            <node padding="12px" flex_direction="column" row_gap="8px"><text font_size="12" font_color="#E8A0C8">base_color</text><text font_size="12" font_color="#E8A0C8">emissive</text></node>
+        </node>
+        <node position="absolute" right="30px" bottom="30px" flex_direction="row" column_gap="10px">
+            <button background="#1C2230" border="1px" border_color="#3F4A5C" border_radius="8px" padding="10px" hover:background="#283040"><text font_size="13" font_color="#A0AEC0">+ Add Node</text></button>
+            <button background="#16382A" border_radius="8px" padding="10px" hover:background="#1E5038"><text font_size="13" font_color="#7CFFB2">Compile</text></button>
+        </node>
+    </node>
+</template>

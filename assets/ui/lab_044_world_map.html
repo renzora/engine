@@ -1,0 +1,21 @@
+<!-- lab_044_world_map: full-screen map canvas with region legend sidebar + fast-travel button -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13F2" flex_direction="row">
+        <node flex_grow="1" padding="20px" flex_direction="column" row_gap="14px">
+            <text font_size="22" font_color="#FFFFFF">World Map</text>
+            <node flex_grow="1" background="#0F151C" border="1px" border_color="#2C3340" border_radius="12px" justify_content="center" align_items="center">
+                <text font_size="14" font_color="#5A6370">map render target</text>
+            </node>
+        </node>
+        <node width="260px" padding="20px" background="#12161E" border_color="#2C3340" flex_direction="column" row_gap="10px">
+            <text font_size="16" font_color="#FFFFFF">Regions</text>
+            <button padding="11px 12px" background="#222A36" border_radius="8px" hover:background="#28323F" on_press="travel_drelmoor" justify_content="space_between"><text font_size="13" font_color="#FFFFFF">Drelmoor</text></button>
+            <button padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="travel_frostvale" justify_content="space_between"><text font_size="13" font_color="#A8B2C0">Frostvale</text></button>
+            <button padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="travel_emberreach" justify_content="space_between"><text font_size="13" font_color="#A8B2C0">Emberreach</text></button>
+            <button padding="11px 12px" background="#171B23" border_radius="8px" hover:background="#1F2530" on_press="travel_sunken_keep" justify_content="space_between"><text font_size="13" font_color="#5A6370">Sunken Keep (locked)</text></button>
+            <node flex_grow="1"></node>
+            <button padding="12px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="fast_travel" justify_content="center"><text font_size="13" font_color="#FFFFFF">Fast Travel</text></button>
+            <button padding="12px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="close_map" justify_content="center"><text font_size="13" font_color="#A8B2C0">Close</text></button>
+        </node>
+    </node>
+</template>

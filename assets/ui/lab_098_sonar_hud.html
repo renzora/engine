@@ -1,0 +1,26 @@
+<!-- Submarine sonar HUD: radial sweep, contacts, depth gauges -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#021008" flex_direction="row">
+        <node width="60%" height="100%" flex_direction="column" align_items="center" justify_content="center">
+            <node width="420px" height="420px" border_radius="210px" background="#04200F" border="2px" border_color="#1FCB6A66">
+                <node position="absolute" left="50%" top="50%" width="400px" height="2px" margin="0px 0px 0px -200px" background="#1FCB6A88" />
+                <node position="absolute" left="50%" top="50%" width="2px" height="400px" margin="-200px 0px 0px 0px" background="#1FCB6A44" />
+                <node position="absolute" left="50%" top="50%" width="280px" height="280px" margin="-140px" border_radius="140px" border="1px" border_color="#1FCB6A33" />
+                <node position="absolute" left="50%" top="50%" width="140px" height="140px" margin="-70px" border_radius="70px" border="1px" border_color="#1FCB6A33" />
+                <node position="absolute" left="64%" top="32%" width="14px" height="14px" border_radius="7px" background="#FF5252" />
+                <node position="absolute" left="38%" top="58%" width="12px" height="12px" border_radius="6px" background="#FFC857" />
+                <node position="absolute" left="56%" top="68%" width="10px" height="10px" border_radius="5px" background="#1FCB6A" />
+            </node>
+        </node>
+        <node width="40%" height="100%" background="#04140A" border="1px" border_color="#0E3A22" padding="22px" flex_direction="column" row_gap="16px">
+            <text font_size="18" font_color="#5BFFB0">SONAR // PASSIVE</text>
+            <node vector="gauge" width="170px" height="170px" min_width="170px" flex_shrink="0" value="320" min="0" max="600" start="135" sweep="270" color="#1FCB6A" track="#0A2418" thickness="14" readout="320" unit="M" readsize="28" />
+            <text font_size="14" font_color="#3FB880">DEPTH 320M</text>
+            <node height="1px" background="#0E3A22" />
+            <text font_size="14" font_color="#FF8B7A">CONTACT: 1 HOSTILE</text>
+            <text font_size="14" font_color="#FFD98B">CONTACT: 1 NEUTRAL</text>
+            <text font_size="14" font_color="#5BFFB0">CONTACT: 1 FRIENDLY</text>
+            <button background="#0A2418" border="1px" border_color="#1FCB6A" border_radius="8px" padding="12px" hover:background="#103020"><text font_size="14" font_color="#5BFFB0">ACTIVE PING</text></button>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,21 @@
+<!-- lab_047_loot_summary: post-encounter loot list with rarity coloring + take-all -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="420px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <node flex_direction="column" align_items="center" row_gap="4px">
+                <text font_size="22" font_color="#FFFFFF">Loot</text>
+                <text font_size="12" font_color="#7C8694">Drelmoor Crypt cleared</text>
+            </node>
+            <node flex_direction="column" row_gap="8px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border="1px" border_color="#E5B567" border_radius="8px"><text font_size="13" font_color="#E5B567">Crownblade</text><text font_size="12" font_color="#7C8694">Legendary</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#A86CF0">Mage Robe</text><text font_size="12" font_color="#7C8694">Epic</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#4C8BF5">Sapphire Ring</text><text font_size="12" font_color="#7C8694">Rare</text></node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#E6EAF0">320 Gold</text><text font_size="12" font_color="#7C8694">Currency</text></node>
+            </node>
+            <node flex_direction="row" column_gap="10px">
+                <button flex_grow="1" padding="12px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="leave_loot" justify_content="center"><text font_size="13" font_color="#A8B2C0">Leave</text></button>
+                <button flex_grow="1" padding="12px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="take_all_loot" justify_content="center"><text font_size="13" font_color="#FFFFFF">Take All</text></button>
+            </node>
+        </node>
+    </node>
+</template>

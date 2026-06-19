@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 65 Gold Leaf"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#D4AF37"
+success = "#9AAA50"
+warning = "#E0C040"
+error = "#B03A2E"
+selection = "#5A4A18"
+selection_stroke = "#3E3210"
+
+[surfaces]
+window = "#100E08"
+window_stroke = "#3A3018"
+panel = "#16130B"
+popup = "#1F1A10"
+overlay = "#08060090"
+faint = "#131009"
+extreme = "#282014"
+
+[text]
+primary = "#F4E8C8"
+secondary = "#C8B488"
+muted = "#807050"
+heading = "#E8C860"
+disabled = "#4E4630"
+hyperlink = "#D4AF37"
+
+[widgets]
+noninteractive_bg = "#282014"
+noninteractive_fg = "#A89068"
+inactive_bg = "#302718"
+inactive_fg = "#C8B488"
+hovered_bg = "#443820"
+hovered_fg = "#F4E8C8"
+active_bg = "#D4AF37"
+active_fg = "#16130B"
+border = "#131009"
+border_light = "#3A3018"
+
+[panels]
+tree_line = "#4E4020"
+drop_line = "#D4AF37"
+drop_child_highlight = "#D4AF3740"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#1A160D"
+inspector_row_odd = "#211B11"
+category_frame_bg = "#1F1A10"
+item_bg = "#211B11"
+item_hover = "#302718"
+tab_active = "#302718"
+tab_inactive = "#16130B"
+tab_hover = "#443820"
+close_hover = "#B03A2E"
+
+[viewport]
+grid_line = "#302618"
+gizmo_x = "#D0504A"
+gizmo_y = "#9AC850"
+gizmo_z = "#5A80D0"
+gizmo_selected = "#FFD840"
+
+[material]
+canvas_bg = "#0C0A05"
+grid_dot = "#302718"
+node_bg = "#16130B"
+node_border = "#3A3018"
+node_selected_border = "#D4AF37"
+connection = "#A89068"
+connection_preview = "#FFD840"
+selection_rect_fill = "#D4AF3722"
+selection_rect_stroke = "#D4AF37"

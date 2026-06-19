@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 23 Desert Mirage"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#E08A3C"
+success = "#A8B84A"
+warning = "#E6B82A"
+error = "#D6543C"
+selection = "#E8D2B0"
+selection_stroke = "#E08A3C"
+
+[surfaces]
+window = "#F7EEDD"
+window_stroke = "#DCC4A0"
+panel = "#FBF5EA"
+popup = "#FFFDF7"
+overlay = "#3A2A1030"
+faint = "#F0E2CC"
+extreme = "#E8D6BA"
+
+[text]
+primary = "#3E2E18"
+secondary = "#6E5838"
+muted = "#9E8862"
+heading = "#A85C18"
+disabled = "#C4B08C"
+hyperlink = "#B86A1C"
+
+[widgets]
+noninteractive_bg = "#F0E2CC"
+noninteractive_fg = "#7A6442"
+inactive_bg = "#EAD8BC"
+inactive_fg = "#5A4626"
+hovered_bg = "#E0CAA6"
+hovered_fg = "#3E2E18"
+active_bg = "#E08A3C"
+active_fg = "#FFFDF7"
+border = "#DCC4A0"
+border_light = "#EAD8BC"
+
+[panels]
+tree_line = "#D4BC94"
+drop_line = "#E08A3C"
+drop_child_highlight = "#E08A3C40"
+row_odd_bg = "#3E2E1808"
+inspector_row_even = "#F4ECDC"
+inspector_row_odd = "#F0E2CC"
+category_frame_bg = "#F2E8D4"
+item_bg = "#F2E8D4"
+item_hover = "#E8D6BA"
+tab_active = "#FFFDF7"
+tab_inactive = "#EAD8BC"
+tab_hover = "#E0CAA6"
+close_hover = "#D6543C"
+
+[viewport]
+grid_line = "#DCC4A0"
+gizmo_x = "#D6543C"
+gizmo_y = "#88A82A"
+gizmo_z = "#3D80D6"
+gizmo_selected = "#E6B82A"
+
+[material]
+canvas_bg = "#F0E2CC"
+grid_dot = "#DCC4A0"
+node_bg = "#FBF5EA"
+node_border = "#DCC4A0"
+node_selected_border = "#E08A3C"
+connection = "#7A6442"
+connection_preview = "#E6B82A"
+selection_rect_fill = "#E08A3C22"
+selection_rect_stroke = "#E08A3C"

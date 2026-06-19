@@ -1,0 +1,14 @@
+<!-- Item card: inventory tile with icon area, name, rarity tag and a footer stat -->
+<template>
+    <property name="name">Ember Charm</property>
+    <property name="rarity">Rare</property>
+    <property name="rarity_color">#6BA1F8</property>
+    <node width="160px" flex_direction="column" row_gap="8px" padding="12px" background="#12161C" border="1px" border_color="#2A323D" border_radius="10px">
+        <node width="100%" height="96px" background="#0D1117" border_radius="8px" />
+        <text font_size="14" font_color="#FFFFFF">{name}</text>
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <text font_size="11" font_color="{rarity_color}">{rarity}</text>
+            <text font_size="11" font_color="#8C97A6">+12 INT</text>
+        </node>
+    </node>
+</template>

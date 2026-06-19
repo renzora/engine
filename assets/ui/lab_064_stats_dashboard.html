@@ -1,0 +1,31 @@
+<!-- lab_064_stats_dashboard: KPI tile row + progress gauges + recent-activity list -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="780px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <text font_size="20" font_color="#FFFFFF">Stats Dashboard</text>
+            <node flex_direction="row" column_gap="12px">
+                <node flex_grow="1" flex_direction="column" row_gap="6px" padding="14px" background="#171B23" border_radius="10px"><text font_size="24" font_color="#FFFFFF">1,284</text><text font_size="12" font_color="#7C8694">Battles Won</text></node>
+                <node flex_grow="1" flex_direction="column" row_gap="6px" padding="14px" background="#171B23" border_radius="10px"><text font_size="24" font_color="#2E7D5B">68%</text><text font_size="12" font_color="#7C8694">Win Rate</text></node>
+                <node flex_grow="1" flex_direction="column" row_gap="6px" padding="14px" background="#171B23" border_radius="10px"><text font_size="24" font_color="#E5B567">3.4</text><text font_size="12" font_color="#7C8694">K/D Ratio</text></node>
+                <node flex_grow="1" flex_direction="column" row_gap="6px" padding="14px" background="#171B23" border_radius="10px"><text font_size="24" font_color="#FFFFFF">142h</text><text font_size="12" font_color="#7C8694">Play Time</text></node>
+            </node>
+            <node flex_direction="row" column_gap="16px">
+                <node flex_grow="1" flex_direction="column" row_gap="10px" padding="14px" background="#171B23" border_radius="10px">
+                    <text font_size="13" font_color="#A8B2C0">Mastery Progress</text>
+                    <node flex_direction="column" row_gap="4px"><node flex_direction="row" justify_content="space_between"><text font_size="11" font_color="#7C8694">Melee</text><text font_size="11" font_color="#A8B2C0">82%</text></node><node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="82%" height="6px" background="#4C8BF5" border_radius="999px"></node></node></node>
+                    <node flex_direction="column" row_gap="4px"><node flex_direction="row" justify_content="space_between"><text font_size="11" font_color="#7C8694">Ranged</text><text font_size="11" font_color="#A8B2C0">61%</text></node><node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="61%" height="6px" background="#4C8BF5" border_radius="999px"></node></node></node>
+                    <node flex_direction="column" row_gap="4px"><node flex_direction="row" justify_content="space_between"><text font_size="11" font_color="#7C8694">Magic</text><text font_size="11" font_color="#A8B2C0">37%</text></node><node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="37%" height="6px" background="#4C8BF5" border_radius="999px"></node></node></node>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="8px" padding="14px" background="#171B23" border_radius="10px">
+                    <text font_size="13" font_color="#A8B2C0">Recent</text>
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#E6EAF0">Cleared Crypt</text><text font_size="11" font_color="#7C8694">2m</text></node>
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#E6EAF0">Reached Lv 18</text><text font_size="11" font_color="#7C8694">1h</text></node>
+                    <node flex_direction="row" justify_content="space_between"><text font_size="12" font_color="#E6EAF0">Won Arena Match</text><text font_size="11" font_color="#7C8694">3h</text></node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end">
+                <button padding="10px 18px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_dashboard" justify_content="center"><text font_size="13" font_color="#FFFFFF">Close</text></button>
+            </node>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 03 Glacier Drift"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#1C9DD8"
+success = "#2FA86B"
+warning = "#E0930F"
+error = "#D6354A"
+selection = "#AEDDF2"
+selection_stroke = "#1C9DD8"
+
+[surfaces]
+window = "#EEF6FB"
+window_stroke = "#C2DAE8"
+panel = "#F6FBFE"
+popup = "#FFFFFF"
+overlay = "#0A1A2840"
+faint = "#E4F0F7"
+extreme = "#D6E8F2"
+
+[text]
+primary = "#10303F"
+secondary = "#345D70"
+muted = "#7596A5"
+heading = "#0E5C7A"
+disabled = "#A8C0CC"
+hyperlink = "#1276A8"
+
+[widgets]
+noninteractive_bg = "#E4F0F7"
+noninteractive_fg = "#456578"
+inactive_bg = "#DBEAF3"
+inactive_fg = "#2A4C5C"
+hovered_bg = "#C9E2EF"
+hovered_fg = "#10303F"
+active_bg = "#1C9DD8"
+active_fg = "#F6FBFE"
+border = "#C2DAE8"
+border_light = "#D6E8F2"
+
+[panels]
+tree_line = "#A8CADC"
+drop_line = "#1C9DD8"
+drop_child_highlight = "#1C9DD840"
+row_odd_bg = "#0A1A2808"
+inspector_row_even = "#F0F8FC"
+inspector_row_odd = "#E4F0F7"
+category_frame_bg = "#EAF4FA"
+item_bg = "#EAF4FA"
+item_hover = "#D6E8F2"
+tab_active = "#FFFFFF"
+tab_inactive = "#DBEAF3"
+tab_hover = "#C9E2EF"
+close_hover = "#D6354A"
+
+[viewport]
+grid_line = "#C2DAE8"
+gizmo_x = "#D63A3A"
+gizmo_y = "#2FA84A"
+gizmo_z = "#1C6FD8"
+gizmo_selected = "#E0930F"
+
+[material]
+canvas_bg = "#E8F2F8"
+grid_dot = "#C2DAE8"
+node_bg = "#F6FBFE"
+node_border = "#C2DAE8"
+node_selected_border = "#1C9DD8"
+connection = "#456578"
+connection_preview = "#E0930F"
+selection_rect_fill = "#1C9DD822"
+selection_rect_stroke = "#1C9DD8"

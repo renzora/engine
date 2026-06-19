@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 75 Mahogany"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#A0432A"
+success = "#7A8A48"
+warning = "#C09038"
+error = "#B02818"
+selection = "#5A2A1A"
+selection_stroke = "#3E1C10"
+
+[surfaces]
+window = "#140A07"
+window_stroke = "#3A241A"
+panel = "#1C0F0A"
+popup = "#261610"
+overlay = "#0A040090"
+faint = "#180C08"
+extreme = "#301C14"
+
+[text]
+primary = "#EAD8C8"
+secondary = "#BC9C84"
+muted = "#806250"
+heading = "#D08858"
+disabled = "#503A2E"
+hyperlink = "#C0744A"
+
+[widgets]
+noninteractive_bg = "#301C14"
+noninteractive_fg = "#A07E66"
+inactive_bg = "#38221A"
+inactive_fg = "#BC9C84"
+hovered_bg = "#4A2E20"
+hovered_fg = "#EAD8C8"
+active_bg = "#A0432A"
+active_fg = "#1C0F0A"
+border = "#180C08"
+border_light = "#3A241A"
+
+[panels]
+tree_line = "#4E3022"
+drop_line = "#A0432A"
+drop_child_highlight = "#A0432A40"
+row_odd_bg = "#FFFFFF06"
+inspector_row_even = "#20120C"
+inspector_row_odd = "#281810"
+category_frame_bg = "#261610"
+item_bg = "#281810"
+item_hover = "#38221A"
+tab_active = "#38221A"
+tab_inactive = "#1C0F0A"
+tab_hover = "#4A2E20"
+close_hover = "#B02818"
+
+[viewport]
+grid_line = "#321E16"
+gizmo_x = "#D0504A"
+gizmo_y = "#7AC850"
+gizmo_z = "#5A80D0"
+gizmo_selected = "#E0A040"
+
+[material]
+canvas_bg = "#100805"
+grid_dot = "#38221A"
+node_bg = "#1C0F0A"
+node_border = "#3A241A"
+node_selected_border = "#A0432A"
+connection = "#A07E66"
+connection_preview = "#E0A040"
+selection_rect_fill = "#A0432A22"
+selection_rect_stroke = "#A0432A"

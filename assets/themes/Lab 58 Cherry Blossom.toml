@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 58 Cherry Blossom"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#F58CB0"
+success = "#7CC8A0"
+warning = "#E8C870"
+error = "#E0607A"
+selection = "#F8C6D8"
+selection_stroke = "#E89CBC"
+
+[surfaces]
+window = "#FFF6F8"
+window_stroke = "#F0CAD6"
+panel = "#FCECF0"
+popup = "#FFF8FA"
+overlay = "#F58CB033"
+faint = "#FBEFF2"
+extreme = "#F6DCE4"
+
+[text]
+primary = "#4A2A38"
+secondary = "#7A4E60"
+muted = "#A87E90"
+heading = "#C85078"
+disabled = "#C8A8B4"
+hyperlink = "#D04A80"
+
+[widgets]
+noninteractive_bg = "#F6DCE4"
+noninteractive_fg = "#946A7A"
+inactive_bg = "#F4D2DC"
+inactive_fg = "#7A4E60"
+hovered_bg = "#F4C2D2"
+hovered_fg = "#4A2A38"
+active_bg = "#F58CB0"
+active_fg = "#FFF6F8"
+border = "#F0CAD6"
+border_light = "#F6DCE4"
+
+[panels]
+tree_line = "#E8B4C6"
+drop_line = "#F58CB0"
+drop_child_highlight = "#F58CB040"
+row_odd_bg = "#00000007"
+inspector_row_even = "#FBEFF2"
+inspector_row_odd = "#F8E4EA"
+category_frame_bg = "#FFF8FA"
+item_bg = "#F8E4EA"
+item_hover = "#F4D2DC"
+tab_active = "#FCECF0"
+tab_inactive = "#F6DCE4"
+tab_hover = "#F4C2D2"
+close_hover = "#E0607A"
+
+[viewport]
+grid_line = "#ECCAD6"
+gizmo_x = "#E0607A"
+gizmo_y = "#5AC890"
+gizmo_z = "#6090E0"
+gizmo_selected = "#E8A030"
+
+[material]
+canvas_bg = "#FFF8FA"
+grid_dot = "#F4D2DC"
+node_bg = "#FCECF0"
+node_border = "#F0CAD6"
+node_selected_border = "#F58CB0"
+connection = "#B07E90"
+connection_preview = "#E8A030"
+selection_rect_fill = "#F58CB022"
+selection_rect_stroke = "#F58CB0"

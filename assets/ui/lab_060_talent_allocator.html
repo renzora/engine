@@ -1,0 +1,38 @@
+<!-- lab_060_talent_allocator: talent rows with rank pips + +/- allocation + remaining points -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="560px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Talents</text>
+                <text font_size="13" font_color="#E5B567">3 points left</text>
+            </node>
+            <node flex_direction="column" row_gap="10px">
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="12px" background="#171B23" border_radius="10px">
+                    <node flex_direction="column" row_gap="4px"><text font_size="13" font_color="#FFFFFF">Toughness</text><text font_size="11" font_color="#8A93A2">+5% max HP per rank</text></node>
+                    <node flex_direction="row" align_items="center" column_gap="10px">
+                        <text font_size="12" font_color="#2E7D5B">●●●○○</text>
+                        <button padding="4px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="rank_up_toughness" justify_content="center"><text font_size="13" font_color="#FFFFFF">+</text></button>
+                    </node>
+                </node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="12px" background="#171B23" border_radius="10px">
+                    <node flex_direction="column" row_gap="4px"><text font_size="13" font_color="#FFFFFF">Swiftness</text><text font_size="11" font_color="#8A93A2">+3% move speed per rank</text></node>
+                    <node flex_direction="row" align_items="center" column_gap="10px">
+                        <text font_size="12" font_color="#2E7D5B">●○○○○</text>
+                        <button padding="4px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="rank_up_swiftness" justify_content="center"><text font_size="13" font_color="#FFFFFF">+</text></button>
+                    </node>
+                </node>
+                <node flex_direction="row" justify_content="space_between" align_items="center" padding="12px" background="#171B23" border_radius="10px">
+                    <node flex_direction="column" row_gap="4px"><text font_size="13" font_color="#FFFFFF">Arcane Focus</text><text font_size="11" font_color="#8A93A2">+4% spell power per rank</text></node>
+                    <node flex_direction="row" align_items="center" column_gap="10px">
+                        <text font_size="12" font_color="#5A6370">○○○○○</text>
+                        <button padding="4px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="rank_up_arcane" justify_content="center"><text font_size="13" font_color="#FFFFFF">+</text></button>
+                    </node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="space_between">
+                <button padding="10px 16px" background="#1B1F27" border="1px" border_color="#3A2630" border_radius="8px" hover:background="#2A1E24" on_press="reset_talents" justify_content="center"><text font_size="13" font_color="#E06C75">Reset</text></button>
+                <button padding="10px 16px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="confirm_talents" justify_content="center"><text font_size="13" font_color="#FFFFFF">Confirm</text></button>
+            </node>
+        </node>
+    </node>
+</template>

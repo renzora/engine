@@ -1,0 +1,19 @@
+<!-- lab_050_victory_screen: triumphant results screen with star rating + reward breakdown -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" flex_direction="column" justify_content="center" align_items="center" row_gap="28px">
+        <node flex_direction="column" align_items="center" row_gap="8px">
+            <text font_size="58" font_color="#E5B567">VICTORY</text>
+            <text font_size="22" font_color="#FFFFFF">★ ★ ★</text>
+        </node>
+        <node width="380px" flex_direction="column" row_gap="8px">
+            <node flex_direction="row" justify_content="space_between" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#8A93A2">Base Reward</text><text font_size="13" font_color="#E6EAF0">+450 XP</text></node>
+            <node flex_direction="row" justify_content="space_between" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#8A93A2">No-Damage Bonus</text><text font_size="13" font_color="#2E7D5B">+200 XP</text></node>
+            <node flex_direction="row" justify_content="space_between" padding="10px 12px" background="#171B23" border_radius="8px"><text font_size="13" font_color="#8A93A2">Speed Bonus</text><text font_size="13" font_color="#2E7D5B">+120 XP</text></node>
+            <node flex_direction="row" justify_content="space_between" padding="10px 12px" background="#12161E" border="1px" border_color="#E5B567" border_radius="8px"><text font_size="13" font_color="#E5B567">Total</text><text font_size="13" font_color="#E5B567">770 XP</text></node>
+        </node>
+        <node width="380px" flex_direction="row" column_gap="10px">
+            <button flex_grow="1" padding="13px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="replay_level" justify_content="center"><text font_size="14" font_color="#A8B2C0">Replay</text></button>
+            <button flex_grow="1" padding="13px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="next_level" justify_content="center"><text font_size="14" font_color="#FFFFFF">Next</text></button>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,30 @@
+<!-- lab_045_party_roster: party member cards with hp/mp bars + add-member slot -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="640px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="14px">
+            <text font_size="20" font_color="#FFFFFF">Party</text>
+            <node flex_direction="column" row_gap="10px">
+                <node flex_direction="row" align_items="center" column_gap="12px" padding="12px" background="#171B23" border_radius="10px">
+                    <node width="48px" height="48px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" flex_shrink="0"></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px">
+                        <node flex_direction="row" justify_content="space_between"><text font_size="14" font_color="#FFFFFF">Aria — Ranger</text><text font_size="12" font_color="#7C8694">Lv 18</text></node>
+                        <node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="86%" height="6px" background="#2E7D5B" border_radius="999px"></node></node>
+                        <node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="40%" height="6px" background="#4C8BF5" border_radius="999px"></node></node>
+                    </node>
+                </node>
+                <node flex_direction="row" align_items="center" column_gap="12px" padding="12px" background="#171B23" border_radius="10px">
+                    <node width="48px" height="48px" background="#1B1F27" border="1px" border_color="#3A4250" border_radius="8px" flex_shrink="0"></node>
+                    <node flex_grow="1" flex_direction="column" row_gap="6px">
+                        <node flex_direction="row" justify_content="space_between"><text font_size="14" font_color="#FFFFFF">Borin — Warrior</text><text font_size="12" font_color="#7C8694">Lv 20</text></node>
+                        <node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="95%" height="6px" background="#2E7D5B" border_radius="999px"></node></node>
+                        <node width="100%" height="6px" background="#1B1F27" border_radius="999px"><node width="20%" height="6px" background="#4C8BF5" border_radius="999px"></node></node>
+                    </node>
+                </node>
+                <button flex_direction="row" align_items="center" justify_content="center" padding="14px" background="#171B23" border="1px" border_color="#2C3340" border_radius="10px" hover:background="#1F2530" on_press="recruit_member"><text font_size="13" font_color="#7C8694">+ Recruit Member</text></button>
+            </node>
+            <node flex_direction="row" justify_content="flex_end">
+                <button padding="10px 18px" background="#4C8BF5" border_radius="8px" hover:background="#6BA1F8" on_press="close_party" justify_content="center"><text font_size="13" font_color="#FFFFFF">Done</text></button>
+            </node>
+        </node>
+    </node>
+</template>

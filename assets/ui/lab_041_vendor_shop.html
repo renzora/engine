@@ -1,0 +1,42 @@
+<!-- lab_041_vendor_shop: vendor with buy list (left) and sell pane (right) + balance bar -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#0B0E13E6" justify_content="center" align_items="center">
+        <node width="760px" background="#12161E" border="1px" border_color="#2C3340" border_radius="12px" flex_direction="column" padding="20px" row_gap="16px">
+            <node flex_direction="row" justify_content="space_between" align_items="center">
+                <text font_size="20" font_color="#FFFFFF">Gareth's Wares</text>
+                <text font_size="13" font_color="#E5B567">Gold 1,240</text>
+            </node>
+            <node flex_direction="row" column_gap="16px">
+                <node flex_grow="1" flex_direction="column" row_gap="8px">
+                    <text font_size="14" font_color="#A8B2C0">Buy</text>
+                    <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                        <text font_size="13" font_color="#E6EAF0">Iron Sword</text>
+                        <button padding="5px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="buy_iron_sword" justify_content="center"><text font_size="12" font_color="#FFFFFF">120g</text></button>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                        <text font_size="13" font_color="#E6EAF0">Health Potion</text>
+                        <button padding="5px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="buy_health_potion" justify_content="center"><text font_size="12" font_color="#FFFFFF">25g</text></button>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                        <text font_size="13" font_color="#E6EAF0">Leather Boots</text>
+                        <button padding="5px 12px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" on_press="buy_leather_boots" justify_content="center"><text font_size="12" font_color="#FFFFFF">60g</text></button>
+                    </node>
+                </node>
+                <node flex_grow="1" flex_direction="column" row_gap="8px">
+                    <text font_size="14" font_color="#A8B2C0">Sell</text>
+                    <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                        <text font_size="13" font_color="#E6EAF0">Old Dagger</text>
+                        <button padding="5px 12px" background="#2E7D5B" border_radius="6px" hover:background="#379268" on_press="sell_old_dagger" justify_content="center"><text font_size="12" font_color="#FFFFFF">+15g</text></button>
+                    </node>
+                    <node flex_direction="row" justify_content="space_between" align_items="center" padding="10px 12px" background="#171B23" border_radius="8px">
+                        <text font_size="13" font_color="#E6EAF0">Wolf Pelt</text>
+                        <button padding="5px 12px" background="#2E7D5B" border_radius="6px" hover:background="#379268" on_press="sell_wolf_pelt" justify_content="center"><text font_size="12" font_color="#FFFFFF">+8g</text></button>
+                    </node>
+                </node>
+            </node>
+            <node flex_direction="row" justify_content="flex_end">
+                <button padding="10px 18px" background="#1B1F27" border="1px" border_color="#2C3340" border_radius="8px" hover:background="#222A36" on_press="leave_shop" justify_content="center"><text font_size="13" font_color="#A8B2C0">Leave</text></button>
+            </node>
+        </node>
+    </node>
+</template>

@@ -1,0 +1,19 @@
+<!-- Smartwatch face: time + activity rings + metrics -->
+<template>
+    <node position="absolute" left="0px" top="0px" width="100%" height="100%" background="#000000" flex_direction="row" align_items="center" justify_content="center">
+        <node width="360px" height="360px" border_radius="60px" background="#080810" border="2px" border_color="#1A1A2A" flex_direction="column" align_items="center" justify_content="center" padding="24px" row_gap="14px">
+            <text font_size="64" font_color="#FFFFFF">10:42</text>
+            <text font_size="15" font_color="#5BD3FF">SAT 17 JUN</text>
+            <node flex_direction="row" column_gap="18px" align_items="center">
+                <node template="ui/components/ring.html" value="72" color="#FF375F" size="90px" />
+                <node template="ui/components/ring.html" value="48" color="#A0F060" size="90px" />
+                <node template="ui/components/ring.html" value="86" color="#5BD3FF" size="90px" />
+            </node>
+            <node flex_direction="row" column_gap="22px">
+                <node flex_direction="column" align_items="center"><text font_size="18" font_color="#FF375F">112</text><text font_size="11" font_color="#7A7A8A">BPM</text></node>
+                <node flex_direction="column" align_items="center"><text font_size="18" font_color="#A0F060">8.2k</text><text font_size="11" font_color="#7A7A8A">STEPS</text></node>
+                <node flex_direction="column" align_items="center"><text font_size="18" font_color="#5BD3FF">420</text><text font_size="11" font_color="#7A7A8A">KCAL</text></node>
+            </node>
+        </node>
+    </node>
+</template>

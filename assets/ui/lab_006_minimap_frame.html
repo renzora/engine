@@ -1,0 +1,10 @@
+<!-- Minimap frame: top-right square framed container with a header strip; map image fills the body -->
+<template>
+    <node position="absolute" top="16px" right="16px" width="172px" flex_direction="column" background="#0D1117E6" border="2px" border_color="#2A323D" border_radius="10px">
+        <node flex_direction="row" justify_content="space_between" align_items="center" padding="6px 10px 6px 10px">
+            <text font_size="11" font_color="#AEB6C2">MAP</text>
+            <text font_size="11" font_color="#5C6675">{{ World.zone }}</text>
+        </node>
+        <node width="100%" height="156px" background="#161D26" border_radius="8px" />
+    </node>
+</template>

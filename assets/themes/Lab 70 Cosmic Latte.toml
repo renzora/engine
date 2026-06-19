@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 70 Cosmic Latte"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#B0784A"
+success = "#7A9A50"
+warning = "#D0A040"
+error = "#C0503A"
+selection = "#E8DCC4"
+selection_stroke = "#D4C4A4"
+
+[surfaces]
+window = "#FAF6EC"
+window_stroke = "#DCD0B8"
+panel = "#F3ECDC"
+popup = "#FBF8F0"
+overlay = "#B0784A33"
+faint = "#F6F0E2"
+extreme = "#EAE0CC"
+
+[text]
+primary = "#3E342A"
+secondary = "#6E5E4A"
+muted = "#9A8A72"
+heading = "#8A5A30"
+disabled = "#C0B49C"
+hyperlink = "#A0642E"
+
+[widgets]
+noninteractive_bg = "#EAE0CC"
+noninteractive_fg = "#807058"
+inactive_bg = "#E4D8C0"
+inactive_fg = "#6E5E4A"
+hovered_bg = "#DCCEB0"
+hovered_fg = "#3E342A"
+active_bg = "#B0784A"
+active_fg = "#FAF6EC"
+border = "#DCD0B8"
+border_light = "#EAE0CC"
+
+[panels]
+tree_line = "#CCBC9C"
+drop_line = "#B0784A"
+drop_child_highlight = "#B0784A40"
+row_odd_bg = "#00000007"
+inspector_row_even = "#F6F0E2"
+inspector_row_odd = "#EFE6D2"
+category_frame_bg = "#FBF8F0"
+item_bg = "#EFE6D2"
+item_hover = "#E4D8C0"
+tab_active = "#F3ECDC"
+tab_inactive = "#EAE0CC"
+tab_hover = "#DCCEB0"
+close_hover = "#C0503A"
+
+[viewport]
+grid_line = "#DCCEB0"
+gizmo_x = "#C0503A"
+gizmo_y = "#6A9A40"
+gizmo_z = "#4A7AC0"
+gizmo_selected = "#D0A030"
+
+[material]
+canvas_bg = "#FBF8F0"
+grid_dot = "#E4D8C0"
+node_bg = "#F3ECDC"
+node_border = "#DCD0B8"
+node_selected_border = "#B0784A"
+connection = "#807058"
+connection_preview = "#D0A030"
+selection_rect_fill = "#B0784A22"
+selection_rect_stroke = "#B0784A"

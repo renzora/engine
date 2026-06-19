@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 64 Oil Slick"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#5CE0D0"
+success = "#7AD060"
+warning = "#E0A0E0"
+error = "#FF6090"
+selection = "#1E3A4A"
+selection_stroke = "#142A38"
+
+[surfaces]
+window = "#070A0E"
+window_stroke = "#243440"
+panel = "#0D1218"
+popup = "#141C24"
+overlay = "#0008109A"
+faint = "#0A0F14"
+extreme = "#1A2630"
+
+[text]
+primary = "#D8E8E4"
+secondary = "#90B0B8"
+muted = "#506068"
+heading = "#A0E0D0"
+disabled = "#344248"
+hyperlink = "#80C0E0"
+
+[widgets]
+noninteractive_bg = "#1A2630"
+noninteractive_fg = "#7A98A0"
+inactive_bg = "#1E2E3A"
+inactive_fg = "#90B0B8"
+hovered_bg = "#2A4050"
+hovered_fg = "#D8E8E4"
+active_bg = "#5CE0D0"
+active_fg = "#0D1218"
+border = "#0A0F14"
+border_light = "#243440"
+
+[panels]
+tree_line = "#2E4452"
+drop_line = "#5CE0D0"
+drop_child_highlight = "#5CE0D040"
+row_odd_bg = "#E0A0E00C"
+inspector_row_even = "#10161C"
+inspector_row_odd = "#151E26"
+category_frame_bg = "#141C24"
+item_bg = "#151E26"
+item_hover = "#1E2E3A"
+tab_active = "#1E2E3A"
+tab_inactive = "#0D1218"
+tab_hover = "#2A4050"
+close_hover = "#FF6090"
+
+[viewport]
+grid_line = "#1E2E38"
+gizmo_x = "#FF6090"
+gizmo_y = "#7AD060"
+gizmo_z = "#60A0E0"
+gizmo_selected = "#E0A0E0"
+
+[material]
+canvas_bg = "#05080C"
+grid_dot = "#1E2E3A"
+node_bg = "#0D1218"
+node_border = "#243440"
+node_selected_border = "#5CE0D0"
+connection = "#7A98A0"
+connection_preview = "#E0A0E0"
+selection_rect_fill = "#5CE0D022"
+selection_rect_stroke = "#5CE0D0"

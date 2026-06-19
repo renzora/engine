@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 21 Copper Patina"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#2AB8A6"
+success = "#7CC04A"
+warning = "#E08A2A"
+error = "#D6543C"
+selection = "#0E4A44"
+selection_stroke = "#2AB8A6"
+
+[surfaces]
+window = "#0C100F"
+window_stroke = "#2A1810"
+panel = "#121A18"
+popup = "#16201E"
+overlay = "#04080790"
+faint = "#0E1614"
+extreme = "#1C2826"
+
+[text]
+primary = "#E0EDE9"
+secondary = "#B68A6E"
+muted = "#7A6450"
+heading = "#3FD0BC"
+disabled = "#445450"
+hyperlink = "#36C0AE"
+
+[widgets]
+noninteractive_bg = "#1C2826"
+noninteractive_fg = "#A89080"
+inactive_bg = "#243230"
+inactive_fg = "#C8B0A0"
+hovered_bg = "#2E4240"
+hovered_fg = "#E0EDE9"
+active_bg = "#2AB8A6"
+active_fg = "#0A1412"
+border = "#162020"
+border_light = "#2E4240"
+
+[panels]
+tree_line = "#345048"
+drop_line = "#2AB8A6"
+drop_child_highlight = "#2AB8A640"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#141E1C"
+inspector_row_odd = "#1C2826"
+category_frame_bg = "#16201E"
+item_bg = "#1C2826"
+item_hover = "#283834"
+tab_active = "#283834"
+tab_inactive = "#121A18"
+tab_hover = "#2E4240"
+close_hover = "#D6543C"
+
+[viewport]
+grid_line = "#2A3A36"
+gizmo_x = "#D6543C"
+gizmo_y = "#7CC04A"
+gizmo_z = "#4A8CE0"
+gizmo_selected = "#E08A2A"
+
+[material]
+canvas_bg = "#0A100E"
+grid_dot = "#243230"
+node_bg = "#141E1C"
+node_border = "#2E4240"
+node_selected_border = "#2AB8A6"
+connection = "#A89080"
+connection_preview = "#E08A2A"
+selection_rect_fill = "#2AB8A622"
+selection_rect_stroke = "#2AB8A6"

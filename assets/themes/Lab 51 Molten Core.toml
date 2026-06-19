@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 51 Molten Core"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF6A00"
+success = "#7FBF3F"
+warning = "#FFC107"
+error = "#FF3030"
+selection = "#C24A12"
+selection_stroke = "#8A3A12"
+
+[surfaces]
+window = "#120604"
+window_stroke = "#3A1A10"
+panel = "#1A0A06"
+popup = "#21100A"
+overlay = "#000000B4"
+faint = "#150806"
+extreme = "#28140C"
+
+[text]
+primary = "#FFE8D6"
+secondary = "#E0B49A"
+muted = "#9A6A50"
+heading = "#FFC79A"
+disabled = "#5A3A2A"
+hyperlink = "#FF9A4A"
+
+[widgets]
+noninteractive_bg = "#28140C"
+noninteractive_fg = "#C99A7A"
+inactive_bg = "#33180E"
+inactive_fg = "#E0B49A"
+hovered_bg = "#45200F"
+hovered_fg = "#FFE8D6"
+active_bg = "#FF6A00"
+active_fg = "#1A0A06"
+border = "#150806"
+border_light = "#3A1A10"
+
+[panels]
+tree_line = "#4A2516"
+drop_line = "#FF6A00"
+drop_child_highlight = "#FF6A0040"
+row_odd_bg = "#FFFFFF08"
+inspector_row_even = "#1E0E08"
+inspector_row_odd = "#26120A"
+category_frame_bg = "#21100A"
+item_bg = "#26120A"
+item_hover = "#3A1A10"
+tab_active = "#3A1A10"
+tab_inactive = "#1A0A06"
+tab_hover = "#45200F"
+close_hover = "#FF3030"
+
+[viewport]
+grid_line = "#3A2018"
+gizmo_x = "#FF5050"
+gizmo_y = "#50FF50"
+gizmo_z = "#5080FF"
+gizmo_selected = "#FFE000"
+
+[material]
+canvas_bg = "#100604"
+grid_dot = "#33180E"
+node_bg = "#1A0C07"
+node_border = "#3A1A10"
+node_selected_border = "#FF6A00"
+connection = "#C99A7A"
+connection_preview = "#FFE000"
+selection_rect_fill = "#FF6A0022"
+selection_rect_stroke = "#FF6A00"

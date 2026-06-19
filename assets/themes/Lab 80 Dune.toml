@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 80 Dune"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#C89A50"
+success = "#9AA858"
+warning = "#E0B848"
+error = "#C05838"
+selection = "#5E4A2A"
+selection_stroke = "#42341C"
+
+[surfaces]
+window = "#161208"
+window_stroke = "#3E321C"
+panel = "#1E190E"
+popup = "#282112"
+overlay = "#0A060090"
+faint = "#1A150A"
+extreme = "#322914"
+
+[text]
+primary = "#F0E4C8"
+secondary = "#C8B488"
+muted = "#867048"
+heading = "#E0C068"
+disabled = "#544830"
+hyperlink = "#D0A850"
+
+[widgets]
+noninteractive_bg = "#322914"
+noninteractive_fg = "#A88E60"
+inactive_bg = "#3A2F1A"
+inactive_fg = "#C8B488"
+hovered_bg = "#4E4022"
+hovered_fg = "#F0E4C8"
+active_bg = "#C89A50"
+active_fg = "#1E190E"
+border = "#1A150A"
+border_light = "#3E321C"
+
+[panels]
+tree_line = "#544224"
+drop_line = "#C89A50"
+drop_child_highlight = "#C89A5040"
+row_odd_bg = "#FFFFFF07"
+inspector_row_even = "#221C0F"
+inspector_row_odd = "#2A2213"
+category_frame_bg = "#282112"
+item_bg = "#2A2213"
+item_hover = "#3A2F1A"
+tab_active = "#3A2F1A"
+tab_inactive = "#1E190E"
+tab_hover = "#4E4022"
+close_hover = "#C05838"
+
+[viewport]
+grid_line = "#342A18"
+gizmo_x = "#D0584A"
+gizmo_y = "#9AC858"
+gizmo_z = "#5A80D0"
+gizmo_selected = "#E0B848"
+
+[material]
+canvas_bg = "#120E06"
+grid_dot = "#3A2F1A"
+node_bg = "#1E190E"
+node_border = "#3E321C"
+node_selected_border = "#C89A50"
+connection = "#A88E60"
+connection_preview = "#E0B848"
+selection_rect_fill = "#C89A5022"
+selection_rect_stroke = "#C89A50"

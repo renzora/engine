@@ -1,0 +1,74 @@
+[meta]
+name = "Lab 89 Neon Tokyo"
+author = "Renzora Lab"
+version = "1.0"
+
+[semantic]
+accent = "#FF2D78"
+success = "#00E5C0"
+warning = "#FFD000"
+error = "#FF1744"
+selection = "#1A2A5A"
+selection_stroke = "#101C40"
+
+[surfaces]
+window = "#070612"
+window_stroke = "#241E50"
+panel = "#0D0B1E"
+popup = "#14112C"
+overlay = "#02000CB0"
+faint = "#0A0818"
+extreme = "#1A1640"
+
+[text]
+primary = "#E8E4FF"
+secondary = "#9A94D0"
+muted = "#5A5488"
+heading = "#00E5C0"
+disabled = "#3A3460"
+hyperlink = "#FF2D78"
+
+[widgets]
+noninteractive_bg = "#1A1640"
+noninteractive_fg = "#7E78B0"
+inactive_bg = "#201A4C"
+inactive_fg = "#9A94D0"
+hovered_bg = "#2C2666"
+hovered_fg = "#E8E4FF"
+active_bg = "#FF2D78"
+active_fg = "#0D0B1E"
+border = "#0A0818"
+border_light = "#241E50"
+
+[panels]
+tree_line = "#322A6A"
+drop_line = "#FF2D78"
+drop_child_highlight = "#FF2D7840"
+row_odd_bg = "#00E5C00A"
+inspector_row_even = "#100D26"
+inspector_row_odd = "#161230"
+category_frame_bg = "#14112C"
+item_bg = "#161230"
+item_hover = "#201A4C"
+tab_active = "#201A4C"
+tab_inactive = "#0D0B1E"
+tab_hover = "#2C2666"
+close_hover = "#FF1744"
+
+[viewport]
+grid_line = "#1E1A48"
+gizmo_x = "#FF1744"
+gizmo_y = "#00E5C0"
+gizmo_z = "#5A7AFF"
+gizmo_selected = "#FFD000"
+
+[material]
+canvas_bg = "#04030C"
+grid_dot = "#201A4C"
+node_bg = "#0D0B1E"
+node_border = "#241E50"
+node_selected_border = "#FF2D78"
+connection = "#7E78B0"
+connection_preview = "#00E5C0"
+selection_rect_fill = "#FF2D7822"
+selection_rect_stroke = "#FF2D78"
