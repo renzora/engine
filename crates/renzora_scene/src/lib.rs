@@ -324,32 +324,39 @@ fn save_scene_system(world: &mut World) {
         return;
     }
 
-    // Get the active tab's scene_path
-    let tab_scene_path = world
+    // Read the active tab's kind + path. CRITICAL: `DocumentTab.scene_path` is
+    // populated for EVERY tab kind, so an asset tab (material / blueprint /
+    // particle / script / shader) carries *its own file's* path here. Writing the
+    // world scene to that path overwrites the asset with scene RON — exactly how
+    // `.material` files got clobbered when Ctrl+S was pressed with a material tab
+    // focused. So only a scene tab maps Save → "this path"; an asset tab saves
+    // the project's actual scene instead.
+    let (active_is_scene, tab_scene_path) = world
         .get_resource::<renzora_ui::DocumentTabState>()
-        .and_then(|tabs| {
-            tabs.tabs
-                .get(tabs.active_tab)
-                .and_then(|tab| tab.scene_path.clone())
-        });
+        .and_then(|tabs| tabs.tabs.get(tabs.active_tab))
+        .map(|tab| (matches!(tab.kind, DocTabKind::Scene | DocTabKind::Other), tab.scene_path.clone()))
+        .unwrap_or((true, None));
 
-    let Some(tab_scene_path) = tab_scene_path else {
-        // No path yet — redirect to Save As
-        info!("Save: active tab has no scene_path, redirecting to Save As");
+    // A scene tab with no path yet → Save As (handled before borrowing the
+    // project, since inserting the request needs `&mut World`).
+    if active_is_scene && tab_scene_path.is_none() {
+        info!("Save: active scene tab has no path, redirecting to Save As");
         world.insert_resource(SaveAsSceneRequested);
         return;
-    };
+    }
 
     let Some(project) = world.get_resource::<CurrentProject>() else {
         warn!("No project open — cannot save scene");
         return;
     };
-    let save_path = project.resolve_path(&tab_scene_path);
-    info!(
-        "Save: active tab scene_path={:?}, resolved={}",
-        tab_scene_path,
-        save_path.display()
-    );
+    // Scene/Other tab → its own path; asset tab → the project's main scene
+    // (NEVER the asset's file).
+    let scene_rel: Option<String> = tab_scene_path.clone().filter(|_| active_is_scene);
+    let save_path = match &scene_rel {
+        Some(p) => project.resolve_path(p),
+        None => project.main_scene_path(),
+    };
+    info!("Save: target scene path = {}", save_path.display());
 
     stamp_orbit_on_scene_camera(world);
 
@@ -363,19 +370,25 @@ fn save_scene_system(world: &mut World) {
         return;
     }
 
-    // Clear modified flag
-    if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
-        let active = tabs.active_tab;
-        if let Some(tab) = tabs.tabs.get_mut(active) {
-            tab.is_modified = false;
+    // Clear the active tab's modified flag only when it's the scene we just saved
+    // (an asset tab's own editor owns its dirty state).
+    if active_is_scene {
+        if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
+            let active = tabs.active_tab;
+            if let Some(tab) = tabs.tabs.get_mut(active) {
+                tab.is_modified = false;
+            }
         }
     }
 
-    // Remember this scene as the last-open so the editor reopens it next launch.
-    if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
-        if project.config.editor_last_scene.as_deref() != Some(tab_scene_path.as_str()) {
-            project.config.editor_last_scene = Some(tab_scene_path.clone());
-            let _ = project.save_config();
+    // Remember this scene as the last-open so the editor reopens it next launch
+    // (only ever a real scene path).
+    if let Some(rel) = scene_rel {
+        if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
+            if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
+                project.config.editor_last_scene = Some(rel.clone());
+                let _ = project.save_config();
+            }
         }
     }
 

@@ -56,7 +56,8 @@ impl Plugin for PhysicsPlugin {
             .register_type::<PhysicsBodyType>()
             .register_type::<CollisionShapeData>()
             .register_type::<CollisionShapeType>()
-            .register_type::<PhysicsReadState>();
+            .register_type::<PhysicsReadState>()
+            .register_type::<read_state::CollisionReadState>();
 
         #[cfg(feature = "avian")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
@@ -98,8 +99,11 @@ impl Plugin for PhysicsPlugin {
 
         // Per-entity read-state mirror + script extension.
         app.add_systems(Update, read_state::auto_init_physics_read_state);
+        app.add_systems(Update, read_state::auto_init_collision_read_state);
         #[cfg(feature = "avian")]
         app.add_systems(Update, read_state::update_physics_read_state);
+        #[cfg(feature = "avian")]
+        app.add_systems(Update, read_state::update_collision_read_state);
 
         // Register Lua/Rhai functions owned by the physics crate.
         {

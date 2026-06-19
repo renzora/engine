@@ -47,6 +47,14 @@ impl EmberScroll {
         self.target = offset;
         self.stick = false;
     }
+
+    /// Nudge the smooth-scroll target by `delta` px (negative = up). `scroll_update`
+    /// clamps it to the scrollable range each frame, so callers needn't clamp.
+    /// Used for edge-autoscroll while drag-selecting. Cancels bottom-stick.
+    pub fn nudge(&mut self, delta: f32) {
+        self.target += delta;
+        self.stick = false;
+    }
 }
 
 /// The draggable scrollbar thumb; points back at its viewport + track.

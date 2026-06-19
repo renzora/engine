@@ -66,7 +66,7 @@ fn white() -> Color {
     Color::WHITE
 }
 
-const VERSION: &str = "r1-alpha5";
+const VERSION: &str = "r1-alpha6";
 const WEBSITE_URL: &str = "https://renzora.com";
 const YOUTUBE_URL: &str = "https://youtube.com/@renzoragame";
 const DISCORD_URL: &str = "https://discord.gg/9UHUGUyDJv";

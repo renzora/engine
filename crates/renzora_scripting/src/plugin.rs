@@ -142,6 +142,54 @@ impl Plugin for ScriptingPlugin {
 
         // Auto-insert ScriptComponent on new named entities (decouples hierarchy from scripting)
         app.add_observer(auto_insert_script_component);
+
+        // Bridge blueprint lifecycle/cursor ScriptActions (the interpreter only
+        // emits ScriptActions; despawn + cursor lock would otherwise be no-ops).
+        app.add_observer(handle_blueprint_lifecycle_actions);
+    }
+}
+
+/// Bridge blueprint-emitted `ScriptAction`s that have no other handler:
+/// `despawn_self`, `despawn` (target by name, empty = self), and
+/// `lock_cursor`/`unlock_cursor`. Text scripts reach these via `ScriptCommand`;
+/// the blueprint interpreter can only emit `ScriptAction`s, so it routes here.
+fn handle_blueprint_lifecycle_actions(
+    trigger: On<renzora::ScriptAction>,
+    mut commands: Commands,
+    names: Query<(Entity, &Name)>,
+    mut cursor: Query<&mut bevy::window::CursorOptions>,
+) {
+    let action = trigger.event();
+    match action.name.as_str() {
+        "despawn_self" => {
+            if let Ok(mut e) = commands.get_entity(action.entity) {
+                e.despawn();
+            }
+        }
+        "despawn" => {
+            let target = match &action.target_entity {
+                Some(n) => names.iter().find(|(_, nm)| nm.as_str() == n).map(|(e, _)| e),
+                None => Some(action.entity),
+            };
+            if let Some(t) = target {
+                if let Ok(mut e) = commands.get_entity(t) {
+                    e.despawn();
+                }
+            }
+        }
+        "lock_cursor" => {
+            if let Ok(mut c) = cursor.single_mut() {
+                c.grab_mode = bevy::window::CursorGrabMode::Locked;
+                c.visible = false;
+            }
+        }
+        "unlock_cursor" => {
+            if let Ok(mut c) = cursor.single_mut() {
+                c.grab_mode = bevy::window::CursorGrabMode::None;
+                c.visible = true;
+            }
+        }
+        _ => {}
     }
 }
 

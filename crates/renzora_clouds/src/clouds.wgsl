@@ -1,7 +1,21 @@
-// Procedural Clouds Shader — Ultra-realistic two-layer sky with spherical projection
-// Layer 1: Cumulus (lower, dense, billowy, back-lit) projected via curved shell
-// Layer 2: Cirrus (higher, stretched, wispy) for upper-atmosphere streaks
-// Compositing uses over-operator so cumulus sits in front of cirrus naturally.
+// Procedural Clouds Shader — realistic two-layer sky with spherical projection.
+//
+// Layer 1: Cumulus (lower, dense, billowy) lit with a light-march toward the sun.
+// Layer 2: Cirrus (higher, stretched, wispy) for upper-atmosphere streaks.
+//
+// The cumulus lighting follows the physically-based volumetric-cloud model
+// (Schneider/Hillaire-style scattering), adapted to our 2.5D dome:
+//   * A secondary "light march" steps the density field TOWARD the sun and
+//     accumulates optical depth → Beer-Lambert transmittance. This — not a
+//     view-elevation gradient — is what gives clouds bright sun-facing sides and
+//     dark shadow sides (the single biggest realism cue).
+//   * A dual-lobe Henyey-Greenstein phase function provides directional
+//     forward-scatter (the silver lining) plus a softer back lobe.
+//   * A 3-octave multi-scatter approximation (Wrenninge) keeps shadowed cloud
+//     interiors lit instead of pure black.
+//   * Shadowed regions fall back to the (bluish) Shadow Color, which is what
+//     lights real cloud undersides: scattered blue skylight, not darkness.
+// Compositing uses the over-operator so cumulus sits in front of cirrus.
 
 #import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings::globals
@@ -21,6 +35,20 @@ const PI: f32 = 3.14159265359;
 const EARTH_R: f32 = 260.0;
 const CUMULUS_H: f32 = 2.0;
 const CIRRUS_H: f32 = 5.5;
+
+// Sun light-march: how many shadow samples and how far each steps through the
+// noise field. Kept small (this is a dome, not a full volume) but enough to
+// resolve a cloud's own thickness against the sun.
+const LIGHT_STEPS: i32 = 5;
+const LIGHT_STEP: f32 = 0.34;
+
+// Multi-scatter octaves. Each successive octave scatters less, extincts less,
+// and has a more isotropic phase — the cheap stand-in for light that bounced
+// several times inside the cloud before reaching the eye.
+const MS_OCTAVES: i32 = 3;
+const MS_SCATTER: f32 = 0.55; // contribution falloff per octave
+const MS_EXTINCT: f32 = 0.55; // extinction falloff per octave (deeper light reach)
+const MS_PHASE: f32 = 0.5;    // phase eccentricity falloff per octave
 
 // ── Gradient noise (quintic interpolation) ──
 
@@ -68,6 +96,23 @@ fn fbm6(p_in: vec2<f32>) -> f32 {
     return value / total;
 }
 
+// Normalized 3-octave FBM — cheap density for the sun light-march, where we need
+// the broad cloud mass between a point and the sun, not fine detail.
+fn fbm3n(p_in: vec2<f32>) -> f32 {
+    var p = p_in;
+    var value = 0.0;
+    var amplitude = 0.5;
+    var total = 0.0;
+    let r = rot2(0.7);
+    for (var i = 0; i < 3; i = i + 1) {
+        value += amplitude * grad_noise(p);
+        total += amplitude;
+        p = r * p * 2.0 + vec2<f32>(70.0);
+        amplitude *= 0.5;
+    }
+    return value / total;
+}
+
 // Ridged FBM — produces cumulus billow shapes
 fn fbm_ridged(p_in: vec2<f32>) -> f32 {
     var p = p_in;
@@ -98,6 +143,19 @@ fn fbm3(p_in: vec2<f32>) -> f32 {
     return value;
 }
 
+// ── Henyey-Greenstein phase (includes the 1/4π normalization) ──
+
+fn hg(cos_t: f32, g: f32) -> f32 {
+    let g2 = g * g;
+    let denom = 1.0 + g2 - 2.0 * g * cos_t;
+    return (1.0 - g2) / (4.0 * PI * pow(max(denom, 1e-4), 1.5));
+}
+
+// Dual-lobe blend: a tight forward lobe (silver lining) + a softer wide lobe.
+fn dual_hg(cos_t: f32, g0: f32, g1: f32, blend: f32) -> f32 {
+    return mix(hg(cos_t, g0), hg(cos_t, g1), blend);
+}
+
 // ── Spherical-shell projection ──
 // Intersect view ray (from virtual ground at (0, EARTH_R, 0)) with cloud shell
 // of radius EARTH_R + h. Returns distance along ray — large near horizon, small near zenith.
@@ -121,7 +179,50 @@ struct Layer {
     alpha: f32,
 }
 
-// ── Cumulus: dense billowy front-layer clouds with Beer/powder/silver lighting ──
+// Two-stage domain warp shared by the shape and the light-march, so both sample
+// the same billowy field. Returns the warped coordinate in shape space.
+fn warp_pos(animated: vec2<f32>) -> vec2<f32> {
+    let warp1 = vec2<f32>(
+        fbm3(animated),
+        fbm3(animated + vec2<f32>(5.2, 1.3)),
+    );
+    let w1 = animated + warp1 * 0.45;
+    let warp2 = vec2<f32>(
+        fbm3(w1 * 2.0 + vec2<f32>(12.0, 3.0)),
+        fbm3(w1 * 2.0 + vec2<f32>(-7.0, 9.0)),
+    );
+    return w1 + warp2 * 0.18;
+}
+
+// Full-detail cumulus density at a warped position, remapped by coverage and
+// eroded at the edges. Returns [0,1].
+fn cumulus_density(warped: vec2<f32>, coverage: f32) -> f32 {
+    let base = fbm6(warped);
+    let billows = fbm_ridged(warped * 2.0);
+    let shape = base * 0.55 + billows * 0.45;
+
+    let edge_low = 1.0 - coverage;
+    let edge_high = edge_low + 0.22;
+    let cloud_shape = smoothstep(edge_low, edge_high, shape);
+    if cloud_shape < 0.001 {
+        return 0.0;
+    }
+
+    let detail = fbm3(warped * 5.5 + vec2<f32>(77.0, 33.0));
+    return saturate(cloud_shape - detail * 0.18);
+}
+
+// Cheap density used along the sun light-march — coarse mass only.
+fn cumulus_density_cheap(warped: vec2<f32>, coverage: f32) -> f32 {
+    let base = fbm3n(warped);
+    let billows = fbm_ridged(warped * 2.0);
+    let shape = base * 0.5 + billows * 0.5;
+    let edge_low = 1.0 - coverage;
+    let edge_high = edge_low + 0.25;
+    return smoothstep(edge_low, edge_high, shape);
+}
+
+// ── Cumulus: dense billowy front-layer clouds with sun light-march + dual-lobe phase ──
 
 fn sample_cumulus(
     dir: vec3<f32>,
@@ -146,74 +247,69 @@ fn sample_cumulus(
 
     let uv = shell_uv(dir, CUMULUS_H) * scale * 0.22;
     let animated = uv + wind_dir * time * speed;
+    let warped = warp_pos(animated);
 
-    // Double-stage domain warp for organic billowing shapes
-    let warp1 = vec2<f32>(
-        fbm3(animated),
-        fbm3(animated + vec2<f32>(5.2, 1.3)),
-    );
-    let w1 = animated + warp1 * 0.45;
-    let warp2 = vec2<f32>(
-        fbm3(w1 * 2.0 + vec2<f32>(12.0, 3.0)),
-        fbm3(w1 * 2.0 + vec2<f32>(-7.0, 9.0)),
-    );
-    let warped = w1 + warp2 * 0.18;
-
-    // Shape composition: smooth base + ridged billows
-    let base = fbm6(warped);
-    let billows = fbm_ridged(warped * 2.0);
-    let shape = base * 0.55 + billows * 0.45;
-
-    // Remap by coverage
-    let edge_low = 1.0 - coverage;
-    let edge_high = edge_low + 0.22;
-    let cloud_shape = smoothstep(edge_low, edge_high, shape);
-
-    if cloud_shape < 0.001 {
+    let d0 = cumulus_density(warped, coverage);
+    if d0 < 0.001 {
         return out;
     }
 
-    // High-frequency erosion for detailed edges
-    let detail = fbm3(warped * 5.5 + vec2<f32>(77.0, 33.0));
-    let eroded = saturate(cloud_shape - detail * 0.18);
+    // ── Sun light-march: accumulate optical depth from this point toward the sun.
+    // Horizontal shadow direction = sun's projected azimuth; a low sun stretches
+    // the shadow further through the field, just like long evening cloud shadows.
+    let sun_xz = vec2<f32>(sun_dir.x, sun_dir.z);
+    let sun_uv = normalize(sun_xz + vec2<f32>(1e-4, 0.0));
+    let sun_reach = LIGHT_STEP / clamp(sun_dir.y * 0.5 + 0.5, 0.4, 1.0);
 
-    if eroded < 0.001 {
-        return out;
+    var light_od = 0.0;
+    for (var i = 1; i <= LIGHT_STEPS; i = i + 1) {
+        let sp = warped + sun_uv * sun_reach * f32(i);
+        light_od += cumulus_density_cheap(sp, coverage);
     }
+    light_od *= sun_reach * density * absorption;
 
-    // ── Lighting ──
+    // Self optical depth of THIS sample (controls how opaque it reads).
+    let self_od = d0 * density * absorption;
 
-    // View-dependent optical depth: looking along horizon travels through more cloud
-    let view_slant = 1.0 / clamp(dir.y + 0.15, 0.15, 1.0);
-    let optical_depth = eroded * density * absorption * view_slant;
+    // ── Multi-scatter Beer-Lambert toward the sun.
+    // Each octave reaches deeper (less extinction) and contributes less — the
+    // classic stand-in for in-cloud multiple scattering so cores aren't black.
+    let cos_t = dot(dir, sun_dir);
+    var direct = 0.0;
+    var atten = 1.0;
+    var extinct = 1.0;
+    var ecc = 1.0;
+    for (var ms = 0; ms < MS_OCTAVES; ms = ms + 1) {
+        let transmit = exp(-light_od * extinct);
+        // Dual-lobe phase, eccentricity shrinking toward isotropic each octave.
+        let phase = dual_hg(cos_t, 0.75 * ecc, -0.2 * ecc, 0.4);
+        direct += atten * transmit * phase;
+        atten *= MS_SCATTER;
+        extinct *= MS_EXTINCT;
+        ecc *= MS_PHASE;
+    }
+    // Phase carries a 1/4π factor; lift back to a perceptual scale.
+    direct *= 4.0 * PI;
 
-    // Beer-Lambert transmission
-    let beer = exp(-optical_depth);
-    let powder_term = 1.0 - exp(-optical_depth * 2.0);
-    let beer_powder = mix(beer, beer * powder_term, powder);
+    // Powder: thin sunlit edges look darker because little has scattered yet.
+    let powder_term = 1.0 - exp(-self_od * 2.0);
+    let direct_lit = direct * mix(1.0, powder_term, powder);
 
-    // Vertical gradient: cloud bottom darker than top (simulates self-shadowing)
-    let vgrad = smoothstep(0.0, 0.55, dir.y);
-    let self_shadow = mix(0.28, 1.0, vgrad);
+    // ── Compose radiance.
+    // Sunlit scattering uses the lit color; shadowed regions are filled by the
+    // (bluish) shadow color standing in for scattered skylight + ambient — which
+    // is exactly what lights real cloud undersides.
+    let sky_fill = shad_col * (ambient + 0.15);
+    var lit = lit_col * direct_lit + sky_fill;
 
-    let light = beer_powder * self_shadow;
-    var lit = mix(shad_col, lit_col, light);
-
-    // Silver lining: forward-scatter glow at cloud edges toward sun
-    let sun_dot = dot(dir, sun_dir);
-    let silver = pow(saturate(sun_dot), 1.0 / max(silver_s, 0.01)) * silver_i;
-    let edge_mask = 1.0 - smoothstep(0.0, 0.5, eroded);
-    lit += lit_col * 1.5 * silver * edge_mask;
-
-    // Secondary rim: broader glow on entire lit side of cloud facing sun
-    let broad_glow = pow(saturate(sun_dot), 2.0) * silver_i * 0.25;
-    lit += lit_col * broad_glow * light;
-
-    // Ambient floor
-    lit = max(lit, shad_col * ambient + lit_col * ambient * 0.4);
+    // Explicit silver lining: a sharp forward-scatter rim near the sun, strongest
+    // on thin/edge regions, layered on top so the inspector knobs stay meaningful.
+    let sun_facing = pow(saturate(cos_t), 1.0 / max(silver_s, 0.01));
+    let edge_mask = 1.0 - smoothstep(0.0, 0.5, d0);
+    lit += lit_col * silver_i * sun_facing * edge_mask;
 
     out.color = lit;
-    out.alpha = saturate(eroded * density);
+    out.alpha = saturate(d0 * density);
     return out;
 }
 

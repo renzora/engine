@@ -10,8 +10,19 @@
 
 #import bevy_pbr::mesh_functions
 #import bevy_pbr::view_transformations::position_world_to_clip
-#import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings as view_bindings
+
+// Self-contained vertex output. We deliberately do NOT use
+// `bevy_pbr::forward_io::VertexOutput`: its `uv`/`world_normal` fields are gated
+// behind the `VERTEX_UVS_A` / `VERTEX_NORMALS` shader-defs, which this material's
+// pipeline doesn't set — so `out.uv = uv` failed to compile ("invalid accessor").
+// Declaring our own struct guarantees the fields exist regardless of defs.
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world_position: vec4<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+};
 
 struct DebugParams {
     // x = mode, y = scalar_roughness, z = scalar_metallic, w = has_mr_texture (0/1)
@@ -37,7 +48,6 @@ fn vertex(
     out.position = position_world_to_clip(out.world_position.xyz);
     out.world_normal = mesh_functions::mesh_normal_local_to_world(normal, instance_index);
     out.uv = uv;
-    out.instance_index = instance_index;
     return out;
 }
 

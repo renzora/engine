@@ -11,6 +11,28 @@ use crate::command::ScriptCommand;
 use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
 
+/// If `path` is a `.blueprint`/`.bp` file, compile its JSON graph to Lua source;
+/// otherwise return the source unchanged. A parse failure becomes a top-level
+/// `error(...)` so it surfaces in the console instead of failing silently.
+fn compile_blueprint_source(path: &Path, source: String) -> String {
+    let is_bp = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e == "blueprint" || e == "bp")
+        .unwrap_or(false);
+    if !is_bp {
+        return source;
+    }
+    match serde_json::from_str::<renzora_blueprint::graph::BlueprintGraph>(&source) {
+        Ok(graph) => renzora_blueprint::compiler::compile_to_lua(&graph),
+        Err(e) => {
+            let msg = e.to_string().replace('\'', " ").replace('\n', " ");
+            log::warn!("[Scripting] Blueprint '{}' failed to parse: {}", path.display(), msg);
+            format!("error('blueprint parse failed: {msg}')")
+        }
+    }
+}
+
 /// Cached compiled Lua script
 struct CachedScript {
     source: String,
@@ -120,6 +142,12 @@ impl LuaBackend {
             std::fs::read_to_string(path)
                 .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?
         };
+
+        // A `.blueprint` file is a JSON `BlueprintGraph`; compile it to Lua here
+        // so the rest of the pipeline (props, on_ready/on_update) treats it like
+        // any other Lua script. This is the "blueprint compiles into scripting"
+        // path — drop a `.blueprint` on a Script component and Play runs it.
+        let source = compile_blueprint_source(path, source);
 
         // Parse props by running the script in a temporary Lua state
         let props = self.parse_props(&source);
@@ -316,7 +344,9 @@ impl ScriptBackend for LuaBackend {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["lua"]
+        // `.blueprint` files are compiled to Lua on load (see `load_script`), so
+        // a blueprint dropped onto a Script component runs through this backend.
+        &["lua", "blueprint", "bp"]
     }
 
     fn set_scripts_folder(&mut self, path: PathBuf) {

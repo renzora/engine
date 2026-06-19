@@ -689,7 +689,7 @@ fn add_script_drop(
     let (Some(payload), Some(cmds)) = (payload, cmds) else {
         return;
     };
-    if !payload.is_detached || !payload.matches_extensions(&["lua", "rhai"]) {
+    if !payload.is_detached || !payload.matches_extensions(&["lua", "rhai", "blueprint", "bp"]) {
         return;
     }
     for (rcp, zone) in &zones {
@@ -743,7 +743,9 @@ fn add_script_drop_highlight(
 ) {
     for (rcp, mut bc) in &mut zones {
         let active = payload.as_ref().is_some_and(|p| {
-            p.is_detached && rcp.cursor_over && p.matches_extensions(&["lua", "rhai"])
+            p.is_detached
+                && rcp.cursor_over
+                && p.matches_extensions(&["lua", "rhai", "blueprint", "bp"])
         });
         let want = BorderColor::all(if active {
             Color::srgb_u8(120, 140, 200)

@@ -37,7 +37,7 @@ pub(crate) fn commit_material_drop(
 
 /// Raycast against scene meshes to find the closest entity under the given
 /// viewport-space pointer position (window logical pixels).
-fn pick_mesh_under_pointer(
+pub(crate) fn pick_mesh_under_pointer(
     world: &mut World,
     screen_pos: Vec2,
     viewport_rect: Rect,

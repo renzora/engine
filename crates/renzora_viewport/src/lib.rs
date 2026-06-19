@@ -10,6 +10,7 @@ pub mod effect_routing;
 pub mod external_runtime;
 pub mod glb_compat;
 pub mod material_drop;
+pub mod blueprint_drop;
 pub mod html_drop;
 pub mod model_drop;
 pub mod model_flatten;

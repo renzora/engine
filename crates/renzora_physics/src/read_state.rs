@@ -59,3 +59,77 @@ pub fn update_physics_read_state(
         // drain system each time a slide runs.
     }
 }
+
+/// Per-entity collision snapshot, refreshed each frame from Avian's contact
+/// pairs. Reflect-registered so blueprint `event/on_collision_enter`/`_exit`
+/// (and Lua `get("CollisionReadState.entered")`) can read it by name. This is
+/// the engine's first real collision-event source — previously the scripting
+/// `on_collision` hook was an unpopulated stub.
+///
+/// Only the *first* entity entered/exited this frame is surfaced by name (the
+/// blueprint event has a single `other` output); `colliding` reflects whether
+/// any contact is currently active.
+#[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component, Default)]
+pub struct CollisionReadState {
+    /// True while at least one contact is active this frame.
+    pub colliding: bool,
+    /// True on the frame a new contact began.
+    pub entered: bool,
+    /// True on the frame a contact ended.
+    pub exited: bool,
+    /// Name of the first entity that started touching this frame ("" if none).
+    pub entered_name: String,
+    /// Name of the first entity that stopped touching this frame ("" if none).
+    pub exited_name: String,
+    /// Last frame's colliding set, used to diff enter/exit. Not reflected.
+    #[reflect(ignore)]
+    prev: std::collections::HashSet<Entity>,
+}
+
+/// Auto-inserts `CollisionReadState` on any entity with `PhysicsBodyData`.
+pub fn auto_init_collision_read_state(
+    mut commands: Commands,
+    q: Query<Entity, (With<PhysicsBodyData>, Without<CollisionReadState>)>,
+) {
+    for entity in &q {
+        commands
+            .entity(entity)
+            .try_insert(CollisionReadState::default());
+    }
+}
+
+/// Refreshes `CollisionReadState` by diffing each entity's current Avian contact
+/// set against the previous frame's.
+#[cfg(feature = "avian")]
+pub fn update_collision_read_state(
+    mut q: Query<(Entity, &mut CollisionReadState)>,
+    collisions: avian3d::prelude::Collisions,
+    names: Query<&Name>,
+) {
+    use std::collections::HashSet;
+    for (entity, mut rs) in &mut q {
+        let mut current: HashSet<Entity> = HashSet::new();
+        for pair in collisions.collisions_with(entity) {
+            let other = if pair.collider1 == entity {
+                pair.collider2
+            } else {
+                pair.collider1
+            };
+            current.insert(other);
+        }
+        let name_of = |e: Option<&Entity>| {
+            e.and_then(|x| names.get(*x).ok())
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_default()
+        };
+        let entered: Vec<Entity> = current.difference(&rs.prev).copied().collect();
+        let exited: Vec<Entity> = rs.prev.difference(&current).copied().collect();
+        rs.colliding = !current.is_empty();
+        rs.entered = !entered.is_empty();
+        rs.exited = !exited.is_empty();
+        rs.entered_name = name_of(entered.first());
+        rs.exited_name = name_of(exited.first());
+        rs.prev = current;
+    }
+}
