@@ -72,6 +72,7 @@ impl Plugin for HanabiParticlePlugin {
             .register_type::<ConformToSphere>()
             .register_type::<OrbitSettings>()
             .register_type::<FlipbookSettings>()
+            .register_type::<ParticleLightSettings>()
             .register_type::<node_graph::PinType>()
             .register_type::<node_graph::PinDir>()
             .register_type::<node_graph::PinValue>()
@@ -93,6 +94,7 @@ impl Plugin for HanabiParticlePlugin {
                 )
                     .chain(),
             );
+            app.add_systems(Update, systems::flicker_particle_lights);
         }
     }
 }

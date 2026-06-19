@@ -16,13 +16,14 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
+use bevy::ui::{ComputedNode, Outline, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
 use super::{grid_node, CableMaterial, GraphPan, GraphView};
-use crate::font::{ui_font, EmberFonts};
+use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::theme::*;
+use crate::widgets::text_input::{text_input, EmberTextInput};
 
 const NODE_W: f32 = 160.0;
 const HEAD_H: f32 = 26.0;
@@ -34,7 +35,8 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops, ngv_highlight_slots, ngv_context));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_view_ops, ngv_highlight_slots, ngv_context, ngv_open_key));
+        app.add_systems(Update, (ngv_comment_drag, ngv_comment_resize, ngv_comment_title, ngv_comment_delete, ngv_comment_key));
         app.add_systems(PostUpdate, ngv_endpoints.after(bevy::ui::UiSystems::Layout));
     }
 }
@@ -49,6 +51,15 @@ pub enum GraphEdit {
     /// Primary selection (for the caller's inspector). The widget owns the full
     /// (multi-) selection set itself; this just reports the focused node.
     Select { id: Option<u64> },
+    /// Create a comment / group box covering `rect` (`[x, y, w, h]` canvas px).
+    /// The caller assigns the id (and persists it).
+    AddComment { rect: [f32; 4] },
+    /// A comment box was dragged (its own top-left moved; contained nodes report
+    /// their own `NodeMoved`).
+    CommentMoved { id: u64, x: f32, y: f32 },
+    CommentResized { id: u64, w: f32, h: f32 },
+    CommentRetitled { id: u64, text: String },
+    DeleteComment { id: u64 },
 }
 
 /// Lives on the graph viewport; the caller syncs by draining `pending`. The
@@ -73,6 +84,22 @@ pub struct NodeGraphView {
     /// canvas_pos)`. The caller opens its add-node menu at `screen_pos`, spawns
     /// new nodes at `canvas_pos`, and clears this.
     pub context_menu: Option<(Vec2, Vec2)>,
+    /// Set by the widget when a cable is dragged from a pin and released on empty
+    /// canvas. The caller opens its add-node menu at `screen`, spawns the chosen
+    /// node at `canvas`, and auto-wires it to the dragged pin (`node`/`pin`/
+    /// `is_output`/`color`). Cleared by the caller.
+    pub connect_drag: Option<ConnectDrag>,
+}
+
+/// A cable dragged from a pin and dropped on empty canvas — the caller opens its
+/// node palette here and wires the new node back to this source pin.
+pub struct ConnectDrag {
+    pub screen: Vec2,
+    pub canvas: Vec2,
+    pub node: u64,
+    pub pin: String,
+    pub is_output: bool,
+    pub color: (u8, u8, u8),
 }
 
 /// Entities the caller mounts content into.
@@ -117,6 +144,39 @@ struct NgvBoxRect;
 /// The temporary cable drawn from a pending output port to the cursor.
 #[derive(Component)]
 struct NgvPreview {
+    viewport: Entity,
+}
+/// An inline value-editor row on a node. Marked so node-drag / box-select bail
+/// when the press is over it (otherwise scrubbing a field would drag the node).
+#[derive(Component)]
+struct NgvInputEditor;
+
+/// A comment / group box (the back-layer rectangle). Dragging its body moves the
+/// box and every node whose centre it encloses.
+#[derive(Component)]
+struct NgvComment {
+    id: u64,
+    canvas: Entity,
+    viewport: Entity,
+}
+/// The editable title field in a comment header.
+#[derive(Component)]
+struct NgvCommentTitle {
+    id: u64,
+    viewport: Entity,
+}
+/// The bottom-right resize grip of a comment box.
+#[derive(Component)]
+struct NgvCommentResize {
+    canvas: Entity,
+    viewport: Entity,
+    comment: Entity,
+    id: u64,
+}
+/// The ✕ button in a comment header.
+#[derive(Component)]
+struct NgvCommentDelete {
+    id: u64,
     viewport: Entity,
 }
 
@@ -182,6 +242,9 @@ pub fn graph_node_view(
     y: f32,
     selected: bool,
     thumbnail: Option<Handle<Image>>,
+    // Optional inline value editor entity per input (index-aligned with `inputs`);
+    // rendered on its own row under the pin. Pass `&[]` for none.
+    input_editors: &[Option<Entity>],
 ) -> Entity {
     let node = commands
         .spawn((
@@ -189,14 +252,24 @@ pub fn graph_node_view(
                 position_type: PositionType::Absolute,
                 left: Val::Px(x),
                 top: Val::Px(y),
-                width: Val::Px(NODE_W),
+                // Grow to fit content (e.g. a Vec3 inline editor wider than the
+                // base width) so editors never overflow the node's sides; plain
+                // nodes stay at the base width.
+                min_width: Val::Px(NODE_W),
                 flex_direction: FlexDirection::Column,
-                border: UiRect::all(Val::Px(if selected { 2.0 } else { 1.0 })),
+                // Constant border: selection is drawn as an `Outline` (below), which
+                // doesn't affect layout — so selecting never nudges the node.
+                border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
             BackgroundColor(rgb(hover_bg())),
-            BorderColor::all(rgb(if selected { accent() } else { tree_line() })),
+            BorderColor::all(rgb(tree_line())),
+            Outline {
+                width: Val::Px(2.0),
+                offset: Val::Px(1.0),
+                color: if selected { rgb(accent()) } else { Color::NONE },
+            },
             NgvNode { id: node_id, canvas, viewport },
             Interaction::default(),
             RelativeCursorPosition::default(),
@@ -218,9 +291,31 @@ pub fn graph_node_view(
         .id();
     commands.entity(node).add_child(title_bar);
 
-    for (pin, label, pin_color) in inputs {
+    for (idx, (pin, label, pin_color)) in inputs.iter().enumerate() {
         let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color);
         commands.entity(node).add_child(r);
+        // Inline value editor for an unconnected input, on its own row.
+        if let Some(editor) = input_editors.get(idx).copied().flatten() {
+            let erow = commands
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(0.0), Val::Px(3.0)),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::FlexEnd,
+                        ..default()
+                    },
+                    // Capture the pointer (don't Pass) + mark so node-drag/box-select
+                    // ignore presses here — scrubbing a field must not drag the node.
+                    RelativeCursorPosition::default(),
+                    NgvInputEditor,
+                    Name::new("ngv-input-editor"),
+                ))
+                .id();
+            commands.entity(erow).add_child(editor);
+            commands.entity(node).add_child(erow);
+        }
     }
     for (pin, label, pin_color) in outputs {
         let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color);
@@ -329,6 +424,125 @@ pub fn graph_wire_view(commands: &mut Commands, viewport: Entity, from_node: u64
         .id()
 }
 
+/// Build a comment / group box at `rect` (`[x, y, w, h]` canvas px) with an
+/// editable `title` and `color` tint. Mount it into `handle.canvas` (ideally in a
+/// layer behind the nodes). A translucent body sits behind the nodes (low
+/// z-index); the header drags the box + its enclosed nodes, the corner grip
+/// resizes it, and the ✕ deletes it.
+#[allow(clippy::too_many_arguments)]
+pub fn graph_comment_view(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    canvas: Entity,
+    viewport: Entity,
+    id: u64,
+    title: &str,
+    rect: [f32; 4],
+    color: (u8, u8, u8),
+) -> Entity {
+    let tint = Color::srgba(color.0 as f32 / 255.0, color.1 as f32 / 255.0, color.2 as f32 / 255.0, 0.10);
+    let root = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(rect[0]),
+                top: Val::Px(rect[1]),
+                width: Val::Px(rect[2].max(80.0)),
+                height: Val::Px(rect[3].max(60.0)),
+                flex_direction: FlexDirection::Column,
+                border: UiRect::all(Val::Px(1.5)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(tint),
+            BorderColor::all(rgb(color)),
+            // Behind nodes (z 5) but above the grid (z 0).
+            GlobalZIndex(1),
+            NgvComment { id, canvas, viewport },
+            Interaction::default(),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
+            Name::new("ngv-comment"),
+        ))
+        .id();
+
+    // Header: editable title (left, grows) + ✕ delete (right).
+    let header = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(24.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::horizontal(Val::Px(4.0)),
+                border_radius: BorderRadius::top(Val::Px(5.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(color).with_alpha(0.85)),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("ngv-comment-header"),
+        ))
+        .id();
+    let title_input = text_input(commands, &fonts.ui, "Comment", title);
+    commands.entity(title_input).insert((
+        NgvCommentTitle { id, viewport },
+        Node {
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(Color::NONE),
+        BorderColor::all(Color::NONE),
+    ));
+    let del = commands
+        .spawn((
+            Node {
+                width: Val::Px(16.0),
+                height: Val::Px(16.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            NgvCommentDelete { id, viewport },
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("ngv-comment-delete"),
+        ))
+        .id();
+    let x_icon = icon_text(commands, &fonts.phosphor, "x", on_accent(), 11.0);
+    commands.entity(del).add_child(x_icon);
+    commands.entity(header).add_children(&[title_input, del]);
+
+    // Bottom-right resize grip.
+    let grip = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                width: Val::Px(14.0),
+                height: Val::Px(14.0),
+                border_radius: BorderRadius::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(color).with_alpha(0.6)),
+            Interaction::default(),
+            NgvCommentResize { canvas, viewport, comment: root, id },
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::NwseResize),
+            Name::new("ngv-comment-resize"),
+        ))
+        .id();
+
+    commands.entity(root).add_children(&[header, grip]);
+    root
+}
+
 // ── Systems ──────────────────────────────────────────────────────────────────
 
 #[allow(clippy::type_complexity)]
@@ -433,6 +647,7 @@ fn ngv_drag(
     views: Query<&GraphView>,
     mut nodes: Query<(&NgvNode, &mut Node)>,
     mut graphs: Query<&mut NodeGraphView>,
+    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
@@ -440,6 +655,9 @@ fn ngv_drag(
         }
         if port_picks.iter().any(|i| *i == Interaction::Pressed) {
             return; // a port press is a connect, not a drag
+        }
+        if editors.iter().any(|r| r.cursor_over) {
+            return; // pressing an inline value editor must not drag the node
         }
         let Some(c) = cursor(&windows) else { return };
         let Some((_, n)) = node_picks.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
@@ -501,13 +719,12 @@ fn ngv_drag(
 /// Drive each node's border (width + colour) from its viewport's `selected` id,
 /// in place — so selecting a node never rebuilds it (which would kill an
 /// in-progress drag). Only writes when the selection state actually flips.
-fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Node, &mut BorderColor)>) {
-    for (n, mut node, mut bc) in &mut nodes {
+fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Outline)>) {
+    for (n, mut outline) in &mut nodes {
         let sel = views.get(n.viewport).map(|v| v.selected.contains(&n.id)).unwrap_or(false);
-        let want = UiRect::all(Val::Px(if sel { 2.0 } else { 1.0 }));
-        if node.border != want {
-            node.border = want;
-            *bc = BorderColor::all(rgb(if sel { accent() } else { tree_line() }));
+        let want = if sel { rgb(accent()) } else { Color::NONE };
+        if outline.color != want {
+            outline.color = want;
         }
     }
 }
@@ -515,10 +732,17 @@ fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode,
 /// Drag-to-connect: press an output port to start (pending lives on the view so
 /// the live preview + Esc see it), then **release** over an input port to record
 /// the `Connect`. Releasing elsewhere cancels.
-fn ngv_connect(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction, &NgvPort)>, mut graphs: Query<(Entity, &mut NodeGraphView)>) {
+#[allow(clippy::type_complexity)]
+fn ngv_connect(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    ports: Query<(&Interaction, &NgvPort)>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    views: Query<&GraphView>,
+) {
     if mouse.just_pressed(MouseButton::Left) {
         if let Some((_, p)) = ports.iter().find(|(i, _)| **i == Interaction::Pressed) {
-            if let Ok((_, mut g)) = graphs.get_mut(p.viewport) {
+            if let Ok((_, mut g, _, _, _)) = graphs.get_mut(p.viewport) {
                 g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color));
             }
         }
@@ -528,19 +752,30 @@ fn ngv_connect(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction,
             .iter()
             .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
             .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color));
-        for (vp, mut g) in &mut graphs {
-            if let Some((snode, spin, s_out, scol)) = g.pending_connect.take() {
-                if let Some((tvp, tnode, tpin, t_out, tcol)) = &target {
-                    // Opposite direction + matching colour + different node + same graph.
-                    if *tvp == vp && *t_out != s_out && *tcol == scol && *tnode != snode {
-                        let (from_node, from_pin, to_node, to_pin) = if s_out {
-                            (snode, spin, *tnode, tpin.clone())
-                        } else {
-                            (*tnode, tpin.clone(), snode, spin)
-                        };
-                        g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node, to_pin });
-                    }
+        let cur = cursor(&windows);
+        for (vp, mut g, rcp, vcn, children) in &mut graphs {
+            let Some((snode, spin, s_out, scol)) = g.pending_connect.take() else { continue };
+            // 1) Released over a compatible port → make the connection.
+            if let Some((tvp, tnode, tpin, t_out, tcol)) = &target {
+                if *tvp == vp && *t_out != s_out && *tcol == scol && *tnode != snode {
+                    let (from_node, from_pin, to_node, to_pin) = if s_out {
+                        (snode, spin, *tnode, tpin.clone())
+                    } else {
+                        (*tnode, tpin.clone(), snode, spin)
+                    };
+                    g.pending.push(GraphEdit::Connect { from_node, from_pin, to_node, to_pin });
+                    continue;
                 }
+            }
+            // 2) Released on empty canvas (no port under the cursor) → open the
+            //    add-node palette so the caller can spawn + auto-wire a node.
+            if target.is_none() && rcp.cursor_over {
+                let Some(screen) = cur else { continue };
+                let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
+                let size = vcn.size() * vcn.inverse_scale_factor();
+                let center = size * 0.5;
+                let canvas = center + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
+                g.connect_drag = Some(ConnectDrag { screen, canvas, node: snode, pin: spin, is_output: s_out, color: scol });
             }
         }
     }
@@ -590,20 +825,68 @@ fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &I
     }
 }
 
-/// Right-click over empty canvas → record `(screen, canvas)` for the caller's
-/// add-node menu. (Right-click on a port is handled by [`ngv_port_rmb`].)
+/// Right-*click* (press + release without a drag) over empty canvas → record
+/// `(screen, canvas)` for the caller's add-node menu. A right-*drag* pans instead
+/// (see [`super::graph_pan`]), so we open the menu on release only when the cursor
+/// barely moved. (Right-click on a port is handled by [`ngv_port_rmb`].)
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn ngv_context(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     node_blockers: Query<&Interaction, With<NgvNode>>,
     port_blockers: Query<&Interaction, With<NgvPort>>,
+    comment_blockers: Query<&Interaction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
+    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    views: Query<&GraphView>,
+    mut press: Local<Option<Vec2>>,
+) {
+    if mouse.just_pressed(MouseButton::Right) {
+        *press = cursor(&windows);
+        return;
+    }
+    if !mouse.just_released(MouseButton::Right) {
+        return;
+    }
+    let Some(start) = press.take() else { return };
+    let Some(c) = cursor(&windows) else { return };
+    // Moved more than a few px → that was a pan, not a context click.
+    if (c - start).length() > 5.0 {
+        return;
+    }
+    let hot = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    if node_blockers.iter().any(hot) || port_blockers.iter().any(hot) || comment_blockers.iter().any(hot) {
+        return;
+    }
+    for (mut g, rcp, vcn, children) in &mut graphs {
+        if !rcp.cursor_over {
+            continue;
+        }
+        let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
+        let size = vcn.size() * vcn.inverse_scale_factor();
+        let center = size * 0.5;
+        // screen→canvas (inverse of the canvas transform).
+        let canvas = center + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
+        g.context_menu = Some((c, canvas));
+    }
+}
+
+/// Spacebar over the graph → open the add-node palette at the cursor, exactly
+/// like a right-click: records `context_menu` so the caller's
+/// search_menu opens there and new nodes spawn at the cursor's canvas point.
+/// Ignored while a text field is focused (so typing a space in the palette's
+/// own search box doesn't reopen it).
+#[allow(clippy::type_complexity)]
+fn ngv_open_key(
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<&Window>,
+    text_inputs: Query<&crate::widgets::text_input::EmberTextInput>,
     mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
-    if !mouse.just_pressed(MouseButton::Right) {
+    if !keys.just_pressed(KeyCode::Space) {
         return;
     }
-    if node_blockers.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed)) || port_blockers.iter().any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed)) {
+    if text_inputs.iter().any(|t| t.focused) {
         return;
     }
     let Some(c) = cursor(&windows) else { return };
@@ -614,7 +897,6 @@ fn ngv_context(
         let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
         let size = vcn.size() * vcn.inverse_scale_factor();
         let center = size * 0.5;
-        // screen→canvas (inverse of the canvas transform).
         let canvas = center + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
         g.context_menu = Some((c, canvas));
     }
@@ -673,13 +955,18 @@ fn ngv_box(
     mut box_nodes: Query<&mut Node, With<NgvBoxRect>>,
     wires: Query<&NgvWire>,
     ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
+    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
+    comment_blockers: Query<&Interaction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
             return;
         }
-        if node_blockers.iter().any(|i| *i == Interaction::Pressed) || port_blockers.iter().any(|i| *i == Interaction::Pressed) {
-            return; // press landed on a node/port → not a box
+        if node_blockers.iter().any(|i| *i == Interaction::Pressed) || port_blockers.iter().any(|i| *i == Interaction::Pressed) || comment_blockers.iter().any(|i| *i == Interaction::Pressed) {
+            return; // press landed on a node/port/comment → not a box
+        }
+        if editors.iter().any(|r| r.cursor_over) {
+            return; // pressing an inline value editor is not a box-select
         }
         let Some(c) = cursor(&windows) else { return };
         let Some(vp) = vps.iter().find(|(_, _, rcp, _, _)| rcp.cursor_over).map(|(e, _, _, _, _)| e) else { return };
@@ -850,7 +1137,7 @@ fn ngv_view_ops(
         // Toolbar zoom ± (centre-anchored): pan scales with the zoom ratio.
         if let Some(factor) = g.zoom_request.take() {
             let cur = view.zoom.max(0.01);
-            let new = (cur * factor).clamp(0.4, 2.5);
+            let new = (cur * factor).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
             let r = new / cur;
             view.pan *= r;
             view.zoom = new;
@@ -886,6 +1173,217 @@ fn ngv_view_ops(
         }
         tf.translation = Val2::px(view.pan.x, view.pan.y);
         tf.scale = Vec2::splat(view.zoom);
+    }
+}
+
+// ── Comment / group boxes ─────────────────────────────────────────────────────
+
+/// In-flight comment drag: the box, which nodes it carries, and the running
+/// cursor anchor.
+struct CommentDrag {
+    comment: Entity,
+    id: u64,
+    vp: Entity,
+    canvas: Entity,
+    last: Vec2,
+    contained: Vec<(Entity, u64)>,
+    moved: bool,
+}
+
+/// Drag a comment by its body → move the box and every node it encloses (the
+/// "group" behaviour). On release, record `CommentMoved` for the box and
+/// `NodeMoved` for each carried node so the caller persists the new layout.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn ngv_comment_drag(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    mut active: Local<Option<CommentDrag>>,
+    comment_picks: Query<(Entity, &Interaction, &NgvComment)>,
+    block_picks: Query<&Interaction, Or<(With<NgvNode>, With<NgvPort>, With<NgvCommentResize>, With<NgvCommentTitle>, With<NgvCommentDelete>)>>,
+    node_rects: Query<(Entity, &NgvNode, &ComputedNode)>,
+    views: Query<&GraphView>,
+    mut all_nodes: Query<&mut Node>,
+    mut graphs: Query<&mut NodeGraphView>,
+) {
+    if active.is_none() {
+        if !mouse.just_pressed(MouseButton::Left) {
+            return;
+        }
+        // Nodes / ports / a comment's own controls take priority over body-drag.
+        if block_picks.iter().any(|i| *i == Interaction::Pressed) {
+            return;
+        }
+        let Some(c) = cursor(&windows) else { return };
+        let Some((ce, _, cm)) = comment_picks.iter().find(|(_, i, _)| **i == Interaction::Pressed) else { return };
+        let Ok(cnode) = all_nodes.get(ce) else { return };
+        let crect = [px(cnode.left), px(cnode.top), px(cnode.width), px(cnode.height)];
+        let zoom = views.get(cm.canvas).map(|v| v.zoom).unwrap_or(1.0);
+        let mut contained = Vec::new();
+        for (ne, nn, ncn) in &node_rects {
+            if nn.viewport != cm.viewport {
+                continue;
+            }
+            let Ok(nnode) = all_nodes.get(ne) else { continue };
+            let pos = Vec2::new(px(nnode.left), px(nnode.top));
+            let size = ncn.size() * ncn.inverse_scale_factor() / zoom.max(0.01);
+            let center = pos + size * 0.5;
+            if center.x >= crect[0] && center.x <= crect[0] + crect[2] && center.y >= crect[1] && center.y <= crect[1] + crect[3] {
+                contained.push((ne, nn.id));
+            }
+        }
+        *active = Some(CommentDrag { comment: ce, id: cm.id, vp: cm.viewport, canvas: cm.canvas, last: c, contained, moved: false });
+        return;
+    }
+
+    if !mouse.pressed(MouseButton::Left) {
+        if let Some(cd) = active.take() {
+            if cd.moved {
+                let mut moves: Vec<GraphEdit> = Vec::new();
+                if let Ok(n) = all_nodes.get(cd.comment) {
+                    moves.push(GraphEdit::CommentMoved { id: cd.id, x: px(n.left), y: px(n.top) });
+                }
+                for (e, id) in &cd.contained {
+                    if let Ok(n) = all_nodes.get(*e) {
+                        moves.push(GraphEdit::NodeMoved { id: *id, x: px(n.left), y: px(n.top) });
+                    }
+                }
+                if let Ok(mut g) = graphs.get_mut(cd.vp) {
+                    g.pending.extend(moves);
+                }
+            }
+        }
+        return;
+    }
+
+    let Some(cd) = active.as_mut() else { return };
+    let Some(c) = cursor(&windows) else { return };
+    let delta = c - cd.last;
+    if delta == Vec2::ZERO {
+        return;
+    }
+    let zoom = views.get(cd.canvas).map(|v| v.zoom).unwrap_or(1.0);
+    let d = delta / zoom.max(0.01);
+    if let Ok(mut n) = all_nodes.get_mut(cd.comment) {
+        n.left = Val::Px(px(n.left) + d.x);
+        n.top = Val::Px(px(n.top) + d.y);
+    }
+    for (e, _) in &cd.contained {
+        if let Ok(mut n) = all_nodes.get_mut(*e) {
+            n.left = Val::Px(px(n.left) + d.x);
+            n.top = Val::Px(px(n.top) + d.y);
+        }
+    }
+    cd.last = c;
+    cd.moved = true;
+}
+
+/// Drag the corner grip → resize the comment box; record `CommentResized` on release.
+#[allow(clippy::type_complexity)]
+fn ngv_comment_resize(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    mut active: Local<Option<(Entity, u64, Entity, Entity, Vec2, bool)>>, // (comment, id, canvas, vp, last, moved)
+    grips: Query<(&Interaction, &NgvCommentResize)>,
+    views: Query<&GraphView>,
+    mut all_nodes: Query<&mut Node>,
+    mut graphs: Query<&mut NodeGraphView>,
+) {
+    if active.is_none() {
+        if !mouse.just_pressed(MouseButton::Left) {
+            return;
+        }
+        let Some((_, g)) = grips.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+        let Some(c) = cursor(&windows) else { return };
+        *active = Some((g.comment, g.id, g.canvas, g.viewport, c, false));
+        return;
+    }
+    if !mouse.pressed(MouseButton::Left) {
+        if let Some((comment, id, _, vp, _, moved)) = active.take() {
+            if moved {
+                if let Ok(n) = all_nodes.get(comment) {
+                    if let Ok(mut gr) = graphs.get_mut(vp) {
+                        gr.pending.push(GraphEdit::CommentResized { id, w: px(n.width), h: px(n.height) });
+                    }
+                }
+            }
+        }
+        return;
+    }
+    let Some((comment, _, canvas, _, last, moved)) = active.as_mut() else { return };
+    let Some(c) = cursor(&windows) else { return };
+    let delta = c - *last;
+    if delta == Vec2::ZERO {
+        return;
+    }
+    let zoom = views.get(*canvas).map(|v| v.zoom).unwrap_or(1.0);
+    let d = delta / zoom.max(0.01);
+    if let Ok(mut n) = all_nodes.get_mut(*comment) {
+        n.width = Val::Px((px(n.width) + d.x).max(80.0));
+        n.height = Val::Px((px(n.height) + d.y).max(60.0));
+    }
+    *last = c;
+    *moved = true;
+}
+
+/// Edit a comment title → record `CommentRetitled` (every keystroke; comments
+/// don't affect compilation so this is cheap to apply).
+fn ngv_comment_title(changed: Query<(&EmberTextInput, &NgvCommentTitle), Changed<EmberTextInput>>, mut graphs: Query<&mut NodeGraphView>) {
+    for (inp, t) in &changed {
+        if let Ok(mut g) = graphs.get_mut(t.viewport) {
+            g.pending.push(GraphEdit::CommentRetitled { id: t.id, text: inp.value.clone() });
+        }
+    }
+}
+
+/// Click a comment's ✕ → record `DeleteComment`.
+fn ngv_comment_delete(changed: Query<(&Interaction, &NgvCommentDelete), Changed<Interaction>>, mut graphs: Query<&mut NodeGraphView>) {
+    for (interaction, d) in &changed {
+        if *interaction == Interaction::Pressed {
+            if let Ok(mut g) = graphs.get_mut(d.viewport) {
+                g.pending.push(GraphEdit::DeleteComment { id: d.id });
+            }
+        }
+    }
+}
+
+/// `C` over the graph with nodes selected → wrap them in a comment box. Ignored
+/// while typing in a field (so 'c' in the search/title box is text).
+#[allow(clippy::type_complexity)]
+fn ngv_comment_key(
+    keys: Res<ButtonInput<KeyCode>>,
+    text_inputs: Query<&EmberTextInput>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &Children)>,
+    views: Query<&GraphView>,
+    node_rects: Query<(&NgvNode, &Node, &ComputedNode)>,
+) {
+    if !keys.just_pressed(KeyCode::KeyC) {
+        return;
+    }
+    if text_inputs.iter().any(|t| t.focused) {
+        return;
+    }
+    for (vp, mut g, rcp, children) in &mut graphs {
+        if !rcp.cursor_over || g.selected.is_empty() {
+            continue;
+        }
+        let zoom = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| v.zoom).unwrap_or(1.0);
+        let (mut mn, mut mx, mut any) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false);
+        for (n, node, ncn) in &node_rects {
+            if n.viewport != vp || !g.selected.contains(&n.id) {
+                continue;
+            }
+            let pos = Vec2::new(px(node.left), px(node.top));
+            let size = ncn.size() * ncn.inverse_scale_factor() / zoom.max(0.01);
+            mn = mn.min(pos);
+            mx = mx.max(pos + size);
+            any = true;
+        }
+        if any {
+            let pad = 28.0;
+            let header = 26.0;
+            let rect = [mn.x - pad, mn.y - pad - header, (mx.x - mn.x) + pad * 2.0, (mx.y - mn.y) + pad * 2.0 + header];
+            g.pending.push(GraphEdit::AddComment { rect });
+        }
     }
 }
 

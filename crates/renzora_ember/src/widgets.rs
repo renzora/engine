@@ -284,6 +284,7 @@ impl Plugin for WidgetsPlugin {
                     context_menu::context_menu_open,
                     sortable::sortable_drag,
                     text_input::caret_blink,
+                    text_input::text_input_highlight,
                 ),
                 (
                     spin_slider::spin_drag,

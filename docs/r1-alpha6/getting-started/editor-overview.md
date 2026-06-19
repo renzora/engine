@@ -89,6 +89,20 @@ The **Console** is where the engine talks to you. Messages stream in as you work
 
 Use the filter buttons to show only warnings or errors, search to find a message, and the box at the bottom to type **slash commands** (start with `/help` to see what's available).
 
+## The Assets browser
+
+The **Assets** browser along the bottom is a file explorer for your project: a folder tree on the left and a grid (or list) of the current folder's files and sub-folders on the right.
+
+What you can do here:
+
+- **Double-click** a folder to open it, or a file to open it in its editor (materials, blueprints, scripts, particles, …).
+- **Click** to select; `Ctrl+Click` toggles, `Shift+Click` extends the range.
+- **Left-drag** in empty space to box-select. Drag near the top or bottom edge and the grid **auto-scrolls** so the selection can reach files that are off-screen.
+- **Drag** a file onto a folder to move it, or out into the viewport to spawn it.
+- **Right-click** any item for **Rename**, Duplicate, Favorite, Reveal in Explorer, and Delete.
+- To rename a file or folder inline, press **`F2`**, **click its name** while it's already selected, or pick **Rename** from the right-click menu. The whole name starts highlighted, so typing (or `Delete`) replaces it; press `Enter` to confirm or `Esc` to cancel.
+- Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles.
+
 ## Scaling the UI
 
 If the editor looks too small (or too large) on your monitor, open **Settings → Interface** (`Ctrl+,`) and pick a **UI Scale** under *Display* — from 75% to 300%, applied instantly on top of your OS DPI setting. The choice is saved per user, so it sticks across projects and restarts. If you ever pick a scale that makes things awkward, press `Ctrl+0` to snap back to 100%.

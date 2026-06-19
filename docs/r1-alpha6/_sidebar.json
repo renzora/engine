@@ -1,5 +1,5 @@
 {
-  "version": "r1-alpha5",
+  "version": "r1-alpha6",
   "label": "Renzora Documentation",
   "description": "Start with the basics for making games. Flip on Advanced for engine internals and the full API.",
   "groups": [
@@ -80,7 +80,8 @@
             { "slug": "scripting/rhai", "title": "Rhai" },
             { "slug": "api/scripting", "title": "Scripting API" },
             { "slug": "api/blueprint-nodes", "title": "Blueprint Node API" },
-            { "slug": "api/material", "title": "Material API" }
+            { "slug": "api/material", "title": "Material API" },
+            { "slug": "api/material-node-reference", "title": "Material Node Reference" }
           ]
         }
       ]

@@ -1,15 +1,26 @@
+//! Visual blueprints — authored node graphs that **compile to Lua** and run
+//! through the script VM (drop a `.blueprint` onto a Script component and Play
+//! runs it). There is no live graph interpreter: compilation is the single
+//! execution path, mirroring how Unreal compiles Blueprints to bytecode.
+//!
+//! Node semantics live in [`nodes`] (one self-contained, tested unit per node);
+//! [`compiler`] walks the graph and dispatches to them. The `BlueprintGraph`
+//! component is the authoring/serialization vehicle, registered for reflection
+//! so it round-trips through scenes.
+
 pub mod compiler;
 pub mod graph;
-pub mod interpreter;
+pub mod layout;
 pub mod nodes;
 
 use bevy::prelude::*;
 
+pub use compiler::compile_to_lua;
 pub use graph::{
     BlueprintConnection, BlueprintGraph, BlueprintNode, BlueprintNodeDef, PinDir, PinTemplate,
     PinType, PinValue,
 };
-pub use nodes::{categories, node_def, nodes_in_category, ALL_NODES};
+pub use nodes::{categories, node_def, nodes_in_category};
 
 #[derive(Default)]
 pub struct BlueprintPlugin;
@@ -17,48 +28,13 @@ pub struct BlueprintPlugin;
 impl Plugin for BlueprintPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] BlueprintPlugin");
-        // Ensure shared resources exist (they may also be init'd by scripting).
-        app.init_resource::<renzora::TransformWriteQueue>()
-            .init_resource::<renzora::CharacterCommandQueue>()
-            .init_resource::<renzora::ScriptInput>()
-            .init_resource::<interpreter::BlueprintSceneLoadTracker>()
-            .register_type::<BlueprintGraph>()
+        // Register the graph types so blueprints serialize into scene RON. The
+        // graph executes by compiling to Lua (see `compiler`), so there are no
+        // per-frame interpreter systems to add.
+        app.register_type::<BlueprintGraph>()
             .register_type::<BlueprintNode>()
             .register_type::<BlueprintConnection>()
-            .add_systems(
-                Update,
-                (
-                    reset_blueprint_runtime_on_play_start,
-                    interpreter::run_blueprints.run_if(blueprints_should_run),
-                )
-                    .chain(),
-            );
-    }
-}
-
-/// Reset all blueprint runtime state when play mode starts, so On Ready fires again.
-fn reset_blueprint_runtime_on_play_start(
-    play_mode: Option<Res<renzora::PlayModeState>>,
-    mut states: Query<&mut interpreter::BlueprintRuntimeState>,
-    mut was_running: Local<bool>,
-) {
-    let running = play_mode
-        .as_ref()
-        .map(|pm| pm.is_scripts_running())
-        .unwrap_or(false);
-    if running && !*was_running {
-        for mut state in &mut states {
-            *state = interpreter::BlueprintRuntimeState::default();
-        }
-    }
-    *was_running = running;
-}
-
-/// Run condition: blueprints execute when scripts would.
-fn blueprints_should_run(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
-    match play_mode {
-        Some(pm) => pm.is_scripts_running(),
-        None => true,
+            .register_type::<renzora::GraphComment>();
     }
 }
 

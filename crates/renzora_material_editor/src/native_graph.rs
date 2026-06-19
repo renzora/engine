@@ -19,7 +19,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
+use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_shader::material::codegen;
 use renzora_shader::material::graph::{MaterialGraph, PinDir, PinType, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
@@ -49,15 +49,21 @@ pub struct NativeMaterialGraph;
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("material_graph", false, build);
-        app.add_systems(Update, (apply_click, add_node_open, view_op_click, context_menu_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (apply_click, add_node_open, view_op_click, context_menu_open)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora_ember::dock::panel_active("material_graph")),
+        );
         // Orchestration: only while the graph panel is actually mounted (mirrors
-        // the egui panel only running its sync inside `ui()`).
+        // the egui panel only running its sync inside `ui()`) AND visible.
         app.add_systems(
             Update,
             (mat_graph_load, mat_graph_sync)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
-                .run_if(any_with_component::<MatGraph>),
+                .run_if(any_with_component::<MatGraph>)
+                .run_if(renzora_ember::dock::panel_active("material_graph")),
         );
     }
 }
@@ -106,6 +112,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(MatGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
+
+    // Comment / group boxes mount behind the nodes (their own canvas layer).
+    let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
+    commands.entity(canvas).add_child(comments_layer);
+    keyed_list(commands, comments_layer, move |w| comment_snapshot(w, canvas, viewport));
 
     // Wires draw in viewport space; nodes pan/zoom with the canvas.
     let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
@@ -200,7 +211,30 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         items,
         build: Box::new(move |c, f, i| {
             let n = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone())
+            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &[])
+        }),
+    }
+}
+
+/// Comment boxes, keyed on id only — drag / resize / retitle update in place.
+fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+    let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
+    let comments: Vec<(u64, String, [f32; 4], (u8, u8, u8))> =
+        s.graph.comments.iter().map(|c| (c.id, c.text.clone(), c.rect, (c.color[0], c.color[1], c.color[2]))).collect();
+    let items: Vec<(u64, u64)> = comments
+        .iter()
+        .map(|(id, _, _, _)| {
+            let mut k = hasher();
+            id.hash(&mut k);
+            let h = k.finish();
+            (h, h)
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, text, rect, color) = &comments[i];
+            graph_comment_view(c, f, canvas, viewport, *id, text, *rect, *color)
         }),
     }
 }
@@ -311,6 +345,35 @@ fn mat_graph_sync(world: &mut World) {
                         st.selected_node = id;
                     }
                 }
+                // Comments are visual only — persist (dirty) but never recompile.
+                GraphEdit::AddComment { rect } => {
+                    st.graph.add_comment(rect);
+                    dirty = true;
+                }
+                GraphEdit::CommentMoved { id, x, y } => {
+                    if let Some(c) = st.graph.get_comment_mut(id) {
+                        c.rect[0] = x;
+                        c.rect[1] = y;
+                        dirty = true;
+                    }
+                }
+                GraphEdit::CommentResized { id, w, h } => {
+                    if let Some(c) = st.graph.get_comment_mut(id) {
+                        c.rect[2] = w;
+                        c.rect[3] = h;
+                        dirty = true;
+                    }
+                }
+                GraphEdit::CommentRetitled { id, text } => {
+                    if let Some(c) = st.graph.get_comment_mut(id) {
+                        c.text = text;
+                        dirty = true;
+                    }
+                }
+                GraphEdit::DeleteComment { id } => {
+                    st.graph.remove_comment(id);
+                    dirty = true;
+                }
             }
         }
     }
@@ -399,15 +462,17 @@ fn context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut
         if let Some((screen, canvas)) = v.context_menu.take() {
             open_add_menu(&mut commands, &fonts, screen.x, screen.y, [canvas.x, canvas.y]);
         }
+        // Cable dragged onto empty canvas → palette that auto-wires to the pin.
+        if let Some(cd) = v.connect_drag.take() {
+            let src = (cd.node, cd.pin, cd.is_output);
+            search_menu(&mut commands, &fonts, cd.screen.x, cd.screen.y, mat_connect_entries([cd.canvas.x, cd.canvas.y], src));
+        }
     }
 }
 
-/// Build the categorised add-node menu at `(x, y)`, spawning each new node near
-/// `base` (canvas px).
-fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, base: [f32; 2]) {
-    let menu = screen_menu(commands, x, y);
-    let mut kids: Vec<Entity> = Vec::new();
-    let mut offset = 0.0f32;
+/// Catalog entries (minus Output) whose action spawns the node and wires it to `src`.
+fn mat_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEntry> {
+    let mut entries = Vec::new();
     for category in categories() {
         if category == "Output" {
             continue;
@@ -415,11 +480,69 @@ fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, ba
         let icon = category_icon(category);
         for def in nodes_in_category(category) {
             let node_type = def.node_type;
-            let pos = [base[0] + offset, base[1] + offset];
-            offset += 6.0;
-            kids.push(menu_item(commands, fonts, icon, def.display_name, move |w| {
+            let src = src.clone();
+            entries.push(SearchEntry::new(icon, def.display_name, category, move |w| mat_add_and_wire(w, node_type, base, src.clone())));
+        }
+    }
+    entries
+}
+
+/// Spawn `node_type` at `base`, wire `src` to its best-matching opposite pin, recompile.
+fn mat_add_and_wire(world: &mut World, node_type: &str, base: [f32; 2], src: (u64, String, bool)) {
+    let Some(mut s) = world.get_resource_mut::<MaterialEditorState>() else { return };
+    let new_id = s.graph.add_node(node_type, base);
+    let src_ty = s
+        .graph
+        .nodes
+        .iter()
+        .find(|n| n.id == src.0)
+        .and_then(|n| node_def(&n.node_type))
+        .and_then(|d| (d.pins)().into_iter().find(|p| p.name == src.1).map(|p| p.pin_type));
+    let want_dir = if src.2 { PinDir::Input } else { PinDir::Output };
+    let new_pins = node_def(node_type).map(|d| (d.pins)()).unwrap_or_default();
+    let pick = new_pins
+        .iter()
+        .filter(|p| p.direction == want_dir)
+        .min_by_key(|p| match src_ty {
+            Some(t) if p.pin_type == t => 0u8,
+            Some(t) if PinType::compatible(t, p.pin_type) || PinType::compatible(p.pin_type, t) => 1,
+            _ => 2,
+        })
+        .map(|p| p.name.clone());
+    if let Some(pin) = pick {
+        if src.2 {
+            s.graph.connect(src.0, &src.1, new_id, &pin);
+        } else {
+            s.graph.connect(new_id, &pin, src.0, &src.1);
+        }
+    }
+    let graph = s.graph.clone();
+    let result = renzora_shader::material::codegen::compile(&graph);
+    s.compiled_wgsl = Some(result.fragment_shader);
+    s.compile_errors = result.errors;
+    s.is_dirty = true;
+}
+
+/// Open the searchable add-node palette at `(x, y)`, spawning the chosen node at
+/// `base` (canvas px).
+fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, base: [f32; 2]) {
+    search_menu(commands, fonts, x, y, mat_node_entries(base));
+}
+
+/// Every catalog node (minus the singleton Output) as a palette entry, each
+/// adding the node at `base` and recompiling the shader.
+fn mat_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
+    let mut entries = Vec::new();
+    for category in categories() {
+        if category == "Output" {
+            continue;
+        }
+        let icon = category_icon(category);
+        for def in nodes_in_category(category) {
+            let node_type = def.node_type;
+            entries.push(SearchEntry::new(icon, def.display_name, category, move |w| {
                 if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {
-                    s.graph.add_node(node_type, pos);
+                    s.graph.add_node(node_type, base);
                     let graph = s.graph.clone();
                     let result = renzora_shader::material::codegen::compile(&graph);
                     s.compiled_wgsl = Some(result.fragment_shader);
@@ -429,7 +552,7 @@ fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, ba
             }));
         }
     }
-    commands.entity(menu).add_children(&kids);
+    entries
 }
 
 fn empty() -> KeyedSnapshot {

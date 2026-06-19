@@ -21,6 +21,10 @@ You build a material by dragging nodes out of the category menu and **wiring the
 
 In the shot above, a color texture feeds the **Base Color** pin, another texture drives **Metallic** and **Roughness**, and a normal map plugs into **Normal** — all flowing into the **Surface Output** node on the right. That output node is the heart of every material.
 
+**Adding nodes:** right-click the graph (or press **`Spacebar`** with the cursor over it) to open a **searchable palette** at the cursor — type to filter, **Enter** picks the first match — and the node spawns where you clicked. The toolbar **Add Node** button opens the same palette. You can also **drag a cable off a pin** and release on empty space: the palette opens and the node you pick is auto-wired to that pin.
+
+**Comments / groups:** select some nodes and press **`C`** to wrap them in a labelled **comment box**. Dragging the box moves every node inside it; drag the corner grip to resize, edit the header to rename, and **✕** deletes the box (keeping its nodes). Comments are visual only and saved in the `.material` file.
+
 ### The Surface Output node
 
 The Surface Output node is what shows up on your mesh. The pins you'll reach for most often are:
@@ -44,7 +48,7 @@ There are around 150 node types, grouped into friendly categories. You don't nee
 - **Procedural** — noise, checkerboard, brick, and other patterns with no texture needed.
 - **Animation** — scroll UVs, wind sway, flipbook frames.
 
-For the complete node catalog, see the [Material API reference](/docs/r1-alpha5/api/material).
+For the complete catalog — every node, with its inputs, outputs, and what it does — see the [Material Node Reference](/docs/r1-alpha5/api/material-node-reference).
 
 ## Material types (domains)
 

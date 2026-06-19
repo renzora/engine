@@ -167,6 +167,8 @@ Masters and instances share the `.material` extension; the resolver content-dete
 
 Node types are identified by a `category/name` string. Categories appear in the editor's node menu in the order below.
 
+> For the **per-node reference** — every node's inputs, outputs, and exactly what it computes — see [Material Node Reference](/docs/r1-alpha5/api/material-node-reference). The tables below are the quick index.
+
 ### Input
 
 | Node type | Name | Description |

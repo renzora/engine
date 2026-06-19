@@ -40,7 +40,14 @@ pub struct NativeParticleEditor;
 impl Plugin for NativeParticleEditor {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_editor", true, build);
-        app.add_systems(Update, action_btn_click.run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            action_btn_click
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora_ember::dock::panel_active("particle_editor")),
+        );
+        // `particle_doc_load` stays ungated: it loads the active particle document,
+        // which the separate preview panel also depends on.
         app.add_systems(Update, particle_doc_load.run_if(in_state(SplashState::Editor)));
     }
 }

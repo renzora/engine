@@ -328,6 +328,10 @@ pub struct MaterialGraph {
     /// precompile-aware editor (legacy files fall back to live codegen).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wgsl_path: Option<String>,
+    /// Comment / group boxes. `#[serde(default)]` keeps older `.material` files
+    /// loadable.
+    #[serde(default)]
+    pub comments: Vec<renzora::GraphComment>,
 }
 
 impl Default for MaterialGraph {
@@ -347,6 +351,7 @@ impl MaterialGraph {
             alpha_mode: AlphaMode::Opaque,
             double_sided: false,
             wgsl_path: None,
+            comments: Vec::new(),
         };
         // Always start with the output node
         graph.add_output_node(domain);
@@ -383,6 +388,27 @@ impl MaterialGraph {
         self.nodes.retain(|n| n.id != id);
         self.connections
             .retain(|c| c.from_node != id && c.to_node != id);
+    }
+
+    /// Add a comment box at `rect` (`[x, y, w, h]` canvas px). Comments share the
+    /// node id space so every id in the graph is unique.
+    pub fn add_comment(&mut self, rect: [f32; 4]) -> NodeId {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.comments.push(renzora::GraphComment {
+            id,
+            rect,
+            ..Default::default()
+        });
+        id
+    }
+
+    pub fn remove_comment(&mut self, id: NodeId) {
+        self.comments.retain(|c| c.id != id);
+    }
+
+    pub fn get_comment_mut(&mut self, id: NodeId) -> Option<&mut renzora::GraphComment> {
+        self.comments.iter_mut().find(|c| c.id == id)
     }
 
     pub fn connect(&mut self, from_node: NodeId, from_pin: &str, to_node: NodeId, to_pin: &str) {

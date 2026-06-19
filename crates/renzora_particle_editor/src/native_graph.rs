@@ -17,7 +17,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
+use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
 use renzora_hanabi::{load_effect_from_file, ParticleEditorState};
 
@@ -26,13 +26,19 @@ pub struct NativeParticleGraph;
 impl Plugin for NativeParticleGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("particle_graph", false, build);
-        app.add_systems(Update, (add_node_open, presets_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (add_node_open, part_context_menu_open, presets_open)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora_ember::dock::panel_active("particle_graph")),
+        );
         app.add_systems(
             Update,
             (ensure_node_graph, part_graph_sync)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
-                .run_if(any_with_component::<PartGraph>),
+                .run_if(any_with_component::<PartGraph>)
+                .run_if(renzora_ember::dock::panel_active("particle_graph")),
         );
     }
 }
@@ -93,6 +99,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(PartGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
+
+    // Comment / group boxes mount behind the nodes (their own canvas layer).
+    let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
+    commands.entity(canvas).add_child(comments_layer);
+    keyed_list(commands, comments_layer, move |w| comment_snapshot(w, canvas, viewport));
 
     let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(viewport).add_child(wires_layer);
@@ -155,7 +166,31 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         items,
         build: Box::new(move |c, f, i| {
             let (id, title, color, pos, ins, outs, selected) = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None)
+            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None, &[])
+        }),
+    }
+}
+
+/// Comment boxes, keyed on id only — drag / resize / retitle update in place.
+fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+    let Some(s) = world.get_resource::<ParticleEditorState>() else { return empty() };
+    let Some(graph) = s.node_graph.as_ref() else { return empty() };
+    let comments: Vec<(u64, String, [f32; 4], (u8, u8, u8))> =
+        graph.comments.iter().map(|c| (c.id, c.text.clone(), c.rect, (c.color[0], c.color[1], c.color[2]))).collect();
+    let items: Vec<(u64, u64)> = comments
+        .iter()
+        .map(|(id, _, _, _)| {
+            let mut k = hasher();
+            id.hash(&mut k);
+            let h = k.finish();
+            (h, h)
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, text, rect, color) = &comments[i];
+            graph_comment_view(c, f, canvas, viewport, *id, text, *rect, *color)
         }),
     }
 }
@@ -229,6 +264,38 @@ fn part_graph_sync(mut views: Query<&mut NodeGraphView, With<PartGraph>>, state:
                     }
                 }
                 GraphEdit::Select { id } => s.selected_node = id,
+                GraphEdit::AddComment { rect } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        g.add_comment(rect);
+                        changed = true;
+                    }
+                }
+                GraphEdit::CommentMoved { id, x, y } => {
+                    if let Some(c) = s.node_graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                        c.rect[0] = x;
+                        c.rect[1] = y;
+                        changed = true;
+                    }
+                }
+                GraphEdit::CommentResized { id, w, h } => {
+                    if let Some(c) = s.node_graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                        c.rect[2] = w;
+                        c.rect[3] = h;
+                        changed = true;
+                    }
+                }
+                GraphEdit::CommentRetitled { id, text } => {
+                    if let Some(c) = s.node_graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                        c.text = text;
+                        changed = true;
+                    }
+                }
+                GraphEdit::DeleteComment { id } => {
+                    if let Some(g) = s.node_graph.as_mut() {
+                        g.remove_comment(id);
+                        changed = true;
+                    }
+                }
             }
         }
     }
@@ -262,6 +329,21 @@ fn add_particle_node(world: &mut World, node_type: ParticleNodeType, pos: [f32; 
     }
 }
 
+/// Every particle node type as a searchable palette entry, each spawning at
+/// `base` (canvas px). Shared by the toolbar button + the right-click/Spacebar menu.
+fn part_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
+    let mut entries = Vec::new();
+    for &category in ParticleNodeType::categories() {
+        let icon = category_icon(category);
+        for node_type in ParticleNodeType::nodes_in_category(category) {
+            let label = node_type.display_name();
+            entries.push(SearchEntry::new(icon, label, category, move |w| add_particle_node(w, node_type, base)));
+        }
+    }
+    entries
+}
+
+/// Toolbar "Add Node" → open the searchable palette under the button.
 fn add_node_open(
     q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<Interaction>)>,
     windows: Query<&Window>,
@@ -273,19 +355,24 @@ fn add_node_open(
     let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let mut kids: Vec<Entity> = Vec::new();
-    let mut offset = 0.0f32;
-    for &category in ParticleNodeType::categories() {
-        let icon = category_icon(category);
-        for node_type in ParticleNodeType::nodes_in_category(category) {
-            let pos = [60.0 + offset, 60.0 + offset];
-            offset += 6.0;
-            let label = node_type.display_name();
-            kids.push(menu_item(&mut commands, &fonts, icon, label, move |w| add_particle_node(w, node_type, pos)));
+    search_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, part_node_entries([60.0, 60.0]));
+}
+
+/// Right-click / Spacebar on empty canvas → open the searchable palette at the
+/// cursor, spawning the chosen node at the clicked canvas point.
+fn part_context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<&mut NodeGraphView, With<PartGraph>>) {
+    let Some(fonts) = fonts else { return };
+    for mut v in &mut views {
+        if let Some((screen, canvas)) = v.context_menu.take() {
+            search_menu(&mut commands, &fonts, screen.x, screen.y, part_node_entries([canvas.x, canvas.y]));
+        }
+        // Cable dragged onto empty canvas → same palette. Particle modules are
+        // auto-wired into the Emitter by `add_particle_node`, so dropping a cable
+        // and picking a module connects it the same sensible way.
+        if let Some(cd) = v.connect_drag.take() {
+            search_menu(&mut commands, &fonts, cd.screen.x, cd.screen.y, part_node_entries([cd.canvas.x, cd.canvas.y]));
         }
     }
-    commands.entity(menu).add_children(&kids);
 }
 
 fn presets_open(

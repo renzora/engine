@@ -15,14 +15,14 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora::core::CurrentProject;
-use renzora_blueprint::graph::PinDir;
+use renzora_blueprint::graph::{PinDir, PinTemplate, PinType};
 use renzora_blueprint::{categories, node_def, nodes_in_category, BlueprintGraph};
 use renzora_editor_framework::{DocTabKind, EditorContext, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, GraphEdit, NodeGraphView};
+use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 
 use crate::graph_editor::category_icon;
 use crate::graph_panel::{apply_blueprint_to_lua, load_blueprint_file, save_blueprint_file};
@@ -33,13 +33,19 @@ pub struct NativeBlueprintGraph;
 impl Plugin for NativeBlueprintGraph {
     fn build(&self, app: &mut App) {
         app.register_panel_content("blueprint_graph", false, build);
-        app.add_systems(Update, (apply_click, add_node_open).run_if(in_state(SplashState::Editor)));
+        app.add_systems(
+            Update,
+            (apply_click, add_node_open, bp_context_menu_open, layout_click)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora_ember::dock::panel_active("blueprint_graph")),
+        );
         app.add_systems(
             Update,
             (bp_graph_load, bp_graph_sync)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
-                .run_if(any_with_component::<BpGraph>),
+                .run_if(any_with_component::<BpGraph>)
+                .run_if(renzora_ember::dock::panel_active("blueprint_graph")),
         );
     }
 }
@@ -50,6 +56,8 @@ struct BpGraph;
 struct ApplyBtn;
 #[derive(Component)]
 struct AddNodeBtn;
+#[derive(Component)]
+struct LayoutBtn;
 
 // ── Dual-mode graph access ──────────────────────────────────────────────────────
 
@@ -85,12 +93,18 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
+    let layout = tool_button(commands, fonts, "tree-structure", "Auto Layout", text_primary(), LayoutBtn);
     let apply = tool_button(commands, fonts, "lightning", "Apply", text_primary(), ApplyBtn);
-    commands.entity(bar).add_children(&[add, apply]);
+    commands.entity(bar).add_children(&[add, layout, apply]);
 
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(BpGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
+
+    // Comment / group boxes mount behind the nodes (their own canvas layer).
+    let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
+    commands.entity(canvas).add_child(comments_layer);
+    keyed_list(commands, comments_layer, move |w| comment_snapshot(w, canvas, viewport));
 
     let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(viewport).add_child(wires_layer);
@@ -121,10 +135,15 @@ type Port = (String, String, (u8, u8, u8));
 /// Neutral port colour for blueprint pins (material pins are typed/coloured).
 const BP_PORT: (u8, u8, u8) = (140, 150, 175);
 
+/// Per-input data for the inline editors: (pin template, is-connected). Aligned
+/// index-for-index with the node's input `Port`s.
+type InputSpec = (PinTemplate, bool);
+type NodeData = (u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool, Vec<InputSpec>);
+
 #[allow(clippy::type_complexity)]
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let sel = world.get_resource::<BlueprintEditorState>().and_then(|s| s.selected_node);
-    let nodes: Vec<(u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool)> = with_active_graph(world, |g| {
+    let nodes: Vec<NodeData> = with_active_graph(world, |g| {
         g.nodes
             .iter()
             .map(|n| {
@@ -134,27 +153,75 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
                 let pins = def.map(|d| (d.pins)()).unwrap_or_default();
                 let inputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
                 let outputs: Vec<Port> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| (p.name.clone(), p.label.clone(), BP_PORT)).collect();
-                (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id))
+                // Aligned with `inputs`: clone the template + whether a wire feeds it.
+                let in_specs: Vec<InputSpec> = pins
+                    .iter()
+                    .filter(|p| p.direction == PinDir::Input)
+                    .map(|p| {
+                        let connected = g.connections.iter().any(|c| c.to_node == n.id && c.to_pin == p.name);
+                        ((*p).clone(), connected)
+                    })
+                    .collect();
+                (n.id, title, color, n.position, inputs, outputs, sel == Some(n.id), in_specs)
             })
             .collect()
     })
     .unwrap_or_default();
     let items: Vec<(u64, u64)> = nodes
         .iter()
-        .map(|(id, title, color, _pos, ins, outs, _selected)| {
+        .map(|(id, title, color, _pos, ins, outs, _selected, specs)| {
             let mut k = hasher();
             id.hash(&mut k);
             let mut h = hasher();
-            // Structure only (not selection) so selecting never rebuilds a node.
-            (title, color, ins, outs).hash(&mut h);
+            // Structure + per-input connected state (not selection / values): selecting
+            // or editing a value updates in place, but connecting a wire rebuilds the
+            // node so its inline editor appears/disappears.
+            let connected: Vec<bool> = specs.iter().map(|(_, c)| *c).collect();
+            (title, color, ins, outs, &connected).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, title, color, pos, ins, outs, selected) = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None)
+            let (id, title, color, pos, ins, outs, selected, specs) = &nodes[i];
+            // Inline editor per unconnected, editable input (index-aligned with `ins`).
+            let editors: Vec<Option<Entity>> = specs
+                .iter()
+                .map(|(pin, connected)| {
+                    if *connected || matches!(pin.pin_type, PinType::Exec | PinType::Any) {
+                        None
+                    } else {
+                        Some(crate::native_properties::pin_editor(c, f, *id, pin))
+                    }
+                })
+                .collect();
+            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None, &editors)
+        }),
+    }
+}
+
+/// Comment boxes, keyed on id only — drag / resize / retitle mutate the box in
+/// place (and the model) without rebuilding, so the title field keeps focus.
+fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+    let comments: Vec<(u64, String, [f32; 4], (u8, u8, u8))> = with_active_graph(world, |g| {
+        g.comments.iter().map(|c| (c.id, c.text.clone(), c.rect, (c.color[0], c.color[1], c.color[2]))).collect()
+    })
+    .unwrap_or_default();
+    let items: Vec<(u64, u64)> = comments
+        .iter()
+        .map(|(id, _, _, _)| {
+            let mut k = hasher();
+            id.hash(&mut k);
+            let h = k.finish();
+            (h, h)
+        })
+        .collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            let (id, text, rect, color) = &comments[i];
+            graph_comment_view(c, f, canvas, viewport, *id, text, *rect, *color)
         }),
     }
 }
@@ -263,6 +330,38 @@ fn bp_graph_sync(world: &mut World) {
                 }
             }
             GraphEdit::Select { id } => new_sel = Some(id),
+            GraphEdit::AddComment { rect } => {
+                if let Some(g) = graph.as_mut() {
+                    g.add_comment(rect);
+                    changed = true;
+                }
+            }
+            GraphEdit::CommentMoved { id, x, y } => {
+                if let Some(c) = graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                    c.rect[0] = x;
+                    c.rect[1] = y;
+                    changed = true;
+                }
+            }
+            GraphEdit::CommentResized { id, w, h } => {
+                if let Some(c) = graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                    c.rect[2] = w;
+                    c.rect[3] = h;
+                    changed = true;
+                }
+            }
+            GraphEdit::CommentRetitled { id, text } => {
+                if let Some(c) = graph.as_mut().and_then(|g| g.get_comment_mut(id)) {
+                    c.text = text;
+                    changed = true;
+                }
+            }
+            GraphEdit::DeleteComment { id } => {
+                if let Some(g) = graph.as_mut() {
+                    g.remove_comment(id);
+                    changed = true;
+                }
+            }
         }
     }
     if let Some(sel) = new_sel {
@@ -290,6 +389,37 @@ fn apply_click(q: Query<&Interaction, (With<ApplyBtn>, Changed<Interaction>)>, m
     }
 }
 
+fn layout_click(
+    q: Query<&Interaction, (With<LayoutBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(bp_auto_layout);
+    }
+}
+
+/// Tidy the active graph (asset file or scene-entity component) with the shared
+/// layered auto-layout, then persist it the same way edits are saved.
+fn bp_auto_layout(world: &mut World) {
+    if is_asset(world) {
+        let path = world.resource::<BlueprintEditorState>().editing_file_path.clone();
+        let project = world.get_resource::<CurrentProject>().cloned();
+        let Some(mut g) = world.resource::<BlueprintEditorState>().file_graph.clone() else {
+            return;
+        };
+        renzora_blueprint::layout::auto_layout(&mut g);
+        world.resource_mut::<BlueprintEditorState>().file_graph = Some(g.clone());
+        if let Some(path) = path {
+            save_blueprint_file(project.as_ref(), &path, &g);
+        }
+    } else if let Some(e) = world.resource::<BlueprintEditorState>().editing_entity {
+        if let Some(mut g) = world.get::<BlueprintGraph>(e).cloned() {
+            renzora_blueprint::layout::auto_layout(&mut g);
+            world.entity_mut(e).insert(g);
+        }
+    }
+}
+
 fn bp_apply(world: &mut World) {
     if is_asset(world) {
         return; // compile-to-Lua needs an entity context
@@ -301,12 +431,14 @@ fn bp_apply(world: &mut World) {
     apply_blueprint_to_lua(world, entity, &graph, &project, &name);
 }
 
-fn add_blueprint_node(world: &mut World, node_type: &str, pos: [f32; 2]) {
+/// Mutate the active graph (asset file or scene-entity component), persisting +
+/// marking dirty the same way for both modes. Creates the component on demand.
+fn bp_apply_graph(world: &mut World, f: impl FnOnce(&mut BlueprintGraph)) {
     if is_asset(world) {
         let path = world.resource::<BlueprintEditorState>().editing_file_path.clone();
         let project = world.get_resource::<CurrentProject>().cloned();
         let mut g = world.resource::<BlueprintEditorState>().file_graph.clone().unwrap_or_default();
-        g.add_node(node_type, pos);
+        f(&mut g);
         world.resource_mut::<BlueprintEditorState>().file_graph = Some(g.clone());
         if let Some(path) = path {
             save_blueprint_file(project.as_ref(), &path, &g);
@@ -316,12 +448,62 @@ fn add_blueprint_node(world: &mut World, node_type: &str, pos: [f32; 2]) {
             world.entity_mut(e).insert(BlueprintGraph::new());
         }
         if let Some(mut g) = world.get_mut::<BlueprintGraph>(e) {
-            g.add_node(node_type, pos);
+            f(&mut g);
         }
     }
     world.resource_mut::<BlueprintEditorState>().is_dirty = true;
 }
 
+fn add_blueprint_node(world: &mut World, node_type: &str, pos: [f32; 2]) {
+    bp_apply_graph(world, |g| {
+        g.add_node(node_type, pos);
+    });
+}
+
+/// Add a node from a dragged cable: spawn it at `base`, then wire `src` to the
+/// new node's best-matching opposite-direction pin (exact type > compatible >
+/// any). `src` = `(node, pin, is_output)`.
+fn bp_add_and_wire(world: &mut World, node_type: &str, base: [f32; 2], src: (u64, String, bool)) {
+    bp_apply_graph(world, move |g| {
+        let new_id = g.add_node(node_type, base);
+        let want_dir = if src.2 { PinDir::Input } else { PinDir::Output };
+        let src_ty = g
+            .get_node(src.0)
+            .and_then(|n| node_def(&n.node_type))
+            .map(|d| (d.pins)())
+            .and_then(|pins| pins.into_iter().find(|p| p.name == src.1).map(|p| p.pin_type));
+        let new_pins = node_def(node_type).map(|d| (d.pins)()).unwrap_or_default();
+        let pick = new_pins.iter().filter(|p| p.direction == want_dir).min_by_key(|p| match src_ty {
+            Some(t) if p.pin_type == t => 0u8,
+            Some(t) if PinType::compatible(t, p.pin_type) || PinType::compatible(p.pin_type, t) => 1,
+            _ => 2,
+        });
+        if let Some(p) = pick {
+            if src.2 {
+                g.connect(src.0, &src.1, new_id, &p.name);
+            } else {
+                g.connect(new_id, &p.name, src.0, &src.1);
+            }
+        }
+    });
+}
+
+/// Every catalog node as a searchable palette entry, each spawning at `base`
+/// (canvas px). Shared by the toolbar button + the right-click/Spacebar menu.
+fn bp_node_entries(base: [f32; 2]) -> Vec<SearchEntry> {
+    let mut entries = Vec::new();
+    for category in categories() {
+        let icon = category_icon(category);
+        for def in nodes_in_category(category) {
+            let node_type = def.node_type;
+            entries.push(SearchEntry::new(icon, def.display_name, category, move |w| add_blueprint_node(w, node_type, base)));
+        }
+    }
+    entries
+}
+
+/// Toolbar "Add Node" → open the searchable palette under the button. New nodes
+/// land at a default canvas spot (the user can drag them).
 fn add_node_open(
     q: Query<(&Interaction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<Interaction>)>,
     windows: Query<&Window>,
@@ -333,19 +515,39 @@ fn add_node_open(
     let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let mut kids: Vec<Entity> = Vec::new();
-    let mut offset = 0.0f32;
+    search_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, bp_node_entries([80.0, 80.0]));
+}
+
+/// Right-click / Spacebar on empty canvas → the shared widget records
+/// `context_menu`; open the searchable palette at the cursor and spawn the
+/// chosen node at the clicked canvas point.
+fn bp_context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<&mut NodeGraphView, With<BpGraph>>) {
+    let Some(fonts) = fonts else { return };
+    for mut v in &mut views {
+        if let Some((screen, canvas)) = v.context_menu.take() {
+            search_menu(&mut commands, &fonts, screen.x, screen.y, bp_node_entries([canvas.x, canvas.y]));
+        }
+        // Cable dragged onto empty canvas → same palette, but each pick auto-wires
+        // the new node back to the dragged pin.
+        if let Some(cd) = v.connect_drag.take() {
+            let src = (cd.node, cd.pin, cd.is_output);
+            search_menu(&mut commands, &fonts, cd.screen.x, cd.screen.y, bp_connect_entries([cd.canvas.x, cd.canvas.y], src));
+        }
+    }
+}
+
+/// Catalog entries whose action spawns the node and auto-wires it to `src`.
+fn bp_connect_entries(base: [f32; 2], src: (u64, String, bool)) -> Vec<SearchEntry> {
+    let mut entries = Vec::new();
     for category in categories() {
         let icon = category_icon(category);
         for def in nodes_in_category(category) {
             let node_type = def.node_type;
-            let pos = [60.0 + offset, 60.0 + offset];
-            offset += 6.0;
-            kids.push(menu_item(&mut commands, &fonts, icon, def.display_name, move |w| add_blueprint_node(w, node_type, pos)));
+            let src = src.clone();
+            entries.push(SearchEntry::new(icon, def.display_name, category, move |w| bp_add_and_wire(w, node_type, base, src.clone())));
         }
     }
-    commands.entity(menu).add_children(&kids);
+    entries
 }
 
 fn hasher() -> std::collections::hash_map::DefaultHasher {

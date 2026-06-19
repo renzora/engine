@@ -6,6 +6,7 @@ mod native_graph;
 mod native_properties;
 
 use bevy::prelude::*;
+use renzora::{AppEditorExt, InspectorEntry};
 use renzora_blueprint::BlueprintGraph;
 
 /// Tracks what the blueprint editor is currently focused on. Two modes:
@@ -39,8 +40,31 @@ impl Plugin for BlueprintEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] BlueprintEditorPlugin");
         app.init_resource::<BlueprintEditorState>();
+        app.register_inspector(blueprint_graph_entry());
         app.add_plugins(native_properties::NativeBlueprintProperties);
         app.add_plugins(native_graph::NativeBlueprintGraph);
+    }
+}
+
+/// Inspector entry so a `BlueprintGraph` shows up under **Add Component →
+/// Blueprint** (and can be removed). A fresh graph is empty — author it in the
+/// Blueprints workspace, or drag a `.blueprint` onto the entity in the viewport.
+fn blueprint_graph_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "blueprint_graph",
+        display_name: "Blueprint",
+        icon: "graph",
+        category: "scripting",
+        has_fn: |world, entity| world.get::<BlueprintGraph>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(BlueprintGraph::new());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<BlueprintGraph>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
     }
 }
 

@@ -283,6 +283,41 @@ impl Default for RibbonSettings {
 }
 
 // ============================================================================
+// Light Emission
+// ============================================================================
+
+/// Makes an effect cast real scene light (a `PointLight` placed on the same
+/// entity as the `HanabiEffect`). Particles themselves stay unlit; this is how
+/// AAA engines make fire/explosions illuminate the world — one representative,
+/// optionally-flickering light at the effect's position.
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Reflect, Debug)]
+#[reflect(Serialize, Deserialize)]
+pub struct ParticleLightSettings {
+    /// Light colour (linear RGB).
+    pub color: [f32; 3],
+    /// Base luminous intensity (lumens).
+    pub intensity: f32,
+    /// Falloff range in world units.
+    pub range: f32,
+    /// Intensity wobble amount, 0 = steady, 1 = strong flicker.
+    pub flicker: f32,
+    /// Whether the light casts shadows.
+    pub shadows: bool,
+}
+
+impl Default for ParticleLightSettings {
+    fn default() -> Self {
+        Self {
+            color: [1.0, 0.6, 0.25],
+            intensity: 120000.0,
+            range: 8.0,
+            flicker: 0.35,
+            shadows: true,
+        }
+    }
+}
+
+// ============================================================================
 // Flipbook Animation
 // ============================================================================
 
@@ -514,6 +549,10 @@ pub struct HanabiEffectDefinition {
     /// dissipation in wisps instead of a uniform fade). Great for smoke/fire.
     #[serde(default)]
     pub erosion: bool,
+    /// Make the effect cast real scene light + shadows (a `PointLight` on the
+    /// effect entity). For fire/explosions/magic that should illuminate the world.
+    #[serde(default)]
+    pub light: Option<ParticleLightSettings>,
 
     // Simulation
     pub simulation_space: SimulationSpace,
@@ -628,6 +667,7 @@ impl Default for HanabiEffectDefinition {
             flipbook: None,
             ribbon: None,
             erosion: false,
+            light: None,
             simulation_space: SimulationSpace::Local,
             simulation_condition: SimulationCondition::Always,
             motion_integration: MotionIntegrationMode::PostUpdate,

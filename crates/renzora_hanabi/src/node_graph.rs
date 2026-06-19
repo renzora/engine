@@ -745,6 +745,10 @@ pub struct ParticleNodeGraph {
     /// Base effect definition — properties not controlled by nodes are preserved here.
     /// When compiling, node values override relevant fields on top of this base.
     pub base_effect: Option<crate::data::HanabiEffectDefinition>,
+    /// Comment / group boxes. `#[serde(default)]` keeps graphs built before
+    /// comments existed loadable.
+    #[serde(default)]
+    pub comments: Vec<renzora::GraphComment>,
 }
 
 impl ParticleNodeGraph {
@@ -761,6 +765,7 @@ impl ParticleNodeGraph {
             connections: Vec::new(),
             next_id: 2,
             base_effect: None,
+            comments: Vec::new(),
         }
     }
 
@@ -774,6 +779,27 @@ impl ParticleNodeGraph {
             values: HashMap::new(),
         });
         id
+    }
+
+    /// Add a comment box at `rect` (`[x, y, w, h]` canvas px). Comments share the
+    /// node id space so every id in the graph is unique.
+    pub fn add_comment(&mut self, rect: [f32; 4]) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.comments.push(renzora::GraphComment {
+            id,
+            rect,
+            ..Default::default()
+        });
+        id
+    }
+
+    pub fn remove_comment(&mut self, id: u64) {
+        self.comments.retain(|c| c.id != id);
+    }
+
+    pub fn get_comment_mut(&mut self, id: u64) -> Option<&mut renzora::GraphComment> {
+        self.comments.iter_mut().find(|c| c.id == id)
     }
 
     pub fn remove_node(&mut self, id: u64) {

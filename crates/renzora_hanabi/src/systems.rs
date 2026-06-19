@@ -31,9 +31,10 @@ pub fn setup_soft_particle_texture(
         for x in 0..size {
             let dx = (x as f32 - c) / c;
             let dy = (y as f32 - c) / c;
-            let d = (dx * dx + dy * dy).sqrt();
-            let mut a = (1.0 - d).clamp(0.0, 1.0);
-            a = a * a * (3.0 - 2.0 * a); // smoothstep for a soft edge
+            let d2 = dx * dx + dy * dy;
+            // Soft gaussian falloff (no hard edge) so overlapping particles blend
+            // into each other instead of reading as distinct circles.
+            let a = (-d2 * 3.5).exp().clamp(0.0, 1.0);
             let v = (a * 255.0) as u8;
             let i = ((y * size + x) * 4) as usize;
             data[i] = v;
@@ -89,8 +90,10 @@ pub fn setup_erosion_noise_texture(mut images: ResMut<Assets<Image>>, mut comman
     let mut data = vec![0u8; (size * size * 4) as usize];
     for y in 0..size {
         for x in 0..size {
-            let (mut f, mut amp, mut freq) = (0.0f32, 0.5f32, 4.0f32);
-            for _ in 0..4 {
+            // Low frequency + few octaves => large, soft erosion blobs (wispy
+            // dissolve) rather than fine grain that reads as static.
+            let (mut f, mut amp, mut freq) = (0.0f32, 0.6f32, 2.0f32);
+            for _ in 0..3 {
                 let nx = x as f32 / size as f32 * freq;
                 let ny = y as f32 / size as f32 * freq;
                 f += value_noise(nx, ny) * amp;
@@ -168,6 +171,52 @@ pub struct HanabiEffectSynced {
     pub effect_handle: Handle<EffectAsset>,
 }
 
+/// Drives the flicker of an effect's emitted `PointLight` (added when the effect
+/// definition has `light`).
+#[derive(Component)]
+pub struct ParticleLightFlicker {
+    pub base_intensity: f32,
+    pub flicker: f32,
+    pub phase: f32,
+}
+
+/// Build the `PointLight` + flicker marker for an effect's `light` settings.
+fn light_bundle(
+    l: &ParticleLightSettings,
+    phase: f32,
+) -> (PointLight, ParticleLightFlicker) {
+    (
+        PointLight {
+            color: Color::linear_rgb(l.color[0], l.color[1], l.color[2]),
+            intensity: l.intensity,
+            range: l.range,
+            shadows_enabled: l.shadows,
+            ..default()
+        },
+        ParticleLightFlicker {
+            base_intensity: l.intensity,
+            flicker: l.flicker,
+            phase,
+        },
+    )
+}
+
+/// Wobble emitted-light intensity for a lively fire/torch flicker.
+pub fn flicker_particle_lights(
+    time: Res<Time>,
+    mut q: Query<(&mut PointLight, &ParticleLightFlicker)>,
+) {
+    let t = time.elapsed_secs();
+    for (mut light, f) in q.iter_mut() {
+        if f.flicker <= 0.0 {
+            continue;
+        }
+        // Two detuned sines = organic, non-repeating flicker.
+        let n = ((t * 11.0 + f.phase).sin() * 0.6 + (t * 23.0 + f.phase * 1.7).sin() * 0.4) * 0.5;
+        light.intensity = (f.base_intensity * (1.0 + f.flicker * n)).max(0.0);
+    }
+}
+
 /// Sync HanabiEffect with bevy_hanabi ParticleEffect.
 pub fn sync_hanabi_effects(
     mut commands: Commands,
@@ -193,6 +242,10 @@ pub fn sync_hanabi_effects(
                 EffectMaterial { images: effect_images(&definition, &soft, &noise) },
                 HanabiEffectSynced { effect_handle },
             ));
+            if let Some(l) = &definition.light {
+                let phase = ((entity.to_bits() % 997) as f32) * 0.618_034;
+                commands.entity(entity).try_insert(light_bundle(l, phase));
+            }
         }
     }
 
@@ -230,6 +283,10 @@ pub fn rehydrate_hanabi_effects(
             EffectMaterial { images: effect_images(&definition, &soft, &noise) },
             HanabiEffectSynced { effect_handle },
         ));
+        if let Some(l) = &definition.light {
+            let phase = ((entity.to_bits() % 997) as f32) * 0.618_034;
+            commands.entity(entity).try_insert(light_bundle(l, phase));
+        }
     }
 }
 

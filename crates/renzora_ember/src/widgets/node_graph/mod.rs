@@ -29,8 +29,14 @@ const HEAD_H: f32 = 26.0;
 const ROW_H: f32 = 24.0;
 const WIRE_W: f32 = 2.5;
 
+/// Zoom bounds shared by wheel zoom ([`graph_zoom`]) and the toolbar ± ops
+/// ([`view::ngv_view_ops`]). The upper bound is deliberately modest — zooming
+/// in past ~1.5× just makes a few nodes fill the screen with no extra detail.
+pub(crate) const MIN_ZOOM: f32 = 0.4;
+pub(crate) const MAX_ZOOM: f32 = 1.5;
+
 mod view;
-pub use view::{graph_node_view, graph_wire_view, node_graph_view, GraphEdit, NodeGraphHandle, NodeGraphView};
+pub use view::{graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, ConnectDrag, GraphEdit, NodeGraphHandle, NodeGraphView};
 
 /// Registers the cable material + shader and the node-graph systems.
 pub(crate) struct NodeGraphPlugin;
@@ -563,9 +569,12 @@ pub(crate) fn graph_pan(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
-    mut canvases: Query<(&RelativeCursorPosition, &mut GraphView, &mut UiTransform), With<GraphPan>>,
+    mut canvases: Query<(&ChildOf, &mut GraphView, &mut UiTransform), With<GraphPan>>,
+    viewports: Query<&RelativeCursorPosition>,
 ) {
-    if !mouse.pressed(MouseButton::Middle) {
+    // Pan with middle OR right mouse. A right *click* (no movement) still opens
+    // the add-node menu — that's gated on release-without-drag in `ngv_context`.
+    if !(mouse.pressed(MouseButton::Middle) || mouse.pressed(MouseButton::Right)) {
         *last = None;
         return;
     }
@@ -574,8 +583,13 @@ pub(crate) fn graph_pan(
     };
     if let Some(prev) = *last {
         let delta = c - prev;
-        for (rcp, mut view, mut tf) in &mut canvases {
-            if rcp.cursor_over {
+        for (child_of, mut view, mut tf) in &mut canvases {
+            // Gate on the *viewport's* cursor_over (a stable rect), not the canvas's:
+            // the canvas carries the pan `UiTransform`, so its own rect (and thus
+            // `cursor_over`) slides away as you pan — which froze panning on large /
+            // already-panned graphs. Mirrors how `graph_zoom` checks the viewport.
+            let over = viewports.get(child_of.parent()).map(|r| r.cursor_over).unwrap_or(false);
+            if over {
                 view.pan += delta;
                 tf.translation = Val2::px(view.pan.x, view.pan.y);
                 break;
@@ -614,7 +628,7 @@ pub(crate) fn graph_zoom(
             continue;
         }
         let old = view.zoom;
-        let new = (old * (1.0 + dy * 0.12)).clamp(0.4, 2.5);
+        let new = (old * (1.0 + dy * 0.12)).clamp(MIN_ZOOM, MAX_ZOOM);
         if (new - old).abs() < 1e-5 {
             continue;
         }

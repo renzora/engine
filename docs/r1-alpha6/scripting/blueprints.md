@@ -31,6 +31,29 @@ Blueprints are edited in the **Blueprints** workspace (one of the editor's ribbo
 
 To create a new blueprint, use the Assets browser's **New → Blueprint** entry (it creates `NewBlueprint.blueprint`), then either open it in Asset mode or add a `BlueprintGraph` to an entity and author it in Scene mode.
 
+The toolbar has **Add Node**, **Auto Layout** (re-arranges the graph into tidy dependency-ordered columns), and **Apply** (compile to Lua — scene mode only).
+
+### Adding nodes (search palette)
+
+Nodes are added through a **searchable palette** grouped by category:
+
+- **Right-click** empty graph, or **press `Spacebar`** with the cursor over the graph, to open the palette at the cursor — the new node spawns where you clicked.
+- The toolbar **Add Node** button opens the same palette under the button.
+- **Drag a cable off a pin** and release on empty graph to open the palette — the node you pick is **auto-wired** to that pin (to its best-matching compatible pin).
+- Type to filter; **Enter** places the first match. Click a category in the sidebar to jump to it.
+
+### Comments / groups
+
+Select one or more nodes and press **`C`** to wrap them in a **comment box** (the engine's group construct). Drag the box's body to move it *and every node it encloses* together; drag the bottom-right grip to resize it; edit the title in its header; click **✕** to delete it (the nodes inside are kept). Comments are purely visual — never compiled — and are saved with the graph.
+
+### Attaching a blueprint to an entity
+
+A blueprint runs when its entity has a `BlueprintGraph` component (the equivalent of a script's `ScriptComponent`). Three ways to get one onto an entity:
+
+- **Drag a `.blueprint` file from the Assets browser onto the entity in the viewport** — the graph loads from the file and attaches to the entity under the cursor (its nearest named ancestor). This is the quickest way to run a saved blueprint.
+- **Inspector → Add Component → Blueprint** — inserts an empty `BlueprintGraph` to author in Scene mode.
+- Author directly in **Scene mode** (selecting the entity, then Add Node creates the component).
+
 ## Pins and wires
 
 Every node has typed **pins**. Connections come in two flavours:
@@ -68,8 +91,10 @@ The palette is organised into these categories (in editor display order). Node-t
 | Category | What's in it (examples) |
 |----------|-------------------------|
 | **Event** | Entry points — `on_ready`, `on_update`, `on_collision_enter` |
-| **Flow** | `branch`, `sequence`, `do_once`, `flip_flop`, `gate`, `delay`, `counter`, `start_timer` |
-| **Math** | `add`/`subtract`/`multiply`/`divide`, `clamp`, `lerp`, `sin`/`cos`, `min`/`max`, `distance`, `dot`, `cross`, `normalize`, `combine_vec3`/`split_vec3` |
+| **Flow** | `branch`, `sequence`, `do_once`, `flip_flop`, `gate`, `delay`, `counter`, `start_timer`, `for_loop`, `while_loop`, `switch_int`, `switch_string`, `call_event`, `send_message` |
+| **Math** | arithmetic (`add`…`divide`, `modulo`, `pow`, `square`), full trig (`sin`/`cos`/`tan`, `asin`/`acos`/`atan`/`atan2`), `sqrt`/`exp`/`ln`/`log10`, `abs`/`sign`/`floor`/`ceil`/`round`/`fract`/`trunc`, `clamp`/`saturate`/`lerp`/`inverse_lerp`/`map_range`, `min`/`max`, `step`/`smoothstep`, `move_toward`, `wrap_angle`, `deg2rad`/`rad2deg`, `pi`/`tau`, `select` (data-side ternary), logic (`and`/`or`/`not`/`compare`), Vec3 `distance`/`dot`/`cross`/`normalize`, `combine_vec3`/`split_vec3` |
+| **Vector** | `make_vec2`/`break_vec2`, `vec2_length`/`vec2_scale`/`vec2_add`/`vec2_normalize`/`vec2_dot`, `vec3_add`/`vec3_sub`/`vec3_scale`/`vec3_length`/`vec3_lerp` |
+| **Action** | `call`, `call_on` — fire any named `ScriptAction` (generic escape hatch, like scripting's `action()`) |
 | **String** | `concat`, `format`, `to_float`, `to_int` |
 | **Convert** | `to_string`, `to_float`, `to_int`, `to_bool` |
 | **Transform** | `get_position`/`set_position`, `translate`, `get_rotation`/`set_rotation`, `rotate`, `look_at`, `set_scale`, `get_forward` |
@@ -88,7 +113,7 @@ The palette is organised into these categories (in editor display order). Node-t
 | **Navigation** | `set_destination`, `clear_destination`, `has_path`, `has_target`, `is_at_destination`, `distance_to_destination` |
 | **Debug** | `log`, `draw_line` |
 
-> Several blocks that other engines have do **not** exist here: there is no For Loop, While Loop, or Switch node. Iteration is done with `flow/counter` plus event re-entry, and selection with `flow/branch`.
+> Loops (`for_loop`, `while_loop`) run their body to completion **within one frame** (capped at 100k iterations as a hang guard); use `flow/counter` instead when you want one step per frame. Selection is `flow/branch` (bool) or `flow/switch_int` / `flow/switch_string`. Reusable subgraphs are `event/custom` + `flow/call_event`. There is still no array/list pin type, so there is no ForEach-over-collection node.
 
 The full per-node pin reference lives in the [Blueprint Node API](/docs/r1-alpha5/api/blueprint-nodes). To add your own node types, see [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes).
 
@@ -108,7 +133,7 @@ Event nodes are the graph's entry points — they have an exec **output** but no
 | `network/on_message` | On Message | A named network message is received | `data`, `sender` (Sender ID) |
 | `lifecycle/on_scene_loaded` | On Scene Loaded | A scene finishes loading | `scene` (path) |
 
-> **Runtime status.** `event/on_ready` and `event/on_update` are the triggers driven by the runtime interpreter today; `on_ready` re-fires whenever play mode (re)starts. The remaining event nodes are present in the palette and the file format, but their live firing is still being wired into the interpreter — don't rely on them firing in a shipped game yet.
+> **Runtime status.** The interpreter drives `on_ready`, `on_update`, `on_timer`, `on_message`, `on_collision_enter`/`on_collision_exit`, `animation/on_finished`, and `lifecycle/on_scene_loaded`. `on_ready` re-fires whenever play mode (re)starts. Collision events come from `CollisionReadState` (populated by `renzora_physics` from Avian contact pairs) and report one `other` entity per frame. `network/on_message` is still palette-only.
 
 ## Variables
 

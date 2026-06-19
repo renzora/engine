@@ -47,6 +47,7 @@ pub fn textarea(commands: &mut Commands, font: &Handle<Font>, placeholder: &str,
         placeholder: placeholder.to_string(),
         caret: car,
         password: false,
+        select_all: false,
     });
     commands.entity(box_e).add_children(&[text, car]);
     box_e

@@ -203,9 +203,24 @@ fn input_pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_i
         return row;
     }
 
+    let ed = pin_editor(commands, fonts, node_id, pin);
+    commands.entity(cell).add_child(ed);
+
+    commands.entity(row).add_children(&[conn, label, cell]);
+    row
+}
+
+/// Build the value editor(s) for an input pin, bound 2-way to the pin's stored
+/// value (via [`pin_value`]/[`set_pin`], keyed by `node_id`) so edits write
+/// straight into the graph and the field updates in place. Returns a container
+/// entity. Reused by the Properties panel and the inline on-node editors in
+/// `native_graph`.
+pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &PinTemplate) -> Entity {
+    let cell = commands
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), justify_content: JustifyContent::FlexEnd, ..default() })
+        .id();
     let name = pin.name.clone();
     let default = pin.default_value.clone();
-
     match pin.pin_type {
         PinType::Float => {
             let field = num_field(commands, fonts, "", value_text(), default.as_float(), 0.01, 0.0, 0.0, {
@@ -311,9 +326,7 @@ fn input_pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_i
         }
         PinType::Exec => {}
     }
-
-    commands.entity(row).add_children(&[conn, label, cell]);
-    row
+    cell
 }
 
 fn output_pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, label: &str, ty: &str) -> Entity {

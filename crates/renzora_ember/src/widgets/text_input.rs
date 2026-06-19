@@ -20,6 +20,11 @@ pub struct EmberTextInput {
     pub caret: Entity,
     /// When true, the value renders masked (`••••`) — for password fields.
     pub password: bool,
+    /// When true, the whole value is "selected" (highlighted): the next typed
+    /// character replaces it, and Backspace/Delete clears it. Set on a fresh
+    /// focus where the caller wants select-all (e.g. inline rename), and cleared
+    /// the moment the user edits. There's no partial selection (no caret index).
+    pub select_all: bool,
 }
 
 /// The text + color to display for an input's current value (masked for password
@@ -100,7 +105,13 @@ fn build_input(
         ))
         .id();
     let text = commands
-        .spawn((Text::new(disp), ui_font(font, 12.0), TextColor(rgb(col))))
+        .spawn((
+            Text::new(disp),
+            ui_font(font, 12.0),
+            TextColor(rgb(col)),
+            // Selection highlight (drawn behind the glyphs when `select_all`).
+            BackgroundColor(Color::NONE),
+        ))
         .id();
     let car = caret(commands);
     commands.entity(box_e).insert(EmberTextInput {
@@ -110,6 +121,7 @@ fn build_input(
         placeholder: placeholder.to_string(),
         caret: car,
         password,
+        select_all: false,
     });
     commands.entity(box_e).add_children(&[text, car]);
     box_e
@@ -197,12 +209,35 @@ pub(crate) fn text_input_type(
             if !inp.focused {
                 continue;
             }
+            // With the whole value selected, the first edit replaces it: typing
+            // overwrites, Backspace/Delete clears. Cleared as soon as it applies.
+            let selected = inp.select_all;
             match &ev.logical_key {
-                Key::Character(s) => inp.value.push_str(s),
-                Key::Space => inp.value.push(' '),
+                Key::Character(s) => {
+                    if selected {
+                        inp.value.clear();
+                        inp.select_all = false;
+                    }
+                    inp.value.push_str(s);
+                }
+                Key::Space => {
+                    if selected {
+                        inp.value.clear();
+                        inp.select_all = false;
+                    }
+                    inp.value.push(' ');
+                }
                 Key::Enter => inp.value.push('\n'),
-                Key::Backspace => {
-                    inp.value.pop();
+                Key::Backspace | Key::Delete => {
+                    if selected {
+                        // Delete/Backspace over a full selection wipes everything.
+                        inp.value.clear();
+                        inp.select_all = false;
+                    } else if matches!(ev.logical_key, Key::Backspace) {
+                        // No selection + caret pinned at the end: Backspace removes
+                        // the last char; forward-Delete is a no-op.
+                        inp.value.pop();
+                    }
                 }
                 _ => {}
             }
@@ -213,6 +248,27 @@ pub(crate) fn text_input_type(
                 c.0 = rgb(col);
             }
             break;
+        }
+    }
+}
+
+/// Tint the value's background while it's fully selected (`select_all`), so the
+/// user sees the whole field highlighted — mirrors an OS text field's select-all.
+pub(crate) fn text_input_highlight(
+    inputs: Query<&EmberTextInput>,
+    mut backgrounds: Query<&mut BackgroundColor>,
+) {
+    for inp in &inputs {
+        let Ok(mut bg) = backgrounds.get_mut(inp.text_entity) else {
+            continue;
+        };
+        let target = if inp.select_all && inp.focused && !inp.value.is_empty() {
+            rgb(accent()).with_alpha(0.45)
+        } else {
+            Color::NONE
+        };
+        if bg.0 != target {
+            bg.0 = target;
         }
     }
 }

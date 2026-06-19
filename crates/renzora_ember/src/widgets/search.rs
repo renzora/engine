@@ -304,6 +304,42 @@ pub fn search_list(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<Sea
     col
 }
 
+/// A floating, cursor-anchored **searchable** picker — the "right-click /
+/// Spacebar to add a node" palette. Same typeahead + category list as
+/// [`search_list`], but in a compact [`ScreenMenu`](super::popup::ScreenMenu)
+/// panel positioned at window `(x, y)` instead of a big centered overlay. Being a
+/// `ScreenMenu` it gets click-outside dismiss + on-screen clamping for free, and
+/// picking a row runs its action and closes the panel (see [`run_and_close`]).
+pub fn search_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, entries: Vec<SearchEntry>) -> Entity {
+    let list = search_list(commands, fonts, entries);
+    let root = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(x),
+                top: Val::Px(y),
+                width: Val::Px(300.0),
+                height: Val::Px(380.0),
+                flex_direction: FlexDirection::Column,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            GlobalZIndex(9000),
+            super::popup::ScreenMenu,
+            super::popup::OverlaySurface,
+            bevy::ui::FocusPolicy::Block,
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("search-menu"),
+        ))
+        .id();
+    commands.entity(root).add_child(list);
+    root
+}
+
 /// Convenience: a wide [`Overlay`] whose content is a [`search_grid`] — the
 /// multi-column category picker (the ember port of the egui panel picker).
 pub fn grid_overlay(
@@ -763,11 +799,12 @@ pub(crate) fn search_list_select(
     q: Query<(Entity, &Interaction), (Changed<Interaction>, With<SearchAction>)>,
     parents: Query<&ChildOf>,
     overlays: Query<(), With<Overlay>>,
+    menus: Query<(), With<super::popup::ScreenMenu>>,
     mut commands: Commands,
 ) {
     for (e, interaction) in &q {
         if *interaction == Interaction::Pressed {
-            run_and_close(e, &parents, &overlays, &mut commands);
+            run_and_close(e, &parents, &overlays, &menus, &mut commands);
         }
     }
 }
@@ -778,6 +815,7 @@ pub(crate) fn search_list_enter(
     rows: Query<(Entity, &Node, &SearchRow)>,
     parents: Query<&ChildOf>,
     overlays: Query<(), With<Overlay>>,
+    menus: Query<(), With<super::popup::ScreenMenu>>,
     mut commands: Commands,
 ) {
     if !keys.just_pressed(KeyCode::Enter) {
@@ -793,7 +831,7 @@ pub(crate) fn search_list_enter(
         }
     }
     if let Some((_, e)) = best {
-        run_and_close(e, &parents, &overlays, &mut commands);
+        run_and_close(e, &parents, &overlays, &menus, &mut commands);
     }
 }
 
@@ -801,6 +839,7 @@ fn run_and_close(
     e: Entity,
     parents: &Query<&ChildOf>,
     overlays: &Query<(), With<Overlay>>,
+    menus: &Query<(), With<super::popup::ScreenMenu>>,
     commands: &mut Commands,
 ) {
     commands.queue(move |world: &mut World| {
@@ -812,9 +851,12 @@ fn run_and_close(
             (action.0)(world);
         }
     });
+    // Close the enclosing floating surface — a centered `Overlay` or a
+    // cursor-anchored `ScreenMenu` (the search_menu palette), whichever we hit
+    // first walking up to the root.
     let mut cur = e;
     loop {
-        if overlays.get(cur).is_ok() {
+        if overlays.get(cur).is_ok() || menus.get(cur).is_ok() {
             commands.entity(cur).despawn();
             break;
         }

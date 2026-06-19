@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 // ── Re-export shared graph types from renzora ─────────────────────────
 pub use renzora::{
-    BlueprintConnection, BlueprintNode, BlueprintNodeDef, NodeId, PinDir, PinTemplate, PinType,
-    PinValue,
+    BlueprintConnection, BlueprintNode, BlueprintNodeDef, GraphComment, NodeId, PinDir,
+    PinTemplate, PinType, PinValue,
 };
 
 // ── Blueprint graph (the component) ─────────────────────────────────────────
@@ -21,6 +21,11 @@ pub use renzora::{
 pub struct BlueprintGraph {
     pub nodes: Vec<BlueprintNode>,
     pub connections: Vec<BlueprintConnection>,
+    /// Comment / group boxes. `serde`/`reflect` default so graphs saved before
+    /// comments existed still load.
+    #[serde(default)]
+    #[reflect(default)]
+    pub comments: Vec<GraphComment>,
     next_id: u64,
 }
 
@@ -29,6 +34,7 @@ impl Default for BlueprintGraph {
         Self {
             nodes: Vec::new(),
             connections: Vec::new(),
+            comments: Vec::new(),
             next_id: 1,
         }
     }
@@ -50,6 +56,27 @@ impl BlueprintGraph {
         self.nodes.retain(|n| n.id != id);
         self.connections
             .retain(|c| c.from_node != id && c.to_node != id);
+    }
+
+    /// Add a comment box at `rect` (`[x, y, w, h]` canvas px). Comments share the
+    /// node id space so every id in the graph is unique.
+    pub fn add_comment(&mut self, rect: [f32; 4]) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.comments.push(GraphComment {
+            id,
+            rect,
+            ..Default::default()
+        });
+        id
+    }
+
+    pub fn remove_comment(&mut self, id: u64) {
+        self.comments.retain(|c| c.id != id);
+    }
+
+    pub fn get_comment_mut(&mut self, id: u64) -> Option<&mut GraphComment> {
+        self.comments.iter_mut().find(|c| c.id == id)
     }
 
     pub fn connect(&mut self, from_node: NodeId, from_pin: &str, to_node: NodeId, to_pin: &str) {
